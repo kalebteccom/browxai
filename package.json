@@ -1,0 +1,28 @@
+{
+  "name": "browxai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "packageManager": "pnpm@9.0.0",
+  "bin": { "browxai": "dist/cli.js" },
+  "exports": { ".": "./dist/index.js" },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "dev": "tsc -p tsconfig.json --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "playwright-core": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

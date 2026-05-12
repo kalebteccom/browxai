@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+.env
+.env.*
+# captured / managed browser session state — never commit
+.auth/
+.browx-profile/
+*.storageState.json
+# editor / OS cruft
+.DS_Store
+.idea/
+.vscode/
+*.log

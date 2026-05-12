@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": ".claude/hooks/block-ai-attribution.sh" },
+          { "type": "command", "command": ".claude/hooks/block-long-commits.sh" }
+        ]
+      }
+    ]
+  }
+}
