@@ -42,13 +42,14 @@ cookies. That's the dogfood + validation harness for the MVP.
 ## Layout
 
 ```
-src/                the MCP server (skeleton; Phase 1)
-spike/              throwaway Phase-0 spike — MCP server with raw + curated surfaces
-docs/               Phase-1 design note, divergence notes vs prior art, site-docs port-plan
-.github/            CI (typecheck + test on Node 20 / pnpm)
-.claude/            commit-guard hooks (single-line conventional subjects ≤72 chars, no AI trailers)
-PHASE-0.md          the Phase-0 plan + live build status
-AGENT-RUNBOOK.md    hand this to an agent that'll drive the spike
+src/                       the canonical MCP server (Phase 1 — under construction)
+spike/                     optional reference: two-surface MCP server from the demoted Phase-0 A/B
+spike/AGENT-RUNBOOK.md     hand to an agent only if you specifically want to exercise the spike
+docs/                      Phase-1 design note, divergence notes vs prior art, site-docs port-plan, first-consumer asks
+.github/                   CI (typecheck + test on Node 20 / pnpm)
+.claude/                   commit-guard hooks (single-line conventional subjects ≤72 chars, no AI trailers)
+PHASE-0.md                 Phase-0 closure summary (closed 2026-05-13)
+AGENT-RUNBOOK.md           the Phase-1 hand-off — implement the first-consumer asks + drive site-docs adoption
 ```
 
 ## Develop
