@@ -23,23 +23,37 @@ export function elementKey(inputs: KeyInputs): string {
   return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
 
+/** What we remember about a ref so an action can rebuild a Playwright Locator for it. */
+export interface RefLocatorInputs {
+  role: string;
+  name?: string;
+  testId?: string;
+}
+
 export class RefRegistry {
   private refByKey = new Map<string, string>();
   private keyByRef = new Map<string, string>();
+  private locatorByRef = new Map<string, RefLocatorInputs>();
   private counter = 0;
 
   /** Resolve (or mint) the ref for a node's stable key. */
-  forKey(key: string): string {
+  forKey(key: string, locator?: RefLocatorInputs): string {
     let ref = this.refByKey.get(key);
-    if (ref) return ref;
-    ref = `e${++this.counter}`;
-    this.refByKey.set(key, ref);
-    this.keyByRef.set(ref, key);
+    if (!ref) {
+      ref = `e${++this.counter}`;
+      this.refByKey.set(key, ref);
+      this.keyByRef.set(ref, key);
+    }
+    if (locator) this.locatorByRef.set(ref, locator);
     return ref;
   }
 
   has(ref: string): boolean { return this.keyByRef.has(ref); }
   keyOf(ref: string): string | undefined { return this.keyByRef.get(ref); }
+  locatorOf(ref: string): RefLocatorInputs | undefined { return this.locatorByRef.get(ref); }
+  updateLocator(ref: string, locator: RefLocatorInputs): void {
+    if (this.keyByRef.has(ref)) this.locatorByRef.set(ref, locator);
+  }
   /** Useful for tests / introspection only. */
   size(): number { return this.refByKey.size; }
 }

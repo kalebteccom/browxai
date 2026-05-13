@@ -91,7 +91,7 @@ export async function getA11yTree(
       }
     }
     // testId attaches later in enrichTestIds if we batch-fetch attributes.
-    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }));
+    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), { role, name, testId: node.testId });
     let i = 0;
     for (const cid of raw.childIds ?? []) {
       const c = byId.get(cid);
@@ -155,18 +155,18 @@ async function enrichTestIds(
       }
       for (const a of attrs) {
         const v = attrMap.get(a);
-        if (v) { node.testId = v; break; }
+        if (v) {
+          node.testId = v;
+          // Refresh the registry's locator inputs so action tools can resolve
+          // the ref back to a data-testid-bearing Playwright locator.
+          refs.updateLocator(node.ref, { role: node.role, name: node.name, testId: node.testId });
+          break;
+        }
       }
     } catch {
       // Node may be detached / not in DOM tree; that's fine, no testId then.
     }
   }
-  // Re-key any node whose testId came in after the initial pass — preserves
-  // ref stability across snapshots when the testId is the disambiguator.
-  // (We can't re-assign refs in place without invalidating earlier refs;
-  // for Phase-1 we accept that testId enrichment shifts on first-seen-here
-  // nodes. Cycle: refine if it causes ref churn in adoption testing.)
-  void refs;
 }
 
 const INTERACTIVE_ROLES = new Set([
