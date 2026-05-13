@@ -5,9 +5,18 @@
 // CDP (Accessibility.getFullAXTree) since playwright-core dropped page.accessibility.
 
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from "playwright-core";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 
-const PROFILE_DIR = process.env.BROWX_SPIKE_PROFILE_DIR ?? resolve(".browx-spike-profile");
+// No-trace contract: all transient state lives in BROWX_WORKSPACE (default ~/.browxai/), never
+// in the consumer-repo cwd. The MCP server may be spawned with cwd=<a consumer repo>; nothing
+// must land there. BROWX_SPIKE_PROFILE_DIR overrides only the profile location, still absolute.
+const WORKSPACE = process.env.BROWX_WORKSPACE
+  ? resolve(process.env.BROWX_WORKSPACE)
+  : join(homedir(), ".browxai");
+const PROFILE_DIR = process.env.BROWX_SPIKE_PROFILE_DIR
+  ? resolve(process.env.BROWX_SPIKE_PROFILE_DIR)
+  : join(WORKSPACE, "spike-profile");
 const HEADLESS = process.env.BROWX_SPIKE_HEADLESS === "1";
 const RECENT_LIMIT = 200;
 

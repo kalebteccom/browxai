@@ -8,7 +8,7 @@ Two surfaces in one server, picked by env at startup:
 |---|---|
 | `navigate`, `click(selector)`, `fill(selector, value)`, `snapshot` (full a11y JSON dump), `screenshot`, `console_read`, `network_read` | adds `find(query)`; `snapshot` is compact text w/ `[ref=eN]`; `click`/`fill` accept `ref` *or* `selector`; actions return an `ActionResult`-lite (navigation + console_errors_since); refs persist across snapshots |
 
-Every tool call is appended to `spike/runs/<task>.<surface>.<ts>.jsonl`. Post-hoc analysis derives "tool-calls per task" / "failed actions" / "find→click loops" from these.
+Every tool call is appended to `$BROWX_WORKSPACE/spike-runs/<task>.<surface>.<ts>.jsonl` (default `~/.browxai/spike-runs/`). Nothing is written to the cwd — see the no-trace contract in `AGENT-RUNBOOK.md`. Post-hoc analysis derives "tool-calls per task" / "failed actions" / "find→click loops" from these.
 
 ## Run
 
@@ -16,15 +16,15 @@ Every tool call is appended to `spike/runs/<task>.<surface>.<ts>.jsonl`. Post-ho
 pnpm install
 pnpm spike:install-browser            # downloads Chromium
 
-# one run per (surface, task):
-BROWX_SPIKE_SURFACE=raw     BROWX_SPIKE_TASK=task01 pnpm -s spike   # then drive via an MCP client
-BROWX_SPIKE_SURFACE=curated BROWX_SPIKE_TASK=task01 pnpm -s spike
+# one run per (surface, task) — BROWX_WORKSPACE must point outside any consumer repo:
+BROWX_WORKSPACE=~/.browxai BROWX_SPIKE_SURFACE=raw     BROWX_SPIKE_TASK=task01 pnpm -s spike
+BROWX_WORKSPACE=~/.browxai BROWX_SPIKE_SURFACE=curated BROWX_SPIKE_TASK=task01 pnpm -s spike
 # (and repeat for task02)
 ```
 
-The server speaks MCP over stdio. Configure your MCP client (Claude Code, etc.) to spawn it — see `AGENT-RUNBOOK.md` at the repo root for the recipe.
+The server speaks MCP over stdio. Configure your MCP client (Claude Code, etc.) to spawn it — see `AGENT-RUNBOOK.md` at the repo root for the recipe, **including how to register the server so nothing lands in a consumer repo (target-app etc.)**.
 
-Headless mode: `BROWX_SPIKE_HEADLESS=1`. Profile dir: `BROWX_SPIKE_PROFILE_DIR=…` (default `./.browx-spike-profile`, gitignored).
+Headless mode: `BROWX_SPIKE_HEADLESS=1`. Workspace: `BROWX_WORKSPACE` (default `~/.browxai/` — never `cwd`). Profile dir override: `BROWX_SPIKE_PROFILE_DIR=…` (still absolute, default `$BROWX_WORKSPACE/spike-profile`).
 
 ## What it deliberately doesn't do
 
@@ -35,10 +35,10 @@ Headless mode: `BROWX_SPIKE_HEADLESS=1`. Profile dir: `BROWX_SPIKE_PROFILE_DIR=�
 
 ## Analyse
 
-After both surfaces have run on both tasks (≥ 4 JSONL files in `runs/`):
+After both surfaces have run on both tasks (≥ 4 JSONL files in `$BROWX_WORKSPACE/spike-runs/`):
 
 ```bash
-pnpm tsx spike/analyze.ts
+BROWX_WORKSPACE=~/.browxai pnpm tsx spike/analyze.ts
 ```
 
-Prints a per-task, per-surface summary table; writes `spike/runs/summary.json`. The headline number for Phase 0's go/no-go is "tool-calls + failed-actions to completion, curated vs. raw, per task".
+Prints a per-task, per-surface summary table; writes `summary.md` + `summary.json` into the same workspace dir. The headline number for Phase 0's go/no-go is "tool-calls + failed-actions to completion, curated vs. raw, per task".

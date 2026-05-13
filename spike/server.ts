@@ -13,13 +13,19 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { BrowxSpikeBrowser, fmtState, countNodes, type A11yNode } from "./browser.js";
 import { Logger, type LogEntry } from "./log.js";
 
 const SURFACE = (process.env.BROWX_SPIKE_SURFACE ?? "raw") as "raw" | "curated";
 const TASK = process.env.BROWX_SPIKE_TASK ?? "adhoc";
-const LOG_PATH = resolve("spike/runs", `${TASK}.${SURFACE}.${Date.now()}.jsonl`);
+// No-trace contract: write the JSONL run log into BROWX_WORKSPACE (default ~/.browxai/), never
+// the consumer-repo cwd. Pair with the same default in spike/browser.ts.
+const WORKSPACE = process.env.BROWX_WORKSPACE
+  ? resolve(process.env.BROWX_WORKSPACE)
+  : join(homedir(), ".browxai");
+const LOG_PATH = join(WORKSPACE, "spike-runs", `${TASK}.${SURFACE}.${Date.now()}.jsonl`);
 
 if (SURFACE !== "raw" && SURFACE !== "curated") {
   console.error(`BROWX_SPIKE_SURFACE must be "raw" or "curated"; got "${SURFACE}"`);
@@ -227,7 +233,8 @@ server.registerTool("console_read", { description: "Recent console messages.", i
 server.registerTool("network_read", { description: "Recent network requests (path/method/status).", inputSchema: { limit: z.number().optional() } }, tNetworkRead);
 
 // stderr only — stdout is the MCP channel.
-process.stderr.write(`browxai-spike: surface=${SURFACE} task=${TASK} log=${LOG_PATH}\n`);
+process.stderr.write(`browxai-spike: surface=${SURFACE} task=${TASK} workspace=${WORKSPACE}\n`);
+process.stderr.write(`browxai-spike: log=${LOG_PATH}\n`);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

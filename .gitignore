@@ -3,10 +3,10 @@ dist/
 dist-spike/
 *.tsbuildinfo
 coverage/
-# spike artifacts — throwaway
+# spike + production transient state — lives in $BROWX_WORKSPACE (~/.browxai/), NOT here.
+# Anything that does land in-tree under these legacy names is still ignored as a guardrail.
 .browx-spike-profile/
-spike/runs/*.jsonl
-spike/runs/summary.*
+spike/runs/
 .env
 .env.*
 # captured / managed browser session state — never commit

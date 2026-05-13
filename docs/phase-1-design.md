@@ -204,6 +204,31 @@ the human pre-emptively hitting "proceed".
 - Agent → human direction needs no transport question: the server calls `page.evaluate` /
   `page.addStyleTag` to render the banner/overlay, then blocks on the binding callback (or polls).
 
+## 4a. The no-trace consumer-repo contract (NFR — Phase 1)
+
+browxai's whole point is to be driven *from* other repos (the target SPA first), and those
+repos' working trees must stay clean. Concretely, the server MUST satisfy all of:
+
+- **All paths the server writes to are rooted at `BROWX_WORKSPACE`** (env var; default
+  `~/.browxai/`). The server resolves this once at startup, absolute, and uses it for the
+  managed-profile dir (`$BROWX_WORKSPACE/profile/`), any captured `storageState`
+  (`$BROWX_WORKSPACE/storage/<role>.json`), any logs (`$BROWX_WORKSPACE/logs/`), and any
+  helper / debug artefacts (`$BROWX_WORKSPACE/artifacts/`). **`cwd` is never used for
+  output paths** — verified by review and a CI test that runs the server with a fake
+  consumer-repo cwd and asserts the cwd is untouched.
+- The server logs its resolved `workspace=` to stderr at startup so the agent / operator
+  can verify.
+- **Two registration patterns** in client docs: (A) user-scope MCP config
+  (`~/.claude.json`) for ongoing reuse; (B) a workspace-scope `.mcp.json` that lives *in*
+  the `BROWX_WORKSPACE` dir, not in any consumer repo. The `cwd` of the spawned process is
+  the browxai repo (so pnpm finds deps); the `BROWX_WORKSPACE` env points outside any
+  consumer repo. Never instruct an operator to drop a `.mcp.json` inside a consumer repo.
+- Same rule applies to the spike (`spike/server.ts` already conforms — see
+  `AGENT-RUNBOOK.md`).
+
+Test: spawn the server with `cwd=/tmp/fake-consumer-repo` (an empty git repo), run a
+calibration cycle, then `git -C /tmp/fake-consumer-repo status --porcelain` MUST be empty.
+
 ## 5. Session lifecycle + the Phase-1 security non-negotiables
 
 Two modes (`src/session/`):

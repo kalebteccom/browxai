@@ -5,8 +5,9 @@
 //
 // Writes spike/runs/summary.json. Not pretty — throwaway alongside the spike.
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { resolve, basename } from "node:path";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 
 interface LogEntry {
   ts: string;
@@ -20,7 +21,15 @@ interface LogEntry {
   error?: string;
 }
 
-const RUNS = resolve("spike/runs");
+// No-trace contract: read runs from BROWX_WORKSPACE (default ~/.browxai/), never the cwd.
+const WORKSPACE = process.env.BROWX_WORKSPACE
+  ? resolve(process.env.BROWX_WORKSPACE)
+  : join(homedir(), ".browxai");
+const RUNS = join(WORKSPACE, "spike-runs");
+if (!existsSync(RUNS)) {
+  console.error(`no spike-runs dir at ${RUNS}; set BROWX_WORKSPACE or run the spike first`);
+  process.exit(1);
+}
 const files = readdirSync(RUNS).filter((f) => f.endsWith(".jsonl"));
 if (!files.length) {
   console.error(`no runs in ${RUNS}`);
@@ -83,5 +92,5 @@ for (const task of tasks) {
 
 const md = lines.join("\n");
 console.log(md);
-writeFileSync(resolve(RUNS, "summary.md"), md);
-writeFileSync(resolve(RUNS, "summary.json"), JSON.stringify(buckets, null, 2));
+writeFileSync(join(RUNS, "summary.md"), md);
+writeFileSync(join(RUNS, "summary.json"), JSON.stringify(buckets, null, 2));
