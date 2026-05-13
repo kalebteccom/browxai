@@ -10,6 +10,7 @@ import type { BrowserSession } from "./session/types.js";
 import { getA11yTree } from "./page/a11y.js";
 import { RefRegistry } from "./page/refs.js";
 import { serialise } from "./page/snapshot.js";
+import { find } from "./page/find.js";
 import { log } from "./util/logging.js";
 
 export const NAME = "browxai";
@@ -81,6 +82,23 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const title = await s.page().title().catch(() => "");
       const body = tree ? serialise(tree) : "(empty a11y tree)";
       return { content: [{ type: "text", text: `url: ${url}\ntitle: ${title}\n\n${body}` }] };
+    },
+  );
+
+  server.registerTool(
+    "find",
+    {
+      description:
+        "Find candidate elements by natural-language description. Returns a ranked list of candidates, each with a stable [ref=eN], a selectorHint (preference order: data-testid > role+name > structural > positional), a stability flag (high/medium/low), and a visible-rect bbox (null when the element is fully clipped).",
+      inputSchema: {
+        query: z.string().describe("Natural-language description, e.g. 'the Save button'"),
+        maxCandidates: z.number().int().positive().max(20).optional(),
+      },
+    },
+    async ({ query, maxCandidates }) => {
+      const s = await openSession();
+      const candidates = await find(s.cdp(), refs, { query, maxCandidates });
+      return { content: [{ type: "text", text: JSON.stringify({ query, candidates }, null, 2) }] };
     },
   );
 
