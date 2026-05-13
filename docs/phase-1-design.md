@@ -11,6 +11,12 @@
 
 A standalone MCP server (`browxai`, stdio transport) on `playwright-core` + CDP, exposing:
 
+**Entrypoint** (per first-consumer ask #2 — see `first-consumer-asks.md`): `pnpm browxai`
+locally, `browxai` as the published bin, eventually `npx @kalebtec/browxai`. The post-spike
+name is **stable**: the curated surface ships behind this name regardless of how the
+Phase-0 verdict moves the tools behind it. The `pnpm spike` entrypoint is throwaway and goes
+away after the verdict.
+
 | Tool | Purpose |
 |---|---|
 | `snapshot` | accessibility tree + key interactive elements with stable refs/selectors; token-efficient |
@@ -84,6 +90,37 @@ ref the agent learns from any of them must be usable in the next action.
 
 - Refs are resolved to actions via Playwright locators where possible (so we inherit auto-waiting
   and the strict-match checks); fall back to CDP `DOM.resolveNode` for the awkward cases.
+
+### 2a. Bbox in `find()` / `snapshot()` evidence — visible rect, not raw rect
+
+Per first-consumer ask #5: every `bbox` browxai emits in candidate evidence (from `find()`)
+or in `snapshotDelta` element metadata is the **visible** bounding rect — the element's
+`getBoundingClientRect()` intersected with each ancestor whose `overflow !== visible` and
+with the viewport. If the result is empty (the element is fully clipped, scrolled out of
+view, or inside a collapsed parent), emit `bbox: null` and `clipped: true` rather than the
+raw rect. This matches the runtime bbox computation site-docs's Playwright driver already
+does, so a locator captured during calibration produces the same bbox at execution time.
+
+### 2b. `selectorHint` quality bar — preference order + stability flag
+
+Per first-consumer ask #4: when `find()` (and `snapshot()`'s per-node hints) produce a
+`selectorHint`, they pick from this preference order, top to bottom, taking the first that
+uniquely matches:
+
+1. `[data-testid="…"]` — or any project-conventional test attribute (`[data-test="…"]`,
+   `[data-cy="…"]`, …). Configurable list, `data-testid` as the default.
+2. **Role + accessible name** — Playwright `getByRole(role, { name })` shape, or its
+   CSS-equivalent `role=<role>[name="…"]` when a selector-only consumer needs it.
+3. **Stable text content on a stable role** — e.g. `role=link >> text="Sign in"`.
+4. **Stable structural** — `#id`, semantic tag with a non-generated attribute.
+5. **Positional — last resort only** — `nth-child` / `nth-match` / descendant chains with
+   generated class names.
+
+Every candidate returned by `find()` includes `selectorHint.stability ∈ "high" | "medium" |
+"low"`: `high` = tier 1, `medium` = tier 2–3, `low` = tier 4–5. When only tier-4-or-below
+is available, `stability: "low"` lets a calibration agent flag it for a human or push a
+`data-testid` ask back to the app team rather than transcribing a brittle selector into
+a flow-file. (This is exactly site-docs's flow-file `locators:` use case.)
 
 ## 3. `ActionResult` (the action-feedback shape)
 
@@ -234,17 +271,23 @@ calibration cycle, then `git -C /tmp/fake-consumer-repo status --porcelain` MUST
 Two modes (`src/session/`):
 
 - **`managed` (default)** — launch a fresh Chromium (playwright-core's managed download) with a
-  **dedicated persistent profile dir** (default `.browx-profile/` in cwd, gitignored — *not* the
-  human's daily-driver Chrome profile), **normal Chrome flags**, **sandbox on**. Login survives
-  between sessions in that profile. For site-docs's `httpOnly`-cookie flow: inject the captured
-  cookies into a fresh context here, rather than attaching to the user's real Chrome.
-- **`byob` (opt-in, dangerous)** — CDP-attach to an externally launched Chrome (the user ran it
-  with `--remote-debugging-port=…`). **Off by default.** Enabling requires an explicitly-named flag
-  whose name says it's dangerous — e.g. `--byob-attach-insecure` / config `byob: { iAcceptTheRisks: true }`
-  — and the server prints a **loud one-time warning** naming exactly what's exposed: the real
-  profile (every cookie/password/authed tab), SOP possibly disabled if that Chrome was launched
-  with `--disable-web-security`, and an unauthenticated CDP port. browxai itself **never** launches
-  Chrome with `--disable-web-security` in `managed` mode.
+  **dedicated persistent profile dir** at `$BROWX_WORKSPACE/profile/` (not the human's daily-driver
+  Chrome profile, not in `cwd`), **normal Chrome flags**, **sandbox on**. Login survives between
+  sessions in that profile. For a consumer's `httpOnly`-cookie flow: inject the captured cookies
+  into a fresh context here, rather than attaching to the user's real Chrome.
+- **`byob` (opt-in, dangerous) — `BROWX_ATTACH_CDP=<endpoint>`** — CDP-attach to an externally
+  launched Chrome (e.g. one a consumer like site-docs already started with
+  `--remote-debugging-port=9222`). **Off by default.** Set `BROWX_ATTACH_CDP=http://127.0.0.1:9222`
+  (loopback only — the server refuses non-loopback hosts) to enable; the server then calls
+  `chromium.connectOverCDP(endpoint)` instead of launching. The attached browser is **not-owned**:
+  on shutdown browxai detaches but does *not* close the browser, does *not* reset its storage, does
+  *not* delete its profile. The startup log says `attached=<endpoint> owner=external` so the
+  operator sees the non-owned posture. The same loud one-time warning applies — the real profile
+  (every cookie/password/authed tab), SOP possibly disabled if that Chrome was launched with
+  `--disable-web-security`, and an unauthenticated CDP port. browxai itself **never** launches
+  Chrome with `--disable-web-security` in `managed` mode. **First-consumer ask #1** — this is the
+  unblocker for site-docs's "one Chrome holds the auth" pattern (`capture-auth --cdp …` → browxai
+  attaches to that same Chrome → no second login, no `httpOnly` translation).
 
 Non-negotiables that hold in **both** modes, in Phase 1:
 - The CDP endpoint browxai opens/uses is bound to **`127.0.0.1` only** (never `0.0.0.0`); prefer a
@@ -257,6 +300,28 @@ Non-negotiables that hold in **both** modes, in Phase 1:
   though (like `@playwright/mcp`) this is "not a security boundary," it's a cheap blast-radius
   reducer and the hook point for Phase-2 confirmation. (Lightweight in Phase 1; the full
   allow/blocklist + confirmation hooks are Phase 2.)
+
+### 5a. Storage-state handoff to a deterministic execution mode (first-consumer ask #3)
+
+When browxai is **attached** (`BROWX_ATTACH_CDP`), the storage-state handoff to a consumer's
+own headless/deterministic execution stage is automatic: the consumer reads `storageState()`
+off the same Chrome it asked browxai to attach to — *no browxai MCP tool needed*. The two
+processes share the browser; the auth lives there. This is how site-docs's
+`capture-auth --cdp …` → `site-docs run` pairing already works; browxai just slots in as a
+third client on the same Chrome between them. **Phase 1.**
+
+When browxai is in `managed` mode (it owns the profile), a `dump_storage_state({ outputPath })`
+MCP tool that writes Playwright's standard `storageState` JSON (cookies + origins/localStorage)
+is the path. **Phase 2** — not needed for the first-consumer adoption since site-docs uses the
+attached pattern.
+
+### 5b. Workspace co-location with a consumer (first-consumer ask #6)
+
+`BROWX_WORKSPACE` is consumer-pickable: a consumer that already maintains its own per-app
+workspace dir (e.g. site-docs's `$WORKSPACE`) can set `BROWX_WORKSPACE=$WORKSPACE/.browxai/` so
+the operator sees one workspace tree per app. browxai's env-var-rooted-everything discipline
+(see §4a) means subdir nesting Just Works — no special code path. Documentation-only on
+the browxai side.
 
 ## 6. MCP server wiring (`server.ts`)
 
