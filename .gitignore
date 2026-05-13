@@ -1,7 +1,12 @@
 node_modules/
 dist/
+dist-spike/
 *.tsbuildinfo
 coverage/
+# spike artifacts — throwaway
+.browx-spike-profile/
+spike/runs/*.jsonl
+spike/runs/summary.*
 .env
 .env.*
 # captured / managed browser session state — never commit
