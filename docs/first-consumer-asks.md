@@ -11,8 +11,8 @@ Status legend (browxai side): **design** = absorbed into `docs/phase-1-design.md
 
 | # | Severity | Ask (short) | Status | Lives in browxai design at |
 |---|---|---|---|---|
-| 1 | 🔴 | CDP-attach via `BROWX_ATTACH_CDP` on the canonical (post-spike) server; treat attached Chrome as not-owned. | design | `phase-1-design.md` §5 + §5a |
-| 2 | 🔴 | Stable, non-spike entrypoint: `pnpm browxai` / `browxai` bin (curated surface default; no `BROWX_SPIKE_*` needed). | design | `phase-1-design.md` §0 + `package.json` `bin` |
+| 1 | 🔴 | CDP-attach via `BROWX_ATTACH_CDP` on the canonical (canonical) server; treat attached Chrome as not-owned. | design | `phase-1-design.md` §5 + §5a |
+| 2 | 🔴 | Stable canonical entrypoint: `pnpm browxai` / `browxai` bin (curated surface default; no env-flag tooling required). | impl-done (Phase 1) | `phase-1-design.md` §0 + `package.json` `bin` |
 | 3 | 🔴 | `storageState` handoff to site-docs's headless `run`. Phase-1: falls out of #1 (consumer reads it off the attached Chrome). Phase-2: optional `dump_storage_state` MCP tool. | design (Phase-1 part) · deferred (Phase-2 tool) | `phase-1-design.md` §5a + roadmap Phase 2 |
 | 4 | 🟡 | `find().selectorHint` preference order: `data-testid` > role+name > stable text > stable structural > positional (last resort). Surface `stability: "low"` when only tier-4-or-worse. | design | `phase-1-design.md` §3 (find) |
 | 5 | 🟡 | Visible-rect bbox in `find()` / `snapshot()` evidence: intersect with `overflow !== visible` ancestors + viewport; `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation. | design | `phase-1-design.md` §2/§3 (bbox semantics) |
@@ -24,7 +24,7 @@ Sequenced 1 → 6, per the site-docs asks doc. #1 + #2 are the unblockers; #3 fo
 for free in its Phase-1 shape; #4 lands as part of the Phase-1 `find()` implementation;
 #5 lands with the bbox-emitting parts of `find()` / `snapshot()`; #6 is doc-only.
 
-The post-spike entrypoint name **stays** (`browxai`) regardless of the Phase-0 verdict
+The canonical entrypoint name **stays** (`browxai`) regardless of the Phase-0 verdict
 direction (GO / NO-GO / MIXED). Only the tools behind it move.
 
 ## Out of scope (per site-docs)

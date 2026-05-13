@@ -3,19 +3,17 @@
 > Ratifies the recommendations in the portfolio's `research-open-questions.md` into concrete,
 > implementer-facing design for the Phase-1 MVP. Canonical spec/roadmap:
 > `kalebteccom/project-ideas` → `projects/agent-browser-bridge/`. If implementation forces a
-> change here, update the portfolio spec too. Status: **draft — to be confirmed during the
-> Phase-0 spike** (a few details, e.g. the exact a11y serialisation, may shift once the spike
-> and the `@playwright/mcp` / `agent-browser` reads land — see `divergence-notes.md`).
+> change here, update the portfolio spec too. Status: **mostly implemented — see
+> `docs/tool-reference.md` for the as-shipped surface**. A few details (notably `snapshotDelta`
+> scope-down and the `tree_diff` mode) are Phase-1.5 — they're called out at the relevant sections.
 
 ## 0. What Phase 1 ships
 
 A standalone MCP server (`browxai`, stdio transport) on `playwright-core` + CDP, exposing:
 
 **Entrypoint** (per first-consumer ask #2 — see `first-consumer-asks.md`): `pnpm browxai`
-locally, `browxai` as the published bin, eventually `npx @kalebtec/browxai`. The post-spike
-name is **stable**: the curated surface ships behind this name regardless of how the
-Phase-0 verdict moves the tools behind it. The `pnpm spike` entrypoint is throwaway and goes
-away after the verdict.
+locally, `browxai` as the published bin, eventually `npx @kalebtec/browxai`. The
+spike entrypoint was deleted once the canonical reached parity.
 
 | Tool | Purpose |
 |---|---|
@@ -260,8 +258,7 @@ must stay clean. Concretely, the server MUST satisfy all of:
   the `BROWX_WORKSPACE` dir, not in any consumer repo. The `cwd` of the spawned process is
   the browxai repo (so pnpm finds deps); the `BROWX_WORKSPACE` env points outside any
   consumer repo. Never instruct an operator to drop a `.mcp.json` inside a consumer repo.
-- Same rule applies to the spike (`spike/server.ts` already conforms — see
-  `AGENT-RUNBOOK.md`).
+- (The Phase-0 spike server applied the same rule before it was retired in Phase 1.)
 
 Test: spawn the server with `cwd=/tmp/fake-consumer-repo` (an empty git repo), run a
 calibration cycle, then `git -C /tmp/fake-consumer-repo status --porcelain` MUST be empty.
@@ -335,12 +332,20 @@ the browxai side.
 - Lifecycle: a `session` open/attach on demand (or eager on first tool call with default `managed`);
   close on shutdown; one active session for Phase 1 (multi-tab/multi-context is Phase 4).
 
-## 7. Phase-0 items still feeding this
+## 7. Phase-1.5 follow-ons
 
-- The **curated-surface spike** may tweak the `ActionResult` defaults (e.g. the right
-  `maxResultTokens`, whether `scoped_snapshot` vs `tree_diff` is the better default for calibration).
-- Reading **`@playwright/mcp`** + **Vercel `agent-browser`** finalises the §2 serialisation grammar
-  and decides whether to be wire-compatible with `agent-browser`'s `diff` text format — see
-  `divergence-notes.md`.
-- The **site-docs lifecycle port-plan** (`site-docs-lifecycle-port-plan.md`) decides exactly which
-  `src/session/*` and `helper/*` code is a port vs. a rewrite, and the first-PR slice.
+- **`snapshotDelta` scope-down** — currently returns the full a11y tree with a warning that
+  scoping is pending. The design (re-snapshot of just the changed region + any newly-appeared
+  top-level region) is fully described in §3; the implementation cost is moderate and the
+  signal is strong, so this is the first Phase-1.5 item.
+- **`mode: "tree_diff"`** — emits a unified `+`/`-` text delta of the a11y serialisation
+  (à la Vercel `agent-browser`). Wire-compat decision deferred — see `divergence-notes.md` §5.
+- **`await_human` `kind`s beyond `acknowledge`** — `confirm` / `choose` / `input` /
+  `pick_element` and the shadow-DOM banner UI.
+- **`network_read`** as a session-wide buffered stream — the per-action tap is the primary
+  surface; standalone buffering is polish.
+- **`find().selectorHint` tiers 3–4** — stable-text-on-stable-role, id/semantic-tag fallback,
+  positional last-resort. Tiers 1, 2, and 5-stub are live.
+- **No-trace CI test** — spawn the server with `cwd=/tmp/fake-consumer-repo`, exercise tools,
+  assert the cwd is untouched. The contract is enforced in code (every output path roots at
+  `BROWX_WORKSPACE`); the CI test makes it tamper-evident.

@@ -17,9 +17,10 @@ evaluation moved into **Phase 1** as the site-docs adoption run on a real authed
 synthetic A/B was going to be a weaker signal than the real adoption by a committed consumer
 — so the spike-verdict exit criterion was dropped and Phase 0 closed without it.
 
-The **spike harness** in `spike/` stays as **optional reference** — it's a working
-two-surface MCP server an agent can drive for a sanity-check if useful. See
-`spike/AGENT-RUNBOOK.md`. It's not a gate for anything.
+The **spike harness** was deleted when the canonical `browxai` server reached parity
+(Phase-1 exit criterion: "canonical entrypoint is the documented invocation; spike
+entrypoint deleted"). The two-surface comparison is recoverable from `git log` if
+ever needed.
 
 ## Deliverables (all in this repo)
 
@@ -43,9 +44,9 @@ two-surface MCP server an agent can drive for a sanity-check if useful. See
   1.29 + `playwright-core` 1.60 + `zod`), `tsconfig.json`, GitHub Actions CI (typecheck +
   test on Node 20 / pnpm), `.claude/hooks/block-{ai-attribution,long-commits}.sh` commit
   guards, `.gitignore`.
-- [x] **Spike harness** (optional reference) — `spike/server.ts` + `spike/browser.ts` +
-  `spike/log.ts` + `spike/analyze.ts`, two task scripts in `spike/tasks/`,
-  `spike/AGENT-RUNBOOK.md`. Typecheck clean.
+- (deleted in Phase 1) **Spike harness** — `spike/server.ts` + `spike/browser.ts` + …
+  Existed during Phase 0 as the originally-planned A/B; deleted once the canonical
+  `browxai` server reached parity (Phase-1 exit criterion). Recoverable from `git log`.
 
 ## Exit criteria
 

@@ -13,13 +13,11 @@
   "scripts": {
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
     "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p spike/tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
-    "install-browser": "playwright-core install chromium",
-    "spike": "tsx spike/server.ts",
-    "spike:install-browser": "playwright-core install chromium"
+    "install-browser": "playwright-core install chromium"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

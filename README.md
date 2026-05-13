@@ -31,7 +31,7 @@ posture, the public-release trigger), `progress.md` (history). This repo is the 
 treat the portfolio docs as the source of truth and keep them in sync when implementation forces
 a design change.
 
-Current status: **Phase 0 — discovery & validation.** See [`PHASE-0.md`](PHASE-0.md).
+Current status: **Phase 1 — MVP.** The canonical server is live (typecheck-clean, tests passing; tool reference at [`docs/tool-reference.md`](docs/tool-reference.md)); next step is the site-docs adoption run on a real authed target. Phase 0 closed 2026-05-13 — see [`PHASE-0.md`](PHASE-0.md).
 
 ## Consumer #1
 
@@ -42,22 +42,38 @@ cookies. That's the dogfood + validation harness for the MVP.
 ## Layout
 
 ```
-src/                       the canonical MCP server (Phase 1 — under construction)
-spike/                     optional reference: two-surface MCP server from the demoted Phase-0 A/B
-spike/AGENT-RUNBOOK.md     hand to an agent only if you specifically want to exercise the spike
-docs/                      Phase-1 design note, divergence notes vs prior art, site-docs port-plan, first-consumer asks
+src/                       the canonical MCP server — see docs/tool-reference.md for the surface
+  session/                   managed-profile launch + BYOB CDP-attach (not-owned semantics)
+  page/                      a11y / refs / snapshot / find / actions / ActionResult / network / console / bbox
+  helper/                    window.__browx injection + the bridge (exposeBinding + polling fallback)
+  util/                      workspace ($BROWX_WORKSPACE) / token budgeting / stderr logger
+docs/                      tool reference + Phase-1 design + divergence-vs-prior-art + site-docs port-plan + first-consumer asks
 .github/                   CI (typecheck + test on Node 20 / pnpm)
 .claude/                   commit-guard hooks (single-line conventional subjects ≤72 chars, no AI trailers)
 PHASE-0.md                 Phase-0 closure summary (closed 2026-05-13)
-AGENT-RUNBOOK.md           the Phase-1 hand-off — implement the first-consumer asks + drive site-docs adoption
+AGENT-RUNBOOK.md           Phase-1 hand-off — the asks, the no-trace contract, the definition of done
 ```
 
 ## Develop
 
 ```bash
 corepack enable && pnpm install
+pnpm install-browser     # downloads Chromium for playwright-core (one-time, ~150 MB)
 pnpm typecheck && pnpm test
-pnpm build
+pnpm build               # builds dist/ — `browxai` bin is dist/cli.js
+```
+
+## Run (local dev)
+
+```bash
+# default (managed profile at $BROWX_WORKSPACE/profile/, ~/.browxai/ if unset)
+pnpm browxai
+
+# BYOB — attach to an externally-launched Chrome on loopback
+BROWX_ATTACH_CDP=http://127.0.0.1:9222 pnpm browxai
+
+# headless managed launch
+BROWX_HEADLESS=1 pnpm browxai
 ```
 
 ## License

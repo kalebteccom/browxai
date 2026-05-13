@@ -19,9 +19,8 @@ exposes a curated, agentic-first, token-efficient browser-control surface — `s
 `find`, the `ActionResult` action primitives, `screenshot`, `consoleRead`, `networkRead`,
 and `awaitHuman` — and that **site-docs's discovery/calibration drives end-to-end on a real
 authed target** in place of Claude-in-Chrome. That adoption run *is* the real evaluation;
-there's no separate A/B (the original Phase-0 spike was demoted 2026-05-13 to optional
-reference — see `spike/AGENT-RUNBOOK.md` if a sanity-check feel for the two surfaces is
-useful, but it's not a gate).
+there's no separate A/B (the original Phase-0 spike was demoted 2026-05-13 and deleted once
+the canonical server reached parity).
 
 ## The no-trace consumer-repo contract (read this first)
 
@@ -65,8 +64,8 @@ section of `docs/phase-1-design.md`). Sequenced 1→6:
 
 2. 🔴 **Stable canonical entrypoint** `browxai` — `pnpm browxai` script + `browxai` npm bin
    pointing at `dist/cli.js`. Curated surface as default; no `BROWX_SPIKE_*` env vars on
-   this path. The post-spike name is stable; the spike entrypoint can be deleted when the
-   canonical server can do the same job.
+   this path. The spike entrypoint has already been deleted (the canonical does the same
+   job better); restore from git if a side-by-side ever becomes useful.
 
 3. 🔴 **storageState handoff** — falls out of #1 for free: when browxai is attached, a
    consumer reads `storageState()` off the same Chrome with no extra MCP tool needed. Make
@@ -162,8 +161,7 @@ Phase 1 closes when every box in the roadmap's Phase-1 exit criteria is ticked
       site, no Claude-in-Chrome in the loop, with a real `httpOnly` session.
 - [ ] `BROWX_ATTACH_CDP` end-to-end on the canonical entrypoint: site-docs drives an
       already-authed external Chrome through browxai *without a second login*.
-- [ ] Canonical `browxai` entrypoint is the documented invocation; spike entrypoint can be
-      deleted.
+- [x] Canonical `browxai` entrypoint is the documented invocation; spike entrypoint deleted.
 - [ ] `find().selectorHint` preference order + `stability` flag implemented; visible-rect
       bbox in `find()` / `snapshot()` evidence; locators transcribe mechanically into
       site-docs flow-files with no manual re-selecting.
