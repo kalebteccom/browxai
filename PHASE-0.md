@@ -14,11 +14,13 @@ ratification, and this repo skeleton.)
 
 ## Scope / checklist
 
-- [ ] **Curated-surface spike.** Throwaway MCP server exposing raw Playwright ops + a
-  hand-rolled `find()`/`snapshot()`. Run an agent through 1–2 representative site-docs
-  calibration tasks on a real site; measure retries / wrong-element actions with vs.
-  without the curated surface. → a written go/no-go with the numbers. **(Still to do — needs
-  a live browser + agent session.)**
+- [ ] **Curated-surface spike.** Throwaway MCP server in `spike/` — **built**, typecheck-clean,
+  exposes raw + curated surfaces selectable by `BROWX_SPIKE_SURFACE`, logs every tool call to
+  `spike/runs/<task>.<surface>.jsonl`. Two task scripts in `spike/tasks/` (Wikipedia search +
+  the-internet.herokuapp.com Dynamic Loading — ambiguity-shaped, no auth). Post-hoc analysis in
+  `spike/analyze.ts`. **What's left:** an agent actually drives the four-cell matrix (2 surfaces ×
+  2 tasks) and writes the go/no-go verdict to `docs/phase-0-spike-verdict.md`. See
+  `AGENT-RUNBOOK.md` at the repo root.
 - [x] **`agent-browser` + `@playwright/mcp` read** → `docs/divergence-notes.md` — what browxai
   borrows (a11y-tree-as-snapshot from `@playwright/mcp`; `tree_diff` + stable refs from
   `agent-browser`; re-snapshot-after-action as the floor; `--caps`/origin-flag ideas) and the
@@ -65,7 +67,12 @@ ratification, and this repo skeleton.)
 ## Build status (live)
 
 - Repo created (`kalebteccom/browxai`, private), MIT-licensed, CI + commit-guard hooks in place,
-  TS/Node skeleton (`src/index.ts`, `src/cli.ts` placeholders). Nothing functional yet.
+  TS/Node skeleton (`src/index.ts`, `src/cli.ts` placeholders).
 - Design docs landed: `docs/phase-1-design.md` (the ratified Phase-1 design, draft), `docs/divergence-notes.md`
   (vs. `@playwright/mcp` and `agent-browser`), `docs/site-docs-lifecycle-port-plan.md` (the port-plan).
-- **Not done:** the curated-surface spike (the one item left in Phase 0); any functional code.
+- **Spike harness built** (`spike/server.ts` + `spike/browser.ts` + `spike/log.ts` + `spike/analyze.ts`,
+  two task scripts, `AGENT-RUNBOOK.md`); typecheck clean; deps installed (`@modelcontextprotocol/sdk` 1.29,
+  `playwright-core` 1.60, `zod` 3.25, `tsx`). Chromium not downloaded yet (`pnpm spike:install-browser` is
+  the first thing the runbook tells the agent to do).
+- **Not done:** an agent has not yet *run* the spike's four-cell matrix; the go/no-go verdict
+  (`docs/phase-0-spike-verdict.md`) is the last Phase-0 deliverable.
