@@ -27,12 +27,13 @@ numbers go into a written go/no-go in `PHASE-0.md`. If curated is meaningfully b
 browxai is designed to be **invoked from inside any other repo without leaving traces in
 it**. Concretely:
 
-- The browxai *implementation* lives at its own checkout (e.g. `~/Projects/Kalebtec/browxai`).
+- The browxai *implementation* lives at its own checkout (referred to below as `<browxai>`).
 - All **transient state** — the managed-profile Chromium dir, the spike's JSONL run logs,
   any future captured `storageState` / screenshots — lives in a **`BROWX_WORKSPACE` directory
   outside any consumer repo**, default `~/.browxai/`.
-- A consumer repo (for the spike: nothing; for Phase-1: the target SPA, etc.) is **never**
-  written to by browxai. After a session, `git status` in the consumer repo is clean.
+- A consumer repo (for the spike: nothing; for Phase-1 onward: any application/project repo
+  browxai is driven against) is **never** written to by browxai. After a session,
+  `git status` in the consumer repo is clean.
 
 Two MCP-client configuration patterns satisfy this — pick one. **Do not** drop a `.mcp.json`
 inside a consumer repo just because that's where your editor is open.
@@ -47,7 +48,7 @@ the workspace dir, not against the consumer repo**. The workspace dir is *also* 
 `BROWX_WORKSPACE`. Example:
 
 ```
-~/browxai-workspaces/target-app-2026-05/      ← cwd of your Claude Code session
+~/browxai-workspaces/phase0-spike/        ← cwd of your Claude Code session
 ├── .mcp.json                              ← workspace-scope MCP config (snippet below)
 └── (browxai writes spike-runs/, spike-profile/ here)
 ```
@@ -59,8 +60,8 @@ is where all transient state goes. The consumer repo is never in either path.
 ## Install
 
 ```bash
-# one-time, at the browxai repo (not the consumer repo)
-cd <browxai>
+# one-time, at the browxai repo (not any consumer repo)
+cd <browxai>                  # your local browxai checkout
 pnpm install
 pnpm spike:install-browser   # downloads Chromium for playwright-core (~150 MB, one-time)
 pnpm typecheck               # sanity check
@@ -86,9 +87,9 @@ Pattern (B) — workspace-scope `.mcp.json`. Create an external workspace dir
     "browxai-spike": {
       "command": "pnpm",
       "args": ["--silent", "spike"],
-      "cwd": "<browxai>",
+      "cwd": "<absolute path to your browxai checkout>",
       "env": {
-        "BROWX_WORKSPACE": "/Users/<you>/browxai-workspaces/phase0-spike",
+        "BROWX_WORKSPACE": "<absolute path to your workspace dir, outside any consumer repo>",
         "BROWX_SPIKE_SURFACE": "raw",
         "BROWX_SPIKE_TASK": "task01"
       }
@@ -97,8 +98,8 @@ Pattern (B) — workspace-scope `.mcp.json`. Create an external workspace dir
 }
 ```
 
-Open Claude Code with that workspace dir as cwd, **not** with target-app / any consumer repo as
-cwd. For each of the four runs, edit `BROWX_SPIKE_SURFACE` + `BROWX_SPIKE_TASK` and restart
+Open Claude Code with that workspace dir as cwd, **not** with any consumer / target
+application repo as cwd. For each of the four runs, edit `BROWX_SPIKE_SURFACE` + `BROWX_SPIKE_TASK` and restart
 the session. Matrix:
 
 | run | `BROWX_SPIKE_SURFACE` | `BROWX_SPIKE_TASK` | task file |
@@ -222,10 +223,10 @@ last Phase-0 exit criterion.
 - **stderr is your friend.** The server logs `surface=… task=… workspace=… log=…` to stderr
   on startup. If you're not sure which file your run will write to (or that `workspace=` is
   actually outside the consumer repo), check there.
-- **Verify the no-trace contract.** If a consumer repo (target-app, etc.) is anywhere in the
-  picture, after each run do `git -C <consumer-repo> status` — it MUST be clean. If
-  anything landed there, stop and report; that's a contract bug in the server, not your
-  problem to work around.
+- **Verify the no-trace contract.** If a consumer repo is anywhere in the picture, after
+  each run do `git -C <consumer-repo> status` — it MUST be clean. If anything landed
+  there, stop and report; that's a contract bug in the server, not your problem to work
+  around.
 - **If something is broken, stop and report.** Don't burn 50 tool calls retrying a Playwright
   timeout — surface it. Honest small-N runs beat fudged big-N runs.
 

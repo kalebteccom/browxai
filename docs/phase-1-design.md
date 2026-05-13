@@ -206,8 +206,8 @@ the human pre-emptively hitting "proceed".
 
 ## 4a. The no-trace consumer-repo contract (NFR — Phase 1)
 
-browxai's whole point is to be driven *from* other repos (the target SPA first), and those
-repos' working trees must stay clean. Concretely, the server MUST satisfy all of:
+browxai's whole point is to be driven *from* other repos, and those repos' working trees
+must stay clean. Concretely, the server MUST satisfy all of:
 
 - **All paths the server writes to are rooted at `BROWX_WORKSPACE`** (env var; default
   `~/.browxai/`). The server resolves this once at startup, absolute, and uses it for the

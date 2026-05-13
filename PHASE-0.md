@@ -74,6 +74,6 @@ ratification, and this repo skeleton.)
   two task scripts, `AGENT-RUNBOOK.md`); typecheck clean; deps installed (`@modelcontextprotocol/sdk` 1.29,
   `playwright-core` 1.60, `zod` 3.25, `tsx`). Chromium not downloaded yet (`pnpm spike:install-browser` is
   the first thing the runbook tells the agent to do).
-- **No-trace consumer-repo contract** added as a Phase-1 NFR (spec + roadmap exit criterion + `docs/phase-1-design.md` §4a). Spike retro-fitted: profile + JSONL run logs now root at `$BROWX_WORKSPACE` (default `~/.browxai/`) — never `cwd`. `AGENT-RUNBOOK.md` updated with the two register-without-touching-the-consumer-repo patterns (user-scope `~/.claude.json` or workspace-scope `.mcp.json` outside any consumer repo). Motivates by: first real consumer is the target-app's target-app repo, which must stay clean.
+- **No-trace consumer-repo contract** added as a Phase-1 NFR (spec + roadmap exit criterion + `docs/phase-1-design.md` §4a). Spike retro-fitted: profile + JSONL run logs now root at `$BROWX_WORKSPACE` (default `~/.browxai/`) — never `cwd`. `AGENT-RUNBOOK.md` updated with the two register-without-touching-the-consumer-repo patterns (user-scope `~/.claude.json` or workspace-scope `.mcp.json` outside any consumer repo). Motivation: browxai is designed to drive any application repo from outside it; that repo's working tree must stay clean.
 - **Not done:** an agent has not yet *run* the spike's four-cell matrix; the go/no-go verdict
   (`docs/phase-0-spike-verdict.md`) is the last Phase-0 deliverable.

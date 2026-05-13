@@ -22,7 +22,7 @@ BROWX_WORKSPACE=~/.browxai BROWX_SPIKE_SURFACE=curated BROWX_SPIKE_TASK=task01 p
 # (and repeat for task02)
 ```
 
-The server speaks MCP over stdio. Configure your MCP client (Claude Code, etc.) to spawn it — see `AGENT-RUNBOOK.md` at the repo root for the recipe, **including how to register the server so nothing lands in a consumer repo (target-app etc.)**.
+The server speaks MCP over stdio. Configure your MCP client (Claude Code, etc.) to spawn it — see `AGENT-RUNBOOK.md` at the repo root for the recipe, **including how to register the server so nothing lands in a consumer repo**.
 
 Headless mode: `BROWX_SPIKE_HEADLESS=1`. Workspace: `BROWX_WORKSPACE` (default `~/.browxai/` — never `cwd`). Profile dir override: `BROWX_SPIKE_PROFILE_DIR=…` (still absolute, default `$BROWX_WORKSPACE/spike-profile`).
 
