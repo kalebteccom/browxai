@@ -27,10 +27,13 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
 }
 
 function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
-  // Tier-1 preference: testId. Use Playwright's typed test-id helper which
-  // matches whatever attribute is configured (defaults to data-testid).
+  // Tier-1 preference: testId. We use the *attribute-specific* CSS form rather than
+  // Playwright's `getByTestId` so non-standard test attributes (e.g. `data-type`)
+  // work without per-context `setTestIdAttribute()` plumbing. CSS attribute selectors
+  // with `=` are exact-match, which matches `getByTestId`'s semantics.
   if (inputs.testId) {
-    return page.getByTestId(inputs.testId).first();
+    const attr = inputs.testIdAttr ?? "data-testid";
+    return page.locator(`[${attr}=${JSON.stringify(inputs.testId)}]`).first();
   }
   // Tier 2: role + name.
   if (inputs.name) {
@@ -53,10 +56,11 @@ function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
  */
 function parseSelectorHint(page: Page, sel: string): Locator {
   const s = sel.trim();
-  const testIdMatch = s.match(/^\[data-testid=("([^"]*)"|'([^']*)')\]$/);
-  if (testIdMatch) {
-    const v = testIdMatch[2] ?? testIdMatch[3] ?? "";
-    return page.getByTestId(v).first();
+  // Any `[<attr>="value"]` shape — generalised so `data-testid` / `data-type` /
+  // `data-cy` / project-conventional attrs all route through the CSS path.
+  const attrMatch = s.match(/^\[([a-zA-Z][a-zA-Z0-9-]*)=("([^"]*)"|'([^']*)')\]$/);
+  if (attrMatch) {
+    return page.locator(s).first();
   }
   const roleWithNameMatch = s.match(/^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/);
   if (roleWithNameMatch) {

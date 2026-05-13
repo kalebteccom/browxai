@@ -28,6 +28,10 @@ export interface RefLocatorInputs {
   role: string;
   name?: string;
   testId?: string;
+  /** Attribute *name* that yielded `testId` (e.g. "data-testid", "data-type").
+   *  Locator-resolution uses it to build `[<attr>=...]` so non-standard test attributes
+   *  Just Work. */
+  testIdAttr?: string;
 }
 
 export class RefRegistry {
@@ -49,6 +53,7 @@ export class RefRegistry {
   }
 
   has(ref: string): boolean { return this.keyByRef.has(ref); }
+  hasKey(key: string): boolean { return this.refByKey.has(key); }
   keyOf(ref: string): string | undefined { return this.keyByRef.get(ref); }
   locatorOf(ref: string): RefLocatorInputs | undefined { return this.locatorByRef.get(ref); }
   updateLocator(ref: string, locator: RefLocatorInputs): void {

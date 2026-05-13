@@ -68,6 +68,9 @@ export interface ActionContext {
   refs: RefRegistry;
   console: ConsoleBuffer;
   pages: () => Page[]; // for newTabs detection (Playwright BrowserContext.pages())
+  /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). Threaded
+   *  through so pre/post a11y trees pick up the same testIds the canonical surface uses. */
+  testAttributes: string[];
 }
 
 export interface ActionWindowOptions {
@@ -104,7 +107,7 @@ export async function runInActionWindow(
   const urlBefore = ctx.page.url();
   const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
   const tBefore = Date.now();
-  const preTree = await getA11yTree(ctx.cdp, ctx.refs).catch(() => null);
+  const preTree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
   const preRegions = preTree ? topLevelRegions(preTree) : new Map();
 
   // Track full-load via Page.frameNavigated on the main frame.
@@ -137,7 +140,7 @@ export async function runInActionWindow(
   // --- post-state ---
   ctx.cdp.off("Page.frameNavigated" as never, onFrameNav as never);
   const urlAfter = ctx.page.url();
-  const postTree = await getA11yTree(ctx.cdp, ctx.refs).catch(() => null);
+  const postTree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map();
   const network = net.close();
 

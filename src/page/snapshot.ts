@@ -30,8 +30,18 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
 function formatNode(node: A11yNode, depth: number, indent: string, maxNameLen: number): string {
   const pad = indent.repeat(depth);
   const nm = node.name ? ` "${truncate(node.name, maxNameLen)}"` : "";
-  const tid = node.testId ? ` [testid=${JSON.stringify(node.testId)}]` : "";
-  return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${fmtState(node)}`;
+  // Emit the actual attribute name (e.g. `[data-testid="…"]` or `[data-type="…"]`) so
+  // the agent can transcribe it directly. Falls back to `data-testid` when the source
+  // didn't tell us which attr matched.
+  const tid = node.testId
+    ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(node.testId)}]`
+    : "";
+  const src = node.source === "dom"
+    ? " [from-dom]"
+    : node.source === "both"
+      ? " [from-both]"
+      : "";
+  return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${src}${fmtState(node)}`;
 }
 
 export function fmtState(n: A11yNode): string {

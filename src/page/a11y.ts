@@ -15,6 +15,14 @@ export interface A11yNode {
   backendDOMNodeId?: number;
   /** Test-attribute value if we found one (`data-testid` etc.). */
   testId?: string;
+  /** Attribute *name* that yielded `testId` — preserves which convention matched. */
+  testIdAttr?: string;
+  /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
+   *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
+   *  discovered by both paths. Phase-1.5 ask #7 / #8 plumbing. */
+  source?: "a11y" | "dom" | "both";
+  /** Tag name (DOM-walk only — informational for the agent). */
+  tag?: string;
   /** State flags as reported by CDP (selected subset — see fmtState). */
   disabled?: boolean;
   checked?: boolean | "mixed";
@@ -45,12 +53,15 @@ interface RawAXNode {
  *
  * `testIdAttributes` is the list of HTML attributes to read off the DOM node as
  * the node's `testId` (preference-order-friendly for `find()`'s selectorHint).
- * Defaults to `["data-testid", "data-test", "data-cy"]`.
+ * Sourced from `BROWX_TEST_ATTRIBUTES` via `resolveConfig()`; defaults to
+ * `["data-testid", "data-test", "data-cy", "data-qa"]`. Order-sensitive: the
+ * **first** match on a node wins. The matched attribute *name* is preserved on
+ * the node as `testIdAttr` so selectorHint can emit the right selector.
  */
 export async function getA11yTree(
   cdp: CDPSession,
   refs: RefRegistry,
-  testIdAttributes: string[] = ["data-testid", "data-test", "data-cy"],
+  testIdAttributes: string[] = ["data-testid", "data-test", "data-cy", "data-qa"],
 ): Promise<A11yNode | null> {
   // Enable is idempotent; safe to call repeatedly.
   await cdp.send("Accessibility.enable");
@@ -157,9 +168,10 @@ async function enrichTestIds(
         const v = attrMap.get(a);
         if (v) {
           node.testId = v;
+          node.testIdAttr = a;
           // Refresh the registry's locator inputs so action tools can resolve
           // the ref back to a data-testid-bearing Playwright locator.
-          refs.updateLocator(node.ref, { role: node.role, name: node.name, testId: node.testId });
+          refs.updateLocator(node.ref, { role: node.role, name: node.name, testId: node.testId, testIdAttr: a });
           break;
         }
       }

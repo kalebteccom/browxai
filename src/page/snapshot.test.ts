@@ -21,9 +21,24 @@ describe("serialise", () => {
     expect(out).toContain('button "Cancel" [ref=e4] [disabled]');
   });
 
-  it("includes testid hints when present", () => {
+  it("includes testid hints with the configured attr name (default data-testid)", () => {
     const tree: A11yNode = node("button", "Play", "e1", [], { testId: "play-recap" });
-    expect(serialise(tree)).toContain('[testid="play-recap"]');
+    expect(serialise(tree)).toContain('[data-testid="play-recap"]');
+  });
+
+  it("emits the actual matched attribute (e.g. data-type) when known", () => {
+    const tree: A11yNode = node("generic", undefined, "e2", [], { testId: "stats-pane", testIdAttr: "data-type" });
+    expect(serialise(tree)).toContain('[data-type="stats-pane"]');
+  });
+
+  it("marks DOM-walk-only nodes with [from-dom]", () => {
+    const tree: A11yNode = node("button", "Save", "e1", [], { source: "dom" });
+    expect(serialise(tree)).toContain('[from-dom]');
+  });
+
+  it('marks combined-source nodes with [from-both]', () => {
+    const tree: A11yNode = node("button", "Cancel", "e1", [], { source: "both" });
+    expect(serialise(tree)).toContain('[from-both]');
   });
 
   it("drops generic/presentation nodes with no name and no testid", () => {
@@ -42,7 +57,7 @@ describe("serialise", () => {
     const tree: A11yNode = node("WebArea", "X", "e1", [
       node("generic", undefined, "e2", [], { testId: "stats-pane" }),
     ]);
-    expect(serialise(tree)).toContain('generic [ref=e2] [testid="stats-pane"]');
+    expect(serialise(tree)).toContain('generic [ref=e2] [data-testid="stats-pane"]');
   });
 
   it("truncates very long names", () => {

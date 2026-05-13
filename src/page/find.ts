@@ -3,8 +3,9 @@
 // fixed preference order with a stability flag; bbox is the visible-rect.
 
 import type { CDPSession } from "playwright-core";
-import { getA11yTree, walk, type A11yNode } from "./a11y.js";
+import { walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
+import { composeSnapshot } from "./compose.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
 
 export interface FindCandidate {
@@ -29,6 +30,8 @@ export interface FindCandidate {
 export interface FindOptions {
   query: string;
   maxCandidates?: number;
+  /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). */
+  testAttributes: string[];
 }
 
 const INTERACTIVE_ROLES = new Set([
@@ -56,7 +59,9 @@ export async function find(
   refs: RefRegistry,
   opts: FindOptions,
 ): Promise<FindCandidate[]> {
-  const tree = await getA11yTree(cdp, refs);
+  // Use the composed tree (a11y + DOM-walk fallback) so we can find candidates that
+  // only exist on the DOM-walk side — the Phase-1.5 #7 win on heavy-SPA targets.
+  const { tree } = await composeSnapshot(cdp, refs, opts.testAttributes);
   if (!tree) return [];
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
@@ -93,6 +98,10 @@ export async function find(
   return candidates;
 }
 
+/** Score a node's match against a tokenised query — also weights testId / testIdAttr
+ *  hits high so a query like "feature-area language" lands on `data-testid="feature-panel-language-input"`
+ *  even when the role tree doesn't surface a wrapper. */
+
 function scoreNode(node: A11yNode, q: string, qTokens: string[]): number {
   const nameLower = (node.name ?? "").toLowerCase();
   const testIdLower = (node.testId ?? "").toLowerCase();
@@ -112,20 +121,23 @@ function scoreNode(node: A11yNode, q: string, qTokens: string[]): number {
 
 /**
  * The five-tier preference order from first-consumer ask #4:
- *   1. `[data-testid="…"]`           → stability "high"
+ *   1. `[<test-attr>="…"]`           → stability "high"  (any configured test-attribute)
  *   2. role + accessible name        → stability "medium"
- *   3. stable text on stable role    → stability "medium"  (Phase-1 stub: just role+name)
- *   4. structural (#id, semantic)    → stability "low"
+ *   3. stable text on stable role    → stability "medium"  (Phase-1.5)
+ *   4. structural (#id, semantic)    → stability "low"     (Phase-1.5)
  *   5. positional (last resort)      → stability "low"
  *
- * Phase 1 implements tiers 1, 2, and a tier-5 placeholder. Tiers 3–4 (stable-text /
- * id-attr-based) extend this once we batch-fetch more DOM attributes in a11y.ts.
+ * Phase 1.5 ask #10 ratified: tier-1 hits never gate on a role wrapper. A DOM-walk
+ * node with `testIdAttr="data-type"` and `testId="foo"` gets `[data-type="foo"]` and
+ * stability `high` even when no a11y role is wrapping it. This is what unblocks
+ * heavy-SPA targets whose tier-1 anchors live on plain `<div>`s.
  */
 export function buildSelectorHint(
-  node: Pick<A11yNode, "role" | "name" | "testId">,
+  node: Pick<A11yNode, "role" | "name" | "testId" | "testIdAttr">,
 ): { hint: string; tier: 1 | 2 | 3 | 4 | 5; stability: FindCandidate["stability"] } {
   if (node.testId) {
-    return { hint: `[data-testid=${JSON.stringify(node.testId)}]`, tier: 1, stability: "high" };
+    const attr = node.testIdAttr ?? "data-testid";
+    return { hint: `[${attr}=${JSON.stringify(node.testId)}]`, tier: 1, stability: "high" };
   }
   if (node.name) {
     return {

@@ -11,15 +11,20 @@
 | `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
+| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
 
 ## Read-only tools
 
 ### `snapshot`
-Compact accessibility-tree snapshot of the current page. Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient — generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[testid=…]`) are inlined.
+Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot — it makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`. (Phase-1.5 ask #7.)
+
+Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient — generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[<test-attr>=…]`) are inlined. Test-attribute hints emit the **actual attribute name** that matched (e.g. `[data-type="feature-panel-language-input"]`) so you can transcribe the selector directly.
+
+When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted (ask #11) — usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
 
 **Inputs:** *(none)*
 
-**Output:** text — `url:` / `title:` header + indented `role "name" [ref=eN] [state]` lines.
+**Output:** text — `url:` / `title:` / `stats:` header + (optional) `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines.
 
 ### `find`
 Find candidate elements by natural-language description.
@@ -46,7 +51,7 @@ Find candidate elements by natural-language description.
   ]
 }
 ```
-**selectorHint preference order** (ask #4): `[data-testid="…"]` → `role=<role>[name="…"]` → stable text on stable role → structural (id/semantic) → positional (last resort). `stability: "low"` means the agent should refuse to transcribe into a flow-file and ask a human or push for a `data-testid` on the app team.
+**selectorHint preference order** (asks #4 + #10): `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role *(Phase-1.5)* → structural (id/semantic) *(Phase-1.5)* → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
 
 **bbox semantics** (ask #5): `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.
 
@@ -163,10 +168,17 @@ window.__browx = {
 
 The shadow-DOM banner UI + `pick_element` overlay are Phase-1.5.
 
-## Phase-1 caveats (what's not done yet)
+## Phase-1.5 caveats (what's not done yet)
 
 - `snapshotDelta.scope` is "full (Phase-1)" — the actual scope-down (re-snapshot of just the changed region) is Phase-1.5.
 - `snapshotDelta.mode = "tree_diff"` is not implemented; falls back to `scoped_snapshot` with a `warnings[]` entry.
-- `await_human` only supports `kind: "acknowledge"`.
+- `await_human` only supports `kind: "acknowledge"`. `confirm` / `choose` / `input` / `pick_element` (+ the shadow-DOM banner UI) are Phase-1.5.
 - `network_read` is a stub; per-action attribution lives in `ActionResult.network`.
-- `find().selectorHint` tiers 3–4 (stable-text-on-stable-role, structural-id) are Phase-1.5; tier 1 (data-testid), tier 2 (role+name), and tier 5 fallback are live.
+- `find().selectorHint` tiers 3 (stable-text-on-stable-role) and 4 (structural-id) are Phase-1.5; tier 1 (configured test attributes), tier 2 (role+name), and tier 5 fallback are live.
+
+## Phase-1.5 wins shipped 2026-05-13 (post-adoption)
+
+- `snapshot()` DOM-walk fallback — heavy-SPA targets w/ sparse a11y now surface interactive elements via the DOM. Adopters see `[from-dom]` / `[from-both]` source markers.
+- `BROWX_TEST_ATTRIBUTES` is configurable — adopt a codebase's project-conventional test attribute (e.g. `data-type`) without code changes.
+- `selectorHint` tier-1 honours the matched attribute name and doesn't gate on a role wrapper.
+- "Low-content snapshot" warning when the a11y tree has fewer than 5 interactive descendants — adopters can no longer misread an empty-looking page as "page is empty."
