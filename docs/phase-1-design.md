@@ -334,18 +334,54 @@ the browxai side.
 
 ## 7. Phase-1.5 follow-ons
 
+The 2026-05-13 target-app adoption-run report (`docs/adoption-report-target-app-2026-05-13.md`) re-ordered
+this list. The top three items are gating: until they land, browxai is materially blunted on
+heavy-SPA targets (target-app-shape codebases — sparse a11y roles, dense `data-testid`/`data-type`).
+
+**Adoption-driven (asks #7–#11 in `first-consumer-asks.md`):**
+
+- 🔴 **`snapshot()` DOM-walk fallback.** When the a11y tree has zero/few interactive descendants
+  under the root, augment with a DOM walk: emit interactive elements found via CSS predicates
+  (`[role]`, `button`, `a[href]`, `input`, `select`, `textarea`, `[onclick]`, `[tabindex]`, `[contenteditable]`)
+  as A11yNode-shaped entries (synthetic `role` taken from `[role]` attr or tagName; `name` from
+  `aria-label` / textContent / placeholder; `testId` from the configured attribute list). Refs
+  still come from the existing stable-key scheme (so they round-trip with the a11y entries when
+  both are present). This unblocks the canonical discovery use case on real-world SPAs and is
+  the **first Phase-1.5 priority**. ([adoption report §1 / ask #7](docs/adoption-report-target-app-2026-05-13.md))
+- 🔴 **`snapshot` data-attribute projection** — either a `mode: "attrs"` (or a supplementary
+  `find_attrs(query?)` tool) that lists every visible element bearing a configured data-attribute
+  (`data-testid`, `data-test`, `data-cy`, `data-qa`, plus project-conventional names like
+  `data-type` — config-driven). Tier-1 / stability `high` regardless of role wrapper. Probably
+  trivial on top of the DOM-walk plumbing. ([ask #8 / #10])
+- 🟡 **Auto-default `BROWX_ATTACH_CDP` when `127.0.0.1:9222` is reachable** (or a `browxai doctor`
+  that prints the missing setup). Adopters using the user-scope MCP install today re-login each
+  session because `BROWX_ATTACH_CDP` isn't set by default. Pair with a *persistent profile* (mirror
+  site-docs's `--user-data-dir` pattern, already wired through `$BROWX_WORKSPACE/profile/`) so the
+  managed-mode fallback at least carries auth across sessions. ([ask #9])
+- 🟡 **`selectorHint` tier-1 must not gate on a role wrapper.** When ask #7 / #8 lands, ensure
+  the testid-bearing DOM-walk node gets tier-1 / stability `high` even when its role tree
+  ancestor is empty. ([ask #10])
+- 🟢 **"Low-content snapshot" warning** — when a `snapshot()` has fewer than N (configurable,
+  default 5) interactive descendants under the root, emit
+  `warnings: ["a11y tree has N interactive descendants; SPA likely uses non-semantic markup. The DOM-walk fallback is on by default — these results combine both sources."]`
+  (or, until #7 lands, "consider the DOM-walk fallback when it ships"). Helps adopters fail fast.
+  ([ask #11])
+
+**Already on the list pre-adoption (still wanted):**
+
 - **`snapshotDelta` scope-down** — currently returns the full a11y tree with a warning that
   scoping is pending. The design (re-snapshot of just the changed region + any newly-appeared
-  top-level region) is fully described in §3; the implementation cost is moderate and the
-  signal is strong, so this is the first Phase-1.5 item.
+  top-level region) is fully described in §3.
 - **`mode: "tree_diff"`** — emits a unified `+`/`-` text delta of the a11y serialisation
   (à la Vercel `agent-browser`). Wire-compat decision deferred — see `divergence-notes.md` §5.
 - **`await_human` `kind`s beyond `acknowledge`** — `confirm` / `choose` / `input` /
-  `pick_element` and the shadow-DOM banner UI.
+  `pick_element` and the shadow-DOM banner UI. Adopter feedback (adoption-report §"What worked")
+  asks that the Phase-1.5 plan for these be discoverable in the tool description so adopters
+  don't invent workarounds.
 - **`network_read`** as a session-wide buffered stream — the per-action tap is the primary
   surface; standalone buffering is polish.
-- **`find().selectorHint` tiers 3–4** — stable-text-on-stable-role, id/semantic-tag fallback,
-  positional last-resort. Tiers 1, 2, and 5-stub are live.
+- **`find().selectorHint` tiers 3 (stable-text-on-stable-role) and 4 (id/semantic)** — Tiers 1, 2,
+  and 5-stub are live; 3/4 land with the DOM-walk plumbing.
 - **No-trace CI test** — spawn the server with `cwd=/tmp/fake-consumer-repo`, exercise tools,
   assert the cwd is untouched. The contract is enforced in code (every output path roots at
   `BROWX_WORKSPACE`); the CI test makes it tamper-evident.
