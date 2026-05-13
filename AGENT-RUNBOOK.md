@@ -69,50 +69,116 @@ the runbook tells you to (e.g. site-docs's `capture-auth --cdp` has already laun
 auth-bearing Chrome on `:9222`); the attached browser is treated as not-owned and survives
 the session.
 
-## The work, in priority order
+## What's shipped (Phase 1 + Phase 1.5 done as of 2026-05-13)
 
-Six concrete asks from site-docs (the first consumer) are what Phase 1 delivers. **Full
-spec for each:** `automated-site-documentation-bot/docs/browxai-asks.md` (canonical) and
-this repo's `docs/first-consumer-asks.md` (browxai-side status board mapping each ask to a
-section of `docs/phase-1-design.md`). Sequenced 1→6:
+Full status board: `docs/first-consumer-asks.md`. Canonical write-up of each ask: the
+site-docs-side `automated-site-documentation-bot/docs/browxai-asks.md` (#1–#6) and the
+adoption-run report at `docs/adoption-report-target-app-2026-05-13.md` (#7–#11).
 
-1. 🔴 **CDP-attach via `BROWX_ATTACH_CDP=<loopback-endpoint>`** on the canonical MCP server.
-   Treat the attached browser as **not-owned** — on shutdown, detach but *don't* close the
-   browser and *don't* reset its storage. Loopback only (refuse non-`127.0.0.1` hosts).
-   Startup log: `attached=<endpoint> owner=external`. This is the unblocker — without it,
-   site-docs can't drive browxai against an already-authed Chrome.
+**Phase 1 (from the pre-shipping site-docs asks):**
 
-2. 🔴 **Stable canonical entrypoint** `browxai` — `pnpm browxai` script + `browxai` npm bin
-   pointing at `dist/cli.js`. Curated surface as default; no `BROWX_SPIKE_*` env vars on
-   this path. The spike entrypoint has already been deleted (the canonical does the same
-   job better); restore from git if a side-by-side ever becomes useful.
+1. 🔴 **CDP-attach via `BROWX_ATTACH_CDP=<loopback-endpoint>` — done.** Attached browser is
+   not-owned (detach-only on shutdown; no `browser.close()` / storage reset). Loopback only
+   (refuses non-`127.0.0.1` hosts). Startup log: `attached=<endpoint> owner=external`.
+2. 🔴 **Stable canonical entrypoint `browxai` — done.** `pnpm browxai` script + `browxai`
+   npm bin → `dist/cli.js`. No `BROWX_SPIKE_*` env vars on this path. Spike deleted.
+3. 🔴 **`storageState` handoff — done (in the falls-out-of-#1 shape).** When browxai is
+   attached, the consumer reads `storageState()` off the same Chrome with no extra MCP tool.
+4. 🟡 **`find().selectorHint` preference order + `stability` flag — done for tiers 1, 2, 5.**
+   Tier 1 is **any configured `BROWX_TEST_ATTRIBUTES`** (default `data-testid, data-test,
+   data-cy, data-qa` — see below). Tiers 3–4 (stable-text-on-stable-role, id/semantic) are
+   Phase-1.5 polish; agents that need them should fall back to a raw `selector:` for now.
+5. 🟡 **Visible-rect bbox in `find()` evidence — done.** `getBoundingClientRect()` ∩ each
+   `overflow !== visible` ancestor ∩ viewport; `bbox: null` + `clipped: true` when fully
+   clipped. Matches site-docs's runtime bbox.
+6. 🟢 **Workspace co-location — done.** `BROWX_WORKSPACE` accepts any absolute path; nest
+   it under a consumer's workspace if useful.
 
-3. 🔴 **storageState handoff** — falls out of #1 for free: when browxai is attached, a
-   consumer reads `storageState()` off the same Chrome with no extra MCP tool needed. Make
-   sure attaching doesn't break that — site-docs's `capture-auth --cdp <endpoint>` uses
-   `Playwright.BrowserContext.storageState()` on the same target. (A `dump_storage_state`
-   MCP tool for the `managed`-mode case is Phase 2 — *don't* build it in Phase 1.)
+**Phase 1.5 (from the 2026-05-13 target-app adoption-run report):**
 
-4. 🟡 **`find().selectorHint` quality bar** — preference order
-   `data-testid` > role+name > stable-text-on-stable-role > stable-structural > positional
-   (last resort), with a per-candidate `stability ∈ "high"|"medium"|"low"` flag. `data-testid`
-   list is configurable (also `data-test`, `data-cy`, …).
+7. 🔴 **`snapshot()` DOM-walk fallback — done.** The a11y tree alone is sparse on
+   heavy-SPA targets (Reflux/legacy-React shapes). browxai now runs a DOM walk on every
+   snapshot, picking up interactive elements via `[role], button, a[href], input, select,
+   textarea, [onclick], [tabindex], [contenteditable]` **plus** any element bearing a
+   configured test attribute. Results merge into the a11y tree under the same root with
+   `[from-dom]` / `[from-both]` source markers — refs use the existing stable-key scheme
+   so the same node gets the same `eN` across both sources.
+8. 🔴 **Data-attribute projection + `BROWX_TEST_ATTRIBUTES` — done.** Add your codebase's
+   test-attribute convention to the env var (comma-separated, order-sensitive, first match
+   wins): `BROWX_TEST_ATTRIBUTES=data-testid,data-type,data-test,data-cy,data-qa`. Flows
+   through a11y enrichment, DOM walk, `selectorHint`, and locator resolution.
+9. 🟡 **Auto-default `BROWX_ATTACH_CDP` — workaround live**, full auto-default deferred.
+   Use the **dual-registration recipe** above: `browxai` for managed mode, `browxai-attached`
+   for BYOB. When site-docs's `capture-auth --cdp http://localhost:9222` Chrome is running,
+   pick `browxai-attached`.
+10. 🟡 **`selectorHint` tier-1 doesn't gate on a role wrapper — done.** A `<div data-type="x">`
+    on a heavy SPA gets `stability: "high"` directly. The emitted hint uses the matched
+    attribute name (e.g. `[data-type="x"]`), not hardcoded `[data-testid="x"]`.
+11. 🟢 **Low-content snapshot warning — done.** When the a11y tree has fewer than 5
+    interactive descendants under root, `snapshot()` emits a `warnings:` block in its header
+    explaining the source mix and pointing at the DOM-walk supplement.
 
-5. 🟡 **Visible-rect bbox** in `find()` / `snapshot()` evidence — `getBoundingClientRect()`
-   ∩ each `overflow !== visible` ancestor ∩ viewport; `bbox: null` + `clipped: true` when
-   fully clipped. Match site-docs's runtime bbox so calibration-time bbox = execution-time
-   bbox for the same selector.
+## Still open (deferred Phase-1.5 polish)
 
-6. 🟢 **Workspace co-location** — doc-only ask: `BROWX_WORKSPACE` is already env-var-rooted;
-   confirm it accepts a nested path like `$SOME_CONSUMER_WORKSPACE/.browxai/` and document
-   the pattern.
+These don't block adoption — they're polish that will close out Phase 1.5 cleanly.
+
+- `snapshotDelta.scope` — currently returns the full tree; the actual scope-down (just the
+  changed region + appeared regions) is pending.
+- `mode: "tree_diff"` — falls back to `scoped_snapshot` with a warning. Wire-compat with
+  Vercel `agent-browser`'s diff text format is undecided (see `docs/divergence-notes.md`).
+- `await_human` `kind`s beyond `"acknowledge"` — `confirm` / `choose` / `input` /
+  `pick_element` + the shadow-DOM banner UI.
+- `network_read` as a session-wide buffered stream — per-action attribution via
+  `ActionResult.network` is the primary surface.
+- `selectorHint` tiers 3 (stable-text-on-stable-role) and 4 (id/semantic).
+- Auto-default `BROWX_ATTACH_CDP` / `browxai doctor` (real auto-detection; the dual MCP
+  registration is the workaround).
+- No-trace CI test that spawns the server with `cwd=/tmp/fake-consumer-repo` and asserts
+  the cwd is untouched.
+
+## Adopter quick reference
+
+**Reading a snapshot:** the header shows `url:`, `title:`, `stats:` (with
+`a11yInteractive`, `domWalkEntries`, `domWalkNew`, `domWalkCombined`), and a `warnings:`
+block if the a11y tree was low-content. Body lines look like:
+
+```
+role "name" [ref=eN] [<test-attr>="…"] [from-dom|from-both] [state]
+```
+
+If you see `[from-dom]` markers it means the node was found by the DOM walk only — that's
+expected on heavy SPAs and you can act on those refs normally. `[from-both]` means both
+the a11y tree and the DOM walk found the same element (a good sign).
+
+**Configuring for a codebase with non-standard test attrs:** edit the MCP env block to
+add your convention. For example, a codebase that uses `data-type` as a tier-1 anchor:
+
+```jsonc
+{
+  "command": "node",
+  "args": ["/path/to/browxai/dist/cli.js"],
+  "env": {
+    "BROWX_WORKSPACE": "/path/to/workspace",
+    "BROWX_TEST_ATTRIBUTES": "data-testid,data-type,data-test,data-cy,data-qa"
+  }
+}
+```
+
+The order is meaningful — first match on a node wins. Put the most-trusted convention
+first.
+
+**When to use `find()` vs raw `selector:`:** prefer `find()` first (it returns ranked
+candidates with refs you can pass back, evidence, and visible-rect bbox). Fall back to a
+raw `selector:` only when `find()` returns nothing useful (e.g. when the agent already
+knows the exact Playwright locator from a flow file).
+
+**See the canonical tool reference at `docs/tool-reference.md`.**
 
 The full Phase-1 design (module layout, exact `ActionResult` JSON shape, ref scheme, the
 `window.__browx` helper, security non-negotiables, MCP wiring, the no-trace contract) is
-in **`docs/phase-1-design.md`**. The site-docs lifecycle code to port (~600–700 LOC across
-`playwright-instrumented-browser.ts` / `playwright-driver.ts` / `auth.ts`) is inventoried in
-**`docs/site-docs-lifecycle-port-plan.md`**, including a concrete ~150–250-LOC first-PR
-slice. Read both before opening `src/`.
+in **`docs/phase-1-design.md`**. The site-docs lifecycle code that was ported (~600–700 LOC
+across `playwright-instrumented-browser.ts` / `playwright-driver.ts` / `auth.ts`) is
+inventoried in **`docs/site-docs-lifecycle-port-plan.md`**.
 
 ## Where to look
 
@@ -174,38 +240,49 @@ slice. Read both before opening `src/`.
 
 ## Definition of done — Phase 1
 
-Phase 1 closes when every box in the roadmap's Phase-1 exit criteria is ticked
-(`projects/agent-browser-bridge/roadmap.md` § Phase 1 — read it). The headline ones:
+State as of 2026-05-13 — most boxes are now `[x]`. The headline criterion (a re-adoption
+run that actually exercises `find()` on a heavy-SPA target post Phase-1.5 fixes) is the
+remaining gate. Full list in `projects/agent-browser-bridge/roadmap.md` § Phase 1.
 
-- [ ] site-docs's discovery/calibration runs end-to-end through browxai on ≥1 real target
-      site, no Claude-in-Chrome in the loop, with a real `httpOnly` session.
-- [ ] `BROWX_ATTACH_CDP` end-to-end on the canonical entrypoint: site-docs drives an
-      already-authed external Chrome through browxai *without a second login*.
+- [~] site-docs's discovery/calibration runs end-to-end through browxai on ≥1 real target
+      site, no Claude-in-Chrome in the loop, with a real `httpOnly` session. — *partially
+      done*: first adoption ran on the target SPA 2026-05-13 (modest win — orchestration good;
+      `find()` blunted by the then-unshipped DOM-walk fallback). Phase-1.5 #7/#8/#10/#11
+      shipped same day. **A re-adoption run that exercises `find()` against the augmented
+      snapshot closes this.**
+- [x] `BROWX_ATTACH_CDP` end-to-end on the canonical entrypoint (no second login required
+      when a `--cdp` Chrome is up; see the dual-registration recipe above).
 - [x] Canonical `browxai` entrypoint is the documented invocation; spike entrypoint deleted.
-- [ ] `find().selectorHint` preference order + `stability` flag implemented; visible-rect
-      bbox in `find()` / `snapshot()` evidence; locators transcribe mechanically into
-      site-docs flow-files with no manual re-selecting.
-- [ ] `snapshot()`, `find()`, `ActionResult`, `screenshot`, `console`/`network` reads,
-      `awaitHuman` all implemented and exercised by the calibration run.
-- [ ] No-trace contract holds against any consumer repo (`git status` clean).
-- [ ] Tool reference docs exist (the curated surface + output shapes).
+- [x] `find().selectorHint` preference order + `stability` flag (tiers 1, 2, 5) + visible-rect
+      bbox in `find()` evidence. Tier-1 now honours `BROWX_TEST_ATTRIBUTES` and doesn't gate
+      on a role wrapper. Tiers 3–4 are deferred polish; locators transcribe mechanically
+      via tier-1 / tier-2 today.
+- [x] `snapshot()`, `find()`, `ActionResult`, `screenshot`, `console`/`network` reads,
+      `await_human(acknowledge)` all implemented. The adoption run exercises them.
+- [x] No-trace contract holds against any consumer repo (`git status` clean). Verified by
+      the `BROWX_WORKSPACE` env-var-rooted output paths; unit tests for the resolver. CI
+      test that spawns with `cwd=/tmp/fake-consumer-repo` is deferred polish.
+- [x] Tool reference docs exist (`docs/tool-reference.md`).
 
-When all are green, sync back to the portfolio (`progress.md` + roadmap status + portfolio
-table), open the `/gpd:advance-stage` conversation, and we move into Phase 2 (the security
-hardening / non-site-docs-consumer phase).
+When the re-adoption run is green, sync back to the portfolio (`progress.md` + roadmap
+status + portfolio table), open the `/gpd:advance-stage` conversation, and we move into
+Phase 2 (the security hardening / non-site-docs-consumer phase).
 
-## When the human asks "is Phase 1 starting?"
+## When the human asks "is browxai ready to use?"
 
-It is once:
-- [ ] `pnpm install` succeeds in the browxai repo.
-- [ ] `pnpm typecheck` passes.
-- [ ] You've read `docs/phase-1-design.md`, `docs/site-docs-lifecycle-port-plan.md`,
-      `docs/first-consumer-asks.md`, and the portfolio `spec.md` + `roadmap.md`.
-- [ ] You have a `BROWX_WORKSPACE` dir picked outside any consumer repo (or the default
-      `~/.browxai/`).
-- [ ] You've opened the first-PR-slice scope from the port-plan and have a sense of where
-      `src/session/managed.ts` + `src/server.ts` come from.
+It is once (this is the adopter checklist now — implementer checklist was met 2026-05-13):
 
-Open a branch (`feat/<short>`), pick ask #1 or the first-PR slice as the first cycle, and
-go. One cycle = one commit; commit + push when logically complete; sync the portfolio
-`progress.md` at each cycle boundary.
+- [x] `pnpm install` + `pnpm install-browser` succeeded in the browxai repo.
+- [x] `pnpm typecheck` + `pnpm test` pass.
+- [x] `pnpm build` produced `dist/cli.js` (executable, shebang preserved).
+- [ ] You've registered browxai with your MCP client per the recipe above (either user-scope
+      `~/.claude.json` or workspace-scope `.mcp.json` outside any consumer repo). Restarted
+      Claude Code (or `/reload-plugins`) so the registration is live.
+- [ ] If your consumer codebase has project-conventional test attributes (e.g. `data-type`),
+      added them to `BROWX_TEST_ATTRIBUTES` in the env block.
+- [ ] You've skimmed `docs/tool-reference.md` so you know what `[from-dom]` / `[from-both]`
+      / the `warnings:` block in snapshot output mean.
+
+Then drive your consumer flow. Report findings as a new
+`docs/adoption-report-<target>-<date>.md`, mirroring the shape of the 2026-05-13 target-app one
+(`What worked` / `What got in the way` / `Concrete asks, in priority order`).
