@@ -14,6 +14,7 @@ import { find } from "./page/find.js";
 import { ConsoleBuffer } from "./page/console.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
+import { BrowxBridge } from "./helper/bridge.js";
 import { log } from "./util/logging.js";
 
 export const NAME = "browxai";
@@ -54,6 +55,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // across snapshots within a session — the design's coherence constraint).
   let session: BrowserSession | null = null;
   let consoleBuf: ConsoleBuffer | null = null;
+  let bridge: BrowxBridge | null = null;
   const refs = new RefRegistry();
 
   const openSession = async (): Promise<BrowserSession> => {
@@ -63,6 +65,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       : await openManagedSession({ headless: opts.headless });
     consoleBuf = new ConsoleBuffer();
     consoleBuf.attach(session.page());
+    bridge = new BrowxBridge();
+    await bridge.attach(session.page().context());
     return session;
   };
 
@@ -253,6 +257,43 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async (args) => asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
+  // ---------- human↔agent helper ----------
+
+  server.registerTool(
+    "await_human",
+    {
+      description:
+        "Block until the human responds in the page. The human triggers a response by calling window.__browx.proceed() (or signal/abort/done) from DevTools or any injected UI. Phase-1 implements `kind=\"acknowledge\"` (just wait for proceed). `confirm` / `choose` / `input` / `pick_element` kinds are Phase-1.5.",
+      inputSchema: {
+        kind: z.enum(["acknowledge"]).default("acknowledge"),
+        prompt: z.string().describe("Human-readable instruction shown to the operator (logged to stderr)."),
+        timeoutMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
+      },
+    },
+    async ({ kind, prompt, timeoutMs }) => {
+      await openSession();
+      log.info(`await_human (${kind}): ${prompt} — call __browx.proceed() in DevTools to release`);
+      try {
+        const sig = await bridge!.awaitSignal("proceed", timeoutMs ?? 0);
+        return { content: [{ type: "text", text: JSON.stringify({ kind, value: sig.data, timedOut: false }, null, 2) }] };
+      } catch (e) {
+        const timedOut = e instanceof Error && e.message.includes("timed out");
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                { kind, value: null, timedOut, error: timedOut ? undefined : (e instanceof Error ? e.message : String(e)) },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      }
+    },
+  );
+
   return {
     start: async () => {
       const transport = new StdioServerTransport();
@@ -260,6 +301,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       log.info("browxai: MCP server up on stdio");
     },
     shutdown: async () => {
+      await bridge?.detach().catch(() => undefined);
       await session?.close().catch(() => undefined);
       await server.close().catch(() => undefined);
     },
