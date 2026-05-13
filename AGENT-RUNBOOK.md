@@ -49,6 +49,26 @@ Either way, the **`cwd` of the spawned MCP server is the browxai repo** (so pnpm
 deps), but the **`BROWX_WORKSPACE` env points at the workspace dir or `~/.browxai/`**, where
 all transient state goes. The consumer repo is never in either path.
 
+### Dual-registration recipe (managed + BYOB) — Pattern (A) in practice
+
+Until ask #9 lands a sensible default ("auto-attach when `127.0.0.1:9222` is reachable"),
+the simplest setup is **two user-scope MCP entries**, one for each session-lifecycle mode:
+
+```bash
+# managed (default — browxai launches its own Chromium at $BROWX_WORKSPACE/profile/)
+JSON='{"command":"node","args":["/path/to/browxai/dist/cli.js"],"env":{"BROWX_WORKSPACE":"/Users/<you>/.browxai"}}'
+claude mcp add-json -s user browxai "$JSON"
+
+# attached (BYOB — attaches to an externally-launched Chrome on loopback:9222)
+JSON='{"command":"node","args":["/path/to/browxai/dist/cli.js"],"env":{"BROWX_WORKSPACE":"/Users/<you>/.browxai","BROWX_ATTACH_CDP":"http://127.0.0.1:9222"}}'
+claude mcp add-json -s user browxai-attached "$JSON"
+```
+
+Use `browxai` for ad-hoc / first-time / public-target work. Use `browxai-attached` when
+the runbook tells you to (e.g. site-docs's `capture-auth --cdp` has already launched the
+auth-bearing Chrome on `:9222`); the attached browser is treated as not-owned and survives
+the session.
+
 ## The work, in priority order
 
 Six concrete asks from site-docs (the first consumer) are what Phase 1 delivers. **Full
