@@ -11,7 +11,8 @@
   "exports": { ".": "./dist/index.js" },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p spike/tsconfig.json --noEmit",
     "test": "vitest run",
     "dev": "tsc -p tsconfig.json --watch",
