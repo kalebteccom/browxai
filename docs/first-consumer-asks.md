@@ -1,11 +1,9 @@
 # First-consumer asks (site-docs → browxai)
 
-> Tracks the concrete asks site-docs (browxai's first real consumer) has filed. The **canonical**
-> description (gap, why, minimum shape, how site-docs adopts) for the first six lives in the
-> site-docs repo at `docs/browxai-asks.md`. Asks #7–#11 came from the **first adoption-run report**
-> (`docs/adoption-report-target-app-2026-05-13.md`) — the run that closed Phase 1's headline exit
-> criterion. This file is the **browxai-side status board** and the mapping into our
-> spec/roadmap/design.
+> Tracks the concrete asks site-docs (browxai's first real consumer) has filed. The **canonical
+> integration contract** across both rounds lives in the site-docs repo at `docs/browxai-asks.md`
+> (rewritten 2026-05-13 as a two-round contract after the target-app adoption run). This file is the
+> **browxai-side status board** and the mapping into our spec/roadmap/design.
 >
 > Hand-off was logged 2026-05-13 in the portfolio progress for `agent-browser-bridge`.
 
@@ -17,7 +15,7 @@ Status legend: **design** = absorbed into `docs/phase-1-design.md` / spec / road
 |---|---|---|---|---|
 | 1 | 🔴 | CDP-attach via `BROWX_ATTACH_CDP` on the canonical server; treat attached Chrome as not-owned. | impl-done (Phase 1) — adoption-run flagged it's **not the default**; see ask #9 | `phase-1-design.md` §5 + §5a |
 | 2 | 🔴 | Stable canonical entrypoint: `pnpm browxai` / `browxai` bin (curated surface default; no env-flag tooling required). | impl-done (Phase 1) | `phase-1-design.md` §0 + `package.json` `bin` |
-| 3 | 🔴 | `storageState` handoff to site-docs's headless `run`. Phase-1: falls out of #1 (consumer reads it off the attached Chrome). Phase-2: optional `dump_storage_state` MCP tool. | design (Phase-1 part) · deferred (Phase-2 tool) | `phase-1-design.md` §5a + roadmap Phase 2 |
+| 3 | 🔴 | `storageState` handoff to site-docs's headless `run`. Phase-1: falls out of #1 (consumer reads it off the attached Chrome via `BrowserContext.storageState()` — no MCP tool needed). Phase-2: optional `dump_storage_state` MCP tool for the managed-mode case. | impl-done (Phase-1 shape; no code needed). 📅 adoption-gated for the re-run · deferred (Phase-2 `dump_storage_state`) | `phase-1-design.md` §5a + roadmap Phase 2 |
 | 4 | 🟡 | `find().selectorHint` preference order: `data-testid` > role+name > stable text > stable structural > positional (last resort). Surface `stability: "low"` when only tier-4-or-worse. | impl-done (tiers 1,2,5; tiers 3,4 Phase-1.5) — adoption-run flagged a tier-1 weighting issue, see ask #10 | `phase-1-design.md` §2b |
 | 5 | 🟡 | Visible-rect bbox in `find()` / `snapshot()` evidence: intersect with `overflow !== visible` ancestors + viewport; `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation. | impl-done (Phase 1) | `phase-1-design.md` §2a |
 | 6 | 🟢 | Allow nesting `BROWX_WORKSPACE` under a consumer's workspace (e.g. `$SITE_DOCS_WORKSPACE/.browxai/`). | impl-done (env-var-rooted everywhere) | `phase-1-design.md` §4a |
