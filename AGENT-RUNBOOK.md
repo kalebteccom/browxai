@@ -1,26 +1,89 @@
-# Agent runbook — browxai Phase 1
+# Agent runbook — browxai
 
 > Hand this doc to an MCP-capable coding agent (Claude Code, Codex, anything that drives the
-> filesystem + a shell + git). It explains what Phase 1 ships, the work that gates it, the
-> rules that constrain it, and what "done" looks like.
+> filesystem + a shell + git). It explains what browxai ships today, what's still open, the
+> rules that constrain you, and what "done" looks like for the open items.
 >
 > **You are the agent.** This document addresses you in the second person.
 >
-> Repo: `kalebteccom/browxai` (private; MIT; will go public per the spec's 4-condition
-> trigger in Phase 3). Canonical design lives in the portfolio repo `kalebteccom/project-ideas`
-> → `projects/agent-browser-bridge/` (`spec.md`, `roadmap.md`, `progress.md`). When this
-> repo's docs conflict with the portfolio, the portfolio wins — and you should fix the
-> conflict in *both*.
+> Repo: `kalebteccom/browxai` (private; MIT; will go public per the spec's 4-condition trigger
+> in Phase 3). Canonical design lives in the portfolio repo `kalebteccom/project-ideas` →
+> `projects/agent-browser-bridge/` (`spec.md`, `roadmap.md`, `progress.md`). When this repo's
+> docs conflict with the portfolio, the portfolio wins — fix the conflict in *both*.
 
-## What Phase 1 ships, in one paragraph
+## Status at a glance (2026-05-15)
 
-A standalone MCP server (`browxai`, stdio transport) built on `playwright-core` + CDP that
-exposes a curated, agentic-first, token-efficient browser-control surface — `snapshot`,
-`find`, the `ActionResult` action primitives, `screenshot`, `consoleRead`, `networkRead`,
-and `awaitHuman` — and that **site-docs's discovery/calibration drives end-to-end on a real
-authed target** in place of Claude-in-Chrome. That adoption run *is* the real evaluation;
-there's no separate A/B (the original Phase-0 spike was demoted 2026-05-13 and deleted once
-the canonical server reached parity).
+- **Phase 0** — closed 2026-05-13. Design + divergence notes + lifecycle port-plan + repo skeleton.
+- **Phase 1** — closed 2026-05-15 by a real adoption run on a heavy-SPA authed target.
+- **Phase 1.5** — substantially shipped 2026-05-15. 17 of 19 backlog asks landed in one cycle.
+- **Phase 2** — substantially shipped 2026-05-15 (code-side). Open: a non-Claude-consumer
+  verification run + headless-CI exercise (both manual-setup; see "Open verification work" below).
+- **Phase 3** — public release. Gated on the 4-condition trigger in the spec.
+
+The full chronology lives in the portfolio's `projects/agent-browser-bridge/progress.md`.
+
+## What's shipped (current tool surface)
+
+Tool surface listed in **`docs/tool-reference.md`** — read that for the per-tool input/output
+shapes. The headline pieces:
+
+**Read tools:**
+
+- **`snapshot`** — compact a11y-tree dump augmented by a DOM-walk pass (so heavy-SPA targets
+  whose accessibility tree is sparse still surface their interactive elements). Optional
+  `scope: <ref>` / `maxNodes: N` / `omit: ["pattern", …]` for token-cheap subsetting.
+  Stable `[ref=eN]` refs persist across snapshots within a session.
+- **`find`** — ranked candidate locators for a natural-language query, with `selectorHint`,
+  `stability ∈ "high"|"medium"|"low"`, visible-rect `bbox`, and `actionable ∈ true|"disabled"|
+  "off-screen"|"covered"`. Optional `contextRef` / `confidenceFloor`. Test-attribute
+  selectorHints carry the *matched attribute name* (e.g. `[data-type="…"]`, not hardcoded
+  `[data-testid="…"]`).
+- **`screenshot`** — viewport or element-cropped PNG; pass `describe: true` for a structured
+  one-line caption alongside the image.
+- **`console_read`** — recent console messages (ring buffer; per-action attribution lives in
+  `ActionResult.console`).
+- **`network_read`** — session-wide ring buffer of recent network requests (cap 500;
+  per-action attribution in `ActionResult.network`).
+
+**Action tools** (each emits a structured `ActionResult` with `navigation` / `structure` /
+`console` / `pageErrors` / `element` / `snapshotDelta` / `network`):
+
+- **`navigate({ url, mode?, maxResultTokens? })`** — gated by `BROWX_ALLOWED_ORIGINS` (if set)
+  + the `navigate_off_allowlist` confirm hook.
+- **`click` / `fill` / `press` / `hover` / `select` / `wait_for`** — accept exactly one of
+  `ref` / `selector` / `named` (see "Named refs" below). Each does an action-window pre/post
+  diff (a11y tree, structure changes, console errors, network) and emits the structured
+  result. `wait_for.timeoutMs` cap: 600 000 ms.
+- **`go_back` / `go_forward`** — history navigation.
+
+**Helpers:**
+
+- **`await_human({ kind, prompt, choices?, timeoutMs? })`** — block until the human responds
+  in the page. Kinds: `acknowledge` (call `__browx.proceed()`), `confirm` (`__browx.confirm(true|false)`),
+  `choose` (`__browx.choose(<index>)`), `input` (`__browx.input("text")`). `pick_element` is
+  still deferred (needs an in-page hover-pick overlay).
+- **`name_ref({ name, ref })`** + **`list_named_refs()`** — bind a mnemonic to a ref;
+  subsequent actions accept `named: "<name>"` in place of `ref` / `selector`.
+- **`find_feedback({ query, ref })`** — session-scoped learned ranking. Tells browxai which
+  candidate was right; subsequent finds with overlapping token sets boost matching candidates.
+- **`start_recording({ flowName })` / `end_recording()` / `record_annotate({ copy, arrow?, … })`** —
+  record action calls during a calibration walk; `end_recording` emits a draft flow-file YAML
+  (site-docs-flavoured) with a locators block + steps with selectorHint-derived targets.
+- **`eval_js({ expr, returnType })`** — escape-hatch JS evaluation in the page's main frame.
+  **Off by default** (the `eval` capability isn't in `DEFAULT_CAPABILITIES`); the return
+  value is page-controlled and tagged untrusted.
+
+**CLI subcommands** (run via `pnpm browxai <sub>` or the `browxai` bin):
+
+- **`browxai doctor`** — environment & connectivity health-check (build / workspace /
+  test-attrs / cdp-attach reachability / chromium binary / capabilities / confirm-hooks /
+  origins). One-line fixes per ✗.
+- **`browxai chrome [start|stop|status]`** — owns the `--cdp` Chrome lifecycle. `start`
+  uses persistent profile at `$BROWX_WORKSPACE/chrome-profile/`; `--insecure` opts into
+  `--disable-web-security` (use only against test/dev targets).
+- **`browxai init <workspace>`** — bootstrap a per-consumer workspace: creates
+  `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed +
+  attached MCP entries, sniffs the codebase for the dominant test-attribute convention.
 
 ## The no-trace consumer-repo contract (read this first)
 
@@ -28,13 +91,11 @@ browxai is designed to be **invoked from inside any other repo without leaving t
 it**. Concretely:
 
 - The browxai *implementation* lives at its own checkout (referred to below as `<browxai>`).
-- All **transient state** — the managed-profile Chromium dir, captured `storageState`,
-  logs, screenshots, helper artefacts — lives in a **`BROWX_WORKSPACE` directory outside
-  any consumer repo**, default `~/.browxai/`.
-- A consumer repo (for site-docs: a per-app workspace alongside the app repo; never the
-  app repo itself) is **never** written to by browxai. After a session, `git status` in any
-  consumer / target repo is clean. This is also a Phase-1 *exit criterion* in the
-  roadmap — verify it.
+- All **transient state** — managed-profile Chromium dir, captured `storageState`, logs,
+  screenshots, helper artefacts — lives in a **`BROWX_WORKSPACE` directory outside any
+  consumer repo**, default `~/.browxai/`.
+- A consumer repo is **never** written to by browxai. After a session, `git status` in any
+  consumer / target repo is clean.
 
 Two MCP-client configuration patterns satisfy this — pick one. **Never** drop a `.mcp.json`
 inside a consumer repo just because that's where your editor is open.
@@ -42,17 +103,16 @@ inside a consumer repo just because that's where your editor is open.
 - **(A)** User-scope MCP registration in `~/.claude.json`'s `mcpServers` — available from
   any project session; nothing touches the consumer repo.
 - **(B)** A workspace-scope `.mcp.json` *inside the `BROWX_WORKSPACE` dir* (outside any
-  consumer repo); open your Claude Code session against that workspace dir, not against the
+  consumer repo); open your MCP-client session against that workspace dir, not the
   consumer repo.
 
-Either way, the **`cwd` of the spawned MCP server is the browxai repo** (so pnpm finds the
-deps), but the **`BROWX_WORKSPACE` env points at the workspace dir or `~/.browxai/`**, where
-all transient state goes. The consumer repo is never in either path.
+The **`cwd` of the spawned MCP server is the browxai repo** (so pnpm finds the deps), but
+**`BROWX_WORKSPACE` env points outside any consumer repo**. The consumer repo is never in
+either path.
 
-### Dual-registration recipe (managed + BYOB) — Pattern (A) in practice
+### Dual-registration recipe (managed + BYOB)
 
-Until ask #9 lands a sensible default ("auto-attach when `127.0.0.1:9222` is reachable"),
-the simplest setup is **two user-scope MCP entries**, one for each session-lifecycle mode:
+Two user-scope MCP entries, one for each session-lifecycle mode:
 
 ```bash
 # managed (default — browxai launches its own Chromium at $BROWX_WORKSPACE/profile/)
@@ -65,224 +125,241 @@ claude mcp add-json -s user browxai-attached "$JSON"
 ```
 
 Use `browxai` for ad-hoc / first-time / public-target work. Use `browxai-attached` when
-the runbook tells you to (e.g. site-docs's `capture-auth --cdp` has already launched the
-auth-bearing Chrome on `:9222`); the attached browser is treated as not-owned and survives
+some other process (a consumer's `capture-auth --cdp`, your own `browxai chrome start`,
+your local Chrome started with `--remote-debugging-port=9222`, …) has already launched the
+auth-bearing Chrome on `:9222`; the attached browser is treated as not-owned and survives
 the session.
 
-## What's shipped (Phase 1 + Phase 1.5 done as of 2026-05-13)
+### Environment variables
 
-Full status board: `docs/first-consumer-asks.md`. Canonical write-up of each ask: the
-site-docs-side `automated-site-documentation-bot/docs/browxai-asks.md` (#1–#6) and the
-adoption-run report at `docs/adoption-report-2026-05-13.md` (#7–#11).
+Full list in `docs/tool-reference.md`. The frequently-touched ones:
 
-**Phase 1 (from the pre-shipping site-docs asks):**
+| Env | Default | What |
+|---|---|---|
+| `BROWX_WORKSPACE` | `~/.browxai/` | Root for all transient state. **NEVER** `cwd`. |
+| `BROWX_ATTACH_CDP` | unset | Loopback CDP endpoint (BYOB attach). Off by default. |
+| `BROWX_HEADLESS` | `0` | Managed-mode only. `1` launches headless. |
+| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Order-sensitive; add the target codebase's convention here. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Off-by-default: `eval`, `byob-attach`, `file-io`. |
+| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Policy hooks that route through `await_human` first. |
+| `BROWX_ALLOWED_ORIGINS` | unset | Comma-separated; wildcards (`https://*.example.com`) supported. |
+| `BROWX_BLOCKED_ORIGINS` | unset | Overrides the allowlist. |
 
-1. 🔴 **CDP-attach via `BROWX_ATTACH_CDP=<loopback-endpoint>` — done.** Attached browser is
-   not-owned (detach-only on shutdown; no `browser.close()` / storage reset). Loopback only
-   (refuses non-`127.0.0.1` hosts). Startup log: `attached=<endpoint> owner=external`.
-2. 🔴 **Stable canonical entrypoint `browxai` — done.** `pnpm browxai` script + `browxai`
-   npm bin → `dist/cli.js`. No `BROWX_SPIKE_*` env vars on this path. Spike deleted.
-3. 🔴 **`storageState` handoff — done (in the falls-out-of-#1 shape).** When browxai is
-   attached, the consumer reads `storageState()` off the same Chrome with no extra MCP tool.
-4. 🟡 **`find().selectorHint` preference order + `stability` flag — done for tiers 1, 2, 5.**
-   Tier 1 is **any configured `BROWX_TEST_ATTRIBUTES`** (default `data-testid, data-test,
-   data-cy, data-qa` — see below). Tiers 3–4 (stable-text-on-stable-role, id/semantic) are
-   Phase-1.5 polish; agents that need them should fall back to a raw `selector:` for now.
-5. 🟡 **Visible-rect bbox in `find()` evidence — done.** `getBoundingClientRect()` ∩ each
-   `overflow !== visible` ancestor ∩ viewport; `bbox: null` + `clipped: true` when fully
-   clipped. Matches site-docs's runtime bbox.
-6. 🟢 **Workspace co-location — done.** `BROWX_WORKSPACE` accepts any absolute path; nest
-   it under a consumer's workspace if useful.
+The threat model that motivates the capability / allowlist / confirm-hook machinery is in
+**`docs/threat-model.md`** — read it before enabling `eval` or `byob-attach`.
 
-**Phase 1.5 (from the 2026-05-13 target-app adoption-run report):**
+## Open verification work (what the next agent run is for)
 
-7. 🔴 **`snapshot()` DOM-walk fallback — done.** The a11y tree alone is sparse on
-   heavy-SPA targets (Reflux/legacy-React shapes). browxai now runs a DOM walk on every
-   snapshot, picking up interactive elements via `[role], button, a[href], input, select,
-   textarea, [onclick], [tabindex], [contenteditable]` **plus** any element bearing a
-   configured test attribute. Results merge into the a11y tree under the same root with
-   `[from-dom]` / `[from-both]` source markers — refs use the existing stable-key scheme
-   so the same node gets the same `eN` across both sources.
-8. 🔴 **Data-attribute projection + `BROWX_TEST_ATTRIBUTES` — done.** Add your codebase's
-   test-attribute convention to the env var (comma-separated, order-sensitive, first match
-   wins): `BROWX_TEST_ATTRIBUTES=data-testid,data-type,data-test,data-cy,data-qa`. Flows
-   through a11y enrichment, DOM walk, `selectorHint`, and locator resolution.
-9. 🟡 **Auto-default `BROWX_ATTACH_CDP` — workaround live**, full auto-default deferred.
-   Use the **dual-registration recipe** above: `browxai` for managed mode, `browxai-attached`
-   for BYOB. When site-docs's `capture-auth --cdp http://localhost:9222` Chrome is running,
-   pick `browxai-attached`.
-10. 🟡 **`selectorHint` tier-1 doesn't gate on a role wrapper — done.** A `<div data-type="x">`
-    on a heavy SPA gets `stability: "high"` directly. The emitted hint uses the matched
-    attribute name (e.g. `[data-type="x"]`), not hardcoded `[data-testid="x"]`.
-11. 🟢 **Low-content snapshot warning — done.** When the a11y tree has fewer than 5
-    interactive descendants under root, `snapshot()` emits a `warnings:` block in its header
-    explaining the source mix and pointing at the DOM-walk supplement.
+Phase 2's code-side is shipped. What remains for Phase-2 close is **verification** — running
+the canonical surface against a real consumer scenario and confirming the model-agnostic
++ headless paths actually hold. Two distinct exercises:
 
-## Still open (deferred Phase-1.5 polish)
+### 1. Non-Claude consumer drives a non-trivial web task
 
-These don't block adoption — they're polish that will close out Phase 1.5 cleanly.
+**Goal.** Confirm the "model-agnostic, MCP-native" claim holds beyond the home turf — i.e.
+that a non-Claude MCP client (Codex, Cursor's MCP support, a hand-rolled stdio client, …)
+can drive browxai through a real authed flow on a real target site, using only the curated
+surface.
 
-- `snapshotDelta.scope` — currently returns the full tree; the actual scope-down (just the
-  changed region + appeared regions) is pending.
-- `mode: "tree_diff"` — falls back to `scoped_snapshot` with a warning. Wire-compat with
-  Vercel `agent-browser`'s diff text format is undecided (see `docs/divergence-notes.md`).
-- `await_human` `kind`s beyond `"acknowledge"` — `confirm` / `choose` / `input` /
-  `pick_element` + the shadow-DOM banner UI.
-- `network_read` as a session-wide buffered stream — per-action attribution via
-  `ActionResult.network` is the primary surface.
-- `selectorHint` tiers 3 (stable-text-on-stable-role) and 4 (id/semantic).
-- Auto-default `BROWX_ATTACH_CDP` / `browxai doctor` (real auto-detection; the dual MCP
-  registration is the workaround).
-- No-trace CI test that spawns the server with `cwd=/tmp/fake-consumer-repo` and asserts
-  the cwd is untouched.
+**What "non-trivial" means.** At least all of:
 
-## Adopter quick reference
+- A `navigate` (with `BROWX_ALLOWED_ORIGINS` configured so the allowlist gate is exercised).
+- An `await_human` (any kind — `acknowledge` for a login pause is the canonical site-docs
+  pattern; `confirm`/`choose`/`input` if your task wants them).
+- A `snapshot` (read the structured output, including `[from-dom]` markers on the heavy-SPA path).
+- A `find()` that produces a tier-1 (testid-anchored) candidate and a non-trivial action through
+  that candidate's `selectorHint` or `ref` (so `find` → `click`/`fill`/etc. round-trips).
+- An `ActionResult` with `structure.appeared` non-empty (e.g. clicking a button that opens a
+  modal) — exercises the snapshot-delta scope-down path and the structure-diff logic.
+- The no-trace contract: `git -C <consumer-repo> status --porcelain` clean at teardown.
 
-**Reading a snapshot:** the header shows `url:`, `title:`, `stats:` (with
-`a11yInteractive`, `domWalkEntries`, `domWalkNew`, `domWalkCombined`), and a `warnings:`
-block if the a11y tree was low-content. Body lines look like:
+The *flow* is target-specific (the human pairing with you will pick it). What you produce —
+the report — must be **target-agnostic**: name the shape of the operations, not the brand
+of the app.
+
+**What to report.** Write `docs/adoption-report-<short-target-tag>-<date>.md` mirroring the
+shape of the 2026-05-13 / 2026-05-15 adoption-run reports already in `docs/`:
+
+- **TL;DR** — verdict + the 3–5 most-load-bearing observations.
+- **What worked** — the primitives that pulled their weight; concrete examples (with the
+  query / hint / `actionable` value, ideally).
+- **What got in the way** — name each rough edge with a severity (🔴 blocks the canonical
+  loop, 🟡 awkward but workaroundable, 🟢 polish). Reproducer (tool call + observed output).
+- **Concrete asks, in priority order** — new asks the run surfaced. Each as a numbered item
+  with severity, minimum-shape, and a one-line implementation note. (The asks tracker at
+  `docs/first-consumer-asks.md` is what these end up in.)
+
+**Sanitise the report.** No client names, no product names, no asset / cookie / route names
+that identify a specific deployment. The audit pattern: grep for any string that isn't
+generic (target SPA, sample asset, target's vendor, etc.). The browxai repo is heading public
+in Phase 3; reports written now are part of the artefact set.
+
+### 2. Headless-CI exercise
+
+**Goal.** Confirm `BROWX_HEADLESS=1` works against a real flow end-to-end, not just a smoke
+test.
+
+**Suggested shape.** A vitest keystone test under `test/keystone/` that spins up the MCP
+server in-process (or out-of-process via `tsx src/cli.ts`) and drives a flow against a
+fixture or a stable public target. Wire it into the existing GitHub Actions CI
+(`.github/workflows/ci.yml`). The fixture should:
+
+- Cover the same six "non-trivial" primitives as the non-Claude run above.
+- Run under `BROWX_HEADLESS=1`.
+- Have a deterministic finish (asserts, not just "didn't crash") — token equality of
+  `actionable`, `stability`, structured shape of `ActionResult`.
+
+If you find the headless path actually doesn't work end-to-end (the `__browx` banner is
+invisible under headless, `await_human` would be unusable headless — but the rest should
+work), document that in the keystone test as a deliberately-skipped case + name the gap.
+
+**Reporting.** No separate report unless it surfaces real gaps; the keystone test landing +
+CI green is the deliverable.
+
+## When to use which tool
+
+Quick decision tree for the common cases:
+
+- **"Where is X on this page?"** → `find({query})`. Read the top candidate's `stability` /
+  `actionable`; if `low` or non-`true`, fall through to `snapshot()` and read the row directly.
+- **"Click / fill / etc. the X I just found"** → action tool with `ref: <eN>` (preferred) or
+  `selector: <selectorHint>`. After the first hit, optionally `name_ref({name, ref})` so
+  subsequent calls use `named:` and survive the next snapshot.
+- **"Did anything happen?"** → look at the action's `ActionResult.{navigation, structure,
+  console, element}`. Set `mode: "scoped_snapshot"` to get the changed subtree (auto-promoted
+  to `none` when there's no nav/structure change — W-A6).
+- **"Page text is huge"** → `snapshot({scope: <ref>, maxNodes: N, omit: ["noisy-pattern"]})`.
+- **"The page has a long-running operation"** → `wait_for({selector, timeoutMs: <up to 600_000>})`.
+- **"The agent needs the human's input"** → `await_human({kind, prompt, choices?, timeoutMs?})`.
+- **"I need to call a page-side function the app exposes"** → enable the `eval` capability
+  (loud warning) and use `eval_js({expr})`. Treat the return value as untrusted page content.
+- **"I'm calibrating a multi-step flow"** → `start_recording({flowName})` → drive the flow →
+  `end_recording()` produces a draft YAML you can transcribe / commit.
+- **"Find() picked the wrong candidate"** → after the agent locates the right one, call
+  `find_feedback({query, ref})` so the next find with overlapping query gets a boost.
+
+## Adopter quick-reference
+
+**Reading a snapshot.** The header shows `url:`, `title:`, `stats:` (with `a11yInteractive`,
+`domWalkEntries`, `domWalkNew`, `domWalkCombined`), and optional `scope:` / `warnings:` blocks.
+Body lines look like:
 
 ```
 role "name" [ref=eN] [<test-attr>="…"] [from-dom|from-both] [state]
 ```
 
-If you see `[from-dom]` markers it means the node was found by the DOM walk only — that's
-expected on heavy SPAs and you can act on those refs normally. `[from-both]` means both
-the a11y tree and the DOM walk found the same element (a good sign).
+`[from-dom]` = node found by DOM-walk only (expected on heavy SPAs; act on the ref normally).
+`[from-both]` = both the a11y tree and the DOM walk found it (good sign).
 
-**Configuring for a codebase with non-standard test attrs:** edit the MCP env block to
-add your convention. For example, a codebase that uses `data-type` as a tier-1 anchor:
+**Selector preference order** (asks #4 + #10): `[<test-attr>="…"]` (tier 1, `stability:
+"high"`) → `role=<role>[name="…"]` (tier 2, `medium`) → tier 3 (covered by tier 2 in
+practice) → `#<id>` for stable-looking ids (tier 4, `low`) → `role=<role>` last-resort
+(tier 5, `low`). The emitted selector preserves the matched attribute name.
+
+**Configuring for a codebase with non-standard test attrs.** Edit the MCP env block:
 
 ```jsonc
 {
-  "command": "node",
-  "args": ["/path/to/browxai/dist/cli.js"],
   "env": {
     "BROWX_WORKSPACE": "/path/to/workspace",
-    "BROWX_TEST_ATTRIBUTES": "data-testid,data-type,data-test,data-cy,data-qa"
+    "BROWX_TEST_ATTRIBUTES": "data-testid,<your-conv>,data-test,data-cy,data-qa"
   }
 }
 ```
 
-The order is meaningful — first match on a node wins. Put the most-trusted convention
-first.
+The order is meaningful — first match on a node wins. Put the most-trusted convention first.
 
-**When to use `find()` vs raw `selector:`:** prefer `find()` first (it returns ranked
-candidates with refs you can pass back, evidence, and visible-rect bbox). Fall back to a
-raw `selector:` only when `find()` returns nothing useful (e.g. when the agent already
-knows the exact Playwright locator from a flow file).
-
-**See the canonical tool reference at `docs/tool-reference.md`.**
-
-The full Phase-1 design (module layout, exact `ActionResult` JSON shape, ref scheme, the
-`window.__browx` helper, security non-negotiables, MCP wiring, the no-trace contract) is
-in **`docs/phase-1-design.md`**. The site-docs lifecycle code that was ported (~600–700 LOC
-across `playwright-instrumented-browser.ts` / `playwright-driver.ts` / `auth.ts`) is
-inventoried in **`docs/site-docs-lifecycle-port-plan.md`**.
+**Stability semantics.** `stability: "high"` means *uniquely identifies this element in this
+snapshot*. It does **not** mean "survives content rotation across deploys." A card with
+`[data-testid="card-12345678"]` (content-keyed numeric suffix) is `high` for this snapshot
+but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer
+a structural/name selector or compose: `[data-testid^="card-"]:has-text("…")`.
 
 ## Where to look
 
-- **`docs/phase-1-design.md`** — the implementer-facing design. Module layout (`src/{session,
-  page,helper,util}/…`), the one-serialisation/one-ref-scheme coherence constraint, the
-  full `ActionResult` shape, the `__browx` helper + `awaitHuman` over `page.exposeBinding`
-  with polling fallback, session lifecycle + the Phase-1 security non-negotiables + the
-  no-trace contract, MCP server wiring. Draft — push back here if the asks force a change.
-- **`docs/site-docs-lifecycle-port-plan.md`** — what lifts from site-docs (3 launch modes,
-  `storageState()` localStorage-merge, `LocalStorageStateCache`, primitive ops) and what
-  doesn't (`runFlow`, doc-pack, calibrate, viewer). Includes a first-PR slice (~150–250 LOC):
-  managed-launch + `goto`/`screenshot` + a stub `snapshot()` + an `@modelcontextprotocol/sdk`
-  stdio server with `navigate`/`snapshot`/`screenshot` tools + a vitest smoke test on
-  `example.com`.
-- **`docs/divergence-notes.md`** — what to borrow from `@playwright/mcp` (a11y-tree-as-
-  snapshot, `--caps`/origin-flag *ideas*) and Vercel `agent-browser` (`tree_diff` mode,
-  stable refs across snapshots); six point-by-point divergences with the why.
-- **`docs/first-consumer-asks.md`** — status board for the six asks.
-- **`spec.md` / `roadmap.md` in the portfolio** — source of truth for *what* and *why*.
-- **`automated-site-documentation-bot/docs/browxai-asks.md`** — the canonical ask sheet from
-  site-docs (the long form of the six items above).
-- **`automated-site-documentation-bot/docs/agent-runbook.md`** — site-docs's own runbook;
-  its Step 4 pre-stages the swap "drive `--cdp` Chrome with Playwright directly" →
-  "spawn browxai (attached to that same Chrome) and drive it via MCP." Worth reading so you
-  know what shape the consumer is calling you in.
+- **`docs/tool-reference.md`** — the per-tool input/output reference.
+- **`docs/threat-model.md`** — Phase-2 security model (capabilities, allowlist, confirm hooks).
+- **`docs/phase-1-design.md`** — the implementer-facing Phase-1 design (module layout,
+  `ActionResult` shape, ref scheme, `__browx` helper, MCP wiring, no-trace contract).
+- **`docs/divergence-notes.md`** — what we borrow from `@playwright/mcp` and Vercel
+  `agent-browser`; the deliberate divergences.
+- **`docs/first-consumer-asks.md`** — status board for the asks tracker (rounds 1–4 + the
+  wishlist round-4).
+- **`docs/site-docs-lifecycle-port-plan.md`** — historical: what was ported from a sibling
+  Kalebtec OSS project during Phase 1.
+- **`docs/adoption-report-*.md`** — prior adoption-run reports (sanitised). Read them
+  before writing yours — the shape is consistent.
+- **`spec.md` / `roadmap.md` in the portfolio** (`kalebteccom/project-ideas` →
+  `projects/agent-browser-bridge/`) — source of truth for *what* and *why*.
 
 ## Ground rules
 
 - **Stay on TS/Node, ESM, Node ≥20.** `playwright-core` for browser, `@modelcontextprotocol/sdk`
-  for MCP. Already in `package.json`.
-- **Idiomatic, clean code.** Thin `src/index.ts`, focused modules under `src/{session,page,
-  helper,util}/`. Match the surrounding style as the codebase grows; tests alongside
-  (`*.test.ts`, vitest). Typecheck + tests on Node 20 / pnpm in CI (already wired).
+  for MCP. Already in `package.json`. Don't pull in new runtime deps without naming why.
+- **Idiomatic, clean code.** Thin `src/index.ts`. Modules under `src/{session, page, helper,
+  policy, util, cli}/`. Tests alongside (`*.test.ts`, vitest). Typecheck + tests on Node 20 /
+  pnpm in CI (already wired).
 - **stderr is the only logging channel.** stdout is the MCP wire — anything written there
-  corrupts the protocol. Imports of `console.log` in `src/` are bugs.
-- **Page content is untrusted.** `snapshot` / `find` / `ActionResult.snapshotDelta` output
-  is attacker-controlled. The server does not interpret it; no promptable ranking
-  heuristics; the tool descriptions tell the host agent the same. Phase 2 hardens this
-  further (capability toggles, allowlist, confirmation hooks); Phase 1 only needs the
-  posture and the docs.
-- **Two session modes only in Phase 1.** `managed` (default; dedicated profile at
-  `$BROWX_WORKSPACE/profile/`; normal Chrome flags; sandbox on) and `byob`
-  (`BROWX_ATTACH_CDP=…`; off by default; loud one-time warning; not-owned). The
-  ephemeral / per-session managed-profile dir is fine too.
-- **No-trace contract verification.** Add a CI test (or at minimum a manual checklist step)
-  that spawns the server with `cwd=/tmp/fake-consumer-repo` (an empty git repo) and asserts
-  `git -C /tmp/fake-consumer-repo status --porcelain` is empty after exercising the tools.
-- **Commits.** Single-line conventional-commit subjects, ≤72 chars, no body, no AI trailer
-  (the `.claude/hooks/` guards enforce this — they'll reject you if you try). One logical
-  change per commit; push when a commit is logically complete. Don't `git add .` — stage
-  explicitly.
-- **When the design fights you, fix the design.** If implementing an ask forces a change
-  to `docs/phase-1-design.md` or to the portfolio `spec.md` / `roadmap.md`, update *all* of
-  them — they have to agree. Mirror the change into the portfolio's `progress.md` per the
-  repo's cycle rule.
+  corrupts the protocol. `console.log` in `src/` is a bug; use `src/util/logging.ts`.
+- **Page content is untrusted.** `snapshot` / `find` / `ActionResult.snapshotDelta` /
+  `eval_js` return values are attacker-controlled. The server doesn't interpret them;
+  tool descriptions tell the host agent the same. Phase 2's capability toggles + allowlist
+  + confirm hooks enforce a tighter posture — see `docs/threat-model.md`.
+- **No-trace contract.** Every output path roots at `$BROWX_WORKSPACE`. `cwd` is never used
+  for paths. There's a static source-grep test (`src/util/no-trace.test.ts`) that fails CI
+  if a refactor accidentally re-introduces a cwd-relative write — don't disable it.
+- **Public-release hygiene.** This repo is heading public in Phase 3. New docs / commits
+  must be **sanitised** of identifying client / product / asset names. The replacement file
+  from earlier rewrites is at `/tmp/browxai-replace.txt`; run it on anything you copy in
+  from a consumer workspace. The audit grep, with patterns customised to your target:
+  `grep -RIniE "(<client-acronym>|<product-name>|<feature-area>|<asset-token>)" --exclude-dir={node_modules,.git,dist}`.
+- **Commits.** Single-line conventional-commit subjects, **≤72 chars**, no body, no AI
+  trailer (the `.claude/hooks/` guards enforce this — they'll reject you if you try).
+  One logical change per commit; push when a commit is logically complete. Don't `git add .`
+  — stage explicitly.
+- **When the design fights you, fix the design.** If implementing something forces a change
+  to `docs/phase-1-design.md` / `docs/threat-model.md` / the portfolio `spec.md` /
+  `roadmap.md`, update *all* of them — they have to agree. Mirror the change into the
+  portfolio's `progress.md` per the repo's cycle rule.
 - **If you get blocked, surface it.** Don't grind for 50 tool-calls on a Playwright timeout
-  or a CDP attach failure. Write a `docs/blockers/<topic>.md`, push the branch, summarise
-  in the chat so the human can unblock.
+  / CDP attach failure / MCP-client misbehaviour. Write a `docs/blockers/<topic>.md`, push
+  the branch, summarise in the chat so the human can unblock.
 
-## Definition of done — Phase 1
+## Definition of done — Phase 2 close
 
-State as of 2026-05-13 — most boxes are now `[x]`. The headline criterion (a re-adoption
-run that actually exercises `find()` on a heavy-SPA target post Phase-1.5 fixes) is the
-remaining gate. Full list in `projects/agent-browser-bridge/roadmap.md` § Phase 1.
+The roadmap's Phase-2 exit criteria (`projects/agent-browser-bridge/roadmap.md` § Phase 2)
+are now 5 of 7 ticked. The remaining two:
 
-- [~] site-docs's discovery/calibration runs end-to-end through browxai on ≥1 real target
-      site, no Claude-in-Chrome in the loop, with a real `httpOnly` session. — *partially
-      done*: first adoption ran on the target SPA 2026-05-13 (modest win — orchestration good;
-      `find()` blunted by the then-unshipped DOM-walk fallback). Phase-1.5 #7/#8/#10/#11
-      shipped same day. **A re-adoption run that exercises `find()` against the augmented
-      snapshot closes this.**
-- [x] `BROWX_ATTACH_CDP` end-to-end on the canonical entrypoint (no second login required
-      when a `--cdp` Chrome is up; see the dual-registration recipe above).
-- [x] Canonical `browxai` entrypoint is the documented invocation; spike entrypoint deleted.
-- [x] `find().selectorHint` preference order + `stability` flag (tiers 1, 2, 5) + visible-rect
-      bbox in `find()` evidence. Tier-1 now honours `BROWX_TEST_ATTRIBUTES` and doesn't gate
-      on a role wrapper. Tiers 3–4 are deferred polish; locators transcribe mechanically
-      via tier-1 / tier-2 today.
-- [x] `snapshot()`, `find()`, `ActionResult`, `screenshot`, `console`/`network` reads,
-      `await_human(acknowledge)` all implemented. The adoption run exercises them.
-- [x] No-trace contract holds against any consumer repo (`git status` clean). Verified by
-      the `BROWX_WORKSPACE` env-var-rooted output paths; unit tests for the resolver. CI
-      test that spawns with `cwd=/tmp/fake-consumer-repo` is deferred polish.
-- [x] Tool reference docs exist (`docs/tool-reference.md`).
+- [ ] **A non-Claude MCP client has driven a non-trivial task through browxai successfully.**
+      The adoption-style report above is the deliverable.
+- [~] **Headless/CI mode works.** `BROWX_HEADLESS=1` is wired; needs the keystone test +
+      green CI run.
 
-When the re-adoption run is green, sync back to the portfolio (`progress.md` + roadmap
-status + portfolio table), open the `/gpd:advance-stage` conversation, and we move into
-Phase 2 (the security hardening / non-site-docs-consumer phase).
+When both close, sync back to the portfolio (`progress.md` + roadmap status + portfolio
+table), open `/gpd:advance-stage` if you want, and the next genuinely-next phase is **Phase 3
+public release** — gated on the 4-condition trigger in the spec:
 
-## When the human asks "is browxai ready to use?"
+1. Phase 1 done and stuck-landed for weeks.
+2. Public API stable (~1 month) + tool-ref doc + semver.
+3. Phase-2 security baseline at least partly shipped.
+4. A real demand signal — a second non-site-docs consumer, *or* clear external pull with a
+   named maintenance owner.
 
-It is once (this is the adopter checklist now — implementer checklist was met 2026-05-13):
+## When the human asks "is browxai ready to use for the verification run?"
 
-- [x] `pnpm install` + `pnpm install-browser` succeeded in the browxai repo.
-- [x] `pnpm typecheck` + `pnpm test` pass.
-- [x] `pnpm build` produced `dist/cli.js` (executable, shebang preserved).
-- [ ] You've registered browxai with your MCP client per the recipe above (either user-scope
-      `~/.claude.json` or workspace-scope `.mcp.json` outside any consumer repo). Restarted
-      Claude Code (or `/reload-plugins`) so the registration is live.
+It is once:
+
+- [ ] `pnpm install` + `pnpm install-browser` succeeded in the browxai repo.
+- [ ] `pnpm typecheck` + `pnpm test` pass (~76 tests as of 2026-05-15).
+- [ ] `pnpm build` produced `dist/cli.js` (executable, shebang preserved).
+- [ ] `pnpm browxai -- doctor` (or `node dist/cli.js doctor`) — all ✓.
+- [ ] You've registered browxai with your MCP client per the recipe above (user-scope
+      `~/.claude.json` or workspace-scope `.mcp.json` outside any consumer repo); MCP client
+      restarted so the registration is live.
 - [ ] If your consumer codebase has project-conventional test attributes (e.g. `data-type`),
       added them to `BROWX_TEST_ATTRIBUTES` in the env block.
 - [ ] You've skimmed `docs/tool-reference.md` so you know what `[from-dom]` / `[from-both]`
-      / the `warnings:` block in snapshot output mean.
+      / the `warnings:` block / the `actionable` field mean.
 
-Then drive your consumer flow. Report findings as a new
-`docs/adoption-report-<target>-<date>.md`, mirroring the shape of the 2026-05-13 target-app one
-(`What worked` / `What got in the way` / `Concrete asks, in priority order`).
+Then drive your target flow per the "Open verification work" section above, and write
+the report (sanitised, generic) into `docs/`.
