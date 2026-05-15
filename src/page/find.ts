@@ -7,6 +7,7 @@ import { walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshot } from "./compose.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
+import { findByRef } from "./snapshot.js";
 
 export interface FindCandidate {
   ref: string;
@@ -42,6 +43,11 @@ export interface FindOptions {
   /** Wishlist W-A3: emit a `warnings: ["no candidate scored confidently…"]` block
    *  on the result when no top candidate exceeds this score. Default 0 (off). */
   confidenceFloor?: number;
+  /** Wishlist W-A3: limit ranking to descendants of this ref (from a prior
+   *  snapshot/find). "The seconds input *under* the AI Voiceover panel" without
+   *  encoding the relationship in natural language. Ignored if the ref isn't in
+   *  the current snapshot. */
+  contextRef?: string;
 }
 
 export interface FindResult {
@@ -82,9 +88,18 @@ export async function find(
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
+  const warnings: string[] = [];
+
+  // Wishlist W-A3: limit walk to subtree rooted at contextRef.
+  let walkRoot: A11yNode = tree;
+  if (opts.contextRef) {
+    const sub = findByRef(tree, opts.contextRef);
+    if (sub) walkRoot = sub;
+    else warnings.push(`contextRef=${opts.contextRef} not found; ranking over the full tree instead.`);
+  }
 
   const scored: Array<{ node: A11yNode; score: number }> = [];
-  for (const { node } of walk(tree)) {
+  for (const { node } of walk(walkRoot)) {
     const score = scoreNode(node, q, qTokens);
     if (score > 0) scored.push({ node, score });
   }
@@ -116,8 +131,7 @@ export async function find(
     });
   }
 
-  // Wishlist W-A3: confidence-floor warning.
-  const warnings: string[] = [];
+  // Wishlist W-A3: confidence-floor warning (combined with any earlier warnings).
   const floor = opts.confidenceFloor ?? 0;
   if (floor > 0 && (candidates.length === 0 || candidates[0]!.score < floor)) {
     warnings.push(

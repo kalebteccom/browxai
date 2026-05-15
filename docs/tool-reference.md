@@ -22,14 +22,20 @@ Each interactive node gets a stable `[ref=eN]` you can pass back to action tools
 
 When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted (ask #11) — usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
 
-**Inputs:** *(none)*
+**Inputs (all optional — wishlist W-A1):**
 
-**Output:** text — `url:` / `title:` / `stats:` header + (optional) `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines.
+- `scope: <ref>` — only emit the subtree rooted at this ref (from a prior snapshot/find). Drops "I asked for one section and got 500 nodes" cost. Falls back to full tree with a warning if the ref isn't found.
+- `maxNodes: <N>` — hard cap on emitted nodes; excess is elided with a `+N more nodes elided` marker pointing the agent at `scope` or a higher cap.
+- `omit: ["<pattern>", ...]` — case-insensitive substring patterns matched against each node's `role` / `name` / `testId`. Matching nodes and their *entire subtrees* are skipped. Useful for noisy regions: `omit: ["timeline-segment-", "clip-thumbnail"]`.
+
+**Output:** text — `url:` / `title:` / `stats:` header + (optional) `scope:` / `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines + (when relevant) `... [+N more nodes elided]` or `... [omit matched N subtree(s), M nodes total]`.
 
 ### `find`
 Find candidate elements by natural-language description.
 
-**Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20) }`
+**Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string }`
+- `confidenceFloor` (W-A3): emit a `warnings: ["no candidate scored confidently above N (top score: …)"]` block when no top candidate exceeds this score. Default `0` (off). Pass e.g. `0.5` (or any chosen integer) to get a "fall through to snapshot" signal instead of grinding through low-quality results.
+- `contextRef` (W-A3): limit ranking to descendants of this ref. Lets you say "the X *under* Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
 
 **Output:** JSON
 ```jsonc

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { serialise } from "./snapshot.js";
+import { findByRef, serialise } from "./snapshot.js";
 import type { A11yNode } from "./a11y.js";
 
 function node(role: string, name: string | undefined, ref: string, children: A11yNode[] = [], extra: Partial<A11yNode> = {}): A11yNode {
@@ -65,5 +65,62 @@ describe("serialise", () => {
     const tree: A11yNode = node("button", long, "e1");
     const out = serialise(tree, { maxNameLen: 20 });
     expect(out).toMatch(/"x{19}…"/);
+  });
+});
+
+describe("serialise — wishlist W-A1 (scoped / maxNodes / omit)", () => {
+  it("respects maxNodes with an elided-count marker", () => {
+    const tree: A11yNode = node("WebArea", undefined, "e1",
+      Array.from({ length: 10 }, (_, i) => node("button", `b${i}`, `e${i + 10}`)));
+    const out = serialise(tree, { maxNodes: 3 });
+    const lines = out.split("\n");
+    expect(lines.length).toBeLessThanOrEqual(5); // 3 nodes + truncation marker (some leeway for pruning)
+    expect(out).toMatch(/more nodes elided/);
+  });
+
+  it("omit drops matching subtrees and reports the count", () => {
+    const tree: A11yNode = node("WebArea", undefined, "e1", [
+      node("region", "Header", "e2"),
+      node("region", "Timeline", "e3", [
+        node("button", "Clip 1", "e4"),
+        node("button", "Clip 2", "e5"),
+        node("button", "Clip 3", "e6"),
+      ]),
+      node("region", "Footer", "e7"),
+    ]);
+    const out = serialise(tree, { omit: ["Timeline"] });
+    expect(out).not.toContain("Clip 1");
+    expect(out).not.toContain('"Timeline"');
+    expect(out).toContain('"Header"');
+    expect(out).toContain('"Footer"');
+    expect(out).toMatch(/omit matched 1 subtree/);
+  });
+
+  it("omit is case-insensitive and matches against testId too", () => {
+    const tree: A11yNode = node("WebArea", undefined, "e1", [
+      node("button", "Edit", "e2", [], { testId: "library-asset-card-1" }),
+      node("button", "Edit", "e3", [], { testId: "footer-card" }),
+    ]);
+    const out = serialise(tree, { omit: ["library-asset-card"] });
+    expect(out).not.toContain("library-asset-card-1");
+    expect(out).toContain("footer-card");
+  });
+});
+
+describe("findByRef", () => {
+  it("returns the matching subtree", () => {
+    const target = node("region", "Panel", "e5", [node("button", "X", "e6")]);
+    const tree: A11yNode = node("WebArea", undefined, "e1", [
+      node("region", "Header", "e2"),
+      target,
+    ]);
+    const sub = findByRef(tree, "e5");
+    expect(sub).toBe(target);
+    expect(serialise(sub!)).toContain('"X"');
+  });
+
+  it("returns null when the ref isn't present", () => {
+    const tree: A11yNode = node("WebArea", undefined, "e1");
+    expect(findByRef(tree, "e999")).toBe(null);
   });
 });
