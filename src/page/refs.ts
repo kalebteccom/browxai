@@ -32,6 +32,18 @@ export interface RefLocatorInputs {
    *  Locator-resolution uses it to build `[<attr>=...]` so non-standard test attributes
    *  Just Work. */
   testIdAttr?: string;
+  /** Ref provenance. Drives locator routing: a11y refs use role/name locators
+   *  (auto-wait + strict semantics); dom refs use the structural CSS path that
+   *  built the ref (refs whose role is a bare tag like `td`/`div`/`generic`
+   *  produce ambiguous role-locators that don't actually find anything). `both`
+   *  means the same element was discovered by both passes — a11y-tier locators
+   *  win, with cssPath available as fallback. */
+  source?: "a11y" | "dom" | "both";
+  /** Structural CSS path captured at DOM-walk time, e.g.
+   *  `body > div:nth-child(2) > table > tbody > tr:nth-child(4) > td:nth-child(3)`.
+   *  Used when role/name locators would be ambiguous. Only populated for refs
+   *  whose `source` includes `dom`. */
+  cssPath?: string;
 }
 
 export class RefRegistry {
@@ -65,6 +77,31 @@ export class RefRegistry {
     if (this.keyByRef.has(ref)) this.locatorByRef.set(ref, locator);
   }
 
+  /**
+   * Merge new locator inputs into an existing ref's record. Existing richness
+   * wins (a11y-discovered `name` survives); missing fields fill in from the
+   * partial; `source` combines (`a11y` + `dom` → `both`). When the ref has
+   * no prior locator inputs, the partial is installed wholesale provided
+   * `role` is present.
+   */
+  augmentLocator(ref: string, partial: Partial<RefLocatorInputs>): void {
+    if (!this.keyByRef.has(ref)) return;
+    const existing = this.locatorByRef.get(ref);
+    if (!existing) {
+      if (partial.role !== undefined) this.locatorByRef.set(ref, partial as RefLocatorInputs);
+      return;
+    }
+    const merged: RefLocatorInputs = {
+      role: existing.role,
+      name: existing.name ?? partial.name,
+      testId: existing.testId ?? partial.testId,
+      testIdAttr: existing.testIdAttr ?? partial.testIdAttr,
+      cssPath: existing.cssPath ?? partial.cssPath,
+      source: combineSource(existing.source, partial.source),
+    };
+    this.locatorByRef.set(ref, merged);
+  }
+
   // --- W-C1: named refs ---
   /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */
   nameRef(name: string, ref: string): void {
@@ -80,4 +117,15 @@ export class RefRegistry {
 
   /** Useful for tests / introspection only. */
   size(): number { return this.refByKey.size; }
+}
+
+function combineSource(
+  a: RefLocatorInputs["source"] | undefined,
+  b: RefLocatorInputs["source"] | undefined,
+): RefLocatorInputs["source"] | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  if (a === b) return a;
+  // Any mix of a11y + dom (or already-both) ⇒ both.
+  return "both";
 }

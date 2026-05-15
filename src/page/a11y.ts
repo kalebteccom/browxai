@@ -107,7 +107,7 @@ export async function getA11yTree(
       }
     }
     // testId attaches later in enrichTestIds if we batch-fetch attributes.
-    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), { role, name, testId: node.testId });
+    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), { role, name, testId: node.testId, source: "a11y" });
     let i = 0;
     for (const cid of raw.childIds ?? []) {
       const c = byId.get(cid);
@@ -176,7 +176,7 @@ async function enrichTestIds(
           node.testIdAttr = a;
           // Refresh the registry's locator inputs so action tools can resolve
           // the ref back to a data-testid-bearing Playwright locator.
-          refs.updateLocator(node.ref, { role: node.role, name: node.name, testId: node.testId, testIdAttr: a });
+          refs.augmentLocator(node.ref, { testId: node.testId, testIdAttr: a });
           break;
         }
       }

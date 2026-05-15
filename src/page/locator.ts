@@ -27,19 +27,31 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
 }
 
 function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
-  // Tier-1 preference: testId. We use the *attribute-specific* CSS form rather than
-  // Playwright's `getByTestId` so non-standard test attributes (e.g. `data-type`)
-  // work without per-context `setTestIdAttribute()` plumbing. CSS attribute selectors
-  // with `=` are exact-match, which matches `getByTestId`'s semantics.
+  // Tier 1: testId — strongest signal, works for any provenance. CSS attribute
+  // form rather than Playwright's `getByTestId` so non-standard test attributes
+  // (`data-type`, `data-cy`, etc.) work without per-context plumbing.
   if (inputs.testId) {
     const attr = inputs.testIdAttr ?? "data-testid";
     return page.locator(`[${attr}=${JSON.stringify(inputs.testId)}]`).first();
   }
-  // Tier 2: role + name.
+  // Provenance-aware routing: refs discovered exclusively via the DOM walk
+  // typically carry bare-tag roles (`td`, `div`, `generic`) whose role-locators
+  // are ambiguous or don't actually resolve. Prefer the structural CSS path
+  // captured at walk time.
+  if (inputs.source === "dom" && inputs.cssPath) {
+    return page.locator(inputs.cssPath).first();
+  }
+  // Tier 2: role + name — strong when the a11y pass saw it.
   if (inputs.name) {
     return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name }).first();
   }
-  // Tier 5 fallback: just the role. Often ambiguous; the agent saw stability=low.
+  // Fallback: structural path (covers `source: "both"` refs where the a11y
+  // pass produced no name, plus the rare migration case of legacy refs that
+  // never got a name).
+  if (inputs.cssPath) {
+    return page.locator(inputs.cssPath).first();
+  }
+  // Last resort: role only. Often ambiguous; the agent saw stability=low.
   return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0]).first();
 }
 

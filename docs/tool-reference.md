@@ -145,6 +145,16 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 ### Target shape (for tools that act on an element)
 `{ ref: string }` OR `{ selector: string }` OR `{ named: string }` — exactly one. `ref` is preferred (stable across snapshots, comes with role+name+testId so Playwright auto-waiting + strict-match Just Works); `selector` accepts the `selectorHint` strings that `find()` emits, plus arbitrary Playwright locator strings; `named` looks up a mnemonic previously bound via `name_ref` (wishlist W-C1).
 
+#### Ref provenance and locator routing
+
+Every ref records the pass that discovered it: `a11y` (via the accessibility tree), `dom` (via the DOM walk), or `both` (the same element surfaced through both passes). The locator engine chooses by provenance so refs whose role is a bare tag (`td`, `div`, `generic`) still resolve to a real element instead of falling back to an ambiguous `getByRole("td")`. Priority order:
+
+1. **`testId`** — `[<attr>="<val>"]`. Strongest signal; works for any provenance.
+2. **DOM-only refs with a `cssPath`** — the structural `:nth-child` path captured at walk time. Used in place of role-locators when the only role is a bare tag.
+3. **`role + name`** — `getByRole({ name })`. Strong when the a11y pass produced a name.
+4. **`cssPath` fallback** — for `both`-source refs whose a11y pass yielded no name.
+5. **role only** — last resort; `stability: "low"` candidates land here.
+
 ### Named refs (wishlist W-C1)
 
 For frequently-acted-on anchors across a long session, bind a mnemonic once and reference it from any action tool:

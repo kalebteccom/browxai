@@ -25,6 +25,10 @@ export interface DomWalkEntry {
   tag: string;
   id: string;
   structuralPath: string;
+  /** Valid CSS selector built from the `:nth-child` chain at walk time.
+   *  Used as the locator for refs whose role is a bare tag (`td`, `div`,
+   *  generic) where `getByRole` would be ambiguous or wrong. */
+  cssPath: string;
 }
 
 export interface DomWalkOptions {
@@ -94,6 +98,19 @@ const PAGE_SCRIPT = `function(testAttrs, max) {
     }
     return parts.join('/');
   }
+  function cssPath(el) {
+    var parts = [];
+    var n = el;
+    while (n && n.nodeType === 1 && n.tagName !== 'HTML') {
+      var tag = n.tagName.toLowerCase();
+      var parent = n.parentElement;
+      if (!parent) { parts.unshift(tag); break; }
+      var idx = Array.prototype.indexOf.call(parent.children, n) + 1;
+      parts.unshift(tag + ':nth-child(' + idx + ')');
+      n = parent;
+    }
+    return parts.join(' > ');
+  }
   function nameFor(el) {
     var aria = el.getAttribute('aria-label');
     if (aria) return aria.trim().slice(0, 120);
@@ -133,7 +150,8 @@ const PAGE_SCRIPT = `function(testAttrs, max) {
       testIdAttr: tid ? tid.attr : '',
       tag: tag,
       id: el.id || '',
-      structuralPath: structuralPath(el)
+      structuralPath: structuralPath(el),
+      cssPath: cssPath(el)
     });
   }
   return out;
@@ -160,7 +178,15 @@ export function mergeDomWalkIntoTree(
     const testIdAttr = e.testIdAttr || undefined;
     const key = elementKey({ role: e.role, name, path: e.structuralPath, testId });
     const wasNew = !refs.hasKey(key);
-    const ref = refs.forKey(key, { role: e.role, name, testId, testIdAttr });
+    const ref = refs.forKey(key);
+    refs.augmentLocator(ref, {
+      role: e.role,
+      name,
+      testId,
+      testIdAttr,
+      cssPath: e.cssPath,
+      source: wasNew ? "dom" : "both",
+    });
     const node: A11yNode = {
       ref,
       role: e.role,

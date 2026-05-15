@@ -81,24 +81,32 @@ two of the round-3 🟡 asks.
 Source: in-conversation feedback from a non-Claude MCP client run. Three concrete pain
 points where the curated surface forces wasteful loops or has no answer at all:
 
-| # | Group | Severity | Ask (short) | Status |
-|---|---|---|---|---|
-| W-E1 | feedback fidelity | 🟡 | **Enriched `ActionResult` for `fill`** — return the post-fill DOM `value` of the targeted field (and `checked` for checkboxes/radios), so the agent can confirm the write landed without a follow-up `snapshot` or `screenshot`. Removes the "fill → screenshot → fill → screenshot" loop that dominates repetitive form runs. | **impl-pending** |
-| W-E2 | batching | 🟡 | **`batch({ calls, stopOnError? })`** — run N tool calls server-side and return `ActionResult[]`. Whitelist of inner tools (no nested `batch`, no `await_human`). `stopOnError` default `true`. Pairs with W-E1 for "fill 5 fields then submit" runs. Precedent: `claude-in-chrome`'s `browser_batch`. | **impl-pending** |
-| W-E3 | coordinate escape hatch | 🟢 | **`click_at({ x, y, button? })`** + **`hover_at({ x, y })`** — coordinate-based actions for canvas, custom-painted UIs, and "click empty space to dismiss" cases that ref-finding genuinely can't address. Gated under the existing `action` capability. Documented as an escape hatch, not the default. | **impl-pending** |
+Each ask was reframed from the consumer's literal request to the underlying problem
+class — primitives must compose, not accumulate one-off helpers.
 
-**Sequencing:** W-E1 first (smallest change, eliminates the biggest screenshot tax),
-then W-E2 (depends on per-tool ActionResult shape being final), then W-E3 (independent
-but lowest-leverage of the three). All three land before Phase-3 public-release work.
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| W-E1 | Post-action state isn't observable enough → callers screenshot to confirm writes landed. | Enrich the `ActionResult.element` probe with the actual post-action DOM `value` (not the requested-value echo), `valueRequested` for comparison, `displayText` (visible text of the closest labelled wrapper — covers chip-style selects, badge pickers, custom dropdowns that clear the underlying input on commit), and `checked` for checkbox/radio. | **impl-done 2026-05-15** |
+| W-E5 | Stable refs lose provenance, so the locator engine routes DOM-walk-origin refs to weak role-style locators that don't actually exist. | Every ref records its source (`a11y` \| `dom-walk` \| `both`); `locatorFor()` chooses by provenance — a11y refs use role/name locators, DOM-walk refs use the structural CSS path that built the ref. | **impl-pending** |
+| W-E4 | Selectors are global, but most targets are positional within structure (rows, cards, panels). `find()` already accepts `contextRef`; actions don't, forcing brittle global selectors. | Extend the action target shape with `contextRef` so any `selector` resolves *within* that subtree. Same shape as `find()`. Selector composition is the primitive, not row-aware helpers. | **impl-pending** |
+| W-E2 | MCP forces one round-trip per call; agents pay model-tokens per result when sequences are known-safe. | `batch({ calls, stopOnError? })` runs N calls server-side and returns `{ completed, failedAt, results }`. `stopOnError: true` default; whitelist forbids nested `batch` and human-blocking tools; no parallel mode. | **impl-pending** |
+| W-E3 | Ref/selector resolution can't address visually-located targets (canvas, custom-painted UIs, dismiss-empty-space). | Extend the action target shape from `{ ref \| selector \| named }` to also accept `coords: {x, y}`. `click` / `hover` / `press` accept it uniformly; no parallel `*_at` tools. Documented as the escape hatch. | **impl-pending** |
 
-**Author's "not"-list for round-5:**
+**Sequencing:** W-E1 (done) → W-E5 (foundational; fixes correctness for ref routing,
+everything else benefits) → W-E4 (scope via existing target shape) → W-E2 (batch on
+top of a settled per-tool result shape) → W-E3 (coords on top of a settled target
+shape). All before Phase-3 public-release work.
+
+**Out of scope:**
 
 - A general `dom_inspect(ref)` query primitive — `eval_js` already covers it; we don't
   need another way in.
-- Coordinate-based `fill` / `press` — coordinates are an escape hatch for *picking
-  targets*, not for *driving input*. Once you have a target, refs are correct.
+- Coordinate-based `fill` / `press` content — coordinates address the *target*, not
+  the *input*. Once a target is resolved, refs/selectors are correct.
 - Auto-batch across rounds — `batch` stays explicit; implicit grouping is a debugging
   nightmare.
+- Row-aware / table-aware helpers — `contextRef + selector` covers the case
+  generically.
 
 **Author's stated "not"-list** worth quoting:
 

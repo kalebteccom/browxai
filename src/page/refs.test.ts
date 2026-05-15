@@ -41,12 +41,55 @@ describe("RefRegistry", () => {
   });
 });
 
+describe("augmentLocator — provenance merge", () => {
+  it("installs partial when ref has no prior locator inputs", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1");
+    r.augmentLocator(ref, { role: "button", name: "Save", source: "a11y" });
+    expect(r.locatorOf(ref)).toEqual({ role: "button", name: "Save", source: "a11y" });
+  });
+
+  it("existing richness wins on merge, missing fields fill in", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1", { role: "button", name: "Save", source: "a11y" });
+    // DOM walk later discovers the same node and adds cssPath / source dom.
+    r.augmentLocator(ref, { role: "button", cssPath: "body > button:nth-child(1)", source: "dom" });
+    const got = r.locatorOf(ref);
+    expect(got?.name).toBe("Save");                                  // a11y richness preserved
+    expect(got?.cssPath).toBe("body > button:nth-child(1)");         // dom-side gap filled
+    expect(got?.source).toBe("both");                                // sources combine
+  });
+
+  it("a11y testId discovered later fills in without clobbering cssPath", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1", { role: "td", cssPath: "table > tbody > tr:nth-child(3) > td:nth-child(2)", source: "dom" });
+    r.augmentLocator(ref, { testId: "row-3-status", testIdAttr: "data-testid" });
+    const got = r.locatorOf(ref);
+    expect(got?.testId).toBe("row-3-status");
+    expect(got?.testIdAttr).toBe("data-testid");
+    expect(got?.cssPath).toBe("table > tbody > tr:nth-child(3) > td:nth-child(2)");
+  });
+
+  it("combines two distinct sources into 'both'", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1", { role: "button", source: "a11y" });
+    r.augmentLocator(ref, { source: "dom" });
+    expect(r.locatorOf(ref)?.source).toBe("both");
+  });
+
+  it("does nothing when called for an unknown ref", () => {
+    const r = new RefRegistry();
+    r.augmentLocator("e999", { role: "button", source: "a11y" });
+    expect(r.locatorOf("e999")).toBeUndefined();
+  });
+});
+
 describe("named refs (wishlist W-C1)", () => {
   it("binds a mnemonic to an existing ref and resolves it back", () => {
     const r = new RefRegistry();
     const ref = r.forKey("hash-abc");
-    r.nameRef("voiceover_tab", ref);
-    expect(r.refByNameLookup("voiceover_tab")).toBe(ref);
+    r.nameRef("main_panel", ref);
+    expect(r.refByNameLookup("main_panel")).toBe(ref);
   });
 
   it("throws when binding to a ref that doesn't exist", () => {
