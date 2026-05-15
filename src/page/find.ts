@@ -229,10 +229,16 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   if (testIdLower === q) s += 15;             // exact testId match wins big
   if (testIdLower.includes(q)) s += 10;       // (was +5 pre-ask-#14)
   if (roleLower.includes(q)) s += 2;
+  // W-G4: per-testId-token weight is amplified for icon-only controls (no
+  // accessible name) where the only signal is the testId itself. Without this
+  // boost, an icon-only side-panel tab whose testId encodes the intent
+  // (`side-panel-feature-tab`) loses ranking to a neighbour with one more
+  // accidental name-token hit.
+  const isIconOnly = !nameLower && !!testIdLower;
   for (const t of qTokens) {
     if (t.length < 2) continue;
     if (nameLower.includes(t)) s += 1;
-    if (testIdLower.includes(t)) s += 2;     // (was +1 pre-ask-#14)
+    if (testIdLower.includes(t)) s += isIconOnly ? 3 : 2;
   }
   if (s > 0 && INTERACTIVE_ROLES.has(node.role)) s += 2;
   // Extra boost when the node is input-shaped AND any testId token matched —

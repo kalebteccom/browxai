@@ -94,3 +94,28 @@ describe("scoreNode (round-3 ask #14: weight testId hits more, especially for in
     expect(score).toBe(0);
   });
 });
+
+describe("scoreNode — W-G4 icon-only controls", () => {
+  it("amplifies per-testId-token weight when the node has no accessible name", () => {
+    // Two candidates with overlapping testIds. The "target feature tab" is
+    // the intended hit; the "feature other tab" is a neighbouring icon-only
+    // sibling. Both are name-less buttons; both score from testId tokens only.
+    const q = "feature tab in side panel";
+    const tokens = q.split(/\s+/);
+    const target = n("button", undefined, "side-panel-feature-tab");
+    const neighbour = n("button", undefined, "side-panel-other-tab");
+    const targetScore = scoreNode(target, q, tokens);
+    const neighbourScore = scoreNode(neighbour, q, tokens);
+    expect(targetScore).toBeGreaterThan(neighbourScore);
+  });
+
+  it("non-icon-only controls still rank correctly (name boost wins)", () => {
+    // When a candidate has a name that matches the query, name boosts should
+    // out-rank a testId-only icon sibling.
+    const q = "feature tab";
+    const tokens = q.split(/\s+/);
+    const named = n("button", "Feature tab", "side-panel-feature-tab");
+    const iconOnly = n("button", undefined, "side-panel-feature-tab");
+    expect(scoreNode(named, q, tokens)).toBeGreaterThan(scoreNode(iconOnly, q, tokens));
+  });
+});

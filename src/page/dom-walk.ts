@@ -126,6 +126,11 @@ const PAGE_SCRIPT = `function(testAttrs, max) {
     }
     var text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
     if (text && text.length <= 120) return text;
+    // W-G4: title attribute as last-resort label source. Icon-only buttons
+    // commonly carry their visible label here when neither aria-label nor
+    // textContent (the icon's empty span) is set.
+    var title = el.getAttribute('title');
+    if (title) return title.trim().slice(0, 120);
     return '';
   }
   function testIdFor(el) {
