@@ -9,16 +9,25 @@
 
 export const BROWX_PAGE_SCRIPT = `(() => {
   if (window.__browx) return;
+  function viaAttribute(kind, name, data) {
+    try {
+      document.documentElement.setAttribute(
+        "data-browx-signal",
+        JSON.stringify({ kind: kind, name: name, data: data == null ? null : data, ts: Date.now() })
+      );
+    } catch (_) {}
+  }
   function send(kind, name, data) {
-    if (typeof window.__browx_send !== "function") return;
+    // W-G2: when our bridge has detached (set window.__browx_no_binding = true),
+    // skip the now-detached __browx_send exposeBinding glue entirely — it would
+    // emit "Function __browx_send is not exposed" console errors on every call.
+    if (window.__browx_no_binding || typeof window.__browx_send !== "function") {
+      viaAttribute(kind, name, data);
+      return;
+    }
     try { window.__browx_send(JSON.stringify({ kind: kind, name: name, data: data == null ? null : data })); }
     catch (e) { /* binding may have been clobbered (CDP multi-attach); fall back to DOM-attribute path */
-      try {
-        document.documentElement.setAttribute(
-          "data-browx-signal",
-          JSON.stringify({ kind: kind, name: name, data: data == null ? null : data, ts: Date.now() })
-        );
-      } catch (_) {}
+      viaAttribute(kind, name, data);
     }
   }
   window.__browx = {

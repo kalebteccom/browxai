@@ -36,12 +36,22 @@ export class BrowxBridge {
   private waiters: Waiter[] = [];
   private pollers = new Map<Page, NodeJS.Timeout>();
   private bindingOk = false;
+  /** W-G2: track attached contexts so detach() can install in-page opt-out
+   *  markers and known-disconnect handlers can stop nagging the user with
+   *  "function not exposed" console noise after our session ends. */
+  private contexts: BrowserContext[] = [];
+  /** W-G2: once true, our exposeBinding handler quietly drops incoming
+   *  payloads and the page script's `send()` is told (via `__browx_no_binding`)
+   *  to skip the binding and use the DOM-attribute path. */
+  private detached = false;
 
   constructor(private cap: number = 200) {}
 
   async attach(context: BrowserContext): Promise<void> {
+    this.contexts.push(context);
     try {
       await context.exposeBinding("__browx_send", (source, payload: string) => {
+        if (this.detached) return; // W-G2: quiet drop after detach.
         try {
           const o = JSON.parse(payload) as { kind: string; name: string; data: unknown };
           if (o.kind === "signal") this.onSignal({ name: o.name, data: o.data, ts: Date.now(), url: source.page?.url() });
@@ -67,8 +77,14 @@ export class BrowxBridge {
     });
   }
 
-  /** Stop all pollers + reject any outstanding waiters. */
+  /** Stop all pollers, reject outstanding waiters, and (W-G2) flip the
+   *  in-page `__browx_no_binding` flag so any subsequent `__browx.signal()`
+   *  / `.confirm()` etc. from the page goes through the DOM-attribute path
+   *  instead of the now-detached `__browx_send` exposeBinding glue —
+   *  silencing the "Function `__browx_send` is not exposed" console errors
+   *  that the shared-CDP verification run flagged. */
   async detach(): Promise<void> {
+    this.detached = true;
     for (const t of this.pollers.values()) clearInterval(t);
     this.pollers.clear();
     for (const w of this.waiters) {
@@ -76,7 +92,23 @@ export class BrowxBridge {
       w.reject(new Error("bridge detached"));
     }
     this.waiters = [];
+    const setOptOut = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = (globalThis as any).window;
+      if (w) w.__browx_no_binding = true;
+    };
+    for (const ctx of this.contexts) {
+      try {
+        for (const page of ctx.pages()) {
+          page.evaluate(setOptOut).catch(() => undefined);
+        }
+      } catch { /* context already torn down */ }
+    }
+    this.contexts = [];
   }
+
+  /** W-G2: test introspection — true once detach() has fired. */
+  isDetached(): boolean { return this.detached; }
 
   /**
    * Wait for the next signal matching `name` (or any signal if `name` is omitted).
