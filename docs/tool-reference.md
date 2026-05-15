@@ -65,7 +65,13 @@ Find candidate elements by natural-language description.
       "selectorTier": 1,            // 1..5 preference order (ask #4)
       "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 },   // visible-rect (ask #5)
       "clipped": false,             // true → bbox: null (element fully off-screen / clipped)
-      "score": 17
+      "score": 17,
+      "context": {                  // W-F1: structural neighbourhood when this candidate
+        "collection": "table",      //         lives in a repeated container. Omitted otherwise.
+        "rowKey": "Wed, May 13",
+        "column": "Type",
+        "rowText": "Wed, May 13 Engineering Reviewed PR …"
+      }
     }
   ]
 }
@@ -83,6 +89,8 @@ Find candidate elements by natural-language description.
 **`confidenceFloor`** (wishlist W-A3): pass `confidenceFloor: <N>` and `find()` emits a `warnings: ["no candidate scored confidently above N (top score: …)"]` entry when nothing crosses the bar — gives the agent a clean "fall through to snapshot" signal instead of grinding through a list of low-quality candidates.
 
 **bbox semantics** (ask #5): `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.
+
+**Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
 ### `screenshot`
 PNG of the viewport, optionally cropped to an element.

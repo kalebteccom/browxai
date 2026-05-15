@@ -3,7 +3,7 @@
 // fixed preference order with a stability flag; bbox is the visible-rect.
 
 import type { CDPSession, Page } from "playwright-core";
-import { walk, type A11yNode } from "./a11y.js";
+import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshot } from "./compose.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
@@ -34,6 +34,11 @@ export interface FindCandidate {
   actionable: true | "disabled" | "off-screen" | "covered";
   /** Internal score — higher = better match for the query. */
   score: number;
+  /** W-F1: structural neighbourhood when this candidate sits inside a repeated
+   *  container (table row, listitem, repeated card). Lets the caller filter
+   *  by row / column without re-walking the snapshot. Absent when the
+   *  candidate isn't in a recognised repeated structure. */
+  context?: StructuralContext;
 }
 
 export interface FindOptions {
@@ -137,6 +142,7 @@ export async function find(
       clipped: bbox === null,
       actionable,
       score,
+      ...(node.context ? { context: node.context } : {}),
     });
   }
 

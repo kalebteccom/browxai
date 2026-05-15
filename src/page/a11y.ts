@@ -35,7 +35,36 @@ export interface A11yNode {
   selected?: boolean;
   expanded?: boolean;
   focused?: boolean;
+  /** Structural neighbourhood when this node lives inside a repeated container
+   *  (table row, listitem, repeated card). Populated by `annotateStructuralContext`
+   *  during snapshot composition; null when the node isn't in a recognised
+   *  repeated structure. */
+  context?: StructuralContext;
   children: A11yNode[];
+}
+
+/**
+ * Structural neighbourhood metadata for nodes living in repeated layouts.
+ * Lets callers answer "what row/column is this in?" without re-walking the
+ * tree themselves. Detection is generic — driven by semantic ARIA roles
+ * (`table` / `row` / `cell` / `columnheader`, `list` / `listitem`, etc.),
+ * not by app-specific markers.
+ */
+export interface StructuralContext {
+  /** Role of the collection this node sits inside. Typical values: `table`,
+   *  `grid`, `list`, `feed`, or `<row-role>-list` when the parent role isn't
+   *  one of the canonical collection roles. */
+  collection: string;
+  /** Best-effort identifier for the row/item — the first non-empty visible
+   *  text within the row, capped. Stable enough to disambiguate sibling rows
+   *  by display label. */
+  rowKey?: string;
+  /** Column header text (from the table's header row, aligned by cell index).
+   *  Populated only for semantic-table / grid descendants. */
+  column?: string;
+  /** Concatenated visible text of the entire row, capped at 200 chars.
+   *  Cheap "what does this row say overall?" probe for the caller. */
+  rowText?: string;
 }
 
 // Raw CDP shapes (subset we use).

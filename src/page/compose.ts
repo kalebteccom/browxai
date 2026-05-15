@@ -18,6 +18,7 @@ import type { CDPSession } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { runDomWalk, mergeDomWalkIntoTree } from "./dom-walk.js";
+import { annotateStructuralContext } from "./structural.js";
 import { LOW_A11Y_THRESHOLD } from "../util/config.js";
 
 const INTERACTIVE_ROLES = new Set([
@@ -53,6 +54,12 @@ export async function composeSnapshot(
   const merge = a11y
     ? mergeDomWalkIntoTree(a11y, entries, refs)
     : { added: 0, combined: 0 };
+
+  // After merging a11y + DOM-walk, tag descendants of repeated containers
+  // with their structural neighbourhood (row/column/rowText). Cheap O(n)
+  // pass; callers like `find()` ship these annotations as candidate
+  // evidence and W-F2's container-probe references them.
+  if (a11y) annotateStructuralContext(a11y);
 
   const warnings: string[] = [];
   if (a11yInteractive < LOW_A11Y_THRESHOLD) {
