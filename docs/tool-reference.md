@@ -196,6 +196,21 @@ Wait until the element is visible.
 ### `go_back({ ...opts })` / `go_forward({ ...opts })`
 History navigation.
 
+### `batch({ calls, stopOnError? })`
+
+Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (fill several fields then submit; navigate → wait_for → snapshot). Each inner call dispatches through the same handlers as a top-level call — capability gating, confirmation hooks, and `ActionResult` shape are unchanged.
+
+- `calls` — `Array<{ tool: string; args?: object }>`. 1–32 entries.
+- `stopOnError` — defaults `true`. When `true`, the first inner failure halts the batch. When `false`, every call is attempted and individual results carry their own `ok`/`error`.
+
+Returns `{ completed, failedAt, results }`:
+
+- `completed` — how many entries the loop produced (≤ `calls.length`).
+- `failedAt` — index of the first failed call, or `null` if all succeeded.
+- `results` — `Array<{ tool, ok, result?, error? }>`, one per executed call. `result` carries the parsed inner-response JSON.
+
+Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, `select`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
+
 ### `ActionResult` shape
 
 ```jsonc

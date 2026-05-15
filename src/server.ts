@@ -23,6 +23,7 @@ import { confirmNavigation, confirmByobAction } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
 import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
+import { runBatch } from "./util/batch.js";
 
 export const NAME = "browxai";
 export const VERSION = "0.0.0";
@@ -211,9 +212,32 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
 
+  // Side-table of handler functions, populated as we register each tool. Lets
+  // the `batch` tool dispatch a whitelist of inner calls without going through
+  // the MCP transport. Each handler accepts the inner tool's args and returns
+  // the same `{ content: [...] }` shape an MCP call would.
+  type TextItem = { type: "text"; text: string };
+  type ImageItem = { type: "image"; data: string; mimeType: string };
+  type ToolResponse = { content: Array<TextItem | ImageItem> };
+  const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+  // Wrapper that preserves the inner handler's parameter type for typechecking
+  // (destructuring inside each registration still works) but stores a
+  // type-erased copy for `batch` dispatch.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const register = <H extends (...a: any[]) => Promise<ToolResponse>>(
+    name: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    def: { description: string; inputSchema?: any },
+    handler: H,
+  ): void => {
+    toolHandlers[name] = handler as (args: unknown) => Promise<ToolResponse>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (server.registerTool as any)(name, def, handler);
+  };
+
   // ---------- read-only tools ----------
 
-  server.registerTool(
+  register(
     "snapshot",
     {
       description:
@@ -245,7 +269,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "find",
     {
       description:
@@ -265,7 +289,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "screenshot",
     {
       description:
@@ -299,7 +323,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "console_read",
     {
       description: "Recent console messages from the page (ring buffer).",
@@ -313,7 +337,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "network_read",
     {
       description:
@@ -328,7 +352,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "eval_js",
     {
       description:
@@ -361,7 +385,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
   };
 
-  server.registerTool(
+  register(
     "navigate",
     {
       description:
@@ -376,7 +400,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "click",
     {
       description:
@@ -392,7 +416,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "fill",
     {
       description: "Type into an input by `ref` or `selector`. Returns an ActionResult.",
@@ -407,7 +431,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "press",
     {
       description: "Press a key. If a `ref`/`selector` is given, presses on that element; else on the page.",
@@ -424,7 +448,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "hover",
     {
       description: "Hover over an element by `ref` or `selector`. Returns an ActionResult.",
@@ -439,7 +463,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "select",
     {
       description: "Select option(s) on a <select> by `ref` or `selector`. Returns an ActionResult.",
@@ -454,7 +478,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "wait_for",
     {
       description: "Wait until an element is visible (by `ref` or `selector`). Returns an ActionResult.",
@@ -467,7 +491,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "go_back",
     { description: "Navigate back in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
@@ -476,7 +500,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "go_forward",
     { description: "Navigate forward in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
@@ -487,7 +511,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   // ---------- recording mode (wishlist W-C2) ----------
 
-  server.registerTool(
+  register(
     "start_recording",
     {
       description:
@@ -501,7 +525,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "end_recording",
     {
       description: "Stop the current recording and emit the draft flow-file YAML. Returns `{ name, yaml, stepCount }`. Review the locators block (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing the flow into a site-docs workspace.",
@@ -518,7 +542,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "record_annotate",
     {
       description: "Attach a doc annotation (copy + optional arrow position + optional target ref) to the most-recent recorded step, or to a specific `stepId`. No-op if no recording is active.",
@@ -538,7 +562,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   // ---------- named refs (wishlist W-C1) ----------
 
-  server.registerTool(
+  register(
     "name_ref",
     {
       description:
@@ -555,7 +579,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  server.registerTool(
+  register(
     "list_named_refs",
     {
       description: "List all current name → ref bindings created via name_ref.",
@@ -569,7 +593,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   // ---------- learned find() ranking (Phase 2) ----------
 
-  server.registerTool(
+  register(
     "find_feedback",
     {
       description:
@@ -592,7 +616,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   // ---------- human↔agent helper ----------
 
-  server.registerTool(
+  register(
     "await_human",
     {
       description:
@@ -614,7 +638,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await openSession();
       const promptBody =
         kind === "choose" && choices
-          ? `${prompt}\n${choices.map((c, i) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`
+          ? `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`
           : kind === "confirm"
             ? `${prompt} → call __browx.confirm(true|false)`
             : kind === "input"
@@ -645,6 +669,56 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           ],
         };
       }
+    },
+  );
+
+  // ---------- batch protocol primitive ----------
+
+  // Tools that can be invoked inside `batch`. Excludes: `batch` itself (no
+  // nesting — keeps semantics simple and avoids combinatorial confusion);
+  // `await_human` (blocks indefinitely, defeats batching's point); recording
+  // controls (`start_recording`/`end_recording`/`record_annotate` — meant for
+  // interactive sessions); CLI-style helpers that mutate session config.
+  const BATCH_ALLOWED_TOOLS = new Set<string>([
+    "navigate", "click", "fill", "press", "hover", "select", "wait_for",
+    "go_back", "go_forward",
+    "snapshot", "find", "screenshot", "console_read", "network_read",
+    "eval_js", "list_named_refs", "name_ref", "find_feedback",
+  ]);
+  const BATCH_MAX_CALLS = 32;
+
+  register(
+    "batch",
+    {
+      description:
+        "Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (e.g. fill several fields then submit). Each call is dispatched through the same handlers as a top-level call; capability gating, confirmation hooks, and ActionResults are unchanged. Stops at the first failure unless `stopOnError: false`. Disallows nested `batch` and human-blocking tools.",
+      inputSchema: {
+        calls: z
+          .array(
+            z.object({
+              tool: z.string().describe("Tool name (must be in the batch whitelist)"),
+              args: z.record(z.unknown()).optional().describe("Args for the inner tool, same shape as a top-level call"),
+            }),
+          )
+          .min(1)
+          .max(BATCH_MAX_CALLS)
+          .describe(`Up to ${BATCH_MAX_CALLS} inner calls. Run sequentially.`),
+        stopOnError: z
+          .boolean()
+          .optional()
+          .describe("Default true. When true, the first inner-call failure halts the batch. When false, every call is attempted and individual results carry their own ok/error."),
+      },
+    },
+    async ({ calls, stopOnError }: { calls: Array<{ tool: string; args?: Record<string, unknown> }>; stopOnError?: boolean }) => {
+      const g = gateCheck("batch"); if (g) return g;
+      const report = await runBatch(calls, {
+        allowed: BATCH_ALLOWED_TOOLS,
+        handlers: toolHandlers,
+        stopOnError,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
+      };
     },
   );
 
