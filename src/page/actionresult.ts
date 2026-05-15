@@ -30,7 +30,26 @@ export interface ElementProbe {
   stillAttached: boolean;
   focused?: boolean;
   checked?: boolean | "mixed";
+  /** Post-action DOM value of the element (input.value / textarea.value /
+   *  contenteditable text). Null for elements that don't carry a value. For
+   *  fills, this is what's *actually in the DOM after the write* — compare
+   *  against `valueRequested` to confirm the write landed without an extra
+   *  screenshot/snapshot round-trip (W-E1). */
   value?: string | null;
+  /** W-E1: for `fill`, the string the agent asked us to type. `value ===
+   *  valueRequested` means the write succeeded as-asked; a mismatch means the
+   *  field rejected/transformed it (masked input, max length, custom React
+   *  handler stripping chars, controlled component overwriting on blur). */
+  valueRequested?: string;
+  /** W-E1: visible text of the closest labelled wrapper (role / data-testid
+   *  attr) up to 4 ancestors above the targeted element, trimmed and capped
+   *  at 200 chars. Surfaces the *displayed* state for controls where
+   *  `value` doesn't carry the answer — React Select / combobox-style chips
+   *  clear `input.value` after Enter, but the wrapper renders the selected
+   *  chip text ("Engineering"). Use this when `value` is "" / null but the
+   *  agent needs to confirm the chip/pill/badge landed. Null when no
+   *  labelled ancestor was found. */
+  displayText?: string | null;
 }
 
 export interface ActionResult {

@@ -107,7 +107,15 @@ function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
   return t.ref ? { ref: t.ref } : { selector: t.selector };
 }
 
-async function probe(loc: Locator, target: ActionTarget, justFilled?: string): Promise<ElementProbe> {
+/**
+ * W-E1: always read post-action DOM state so callers can confirm a write
+ * landed without a follow-up `snapshot`/`screenshot` round-trip. Previously
+ * fill echoed the requested string back as `value`, which made the probe
+ * useless as a confirmation signal — agents fell back to screenshots.
+ *
+ * Exported for unit tests.
+ */
+export async function probe(loc: Locator, target: ActionTarget, valueRequested?: string): Promise<ElementProbe> {
   const ref = target.ref;
   try {
     const count = await loc.count();
@@ -116,10 +124,64 @@ async function probe(loc: Locator, target: ActionTarget, justFilled?: string): P
     const focused = await loc
       .evaluate((el: { ownerDocument?: { activeElement?: unknown } }) => el === el.ownerDocument?.activeElement)
       .catch(() => false);
-    const value = justFilled !== undefined
-      ? justFilled
-      : await loc.inputValue().catch(() => null);
-    return { ref, stillAttached: true, focused, value: value ?? null };
+    // Always probe DOM `value` directly. `loc.inputValue()` is defined for
+    // <input>/<textarea>/<select>; for everything else it throws, so we null
+    // it out via the catch. Contenteditable falls through to textContent.
+    const inputValue = await loc.inputValue().catch(() => undefined);
+    const value = inputValue !== undefined
+      ? inputValue
+      : await loc
+          .evaluate((el: { isContentEditable?: boolean; textContent?: string | null }) =>
+            el.isContentEditable ? (el.textContent ?? "") : null,
+          )
+          .catch(() => null);
+    const checked = await loc
+      .evaluate((el: { tagName?: string; type?: string; checked?: boolean; indeterminate?: boolean }) => {
+        const tag = el.tagName?.toLowerCase();
+        const type = el.type?.toLowerCase();
+        if (tag !== "input" || (type !== "checkbox" && type !== "radio")) return undefined;
+        if (el.indeterminate) return "mixed" as const;
+        return el.checked === true;
+      })
+      .catch(() => undefined);
+    // Visible-wrapper text. Critical for React Select / combobox-style controls
+    // where `input.value` is empty after Enter but the wrapper renders the
+    // selected chip text. Walks up to 4 ancestors looking for a labelled node
+    // (role attr or `data-testid|test|cy|qa`); falls back to immediate parent's
+    // innerText. Capped at 200 chars.
+    const displayText = await loc
+      .evaluate((el: unknown) => {
+        const DOC_BODY_TAG = "BODY";
+        const isElement = (n: unknown): n is { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string } =>
+          !!n && typeof n === "object";
+        type ElLike = { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string };
+        let cur: ElLike | null = isElement(el) ? el : null;
+        for (let i = 0; i < 4 && cur; i++) {
+          const next = cur.parentElement;
+          if (!isElement(next) || next.tagName === DOC_BODY_TAG) break;
+          cur = next;
+          const role = cur.getAttribute?.("role") || null;
+          const ds = cur.dataset || {};
+          if (role || ds.testid || ds.test || ds.cy || ds.qa) {
+            const t = (cur.innerText || "").trim();
+            return t ? t.slice(0, 200) : null;
+          }
+        }
+        if (isElement(el)) {
+          const parent = el.parentElement;
+          if (isElement(parent)) {
+            const t = (parent.innerText || "").trim();
+            return t ? t.slice(0, 200) : null;
+          }
+        }
+        return null;
+      })
+      .catch(() => null);
+    const out: ElementProbe = { ref, stillAttached: true, focused, value: value ?? null };
+    if (checked !== undefined) out.checked = checked;
+    if (valueRequested !== undefined) out.valueRequested = valueRequested;
+    if (displayText !== null) out.displayText = displayText;
+    return out;
   } catch {
     return { ref, stillAttached: false };
   }
