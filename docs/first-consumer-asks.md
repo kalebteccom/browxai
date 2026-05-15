@@ -145,6 +145,39 @@ F4 (uses F1's `context` in matches) → F5 (independent) → F6 (depends on F2's
 - **Auto-screenshot fallback** — if a probe is ambiguous, return that ambiguity to
   the caller; don't paper over it with a screenshot under the hood.
 
+## Round-7 (forward-looking) — interaction-vocabulary expansion + cross-OS
+
+Captured 2026-05-15. Not shipping in round-6 — these are roadmap items raised once
+the screenshot-less observability work surfaced that browxai's *interaction* surface
+is narrower than its *observation* surface. Today's vocabulary is `click` (with
+`button: left|right|middle`), `fill`, `press` (Playwright key syntax), `hover`,
+`select`, and `coords`-mode click/hover. That's enough for forms; it's not enough
+for canvas apps, web3 / WebGL viewers, drawing tools, kanban boards, multi-select
+grids, or any flow that depends on modifier-held actions.
+
+| # | Problem class | Provisional primitive |
+|---|---|---|
+| W-G1 | No drag-and-drop. Kanban move, file drag-upload, canvas pan, slider scrub, range-select all rely on a press-move-release sequence the current vocabulary can't express. | `drag({ from, to, steps?, modifiers?, button? })`. Both endpoints accept the full target shape (ref / selector / named / coords). Optional `steps` controls intermediate `mouse.move` frames so drag-aware code (sortable lists, canvas) sees motion. Optional `modifiers` applies a held-modifier set during the drag. |
+| W-G2 | Modifier-keyed clicks/hovers (Shift-click range-select, Ctrl/Cmd-click open-in-new-tab, Alt-click context override) can't be expressed. | Add `modifiers?: Array<"Shift" \| "Control" \| "Alt" \| "Meta" \| "ControlOrMeta">` to `click` / `hover` / `drag`. Maps directly to Playwright's `modifiers` arg. `ControlOrMeta` handles the cross-OS shortcut convention (Cmd on macOS, Control elsewhere) without per-platform branching in agent code. |
+| W-G3 | Holding *non-modifier* keys during an action (F-to-fill in some drawing tools, Space-to-pan in canvas viewers, Q-to-rotate in 3D tools) — Playwright's modifier set only covers Shift/Control/Alt/Meta. | `key_chord({ hold: ["KeyF"], action: { tool, args } })` — depresses the given physical key codes via CDP `Input.dispatchKeyEvent` (rawKeyDown / keyUp), runs the inner action, then releases. Generic — any key, any wrapped action. |
+| W-G4 | Multi-key sequences (Ctrl+Shift+P → "find file" → Enter) are expressible as several `press` calls but pay a round trip each and lose atomicity. | `key_sequence({ keys: ["Control+Shift+P", "Tab", "Enter"], inter? })` — one ActionResult; optional `inter` ms delay between presses for shortcut UIs that debounce. |
+| W-G5 | Cross-OS shortcut conventions diverge (Cmd vs Ctrl, different default key bindings for select-all / copy / paste / undo / find / refresh, IME keyboard layouts). Today the caller has to know the host OS. | Adopt `ControlOrMeta` as the documented default modifier in `key_sequence` / `key_chord` / `modifiers`. Optional `os` param on these tools (`"auto" \| "mac" \| "windows" \| "linux"`) to force-pin the resolution; `"auto"` (default) infers from `BROWX_HOST_OS` env override → `process.platform` → reasonable defaults. Document the IME / dead-key constraint explicitly; do **not** silently transform text inputs. |
+
+**Sequencing thoughts (non-binding):** G2 lands cheaply on top of the existing
+target-shape work (a `modifiers` array passed through to Playwright). G1 is the
+biggest unlock for canvas / kanban apps and should pair with W-F2's coords-evidence
+so drag *endpoints* are inspectable. G3 needs CDP-level key dispatch — independent
+of G1/G2. G4 + G5 ship together as the keyboard-vocabulary pair.
+
+**Out of scope here too:**
+
+- App-specific "drag this card to that column" helpers — the primitive is generic
+  drag with coord/ref endpoints.
+- A full keyboard-emulation layer for IME / dead-key / multi-byte input — flag the
+  limitation, don't paper over it.
+- An OS-detection daemon that watches the host for state changes — `os: auto` reads
+  once per session, that's enough.
+
 **Author's stated "not"-list** worth quoting:
 
 - Replacing site-docs `run` with browxai entirely — buys nothing, loses determinism. The discovery/execution split is right.
