@@ -289,9 +289,21 @@ export async function runInActionWindow(
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
   }));
 
-  // W-C2: if a recording is active, append this step. Best-effort — never throws.
+  // W-C2 / W-G5: append to recording when (a) action succeeded, (b) recording
+  // is active, and (c) the action is *replayable as a flow-file step*. Coord-mode
+  // click/hover have neither a descriptor ref/selector nor a recordingHint —
+  // they're an escape hatch for visually-located targets that flow files can't
+  // mechanically replay, so they don't belong in a flow-file draft. Navigation /
+  // history actions don't need a target at all and are always recorded.
   if (ok && ctx.recorder?.active()) {
-    try { ctx.recorder.record(descriptor, urlAfter, opts.recordingHint); } catch { /* swallow */ }
+    const NON_TARGETED_ACTIONS = new Set(["navigate", "goBack", "goForward"]);
+    const isElementAction = !NON_TARGETED_ACTIONS.has(descriptor.type);
+    const hasReplayableTarget = !!(descriptor.ref || descriptor.selector || opts.recordingHint);
+    if (!isElementAction || hasReplayableTarget) {
+      try { ctx.recorder.record(descriptor, urlAfter, opts.recordingHint); } catch { /* swallow */ }
+    } else {
+      warnings.push("recorder: skipped untargeted action (coords-mode click/hover) — flow files replay deterministically by ref/selector; record the equivalent ref-based action if you want this step in the draft");
+    }
   }
 
   return {
