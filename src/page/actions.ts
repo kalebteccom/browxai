@@ -2,7 +2,7 @@
 // action-window machinery from actionresult.ts so callers always get a
 // structured `ActionResult` instead of a bare "ok".
 
-import type { Locator } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import {
   runInActionWindow,
   type ActionContext,
@@ -10,6 +10,7 @@ import {
   type ActionResult,
   type ActionWindowOptions,
   type ElementProbe,
+  type HitPoint,
 } from "./actionresult.js";
 import { locatorFor, resolveTarget, type ActionTarget } from "./locator.js";
 
@@ -21,11 +22,23 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
   return runInActionWindow(ctx, descriptor, args, async () => {
     const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
     if (resolved.kind === "coords") {
+      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
+      const focusBefore = await captureFocusedRef(ctx.page);
       await ctx.page.mouse.click(resolved.x, resolved.y, args.button ? { button: args.button } : undefined);
-      return undefined;
+      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y);
+      const focusAfter = await captureFocusedRef(ctx.page);
+      return {
+        stillAttached: true,
+        hit: {
+          before: hitBefore,
+          after: hitAfter,
+          focusChanged: focusBefore !== focusAfter,
+        },
+      };
     }
+    const pre = await preProbe(resolved.loc);
     await resolved.loc.click({ timeout: DEFAULT_TIMEOUT_MS, button: args.button });
-    return probe(resolved.loc, args.target);
+    return probe(resolved.loc, args.target, undefined, pre);
   });
 }
 
@@ -34,8 +47,9 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   const descriptor: ActionDescriptor = { type: "fill", value: args.value, ...refOrSelector(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
+    const pre = await preProbe(loc);
     await loc.fill(args.value, { timeout: DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target, args.value);
+    return probe(loc, args.target, args.value, pre);
   });
 }
 
@@ -53,8 +67,9 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target) {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
+      const pre = await preProbe(loc);
       await loc.press(args.key, { timeout: DEFAULT_TIMEOUT_MS });
-      return probe(loc, args.target);
+      return probe(loc, args.target, undefined, pre);
     } else {
       await ctx.page.keyboard.press(args.key);
     }
@@ -67,11 +82,14 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
   return runInActionWindow(ctx, descriptor, args, async () => {
     const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
     if (resolved.kind === "coords") {
+      const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
       await ctx.page.mouse.move(resolved.x, resolved.y);
-      return undefined;
+      const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y);
+      return { stillAttached: true, hit: { before: hitBefore, after: hitAfter } };
     }
+    const pre = await preProbe(resolved.loc);
     await resolved.loc.hover({ timeout: DEFAULT_TIMEOUT_MS });
-    return probe(resolved.loc, args.target);
+    return probe(resolved.loc, args.target, undefined, pre);
   });
 }
 
@@ -80,8 +98,9 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
   const descriptor: ActionDescriptor = { type: "select", value: args.values.join(", "), ...refOrSelector(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
+    const pre = await preProbe(loc);
     await loc.selectOption(args.values, { timeout: DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target);
+    return probe(loc, args.target, undefined, pre);
   });
 }
 
@@ -123,6 +142,31 @@ function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } 
   return refOrSelector(t);
 }
 
+/** State captured *before* the action runs so the post-action probe can compute
+ *  before/after deltas for `ownerControl` / `container`. */
+export interface PreProbeData {
+  ownerLabel?: string;
+  ownerText?: string;
+  container?: { kind: string; rowKey?: string; rowText?: string };
+}
+
+/**
+ * Capture the pre-action state of the owning control and the enclosing
+ * repeated container, so the post-action probe can emit `changed` flags
+ * without the caller having to re-snapshot.
+ *
+ * Exported for unit tests; runs at the DOM level (cheap, no a11y tree).
+ */
+export async function preProbe(loc: Locator): Promise<PreProbeData> {
+  try {
+    const count = await loc.count();
+    if (count === 0) return {};
+    return await loc.evaluate(probeAncestorsScript).catch(() => ({}));
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Always read post-action DOM state so callers can confirm a write landed
  * without a follow-up `snapshot`/`screenshot` round-trip. We deliberately
@@ -131,7 +175,7 @@ function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } 
  *
  * Exported for unit tests.
  */
-export async function probe(loc: Locator, target: ActionTarget, valueRequested?: string): Promise<ElementProbe> {
+export async function probe(loc: Locator, target: ActionTarget, valueRequested?: string, pre?: PreProbeData): Promise<ElementProbe> {
   const ref = target.ref;
   try {
     const count = await loc.count();
@@ -198,8 +242,148 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     if (checked !== undefined) out.checked = checked;
     if (valueRequested !== undefined) out.valueRequested = valueRequested;
     if (displayText !== null) out.displayText = displayText;
+
+    // W-F2: post-action owner/container state. Always read; compose deltas
+    // against `pre` when supplied. Same in-page script as preProbe, so the
+    // pre/post values are directly comparable.
+    const post = await loc.evaluate(probeAncestorsScript).catch(() => ({} as PreProbeData));
+    if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
+      const before = pre.ownerText;
+      const after = post.ownerText;
+      const oc: NonNullable<ElementProbe["ownerControl"]> = { changed: before !== after };
+      if (post.ownerLabel ?? pre.ownerLabel) oc.label = post.ownerLabel ?? pre.ownerLabel;
+      if (before !== undefined) oc.displayTextBefore = before;
+      if (after !== undefined) oc.displayTextAfter = after;
+      out.ownerControl = oc;
+    }
+    if (post.container) {
+      const cont: NonNullable<ElementProbe["container"]> = {
+        kind: post.container.kind,
+        ...(post.container.rowKey ? { rowKey: post.container.rowKey } : {}),
+        ...(post.container.rowText !== undefined ? { rowText: post.container.rowText } : {}),
+      };
+      if (pre?.container) {
+        cont.changed = pre.container.rowText !== post.container.rowText;
+      }
+      out.container = cont;
+    }
     return out;
   } catch {
     return { ref, stillAttached: false };
   }
+}
+
+/**
+ * In-page script used by `preProbe` and the post-action half of `probe`.
+ * Walks up the target element's ancestor chain looking for:
+ *   - The nearest owning **form control** (combobox / listbox / radiogroup /
+ *     labelled `data-test*` wrapper) — `ownerText` is its `innerText`.
+ *   - The nearest repeated **container** (`role=row`/`listitem`/`article`,
+ *     or `<tr>`/`<li>` tags) — `container.rowText` is its `innerText`.
+ *
+ * Capped at 6 ancestor steps and 200 chars per text field. Returns an empty
+ * object when nothing matches.
+ *
+ * Defined as a plain function (not an arrow) so Playwright can stringify it
+ * across the CDP boundary cleanly. `el: any` because we run in DOM context
+ * where TS's DOM lib isn't loaded; the runtime check is what matters.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
+  if (!el || typeof el !== "object") return {};
+  const OWNER_ROLES = new Set(["combobox", "listbox", "radiogroup", "group", "menu", "tablist"]);
+  const ROW_ROLES = new Set(["row", "listitem", "article"]);
+  const ROW_TAGS = new Set(["tr", "li"]);
+  const out: PreProbeData = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cur: any = el.parentElement;
+  for (let i = 0; i < 6 && cur && cur.tagName !== "BODY" && cur.tagName !== "HTML"; i++) {
+    const role: string | null = cur.getAttribute ? cur.getAttribute("role") : null;
+    const ds = cur.dataset || {};
+    const hasTestAttr = !!(ds.testid || ds.test || ds.cy || ds.qa);
+    const ariaLabel: string | null = cur.getAttribute ? cur.getAttribute("aria-label") : null;
+
+    if (!out.ownerText) {
+      const isFieldOwner = (role && OWNER_ROLES.has(role)) || (hasTestAttr && (role || ariaLabel));
+      if (isFieldOwner) {
+        const txt = ((cur.innerText || "") as string).trim();
+        if (txt) out.ownerText = txt.length > 200 ? txt.slice(0, 199) + "…" : txt;
+        if (ariaLabel) out.ownerLabel = ariaLabel;
+      }
+    }
+
+    if (!out.container) {
+      const tag = cur.tagName ? (cur.tagName as string).toLowerCase() : "";
+      if ((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag)) {
+        const kind = (role && ROW_ROLES.has(role)) ? role : tag;
+        const rowText = ((cur.innerText || "") as string).trim().replace(/\s+/g, " ");
+        const capped = rowText.length > 200 ? rowText.slice(0, 199) + "…" : rowText;
+        // rowKey = first non-empty text node within the container.
+        let rowKey: string | undefined;
+        const firstText = (cur.innerText || "").trim().split("\n").find((s: string) => s.trim().length > 0);
+        if (firstText) {
+          const t = firstText.trim();
+          rowKey = t.length > 80 ? t.slice(0, 79) + "…" : t;
+        }
+        const containerOut: { kind: string; rowKey?: string; rowText?: string } = { kind };
+        if (rowKey) containerOut.rowKey = rowKey;
+        if (capped) containerOut.rowText = capped;
+        out.container = containerOut;
+      }
+    }
+
+    if (out.ownerText && out.container) break;
+    cur = cur.parentElement;
+  }
+  return out;
+};
+
+/** Coordinate-action evidence helper: read `document.elementFromPoint` at (x,y)
+ *  with role/text/ancestor context. Returns null when nothing's there.
+ *  Uses `any` for the in-page DOM side — TS's DOM lib isn't loaded here. */
+async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | null> {
+  return page.evaluate(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ({ x, y }: { x: number; y: number }): HitPoint | null => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc: any = (globalThis as any).document;
+      if (!doc) return null;
+      const el = doc.elementFromPoint(x, y);
+      if (!el) return null;
+      const tag: string = (el.tagName || "").toLowerCase();
+      const role: string | undefined = el.getAttribute ? el.getAttribute("role") || undefined : undefined;
+      const text = ((el.textContent || "") as string).trim().replace(/\s+/g, " ").slice(0, 120);
+      const parent = el.parentElement;
+      const ancestorText = parent
+        ? ((parent.innerText || "") as string).trim().replace(/\s+/g, " ").slice(0, 200)
+        : undefined;
+      const out: HitPoint = { tag };
+      if (role) out.role = role;
+      if (text) out.text = text;
+      if (ancestorText) out.ancestorText = ancestorText;
+      return out;
+    },
+    { x, y },
+  ).catch(() => null);
+}
+
+/** Best-effort identity for the active element so we can report whether focus
+ *  shifted during a coord action. Returns a stable-ish key (tag + id + role +
+ *  testid + first text). */
+async function captureFocusedRef(page: Page): Promise<string | null> {
+  return page.evaluate((): string | null => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const doc: any = (globalThis as any).document;
+    if (!doc) return null;
+    const a = doc.activeElement;
+    if (!a) return null;
+    const id: string = a.id || "";
+    const role: string = a.getAttribute ? (a.getAttribute("role") || "") : "";
+    const testid: string = a.getAttribute
+      ? (a.getAttribute("data-testid") || a.getAttribute("data-test") || a.getAttribute("data-cy") || "")
+      : "";
+    const tag: string = (a.tagName || "").toLowerCase();
+    const txt = ((a.textContent || "") as string).trim().slice(0, 60);
+    return `${tag}#${id}@${role}[${testid}]:${txt}`;
+  }).catch(() => null);
 }

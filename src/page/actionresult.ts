@@ -47,8 +47,51 @@ export interface ElementProbe {
    *  selects, combobox displays, badge pickers, custom dropdowns where the
    *  underlying input is cleared on commit. Use when `value` is "" / null
    *  but the caller needs to confirm the visible state landed. Null when
-   *  no labelled ancestor was found. */
+   *  no labelled ancestor was found. Convenience alias for
+   *  `ownerControl?.displayTextAfter` when an owner was detected. */
   displayText?: string | null;
+  /** W-F2: state of the logical *owning control* (combobox / listbox /
+   *  radiogroup / labelled field wrapper) the action targeted. The caller
+   *  often acts on an inner element (an option, a hidden input), but what
+   *  *changed* is the owner's displayed state. `displayTextBefore` /
+   *  `displayTextAfter` are the wrapper's `innerText` captured pre- and
+   *  post-action; `changed: true` when they differ. Absent when no
+   *  recognised owning control was found above the target. */
+  ownerControl?: {
+    label?: string;
+    displayTextBefore?: string;
+    displayTextAfter?: string;
+    changed: boolean;
+  };
+  /** W-F2: state of the repeated *container* (row / listitem / article /
+   *  `<tr>` / `<li>`) the target lives inside. `rowText` is the container's
+   *  visible text post-action; `changed: true` when it differed pre-vs-post.
+   *  Lets the caller confirm a row-level save changed the row without
+   *  re-snapshotting the whole table. Absent when the target isn't in a
+   *  recognised repeated structure. */
+  container?: {
+    kind: string;
+    rowKey?: string;
+    rowText?: string;
+    changed?: boolean;
+  };
+  /** W-F2: coordinate-action evidence. Only populated for `coords` targets.
+   *  `before` is `document.elementFromPoint(x, y)` immediately before the
+   *  action; `after` is the same point after settling (the page may have
+   *  re-rendered or scrolled). `focusChanged` flags whether the active
+   *  element shifted. The coord-action analogue of `value`/`displayText`. */
+  hit?: {
+    before?: HitPoint | null;
+    after?: HitPoint | null;
+    focusChanged?: boolean;
+  };
+}
+
+export interface HitPoint {
+  tag: string;
+  role?: string;
+  text?: string;
+  ancestorText?: string;
 }
 
 export interface ActionResult {

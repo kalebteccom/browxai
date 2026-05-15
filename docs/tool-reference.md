@@ -151,7 +151,12 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 | `maxResultTokens` | `600` | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`. |
 
 ### Target shape (for tools that act on an element)
-`{ ref: string }` OR `{ selector: string }` OR `{ named: string }` OR `{ coords: { x, y } }` — exactly one. `ref` is preferred (stable across snapshots, comes with role+name+testId so Playwright auto-waiting + strict-match Just Works); `selector` accepts the `selectorHint` strings that `find()` emits, plus arbitrary Playwright locator strings; `named` looks up a mnemonic previously bound via `name_ref` (wishlist W-C1); `coords` is the page-coordinate escape hatch (CSS pixels, viewport-relative) for visually-located targets that ref/selector resolution can't address — canvas, custom-painted UIs, dismiss-empty-space. Honoured by `click` and `hover` only; ignored elsewhere.
+`{ ref: string }` OR `{ selector: string }` OR `{ named: string }` OR `{ coords: { x, y } }` — exactly one. All four are **first-class** target shapes; choose by what the page lets you address:
+
+- `ref` — preferred for semantic UIs. Stable across snapshots, carries role+name+testId so Playwright auto-waiting + strict-match Just Works.
+- `selector` — accepts the `selectorHint` strings `find()` emits plus arbitrary Playwright locator strings.
+- `named` — mnemonic previously bound via `name_ref` (wishlist W-C1).
+- `coords` — page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see W-F2 below) so the action stays inspectable.
 
 Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
 
@@ -177,7 +182,17 @@ For frequently-acted-on anchors across a long session, bind a mnemonic once and 
 Goto a URL. Returns an `ActionResult`.
 
 ### `click({ ref?|selector?|named?|coords?, button?, ...opts })`
-Click. Accepts the standard target shapes plus `coords: {x, y}` for canvas / custom-painted UIs. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult` with the post-action `element` probe (`stillAttached`, `focused`, `value`, `displayText`) for ref/selector targets; coords targets omit `element` since there's no resolved element to probe.
+Click. Accepts all four target shapes. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
+
+#### Post-action context probe (W-F2)
+
+When the action target is a ref/selector/named, `element` also carries delta-aware context for the *logical thing that changed* — not just the direct target. This eliminates the screenshot-to-confirm loop for combobox commits and row-level saves.
+
+- `element.ownerControl` — the logical owning control (combobox / listbox / radiogroup / labelled field wrapper) the action targeted. Walks up to 6 ancestors looking for a recognised owner. Surfaces `label`, `displayTextBefore` / `displayTextAfter` (innerText of the owner pre- and post-action, capped at 200 chars), and `changed: true` when they differ. Use this to confirm "the combobox now displays X" without re-snapshotting.
+- `element.container` — the repeated container (`role=row` / `role=listitem` / `role=article` / `<tr>` / `<li>`) the target lives inside. Surfaces `kind`, `rowKey` (first non-empty visible text within the row, capped at 80), `rowText` (concatenated row text, capped at 200), and `changed: true` when `rowText` differs pre-vs-post. Lets a row-level save confirm "the row's visible state now reads …" in one round-trip.
+- `element.hit` — coord-target evidence. `before` and `after` are `{ tag, role, text, ancestorText }` from `document.elementFromPoint(x, y)` immediately before and after the action settles; `focusChanged` flags whether the active element shifted. Lets canvas / WebGL coord actions stay inspectable.
+
+A robust "did the click commit the right option?" check: `element.ownerControl?.displayTextAfter?.includes(expectedLabel) && element.ownerControl.changed`.
 
 ### `fill({ ref?|selector?, value, ...opts })`
 Type into an input. The post-action `element` probe is the confirmation signal — no follow-up `snapshot`/`screenshot` needed in the common case:

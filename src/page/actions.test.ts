@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { probe } from "./actions.js";
+import { probe, preProbe, type PreProbeData } from "./actions.js";
 
 // Minimal per-call mock. The `probe()` helper calls in order:
 //   1. count()
@@ -132,5 +132,114 @@ describe("probe() — post-action element observability", () => {
     });
     const r = await probe(loc, { ref: "e9" });
     expect(r.checked).toBeUndefined();
+  });
+});
+
+describe("probe() — W-F2 ownerControl + container deltas", () => {
+  it("composes ownerControl with changed=true when displayTextBefore ≠ displayTextAfter", async () => {
+    const loc = locator({
+      inputValue: "",
+      evaluateReturns: [
+        false,                                              // focused
+        undefined,                                          // checked
+        "Engineering",                                      // displayText
+        { ownerText: "Engineering", ownerLabel: "Type" } as PreProbeData,  // post ancestor probe
+      ],
+    });
+    const pre: PreProbeData = { ownerText: "Enter Tag" };
+    const r = await probe(loc, { ref: "e1" }, undefined, pre);
+    expect(r.ownerControl).toBeDefined();
+    expect(r.ownerControl?.changed).toBe(true);
+    expect(r.ownerControl?.displayTextBefore).toBe("Enter Tag");
+    expect(r.ownerControl?.displayTextAfter).toBe("Engineering");
+    expect(r.ownerControl?.label).toBe("Type");
+  });
+
+  it("composes ownerControl with changed=false when displayText matches pre", async () => {
+    const loc = locator({
+      inputValue: "",
+      evaluateReturns: [
+        false,
+        undefined,
+        "Engineering",
+        { ownerText: "Engineering" } as PreProbeData,
+      ],
+    });
+    const pre: PreProbeData = { ownerText: "Engineering" };
+    const r = await probe(loc, { ref: "e2" }, undefined, pre);
+    expect(r.ownerControl?.changed).toBe(false);
+  });
+
+  it("omits ownerControl when neither pre nor post has owner text", async () => {
+    const loc = locator({
+      inputValue: "free text",
+      evaluateReturns: [false, undefined, null, {} as PreProbeData],
+    });
+    const r = await probe(loc, { ref: "e3" });
+    expect(r.ownerControl).toBeUndefined();
+  });
+
+  it("surfaces container probe from post-action ancestor walk", async () => {
+    const loc = locator({
+      inputValue: "",
+      evaluateReturns: [
+        false,
+        undefined,
+        null,
+        { container: { kind: "row", rowKey: "Wed, May 13", rowText: "Wed, May 13 Engineering Reviewed PR" } } as PreProbeData,
+      ],
+    });
+    const r = await probe(loc, { ref: "e4" });
+    expect(r.container?.kind).toBe("row");
+    expect(r.container?.rowKey).toBe("Wed, May 13");
+    expect(r.container?.rowText).toContain("Engineering");
+  });
+
+  it("flags container.changed=true when pre and post rowText differ", async () => {
+    const loc = locator({
+      inputValue: "",
+      evaluateReturns: [
+        false,
+        undefined,
+        null,
+        { container: { kind: "row", rowText: "row text after save" } } as PreProbeData,
+      ],
+    });
+    const pre: PreProbeData = { container: { kind: "row", rowText: "row text before save" } };
+    const r = await probe(loc, { ref: "e5" }, undefined, pre);
+    expect(r.container?.changed).toBe(true);
+  });
+
+  it("flags container.changed=false when row text is stable", async () => {
+    const loc = locator({
+      inputValue: "",
+      evaluateReturns: [
+        false,
+        undefined,
+        null,
+        { container: { kind: "row", rowText: "unchanged" } } as PreProbeData,
+      ],
+    });
+    const pre: PreProbeData = { container: { kind: "row", rowText: "unchanged" } };
+    const r = await probe(loc, { ref: "e6" }, undefined, pre);
+    expect(r.container?.changed).toBe(false);
+  });
+});
+
+describe("preProbe()", () => {
+  it("returns the scripted ancestor probe result", async () => {
+    const loc = locator({
+      // preProbe only calls count() + evaluate(probeAncestors).
+      evaluateReturns: [{ ownerText: "Enter Tag", container: { kind: "row", rowText: "Wed, May 13" } } as PreProbeData],
+    });
+    const r = await preProbe(loc);
+    expect(r.ownerText).toBe("Enter Tag");
+    expect(r.container?.kind).toBe("row");
+  });
+
+  it("returns empty object when the locator resolves to nothing", async () => {
+    const loc = locator({ count: 0, evaluateReturns: [] });
+    const r = await preProbe(loc);
+    expect(r).toEqual({});
   });
 });
