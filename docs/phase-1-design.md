@@ -334,13 +334,22 @@ the browxai side.
 
 ## 7. Phase-1.5 follow-ons
 
-The 2026-05-13 target-app adoption-run report (`docs/adoption-report-target-app-2026-05-13.md`) opened
+The 2026-05-13 target-app adoption-run report (`docs/adoption-report-2026-05-13.md`) opened
 asks #7–#11. **All five shipped 2026-05-13** — the same day's re-adoption-run report
-(`docs/adoption-report-target-app-2026-05-15.md`) confirmed the close: `find()` exercised against
-the augmented snapshot, one new the feature area flow calibrated entirely through `browxai-attached`,
+(`docs/adoption-report-2026-05-15.md`) confirmed the close: `find()` exercised against
+the augmented snapshot, one new feature-area flow calibrated entirely through `browxai-attached`,
 no-trace contract held, replay clean → **Phase 1 exit criterion met, verdict WIN.** The re-run
 surfaced five additional small asks (#12–#16) — three 🟡 surgical, two 🟢 polish — none
-architectural; they're the Phase-1.5 follow-on list below.
+architectural; they're the round-3 list below.
+
+The 2026-05-15 **wishlist** (`docs/wishlist-2026-05-15.md`) added a *forward-looking*
+round-4 set — non-blocking improvements that, accumulated across many adoption rounds,
+would make the loop materially faster/leaner. Full mapping in `first-consumer-asks.md`
+under "Forward-looking wishlist (round-4, 2026-05-15)". **Headline pick:** W-D1
+(`actionable` predicate on `find()` results) — author's own top-leverage choice, folds
+two of the round-3 🟡 asks together. Second pick: W-A1 (scoped snapshots) — the biggest
+token-cost reduction available. The CLI-helper trio (W-B6 `browxai init`, W-B7 `browxai
+chrome [start|stop]`, W-D3 `browxai doctor`) is naturally batched.
 
 **Round 2 — adoption-driven (asks #7–#11), all impl-done 2026-05-13:**
 

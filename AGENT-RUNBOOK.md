@@ -73,7 +73,7 @@ the session.
 
 Full status board: `docs/first-consumer-asks.md`. Canonical write-up of each ask: the
 site-docs-side `automated-site-documentation-bot/docs/browxai-asks.md` (#1–#6) and the
-adoption-run report at `docs/adoption-report-target-app-2026-05-13.md` (#7–#11).
+adoption-run report at `docs/adoption-report-2026-05-13.md` (#7–#11).
 
 **Phase 1 (from the pre-shipping site-docs asks):**
 

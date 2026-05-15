@@ -34,7 +34,7 @@ Also flagged but **not a browxai ask** (consumer-of-browxai problem on the site-
 
 ## Round-3 asks (post-shipping, from the 2026-05-15 re-adoption-run report)
 
-The re-adoption run (`docs/adoption-report-target-app-2026-05-15.md`) **closed the Phase-1 headline exit criterion** — `find()` exercised against the augmented snapshot, one new the feature area flow file calibrated entirely through `browxai-attached`, no-trace contract held, replay determinism intact. The verdict was **WIN**. Five small follow-on asks surfaced — three 🟡 surgical, two 🟢 polish — none architectural.
+The re-adoption run (`docs/adoption-report-2026-05-15.md`) **closed the Phase-1 headline exit criterion** — `find()` exercised against the augmented snapshot, one new the feature area flow file calibrated entirely through `browxai-attached`, no-trace contract held, replay determinism intact. The verdict was **WIN**. Five small follow-on asks surfaced — three 🟡 surgical, two 🟢 polish — none architectural.
 
 | # | Severity | Ask (short) | Status |
 |---|---|---|---|
@@ -43,6 +43,44 @@ The re-adoption run (`docs/adoption-report-target-app-2026-05-15.md`) **closed t
 | 14 | 🟡 | **`find()` scoring should weight test-attribute string matches more heavily** — especially for `<input>` / non-button elements. Exact testid in query (`app-common-time-input-seconds`) failed to surface the matching `<input>` because the role+name surface is empty for inputs (no `aria-label`; just a placeholder/value). Options: score testId-value matches independently of role/name; boost when `role == "input"` AND test-attribute value matches a query keyword; emit a `warnings: ["no candidate scored confidently"]` when no top-3 candidate exceeds a score floor so the agent knows to fall through to snapshot. | Phase-1.5 — scoring change in `find()`; needs iterations + tests |
 | 15 | 🟢 | **CDP-attached `bbox: null + clipped: true` for plainly-visible elements.** Every `find()` candidate's `bbox` came back null on the BYOB path even for elements visible in the attached Chrome. Runtime-side (managed-mode + site-docs's annotation halo placement) is byte-correct. Likely the attached CDP context has no default viewport; setting one or reading `Page.viewportSize()` and threading through the viewport-intersect step would close the parity. | Phase-1.5 — viewport plumbing in `src/session/byob.ts` |
 | 16 | 🟢 | **Docs: `stability` semantics + `find()` query-matching surface.** Two confusion points cost ~1h this round: (a) `stability: "high"` means "disambiguator on this snapshot," not "survives content/test-attr rotation" — an asset-card with `[data-testid="library-asset-container-<id>"]` is high-stability for *this* snapshot but content-keyed for the next. (b) `find()` matches on `name` (accessible name) + `role` + test-attribute *values*; queries like "brain/voice icon" for icon-only tabs without these textual surfaces miss. Either document explicitly in `tool-reference.md`, or surface a `stabilityKind: "structural"|"content-keyed"` on the find result (heuristic: testId looks numeric / UUID-like → content-keyed). | Phase-1.5 — docs-only or tiny shape addition |
+
+## Forward-looking wishlist (round-4, 2026-05-15)
+
+Source: `docs/wishlist-2026-05-15.md` — adopter's forward-looking improvements list,
+*pairs with* the round-3 adoption-run report. None of these blocked any single run;
+collectively they're what would make the loop faster/leaner across many runs.
+Browxai-side items only; site-docs-side wishes (`flow_lint`, `--start-from`, annotation
+nudge, `flow tree`, …) are handled separately on that side.
+
+The author's top-3 leverage picks: **D1 + A1 + B4** (B4 is site-docs's). For browxai:
+**D1 (`actionable` on `find()` results) is the single highest-leverage addition** —
+catches a class of failures at calibration-time instead of run-time and folds together
+two of the round-3 🟡 asks.
+
+| # | Group | Severity | Ask (short) | Where it lands |
+|---|---|---|---|---|
+| W-A1 | snapshot perf | 🟡 | **Scoped snapshots** — `snapshot({ scope: <ref>, maxNodes: N, omit: [<patterns>] })`. Current snapshots routinely emit 200–500 nodes when 5 are wanted; scoped cuts ~7–10k tokens → ~500–1.5k. Author's #2 leverage pick. | extends `snapshotDelta.scope` Phase-1.5 work; new `scope`/`maxNodes`/`omit` params on top-level `snapshot()` |
+| W-A2 | snapshot perf | 🟡 | `snapshotDelta` modes that **actually scope** — `tree_diff` emits just the changed subtree (or `appeared:`/`removed:` only). Today falls back to full + warning. Make scoped the natural default. | folds into existing Phase-1.5 `snapshotDelta.scope` + `tree_diff` items |
+| W-A3 | find ergonomics | 🟡 | `find({ contextRef, confidenceFloor })` — limit ranking to descendants of a ref; emit `warnings: ["no candidate scored confidently above N"]` instead of always returning 3–5 low-quality hits. | extends round-3 ask #14 (find scoring) and ask #11 (warnings shape) |
+| W-A5 | tokens | 🟢 | Console-error summarisation in `ActionResult.console` — single React stack-trace was ~1500 tokens. Mirror the existing `network.requests omitted (count … > cap)` pattern: short summary + `truncated_chars: N` + `console_read` for full. | new field on `ActionResult.console` |
+| W-A6 | ergonomics | 🟢 | Smarter `mode` defaults across action primitives — heuristic: emit `tree_diff` when `structure.appeared/removed` is non-empty, else nothing. | tied to W-A2 |
+| W-B1 | new primitive | 🟡 | **`eval({ expr, returnType })`** — controlled JS-eval primitive (or narrower `dispatch({ event, target })`). Adopter dropped 30-line `.cjs` scripts in `/tmp` *three times* across the session for a single page-side function call. Page-content concerns apply to the return value (trust boundary preserved); the call originates from the (trusted) agent. | new MCP tool; security-warned (Phase-2 capability-toggle territory) |
+| W-B2 | new primitive | 🟢 | `screenshot({ ref, describe: true })` — alt-text alongside the PNG so the agent can skip vision-reading when just confirming "yes the button is there." | extension to `screenshot` tool |
+| W-B5 | helper kinds | 🟡 | `await_human({ kind: "confirm" | "input" })` — lost ~3–4 turns waiting for the user to type "Done!". Already on the deferred Phase-1.5 list; the wishlist confirms it's high-leverage. | promotes the pre-existing "await_human kinds beyond acknowledge" item up the queue |
+| W-B6 | CLI helper | 🟢 | **`browxai init --consumer <workspace>`** — one-command setup: creates `<workspace>/.browxai/`, registers both MCP entries user-scope, sniffs the codebase for `data-type`/`data-testid` ratio to pick `BROWX_TEST_ATTRIBUTES` order, prints the resolved config. Replaces the hand-typed `claude mcp add-json` dance. | new CLI subcommand |
+| W-B7 | CLI helper | 🟢 | **`browxai chrome [start|stop]`** — own the `--cdp` Chrome lifecycle. `start --persistent` uses the right flags + a stable profile location (logins survive across sessions); `stop` clean teardown. Reduces the 4-flag Chrome-launch ceremony to a one-liner. | new CLI subcommand |
+| W-C1 | refs | 🟢 | Persistent **named refs** across snapshots — `name_ref({ ref, name })` rebinds across snapshots; `click({ named })` carries small anchor sets session-wide. Today refs are per-snapshot stable but bare `eN`s aren't memorable across rounds. | extends `RefRegistry` (already stable-key based; the named-alias layer is small) |
+| W-C2 | recording | 🟢 | Calibration-walk → flow-file scaffold — `start_recording({ flow_name })` / `end_recording()` emits a draft `flow-file.yaml` with locators from the top-ranked `find()` candidate per step. Cuts ~15–20 min/flow of YAML hand-writing. | spans browxai (recording) + site-docs (YAML shape); cross-cutting |
+| **W-D1** | **find quality** | 🔴 *(per author leverage)* | **`actionable` predicate on `find()` results** — return `actionable: boolean \| "disabled" \| "covered" \| "off-screen"` alongside `stability` / `bbox`. Closes the calibration-time vs run-time gap that bit twice in round 3 (`<input disabled>` halts that the snapshot already "saw"). The single **highest-leverage** change in this wishlist; folds together two of the round-3 🟡 asks. | new field on `FindCandidate`; ~10–20 LOC behind a Playwright `isVisible()` + `isEnabled()` + a small `elementHandle.evaluate(coversTest)` triple |
+| W-D3 | env check | 🟢 | `browxai doctor` — environment & connectivity check (build present? both MCP entries registered? `--cdp` Chrome reachable? `BROWX_TEST_ATTRIBUTES` set? `BROWX_WORKSPACE` writable?). Already deferred from round-2 ask #9; wishlist re-prioritises. | new CLI subcommand |
+
+**Not browxai's:** A4 inline halt-screenshot ref (site-docs writes the halt), B3 `flow_lint`, B4 `--start-from`/`--cdp`, C3 annotation nudge, C4 `flow tree`. **Not anyone's**: D2 pre-seeded fixture (target-app's BE).
+
+**Author's stated "not"-list** worth quoting:
+
+- Replacing site-docs `run` with browxai entirely — buys nothing, loses determinism. The discovery/execution split is right.
+- Tier-3/4 selectorHints — already Phase-1.5-deferred; the author observed tier-1 + tier-2 carry ~95% of the load on heavy-`data-attr` codebases.
+- Standalone session-wide `network_read` buffer — the `ActionResult.network` per-action slice was sufficient.
 
 ## Sequencing
 
@@ -59,6 +97,11 @@ is closed):** #12+#13+#14+#15+#16. #14 is the highest-leverage of the three 🟡
 the gap between "find() ranked what I asked for" and "find() ranked something else and
 I read the testid off the snapshot"); #13 prevents a known stack-overflow trap;
 #12 is a schema-only knob. None are gating.
+
+**Wishlist round-4 (opened 2026-05-15 alongside the adoption report; forward-looking
+not gating):** **W-D1 is the headline** (the author's own top pick), **W-A1** is the
+biggest token-cost reduction. The CLI-helper items (W-B6, W-B7, W-D3) share design
+space and naturally batch. W-B5 promotes the pre-existing `await_human`-kinds item.
 
 **Phase 1.5 (next, opened 2026-05-13 by the adoption-run report):** ask #7 (DOM-walk
 fallback) is the priority — it unblocks the canonical discovery use case on real-world
