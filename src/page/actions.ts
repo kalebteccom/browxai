@@ -108,10 +108,10 @@ function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
 }
 
 /**
- * W-E1: always read post-action DOM state so callers can confirm a write
- * landed without a follow-up `snapshot`/`screenshot` round-trip. Previously
- * fill echoed the requested string back as `value`, which made the probe
- * useless as a confirmation signal — agents fell back to screenshots.
+ * Always read post-action DOM state so callers can confirm a write landed
+ * without a follow-up `snapshot`/`screenshot` round-trip. We deliberately
+ * do not echo back `valueRequested` as `value` — the probe must report what
+ * the DOM actually holds, not what the caller asked for.
  *
  * Exported for unit tests.
  */
@@ -144,11 +144,12 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
         return el.checked === true;
       })
       .catch(() => undefined);
-    // Visible-wrapper text. Critical for React Select / combobox-style controls
-    // where `input.value` is empty after Enter but the wrapper renders the
-    // selected chip text. Walks up to 4 ancestors looking for a labelled node
-    // (role attr or `data-testid|test|cy|qa`); falls back to immediate parent's
-    // innerText. Capped at 200 chars.
+    // Visible-wrapper text. Covers controls that render the post-action state
+    // outside `input.value` (chip-style selects, combobox displays, badge
+    // pickers, custom dropdowns that clear the underlying input on commit).
+    // Walks up to 4 ancestors looking for a labelled node (role attr or
+    // `data-testid|test|cy|qa`); falls back to immediate parent's innerText.
+    // Capped at 200 chars.
     const displayText = await loc
       .evaluate((el: unknown) => {
         const DOC_BODY_TAG = "BODY";

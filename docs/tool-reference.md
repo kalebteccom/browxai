@@ -160,14 +160,14 @@ Goto a URL. Returns an `ActionResult`.
 Click. Returns an `ActionResult` with the post-action `element` probe (`stillAttached`, `focused`, `value`, `displayText`).
 
 ### `fill({ ref?|selector?, value, ...opts })`
-Type into an input. The post-action `element` probe is the **confirmation signal** (W-E1) — no follow-up `snapshot`/`screenshot` needed in the common case:
+Type into an input. The post-action `element` probe is the confirmation signal — no follow-up `snapshot`/`screenshot` needed in the common case:
 
-- `element.value` — what's *actually* in the DOM after the write. **Not an echo** of `value`. If the field is masked / capped / controlled, this differs from what you asked for.
-- `element.valueRequested` — the string you asked us to type. `value === valueRequested` ⇒ write landed as-asked; mismatch ⇒ the field rejected/transformed it.
-- `element.displayText` — visible text of the closest labelled wrapper (role / `data-testid*`) up to 4 ancestors above. Surfaces the *displayed* state for controls where `value` is empty by design — React Select / combobox chips clear `input.value` after Enter but render "Engineering" in the wrapper. Capped at 200 chars; omitted when no labelled wrapper was found.
+- `element.value` — what's *actually* in the DOM after the write. **Not an echo** of the requested `value`. If the field is masked / capped / controlled, this differs from what you asked for.
+- `element.valueRequested` — the string you asked us to type. `value === valueRequested` ⇒ write landed as-asked; mismatch ⇒ the field rejected or transformed it.
+- `element.displayText` — visible text of the closest labelled wrapper (role attr or `data-testid|test|cy|qa`) up to 4 ancestors above. Surfaces the *displayed* state for controls that render the result outside `input.value` (chip-style selects, combobox displays, badge pickers, custom dropdowns that clear the underlying input on commit). Capped at 200 chars; omitted when no labelled wrapper was found.
 - `element.checked` — for `<input type=checkbox|radio>`: `true | false | "mixed"` (indeterminate). Omitted for non-checkbox elements.
 
-The trustworthy confirmation check for a chip/combobox fill is: `value === valueRequested || displayText?.includes(valueRequested)`.
+A robust confirmation check across input shapes: `value === valueRequested || displayText?.includes(valueRequested)`.
 
 ### `press({ ref?|selector?, key, ...opts })`
 Press a key (Playwright key syntax: `"Enter"`, `"Control+A"`, …). If `ref`/`selector` is omitted, presses on the page.

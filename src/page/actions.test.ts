@@ -32,7 +32,7 @@ function locator(spec: MockSpec) {
   } as never;
 }
 
-describe("probe() — W-E1 enriched ActionResult", () => {
+describe("probe() — post-action element observability", () => {
   it("reads the DOM value back, not the requested echo", async () => {
     // Masked input rejected the trailing digits; agent must see the actual DOM value.
     const loc = locator({
@@ -80,21 +80,22 @@ describe("probe() — W-E1 enriched ActionResult", () => {
     expect(r.value).toBe("drafted text");
   });
 
-  it("surfaces displayText for React-Select / combobox chips", async () => {
-    // React Select clears `input.value` after Enter — agent needs the wrapper's
-    // visible "Engineering" text to confirm the chip landed.
+  it("surfaces displayText for controls that render state outside input.value", async () => {
+    // Pattern: control clears the underlying input on commit and renders the
+    // committed selection in a labelled wrapper above (chip-style selects,
+    // combobox displays, badge pickers, custom dropdowns).
     const loc = locator({
       inputValue: "",
       evaluateReturns: [
-        true,             // focused (search input still focused)
-        undefined,        // checked
-        "Engineering",    // displayText from labelled wrapper
+        true,              // focused (search input still focused)
+        undefined,         // checked
+        "Selected option", // displayText from labelled wrapper
       ],
     });
-    const r = await probe(loc, { ref: "e5" }, "engineering");
+    const r = await probe(loc, { ref: "e5" }, "selected option");
     expect(r.value).toBe("");
-    expect(r.displayText).toBe("Engineering");
-    expect(r.valueRequested).toBe("engineering");
+    expect(r.displayText).toBe("Selected option");
+    expect(r.valueRequested).toBe("selected option");
   });
 
   it("omits displayText when no labelled wrapper is found", async () => {
