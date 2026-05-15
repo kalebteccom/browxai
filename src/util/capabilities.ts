@@ -54,6 +54,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   press: "action",
   hover: "action",
   select: "action",
+  choose_option: "action",
   wait_for: "action",
   // human
   await_human: "human",

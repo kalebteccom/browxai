@@ -509,6 +509,45 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   );
 
   register(
+    "choose_option",
+    {
+      description:
+        "Pick an option in a combobox / listbox / menu by visible text. Generic primitive for custom controls that aren't native `<select>` (so the `select` tool can't drive them). The `target` is the trigger control (the combobox itself); `option` is the visible text of the option to commit. Opens the control if not already expanded, waits for a visible listbox/menu/portal, clicks the resolved option element (no type-and-press-Enter), returns the W-F2 probe on the trigger — `ownerControl.displayTextAfter` shows the committed selection.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        option: z.string().describe("Visible text of the option to commit."),
+        exact: z.boolean().optional().describe("Exact-text match (default true). When false, the option is matched as a substring."),
+        ...ACTION_OPTS,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("choose_option"); if (g) return g;
+      const c = await confirmByobAction("choose_option", confirmCtx());
+      if (!c.ok) return denyContent("choose_option", c);
+      const target = asTarget(args, "choose_option", refs);
+      if ("coords" in target) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              ok: false,
+              error: "choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords",
+            }, null, 2),
+          }],
+        };
+      }
+      return asActionResultText(actions.chooseOption(await ctx(), {
+        target,
+        option: args.option,
+        exact: args.exact,
+        mode: args.mode,
+        maxResultTokens: args.maxResultTokens,
+        recordingHint: hintFromTarget(target),
+      }));
+    },
+  );
+
+  register(
     "go_back",
     { description: "Navigate back in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
@@ -697,7 +736,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // controls (`start_recording`/`end_recording`/`record_annotate` — meant for
   // interactive sessions); CLI-style helpers that mutate session config.
   const BATCH_ALLOWED_TOOLS = new Set<string>([
-    "navigate", "click", "fill", "press", "hover", "select", "wait_for",
+    "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward",
     "snapshot", "find", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",

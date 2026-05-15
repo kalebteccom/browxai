@@ -114,6 +114,70 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
   });
 }
 
+export interface ChooseOptionArgs extends ActionWindowOptions {
+  target: ActionTarget;
+  option: string;
+  exact?: boolean;
+}
+
+/**
+ * W-F3 — `choose_option` primitive. Generic combobox/listbox/menu selection
+ * for custom controls that aren't native `<select>` (so the existing `select`
+ * tool can't drive them). The pattern: open the target control, wait for a
+ * visible listbox/menu/portal, find the option element by exact text, click
+ * it, return the W-F2 probe on the *trigger* so `ownerControl.displayText`
+ * shows the committed selection.
+ *
+ * Falls back across `role=option` → `role=menuitem` → `getByText` so works
+ * on any reasonable combobox shape. Does **not** simulate keyboard navigation
+ * (type-and-press-Enter) — that's a different primitive and prone to picking
+ * the wrong option in dense lists.
+ */
+export async function chooseOption(ctx: ActionContext, args: ChooseOptionArgs): Promise<ActionResult> {
+  const descriptor: ActionDescriptor = { type: "chooseOption", value: args.option, ...targetDescriptor(args.target) };
+  return runInActionWindow(ctx, descriptor, args, async () => {
+    if (args.target.coords) {
+      throw new Error("choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords");
+    }
+    const trigger = locatorFor(ctx.page, ctx.refs, args.target);
+    const pre = await preProbe(trigger);
+
+    // Open the control if not already expanded. `aria-expanded` is the strongest
+    // signal; absence isn't proof it's closed, so we still click if false-or-missing.
+    const isExpanded = await trigger
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .evaluate((el: any) => el.getAttribute && el.getAttribute("aria-expanded") === "true")
+      .catch(() => false);
+    if (!isExpanded) {
+      await trigger.click({ timeout: DEFAULT_TIMEOUT_MS });
+    }
+
+    const optionLoc = await resolveOption(ctx.page, args.option, args.exact ?? true);
+    await optionLoc.click({ timeout: DEFAULT_TIMEOUT_MS });
+
+    return probe(trigger, args.target, undefined, pre);
+  });
+}
+
+/** Resolve the option element by exact text across the three common shapes a
+ *  custom combobox/listbox emits. Tries each in order, returning the first
+ *  attempt that has a non-zero count. Last attempt is returned even if empty
+ *  so the subsequent `click()` produces a clean timeout error instead of
+ *  silently doing nothing. */
+async function resolveOption(page: Page, text: string, exact: boolean): Promise<Locator> {
+  const attempts: Array<() => Locator> = [
+    () => page.getByRole("option", { name: text, exact }).first(),
+    () => page.getByRole("menuitem", { name: text, exact }).first(),
+    () => page.getByText(text, { exact }).first(),
+  ];
+  for (const make of attempts) {
+    const loc = make();
+    const count = await loc.count().catch(() => 0);
+    if (count > 0) return loc;
+  }
+  return attempts[0]!();
+}
+
 export interface GoBackArgs extends ActionWindowOptions {}
 export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goBack" }, args, async () => {

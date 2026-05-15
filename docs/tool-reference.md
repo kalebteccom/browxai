@@ -213,6 +213,16 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 ### `select({ ref?|selector?, values, ...opts })`
 `selectOption` on a `<select>`.
 
+### `choose_option({ target, option, exact?, ...opts })` *(W-F3)*
+Pick an option in a **custom combobox / listbox / menu** by visible text. Generic primitive for controls that aren't native `<select>` — the kind that open a portal listbox on click and commit on option click. The `target` is the trigger (the combobox itself); `option` is the visible text of the option to commit. Behaviour:
+
+1. If `aria-expanded !== "true"` on the trigger, click the trigger to open the control.
+2. Find a visible option element matching `option`: tries `getByRole("option")`, then `getByRole("menuitem")`, then `getByText` — first attempt with non-zero count wins.
+3. Click the resolved option element.
+4. Return the W-F2 probe on the **trigger** — `element.ownerControl.displayTextAfter` shows the committed selection.
+
+`exact` defaults to `true` (option text must match exactly). Set `false` to allow substring. Does **not** simulate type-and-press-Enter — that's prone to picking the wrong option in dense lists.
+
 ### `wait_for({ ref?|selector?, timeoutMs?, ...opts })`
 Wait until the element is visible.
 
