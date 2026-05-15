@@ -108,6 +108,43 @@ shape). All before Phase-3 public-release work.
 - Row-aware / table-aware helpers — `contextRef + selector` covers the case
   generically.
 
+## Round-6 asks (post-shipping, 2026-05-15 — screenshot-less authed-SPA report)
+
+Source: `docs/screenshotless-flows-report-2026-05-15.md`. After round-5, plain-input
+writes and known-safe batches stopped requiring screenshots. The remaining screenshot
+dependency concentrated in **proving semantic state after actions that target custom
+controls inside repeated layouts**. The eight literal asks in the report collapse into
+six primitives plus an ergonomics fix.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| W-F1 | Nodes in repeated structures lose their structural neighborhood, so serialised snapshots can't answer "what row/column is this in?". | Structural-context annotations on `snapshot()`/`find()` nodes: `context: { collection, rowKey, column, rowText }`. Generic detector — semantic table/grid roles, repeated-sibling-of-same-shape, header-aligned columns. No table-specific helpers. **Foundational; F2/F4 reference these annotations.** | **impl-pending** |
+| W-F2 | `ActionResult.element` describes the direct action target, not the *logical thing that changed* (owning combobox, containing row, coordinate-hit element). | Extend the post-action probe with `ownerControl?` (label, kind, `displayTextBefore`/`displayTextAfter`, `changed`) and `container?` (kind, rowKey, contextText, changed). For `coords` targets, add `hit` (elementFromPoint before/after, owner ancestor, focus change). Owner detection via `aria-controls`/`aria-labelledby`/labelled ancestor; container via the F1 detector. **Also reframes coords as a first-class peer of ref/selector for canvas / WebGL / painted UIs — not an apologetic "escape hatch".** | **impl-pending** |
+| W-F3 | Custom combobox/listbox selection by coords or type+Enter can't be semantically confirmed; `select` only handles native `<select>`. | `choose_option({ target, option, exact? })`: opens target, waits for listbox/menu/portal, picks the resolved option element matching `option` text, returns the F2-shaped probe. Generic combobox/listbox/menu — not record-entry-specific. | **impl-pending** |
+| W-F4 | `find()` is action-target resolution; overloading it for presence/absence verification gets unrelated candidates. | `text_search({ text, exact?, scope?, includeHidden? })` read-only tool returning `{ count, matches: [{ ref, text, context, bbox, clipped }] }`. The verification primitive, separate from `find()`. | **impl-pending** |
+| W-F5 | Action windows summarise network counts but not "did a mutation succeed and what shape did it write back". | `ActionResult.network.mutations: [{ method, urlPattern, status, responseShape, durationMs }]` for write-shaped requests in the action window. `responseShape` is *just the top-level key names* of the response — no values. Bounded and redacted by default. Full body inspection ships separately as `network_body({ requestId })` under a higher-risk capability. | **impl-pending** |
+| W-F6 | Batch results are hard to audit; failures don't fail until the model parses the result back. | Each `batch` call accepts optional `label` (echoed verbatim in result for cross-referencing) and optional `expect` predicate (`controlDisplayTextIncludes`, `valueEquals`, `containerTextIncludes`). Failed expect counts as call failure and respects `stopOnError`. Minimal DSL — not an assertion language. | **impl-pending** |
+| W-F7 | `screenshot` returns full-resolution PNG; multimodal agents need to trade file size vs fidelity for context budget. | Add `quality: 0-100` (for JPEG), `format: "png" \| "jpeg"`, `scale: "css" \| "device"` to the `screenshot` tool. Defaults unchanged (PNG, device-scale). Multimodal-agent ergonomics — does not introduce OCR or screenshot-driven inference; the agent's own vision capability does that. | **impl-pending** |
+
+**Sequencing:** F1 (foundational — context detector) → F2 (uses F1 for `container`;
+also lands the coords-as-first-class doc reframe) → F3 (uses F2's `ownerControl`) →
+F4 (uses F1's `context` in matches) → F5 (independent) → F6 (depends on F2's
+`displayTextAfter` / `value` for `expect` predicates) → F7 (independent ergonomics).
+
+**Out of scope for round-6:**
+
+- **Screenshot OCR / vision-from-server** — multimodal agents bring their own vision;
+  browxai stays in the structured-state domain. F7 lets the agent tune what it sees
+  without us inferring on the page.
+- **Unbounded network response bodies by default** — F5 stays redacted (keys only).
+  A separate `network_body({ requestId })` tool under a higher-risk capability can
+  expose full bodies opt-in; that's a future, gated addition, not part of F5.
+- **App-specific helpers** (record-entry / timesheet / form-grid / dated rows) —
+  the F1 structural-context detector is the primitive; consumers compose against
+  it. No `record_grid_row()` helpers.
+- **Auto-screenshot fallback** — if a probe is ambiguous, return that ambiguity to
+  the caller; don't paper over it with a screenshot under the hood.
+
 **Author's stated "not"-list** worth quoting:
 
 - Replacing site-docs `run` with browxai entirely — buys nothing, loses determinism. The discovery/execution split is right.
