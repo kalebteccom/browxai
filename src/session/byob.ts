@@ -52,6 +52,30 @@ export async function openByobSession(opts: SessionOptions & { attachCdp: string
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);
 
+  // Round-3 ask #15: ensure the attached page reports a usable viewport so the
+  // visible-rect bbox path (page/bbox.ts) doesn't intersect against `innerWidth=0
+  // innerHeight=0` and produce `null + clipped: true` for every visible element.
+  // Read the current viewport via Runtime.evaluate; if it's zero (no window
+  // metrics on the attached target), set a sensible default via CDP Emulation.
+  try {
+    const { result } = (await cdp.send("Runtime.evaluate", {
+      expression: "({ w: window.innerWidth, h: window.innerHeight })",
+      returnByValue: true,
+    })) as { result: { value?: { w: number; h: number } } };
+    const v = result.value ?? { w: 0, h: 0 };
+    if (!v.w || !v.h) {
+      log.info("session.byob: attached page has zero viewport; setting 1280x800 default", v);
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1280,
+        height: 800,
+        deviceScaleFactor: 0,
+        mobile: false,
+      }).catch(() => undefined);
+    }
+  } catch {
+    /* not fatal — the bbox path will gracefully return null if the eval fails */
+  }
+
   let closed = false;
   return {
     mode: "byob",

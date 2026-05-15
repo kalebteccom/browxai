@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildSelectorHint } from "./find.js";
+import { buildSelectorHint, scoreNode } from "./find.js";
+import type { A11yNode } from "./a11y.js";
+
+function n(role: string, name: string | undefined, testId?: string, extra: Partial<A11yNode> = {}): A11yNode {
+  return { ref: "e1", role, name, testId, children: [], ...extra };
+}
 
 describe("buildSelectorHint preference order (ask #4)", () => {
   it("tier 1: data-testid beats everything, stability=high", () => {
@@ -41,5 +46,35 @@ describe("buildSelectorHint preference order (ask #4)", () => {
     expect(h.tier).toBe(1);
     expect(h.stability).toBe("high");
     expect(h.hint).toBe('[data-testid="mini-library"]');
+  });
+});
+
+describe("scoreNode (round-3 ask #14: weight testId hits more, especially for inputs)", () => {
+  it("exact testId match dominates", () => {
+    const q = "app-common-time-input-seconds";
+    const node = n("textbox", undefined, "app-common-time-input-seconds");
+    const score = scoreNode(node, q, q.split(/\s+/));
+    expect(score).toBeGreaterThan(20);
+  });
+
+  it("input-shaped roles get a testId-token boost beyond what buttons get", () => {
+    const q = "the time-input-seconds inside the start-time-input panel";
+    const tokens = q.toLowerCase().split(/\s+/);
+    const input = n("textbox", undefined, "app-common-time-input-seconds");
+    const button = n("button", undefined, "app-common-time-input-seconds");
+    const inputScore = scoreNode(input, q.toLowerCase(), tokens);
+    const buttonScore = scoreNode(button, q.toLowerCase(), tokens);
+    expect(inputScore).toBeGreaterThan(buttonScore);
+  });
+
+  it("ignores single-character noise tokens in the per-token boost", () => {
+    // 1-char tokens like "a", "x" shouldn't artificially boost score —
+    // every testId would otherwise pick up a free +2 per token.
+    const q = "a x y";
+    const node = n("button", undefined, "panel-x-y");
+    const score = scoreNode(node, q, q.split(/\s+/));
+    // No exact-query or substring-query hits; per-token loop skips length-<2.
+    // role isn't in the query. So score = 0.
+    expect(score).toBe(0);
   });
 });

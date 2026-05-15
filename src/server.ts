@@ -114,12 +114,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         query: z.string().describe("Natural-language description, e.g. 'the Save button'"),
         maxCandidates: z.number().int().positive().max(20).optional(),
+        confidenceFloor: z.number().nonnegative().optional().describe("Emit a `warnings` entry when no candidate scored above this floor (default 0 = off)."),
       },
     },
-    async ({ query, maxCandidates }) => {
+    async ({ query, maxCandidates, confidenceFloor }) => {
       const s = await openSession();
-      const candidates = await find(s.cdp(), refs, { query, maxCandidates, testAttributes: config.testAttributes });
-      return { content: [{ type: "text", text: JSON.stringify({ query, candidates }, null, 2) }] };
+      const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, testAttributes: config.testAttributes });
+      return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
     },
   );
 
@@ -244,7 +245,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "wait_for",
     {
       description: "Wait until an element is visible (by `ref` or `selector`). Returns an ActionResult.",
-      inputSchema: { ...REF_OR_SELECTOR, timeoutMs: z.number().int().positive().max(120_000).optional(), ...ACTION_OPTS },
+      inputSchema: { ...REF_OR_SELECTOR, timeoutMs: z.number().int().positive().max(600_000).optional(), ...ACTION_OPTS },
     },
     async (args) => asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for"), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );

@@ -47,7 +47,13 @@ export interface ActionResult {
     removed: Array<{ role: string; name?: string; ref: string }>;
     newTabs: Array<{ url: string; title: string }>;
   };
-  console: { errors: string[]; warnings: number };
+  console: {
+    errors: string[];
+    warnings: number;
+    /** Wishlist W-A5: number of chars trimmed from the summarised view of `errors`
+     *  (long React stack-traces etc). The full message is retained via `console_read`. */
+    truncated_chars?: number;
+  };
   pageErrors: string[];
   element?: ElementProbe;
   snapshotDelta?: {
@@ -152,13 +158,31 @@ export async function runInActionWindow(
       structure.newTabs.push({ url: p.url(), title: await p.title().catch(() => "") });
     }
   }
-  const consoleSlice = {
-    errors: ctx.console.errorsSince(tBefore),
-    warnings: ctx.console.warningCountSince(tBefore),
-  };
+  // Wishlist W-A5: summarise long console errors inline. A single React stack-trace
+  // is routinely ~50 lines / ~1500 tokens; the agent rarely needs the full thing in
+  // an ActionResult. We truncate per-error to the first line + a token-budget cap,
+  // record the trimmed-chars total, and a warnings entry points the agent at
+  // `console_read` for the full message.
+  const rawErrors = ctx.console.errorsSince(tBefore);
+  const consoleSlice = summariseConsoleErrors(rawErrors, warnings);
+  consoleSlice.warnings = ctx.console.warningCountSince(tBefore);
   const pageErrors = ctx.console.pageErrorsSince(tBefore);
 
-  const snapshotDelta = buildSnapshotDelta(mode, postTree, maxTokens, warnings);
+  // Wishlist W-A6: smarter `mode` defaults. When the default `scoped_snapshot` was
+  // requested AND the action produced no structural change (no nav, no appeared/
+  // removed regions), it's almost never useful to emit any tree — the adopter
+  // reported routinely setting `mode: "none"` for this reason. Promote to `none`
+  // automatically; explicit non-default modes are still honoured.
+  const navigationChanged = urlBefore !== urlAfter;
+  const structureChanged = (postTree && preTree) &&
+    (diffRegions(preRegions, postRegions).appeared.length > 0 ||
+     diffRegions(preRegions, postRegions).removed.length > 0);
+  let effectiveMode = mode;
+  if (mode === "scoped_snapshot" && !navigationChanged && !structureChanged) {
+    effectiveMode = "none";
+    warnings.push("snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:\"full\" if you need the post-action tree anyway");
+  }
+  const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings);
   const networkBlock = network.summary.total > 0
     ? (network.requests.length <= requestCap
         ? { summary: network.summary, requests: network.requests }
@@ -258,4 +282,43 @@ function buildSnapshotDelta(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Wishlist W-A5. Inline summary of console errors — collapse multi-line stack-traces
+ * to their first line + a token-budget per error, and emit `truncated_chars` if any
+ * were trimmed. The full text is still in the session's `ConsoleBuffer`; an agent
+ * who needs it calls `console_read`. Pattern mirrors the existing
+ * `network.requests omitted (count N > cap)` design.
+ */
+const ERROR_MAX_CHARS_PER = 400;
+const ERROR_MAX_TOTAL_ENTRIES = 20;
+function summariseConsoleErrors(
+  errors: string[],
+  warnings: string[],
+): { errors: string[]; warnings: number; truncated_chars?: number } {
+  if (errors.length === 0) return { errors: [], warnings: 0 };
+  let trimmed = 0;
+  const out: string[] = [];
+  const slice = errors.slice(0, ERROR_MAX_TOTAL_ENTRIES);
+  for (const e of slice) {
+    if (e.length <= ERROR_MAX_CHARS_PER && !e.includes("\n")) {
+      out.push(e);
+      continue;
+    }
+    const firstLine = e.split("\n")[0]!.slice(0, ERROR_MAX_CHARS_PER);
+    out.push(firstLine + " …");
+    trimmed += Math.max(0, e.length - firstLine.length);
+  }
+  if (errors.length > ERROR_MAX_TOTAL_ENTRIES) {
+    warnings.push(
+      `console.errors truncated (showing ${ERROR_MAX_TOTAL_ENTRIES} of ${errors.length}); call console_read for the full ring buffer`,
+    );
+  }
+  const result: { errors: string[]; warnings: number; truncated_chars?: number } = { errors: out, warnings: 0 };
+  if (trimmed > 0) {
+    result.truncated_chars = trimmed;
+    warnings.push(`console.errors stack-traces summarised (${trimmed} chars trimmed); call console_read for the full text`);
+  }
+  return result;
 }

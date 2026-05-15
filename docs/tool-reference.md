@@ -53,6 +53,16 @@ Find candidate elements by natural-language description.
 ```
 **selectorHint preference order** (asks #4 + #10): `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role *(Phase-1.5)* → structural (id/semantic) *(Phase-1.5)* → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
 
+**Stability semantics** (round-3 ask #16): `stability: "high"` means "**uniquely identifies this element in this snapshot**" — i.e. the locator works *right now*. It does **not** mean "survives content rotation across deploys." An asset card with `[data-testid="asset-container-12345678"]` (a content-keyed numeric suffix) is `"high"` for this snapshot but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer a structural/name selector or compose: `[data-testid^="asset-container-"]:has-text("…")`. The current `stability` field is honest about per-snapshot uniqueness; "deploy stability" is the agent's call to make on top of it.
+
+**What `find()` matches against** (round-3 ask #16): the query is tokenised on whitespace and matched (case-insensitive substring) against each candidate's **accessible name** + **role** + **test-attribute value** (whichever attribute matched per `BROWX_TEST_ATTRIBUTES`). It does *not* match against icon characters, `title=`, `placeholder=`, raw HTML attribute names, or off-screen ancestors' text. For icon-only tabs with no `aria-label`, query by the testid/data-attr value, not the visual content.
+
+**Disambiguation** (round-3 ask #13): when the bare `selectorHint` matches multiple DOM nodes (e.g. a visible button + a hidden DOM sibling sharing the same `data-type`), the emitted hint is auto-promoted to `[<attr>="…"]:visible` (or `:nth-match(..., 1)` last-resort) so mechanical transcription into a flow file doesn't re-introduce a hidden-duplicate `boundingBox` hang.
+
+**Actionable predicate** (wishlist W-D1): each candidate carries `actionable: true | "disabled" | "off-screen" | "covered"` alongside `stability` / `bbox`. Lets a calibration agent reject `<input disabled>`-shaped halts at write-time instead of run-time. `"covered"` is reserved for a future check; today the value is `true` / `"disabled"` / `"off-screen"`.
+
+**`confidenceFloor`** (wishlist W-A3): pass `confidenceFloor: <N>` and `find()` emits a `warnings: ["no candidate scored confidently above N (top score: …)"]` entry when nothing crosses the bar — gives the agent a clean "fall through to snapshot" signal instead of grinding through a list of low-quality candidates.
+
 **bbox semantics** (ask #5): `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.
 
 ### `screenshot`
