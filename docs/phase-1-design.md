@@ -334,38 +334,58 @@ the browxai side.
 
 ## 7. Phase-1.5 follow-ons
 
-The 2026-05-13 target-app adoption-run report (`docs/adoption-report-target-app-2026-05-13.md`) re-ordered
-this list. The top three items are gating: until they land, browxai is materially blunted on
-heavy-SPA targets (target-app-shape codebases — sparse a11y roles, dense `data-testid`/`data-type`).
+The 2026-05-13 target-app adoption-run report (`docs/adoption-report-target-app-2026-05-13.md`) opened
+asks #7–#11. **All five shipped 2026-05-13** — the same day's re-adoption-run report
+(`docs/adoption-report-target-app-2026-05-15.md`) confirmed the close: `find()` exercised against
+the augmented snapshot, one new the feature area flow calibrated entirely through `browxai-attached`,
+no-trace contract held, replay clean → **Phase 1 exit criterion met, verdict WIN.** The re-run
+surfaced five additional small asks (#12–#16) — three 🟡 surgical, two 🟢 polish — none
+architectural; they're the Phase-1.5 follow-on list below.
 
-**Adoption-driven (asks #7–#11 in `first-consumer-asks.md`):**
+**Round 2 — adoption-driven (asks #7–#11), all impl-done 2026-05-13:**
 
-- 🔴 **`snapshot()` DOM-walk fallback.** When the a11y tree has zero/few interactive descendants
-  under the root, augment with a DOM walk: emit interactive elements found via CSS predicates
-  (`[role]`, `button`, `a[href]`, `input`, `select`, `textarea`, `[onclick]`, `[tabindex]`, `[contenteditable]`)
-  as A11yNode-shaped entries (synthetic `role` taken from `[role]` attr or tagName; `name` from
-  `aria-label` / textContent / placeholder; `testId` from the configured attribute list). Refs
-  still come from the existing stable-key scheme (so they round-trip with the a11y entries when
-  both are present). This unblocks the canonical discovery use case on real-world SPAs and is
-  the **first Phase-1.5 priority**. ([adoption report §1 / ask #7](docs/adoption-report-target-app-2026-05-13.md))
-- 🔴 **`snapshot` data-attribute projection** — either a `mode: "attrs"` (or a supplementary
-  `find_attrs(query?)` tool) that lists every visible element bearing a configured data-attribute
-  (`data-testid`, `data-test`, `data-cy`, `data-qa`, plus project-conventional names like
-  `data-type` — config-driven). Tier-1 / stability `high` regardless of role wrapper. Probably
-  trivial on top of the DOM-walk plumbing. ([ask #8 / #10])
-- 🟡 **Auto-default `BROWX_ATTACH_CDP` when `127.0.0.1:9222` is reachable** (or a `browxai doctor`
-  that prints the missing setup). Adopters using the user-scope MCP install today re-login each
-  session because `BROWX_ATTACH_CDP` isn't set by default. Pair with a *persistent profile* (mirror
-  site-docs's `--user-data-dir` pattern, already wired through `$BROWX_WORKSPACE/profile/`) so the
-  managed-mode fallback at least carries auth across sessions. ([ask #9])
-- 🟡 **`selectorHint` tier-1 must not gate on a role wrapper.** When ask #7 / #8 lands, ensure
-  the testid-bearing DOM-walk node gets tier-1 / stability `high` even when its role tree
-  ancestor is empty. ([ask #10])
-- 🟢 **"Low-content snapshot" warning** — when a `snapshot()` has fewer than N (configurable,
-  default 5) interactive descendants under the root, emit
-  `warnings: ["a11y tree has N interactive descendants; SPA likely uses non-semantic markup. The DOM-walk fallback is on by default — these results combine both sources."]`
-  (or, until #7 lands, "consider the DOM-walk fallback when it ships"). Helps adopters fail fast.
-  ([ask #11])
+- 🔴 ✅ **`snapshot()` DOM-walk fallback** — `src/page/dom-walk.ts` + `compose.ts`. Walks
+  `[role], button, a[href], input, select, textarea, [onclick], [tabindex], [contenteditable]` +
+  configured test attributes; merges into the a11y tree under the same root with
+  `source: "a11y"|"dom"|"both"` markers; refs share the stable-key scheme.
+- 🔴 ✅ **Data-attribute projection + configurable `BROWX_TEST_ATTRIBUTES`** — same plumbing.
+  Default `data-testid,data-test,data-cy,data-qa`; order-sensitive first-match-wins.
+- 🟡 ✅ (workaround) **Auto-default `BROWX_ATTACH_CDP`** — dual user-scope MCP registration
+  recipe (`browxai` + `browxai-attached`). Full auto-detection / `browxai doctor` deferred.
+- 🟡 ✅ **Tier-1 `selectorHint` doesn't gate on role wrapper** — `[<testIdAttr>="…"]` with the
+  matched attribute name; fires regardless of role.
+- 🟢 ✅ **Low-content snapshot warning** — fires when a11y tree has < 5 interactive descendants.
+
+**Round 3 — from the 2026-05-15 re-adoption-run report (asks #12–#16, all open):**
+
+- 🟡 **#12 Raise `wait_for.timeoutMs` schema cap.** Currently 120 000 ms; SPA backend-async
+  ops routinely exceed it (target-app script generation ≈ 3 min). Either raise the cap (~600 000 ms),
+  add a `pollIntervalMs` so the primitive polls internally to a higher cap, or document the
+  polling idiom. Schema-only change, no semantic risk.
+- 🟡 **#13 `selectorHint` disambiguation for duplicate matches.** When `find()` returns the
+  visible candidate via its interaction filter but the emitted `selectorHint` (`[data-type="x"]`)
+  matches multiple DOM nodes (visible button + hidden DOM sibling), mechanical transcription
+  re-introduces the hidden-duplicate `boundingBox` hang. Detect duplicate-singleton-match inside
+  find(), append `:visible` / `nth-match(..., 1)` qualifier. ~20 LOC.
+- 🟡 **#14 `find()` scoring should weight test-attribute string matches more heavily** — esp.
+  for `<input>` / non-button elements. Exact testid in query failed to surface the matching
+  `<input>` because the role+name surface is empty. Either score testId-value matches
+  independently of role/name, or boost when `role == "input"` AND test-attribute value matches
+  a query keyword, or emit a `warnings: ["no candidate scored confidently"]` signal so the
+  agent falls through to snapshot.
+- 🟢 **#15 CDP-attached bbox should reflect the attached page's viewport.** Every `find()`
+  candidate's `bbox` came back `null + clipped: true` on the BYOB path even for elements
+  visible in the attached Chrome. Likely the attached context has no default viewport;
+  setting one (or reading `Page.viewportSize()` and threading through the viewport-intersect
+  step) closes the parity gap with managed mode. Phase-1.5 polish; not load-bearing for
+  calibration today.
+- 🟢 **#16 Docs: stability semantics + find()-matching-surface.** "high stability" means
+  "disambiguator on this snapshot," not "survives content/test-attr rotation" — an asset card
+  with `[data-testid="library-asset-container-<id>"]` is high for *this* snapshot but
+  content-keyed for the next. Also: `find()` matches on accessible name + role + test-attribute
+  *values*; icon-only tabs with only `title="…"` won't match icon-shape queries. Either docs-only,
+  or add a `stabilityKind: "structural"|"content-keyed"` heuristic field on find result (testId
+  value matches `[0-9a-f-]{8,}` → content-keyed).
 
 **Already on the list pre-adoption (still wanted):**
 

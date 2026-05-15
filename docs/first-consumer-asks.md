@@ -32,15 +32,33 @@ Status legend: **design** = absorbed into `docs/phase-1-design.md` / spec / road
 
 Also flagged but **not a browxai ask** (consumer-of-browxai problem on the site-docs side): the *path to first `find()` call on a real authed app* is gated by long backend ops (target-app's script + audio generation is 6–15 min). A `site-docs warm "$WORKSPACE" --to <flow>` that parks a hydrated CDP Chrome for browxai to attach to would unblock this on the consumer side; tracked in the site-docs runbook, not here.
 
-## Discoverability / phase-1.5 polish
+## Round-3 asks (post-shipping, from the 2026-05-15 re-adoption-run report)
 
-- Make the `await_human` Phase-1.5 plan for `confirm`/`choose`/`input`/`pick_element` visible in the tool description, so adopters don't roll their own out-of-band convention.
+The re-adoption run (`docs/adoption-report-target-app-2026-05-15.md`) **closed the Phase-1 headline exit criterion** — `find()` exercised against the augmented snapshot, one new the feature area flow file calibrated entirely through `browxai-attached`, no-trace contract held, replay determinism intact. The verdict was **WIN**. Five small follow-on asks surfaced — three 🟡 surgical, two 🟢 polish — none architectural.
+
+| # | Severity | Ask (short) | Status |
+|---|---|---|---|
+| 12 | 🟡 | **Raise `wait_for.timeoutMs` schema cap.** Currently capped at 120 000 ms; backend-async ops on dev-SPA targets routinely exceed that (target-app script generation ≈ 3 min). Adopter had to poll `wait_for` twice. Options: raise to ~600 000 ms (10 min), or add `pollIntervalMs` so the primitive polls internally to a higher cap, or document the polling idiom in `tool-reference.md`. Compare with site-docs's own `timeout_ms` which is unbounded. | Phase-1.5 — schema-only change, no semantic risk |
+| 13 | 🟡 | **`selectorHint` disambiguation when the bare hint matches multiple DOM nodes.** When `find()` returns the visible candidate via its snapshot interaction-filter but the emitted `selectorHint` (`[data-type="x"]`) matches multiple DOM nodes (e.g. a visible button + a hidden DOM sibling), mechanical transcription into a flow-file re-introduces the round-6 hidden-duplicate `boundingBox` hang. Fix: when find() detects duplicates, append `:visible` / `:nth-match(..., 1)` / another disambiguator to the hint. The engine already *knows* the bare hint is ambiguous — fold that knowledge into the emitted string. | Phase-1.5 — detect duplicate-selector-singleton-match inside find(); ~20 LOC |
+| 14 | 🟡 | **`find()` scoring should weight test-attribute string matches more heavily** — especially for `<input>` / non-button elements. Exact testid in query (`app-common-time-input-seconds`) failed to surface the matching `<input>` because the role+name surface is empty for inputs (no `aria-label`; just a placeholder/value). Options: score testId-value matches independently of role/name; boost when `role == "input"` AND test-attribute value matches a query keyword; emit a `warnings: ["no candidate scored confidently"]` when no top-3 candidate exceeds a score floor so the agent knows to fall through to snapshot. | Phase-1.5 — scoring change in `find()`; needs iterations + tests |
+| 15 | 🟢 | **CDP-attached `bbox: null + clipped: true` for plainly-visible elements.** Every `find()` candidate's `bbox` came back null on the BYOB path even for elements visible in the attached Chrome. Runtime-side (managed-mode + site-docs's annotation halo placement) is byte-correct. Likely the attached CDP context has no default viewport; setting one or reading `Page.viewportSize()` and threading through the viewport-intersect step would close the parity. | Phase-1.5 — viewport plumbing in `src/session/byob.ts` |
+| 16 | 🟢 | **Docs: `stability` semantics + `find()` query-matching surface.** Two confusion points cost ~1h this round: (a) `stability: "high"` means "disambiguator on this snapshot," not "survives content/test-attr rotation" — an asset-card with `[data-testid="library-asset-container-<id>"]` is high-stability for *this* snapshot but content-keyed for the next. (b) `find()` matches on `name` (accessible name) + `role` + test-attribute *values*; queries like "brain/voice icon" for icon-only tabs without these textual surfaces miss. Either document explicitly in `tool-reference.md`, or surface a `stabilityKind: "structural"|"content-keyed"` on the find result (heuristic: testId looks numeric / UUID-like → content-keyed). | Phase-1.5 — docs-only or tiny shape addition |
 
 ## Sequencing
 
 **Phase 1 (delivered 2026-05-13):** asks 1–6 in numbered order. #1+#2 were the
 unblockers; #3 fell out of #1 for free in its Phase-1 shape; #4+#5 landed with the
 `find()` implementation; #6 is doc-only.
+
+**Phase 1.5 round-2 (2026-05-13):** #7+#8+#10+#11 ✅ shipped same day as the adoption
+report that surfaced them; #9 🟡 workaround live (dual MCP registration), full
+auto-default deferred.
+
+**Phase 1.5 round-3 (opened 2026-05-15 by the re-adoption-run report — Phase 1 itself
+is closed):** #12+#13+#14+#15+#16. #14 is the highest-leverage of the three 🟡 (it's
+the gap between "find() ranked what I asked for" and "find() ranked something else and
+I read the testid off the snapshot"); #13 prevents a known stack-overflow trap;
+#12 is a schema-only knob. None are gating.
 
 **Phase 1.5 (next, opened 2026-05-13 by the adoption-run report):** ask #7 (DOM-walk
 fallback) is the priority — it unblocks the canonical discovery use case on real-world
