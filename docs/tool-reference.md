@@ -93,7 +93,15 @@ Find candidate elements by natural-language description.
 **Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
 ### `screenshot`
-PNG of the viewport, optionally cropped to an element.
+PNG or JPEG of the viewport, optionally cropped to an element.
+
+**Format / size knobs (W-F7):**
+
+- `format: "png" | "jpeg"` — default `"png"` (lossless, larger). `"jpeg"` is dramatically smaller for screenshots dense with content; pairs with `quality`.
+- `quality: 0-100` — JPEG only; default 80. Ignored for PNG. Lower = smaller payload, more compression artefacts.
+- `scale: "css" | "device"` — default `"device"` (Hi-DPI native resolution). `"css"` renders at CSS-pixel dimensions — a 2x display drops to ~1/4 the byte size at the cost of detail.
+
+For multimodal agents filling a constrained context window, `format: "jpeg", quality: 70, scale: "css"` often cuts payload size by ~5–10× with minimal impact on a vision model's ability to read the page. Not OCR-on-the-server — the agent's own vision capability does the work; F7 just lets the caller tune what it ingests.
 
 **Inputs:** `{ ref?, selector?, named?, describe?: boolean }` *(pass at most one of ref/selector/named; none = viewport)*
 - `describe` (wishlist W-B2): emit a structured one-line caption alongside the PNG (`role "name" [<attr>="…"] bbox=x,y w×h [not-visible|disabled]`). Lets the agent skip vision-reading when it just needs to confirm presence.
