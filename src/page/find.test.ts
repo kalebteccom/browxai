@@ -26,6 +26,22 @@ describe("buildSelectorHint preference order (ask #4)", () => {
     expect(h.hint).toBe('role=link[name="Hello \\"world\\""]');
   });
 
+  it("tier 4: stable HTML id when no testId/name (Phase-2)", () => {
+    const h = buildSelectorHint({ role: "div", id: "main-content" });
+    expect(h.tier).toBe(4);
+    expect(h.stability).toBe("low");
+    expect(h.hint).toBe("#main-content");
+  });
+
+  it("tier 4 rejects content-keyed ids and falls through to tier 5", () => {
+    const numeric = buildSelectorHint({ role: "div", id: "12345" });
+    expect(numeric.tier).toBe(5);
+    const mui = buildSelectorHint({ role: "div", id: "mui-1234" });
+    expect(mui.tier).toBe(5);
+    const uuid = buildSelectorHint({ role: "div", id: "550e8400-e29b-41d4-a716-446655440000" });
+    expect(uuid.tier).toBe(5);
+  });
+
   it("tier 5: role-only fallback when nothing distinguishing, stability=low", () => {
     const h = buildSelectorHint({ role: "generic" });
     expect(h.tier).toBe(5);

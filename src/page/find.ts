@@ -234,17 +234,21 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
  * The five-tier preference order from first-consumer ask #4:
  *   1. `[<test-attr>="…"]`           → stability "high"  (any configured test-attribute)
  *   2. role + accessible name        → stability "medium"
- *   3. stable text on stable role    → stability "medium"  (Phase-1.5)
- *   4. structural (#id, semantic)    → stability "low"     (Phase-1.5)
+ *   3. stable text on stable role    → covered by tier 2 (the DOM-walk's nameFor()
+ *                                       computes name from aria-label / labelledby /
+ *                                       textContent in that order, so a `<button>Submit</button>`
+ *                                       already gets `role=button[name="Submit"]` via tier 2)
+ *   4. structural (#id, semantic)    → stability "low"  (id present + id-shaped stable)
  *   5. positional (last resort)      → stability "low"
  *
- * Phase 1.5 ask #10 ratified: tier-1 hits never gate on a role wrapper. A DOM-walk
- * node with `testIdAttr="data-type"` and `testId="foo"` gets `[data-type="foo"]` and
- * stability `high` even when no a11y role is wrapping it. This is what unblocks
- * heavy-SPA targets whose tier-1 anchors live on plain `<div>`s.
+ * Phase-2 update: tier 4 now fires when the node has an HTML `id` attribute that
+ * looks stable (not a numeric/UUID content-keyed id). The id-stability heuristic:
+ * reject pure-numeric (`123`), short numeric+letter combos that look generated
+ * (e.g. `mui-1234`), or strings matching common content-keyed shapes. Anything
+ * with two or more `-`/`_`-separated word segments is treated as stable.
  */
 export function buildSelectorHint(
-  node: Pick<A11yNode, "role" | "name" | "testId" | "testIdAttr">,
+  node: Pick<A11yNode, "role" | "name" | "testId" | "testIdAttr" | "id">,
 ): { hint: string; tier: 1 | 2 | 3 | 4 | 5; stability: FindCandidate["stability"] } {
   if (node.testId) {
     const attr = node.testIdAttr ?? "data-testid";
@@ -257,7 +261,37 @@ export function buildSelectorHint(
       stability: "medium",
     };
   }
-  // Phase-1 stub for tier 5 — no structural / positional resolution yet. The
-  // agent should treat "low" as "ask a human or refuse to transcribe."
+  if (node.id && isLikelyStableId(node.id)) {
+    return { hint: `#${cssEscape(node.id)}`, tier: 4, stability: "low" };
+  }
+  // Tier 5 fallback — role only. The agent should treat "low" as "ask a human
+  // or refuse to transcribe."
   return { hint: `role=${node.role}`, tier: 5, stability: "low" };
+}
+
+/** Heuristic: is this HTML `id` value likely to survive across page reloads?
+ *  Rejects content-keyed shapes (pure-numeric, MUI-generated `mui-N`, UUID-shaped).
+ *  Accepts ids with two or more word segments separated by `-`/`_`/`:`. */
+export function isLikelyStableId(id: string): boolean {
+  // Pure numeric → content-keyed.
+  if (/^\d+$/.test(id)) return false;
+  // MUI / Radix / framework-generated short tags.
+  if (/^(mui|radix|headlessui|reach|react-aria)[-_]?[a-z0-9]+$/i.test(id)) return false;
+  // UUID-shaped.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return false;
+  // 8+ hex chars only → likely a hash / content-keyed.
+  if (/^[0-9a-f]{8,}$/i.test(id) && id.length <= 32) return false;
+  // Multi-segment (kebab/snake/colon-separated, ≥2 segments, each with letters) → stable.
+  const segments = id.split(/[-_:]/).filter((s) => s.length > 0);
+  if (segments.length >= 2 && segments.every((s) => /[a-z]/i.test(s))) return true;
+  // Single-segment, ≥3 chars, has letters → probably stable.
+  if (id.length >= 3 && /[a-z]/i.test(id) && !/^\d/.test(id)) return true;
+  return false;
+}
+
+/** Minimal CSS escape for the id-selector value — covers the common cases
+ *  (escapes leading digit, special chars). Doesn't aim to be a full CSS.escape() shim. */
+function cssEscape(s: string): string {
+  // Escape any character that isn't [A-Za-z0-9_-].
+  return s.replace(/([^a-zA-Z0-9_-])/g, "\\$1").replace(/^(\d)/, "\\3$1 ");
 }

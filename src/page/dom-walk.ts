@@ -168,6 +168,7 @@ export function mergeDomWalkIntoTree(
       testId,
       testIdAttr,
       tag: e.tag,
+      id: e.id || undefined,
       source: wasNew ? "dom" : "both",
       children: [],
     };

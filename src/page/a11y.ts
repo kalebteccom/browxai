@@ -23,6 +23,11 @@ export interface A11yNode {
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;
+  /** Phase-2 selectorHint tier-4 source: HTML `id=` attribute if present. */
+  id?: string;
+  /** Phase-2 selectorHint tier-3 source: trimmed text content (truncated, single-line),
+   *  set when distinct from `name` and stable-looking. DOM-walk fills this in. */
+  text?: string;
   /** State flags as reported by CDP (selected subset — see fmtState). */
   disabled?: boolean;
   checked?: boolean | "mixed";
