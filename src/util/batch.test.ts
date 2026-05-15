@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runBatch, type ToolHandler } from "./batch.js";
+import { runBatch, evaluateExpect, type ToolHandler } from "./batch.js";
 
 const ALLOWED = new Set(["click", "fill", "navigate", "snapshot", "wait_for"]);
 
@@ -114,5 +114,94 @@ describe("runBatch — sequential dispatch", () => {
     const report = await runBatch([{ tool: "click" }], { allowed: ALLOWED, handlers: { click: handler } });
     expect(report.results[0]?.ok).toBe(true);
     expect(report.results[0]?.result).toBe("plain reply");
+  });
+});
+
+describe("runBatch — W-F6 labels + expect", () => {
+  it("echoes the call's label on the result entry", async () => {
+    const report = await runBatch(
+      [{ tool: "click", label: "set type", args: {} }],
+      { allowed: ALLOWED, handlers: { click: jsonHandler({ ok: true }) } },
+    );
+    expect(report.results[0]?.label).toBe("set type");
+  });
+
+  it("omits label on entries where the call didn't supply one", async () => {
+    const report = await runBatch(
+      [{ tool: "click" }],
+      { allowed: ALLOWED, handlers: { click: jsonHandler({ ok: true }) } },
+    );
+    expect(report.results[0]?.label).toBeUndefined();
+  });
+
+  it("marks call ok=false when expect predicate fails", async () => {
+    const handler = jsonHandler({ ok: true, element: { value: "actual" } });
+    const report = await runBatch(
+      [{ tool: "fill", args: {}, expect: { valueEquals: "expected" } }],
+      { allowed: ALLOWED, handlers: { fill: handler } },
+    );
+    expect(report.results[0]?.ok).toBe(false);
+    expect(report.results[0]?.error).toContain('expect failed');
+    expect(report.results[0]?.error).toContain('"expected"');
+  });
+
+  it("passes when expect predicate holds", async () => {
+    const handler = jsonHandler({ ok: true, element: { value: "expected" } });
+    const report = await runBatch(
+      [{ tool: "fill", args: {}, expect: { valueEquals: "expected" } }],
+      { allowed: ALLOWED, handlers: { fill: handler } },
+    );
+    expect(report.results[0]?.ok).toBe(true);
+    expect(report.results[0]?.error).toBeUndefined();
+  });
+
+  it("respects stopOnError when an expect predicate fails", async () => {
+    const ok = jsonHandler({ ok: true, element: { value: "good" } });
+    const expecting = jsonHandler({ ok: true, element: { value: "actual" } });
+    const report = await runBatch(
+      [
+        { tool: "fill", args: {}, label: "first" },
+        { tool: "fill", args: {}, label: "second", expect: { valueEquals: "intended" } },
+        { tool: "click", args: {}, label: "third" }, // should not run
+      ],
+      { allowed: ALLOWED, handlers: { fill: ok, click: expecting } },
+    );
+    expect(report.failedAt).toBe(1);
+    expect(report.results.length).toBe(2);
+  });
+});
+
+describe("evaluateExpect — predicate evaluation", () => {
+  it("returns null when all predicates pass", () => {
+    const body = {
+      element: {
+        value: "x",
+        displayText: "hello world",
+        ownerControl: { displayTextAfter: "Engineering", changed: true },
+        container: { rowText: "row contents include hit" },
+      },
+    };
+    expect(evaluateExpect({
+      valueEquals: "x",
+      displayTextIncludes: "hello",
+      controlDisplayTextIncludes: "Engineering",
+      containerTextIncludes: "hit",
+      controlChanged: true,
+    }, body)).toBeNull();
+  });
+
+  it("returns a descriptive error when valueEquals fails", () => {
+    expect(evaluateExpect({ valueEquals: "expected" }, { element: { value: "other" } }))
+      .toMatch(/element.value/);
+  });
+
+  it("handles missing element gracefully", () => {
+    expect(evaluateExpect({ valueEquals: "x" }, { something: "else" }))
+      .toMatch(/element.value/);
+  });
+
+  it("ownerControl.changed predicate reads from element.ownerControl", () => {
+    expect(evaluateExpect({ controlChanged: true }, { element: { ownerControl: { changed: false } } }))
+      .toMatch(/ownerControl.changed/);
   });
 });

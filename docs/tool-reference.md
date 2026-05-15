@@ -267,8 +267,13 @@ History navigation.
 
 Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (fill several fields then submit; navigate → wait_for → snapshot). Each inner call dispatches through the same handlers as a top-level call — capability gating, confirmation hooks, and `ActionResult` shape are unchanged.
 
-- `calls` — `Array<{ tool: string; args?: object }>`. 1–32 entries.
+- `calls` — `Array<{ tool: string; args?: object; label?: string; expect?: object }>`. 1–32 entries.
 - `stopOnError` — defaults `true`. When `true`, the first inner failure halts the batch. When `false`, every call is attempted and individual results carry their own `ok`/`error`.
+
+Each call may optionally carry (W-F6):
+
+- `label` — opaque free-form string echoed verbatim in the corresponding result entry. Useful in long batches (`"set type"`, `"set initiative"`, `"save row"`).
+- `expect` — post-call assertions on the inner ActionResult's element probe. Failing any assertion marks the call `ok: false` with `error: "expect failed: …"` and respects `stopOnError`. Predicates: `valueEquals`, `displayTextIncludes`, `controlDisplayTextIncludes`, `containerTextIncludes`, `controlChanged`. Minimal predicate set — not an assertion DSL.
 
 Returns `{ completed, failedAt, results }`:
 

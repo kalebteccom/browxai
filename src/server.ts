@@ -778,6 +778,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             z.object({
               tool: z.string().describe("Tool name (must be in the batch whitelist)"),
               args: z.record(z.unknown()).optional().describe("Args for the inner tool, same shape as a top-level call"),
+              label: z.string().optional().describe("W-F6: opaque label echoed in the result entry for cross-referencing"),
+              expect: z
+                .object({
+                  valueEquals: z.string().optional(),
+                  displayTextIncludes: z.string().optional(),
+                  controlDisplayTextIncludes: z.string().optional(),
+                  containerTextIncludes: z.string().optional(),
+                  controlChanged: z.boolean().optional(),
+                })
+                .optional()
+                .describe("W-F6: optional post-call assertions on the inner ActionResult's element probe. Failing any assertion marks the call ok=false with `error: 'expect failed: …'` and respects `stopOnError`."),
             }),
           )
           .min(1)
@@ -789,7 +800,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           .describe("Default true. When true, the first inner-call failure halts the batch. When false, every call is attempted and individual results carry their own ok/error."),
       },
     },
-    async ({ calls, stopOnError }: { calls: Array<{ tool: string; args?: Record<string, unknown> }>; stopOnError?: boolean }) => {
+    async ({ calls, stopOnError }: { calls: Array<{ tool: string; args?: Record<string, unknown>; label?: string; expect?: import("./util/batch.js").BatchExpect }>; stopOnError?: boolean }) => {
       const g = gateCheck("batch"); if (g) return g;
       const report = await runBatch(calls, {
         allowed: BATCH_ALLOWED_TOOLS,
