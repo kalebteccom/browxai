@@ -21,6 +21,10 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `file-io` (future). A disabled tool returns a structured error on call. |
+| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
+| `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
+| `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
 
 ## Read-only tools
 

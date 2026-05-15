@@ -62,7 +62,13 @@ export interface ActionResult {
     tree?: string;
     truncated: boolean;
   };
-  network: { summary: NetworkSummary; requests?: NetworkEntry[] };
+  network: {
+    summary: NetworkSummary;
+    requests?: NetworkEntry[];
+    /** Phase-2: count of requests in this action window that left
+     *  `BROWX_ALLOWED_ORIGINS` (0 when no allowlist is set). */
+    egressOffAllowlist?: number;
+  };
   tokensEstimate: number;
   warnings: string[];
   error?: string;
@@ -77,6 +83,9 @@ export interface ActionContext {
   /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). Threaded
    *  through so pre/post a11y trees pick up the same testIds the canonical surface uses. */
   testAttributes: string[];
+  /** Phase-2: origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
+   *  Empty allow-set means "no allowlist" → egress count is always 0. */
+  originPolicy?: import("../policy/origin.js").OriginPolicy;
 }
 
 export interface ActionWindowOptions {
@@ -189,10 +198,15 @@ export async function runInActionWindow(
   if (descriptor.ref) scopeRefs.push(descriptor.ref);
   for (const r of structure.appeared) scopeRefs.push(r.ref);
   const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings, scopeRefs);
+  // Phase-2: egress-off-allowlist count, for the security model's
+  // network-egress-visibility surface (docs/threat-model.md §"What browxai defends against" #2).
+  const egressOffAllowlist = ctx.originPolicy && ctx.originPolicy.allowed.length > 0
+    ? (await import("../policy/confirm.js")).countEgressOffAllowlist(network.requests, ctx.originPolicy)
+    : 0;
   const networkBlock = network.summary.total > 0
     ? (network.requests.length <= requestCap
-        ? { summary: network.summary, requests: network.requests }
-        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary }))
+        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}) }
+        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}) }))
     : { summary: network.summary };
 
   const tokensEstimate = estimateTokens(JSON.stringify({

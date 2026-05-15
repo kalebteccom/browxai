@@ -17,6 +17,9 @@ import { NetworkBuffer } from "./page/network.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
+import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/capabilities.js";
+import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
+import { confirmNavigation, confirmByobAction } from "./policy/confirm.js";
 import { log } from "./util/logging.js";
 
 export const NAME = "browxai";
@@ -102,6 +105,52 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   let bridge: BrowxBridge | null = null;
   const refs = new RefRegistry();
   const config = resolveConfig();
+  // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
+  const caps = resolveCapabilities();
+  const confirmHooks = resolveConfirmHooks();
+  const originPolicy = resolveOriginPolicy();
+  const isByob = !!opts.attachCdp;
+  log.info("browxai: policy", {
+    capabilities: [...caps.enabled],
+    confirmHooks: [...confirmHooks],
+    origins: describePolicy(originPolicy),
+  });
+  if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
+  if (isByob && !caps.enabled.has("byob-attach")) {
+    log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
+  }
+
+  const confirmCtx = () => ({ hooks: confirmHooks, policy: originPolicy, bridge, isByob });
+
+  /** Disabled-tool early-return shape. Used at the top of each handler:
+   *    const g = gateCheck("foo"); if (g) return g;
+   *  Returns null when the tool is enabled (handler proceeds). */
+  const gateCheck = (toolName: string) => {
+    if (isToolEnabled(toolName, caps)) return null;
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({
+          ok: false,
+          error: `tool "${toolName}" is disabled (capability not in BROWX_CAPABILITIES)`,
+          hint: "enable by setting BROWX_CAPABILITIES to include the relevant category — see docs/threat-model.md",
+        }, null, 2),
+      }],
+    };
+  };
+
+  /** Confirm-hook early-return helper. Returns the rejection content if denied, else null. */
+  const denyContent = (toolName: string, decision: { reason: string }) => ({
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify({
+        ok: false,
+        action: { type: toolName },
+        error: `policy: ${decision.reason}`,
+        hint: "to bypass, remove the relevant entry from BROWX_CONFIRM_REQUIRED — or have the human respond `true` to the confirm prompt",
+      }, null, 2),
+    }],
+  });
 
   const openSession = async (): Promise<BrowserSession> => {
     if (session) return session;
@@ -126,6 +175,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       console: consoleBuf!,
       pages: () => s.page().context().pages(),
       testAttributes: config.testAttributes,
+      originPolicy,
     };
   };
 
@@ -145,6 +195,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ scope, maxNodes, omit }) => {
+      const g = gateCheck("snapshot"); if (g) return g;
       const s = await openSession();
       const { tree, stats, warnings } = await composeSnapshot(s.cdp(), refs, config.testAttributes);
       const url = s.page().url();
@@ -177,6 +228,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ query, maxCandidates, confidenceFloor, contextRef }) => {
+      const g = gateCheck("find"); if (g) return g;
       const s = await openSession();
       const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes });
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
@@ -194,6 +246,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async (args) => {
+      const g = gateCheck("screenshot"); if (g) return g;
       const s = await openSession();
       const page = s.page();
       let buf: Buffer;
@@ -223,6 +276,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: { limit: z.number().int().positive().max(500).optional() },
     },
     async ({ limit }) => {
+      const g = gateCheck("console_read"); if (g) return g;
       await openSession();
       const rows = consoleBuf!.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
@@ -237,6 +291,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: { limit: z.number().int().positive().max(500).optional() },
     },
     async ({ limit }) => {
+      const g = gateCheck("network_read"); if (g) return g;
       await openSession();
       const result = networkBuf!.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
@@ -254,6 +309,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ expr, returnType }) => {
+      const g = gateCheck("eval_js"); if (g) return g;
       const s = await openSession();
       try {
         if (returnType === "void") {
@@ -282,7 +338,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         "Navigate the page to a URL. Returns an ActionResult: navigation + structure changes + console/network slice + post-snapshot.",
       inputSchema: { url: z.string().describe("Absolute URL"), ...ACTION_OPTS },
     },
-    async ({ url, mode, maxResultTokens }) => asActionResultText(actions.navigate(await ctx(), { url, mode, maxResultTokens })),
+    async ({ url, mode, maxResultTokens }) => {
+      const g = gateCheck("navigate"); if (g) return g;
+      const decision = await confirmNavigation(url, confirmCtx());
+      if (!decision.ok) return denyContent("navigate", decision);
+      return asActionResultText(actions.navigate(await ctx(), { url, mode, maxResultTokens }));
+    },
   );
 
   server.registerTool(
@@ -292,7 +353,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         "Click an element by `ref` (preferred — from snapshot/find) or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.click(await ctx(), { target: asTarget(args, "click", refs), mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("click"); if (g) return g;
+      const c = await confirmByobAction("click", confirmCtx());
+      if (!c.ok) return denyContent("click", c);
+      return asActionResultText(actions.click(await ctx(), { target: asTarget(args, "click", refs), mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
@@ -301,7 +367,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Type into an input by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, value: z.string(), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.fill(await ctx(), { target: asTarget(args, "fill", refs), value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("fill"); if (g) return g;
+      const c = await confirmByobAction("fill", confirmCtx());
+      if (!c.ok) return denyContent("fill", c);
+      return asActionResultText(actions.fill(await ctx(), { target: asTarget(args, "fill", refs), value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
@@ -311,6 +382,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: { ...REF_OR_SELECTOR, key: z.string().describe("Playwright key syntax, e.g. \"Enter\", \"Control+A\""), ...ACTION_OPTS },
     },
     async (args) => {
+      const g = gateCheck("press"); if (g) return g;
+      const conf = await confirmByobAction("press", confirmCtx());
+      if (!conf.ok) return denyContent("press", conf);
       const c = await ctx();
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? asTarget(args, "press", refs) : undefined;
@@ -324,7 +398,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Hover over an element by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.hover(await ctx(), { target: asTarget(args, "hover", refs), mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("hover"); if (g) return g;
+      const c = await confirmByobAction("hover", confirmCtx());
+      if (!c.ok) return denyContent("hover", c);
+      return asActionResultText(actions.hover(await ctx(), { target: asTarget(args, "hover", refs), mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
@@ -333,7 +412,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Select option(s) on a <select> by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, values: z.array(z.string()), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.select(await ctx(), { target: asTarget(args, "select", refs), values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("select"); if (g) return g;
+      const c = await confirmByobAction("select", confirmCtx());
+      if (!c.ok) return denyContent("select", c);
+      return asActionResultText(actions.select(await ctx(), { target: asTarget(args, "select", refs), values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
@@ -342,19 +426,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Wait until an element is visible (by `ref` or `selector`). Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, timeoutMs: z.number().int().positive().max(600_000).optional(), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for", refs), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("wait_for"); if (g) return g;
+      return asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for", refs), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
     "go_back",
     { description: "Navigate back in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
-    async (args) => asActionResultText(actions.goBack(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("go_back"); if (g) return g;
+      return asActionResultText(actions.goBack(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   server.registerTool(
     "go_forward",
     { description: "Navigate forward in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
-    async (args) => asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => {
+      const g = gateCheck("go_forward"); if (g) return g;
+      return asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
   );
 
   // ---------- named refs (wishlist W-C1) ----------
@@ -370,6 +463,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ name, ref }) => {
+      const g = gateCheck("name_ref"); if (g) return g;
       refs.nameRef(name, ref);
       return { content: [{ type: "text", text: JSON.stringify({ ok: true, name, ref }, null, 2) }] };
     },
@@ -381,7 +475,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "List all current name → ref bindings created via name_ref.",
       inputSchema: {},
     },
-    async () => ({ content: [{ type: "text", text: JSON.stringify(refs.listNames(), null, 2) }] }),
+    async () => {
+      const g = gateCheck("list_named_refs"); if (g) return g;
+      return { content: [{ type: "text", text: JSON.stringify(refs.listNames(), null, 2) }] };
+    },
   );
 
   // ---------- human↔agent helper ----------
@@ -404,6 +501,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ kind, prompt, choices, timeoutMs }) => {
+      const g = gateCheck("await_human"); if (g) return g;
       await openSession();
       const promptBody =
         kind === "choose" && choices

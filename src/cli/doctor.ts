@@ -7,7 +7,9 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveCapabilities, resolveConfirmHooks, DEFAULT_CAPABILITIES } from "../util/capabilities.js";
 import { resolveConfig } from "../util/config.js";
+import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
 
 interface Check { name: string; ok: boolean; detail: string; fix?: string; }
@@ -82,7 +84,49 @@ export async function runDoctor(): Promise<number> {
     }
   }
 
-  // 5. Chromium installed (managed-mode dependency).
+  // 5. Capabilities (Phase-2 security model).
+  try {
+    const c = resolveCapabilities();
+    const explicit = !!process.env.BROWX_CAPABILITIES;
+    const dangerous = [...c.enabled].filter((x) => x === "eval" || x === "byob-attach");
+    const detail = `enabled=[${[...c.enabled].join(", ")}]${explicit ? "" : " (default)"}${dangerous.length ? "  ⚠ dangerous: " + dangerous.join(", ") : ""}`;
+    checks.push({
+      name: "capabilities",
+      ok: true,
+      detail,
+      fix: dangerous.length ? `${dangerous.join(",")} on — page text remains untrusted; review docs/threat-model.md` : (explicit ? undefined : "see docs/threat-model.md for the full set; default is " + DEFAULT_CAPABILITIES.join(",")),
+    });
+  } catch (e) {
+    checks.push({ name: "capabilities", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "fix BROWX_CAPABILITIES (comma-separated, see docs/threat-model.md)" });
+  }
+
+  // 6. Confirm-required hooks.
+  try {
+    const hooks = resolveConfirmHooks();
+    checks.push({
+      name: "confirm-hooks",
+      ok: true,
+      detail: hooks.size > 0 ? `[${[...hooks].join(", ")}]` : "(none)",
+    });
+  } catch (e) {
+    checks.push({ name: "confirm-hooks", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "fix BROWX_CONFIRM_REQUIRED — see docs/threat-model.md" });
+  }
+
+  // 7. Origin policy.
+  try {
+    const policy = resolveOriginPolicy();
+    const noAllowlist = policy.allowed.length === 0;
+    checks.push({
+      name: "origins",
+      ok: true,
+      detail: describePolicy(policy),
+      fix: noAllowlist ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate." : undefined,
+    });
+  } catch (e) {
+    checks.push({ name: "origins", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)" });
+  }
+
+  // 8. Chromium installed (managed-mode dependency).
   try {
     // Lazy import so this command doesn't pay the playwright-core cost on bare invocation.
     const { chromium } = await import("playwright-core");
