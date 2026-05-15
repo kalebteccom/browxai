@@ -32,19 +32,28 @@ const ACTION_OPTS = {
   maxResultTokens: z.number().int().positive().max(20_000).optional(),
 };
 
-// `target` accepts ref *or* selector. We can't `.refine()` inside a raw zod shape
-// without losing the `.optional()` ergonomics on the MCP side, so we validate
-// "exactly one of ref/selector" at handler time.
+// `target` accepts ref *or* selector *or* named. Validated at handler time.
 const REF_OR_SELECTOR = {
   ref: z.string().optional().describe("Stable [eN] ref from snapshot()/find()"),
   selector: z.string().optional().describe("CSS / selectorHint fallback"),
+  named: z.string().optional().describe("Mnemonic name previously bound with name_ref (wishlist W-C1)"),
 };
 
-function asTarget(args: { ref?: string; selector?: string }, toolName: string): { ref: string } | { selector: string } {
-  if (args.ref && args.selector) throw new Error(`${toolName}: pass exactly one of \`ref\` or \`selector\``);
+function asTarget(
+  args: { ref?: string; selector?: string; named?: string },
+  toolName: string,
+  refs: RefRegistry,
+): { ref: string } | { selector: string } {
+  const provided = [args.ref, args.selector, args.named].filter(Boolean).length;
+  if (provided > 1) throw new Error(`${toolName}: pass exactly one of \`ref\` / \`selector\` / \`named\``);
   if (args.ref) return { ref: args.ref };
   if (args.selector) return { selector: args.selector };
-  throw new Error(`${toolName}: requires \`ref\` (from find/snapshot) or \`selector\``);
+  if (args.named) {
+    const resolved = refs.refByNameLookup(args.named);
+    if (!resolved) throw new Error(`${toolName}: name "${args.named}" not bound. Call name_ref({name, ref}) first.`);
+    return { ref: resolved };
+  }
+  throw new Error(`${toolName}: requires one of \`ref\` (from find/snapshot), \`selector\`, or \`named\``);
 }
 
 export async function createServer(opts: StartOptions = {}): Promise<{
@@ -151,7 +160,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let buf: Buffer;
       if (args.ref || args.selector) {
         const { locatorFor } = await import("./page/locator.js");
-        const loc = locatorFor(page, refs, asTarget(args, "screenshot"));
+        const loc = locatorFor(page, refs, asTarget(args, "screenshot", refs));
         buf = await loc.screenshot();
       } else {
         buf = await page.screenshot({ fullPage: false });
@@ -212,7 +221,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         "Click an element by `ref` (preferred — from snapshot/find) or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.click(await ctx(), { target: asTarget(args, "click"), mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => asActionResultText(actions.click(await ctx(), { target: asTarget(args, "click", refs), mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
   server.registerTool(
@@ -221,7 +230,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Type into an input by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, value: z.string(), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.fill(await ctx(), { target: asTarget(args, "fill"), value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => asActionResultText(actions.fill(await ctx(), { target: asTarget(args, "fill", refs), value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
   server.registerTool(
@@ -232,7 +241,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const c = await ctx();
-      const target = (args.ref || args.selector) ? asTarget(args, "press") : undefined;
+      const hasTarget = !!(args.ref || args.selector || args.named);
+      const target = hasTarget ? asTarget(args, "press", refs) : undefined;
       return asActionResultText(actions.press(c, { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens }));
     },
   );
@@ -243,7 +253,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Hover over an element by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.hover(await ctx(), { target: asTarget(args, "hover"), mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => asActionResultText(actions.hover(await ctx(), { target: asTarget(args, "hover", refs), mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
   server.registerTool(
@@ -252,7 +262,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Select option(s) on a <select> by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, values: z.array(z.string()), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.select(await ctx(), { target: asTarget(args, "select"), values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => asActionResultText(actions.select(await ctx(), { target: asTarget(args, "select", refs), values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
   server.registerTool(
@@ -261,7 +271,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description: "Wait until an element is visible (by `ref` or `selector`). Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, timeoutMs: z.number().int().positive().max(600_000).optional(), ...ACTION_OPTS },
     },
-    async (args) => asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for"), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens })),
+    async (args) => asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for", refs), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens })),
   );
 
   server.registerTool(
@@ -274,6 +284,33 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_forward",
     { description: "Navigate forward in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens })),
+  );
+
+  // ---------- named refs (wishlist W-C1) ----------
+
+  server.registerTool(
+    "name_ref",
+    {
+      description:
+        "Bind a mnemonic name to a ref. Subsequent action tools accept `named: \"<name>\"` in place of `ref` / `selector`. Refs are stable across snapshots (by element-key), so the binding survives navigation as long as the element persists. Carry session-wide anchor sets without remembering the bare `eN`s.",
+      inputSchema: {
+        name: z.string().describe("Mnemonic (e.g. \"voiceover_tab\", \"library_tab\")"),
+        ref: z.string().describe("The ref to bind to this name"),
+      },
+    },
+    async ({ name, ref }) => {
+      refs.nameRef(name, ref);
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, name, ref }, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "list_named_refs",
+    {
+      description: "List all current name → ref bindings created via name_ref.",
+      inputSchema: {},
+    },
+    async () => ({ content: [{ type: "text", text: JSON.stringify(refs.listNames(), null, 2) }] }),
   );
 
   // ---------- human↔agent helper ----------

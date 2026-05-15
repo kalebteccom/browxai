@@ -1,23 +1,46 @@
 #!/usr/bin/env node
-// browxai canonical entrypoint (first-consumer ask #2).
-// `pnpm browxai` / `browxai` bin. Curated surface as default — no BROWX_SPIKE_* env vars.
+// browxai canonical entrypoint.
 //
-// Configuration is env-driven (so an MCP-client `.mcp.json` can wire it without flags):
-//   BROWX_WORKSPACE        — root for all transient state (default ~/.browxai/). NEVER cwd.
-//   BROWX_ATTACH_CDP       — loopback CDP endpoint; opt in to BYOB attach (off by default).
-//   BROWX_HEADLESS         — "1" to launch managed Chromium headless.
-//   BROWX_TEST_ATTRIBUTES  — comma-sep list of HTML attrs treated as tier-1 selector
-//                            anchors (default `data-testid,data-test,data-cy,data-qa`).
-//                            Order-sensitive (first match wins).
+// Sub-commands (wishlist W-B6 / W-B7 / W-D3):
+//   browxai                       start the MCP server (stdio)            — default
+//   browxai doctor                env + connectivity health-check
+//   browxai chrome start [opts]   launch an attachable Chrome (BYOB host)
+//   browxai chrome stop           kill the Chrome that `chrome start` launched
+//   browxai init <workspace>      bootstrap a per-app workspace (.mcp.json + sniff)
 //
-// stderr-only logging. stdout is the MCP wire.
+// All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 
 import { createServer } from "./server.js";
+import { runDoctor } from "./cli/doctor.js";
+import { runChrome } from "./cli/chrome.js";
+import { runInit } from "./cli/init.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 
 async function main(): Promise<void> {
+  const [, , subcommand, ...rest] = process.argv;
+
+  // Sub-command dispatch.
+  switch (subcommand) {
+    case "doctor":
+      process.exit(await runDoctor());
+    case "chrome":
+      process.exit(await runChrome(rest));
+    case "init":
+      process.exit(await runInit(rest));
+    case undefined:
+      break; // fall through to MCP server
+    default:
+      // Unknown subcommand — print help and exit non-zero (don't silently start the
+      // MCP server, since stdout is the MCP wire and we'd corrupt any caller's expectation).
+      process.stderr.write(
+        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | (no args = start MCP server)\n`,
+      );
+      process.exit(2);
+  }
+
+  // Default: MCP server.
   const workspace = resolveWorkspace();
   const config = resolveConfig();
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
@@ -33,7 +56,7 @@ async function main(): Promise<void> {
 
   const server = await createServer({ attachCdp, headless });
 
-  const shutdown = async (signal: string) => {
+  const shutdown = async (signal: string): Promise<void> => {
     log.info(`browxai: shutdown (${signal})`);
     await server.shutdown();
     process.exit(0);

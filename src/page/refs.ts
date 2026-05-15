@@ -38,6 +38,11 @@ export class RefRegistry {
   private refByKey = new Map<string, string>();
   private keyByRef = new Map<string, string>();
   private locatorByRef = new Map<string, RefLocatorInputs>();
+  /** Wishlist W-C1: persistent named refs. Maps an agent-chosen mnemonic (e.g.
+   *  "play_btn") to the underlying ref. Refs themselves are stable across
+   *  snapshots (see elementKey()) so the name effectively pins an element
+   *  identity for the whole session. */
+  private refByName = new Map<string, string>();
   private counter = 0;
 
   /** Resolve (or mint) the ref for a node's stable key. */
@@ -59,6 +64,20 @@ export class RefRegistry {
   updateLocator(ref: string, locator: RefLocatorInputs): void {
     if (this.keyByRef.has(ref)) this.locatorByRef.set(ref, locator);
   }
+
+  // --- W-C1: named refs ---
+  /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */
+  nameRef(name: string, ref: string): void {
+    if (!this.keyByRef.has(ref)) throw new Error(`name_ref: ref "${ref}" not in registry`);
+    this.refByName.set(name, ref);
+  }
+  /** Resolve a name back to a ref. */
+  refByNameLookup(name: string): string | undefined { return this.refByName.get(name); }
+  /** List all current name → ref bindings. */
+  listNames(): Array<{ name: string; ref: string }> {
+    return [...this.refByName.entries()].map(([name, ref]) => ({ name, ref }));
+  }
+
   /** Useful for tests / introspection only. */
   size(): number { return this.refByKey.size; }
 }
