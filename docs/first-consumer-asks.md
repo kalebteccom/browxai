@@ -145,6 +145,35 @@ F4 (uses F1's `context` in matches) → F5 (independent) → F6 (depends on F2's
 - **Auto-screenshot fallback** — if a probe is ambiguous, return that ambiguity to
   the caller; don't paper over it with a screenshot under the hood.
 
+## Round-8 asks (post-shipping, 2026-05-15 — Phase-2 non-Claude-consumer verification)
+
+Source: `docs/adoption-report-nonclaude-spa-2026-05-15.md`. Non-Claude MCP client
+(Codex) drove browxai end-to-end against a real authed SPA — calibration walk,
+recording, two site-docs flows produced. **Verdict "gappy green":** the
+non-Claude-consumer leg of Phase-2 close is materially passed. The remaining
+Phase-2-close gate is the headless-CI keystone (the runbook's other open item).
+Five asks surfaced — one 🔴 blocker for non-Claude clients running this loop
+themselves, three 🟡 quality issues, one 🟢 polish.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-G1** 🔴 | BYOB `byob_action` confirm hook is **operator-driven** (human at DevTools issues `__browx.confirm(true)`), but verification paths and any non-Claude MCP client with no human at the wheel can't drive that loop from within a blocked tool call. Dropping `byob_action` from `BROWX_CONFIRM_REQUIRED` entirely is the workaround, not the fix. | MCP-callable session pre-approval: `approve_actions({ scopes, ttlSeconds? })`. The client invokes once at session start with scopes like `["byob_action"]`. Confirm hooks check the pre-approval store first; auto-approve when active, fall back to page-side `__browx.confirm` outside the TTL. Auditable (each pre-approval logged with scope + TTL). Pairs with `browxai init --mcp-client codex` writing the looser default into the workspace `.mcp.json` for full-headless setups. | **impl-pending** |
+| **W-G2** 🟡 | Multiple Playwright clients attaching to the same long-lived tab inject helpers; when one disconnects, stale-binding errors (`__browx_send` / `__siteDocs_capture` missing) keep firing from helper references still on the page. | Helpers in `bridge.ts` gate every invocation on a binding-alive probe; missing-binding calls no-op with a structured `console.warn` rather than throwing. Tag injected helpers with per-session identity so a Playwright client's disconnect cleans only its own helpers. | **impl-pending** |
+| **W-G3** 🟡 | Attached-mode `find()` reports `bbox: null` / `actionable: "off-screen"` for elements plainly visible in the BYOB Chrome viewport. Pure correctness bug, not a new primitive. | Audit `session/byob.ts` viewport-override flow (the W-A5 fix sets 1280×800 when zero; likely missing cases: device-pixel-ratio mismatch, `Page.getLayoutMetrics` not consulted on first call, scrolled-into-viewport elements). Audit `page/bbox.ts` visible-rect calculation under BYOB. | **impl-pending** |
+| **W-G4** 🟡 | `find()` ranking under-weights icon-only controls — when sibling icon tabs share testId-token overlap, the correct candidate is in the list but not first. Discovery is fine; ranking is the gap. | Two scoring tweaks: (a) per-testId-*token* match bonus is amplified when the candidate's role has no accessible `name` (icon-only tabs); (b) also match against `aria-label` / `title` substrings (currently we only match role + name + testId). Tuning, not a new primitive. | **impl-pending** |
+| **W-G5** 🟢 | Recorder draft YAML preserves failed exploratory actions (timed-out / blocked calls), producing not-commit-ready output. | Audit the recorder gate in `runInActionWindow` — `if (ok && recorder.active())` already filters successful ones, but timed-out actions may slip through via a different path. Either tighten the gate or annotate failed steps with `# FIXME: action failed during recording`. | **impl-pending** |
+
+**Sequencing:** G1 first (🔴 blocker — until it lands every non-Claude adopter
+pays the same paper cut) → G3 (visible-but-off-screen breaks `actionable`
+trust for everyone) → G2 (binding hygiene) → G4 (ranking tweak) → G5 (recorder
+cleanup).
+
+**Phase-2 verification milestone:** the 2026-05-15 non-Claude-consumer run is
+the Phase-2-close non-Claude-consumer requirement from `AGENT-RUNBOOK.md`. With
+G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
+close still gates on the **headless-CI keystone** — the runbook's other open
+verification item.
+
 ## Round-7 (forward-looking) — interaction-vocabulary expansion + cross-OS
 
 Captured 2026-05-15. Not shipping in round-6 — these are roadmap items raised once
