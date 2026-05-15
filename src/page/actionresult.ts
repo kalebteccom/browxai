@@ -86,6 +86,10 @@ export interface ActionContext {
   /** Phase-2: origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
    *  Empty allow-set means "no allowlist" → egress count is always 0. */
   originPolicy?: import("../policy/origin.js").OriginPolicy;
+  /** Wishlist W-C2: if a recording is active, the recorder is wired in here so
+   *  successful actions append to the recording. Best-effort: errors during
+   *  recording never affect the action's outcome. */
+  recorder?: import("./recording.js").Recorder;
 }
 
 export interface ActionWindowOptions {
@@ -96,6 +100,10 @@ export interface ActionWindowOptions {
   networkRequestCap?: number;
   /** Post-dispatch settle delay in ms — let CDP events / framework reconciliations drain. */
   settleMs?: number;
+  /** Wishlist W-C2: caller-supplied selectorHint info for the recorder. Without
+   *  this the recorded step has the action + url but no locator for the YAML
+   *  scaffold; callers should populate it whenever they resolved a target. */
+  recordingHint?: { selectorHint: string; stability?: "high" | "medium" | "low" };
 }
 
 /**
@@ -212,6 +220,11 @@ export async function runInActionWindow(
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
   }));
+
+  // W-C2: if a recording is active, append this step. Best-effort — never throws.
+  if (ok && ctx.recorder?.active()) {
+    try { ctx.recorder.record(descriptor, urlAfter, opts.recordingHint); } catch { /* swallow */ }
+  }
 
   return {
     ok,

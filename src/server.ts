@@ -20,6 +20,7 @@ import { BrowxBridge } from "./helper/bridge.js";
 import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/capabilities.js";
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction } from "./policy/confirm.js";
+import { Recorder } from "./page/recording.js";
 import { log } from "./util/logging.js";
 
 export const NAME = "browxai";
@@ -105,6 +106,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   let bridge: BrowxBridge | null = null;
   const refs = new RefRegistry();
   const config = resolveConfig();
+  const recorder = new Recorder();
   // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities();
   const confirmHooks = resolveConfirmHooks();
@@ -152,6 +154,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     }],
   });
 
+  /** Reconstruct a `selectorHint` string the recorder can write into a flow file
+   *  YAML. Mirrors `buildSelectorHint` for `ref`/`named`; passes through `selector`. */
+  const hintFromTarget = (
+    target: { ref?: string; selector?: string; named?: string },
+  ): { selectorHint: string; stability?: "high" | "medium" | "low" } | undefined => {
+    if (target.selector) return { selectorHint: target.selector };
+    let ref = target.ref;
+    if (target.named) ref = refs.refByNameLookup(target.named);
+    if (!ref) return undefined;
+    const inputs = refs.locatorOf(ref);
+    if (!inputs) return undefined;
+    if (inputs.testId) {
+      const attr = inputs.testIdAttr ?? "data-testid";
+      return { selectorHint: `[${attr}="${inputs.testId}"]`, stability: "high" };
+    }
+    if (inputs.name) return { selectorHint: `role=${inputs.role}[name="${inputs.name}"]`, stability: "medium" };
+    return { selectorHint: `role=${inputs.role}`, stability: "low" };
+  };
+
   const openSession = async (): Promise<BrowserSession> => {
     if (session) return session;
     session = opts.attachCdp
@@ -176,6 +197,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       pages: () => s.page().context().pages(),
       testAttributes: config.testAttributes,
       originPolicy,
+      recorder,
     };
   };
 
@@ -357,7 +379,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("click"); if (g) return g;
       const c = await confirmByobAction("click", confirmCtx());
       if (!c.ok) return denyContent("click", c);
-      return asActionResultText(actions.click(await ctx(), { target: asTarget(args, "click", refs), mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = asTarget(args, "click", refs);
+      return asActionResultText(actions.click(await ctx(), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 
@@ -371,7 +394,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("fill"); if (g) return g;
       const c = await confirmByobAction("fill", confirmCtx());
       if (!c.ok) return denyContent("fill", c);
-      return asActionResultText(actions.fill(await ctx(), { target: asTarget(args, "fill", refs), value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = asTarget(args, "fill", refs);
+      return asActionResultText(actions.fill(await ctx(), { target, value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 
@@ -402,7 +426,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("hover"); if (g) return g;
       const c = await confirmByobAction("hover", confirmCtx());
       if (!c.ok) return denyContent("hover", c);
-      return asActionResultText(actions.hover(await ctx(), { target: asTarget(args, "hover", refs), mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = asTarget(args, "hover", refs);
+      return asActionResultText(actions.hover(await ctx(), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 
@@ -416,7 +441,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("select"); if (g) return g;
       const c = await confirmByobAction("select", confirmCtx());
       if (!c.ok) return denyContent("select", c);
-      return asActionResultText(actions.select(await ctx(), { target: asTarget(args, "select", refs), values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = asTarget(args, "select", refs);
+      return asActionResultText(actions.select(await ctx(), { target, values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 
@@ -428,7 +454,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("wait_for"); if (g) return g;
-      return asActionResultText(actions.waitFor(await ctx(), { target: asTarget(args, "wait_for", refs), timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = asTarget(args, "wait_for", refs);
+      return asActionResultText(actions.waitFor(await ctx(), { target, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 
@@ -447,6 +474,57 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async (args) => {
       const g = gateCheck("go_forward"); if (g) return g;
       return asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+    },
+  );
+
+  // ---------- recording mode (wishlist W-C2) ----------
+
+  server.registerTool(
+    "start_recording",
+    {
+      description:
+        "Begin recording subsequent action tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds a step (with the resolved selectorHint when a target was given). Call `end_recording` to emit a YAML draft. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding (W-C2).",
+      inputSchema: { flowName: z.string().describe("Name of the flow being recorded, e.g. \"login-and-search\"") },
+    },
+    async ({ flowName }) => {
+      const g = gateCheck("start_recording"); if (g) return g;
+      const r = recorder.start(flowName);
+      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
+    },
+  );
+
+  server.registerTool(
+    "end_recording",
+    {
+      description: "Stop the current recording and emit the draft flow-file YAML. Returns `{ name, yaml, stepCount }`. Review the locators block (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing the flow into a site-docs workspace.",
+      inputSchema: {},
+    },
+    async () => {
+      const g = gateCheck("end_recording"); if (g) return g;
+      try {
+        const r = recorder.end();
+        return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
+      } catch (e) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2) }] };
+      }
+    },
+  );
+
+  server.registerTool(
+    "record_annotate",
+    {
+      description: "Attach a doc annotation (copy + optional arrow position + optional target ref) to the most-recent recorded step, or to a specific `stepId`. No-op if no recording is active.",
+      inputSchema: {
+        copy: z.string().describe("Annotation copy"),
+        arrow: z.string().optional().describe("Arrow position hint (top|top-left|left|bottom-right|...)"),
+        target: z.string().optional().describe("Ref to anchor the annotation to (overrides the step's default)"),
+        stepId: z.string().optional().describe("Annotate a specific step; default = most-recent"),
+      },
+    },
+    async ({ copy, arrow, target, stepId }) => {
+      const g = gateCheck("record_annotate"); if (g) return g;
+      const r = recorder.annotate({ stepId, copy, arrow, target });
+      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
     },
   );
 
