@@ -76,6 +76,30 @@ two of the round-3 🟡 asks.
 
 **Not browxai's:** A4 inline halt-screenshot ref (site-docs writes the halt), B3 `flow_lint`, B4 `--start-from`/`--cdp`, C3 annotation nudge, C4 `flow tree`. **Not anyone's**: D2 pre-seeded fixture (target-app's BE).
 
+## Round-5 asks (post-shipping, 2026-05-15 — non-Claude-consumer pain points)
+
+Source: in-conversation feedback from a non-Claude MCP client run. Three concrete pain
+points where the curated surface forces wasteful loops or has no answer at all:
+
+| # | Group | Severity | Ask (short) | Status |
+|---|---|---|---|---|
+| W-E1 | feedback fidelity | 🟡 | **Enriched `ActionResult` for `fill`** — return the post-fill DOM `value` of the targeted field (and `checked` for checkboxes/radios), so the agent can confirm the write landed without a follow-up `snapshot` or `screenshot`. Removes the "fill → screenshot → fill → screenshot" loop that dominates repetitive form runs. | **impl-pending** |
+| W-E2 | batching | 🟡 | **`batch({ calls, stopOnError? })`** — run N tool calls server-side and return `ActionResult[]`. Whitelist of inner tools (no nested `batch`, no `await_human`). `stopOnError` default `true`. Pairs with W-E1 for "fill 5 fields then submit" runs. Precedent: `claude-in-chrome`'s `browser_batch`. | **impl-pending** |
+| W-E3 | coordinate escape hatch | 🟢 | **`click_at({ x, y, button? })`** + **`hover_at({ x, y })`** — coordinate-based actions for canvas, custom-painted UIs, and "click empty space to dismiss" cases that ref-finding genuinely can't address. Gated under the existing `action` capability. Documented as an escape hatch, not the default. | **impl-pending** |
+
+**Sequencing:** W-E1 first (smallest change, eliminates the biggest screenshot tax),
+then W-E2 (depends on per-tool ActionResult shape being final), then W-E3 (independent
+but lowest-leverage of the three). All three land before Phase-3 public-release work.
+
+**Author's "not"-list for round-5:**
+
+- A general `dom_inspect(ref)` query primitive — `eval_js` already covers it; we don't
+  need another way in.
+- Coordinate-based `fill` / `press` — coordinates are an escape hatch for *picking
+  targets*, not for *driving input*. Once you have a target, refs are correct.
+- Auto-batch across rounds — `batch` stays explicit; implicit grouping is a debugging
+  nightmare.
+
 **Author's stated "not"-list** worth quoting:
 
 - Replacing site-docs `run` with browxai entirely — buys nothing, loses determinism. The discovery/execution split is right.
