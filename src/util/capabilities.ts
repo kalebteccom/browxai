@@ -61,6 +61,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   start_recording: "human",
   end_recording: "human",
   record_annotate: "human",
+  find_feedback: "human",
   // eval
   eval_js: "eval",
   // byob-attach and file-io are not bound to specific tools — byob-attach gates the

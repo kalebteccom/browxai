@@ -21,6 +21,7 @@ import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
+import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
 
 export const NAME = "browxai";
@@ -107,6 +108,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const refs = new RefRegistry();
   const config = resolveConfig();
   const recorder = new Recorder();
+  const feedback = new FeedbackMemory();
   // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities();
   const confirmHooks = resolveConfirmHooks();
@@ -252,7 +254,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async ({ query, maxCandidates, confidenceFloor, contextRef }) => {
       const g = gateCheck("find"); if (g) return g;
       const s = await openSession();
-      const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes });
+      const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes, feedback });
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
     },
   );
@@ -556,6 +558,29 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async () => {
       const g = gateCheck("list_named_refs"); if (g) return g;
       return { content: [{ type: "text", text: JSON.stringify(refs.listNames(), null, 2) }] };
+    },
+  );
+
+  // ---------- learned find() ranking (Phase 2) ----------
+
+  server.registerTool(
+    "find_feedback",
+    {
+      description:
+        "Tell browxai which candidate was the right answer to a prior `find(query)`. Subsequent finds whose query overlaps the token set will boost candidates matching this winner's identity (testId, or role+name). Session-scoped, in-memory, capped at 100 entries with LRU eviction. The learning is intentionally simple — a 'don't re-do that mistake' signal, not an ML model.",
+      inputSchema: {
+        query: z.string().describe("The query you previously passed to find() (or a paraphrase — token overlap is what matters)"),
+        ref: z.string().describe("The ref the agent ended up acting on (the right candidate)"),
+      },
+    },
+    async ({ query, ref }) => {
+      const g = gateCheck("find_feedback"); if (g) return g;
+      const inputs = refs.locatorOf(ref);
+      if (!inputs) {
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: `ref "${ref}" not in the registry` }, null, 2) }] };
+      }
+      feedback.record(query, { testId: inputs.testId, testIdAttr: inputs.testIdAttr, role: inputs.role, name: inputs.name });
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, recorded: { query, identity: inputs }, memorySize: feedback.size() }, null, 2) }] };
     },
   );
 

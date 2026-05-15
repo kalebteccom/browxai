@@ -8,6 +8,7 @@ import type { RefRegistry } from "./refs.js";
 import { composeSnapshot } from "./compose.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
+import type { FeedbackMemory } from "./learning.js";
 
 export interface FindCandidate {
   ref: string;
@@ -48,6 +49,9 @@ export interface FindOptions {
    *  encoding the relationship in natural language. Ignored if the ref isn't in
    *  the current snapshot. */
   contextRef?: string;
+  /** Phase-2 learned ranking: prior session feedback applied as a per-candidate
+   *  score bonus. Skip / null = no learning bonus. */
+  feedback?: FeedbackMemory;
 }
 
 export interface FindResult {
@@ -100,7 +104,12 @@ export async function find(
 
   const scored: Array<{ node: A11yNode; score: number }> = [];
   for (const { node } of walk(walkRoot)) {
-    const score = scoreNode(node, q, qTokens);
+    let score = scoreNode(node, q, qTokens);
+    if (score > 0 && opts.feedback) {
+      score += opts.feedback.bonusFor(opts.query, {
+        testId: node.testId, testIdAttr: node.testIdAttr, role: node.role, name: node.name,
+      });
+    }
     if (score > 0) scored.push({ node, score });
   }
 
