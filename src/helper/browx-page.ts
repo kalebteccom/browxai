@@ -26,7 +26,14 @@ export const BROWX_PAGE_SCRIPT = `(() => {
     proceed: function (data) { send("signal", "proceed", data == null ? null : data); },
     abort: function (reason) { send("signal", "abort", reason == null ? null : reason); },
     done: function (what, data) { send("signal", "did", { what: what, data: data == null ? null : data }); },
+    // W-B5: typed responses to await_human({kind:"confirm|choose|input"}). The
+    // human reads the prompt from the runbook / terminal stderr, then calls one
+    // of these from DevTools (or a future shadow-DOM banner UI will call them).
+    respond: function (value) { send("signal", "respond", value); },
+    confirm: function (yes) { send("signal", "respond", { kind: "confirm", value: !!yes }); },
+    choose: function (idx) { send("signal", "respond", { kind: "choose", value: idx }); },
+    input: function (text) { send("signal", "respond", { kind: "input", value: String(text == null ? "" : text) }); },
     status: function () { return { state: "ready" }; },
   };
-  try { console.info("[browxai] __browx ready. window.__browx.proceed() releases any awaiting tool."); } catch (_) {}
+  try { console.info("[browxai] __browx ready. window.__browx.proceed() releases any awaiting tool. For await_human kinds: confirm(true|false) / choose(idx) / input(text)."); } catch (_) {}
 })();`;

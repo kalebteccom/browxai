@@ -390,19 +390,39 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "await_human",
     {
       description:
-        "Block until the human responds in the page. The human triggers a response by calling window.__browx.proceed() (or signal/abort/done) from DevTools or any injected UI. Phase-1 implements `kind=\"acknowledge\"` (just wait for proceed). `confirm` / `choose` / `input` / `pick_element` kinds are Phase-1.5.",
+        "Block until the human responds in the page. Operator reads `prompt` from the server's stderr (or a future banner UI) and triggers a response from DevTools:\n" +
+        "  - `acknowledge` → `__browx.proceed()` (or `signal('proceed')`)\n" +
+        "  - `confirm`     → `__browx.confirm(true|false)`\n" +
+        "  - `choose`      → `__browx.choose(<index-into-choices>)`\n" +
+        "  - `input`       → `__browx.input('typed text')`\n" +
+        "Returns `{ kind, value, timedOut }`. `pick_element` kind (in-page hover-pick overlay) is deferred to Phase 2.",
       inputSchema: {
-        kind: z.enum(["acknowledge"]).default("acknowledge"),
+        kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
         prompt: z.string().describe("Human-readable instruction shown to the operator (logged to stderr)."),
+        choices: z.array(z.string()).optional().describe("For `kind:\"choose\"` — labels shown in the prompt; the human responds with an index into this list."),
         timeoutMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
       },
     },
-    async ({ kind, prompt, timeoutMs }) => {
+    async ({ kind, prompt, choices, timeoutMs }) => {
       await openSession();
-      log.info(`await_human (${kind}): ${prompt} — call __browx.proceed() in DevTools to release`);
+      const promptBody =
+        kind === "choose" && choices
+          ? `${prompt}\n${choices.map((c, i) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`
+          : kind === "confirm"
+            ? `${prompt} → call __browx.confirm(true|false)`
+            : kind === "input"
+              ? `${prompt} → call __browx.input('your text')`
+              : `${prompt} → call __browx.proceed() to release`;
+      log.info(`await_human (${kind}): ${promptBody}`);
+      const signalName = kind === "acknowledge" ? "proceed" : "respond";
       try {
-        const sig = await bridge!.awaitSignal("proceed", timeoutMs ?? 0);
-        return { content: [{ type: "text", text: JSON.stringify({ kind, value: sig.data, timedOut: false }, null, 2) }] };
+        const sig = await bridge!.awaitSignal(signalName, timeoutMs ?? 0);
+        // For typed kinds the page sends `{ kind, value }`; for acknowledge it sends any/null.
+        let value: unknown = sig.data;
+        if (kind !== "acknowledge" && sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)) {
+          value = (sig.data as { value: unknown }).value;
+        }
+        return { content: [{ type: "text", text: JSON.stringify({ kind, value, timedOut: false }, null, 2) }] };
       } catch (e) {
         const timedOut = e instanceof Error && e.message.includes("timed out");
         return {

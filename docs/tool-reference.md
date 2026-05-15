@@ -118,7 +118,7 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 ### Common per-call inputs (`ACTION_OPTS`)
 | Field | Default | Effect |
 |---|---|---|
-| `mode` | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree; `"full"` returns the whole post-action tree; `"tree_diff"` is Phase-1.5 (falls back to `scoped_snapshot` with a warning); `"scoped_snapshot"` currently returns the full tree (scoping is Phase-1.5). |
+| `mode` | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree. `"full"` returns the whole post-action tree. `"scoped_snapshot"` (default, W-A2) re-snapshots **just** the action's element subtree + any newly-appeared regions (`structure.appeared` refs); falls back to the full tree if no scope refs exist; auto-promotes to `"none"` when no nav/structure change happened (W-A6). `"tree_diff"` (W-A2 partial) emits just the appeared-region subtrees (a full unified diff is still future work). |
 | `maxResultTokens` | `600` | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`. |
 
 ### Target shape (for tools that act on an element)
@@ -192,12 +192,16 @@ History navigation.
 
 ## Human↔agent helper
 
-### `await_human({ kind: "acknowledge", prompt, timeoutMs? })`
-Blocks the calling agent until the human triggers `window.__browx.proceed()` in the page (from DevTools or any injected UI). The `prompt` is logged to stderr so the operator can see it.
+### `await_human({ kind, prompt, choices?, timeoutMs? })`
+Blocks the calling agent until the human responds. The `prompt` is logged to stderr; the operator triggers the response from DevTools. Wishlist W-B5 expanded the kinds from Phase 1's `acknowledge`-only:
 
-Phase-1 implements **`kind: "acknowledge"` only** — the site-docs `manual-capture` use case ("log in, then continue"). `confirm` / `choose` / `input` / `pick_element` are Phase-1.5.
+- `acknowledge` → `__browx.proceed()` (no value; the original site-docs `manual-capture` use case)
+- `confirm` → `__browx.confirm(true)` or `__browx.confirm(false)`
+- `choose` → `__browx.choose(<index>)` (with `choices: ["A", "B", "C"]` shown in the prompt; the human responds with `0`/`1`/`2`)
+- `input` → `__browx.input("typed text")`
+- `pick_element` (in-page hover-pick overlay) is deferred to Phase 2 — needs the shadow-DOM banner UI.
 
-**Returns:** `{ kind, value, timedOut }`. `value` is whatever was passed to `__browx.proceed(...)` (or `null`).
+**Returns:** `{ kind, value, timedOut }`. For typed kinds, `value` is the user-supplied value (boolean / index / string); for `acknowledge`, it's whatever was passed to `proceed(…)` (often `null`).
 
 ### The `window.__browx` in-page helper
 

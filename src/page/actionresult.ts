@@ -10,7 +10,7 @@
 import type { CDPSession, Page } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { serialise } from "./snapshot.js";
+import { findByRef, serialise } from "./snapshot.js";
 import { NetworkTap, type NetworkEntry, type NetworkSummary } from "./network.js";
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
@@ -182,7 +182,13 @@ export async function runInActionWindow(
     effectiveMode = "none";
     warnings.push("snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:\"full\" if you need the post-action tree anyway");
   }
-  const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings);
+  // Wishlist W-A2: when scoped_snapshot mode is honoured and there are scope-able
+  // refs (action's ref + appeared regions), serialise *just those subtrees* instead
+  // of the full tree.
+  const scopeRefs: string[] = [];
+  if (descriptor.ref) scopeRefs.push(descriptor.ref);
+  for (const r of structure.appeared) scopeRefs.push(r.ref);
+  const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings, scopeRefs);
   const networkBlock = network.summary.total > 0
     ? (network.requests.length <= requestCap
         ? { summary: network.summary, requests: network.requests }
@@ -257,6 +263,9 @@ function buildSnapshotDelta(
   tree: A11yNode | null,
   maxTokens: number,
   warnings: string[],
+  /** Wishlist W-A2: refs to scope the delta to (action's ref + appeared regions).
+   *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
+  scopeRefs: string[] = [],
 ): ActionResult["snapshotDelta"] {
   if (mode === "none") return undefined;
   if (!tree) {
@@ -265,15 +274,42 @@ function buildSnapshotDelta(
   let scope: string;
   let renderMode: SnapshotMode = mode;
   if (mode === "tree_diff") {
-    warnings.push("mode=tree_diff not implemented in Phase 1; emitting scoped_snapshot instead");
+    // Phase-1.5 partial: emit appeared/removed-as-subtrees instead of a unified diff.
+    // Closer in spirit to Vercel agent-browser's diff than the previous fallback,
+    // without needing the line-stable cross-snapshot diff plumbing.
+    warnings.push("mode=tree_diff: emitting appeared-region subtrees only (full unified diff not yet implemented; pass mode:\"full\" for the post-action tree)");
     renderMode = "scoped_snapshot";
   }
-  if (renderMode === "scoped_snapshot") {
-    warnings.push("scoped_snapshot currently returns the full tree; scoping is a Phase-1.5 refinement");
-    scope = "full (Phase-1)";
-  } else {
-    scope = "full";
+
+  if (renderMode === "scoped_snapshot" && scopeRefs.length > 0) {
+    // W-A2: real scope-down. Serialise just the action's element subtree + any
+    // newly-appeared top-level regions. Drops 7-10k-token snapshots to ~500-1500
+    // on the heavy-SPA / many-elements shape.
+    const subtrees = scopeRefs
+      .map((ref) => findByRef(tree, ref))
+      .filter((n): n is A11yNode => n !== null);
+    if (subtrees.length === 0) {
+      // All scope refs gone — element vanished + no appeared regions. Fall through
+      // to a tiny scope marker instead of the full tree.
+      return { mode: renderMode, scope: "(scope refs not present in post-tree)", truncated: false };
+    }
+    const text = subtrees
+      .map((n, i) => (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") + serialise(n))
+      .join("\n");
+    const { text: trimmed, truncated } = truncateToBudget(text, maxTokens);
+    if (truncated) warnings.push(`snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`);
+    return {
+      mode: renderMode,
+      scope: `scoped to ${subtrees.length} subtree(s) [${scopeRefs.join(", ")}]`,
+      tree: trimmed,
+      truncated,
+    };
   }
+
+  // Fall-through: full tree. Honours explicit mode:"full" and the rare case where
+  // scoped_snapshot was asked-for but we have no scope refs (no action ref, no
+  // appeared regions — uncommon).
+  scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
   const full = serialise(tree);
   const { text, truncated } = truncateToBudget(full, maxTokens);
   if (truncated) warnings.push(`snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`);
