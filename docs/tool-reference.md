@@ -115,6 +115,23 @@ Run a JavaScript expression in the page's main frame. The escape hatch when no o
 
 **Trust boundary**: the *call* originates from the (trusted) agent, but the *return value* is page-controlled — treat it as untrusted just like snapshot text.
 
+**Gating**: off by default — the `eval` capability isn't in `DEFAULT_CAPABILITIES`. Set `BROWX_CAPABILITIES=read,navigation,action,human,eval` to enable; the server logs a loud warning at startup.
+
+### `find_feedback`
+Tell browxai which candidate was the right answer to a prior `find(query)`. Subsequent finds whose query overlaps the token set will boost candidates matching this winner's identity (testId, or role+name). Session-scoped, in-memory, capped at 100 entries with LRU eviction. The learning is intentionally simple — a "don't re-do that mistake" signal, not an ML model. Phase-2.
+
+**Inputs:** `{ query: string, ref: string }` — the query you previously passed to `find()` (or a paraphrase; token overlap is what matters), and the ref the agent ended up acting on.
+
+**Output:** JSON `{ ok, recorded: { query, identity }, memorySize }`.
+
+### Recording tools (wishlist W-C2)
+
+`start_recording({ flowName })` / `end_recording()` / `record_annotate({ copy, arrow?, target?, stepId? })`.
+
+Recorded actions become a draft flow-file YAML (site-docs-flavoured) — locators block + steps with selectorHints transcribed from the action target. Use during calibration to cut hand-writing the YAML; review the locators (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing.
+
+End-recording output: `{ name, yaml, stepCount }`. The YAML draft is the deliverable.
+
 ## Action tools
 
 All action tools return an `ActionResult` (text content; JSON-encoded) — the same shape regardless of which action you used.
