@@ -329,6 +329,24 @@ Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, 
 }
 ```
 
+## Session pre-approvals (W-G1)
+
+### `approve_actions({ scopes, ttlSeconds? })`
+
+MCP-callable session-scoped pre-approval for confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)` — the canonical Phase-2 confirm path. Pattern:
+
+1. At session start, the client calls `approve_actions({ scopes: ["byob_action"], ttlSeconds: 3600 })`.
+2. Subsequent action tools that would have hit the BYOB confirm hook auto-approve within the TTL window.
+3. Each consume is logged for audit; the page-side `__browx.confirm` fallback still fires when no live grant covers the scope.
+
+Scopes match `BROWX_CONFIRM_REQUIRED` vocabulary: `navigate_off_allowlist`, `byob_action`, `file_download`, `file_upload`. `ttlSeconds` defaults to 3600 (1 hour); hard cap 86400 (24h). Re-granting an existing scope resets its TTL.
+
+**Pre-approval is not a security boundary** — it's an unblock for headless flows. The original confirm hook still exists; pre-approval just provides a non-page-side path to satisfy it.
+
+### `list_approvals()`
+
+Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remainingMs }`.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

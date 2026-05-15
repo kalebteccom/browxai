@@ -20,7 +20,7 @@ import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
 import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/capabilities.js";
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
-import { confirmNavigation, confirmByobAction } from "./policy/confirm.js";
+import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
 import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
@@ -127,6 +127,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const config = resolveConfig();
   const recorder = new Recorder();
   const feedback = new FeedbackMemory();
+  const approvals = new ApprovalStore();
   // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities();
   const confirmHooks = resolveConfirmHooks();
@@ -142,7 +143,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
   }
 
-  const confirmCtx = () => ({ hooks: confirmHooks, policy: originPolicy, bridge, isByob });
+  const confirmCtx = () => ({ hooks: confirmHooks, policy: originPolicy, bridge, isByob, approvals });
 
   /** Disabled-tool early-return shape. Used at the top of each handler:
    *    const g = gateCheck("foo"); if (g) return g;
@@ -705,6 +706,59 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- session pre-approvals (W-G1) ----------
+
+  register(
+    "approve_actions",
+    {
+      description:
+        "W-G1: session-scoped pre-approval for one or more confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)`. The client calls this once at session start with the scopes to pre-approve (e.g. `[\"byob_action\"]`) and an optional TTL; confirm hooks for those scopes auto-approve within the window. Each grant + consume is logged for audit. Falls back to page-side confirm when no grant covers the scope. Pre-approval is **not** a security boundary — it's an unblock for headless flows; tighten by capping `ttlSeconds` per-session.",
+      inputSchema: {
+        scopes: z
+          .array(z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]))
+          .min(1)
+          .describe("Confirm scope names to grant. Same vocabulary as BROWX_CONFIRM_REQUIRED."),
+        ttlSeconds: z
+          .number()
+          .int()
+          .positive()
+          .max(24 * 60 * 60)
+          .optional()
+          .describe("Lifetime of the grant in seconds. Default 3600 (1 hour). Hard cap 86400 (24h)."),
+      },
+    },
+    async ({ scopes, ttlSeconds }) => {
+      const ttl = ttlSeconds ?? 3600;
+      for (const scope of scopes) approvals.grant(scope, ttl);
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            ok: true,
+            granted: scopes,
+            ttlSeconds: ttl,
+            expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+            note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
+          }, null, 2),
+        }],
+      };
+    },
+  );
+
+  register(
+    "list_approvals",
+    {
+      description: "List live pre-approvals from `approve_actions` — scope, grantedAt, expiresAt, uses, remainingMs. Audit helper.",
+      inputSchema: {},
+    },
+    async () => ({
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ approvals: approvals.list() }, null, 2),
+      }],
+    }),
+  );
+
   // ---------- human↔agent helper ----------
 
   register(
@@ -775,6 +829,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_back", "go_forward",
     "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
+    "approve_actions", "list_approvals",
   ]);
   const BATCH_MAX_CALLS = 32;
 
