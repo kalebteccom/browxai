@@ -11,7 +11,7 @@ import type { CDPSession, Page } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { findByRef, serialise } from "./snapshot.js";
-import { NetworkTap, type NetworkEntry, type NetworkSummary } from "./network.js";
+import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry } from "./network.js";
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
 
@@ -129,6 +129,12 @@ export interface ActionResult {
     /** Phase-2: count of requests in this action window that left
      *  `BROWX_ALLOWED_ORIGINS` (0 when no allowlist is set). */
     egressOffAllowlist?: number;
+    /** W-F5: bounded summary of write-shaped requests (POST/PUT/PATCH/DELETE,
+     *  2xx) whose response body parsed as JSON. `responseShape` carries the
+     *  *top-level keys only* — no values, no nested keys. Use to confirm a
+     *  mutation succeeded and what shape it wrote back, without exposing the
+     *  full response body. Absent when no mutations landed in the window. */
+    mutations?: MutationEntry[];
   };
   tokensEstimate: number;
   warnings: string[];
@@ -226,7 +232,7 @@ export async function runInActionWindow(
   const urlAfter = ctx.page.url();
   const postTree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map();
-  const network = net.close();
+  const network = await net.close();
 
   // --- shape ---
   const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
@@ -272,11 +278,12 @@ export async function runInActionWindow(
   const egressOffAllowlist = ctx.originPolicy && ctx.originPolicy.allowed.length > 0
     ? (await import("../policy/confirm.js")).countEgressOffAllowlist(network.requests, ctx.originPolicy)
     : 0;
+  const mutationsBlock = network.mutations.length > 0 ? { mutations: network.mutations } : {};
   const networkBlock = network.summary.total > 0
     ? (network.requests.length <= requestCap
-        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}) }
-        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}) }))
-    : { summary: network.summary };
+        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock }
+        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock }))
+    : { summary: network.summary, ...mutationsBlock };
 
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,

@@ -125,6 +125,25 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+#### `ActionResult.network.mutations` (W-F5)
+
+Action windows that include a write-shaped request (`POST` / `PUT` / `PATCH` / `DELETE` with a 2xx response) get a bounded `mutations` array on top of `summary` / `requests`:
+
+```jsonc
+"mutations": [
+  { "method": "POST", "urlPattern": "https://api.example.com/v1/records",
+    "status": 200, "ok": true, "durationMs": 142,
+    "responseShape": ["id", "date", "type", "task"] }
+]
+```
+
+- `urlPattern` strips the query string and replaces id-shaped path segments (numeric / UUID / long hex) with `:id` — stable per logical endpoint, no record-id leak.
+- `responseShape` is the **top-level keys only** of the parsed JSON response (or `[].key` for an array-of-objects response). No values, no nested keys. Capped at 20 entries.
+- `responseShape` is omitted for non-JSON bodies, oversized bodies (>256 KB), and binary responses.
+- Confirms "the click caused one successful mutation that wrote back keys X/Y/Z" without exposing actual data. Pair with `element.container.changed` to validate the visible state matches.
+
+Full response-body inspection is intentionally **not** exposed here; that would broaden the leak surface and bloat agent context. A future dedicated tool (under a higher-risk capability) can expose full bodies opt-in for the rare debugging case.
+
 **Inputs:** `{ limit?: number (default 50, max 500) }`
 
 **Output:** JSON `{ summary, requests }`.
@@ -284,7 +303,11 @@ Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, 
   },
   "network": {
     "summary":  { "total": 3, "byType": { "xhr": 2, "document": 1, "other": 6 }, "failed": 0 },
-    "requests": [ { "method": "POST", "url": "/api/orders", "status": 200, "type": "Fetch", "ms": 142 } ]
+    "requests": [ { "method": "POST", "url": "/api/orders", "status": 200, "type": "Fetch", "ms": 142 } ],
+    "mutations": [                          // W-F5: bounded write-summary; keys only, never values
+      { "method": "POST", "urlPattern": "https://api.example.com/v1/records", "status": 200,
+        "ok": true, "durationMs": 142, "responseShape": ["id", "date", "type", "task"] }
+    ]
   },
 
   "tokensEstimate": 180,
