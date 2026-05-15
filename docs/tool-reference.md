@@ -145,6 +145,8 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 ### Target shape (for tools that act on an element)
 `{ ref: string }` OR `{ selector: string }` OR `{ named: string }` — exactly one. `ref` is preferred (stable across snapshots, comes with role+name+testId so Playwright auto-waiting + strict-match Just Works); `selector` accepts the `selectorHint` strings that `find()` emits, plus arbitrary Playwright locator strings; `named` looks up a mnemonic previously bound via `name_ref` (wishlist W-C1).
 
+Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` or `named` is used.
+
 #### Ref provenance and locator routing
 
 Every ref records the pass that discovered it: `a11y` (via the accessibility tree), `dom` (via the DOM walk), or `both` (the same element surfaced through both passes). The locator engine chooses by provenance so refs whose role is a bare tag (`td`, `div`, `generic`) still resolve to a real element instead of falling back to an ambiguous `getByRole("td")`. Priority order:

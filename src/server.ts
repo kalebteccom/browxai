@@ -39,10 +39,12 @@ const ACTION_OPTS = {
 };
 
 // `target` accepts ref *or* selector *or* named. Validated at handler time.
+// `contextRef` optionally scopes a `selector` to a prior ref's subtree.
 const REF_OR_SELECTOR = {
   ref: z.string().optional().describe("Stable [eN] ref from snapshot()/find()"),
   selector: z.string().optional().describe("CSS / selectorHint fallback"),
   named: z.string().optional().describe("Mnemonic name previously bound with name_ref (wishlist W-C1)"),
+  contextRef: z.string().optional().describe("Resolve `selector` within the subtree of this ref (from a prior snapshot/find). Lets you say 'the X *inside* this row/card/panel' without baking positional :nth chains into the selector. Ignored when `ref` or `named` is used."),
 };
 
 /** Wishlist W-B2: structured one-liner alongside an element screenshot. Skips
@@ -78,18 +80,22 @@ async function describeTarget(
 }
 
 function asTarget(
-  args: { ref?: string; selector?: string; named?: string },
+  args: { ref?: string; selector?: string; named?: string; contextRef?: string },
   toolName: string,
   refs: RefRegistry,
-): { ref: string } | { selector: string } {
+): { ref: string } | { selector: string; contextRef?: string } {
   const provided = [args.ref, args.selector, args.named].filter(Boolean).length;
   if (provided > 1) throw new Error(`${toolName}: pass exactly one of \`ref\` / \`selector\` / \`named\``);
   if (args.ref) return { ref: args.ref };
-  if (args.selector) return { selector: args.selector };
   if (args.named) {
     const resolved = refs.refByNameLookup(args.named);
     if (!resolved) throw new Error(`${toolName}: name "${args.named}" not bound. Call name_ref({name, ref}) first.`);
     return { ref: resolved };
+  }
+  if (args.selector) {
+    return args.contextRef
+      ? { selector: args.selector, contextRef: args.contextRef }
+      : { selector: args.selector };
   }
   throw new Error(`${toolName}: requires one of \`ref\` (from find/snapshot), \`selector\`, or \`named\``);
 }

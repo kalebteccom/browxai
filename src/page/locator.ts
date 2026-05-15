@@ -6,9 +6,16 @@
 import type { Locator, Page } from "playwright-core";
 import type { RefLocatorInputs, RefRegistry } from "./refs.js";
 
+/**
+ * Action target shape. Exactly one of `ref` / `selector` is required.
+ * `contextRef` optionally scopes a `selector` to the subtree of a prior ref —
+ * lets callers say "the [data-testid=...] *inside this row*" without baking
+ * positional `:nth` chains into the selector. Mirrors `find()`'s `contextRef`
+ * but composes at locator-resolution time rather than at tree-search time.
+ */
 export type ActionTarget =
-  | { ref: string; selector?: undefined }
-  | { selector: string; ref?: undefined };
+  | { ref: string; selector?: undefined; contextRef?: undefined }
+  | { selector: string; ref?: undefined; contextRef?: string };
 
 export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
   if (target.ref) {
@@ -21,9 +28,19 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
     return locatorFromInputs(page, inputs);
   }
   if (target.selector) {
+    if (target.contextRef) {
+      const ctxInputs = refs.locatorOf(target.contextRef);
+      if (!ctxInputs) {
+        throw new Error(
+          `unknown contextRef "${target.contextRef}"; call snapshot() or find() first to populate refs`,
+        );
+      }
+      const ctxLoc = locatorFromInputs(page, ctxInputs);
+      return parseSelectorHint(ctxLoc, target.selector);
+    }
     return parseSelectorHint(page, target.selector);
   }
-  throw new Error("locatorFor: requires { ref } or { selector }");
+  throw new Error("locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors)");
 }
 
 function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
@@ -60,30 +77,36 @@ function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
  * (so consumers can pass them straight back as `selector:`). Falls through to
  * a raw Playwright locator string for anything else.
  *
+ * Accepts either a Page or a Locator as the resolution root — when the caller
+ * supplies a `contextRef`, the scope is a Locator and selectors resolve inside
+ * its subtree (Playwright's nested-locator semantics).
+ *
  * Supported shapes:
- *   - `[data-testid="..."]`              → getByTestId
+ *   - `[<attr>="..."]`                   → locator(attr-CSS)
  *   - `role=<role>[name="..."]`          → getByRole({ name })
  *   - `role=<role>`                      → getByRole
- *   - anything else                      → page.locator(<raw>)
+ *   - anything else                      → locator(<raw>)
  */
-function parseSelectorHint(page: Page, sel: string): Locator {
+interface SelectorRoot {
+  locator: (selector: string) => Locator;
+  getByRole: Page["getByRole"];
+}
+function parseSelectorHint(root: SelectorRoot, sel: string): Locator {
   const s = sel.trim();
-  // Any `[<attr>="value"]` shape — generalised so `data-testid` / `data-type` /
-  // `data-cy` / project-conventional attrs all route through the CSS path.
   const attrMatch = s.match(/^\[([a-zA-Z][a-zA-Z0-9-]*)=("([^"]*)"|'([^']*)')\]$/);
   if (attrMatch) {
-    return page.locator(s).first();
+    return root.locator(s).first();
   }
   const roleWithNameMatch = s.match(/^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/);
   if (roleWithNameMatch) {
     const role = roleWithNameMatch[1]!;
     const raw = roleWithNameMatch[3] ?? roleWithNameMatch[4] ?? "";
     const name = raw.replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/\\\\/g, "\\");
-    return page.getByRole(role as Parameters<Page["getByRole"]>[0], { name }).first();
+    return root.getByRole(role as Parameters<Page["getByRole"]>[0], { name }).first();
   }
   const roleOnlyMatch = s.match(/^role=([a-zA-Z][a-zA-Z0-9-]*)$/);
   if (roleOnlyMatch) {
-    return page.getByRole(roleOnlyMatch[1] as Parameters<Page["getByRole"]>[0]).first();
+    return root.getByRole(roleOnlyMatch[1] as Parameters<Page["getByRole"]>[0]).first();
   }
-  return page.locator(s).first();
+  return root.locator(s).first();
 }

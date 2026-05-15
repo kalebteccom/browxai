@@ -4,25 +4,45 @@ import { locatorFor } from "./locator.js";
 import { RefRegistry } from "./refs.js";
 
 // Minimal Page mock. Each getByRole / locator call records its arguments and
-// returns a sentinel "locator" carrying the invocation — enough to assert the
-// routing path without spinning up a browser.
+// returns a chainable sentinel that supports `first()`, `locator()`, and
+// `getByRole()` so we can also assert the nested-locator routing used by
+// scoped (contextRef) actions.
 interface Recorded {
   method: "getByRole" | "locator";
   role?: string;
   options?: { name?: string };
   selector?: string;
+  /** When set, the call was made on a nested Locator (contextRef path). */
+  scopedToCssPath?: string;
+}
+
+interface MockNode {
+  first(): MockNode;
+  locator(selector: string): MockNode;
+  getByRole(role: string, options?: { name?: string }): MockNode;
 }
 
 function mockPage(): { page: Page; calls: Recorded[] } {
   const calls: Recorded[] = [];
+  const makeNested = (scope: string): MockNode => ({
+    first: () => makeNested(scope),
+    locator: (selector: string) => {
+      calls.push({ method: "locator", selector, scopedToCssPath: scope });
+      return makeNested(scope);
+    },
+    getByRole: (role: string, options?: { name?: string }) => {
+      calls.push({ method: "getByRole", role, options, scopedToCssPath: scope });
+      return makeNested(scope);
+    },
+  });
   const page = {
     getByRole: (role: string, options?: { name?: string }) => {
       calls.push({ method: "getByRole", role, options });
-      return { first: () => ({ __routed: { method: "getByRole", role, options } }) };
+      return { first: () => makeNested(`getByRole:${role}`) };
     },
     locator: (selector: string) => {
       calls.push({ method: "locator", selector });
-      return { first: () => ({ __routed: { method: "locator", selector } }) };
+      return { first: () => makeNested(selector) };
     },
   } as unknown as Page;
   return { page, calls };
@@ -91,5 +111,55 @@ describe("locatorFor — W-E5 provenance routing", () => {
     const ref = refs.forKey("k1", { role: "div", testId: 'with "quotes"', testIdAttr: "data-testid", source: "dom" });
     locatorFor(page, refs, { ref });
     expect(calls[0]?.selector).toBe('[data-testid="with \\"quotes\\""]');
+  });
+});
+
+describe("locatorFor — W-E4 scoped selectors via contextRef", () => {
+  it("resolves selector inside contextRef's locator (nested locator semantics)", () => {
+    const { page, calls } = mockPage();
+    const refs = new RefRegistry();
+    const rowRef = refs.forKey("k-row", {
+      role: "row",
+      cssPath: "table > tbody > tr:nth-child(4)",
+      source: "dom",
+    });
+    locatorFor(page, refs, {
+      selector: '[data-testid="row-action"]',
+      contextRef: rowRef,
+    });
+    // First call: resolves the context ref via cssPath.
+    expect(calls[0]).toEqual({ method: "locator", selector: "table > tbody > tr:nth-child(4)" });
+    // Second call: resolves the selector *inside* the context locator.
+    expect(calls[1]).toEqual({
+      method: "locator",
+      selector: '[data-testid="row-action"]',
+      scopedToCssPath: "table > tbody > tr:nth-child(4)",
+    });
+  });
+
+  it("scoped role=button[name=...] routes through getByRole on the context locator", () => {
+    const { page, calls } = mockPage();
+    const refs = new RefRegistry();
+    const cardRef = refs.forKey("k-card", { role: "article", name: "Order #42", source: "a11y" });
+    locatorFor(page, refs, {
+      selector: 'role=button[name="Cancel"]',
+      contextRef: cardRef,
+    });
+    // First call: context ref via getByRole({name}).
+    expect(calls[0]).toEqual({ method: "getByRole", role: "article", options: { name: "Order #42" } });
+    // Second call: scoped getByRole on the context.
+    expect(calls[1]).toEqual({
+      method: "getByRole",
+      role: "button",
+      options: { name: "Cancel" },
+      scopedToCssPath: "getByRole:article",
+    });
+  });
+
+  it("throws when contextRef is unknown", () => {
+    const { page } = mockPage();
+    const refs = new RefRegistry();
+    expect(() => locatorFor(page, refs, { selector: ".x", contextRef: "e999" }))
+      .toThrow(/unknown contextRef/);
   });
 });
