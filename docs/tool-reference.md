@@ -83,9 +83,10 @@ Find candidate elements by natural-language description.
 ### `screenshot`
 PNG of the viewport, optionally cropped to an element.
 
-**Inputs:** `{ ref?: string, selector?: string }` *(both optional; if both, error; if neither, viewport)*
+**Inputs:** `{ ref?, selector?, named?, describe?: boolean }` *(pass at most one of ref/selector/named; none = viewport)*
+- `describe` (wishlist W-B2): emit a structured one-line caption alongside the PNG (`role "name" [<attr>="…"] bbox=x,y w×h [not-visible|disabled]`). Lets the agent skip vision-reading when it just needs to confirm presence.
 
-**Output:** an MCP `image` content part (base64 PNG).
+**Output:** an MCP `image` content part (base64 PNG), optionally preceded by a `text` part with the caption.
 
 ### `console_read`
 Recent console messages (ring buffer). For per-action attribution, use `ActionResult.console` from any action tool.
@@ -95,7 +96,20 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 **Output:** JSON array of `{ ts, type, text }`.
 
 ### `network_read`
-Phase-1 stub. The action-window network tap inside every `ActionResult.network` is the primary surface; a session-wide buffered log is Phase-1.5 polish. Today this tool returns a note.
+Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
+
+**Inputs:** `{ limit?: number (default 50, max 500) }`
+
+**Output:** JSON `{ summary, requests }`.
+
+### `eval_js`
+Run a JavaScript expression in the page's main frame. The escape hatch when no other tool covers your case (typically: trigger a page-side function the app exposes, e.g. `window.__siteDocs.capture()`). **Use sparingly.** Wishlist W-B1.
+
+**Inputs:** `{ expr: string, returnType?: "json" | "void" (default "json") }`. The return value must be JSON-serializable for `"json"` mode; `"void"` is fire-and-forget.
+
+**Output:** JSON `{ ok: true, value }` / `{ ok: true, returnType: "void" }` / `{ ok: false, error }`.
+
+**Trust boundary**: the *call* originates from the (trusted) agent, but the *return value* is page-controlled — treat it as untrusted just like snapshot text.
 
 ## Action tools
 

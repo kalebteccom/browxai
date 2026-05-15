@@ -101,3 +101,63 @@ export class NetworkTap {
     return { summary, requests: interesting };
   }
 }
+
+/**
+ * Session-wide ring buffer of network requests. Same shape as NetworkTap but
+ * always-on for the lifetime of the session — exposed via the `network_read`
+ * MCP tool. Per-action attribution still lives in `ActionResult.network`;
+ * this is the "what happened recently across the session" surface.
+ */
+export class NetworkBuffer {
+  private requests = new Map<string, { method: string; url: string; type: string; startedAt: number }>();
+  private ring: NetworkEntry[] = [];
+  private enabled = false;
+
+  constructor(private cdp: CDPSession, private cap = 500) {}
+
+  async attach(): Promise<void> {
+    if (this.enabled) return;
+    await this.cdp.send("Network.enable");
+    this.enabled = true;
+    this.cdp.on("Network.requestWillBeSent", (e: { requestId: string; request: { method: string; url: string }; type?: string }) => {
+      this.requests.set(e.requestId, {
+        method: e.request.method,
+        url: e.request.url,
+        type: e.type ?? "Other",
+        startedAt: Date.now(),
+      });
+    });
+    this.cdp.on("Network.responseReceived", (e: { requestId: string; response: { status: number } }) => {
+      const r = this.requests.get(e.requestId);
+      if (!r) return;
+      this.push({ method: r.method, url: r.url, status: e.response.status, type: r.type, ms: Date.now() - r.startedAt });
+      this.requests.delete(e.requestId);
+    });
+    this.cdp.on("Network.loadingFailed", (e: { requestId: string }) => {
+      const r = this.requests.get(e.requestId);
+      if (!r) return;
+      this.push({ method: r.method, url: r.url, type: r.type, failed: true, ms: Date.now() - r.startedAt });
+      this.requests.delete(e.requestId);
+    });
+  }
+
+  private push(entry: NetworkEntry): void {
+    this.ring.push(entry);
+    if (this.ring.length > this.cap) this.ring.shift();
+  }
+
+  /** Most-recent N entries; noise + beacons are folded into the `other` bucket of the summary. */
+  recent(limit = 50): { summary: NetworkSummary; requests: NetworkEntry[] } {
+    const slice = this.ring.slice(-limit);
+    const summary: NetworkSummary = { total: slice.length, byType: {}, failed: 0 };
+    const interesting: NetworkEntry[] = [];
+    for (const e of slice) {
+      let bucket = e.type;
+      if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
+      summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
+      if (e.failed) summary.failed += 1;
+      if (bucket !== "other") interesting.push(e);
+    }
+    return { summary, requests: interesting };
+  }
+}
