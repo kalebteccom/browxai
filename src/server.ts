@@ -11,6 +11,7 @@ import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
 import { find } from "./page/find.js";
+import { textSearch } from "./page/text_search.js";
 import { resolveConfig } from "./util/config.js";
 import { ConsoleBuffer } from "./page/console.js";
 import { NetworkBuffer } from "./page/network.js";
@@ -299,6 +300,29 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const s = await openSession();
       const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes, feedback });
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
+    },
+  );
+
+  register(
+    "text_search",
+    {
+      description:
+        "Find nodes whose visible text matches a query. Read-only — distinct from `find()` which ranks actionable targets. Use for *verification* and *absence checks* (\"is the bad value gone?\", \"did 'Saved' appear?\"). Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Matches carry W-F1 structural context when they live in a repeated container, so callers can say 'no \"Wrong Type\" left in the record grid' without re-walking the tree.",
+      inputSchema: {
+        text: z.string().describe("Text to search for."),
+        exact: z.boolean().optional().describe("Default false — case-insensitive substring. When true, case-sensitive equality on the trimmed node name."),
+        scope: z.string().optional().describe("Limit the search to descendants of this ref (from a prior snapshot/find)."),
+        includeHidden: z.boolean().optional().describe("Default false — only visible matches (bbox-having) are returned."),
+        maxMatches: z.number().int().positive().max(200).optional().describe("Default 20; hard cap 200."),
+      },
+    },
+    async ({ text, exact, scope, includeHidden, maxMatches }) => {
+      const g = gateCheck("text_search"); if (g) return g;
+      const s = await openSession();
+      const result = await textSearch(s.cdp(), refs, {
+        text, exact, scope, includeHidden, maxMatches, testAttributes: config.testAttributes,
+      });
+      return { content: [{ type: "text", text: JSON.stringify({ query: text, ...result }, null, 2) }] };
     },
   );
 
@@ -738,7 +762,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward",
-    "snapshot", "find", "screenshot", "console_read", "network_read",
+    "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
   ]);
   const BATCH_MAX_CALLS = 32;

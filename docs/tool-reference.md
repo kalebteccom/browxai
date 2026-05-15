@@ -100,6 +100,21 @@ PNG of the viewport, optionally cropped to an element.
 
 **Output:** an MCP `image` content part (base64 PNG), optionally preceded by a `text` part with the caption.
 
+### `text_search` *(W-F4)*
+
+Find nodes whose visible text matches a query. **Read-only — distinct from `find()`**: `find()` ranks actionable targets; `text_search` verifies presence/absence ("is the bad value gone?", "did 'Saved' appear?", "no `Wrong Type` chip in the record grid").
+
+Args:
+- `text` — string to match.
+- `exact` (default `false`) — when `false`, case-insensitive substring. When `true`, case-sensitive equality on the trimmed node name.
+- `scope` — limit the search to descendants of this ref (a prior snapshot/find result).
+- `includeHidden` (default `false`) — only visible (bbox-having) matches are returned by default.
+- `maxMatches` — default 20; hard cap 200.
+
+Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Each match carries the W-F1 structural context when it lives in a repeated container, so a caller can ask "any `Wrong Type` left in the record grid?" and get back row-tagged results without re-walking the tree.
+
+`count: 0` is the clean absence signal. No more overloading `find()` for presence/absence.
+
 ### `console_read`
 Recent console messages (ring buffer). For per-action attribution, use `ActionResult.console` from any action tool.
 
