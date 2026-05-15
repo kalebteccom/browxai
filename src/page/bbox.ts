@@ -16,13 +16,27 @@ export interface VisibleRect {
 
 // Function source (runs in page context). Stringified so we can pass it to
 // `Runtime.callFunctionOn` with the resolved DOM node as `this`.
+//
+// W-G3: clipping is *only* triggered by `overflow: hidden` or `overflow: clip`.
+// `overflow: auto` / `scroll` are scrollable, **not** clipping — the element's
+// `getBoundingClientRect()` already accounts for the current scroll position,
+// so the rect reflects the element's actual visible position. The previous
+// check treated any non-`visible` overflow as clipping, which collapsed bboxes
+// to zero on attached Chromes whose body/html or layout containers used
+// `overflow: auto` (common pattern). Reported by the non-Claude verification
+// run: visible elements returned `bbox: null` + `actionable: "off-screen"`.
 const VISIBLE_RECT_FN = `function () {
   function r(rect) { return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }; }
+  function clips(cs) {
+    return cs.overflow === 'hidden' || cs.overflow === 'clip'
+        || cs.overflowX === 'hidden' || cs.overflowX === 'clip'
+        || cs.overflowY === 'hidden' || cs.overflowY === 'clip';
+  }
   let b = r(this.getBoundingClientRect());
   let n = this.parentElement;
   while (n) {
     const cs = getComputedStyle(n);
-    if (cs.overflow !== 'visible' || cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+    if (clips(cs)) {
       const pr = r(n.getBoundingClientRect());
       b = {
         left:   Math.max(b.left,   pr.left),
@@ -33,12 +47,23 @@ const VISIBLE_RECT_FN = `function () {
     }
     n = n.parentElement;
   }
-  // Viewport
+  // Viewport. Fall back to documentElement / document.body dims when innerWidth/
+  // innerHeight read as zero (some attached contexts report bogus window metrics
+  // before first paint).
+  var vw = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 0;
+  var vh = window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 0;
+  if (!vw || !vh) {
+    // Last resort: skip viewport intersection — return the un-clipped client rect.
+    // Better to over-report bbox than to under-report (which currently produces
+    // bogus 'off-screen' actionability).
+    if (b.right <= b.left || b.bottom <= b.top) return null;
+    return { x: b.left, y: b.top, width: b.right - b.left, height: b.bottom - b.top };
+  }
   b = {
     left:   Math.max(b.left,   0),
     top:    Math.max(b.top,    0),
-    right:  Math.min(b.right,  window.innerWidth),
-    bottom: Math.min(b.bottom, window.innerHeight),
+    right:  Math.min(b.right,  vw),
+    bottom: Math.min(b.bottom, vh),
   };
   if (b.right <= b.left || b.bottom <= b.top) return null;
   return { x: b.left, y: b.top, width: b.right - b.left, height: b.bottom - b.top };

@@ -52,28 +52,43 @@ export async function openByobSession(opts: SessionOptions & { attachCdp: string
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);
 
-  // Round-3 ask #15: ensure the attached page reports a usable viewport so the
+  // W-A5 / W-G3: ensure the attached page reports a usable viewport so the
   // visible-rect bbox path (page/bbox.ts) doesn't intersect against `innerWidth=0
   // innerHeight=0` and produce `null + clipped: true` for every visible element.
-  // Read the current viewport via Runtime.evaluate; if it's zero (no window
-  // metrics on the attached target), set a sensible default via CDP Emulation.
+  //
+  // Strategy:
+  //   1. Read the *layout* viewport via CDP `Page.getLayoutMetrics` — that's the
+  //      authoritative size regardless of what `window.innerWidth/innerHeight`
+  //      reports (the attached page may pre-paint with zero metrics).
+  //   2. Cross-check against `Runtime.evaluate` reading window dims.
+  //   3. If layout viewport is zero OR the window dims read as zero, install a
+  //      1280x800 default via Emulation.setDeviceMetricsOverride.
   try {
+    const layout = await cdp.send("Page.getLayoutMetrics").catch(() => null) as
+      | { layoutViewport?: { clientWidth: number; clientHeight: number } }
+      | null;
+    const lw = layout?.layoutViewport?.clientWidth ?? 0;
+    const lh = layout?.layoutViewport?.clientHeight ?? 0;
     const { result } = (await cdp.send("Runtime.evaluate", {
-      expression: "({ w: window.innerWidth, h: window.innerHeight })",
+      expression: "({ w: window.innerWidth || 0, h: window.innerHeight || 0 })",
       returnByValue: true,
     })) as { result: { value?: { w: number; h: number } } };
     const v = result.value ?? { w: 0, h: 0 };
-    if (!v.w || !v.h) {
-      log.info("session.byob: attached page has zero viewport; setting 1280x800 default", v);
+    const goodLayout = lw > 0 && lh > 0;
+    const goodWindow = v.w > 0 && v.h > 0;
+    if (!goodLayout && !goodWindow) {
+      log.info("session.byob: attached page has zero viewport on both layout + window probes; setting 1280x800 default", { layout: { lw, lh }, window: v });
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 1280,
         height: 800,
         deviceScaleFactor: 0,
         mobile: false,
       }).catch(() => undefined);
+    } else {
+      log.info("session.byob: attached page viewport ok", { layout: { lw, lh }, window: v });
     }
   } catch {
-    /* not fatal — the bbox path will gracefully return null if the eval fails */
+    /* not fatal — the bbox path falls back to un-clipped client rect when both probes fail */
   }
 
   let closed = false;
