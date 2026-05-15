@@ -39,13 +39,19 @@ const ACTION_OPTS = {
   maxResultTokens: z.number().int().positive().max(20_000).optional(),
 };
 
-// `target` accepts ref *or* selector *or* named. Validated at handler time.
-// `contextRef` optionally scopes a `selector` to a prior ref's subtree.
+// `target` accepts ref *or* selector *or* named *or* coords. Validated at
+// handler time. `contextRef` optionally scopes a `selector` to a prior ref's
+// subtree. `coords` is the escape hatch for visually-located targets (canvas,
+// custom-painted UIs, dismiss-empty-space) — only click/hover honour it.
 const REF_OR_SELECTOR = {
   ref: z.string().optional().describe("Stable [eN] ref from snapshot()/find()"),
   selector: z.string().optional().describe("CSS / selectorHint fallback"),
   named: z.string().optional().describe("Mnemonic name previously bound with name_ref (wishlist W-C1)"),
   contextRef: z.string().optional().describe("Resolve `selector` within the subtree of this ref (from a prior snapshot/find). Lets you say 'the X *inside* this row/card/panel' without baking positional :nth chains into the selector. Ignored when `ref` or `named` is used."),
+  coords: z
+    .object({ x: z.number(), y: z.number() })
+    .optional()
+    .describe("Page-coordinate target {x,y} (CSS pixels, viewport-relative). Escape hatch for canvas / custom-painted UIs / dismiss-empty-space cases that ref/selector resolution can't address. Honoured by `click` and `hover` only; ignored elsewhere."),
 };
 
 /** Wishlist W-B2: structured one-liner alongside an element screenshot. Skips
@@ -53,11 +59,11 @@ const REF_OR_SELECTOR = {
 async function describeTarget(
   loc: import("playwright-core").Locator,
   refs: RefRegistry,
-  target: { ref: string } | { selector: string },
+  target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
 ): Promise<string> {
   const bits: string[] = [];
   let inputs: import("./page/refs.js").RefLocatorInputs | undefined;
-  if ("ref" in target) {
+  if ("ref" in target && target.ref) {
     inputs = refs.locatorOf(target.ref);
     if (inputs) {
       bits.push(inputs.role);
@@ -66,8 +72,11 @@ async function describeTarget(
     } else {
       bits.push(`ref=${target.ref}`);
     }
-  } else {
+  } else if ("selector" in target && target.selector) {
     bits.push(`selector=${target.selector}`);
+  } else if ("coords" in target && target.coords) {
+    bits.push(`coords=${target.coords.x},${target.coords.y}`);
+    return bits.join(" "); // no Locator to probe further for coords targets
   }
   try {
     const box = await loc.boundingBox();
@@ -81,12 +90,12 @@ async function describeTarget(
 }
 
 function asTarget(
-  args: { ref?: string; selector?: string; named?: string; contextRef?: string },
+  args: { ref?: string; selector?: string; named?: string; contextRef?: string; coords?: { x: number; y: number } },
   toolName: string,
   refs: RefRegistry,
-): { ref: string } | { selector: string; contextRef?: string } {
-  const provided = [args.ref, args.selector, args.named].filter(Boolean).length;
-  if (provided > 1) throw new Error(`${toolName}: pass exactly one of \`ref\` / \`selector\` / \`named\``);
+): { ref: string } | { selector: string; contextRef?: string } | { coords: { x: number; y: number } } {
+  const provided = [args.ref, args.selector, args.named, args.coords].filter(Boolean).length;
+  if (provided > 1) throw new Error(`${toolName}: pass exactly one of \`ref\` / \`selector\` / \`named\` / \`coords\``);
   if (args.ref) return { ref: args.ref };
   if (args.named) {
     const resolved = refs.refByNameLookup(args.named);
@@ -98,7 +107,8 @@ function asTarget(
       ? { selector: args.selector, contextRef: args.contextRef }
       : { selector: args.selector };
   }
-  throw new Error(`${toolName}: requires one of \`ref\` (from find/snapshot), \`selector\`, or \`named\``);
+  if (args.coords) return { coords: args.coords };
+  throw new Error(`${toolName}: requires one of \`ref\` (from find/snapshot), \`selector\`, \`named\`, or \`coords\``);
 }
 
 export async function createServer(opts: StartOptions = {}): Promise<{
@@ -166,8 +176,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   /** Reconstruct a `selectorHint` string the recorder can write into a flow file
    *  YAML. Mirrors `buildSelectorHint` for `ref`/`named`; passes through `selector`. */
   const hintFromTarget = (
-    target: { ref?: string; selector?: string; named?: string },
+    target: { ref?: string; selector?: string; named?: string; coords?: { x: number; y: number } },
   ): { selectorHint: string; stability?: "high" | "medium" | "low" } | undefined => {
+    // Coords targets don't correspond to a stable locator the recorder can replay —
+    // skip the hint and let the recording layer omit the step's target metadata.
+    if (target.coords) return undefined;
     if (target.selector) return { selectorHint: target.selector };
     let ref = target.ref;
     if (target.named) ref = refs.refByNameLookup(target.named);
@@ -404,15 +417,19 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "click",
     {
       description:
-        "Click an element by `ref` (preferred — from snapshot/find) or `selector`. Returns an ActionResult.",
-      inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
+        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). Returns an ActionResult.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button (default: left)"),
+        ...ACTION_OPTS,
+      },
     },
     async (args) => {
       const g = gateCheck("click"); if (g) return g;
       const c = await confirmByobAction("click", confirmCtx());
       if (!c.ok) return denyContent("click", c);
       const target = asTarget(args, "click", refs);
-      return asActionResultText(actions.click(await ctx(), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      return asActionResultText(actions.click(await ctx(), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
     },
   );
 

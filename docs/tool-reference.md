@@ -143,9 +143,9 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 | `maxResultTokens` | `600` | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`. |
 
 ### Target shape (for tools that act on an element)
-`{ ref: string }` OR `{ selector: string }` OR `{ named: string }` — exactly one. `ref` is preferred (stable across snapshots, comes with role+name+testId so Playwright auto-waiting + strict-match Just Works); `selector` accepts the `selectorHint` strings that `find()` emits, plus arbitrary Playwright locator strings; `named` looks up a mnemonic previously bound via `name_ref` (wishlist W-C1).
+`{ ref: string }` OR `{ selector: string }` OR `{ named: string }` OR `{ coords: { x, y } }` — exactly one. `ref` is preferred (stable across snapshots, comes with role+name+testId so Playwright auto-waiting + strict-match Just Works); `selector` accepts the `selectorHint` strings that `find()` emits, plus arbitrary Playwright locator strings; `named` looks up a mnemonic previously bound via `name_ref` (wishlist W-C1); `coords` is the page-coordinate escape hatch (CSS pixels, viewport-relative) for visually-located targets that ref/selector resolution can't address — canvas, custom-painted UIs, dismiss-empty-space. Honoured by `click` and `hover` only; ignored elsewhere.
 
-Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` or `named` is used.
+Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
 
 #### Ref provenance and locator routing
 
@@ -168,8 +168,8 @@ For frequently-acted-on anchors across a long session, bind a mnemonic once and 
 ### `navigate({ url, ...opts })`
 Goto a URL. Returns an `ActionResult`.
 
-### `click({ ref?|selector?, ...opts })`
-Click. Returns an `ActionResult` with the post-action `element` probe (`stillAttached`, `focused`, `value`, `displayText`).
+### `click({ ref?|selector?|named?|coords?, button?, ...opts })`
+Click. Accepts the standard target shapes plus `coords: {x, y}` for canvas / custom-painted UIs. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult` with the post-action `element` probe (`stillAttached`, `focused`, `value`, `displayText`) for ref/selector targets; coords targets omit `element` since there's no resolved element to probe.
 
 ### `fill({ ref?|selector?, value, ...opts })`
 Type into an input. The post-action `element` probe is the confirmation signal — no follow-up `snapshot`/`screenshot` needed in the common case:
@@ -184,8 +184,8 @@ A robust confirmation check across input shapes: `value === valueRequested || di
 ### `press({ ref?|selector?, key, ...opts })`
 Press a key (Playwright key syntax: `"Enter"`, `"Control+A"`, …). If `ref`/`selector` is omitted, presses on the page.
 
-### `hover({ ref?|selector?, ...opts })`
-Hover.
+### `hover({ ref?|selector?|named?|coords?, ...opts })`
+Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-located targets.
 
 ### `select({ ref?|selector?, values, ...opts })`
 `selectOption` on a `<select>`.

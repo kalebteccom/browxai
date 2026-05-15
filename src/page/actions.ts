@@ -11,17 +11,21 @@ import {
   type ActionWindowOptions,
   type ElementProbe,
 } from "./actionresult.js";
-import { locatorFor, type ActionTarget } from "./locator.js";
+import { locatorFor, resolveTarget, type ActionTarget } from "./locator.js";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
 
-export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; }
+export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "click", ...refOrSelector(args.target) };
+  const descriptor: ActionDescriptor = { type: "click", ...targetDescriptor(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    const loc = locatorFor(ctx.page, ctx.refs, args.target);
-    await loc.click({ timeout: DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target);
+    const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
+    if (resolved.kind === "coords") {
+      await ctx.page.mouse.click(resolved.x, resolved.y, args.button ? { button: args.button } : undefined);
+      return undefined;
+    }
+    await resolved.loc.click({ timeout: DEFAULT_TIMEOUT_MS, button: args.button });
+    return probe(resolved.loc, args.target);
   });
 }
 
@@ -59,11 +63,15 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
 
 export interface HoverArgs extends ActionWindowOptions { target: ActionTarget; }
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "hover", ...refOrSelector(args.target) };
+  const descriptor: ActionDescriptor = { type: "hover", ...targetDescriptor(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    const loc = locatorFor(ctx.page, ctx.refs, args.target);
-    await loc.hover({ timeout: DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target);
+    const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
+    if (resolved.kind === "coords") {
+      await ctx.page.mouse.move(resolved.x, resolved.y);
+      return undefined;
+    }
+    await resolved.loc.hover({ timeout: DEFAULT_TIMEOUT_MS });
+    return probe(resolved.loc, args.target);
   });
 }
 
@@ -104,7 +112,15 @@ export async function goForward(ctx: ActionContext, args: GoForwardArgs = {}): P
 // ---------- helpers ----------
 
 function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
-  return t.ref ? { ref: t.ref } : { selector: t.selector };
+  if (t.ref) return { ref: t.ref };
+  if (t.selector) return { selector: t.selector };
+  return {};
+}
+
+function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } {
+  // ActionDescriptor's `ref`/`selector` fields are advisory metadata for the
+  // recording layer; coords targets simply omit them.
+  return refOrSelector(t);
 }
 
 /**

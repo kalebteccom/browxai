@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Page } from "playwright-core";
-import { locatorFor } from "./locator.js";
+import { locatorFor, resolveTarget } from "./locator.js";
 import { RefRegistry } from "./refs.js";
 
 // Minimal Page mock. Each getByRole / locator call records its arguments and
@@ -161,5 +161,34 @@ describe("locatorFor — W-E4 scoped selectors via contextRef", () => {
     const refs = new RefRegistry();
     expect(() => locatorFor(page, refs, { selector: ".x", contextRef: "e999" }))
       .toThrow(/unknown contextRef/);
+  });
+});
+
+describe("resolveTarget — W-E3 coords escape hatch", () => {
+  it("returns kind:'coords' for coord targets without touching Page", () => {
+    const { page, calls } = mockPage();
+    const refs = new RefRegistry();
+    const r = resolveTarget(page, refs, { coords: { x: 240, y: 120 } });
+    expect(r.kind).toBe("coords");
+    if (r.kind === "coords") {
+      expect(r.x).toBe(240);
+      expect(r.y).toBe(120);
+    }
+    expect(calls).toEqual([]); // no locator resolution attempted
+  });
+
+  it("returns kind:'locator' for ref/selector/contextRef targets", () => {
+    const { page } = mockPage();
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k1", { role: "button", name: "Save", source: "a11y" });
+    const r = resolveTarget(page, refs, { ref });
+    expect(r.kind).toBe("locator");
+  });
+
+  it("locatorFor throws if called with a coords target — callers must switch on kind", () => {
+    const { page } = mockPage();
+    const refs = new RefRegistry();
+    expect(() => locatorFor(page, refs, { coords: { x: 0, y: 0 } }))
+      .toThrow(/coords target has no Locator/);
   });
 });

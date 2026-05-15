@@ -7,17 +7,33 @@ import type { Locator, Page } from "playwright-core";
 import type { RefLocatorInputs, RefRegistry } from "./refs.js";
 
 /**
- * Action target shape. Exactly one of `ref` / `selector` is required.
- * `contextRef` optionally scopes a `selector` to the subtree of a prior ref —
- * lets callers say "the [data-testid=...] *inside this row*" without baking
- * positional `:nth` chains into the selector. Mirrors `find()`'s `contextRef`
- * but composes at locator-resolution time rather than at tree-search time.
+ * Action target shape. Exactly one of `ref` / `selector` / `coords` is
+ * required. `contextRef` optionally scopes a `selector` to the subtree of a
+ * prior ref — lets callers say "the [data-testid=...] *inside this row*"
+ * without baking positional `:nth` chains into the selector. `coords` is the
+ * escape hatch for visually-located targets (canvas, custom-painted UIs,
+ * dismiss-empty-space) that ref/selector resolution genuinely can't address.
  */
 export type ActionTarget =
-  | { ref: string; selector?: undefined; contextRef?: undefined }
-  | { selector: string; ref?: undefined; contextRef?: string };
+  | { ref: string; selector?: undefined; contextRef?: undefined; coords?: undefined }
+  | { selector: string; ref?: undefined; contextRef?: string; coords?: undefined }
+  | { coords: { x: number; y: number }; ref?: undefined; selector?: undefined; contextRef?: undefined };
+
+export type ResolvedTarget =
+  | { kind: "locator"; loc: Locator }
+  | { kind: "coords"; x: number; y: number };
+
+export function resolveTarget(page: Page, refs: RefRegistry, target: ActionTarget): ResolvedTarget {
+  if (target.coords) {
+    return { kind: "coords", x: target.coords.x, y: target.coords.y };
+  }
+  return { kind: "locator", loc: locatorFor(page, refs, target) };
+}
 
 export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
+  if (target.coords) {
+    throw new Error("locatorFor: coords target has no Locator — use resolveTarget() and switch on kind");
+  }
   if (target.ref) {
     const inputs = refs.locatorOf(target.ref);
     if (!inputs) {
@@ -40,7 +56,7 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
     }
     return parseSelectorHint(page, target.selector);
   }
-  throw new Error("locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors)");
+  throw new Error("locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors) or { coords }");
 }
 
 function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
