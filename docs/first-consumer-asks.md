@@ -174,6 +174,26 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-11 asks (post-shipping, 2026-05-18 — round-10 verification re-report)
+
+Source: the same second consumer's Round-2 verification pass (sanitised into
+`docs/adoption-report-mobilechat-2026-05-18.md` § "Round 2"). All three
+round-10 primitives confirmed working live; the run surfaced one correctness
+bug and one small bounded additive.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-J1-fix** 🔴 | `wait_for({ text })` documents *substring* matching but the impl lowered to Playwright's quoted/exact-ish `text=` engine — a short token inside a longer string timed out. Doc-vs-behaviour mismatch (introduced in round-10). | Switch the matcher to `page.getByText(text)` (substring, case-insensitive, trimmed — Playwright default) `.first().waitFor({ state:"visible" })`. Behaviour now matches the documented contract; substring is also the more useful readiness-gating semantic. | **impl-pending** |
+| **W-K1** 🟢 | `sample` over long high-rate windows (e.g. 3 s @ rAF ≈ 360 pts) serialises large; the agent only needs the *signal* (did it move? bounds? when did it first change?), not every point. | Optional `sample({ summary?: true })` → server-side reduction of the already-collected fixed-metric series: `{ count, min, max, first, last, distinctCount, firstChangeTMs }` instead of the full `series`. Pure reduction — **no agent JS, no eval surface** (consistent with W-J3's bounded design). Full `series` returned when `summary` is unset. | **impl-pending** |
+
+**Hygiene (durable, not an ask):** adopters/agents keep dropping raw
+client-named `FIELD-REPORT-*.md` in the repo root; the repo is heading
+public. Added a `.gitignore` rule (`FIELD-REPORT-*.md`, `*-field-report.md`)
+so a raw report can never be accidentally committed — the canonical committed
+form is always a sanitized `docs/adoption-report-*.md`.
+
+**Sequence:** W-J1-fix → W-K1.
+
 ## Round-10 asks (post-shipping, 2026-05-18 — second-consumer field report)
 
 Source: `docs/adoption-report-mobilechat-2026-05-18.md` — a **second
