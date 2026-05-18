@@ -27,6 +27,22 @@ export interface SampleArgs {
   durationMs: number;
   everyFrame?: boolean;
   intervalMs?: number;
+  /** W-K1: return only the reduced `summary` instead of the full `series`.
+   *  Pure server-side reduction of the already-collected fixed-metric series
+   *  — no agent JS, no eval surface. */
+  summary?: boolean;
+}
+
+export interface SampleSummary {
+  count: number;
+  min: number;
+  max: number;
+  first: number;
+  last: number;
+  /** Distinct sampled values (catches "did it move at all?"). */
+  distinctCount: number;
+  /** tMs of the first sample whose value differed from `first`; null if flat. */
+  firstChangeTMs: number | null;
 }
 
 export interface SampleResult {
@@ -36,8 +52,38 @@ export interface SampleResult {
   mode: "raf" | "interval";
   intervalMs?: number;
   count: number;
-  series: Array<{ tMs: number; value: number }>;
+  /** Present unless `summary` was requested. */
+  series?: Array<{ tMs: number; value: number }>;
+  /** Present when `summary: true`, or always (cheap) — the reduced signal. */
+  summary?: SampleSummary;
   truncated?: boolean;
+}
+
+/** Pure reduction of a collected series. Exported for unit tests. */
+export function summariseSeries(series: Array<{ tMs: number; value: number }>): SampleSummary {
+  if (series.length === 0) {
+    return { count: 0, min: NaN, max: NaN, first: NaN, last: NaN, distinctCount: 0, firstChangeTMs: null };
+  }
+  const first = series[0]!.value;
+  let min = first;
+  let max = first;
+  let firstChangeTMs: number | null = null;
+  const distinct = new Set<number>();
+  for (const p of series) {
+    if (p.value < min) min = p.value;
+    if (p.value > max) max = p.value;
+    distinct.add(p.value);
+    if (firstChangeTMs === null && p.value !== first) firstChangeTMs = p.tMs;
+  }
+  return {
+    count: series.length,
+    min,
+    max,
+    first,
+    last: series[series.length - 1]!.value,
+    distinctCount: distinct.size,
+    firstChangeTMs,
+  };
 }
 
 type SamplerParams = { metric: string; durationMs: number; everyFrame: boolean; intervalMs: number; maxSeries: number };
@@ -135,6 +181,11 @@ export async function sampleMetric(
     series = await page.evaluate(windowSampler as never, params);
   }
 
+  // W-K1: `summary` is always cheap to compute and included; the full
+  // `series` is omitted when the caller asked for `summary: true` (long
+  // high-rate windows serialise large — the agent usually just needs the
+  // signal: did it move, bounds, when it first changed).
+  const summary = summariseSeries(series);
   return {
     metric: args.metric,
     scope,
@@ -142,7 +193,8 @@ export async function sampleMetric(
     mode: everyFrame ? "raf" : "interval",
     ...(everyFrame ? {} : { intervalMs }),
     count: series.length,
-    series,
+    ...(args.summary ? {} : { series }),
+    summary,
     ...(series.length >= MAX_SERIES ? { truncated: true } : {}),
   };
 }

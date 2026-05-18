@@ -185,7 +185,8 @@ Sample a DOM metric over a window → time series. Jank / CLS / scroll-drift QA 
 
 - `metric` is a **fixed enum** — the agent supplies **no JavaScript** (arbitrary JS stays `eval_js`, gated behind `eval`). With a target: `scrollTop`/`scrollLeft`/`scrollHeight`/`scrollWidth`/`clientWidth`/`clientHeight`/`bboxX`/`bboxY`/`bboxWidth`/`bboxHeight`. Without a target: the document scroller (`bbox*` rejected — needs an element).
 - `everyFrame: true` → `requestAnimationFrame` loop; else `intervalMs` (default 100, min 16).
-- Returns `{ metric, scope, durationMs, mode, count, series: [{ tMs, value }], truncated? }`. Caps: 30 s, 2000 points. Read-only (`read`).
+- Returns `{ metric, scope, durationMs, mode, count, series?: [{ tMs, value }], summary, truncated? }`. Caps: 30 s, 2000 points. Read-only (`read`).
+- **`summary` (W-K1):** `{ count, min, max, first, last, distinctCount, firstChangeTMs }` — always included (cheap). Pass `summary: true` to **omit the full `series`** (long high-rate windows serialise large; the agent usually just needs the signal — did it move, bounds, when it first changed). Pure server-side reduction; no agent JS.
 
 browxai supplies the fixed in-page rAF/interval loop — this is a bounded primitive, **not** an `eval_js` variant.
 

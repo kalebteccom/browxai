@@ -502,6 +502,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         durationMs: z.number().int().positive().max(30_000).describe("Window length (ms, ≤30000)."),
         everyFrame: z.boolean().optional().describe("Sample every animation frame (rAF). Default false → fixed interval."),
         intervalMs: z.number().int().positive().max(5000).optional().describe("Sampling interval (ms, default 100, min 16). Ignored when everyFrame:true."),
+        summary: z.boolean().optional().describe("W-K1: return only the reduced summary ({count,min,max,first,last,distinctCount,firstChangeTMs}) and omit the full series — for long high-rate windows. The summary is always included regardless."),
         ...SESSION_ARG,
       },
     },
@@ -515,7 +516,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       try {
         const result = await sampleMetric(e.session.page(), e.refs, {
-          target, metric: args.metric, durationMs: args.durationMs, everyFrame: args.everyFrame, intervalMs: args.intervalMs,
+          target, metric: args.metric, durationMs: args.durationMs, everyFrame: args.everyFrame, intervalMs: args.intervalMs, summary: args.summary,
         });
         return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
