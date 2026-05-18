@@ -174,6 +174,39 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-10 asks (post-shipping, 2026-05-18 — second-consumer field report)
+
+Source: `docs/adoption-report-mobilechat-2026-05-18.md` — a **second
+non-site-docs consumer** (a Claude Code agent) drove browxai on a real authed
+SPA and closed a deployed-build bug the test suite structurally could not
+catch. Strong validation of the P2.5 + round-6/8/9 surface (device+viewport
++incognito, `eval_js`, `ActionResult.element.hit`, `network.mutations`,
+`coords`, session lifecycle all singled out). This is the strongest
+**Phase-3 trigger #4** ("a real demand signal — a second non-site-docs
+consumer actually using it") datapoint so far — logged in portfolio progress;
+does not on its own close the trigger.
+
+Friction reframed to problem classes. The arbitrary-JS items are deliberately
+**not** turned into general primitives — `eval_js` (gated behind the `eval`
+capability) stays the single arbitrary-JS loophole.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-J1** 🔴 | SPA readiness gating: `wait_for` only accepts a target (ref/selector/named/coords) — no "wait until this text appears" mode; agents hand-roll shell-sleep + poll. | Extend `wait_for` with an optional `text` predicate — polls until the given visible text appears (or `timeoutMs`). Keeps existing target modes. **No `jsExpr` mode** — arbitrary-JS waits stay `eval_js`'s domain (the one gated loophole). | **impl-pending** |
+| **W-J2** 🟡 | `find()` returns confident off-screen/clipped candidates and never surfaces the visible one; all-non-visible top-N is a strong "wrong match" signal that isn't flagged. | Visibility-aware ranking: de-prioritise non-actionable (`off-screen`/`covered`/`bbox:null`) candidates; when *all* top-N are non-visible, emit a `warnings` entry. The suggestion is **capability-aware** — names `coords` only when `action` is enabled, `eval_js` only when `eval` is enabled (never points at a disabled tool). | **impl-pending** |
+| **W-J3** 🟢 | Frame-aligned metric sampling (scroll-drift / jank / CLS) is hand-rolled in-page every run. | `sample({ target?, metric, durationMs, everyFrame?\|intervalMs? })` → time series `[{ tMs, value }]`. `metric` is a **fixed enum** (`scrollTop`/`scrollLeft`/`scrollHeight`/`scrollWidth`/`clientWidth`/`clientHeight`/`bbox` for a target; window `scrollX`/`scrollY`/doc geometry). browxai supplies the fixed in-page rAF loop — **no agent-supplied JS** (would re-open the loophole W-J1 closed). Capped duration + series length. Capability: `read`. | **impl-pending** |
+
+**Not browxai's:** bulk tool-schema preload — MCP-client schema deferral
+(`ToolSearch`) is a client feature; browxai already advertises its full
+surface. Workaround: `ToolSearch "+browxai"` bulk-loads. Documented, not built.
+
+**Out of scope by design:** a Vue/React framework-state bridge — production
+builds deliberately strip introspection, and a framework-specific hook
+violates the design-for-the-problem-class rule (no library/framework
+coupling). The behavioural-proxy approach is the documented recipe.
+
+**Sequence:** W-J1 → W-J2 → W-J3.
+
 ## Round-9 asks (post-shipping, 2026-05-18 — e2e-verification primitives)
 
 Source: an external bug-list reference (a sibling project's staging-blocker
