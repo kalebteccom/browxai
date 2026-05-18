@@ -16,6 +16,7 @@ import { composeSnapshot } from "./page/compose.js";
 import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
 import { inspectElement } from "./page/inspect.js";
+import { watchWindow } from "./page/watch.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
@@ -479,6 +480,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("network_read"); if (g) return g;
       const e = await entryFor(session);
       const result = e.network.recent(limit ?? 50);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "watch",
+    {
+      description:
+        "W-H4: observe a fixed time window with NO driving action. Samples top-level transient surfaces (dialog/alert/status/toast/tooltip/log) across the window so a region that appears AND disappears inside it is caught (endpoint-only diffs miss it) — double-fire toasts, flash-of-content, 'notification never broadcast'. Returns `{ durationMs, samples, regions:[{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. Read-only (`read`). Caps at 60s.",
+      inputSchema: {
+        durationMs: z.number().int().positive().max(60_000).describe("Window length (ms, ≤60000)."),
+        sampleMs: z.number().int().positive().max(5000).optional().describe("Sampling interval (ms, default 250, min 50)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ durationMs, sampleMs, session }) => {
+      const g = gateCheck("watch"); if (g) return g;
+      const e = await entryFor(session);
+      const result = await watchWindow(ctxFor(e), { durationMs, sampleMs });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -1179,7 +1199,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll", "set_viewport",
-    "snapshot", "find", "text_search", "inspect", "screenshot", "console_read", "network_read", "ws_read", "network_body",
+    "snapshot", "find", "text_search", "inspect", "watch", "screenshot", "console_read", "network_read", "ws_read", "network_body",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);

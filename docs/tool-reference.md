@@ -178,6 +178,9 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+### `watch` *(W-H4)*
+Observe a fixed time window with **no driving action**. Samples top-level transient surfaces (`dialog`/`alertdialog`/`alert`/`status`/`tooltip`/`log`/`banner`/`timer`) every `sampleMs` (default 250) so a region that appears *and* disappears inside the window is caught — endpoint-only diffs (`ActionResult.structure`) miss it. `watch({ session?, durationMs, sampleMs? })` → `{ durationMs, samples, regions: [{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. `disappearedAtMs: null` = still present at window end. Catches double-fire toasts, flash-of-content, "notification never broadcast". Read-only (`read`); caps at 60 s.
+
 ### `network_body` *(W-H5 — gated)*
 Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default** — requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request; not retained across navigations.
 
