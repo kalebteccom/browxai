@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildSelectorHint, scoreNode } from "./find.js";
+import { buildSelectorHint, scoreNode, noVisibleCandidateWarning } from "./find.js";
 import type { A11yNode } from "./a11y.js";
 
 function n(role: string, name: string | undefined, testId?: string, extra: Partial<A11yNode> = {}): A11yNode {
@@ -117,5 +117,38 @@ describe("scoreNode — W-G4 icon-only controls", () => {
     const named = n("button", "Feature tab", "side-panel-feature-tab");
     const iconOnly = n("button", undefined, "side-panel-feature-tab");
     expect(scoreNode(named, q, tokens)).toBeGreaterThan(scoreNode(iconOnly, q, tokens));
+  });
+});
+
+describe("noVisibleCandidateWarning — W-J2 capability-aware", () => {
+  it("names no fallback tool when none are enabled", () => {
+    const w = noVisibleCandidateWarning(3, { coords: false, evalJs: false });
+    expect(w).toContain("no visible candidate");
+    expect(w).not.toContain("coords");
+    expect(w).not.toContain("eval_js");
+  });
+
+  it("names only coords when only action is enabled", () => {
+    const w = noVisibleCandidateWarning(2, { coords: true, evalJs: false });
+    expect(w).toContain("coords");
+    expect(w).not.toContain("eval_js");
+  });
+
+  it("names only eval_js when only eval is enabled", () => {
+    const w = noVisibleCandidateWarning(1, { coords: false, evalJs: true });
+    expect(w).toContain("eval_js");
+    expect(w).not.toContain("coords");
+  });
+
+  it("names both when both are enabled, and reports the count", () => {
+    const w = noVisibleCandidateWarning(5, { coords: true, evalJs: true });
+    expect(w).toContain("all 5 match(es)");
+    expect(w).toContain("coords");
+    expect(w).toContain("eval_js");
+  });
+
+  it("defaults to no suggestions when hints are omitted", () => {
+    const w = noVisibleCandidateWarning(1);
+    expect(w).not.toContain("You may want to");
   });
 });

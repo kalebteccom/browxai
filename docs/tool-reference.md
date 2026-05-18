@@ -131,6 +131,8 @@ Find candidate elements by natural-language description.
 
 **Actionable predicate** (wishlist W-D1): each candidate carries `actionable: true | "disabled" | "off-screen" | "covered"` alongside `stability` / `bbox`. Lets a calibration agent reject `<input disabled>`-shaped halts at write-time instead of run-time. `"covered"` is reserved for a future check; today the value is `true` / `"disabled"` / `"off-screen"`.
 
+**Visibility-aware ranking** (W-J2): after scoring, candidates are stable-partitioned so `actionable: true` ones rank ahead of non-visible (off-screen / clipped / covered / disabled) ones — a slightly-lower-scored *visible* match outranks a high-scored hidden modal. When there are matches but **none** are actionable, `find()` emits a `warnings` entry ("no visible candidate — all N match(es) are off-screen/clipped/covered; usually means the wrong element matched"). The suggestion is **capability-aware**: it only names `coords` when the `action` capability is enabled, and `eval_js` when `eval` is enabled — it never points you at a disabled tool.
+
 **`confidenceFloor`** (wishlist W-A3): pass `confidenceFloor: <N>` and `find()` emits a `warnings: ["no candidate scored confidently above N (top score: …)"]` entry when nothing crosses the bar — gives the agent a clean "fall through to snapshot" signal instead of grinding through a list of low-quality candidates.
 
 **bbox semantics** (ask #5): `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.

@@ -57,6 +57,10 @@ export interface FindOptions {
   /** Phase-2 learned ranking: prior session feedback applied as a per-candidate
    *  score bonus. Skip / null = no learning bonus. */
   feedback?: FeedbackMemory;
+  /** W-J2: which fallback tools to *name* in the "no visible candidate"
+   *  warning. Capability-aware so we never point an agent at a disabled tool
+   *  (`coords` needs `action`; `eval_js` needs `eval`). */
+  fallbackHints?: { coords: boolean; evalJs: boolean };
 }
 
 export interface FindResult {
@@ -146,15 +150,53 @@ export async function find(
     });
   }
 
+  // W-J2: visibility-aware ranking. Stable-partition actionable candidates
+  // ahead of non-actionable ones (off-screen / clipped / covered / disabled),
+  // preserving score order within each tier — so a slightly-lower-scored
+  // *visible* match outranks a high-scored hidden modal.
+  const isActionable = (c: FindCandidate) => c.actionable === true;
+  const visible = candidates.filter(isActionable);
+  const hidden = candidates.filter((c) => !isActionable(c));
+  const ranked = [...visible, ...hidden];
+
   // Wishlist W-A3: confidence-floor warning (combined with any earlier warnings).
   const floor = opts.confidenceFloor ?? 0;
-  if (floor > 0 && (candidates.length === 0 || candidates[0]!.score < floor)) {
+  if (floor > 0 && (ranked.length === 0 || ranked[0]!.score < floor)) {
     warnings.push(
-      `no candidate scored confidently above ${floor} (top score: ${candidates[0]?.score ?? 0}). ` +
+      `no candidate scored confidently above ${floor} (top score: ${ranked[0]?.score ?? 0}). ` +
       `Consider falling through to a snapshot scan + raw selector, or rephrasing the query against the element's accessible name / test-attribute value.`,
     );
   }
-  return { candidates, warnings };
+
+  // W-J2: when there *are* candidates but none are actionable, that's a strong
+  // "the match is wrong" signal — the field report saw confident off-screen
+  // dialogs returned for a plainly-visible target. Flag it, and suggest the
+  // fallbacks the caller actually has enabled (never name a disabled tool).
+  if (ranked.length > 0 && visible.length === 0) {
+    warnings.push(noVisibleCandidateWarning(ranked.length, opts.fallbackHints));
+  }
+
+  return { candidates: ranked, warnings };
+}
+
+/**
+ * W-J2: the "all candidates off-screen → probably the wrong match" warning.
+ * Capability-aware — only names a fallback tool the caller actually has
+ * enabled (`coords` ⇐ `action`, `eval_js` ⇐ `eval`). Pure; exported for tests.
+ */
+export function noVisibleCandidateWarning(
+  count: number,
+  fallbackHints?: { coords: boolean; evalJs: boolean },
+): string {
+  const suggestions: string[] = [];
+  if (fallbackHints?.coords) suggestions.push("compute the element rect and use `coords` on click/hover");
+  if (fallbackHints?.evalJs) suggestions.push("read state directly via `eval_js`");
+  const tail = suggestions.length ? ` You may want to: ${suggestions.join("; or ")}.` : "";
+  return (
+    `no visible candidate — all ${count} match(es) are off-screen / clipped / covered ` +
+    `(actionable ≠ true). This usually means the query matched the wrong element ` +
+    `(e.g. a hidden modal).${tail}`
+  );
 }
 
 /**

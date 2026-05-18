@@ -380,7 +380,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("find"); if (g) return g;
       const e = await entryFor(session);
       const s = e.session;
-      const result = await find(s.page(), s.cdp(), e.refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes, feedback: e.feedback });
+      const result = await find(s.page(), s.cdp(), e.refs, {
+        query, maxCandidates, confidenceFloor, contextRef,
+        testAttributes: config.testAttributes,
+        feedback: e.feedback,
+        // W-J2: capability-aware fallback hints — only name a tool the agent can call.
+        fallbackHints: { coords: caps.enabled.has("action"), evalJs: caps.enabled.has("eval") },
+      });
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
     },
   );
