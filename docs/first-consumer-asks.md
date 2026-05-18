@@ -174,6 +174,19 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-13 ask (post-shipping, 2026-05-18 — owner request: anti-wedge)
+
+Source: owner — sub-agents run actions that become no-ops and the engine
+stalls indefinitely with no timeout. Several paths have no ceiling at all
+(`page.evaluate` / CDP `send` have no Playwright timeout; `await_human
+timeoutMs:0` waits forever). Requirement: **0 unbounded waits** — a hard,
+low default deadline, explicitly overridable up to 1 h max, with strong
+deterrent messaging against large values.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-M1** 🔴 | Action no-ops / wedged page ops stall the engine forever — `eval_js`, scroll's window-`evaluate`, probe/snapshot CDP calls have no Playwright timeout; `await_human timeoutMs:0` is truly infinite. | `withDeadline(p, ms, label)` races every action body / `eval_js` / read-CDP path → structured `ok:false` "anti-wedge timeout" instead of a stall (can't cancel a hung CDP send, but the agent is unblocked). New `actionTimeoutMs` config key (**default 5000**, ConfigStore precedence, set via `set_config`) + per-call `timeoutMs` on `ACTION_OPTS`. Clamp **[1, 3_600_000]** (1 h hard max); over-ceiling clamps + warns. Schema text strongly deters large values. Playwright per-op timeouts derived from the effective deadline (inner self-abort + outer race). `await_human` `0`/unset → 5 min human-paced default, 1 h cap (kills the only infinite path; it's human-paced, not under the 5 s action default). `wait_for` default → action timeout, max → 1 h. `watch`/`sample`/`batch` unaffected (own bounded `durationMs` / per-inner-call deadlines). | **impl-pending** |
+
 ## Round-12 ask (post-shipping, 2026-05-18 — owner request)
 
 Source: owner request — a managed/incognito knob to drop browser web
