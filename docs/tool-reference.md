@@ -50,11 +50,19 @@ Every browser-touching tool accepts an optional **`session`** arg (default `"def
 
 Omitting `session` resolves to the lazily-created `"default"` session — byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
 
-- **`open_session({ session })`** — eagerly create an id (else it's lazily created on first use). Re-opening a live id errors.
-- **`close_session({ session })`** — tear down (BYOB/attached detaches only, never closes the user's Chrome). `"default"` may be closed; it re-creates lazily.
+- **`open_session({ session, mode?, profile? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors.
+- **`close_session({ session })`** — tear down (attached detaches only, never closes the user's Chrome; incognito discards its ephemeral context + browser). `"default"` may be closed; it re-creates lazily.
 - **`list_sessions()`** — `[{ id, mode, url, pages, openedAt }]`.
 
-Session *modes* (persistent / incognito / attached) are P2.5-3; today every session uses the server's launch mode (managed-persistent, or BYOB-attached when `BROWX_ATTACH_CDP` is set).
+**Session modes** (`open_session({ mode })`):
+
+| mode | isolation | persistence | when |
+|---|---|---|---|
+| `persistent` *(default off-attach)* | own profile dir `<workspace>/profiles/<profile\|id>` (default session keeps legacy `<workspace>/profile`) | cookies/storage survive across runs | logged-in flows you want to resume |
+| `incognito` | own ephemeral context + browser | nothing persisted; all state discarded on close | one-off agentic driving with no profile trace |
+| `attached` *(default when `BROWX_ATTACH_CDP` set)* | the externally-launched Chrome (not-owned) | the user's real profile | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
+
+Different ids are always isolated browser contexts regardless of mode, so multi-user / multiplayer scenarios don't bleed. `profile` (persistent only) lets two ids share a profile dir, or pin a stable name.
 
 ## Read-only tools
 

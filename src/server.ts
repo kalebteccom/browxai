@@ -6,7 +6,9 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
-import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry } from "./session/registry.js";
+import { openIncognitoSession } from "./session/incognito.js";
+import type { BrowserSession } from "./session/types.js";
+import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
@@ -160,12 +162,34 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // session is created lazily on the first browser-touching tool call — so
   // list_tools / discovery still don't launch a browser, and every existing
   // caller that omits `session` keeps working unchanged.
+  // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
+  // persistent. This is the default a lazily-created session inherits; an
+  // explicit open_session can override per id (incognito, or a named profile).
+  const serverDefaultMode: SessionMode = opts.attachCdp ? "attached" : "persistent";
   const registry = new SessionRegistry(
-    async (id): Promise<SessionEntry> => {
+    async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
-      const sess = opts.attachCdp
-        ? await openByobSession({ attachCdp: opts.attachCdp, headless })
-        : await openManagedSession({ headless });
+      const mode: SessionMode = spec?.mode ?? serverDefaultMode;
+      let sess: BrowserSession;
+      if (mode === "attached") {
+        if (!opts.attachCdp) {
+          throw new Error(
+            `session "${id}": mode "attached" requires the server to be started with BROWX_ATTACH_CDP (per-session attach isn't supported yet)`,
+          );
+        }
+        sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
+      } else if (mode === "incognito") {
+        sess = await openIncognitoSession({ headless });
+      } else {
+        // persistent: the default session keeps the legacy single `profile`
+        // dir for back-compat; named/explicit profiles get their own dir so
+        // sessions don't share a cookie jar on disk.
+        const profileDir =
+          id === DEFAULT_SESSION_ID && !spec?.profile
+            ? workspace.sub("profile")
+            : workspace.sub(`profiles/${spec?.profile ?? id}`);
+        sess = await openManagedSession({ headless, profileDir });
+      }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
       const networkBuf = new NetworkBuffer(sess.cdp());
@@ -174,7 +198,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await br.attach(sess.page().context());
       return {
         id,
-        mode: opts.attachCdp ? "attached" : "persistent",
+        mode,
         session: sess,
         refs: new RefRegistry(),
         console: consoleBuf,
@@ -767,22 +791,30 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use; call this to launch up-front or to fail fast. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. (Phase 2.5; session *modes* — persistent/incognito/attached — land in P2.5-3.)",
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.",
       inputSchema: {
         session: z.string().describe("Session id to create (e.g. \"agent-a\", \"user-2\")."),
+        mode: z.enum(["persistent", "incognito", "attached"]).optional()
+          .describe("Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent)."),
+        profile: z.string().optional()
+          .describe("persistent mode only: named profile dir under <workspace>/profiles/. Default = the session id. Lets two ids share a profile, or one id pin a stable profile name."),
       },
     },
-    async ({ session }) => {
+    async ({ session, mode, profile }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
-      const e = await entryFor(session);
-      return {
-        content: [{
-          type: "text" as const,
-          text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString() }, null, 2),
-        }],
-      };
+      try {
+        const e = await registry.get(session, { mode, profile });
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString() }, null, 2),
+          }],
+        };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 

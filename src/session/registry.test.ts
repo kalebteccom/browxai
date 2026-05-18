@@ -112,6 +112,16 @@ describe("SessionRegistry", () => {
     expect(reg.peek("one")?.id).toBe("one");
   });
 
+  it("passes the OpenSpec through to the factory on creation only", async () => {
+    const factory = vi.fn(async (id: string) => fakeEntry(id));
+    const reg = new SessionRegistry(factory, async () => undefined);
+    await reg.get("s", { mode: "incognito", profile: "p1" });
+    expect(factory).toHaveBeenCalledWith("s", { mode: "incognito", profile: "p1" });
+    // A second get() with a *different* spec must NOT re-create or re-spec.
+    await reg.get("s", { mode: "persistent" });
+    expect(factory).toHaveBeenCalledTimes(1);
+  });
+
   it("close(default) allows lazy re-creation on the next get()", async () => {
     const factory = vi.fn(async (id: string) => fakeEntry(id));
     const reg = new SessionRegistry(factory, async () => undefined);

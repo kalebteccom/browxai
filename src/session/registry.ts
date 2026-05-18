@@ -33,6 +33,14 @@ export interface SessionEntry {
 
 export const DEFAULT_SESSION_ID = "default";
 
+/** Per-session creation spec, supplied by `open_session` (or undefined for the
+ *  lazily-created default, which falls back to the server's launch mode). */
+export interface OpenSpec {
+  mode?: SessionMode;
+  /** Persistent mode only: named profile dir under the workspace. */
+  profile?: string;
+}
+
 export class SessionRegistry {
   private entries = new Map<string, SessionEntry>();
   /** In-flight creations, so two concurrent first-calls for the same id don't
@@ -40,17 +48,19 @@ export class SessionRegistry {
   private creating = new Map<string, Promise<SessionEntry>>();
 
   constructor(
-    private factory: (id: string) => Promise<SessionEntry>,
+    private factory: (id: string, spec?: OpenSpec) => Promise<SessionEntry>,
     private teardown: (e: SessionEntry) => Promise<void>,
   ) {}
 
-  /** Resolve (or lazily create) the entry for `id`. Concurrency-safe. */
-  async get(id: string = DEFAULT_SESSION_ID): Promise<SessionEntry> {
+  /** Resolve (or lazily create) the entry for `id`. Concurrency-safe. The
+   *  `spec` is only consulted on creation — once an entry exists it's returned
+   *  as-is regardless of spec. */
+  async get(id: string = DEFAULT_SESSION_ID, spec?: OpenSpec): Promise<SessionEntry> {
     const existing = this.entries.get(id);
     if (existing) return existing;
     const inflight = this.creating.get(id);
     if (inflight) return inflight;
-    const p = this.factory(id)
+    const p = this.factory(id, spec)
       .then((e) => {
         this.entries.set(id, e);
         this.creating.delete(id);
