@@ -169,12 +169,14 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
       const c = args.target!.coords!;
       await ctx.page.mouse.move(c.x, c.y);
       await ctx.page.mouse.wheel(args.by?.x ?? 0, args.by?.y ?? 0);
-      return { stillAttached: true };
+      return { stillAttached: true, scroll: await windowScrollGeometry(ctx.page) };
     }
     if (mode.kind === "into-view") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
       await loc.scrollIntoViewIfNeeded({ timeout: DEFAULT_TIMEOUT_MS });
-      return probe(loc, args.target!);
+      const p = await probe(loc, args.target!);
+      p.scroll = await windowScrollGeometry(ctx.page);
+      return p;
     }
     if (mode.kind === "container") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
@@ -189,7 +191,9 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
         },
         { to: args.to, by: args.by },
       );
-      return probe(loc, args.target!);
+      const p = await probe(loc, args.target!);
+      p.scroll = await elementScrollGeometry(loc);
+      return p;
     }
     // window
     await ctx.page.evaluate(
@@ -206,8 +210,52 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
       },
       { to: args.to, by: args.by },
     );
-    return { stillAttached: true };
+    return { stillAttached: true, scroll: await windowScrollGeometry(ctx.page) };
   });
+}
+
+type ScrollGeometry = NonNullable<ElementProbe["scroll"]>;
+
+/** Post-scroll geometry of the document/window scroller. */
+async function windowScrollGeometry(page: Page): Promise<ScrollGeometry | undefined> {
+  return page.evaluate((): ScrollGeometry | undefined => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = globalThis as any;
+    const d = w.document;
+    const s = d?.scrollingElement || d?.documentElement;
+    if (!s) return undefined;
+    const x = w.scrollX ?? s.scrollLeft ?? 0;
+    const y = w.scrollY ?? s.scrollTop ?? 0;
+    return {
+      x, y,
+      scrollWidth: s.scrollWidth,
+      scrollHeight: s.scrollHeight,
+      clientWidth: s.clientWidth,
+      clientHeight: s.clientHeight,
+      atTop: y <= 1,
+      atBottom: y + s.clientHeight >= s.scrollHeight - 1,
+    };
+  }).catch(() => undefined);
+}
+
+/** Post-scroll geometry of a scroll-container element. */
+async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometry | undefined> {
+  return loc.evaluate((el: unknown): ScrollGeometry | undefined => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const e = el as any;
+    if (!e) return undefined;
+    const y = e.scrollTop ?? 0;
+    return {
+      x: e.scrollLeft ?? 0,
+      y,
+      scrollWidth: e.scrollWidth,
+      scrollHeight: e.scrollHeight,
+      clientWidth: e.clientWidth,
+      clientHeight: e.clientHeight,
+      atTop: y <= 1,
+      atBottom: y + e.clientHeight >= e.scrollHeight - 1,
+    };
+  }).catch(() => undefined);
 }
 
 export interface SetViewportArgs extends ActionWindowOptions { width: number; height: number; }

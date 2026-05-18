@@ -85,6 +85,21 @@ export interface ElementProbe {
     after?: HitPoint | null;
     focusChanged?: boolean;
   };
+  /** W-H2: post-scroll geometry of the relevant scroller (the scrolled
+   *  container for `scroll` container-mode, else the window/document). Lets a
+   *  caller assert "the older page prepended" (`scrollHeight` grew),
+   *  "pinned to bottom" (`atBottom`), etc. without `eval_js`. Only populated
+   *  by the `scroll` / `set_viewport` actions. */
+  scroll?: {
+    x: number;
+    y: number;
+    scrollWidth: number;
+    scrollHeight: number;
+    clientWidth: number;
+    clientHeight: number;
+    atTop: boolean;
+    atBottom: boolean;
+  };
 }
 
 export interface HitPoint {

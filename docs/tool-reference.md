@@ -329,6 +329,8 @@ One general scroll primitive (capability: `navigation`):
 
 Returns an `ActionResult`. Scroll commonly triggers infinite-scroll XHRs and DOM growth, so `network` / `structure` / `snapshotDelta` on the result show what loaded. No-op calls (no target and no `to`/`by`) return a clear error rather than silently doing nothing.
 
+**Scroll geometry** (W-H2): the result's `element.scroll` carries the post-scroll metrics of the relevant scroller — `{ x, y, scrollWidth, scrollHeight, clientWidth, clientHeight, atTop, atBottom }`. Container-mode reports the scrolled element; window / into-view / wheel-at report the document scroller. Lets you assert "the older page prepended" (`scrollHeight` grew between two scrolls), "pinned to bottom" (`atBottom`), "reached the top loader" (`atTop`) **without `eval_js`**. `set_viewport`'s result carries it too (post-resize document geometry).
+
 ### `batch({ calls, stopOnError? })`
 
 Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (fill several fields then submit; navigate → wait_for → snapshot). Each inner call dispatches through the same handlers as a top-level call — capability gating, confirmation hooks, and `ActionResult` shape are unchanged.
