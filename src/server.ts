@@ -17,6 +17,7 @@ import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
 import { inspectElement } from "./page/inspect.js";
 import { watchWindow } from "./page/watch.js";
+import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
@@ -487,6 +488,39 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       const result = e.network.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "sample",
+    {
+      description:
+        "W-J3: sample a DOM metric over a window and return the time series — jank / CLS / scroll-drift QA. `metric` is a **fixed enum** (no agent-supplied JS — that's `eval_js`, gated). With a `ref`/`selector`/`named` target: `scrollTop`/`scrollLeft`/`scrollHeight`/`scrollWidth`/`clientWidth`/`clientHeight`/`bboxX`/`bboxY`/`bboxWidth`/`bboxHeight`. Without a target: the document scroller (`bbox*` is rejected — needs an element). `everyFrame:true` uses requestAnimationFrame; else `intervalMs` (default 100, min 16). Returns `{ metric, scope, durationMs, mode, count, series:[{tMs,value}], truncated? }`. Caps: 30 s, 2000 points. Read-only (`read`).",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        metric: z.enum(ELEMENT_METRICS).describe("Fixed metric to sample."),
+        durationMs: z.number().int().positive().max(30_000).describe("Window length (ms, ≤30000)."),
+        everyFrame: z.boolean().optional().describe("Sample every animation frame (rAF). Default false → fixed interval."),
+        intervalMs: z.number().int().positive().max(5000).optional().describe("Sampling interval (ms, default 100, min 16). Ignored when everyFrame:true."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("sample"); if (g) return g;
+      const e = await entryFor(args.session);
+      const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
+      const target = hasTarget ? asTarget(args, "sample", e.refs) : undefined;
+      if (target && "coords" in target) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ error: "sample: coords targets unsupported — use a ref/selector/named element, or omit target for the window" }, null, 2) }] };
+      }
+      try {
+        const result = await sampleMetric(e.session.page(), e.refs, {
+          target, metric: args.metric, durationMs: args.durationMs, everyFrame: args.everyFrame, intervalMs: args.intervalMs,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 
@@ -1214,7 +1248,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll", "set_viewport",
-    "snapshot", "find", "text_search", "inspect", "watch", "screenshot", "console_read", "network_read", "ws_read", "network_body",
+    "snapshot", "find", "text_search", "inspect", "watch", "sample", "screenshot", "console_read", "network_read", "ws_read", "network_body",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);

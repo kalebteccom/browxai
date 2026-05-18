@@ -180,6 +180,15 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+### `sample` *(W-J3)*
+Sample a DOM metric over a window → time series. Jank / CLS / scroll-drift QA without hand-rolling an in-page loop. `sample({ session?, ref?|selector?|named?, metric, durationMs, everyFrame?, intervalMs? })`:
+
+- `metric` is a **fixed enum** — the agent supplies **no JavaScript** (arbitrary JS stays `eval_js`, gated behind `eval`). With a target: `scrollTop`/`scrollLeft`/`scrollHeight`/`scrollWidth`/`clientWidth`/`clientHeight`/`bboxX`/`bboxY`/`bboxWidth`/`bboxHeight`. Without a target: the document scroller (`bbox*` rejected — needs an element).
+- `everyFrame: true` → `requestAnimationFrame` loop; else `intervalMs` (default 100, min 16).
+- Returns `{ metric, scope, durationMs, mode, count, series: [{ tMs, value }], truncated? }`. Caps: 30 s, 2000 points. Read-only (`read`).
+
+browxai supplies the fixed in-page rAF/interval loop — this is a bounded primitive, **not** an `eval_js` variant.
+
 ### `watch` *(W-H4)*
 Observe a fixed time window with **no driving action**. Samples top-level transient surfaces (`dialog`/`alertdialog`/`alert`/`status`/`tooltip`/`log`/`banner`/`timer`) every `sampleMs` (default 250) so a region that appears *and* disappears inside the window is caught — endpoint-only diffs (`ActionResult.structure`) miss it. `watch({ session?, durationMs, sampleMs? })` → `{ durationMs, samples, regions: [{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. `disappearedAtMs: null` = still present at window end. Catches double-fire toasts, flash-of-content, "notification never broadcast". Read-only (`read`); caps at 60 s.
 

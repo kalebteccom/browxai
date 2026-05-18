@@ -47,6 +47,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   ws_read: "read",
   inspect: "read",
   watch: "read",
+  sample: "read",
   list_named_refs: "read",
   text_search: "read",
   // navigation
