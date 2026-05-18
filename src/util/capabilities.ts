@@ -49,6 +49,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   navigate: "navigation",
   go_back: "navigation",
   go_forward: "navigation",
+  scroll: "navigation",
   // action
   click: "action",
   fill: "action",

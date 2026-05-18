@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { probe, preProbe, type PreProbeData } from "./actions.js";
+import { probe, preProbe, scrollMode, type PreProbeData } from "./actions.js";
 
 // Minimal per-call mock. The `probe()` helper calls in order:
 //   1. count()
@@ -241,5 +241,38 @@ describe("preProbe()", () => {
     const loc = locator({ count: 0, evaluateReturns: [] });
     const r = await preProbe(loc);
     expect(r).toEqual({});
+  });
+});
+
+describe("scrollMode — scroll primitive dispatch", () => {
+  it("window scroll when no target and to/by given", () => {
+    expect(scrollMode({ to: "bottom" }).kind).toBe("window");
+    expect(scrollMode({ by: { y: 400 } }).kind).toBe("window");
+  });
+
+  it("throws a clear no-op error when nothing is specified", () => {
+    expect(() => scrollMode({})).toThrow(/no-op/);
+  });
+
+  it("into-view when a target is given and neither to nor by", () => {
+    expect(scrollMode({ target: { ref: "e1" } }).kind).toBe("into-view");
+  });
+
+  it("container scroll when a target is given with to/by", () => {
+    expect(scrollMode({ target: { ref: "e1" }, to: "bottom" }).kind).toBe("container");
+    expect(scrollMode({ target: { ref: "e1" }, by: { y: 200 } }).kind).toBe("container");
+  });
+
+  it("intoView:false forces container even without to/by", () => {
+    expect(scrollMode({ target: { ref: "e1" }, intoView: false }).kind).toBe("container");
+  });
+
+  it("intoView:true forces into-view even with to/by", () => {
+    expect(scrollMode({ target: { ref: "e1" }, to: "bottom", intoView: true }).kind).toBe("into-view");
+  });
+
+  it("coords target → wheel-at regardless of to/by", () => {
+    expect(scrollMode({ target: { coords: { x: 10, y: 20 } } }).kind).toBe("wheel-at");
+    expect(scrollMode({ target: { coords: { x: 10, y: 20 } }, by: { y: 300 } }).kind).toBe("wheel-at");
   });
 });

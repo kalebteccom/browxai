@@ -309,6 +309,16 @@ Wait until the element is visible.
 ### `go_back({ ...opts })` / `go_forward({ ...opts })`
 History navigation.
 
+### `scroll({ ref?|selector?|named?|coords?, to?, by?, intoView?, ...opts })`
+One general scroll primitive (capability: `navigation`):
+
+- **No target** → scroll the window. Pass `to: "top"|"bottom"|"left"|"right"` or `by: { x?, y? }` (CSS px; `+y` = down, `+x` = right).
+- **`ref`/`selector`/`named` target, no `to`/`by`** → scroll that element *into view* (`scrollIntoViewIfNeeded`) — the lazy-load / virtualised-list case.
+- **element target + `to`/`by`** → scroll *within* that container (e.g. an `overflow:auto` panel). `intoView:false` is implied; set `intoView:true` to force into-view even with `to`/`by`.
+- **`coords` target** → wheel-scroll at that point (`mouse.wheel`) — canvas / map / WebGL panning.
+
+Returns an `ActionResult`. Scroll commonly triggers infinite-scroll XHRs and DOM growth, so `network` / `structure` / `snapshotDelta` on the result show what loaded. No-op calls (no target and no `to`/`by`) return a clear error rather than silently doing nothing.
+
 ### `batch({ calls, stopOnError? })`
 
 Run a sequence of tool calls server-side and return their results as one response. Eliminates round-trip overhead for known-safe sequences (fill several fields then submit; navigate → wait_for → snapshot). Each inner call dispatches through the same handlers as a top-level call — capability gating, confirmation hooks, and `ActionResult` shape are unchanged.
@@ -327,7 +337,7 @@ Returns `{ completed, failedAt, results }`:
 - `failedAt` — index of the first failed call, or `null` if all succeeded.
 - `results` — `Array<{ tool, ok, result?, error? }>`, one per executed call. `result` carries the parsed inner-response JSON.
 
-Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, `select`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
+Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `scroll`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `text_search`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`, `approve_actions`, `list_approvals`, `get_config`, `list_sessions`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
 
 ### `ActionResult` shape
 

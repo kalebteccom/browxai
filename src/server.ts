@@ -619,6 +619,45 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   );
 
   register(
+    "scroll",
+    {
+      description:
+        "Scroll the page or a scroll container. One general primitive:\n" +
+        "  - No target → scroll the window. Pass `to: top|bottom|left|right` or `by: {x,y}` (CSS px; +y = down).\n" +
+        "  - `ref`/`selector`/`named` target, no `to`/`by` → scroll that element *into view* (lazy-load / virtualised lists).\n" +
+        "  - element target + `to`/`by` → scroll *within* that container (set `intoView:false` is implied).\n" +
+        "  - `coords` target → wheel-scroll at that point (canvas / map / WebGL panning).\n" +
+        "Returns an ActionResult — scroll commonly triggers infinite-scroll XHRs and structure changes; read `network` / `structure` / `snapshotDelta` to see what loaded.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        to: z.enum(["top", "bottom", "left", "right"]).optional().describe("Scroll to an edge of the page (or targeted container)."),
+        by: z.object({ x: z.number().optional(), y: z.number().optional() }).optional()
+          .describe("Wheel-style delta in CSS px. +y scrolls down, +x scrolls right."),
+        intoView: z.boolean().optional()
+          .describe("When a target element is given: scroll it into view. Default true unless `to`/`by` is set."),
+        ...ACTION_OPTS,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("scroll"); if (g) return g;
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("scroll", confirmCtxFor(e));
+      if (!c.ok) return denyContent("scroll", c);
+      const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
+      const target = hasTarget ? asTarget(args, "scroll", e.refs) : undefined;
+      return asActionResultText(actions.scroll(ctxFor(e), {
+        target,
+        to: args.to,
+        by: args.by,
+        intoView: args.intoView,
+        mode: args.mode,
+        maxResultTokens: args.maxResultTokens,
+        recordingHint: target ? hintFromTarget(e, target) : undefined,
+      }));
+    },
+  );
+
+  register(
     "choose_option",
     {
       description:
@@ -1038,7 +1077,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // interactive sessions); CLI-style helpers that mutate session config.
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
-    "go_back", "go_forward",
+    "go_back", "go_forward", "scroll",
     "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",

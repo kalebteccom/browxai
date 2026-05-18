@@ -114,6 +114,102 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
   });
 }
 
+export type ScrollEdge = "top" | "bottom" | "left" | "right";
+export interface ScrollArgs extends ActionWindowOptions {
+  /** What to scroll. Omitted → the page/window. A ref/selector/named element
+   *  is either scrolled *into view* (default) or scrolled *within* (when it's
+   *  a scroll container and `to`/`by` is given). A coords target does a wheel
+   *  scroll at that point (canvas / map panning). */
+  target?: ActionTarget;
+  /** Scroll to an edge of the page (or the targeted container). */
+  to?: ScrollEdge;
+  /** Wheel-style delta in CSS px. Positive y = down, positive x = right. */
+  by?: { x?: number; y?: number };
+  /** When `target` is an element: scroll it into view. Defaults to true when a
+   *  target is given and neither `to` nor `by` is set. */
+  intoView?: boolean;
+}
+
+export type ScrollMode =
+  | { kind: "into-view" }
+  | { kind: "container" }
+  | { kind: "wheel-at" }
+  | { kind: "window" };
+
+/**
+ * Resolve which of the four scroll behaviours a `ScrollArgs` selects, or throw
+ * a clear error for a no-op call. Pure — exported for unit tests.
+ *
+ *   - target + (no to/by) | intoView:true  → scroll the element into view
+ *   - target + (to|by) + intoView:false    → scroll *within* the container
+ *   - coords target                        → wheel scroll at the point
+ *   - no target + (to|by)                  → window scroll
+ */
+export function scrollMode(args: ScrollArgs): ScrollMode {
+  if (args.target?.coords) return { kind: "wheel-at" };
+  if (args.target) {
+    const wantsInto = args.intoView ?? (args.to === undefined && args.by === undefined);
+    return wantsInto ? { kind: "into-view" } : { kind: "container" };
+  }
+  if (args.to === undefined && args.by === undefined) {
+    throw new Error("scroll: no-op — pass `to` (top|bottom|left|right) or `by` {x,y}, or a `target` to scroll into view");
+  }
+  return { kind: "window" };
+}
+
+export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<ActionResult> {
+  const descriptor: ActionDescriptor = {
+    type: "scroll",
+    value: args.to ?? (args.by ? `by ${args.by.x ?? 0},${args.by.y ?? 0}` : "into-view"),
+    ...(args.target ? refOrSelector(args.target) : {}),
+  };
+  return runInActionWindow(ctx, descriptor, args, async () => {
+    const mode = scrollMode(args);
+    if (mode.kind === "wheel-at") {
+      const c = args.target!.coords!;
+      await ctx.page.mouse.move(c.x, c.y);
+      await ctx.page.mouse.wheel(args.by?.x ?? 0, args.by?.y ?? 0);
+      return { stillAttached: true };
+    }
+    if (mode.kind === "into-view") {
+      const loc = locatorFor(ctx.page, ctx.refs, args.target!);
+      await loc.scrollIntoViewIfNeeded({ timeout: DEFAULT_TIMEOUT_MS });
+      return probe(loc, args.target!);
+    }
+    if (mode.kind === "container") {
+      const loc = locatorFor(ctx.page, ctx.refs, args.target!);
+      await loc.evaluate(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (el: any, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
+          if (a.to === "top") el.scrollTop = 0;
+          else if (a.to === "bottom") el.scrollTop = el.scrollHeight;
+          else if (a.to === "left") el.scrollLeft = 0;
+          else if (a.to === "right") el.scrollLeft = el.scrollWidth;
+          if (a.by) el.scrollBy(a.by.x ?? 0, a.by.y ?? 0);
+        },
+        { to: args.to, by: args.by },
+      );
+      return probe(loc, args.target!);
+    }
+    // window
+    await ctx.page.evaluate(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const w = globalThis as any;
+        const doc = w.document?.documentElement;
+        if (a.to === "top") w.scrollTo(w.scrollX, 0);
+        else if (a.to === "bottom") w.scrollTo(w.scrollX, doc ? doc.scrollHeight : 1e9);
+        else if (a.to === "left") w.scrollTo(0, w.scrollY);
+        else if (a.to === "right") w.scrollTo(doc ? doc.scrollWidth : 1e9, w.scrollY);
+        if (a.by) w.scrollBy(a.by.x ?? 0, a.by.y ?? 0);
+      },
+      { to: args.to, by: args.by },
+    );
+    return { stillAttached: true };
+  });
+}
+
 export interface ChooseOptionArgs extends ActionWindowOptions {
   target: ActionTarget;
   option: string;
