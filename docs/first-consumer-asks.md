@@ -174,6 +174,23 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-12 ask (post-shipping, 2026-05-18 — owner request)
+
+Source: owner request — a managed/incognito knob to drop browser web
+security (SOP/CORS off, any origin → any server) for QA against CORS-less
+APIs / cross-origin assertions, without the BYOB `chrome start --insecure`
+dance. A real posture change, so it's gated like `eval` / `network-body`.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-L1** 🟡 | The only way to get web-security-off today is the BYOB path (`browxai chrome start --insecure` + attach). browxai-launched `managed`/`incognito` sessions are safe-by-default with no opt-out, which blocks the common "hit a CORS-less API / make cross-origin assertions" QA pattern. | `disableWebSecurity` config flag (ConfigStore precedence; **not** an env var — deliberately excluded from the legacy `BROWX_*` layer so it can't be ambiently enabled). Default `false`. When true, `managed` + `incognito` launch with `--disable-web-security --disable-site-isolation-trials`. Loud warning **at server boot** *and* **per session launch** (mirrors `eval`/`network-body`/`chrome --insecure`). `attached`/BYOB unaffected (externally launched; whoever started it owns its flags). Resolved fresh per `open_session` so `set_config` takes effect without a restart. Documented in `docs/threat-model.md` as a config-level dangerous opt-in analogous to the `eval`/`byob-attach` posture. | **impl-pending** |
+
+**Why a config flag, not a capability:** capabilities gate *tools*;
+web-security-off is a *launch option*, not a tool. The consistent "properly
+gated" shape is therefore an off-by-default config key with the same loud-
+warning treatment `eval`/`network-body` get — plus exclusion from the env
+layer so it's an explicit, auditable, MCP-or-file-only opt-in.
+
 ## Round-11 asks (post-shipping, 2026-05-18 — round-10 verification re-report)
 
 Source: the same second consumer's Round-2 verification pass (sanitised into
