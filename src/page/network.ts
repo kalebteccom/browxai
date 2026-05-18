@@ -12,6 +12,9 @@ export interface NetworkEntry {
   type: string;
   ms?: number;
   failed?: boolean;
+  /** CDP request id — the handle `network_body` resolves (W-H5). Short-lived:
+   *  the renderer discards bodies fairly quickly, so fetch soon after. */
+  requestId?: string;
 }
 
 export interface NetworkSummary {
@@ -229,6 +232,36 @@ export class WsBuffer {
 }
 
 /**
+ * W-H5: fetch a response body by CDP request id. Gated behind the off-by-
+ * default `network-body` capability — full bodies can carry PII / tokens.
+ * Bounded (`maxBytes`, default 256 KB). Best-effort: the renderer discards
+ * bodies fairly quickly, so this can legitimately fail with "not available".
+ */
+export async function fetchResponseBody(
+  cdp: CDPSession,
+  requestId: string,
+  maxBytes = 256_000,
+): Promise<{ ok: boolean; body?: string; base64Encoded?: boolean; truncated?: boolean; error?: string }> {
+  try {
+    const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", { requestId })) as {
+      body: string;
+      base64Encoded: boolean;
+    };
+    if (body.length > maxBytes) {
+      return { ok: true, body: body.slice(0, maxBytes), base64Encoded, truncated: true };
+    }
+    return { ok: true, body, base64Encoded };
+  } catch (e) {
+    return {
+      ok: false,
+      error:
+        (e instanceof Error ? e.message : String(e)) +
+        " — response bodies are short-lived; fetch right after the request, and note bodies aren't retained across navigations.",
+    };
+  }
+}
+
+/**
  * Best-effort mutation-detail probe. Fetches the response body via
  * `Network.getResponseBody`, extracts only the *top-level keys* of the parsed
  * JSON. Returns null on any failure (body discarded, non-JSON, parse error,
@@ -348,13 +381,13 @@ export class NetworkBuffer {
     this.cdp.on("Network.responseReceived", (e: { requestId: string; response: { status: number } }) => {
       const r = this.requests.get(e.requestId);
       if (!r) return;
-      this.push({ method: r.method, url: r.url, status: e.response.status, type: r.type, ms: Date.now() - r.startedAt });
+      this.push({ method: r.method, url: r.url, status: e.response.status, type: r.type, ms: Date.now() - r.startedAt, requestId: e.requestId });
       this.requests.delete(e.requestId);
     });
     this.cdp.on("Network.loadingFailed", (e: { requestId: string }) => {
       const r = this.requests.get(e.requestId);
       if (!r) return;
-      this.push({ method: r.method, url: r.url, type: r.type, failed: true, ms: Date.now() - r.startedAt });
+      this.push({ method: r.method, url: r.url, type: r.type, failed: true, ms: Date.now() - r.startedAt, requestId: e.requestId });
       this.requests.delete(e.requestId);
     });
   }

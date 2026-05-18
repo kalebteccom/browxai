@@ -178,6 +178,11 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+### `network_body` *(W-H5 — gated)*
+Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default** — requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request; not retained across navigations.
+
+Why gated: full bodies routinely carry PII / auth tokens. W-F5's `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`/W-H1).
+
 ### `inspect` *(W-H3)*
 Read an element's whitelisted **computed styles + box + overflow/clip state**. `inspect({ session?, ref?|selector?|named?, styles? })` → `{ found, box: {x,y,width,height}, styles, overflowing: {x,y}, visible, childCount }`. The layout-break / control-state verification primitive — distinct from `find()` (ranking) and `text_search` (presence):
 

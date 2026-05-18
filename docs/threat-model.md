@@ -116,16 +116,19 @@ contract. Defenses:
 
 ## The capability set
 
-Tools group into seven capabilities. Default-enabled / -disabled marked.
+Tools group into capabilities. Default-enabled / -disabled marked. (Read-side
+detail tools — `text_search`, `inspect`, `ws_read` — also fall under `read`;
+`scroll`/`set_viewport` under `navigation`.)
 
 | Capability | Tools | Default | Rationale |
 |---|---|---|---|
-| `read` | `snapshot`, `find`, `screenshot`, `console_read`, `network_read`, `list_named_refs` | **on** | Read-only; can't change page state. Always safe to enable. |
-| `navigation` | `navigate`, `go_back`, `go_forward` | **on** | Honoured by the origin allowlist when set. |
-| `action` | `click`, `fill`, `press`, `hover`, `select`, `wait_for` | **on** | The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy). |
+| `read` | `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs` | **on** | Read-only; can't change page state. Always safe to enable. |
+| `navigation` | `navigate`, `go_back`, `go_forward`, `scroll`, `set_viewport` | **on** | Viewport/history movement. Honoured by the origin allowlist when set. |
+| `action` | `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `wait_for` | **on** | The core agentic surface. Confirmation hook gates the irreversible sub-cases (see policy). |
 | `human` | `await_human`, `name_ref` | **on** | Pure coordination primitives. |
 | `eval` | `eval_js` | **off** | Arbitrary page-side JS execution. Off by default; loud warning when enabled. |
 | `byob-attach` | session via `BROWX_ATTACH_CDP` | **off** | Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning. |
+| `network-body` | `network_body` | **off** | Returns full HTTP response bodies — routinely carry PII / auth tokens. W-F5 `responseShape` (keys only) is the safe default; this is the higher-risk "assert exact field value" escape hatch. Loud warning when enabled. |
 | `file-io` | (future) `download_file`, `upload_file` | **off** | Not implemented yet; capability slot reserved. |
 
 ### Configuring

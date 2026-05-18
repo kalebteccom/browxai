@@ -21,10 +21,11 @@ export type Capability =
   | "human"
   | "eval"
   | "byob-attach"
-  | "file-io";
+  | "file-io"
+  | "network-body";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -70,6 +71,8 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   find_feedback: "human",
   // eval
   eval_js: "eval",
+  // network-body (off by default — full response bodies can carry PII / tokens)
+  network_body: "network-body",
   // byob-attach and file-io are not bound to specific tools — byob-attach gates the
   // BROWX_ATTACH_CDP code path at session creation; file-io will gate future
   // download/upload tools when they ship.

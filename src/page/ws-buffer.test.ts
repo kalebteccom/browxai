@@ -1,5 +1,28 @@
 import { describe, it, expect, vi } from "vitest";
-import { WsBuffer } from "./network.js";
+import { WsBuffer, fetchResponseBody } from "./network.js";
+
+describe("fetchResponseBody — W-H5", () => {
+  it("returns the body for a retained response", async () => {
+    const cdp = { send: vi.fn(async () => ({ body: '{"id":1}', base64Encoded: false })) } as never;
+    const r = await fetchResponseBody(cdp, "req-1");
+    expect(r).toEqual({ ok: true, body: '{"id":1}', base64Encoded: false });
+  });
+
+  it("truncates oversized bodies and flags it", async () => {
+    const big = "x".repeat(10);
+    const cdp = { send: vi.fn(async () => ({ body: big, base64Encoded: false })) } as never;
+    const r = await fetchResponseBody(cdp, "req-1", 4);
+    expect(r.body).toBe("xxxx");
+    expect(r.truncated).toBe(true);
+  });
+
+  it("returns ok:false with a helpful message when the body was discarded", async () => {
+    const cdp = { send: vi.fn(async () => { throw new Error("No resource with given identifier found"); }) } as never;
+    const r = await fetchResponseBody(cdp, "gone");
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/short-lived/);
+  });
+});
 
 // Minimal CDP stub: records `on` handlers by event name and lets the test
 // fire them. `send` resolves (Network.enable is idempotent).

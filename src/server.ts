@@ -20,7 +20,7 @@ import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
-import { NetworkBuffer, WsBuffer } from "./page/network.js";
+import { NetworkBuffer, WsBuffer, fetchResponseBody } from "./page/network.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
@@ -156,6 +156,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
+  if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
   }
@@ -504,6 +505,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const loc = locatorFor(e.session.page(), e.refs, target);
       const result = await inspectElement(loc, args.styles ?? []);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "network_body",
+    {
+      description:
+        "W-H5: fetch a full response body by `requestId` (from `network_read` / `ActionResult.network.requests[].requestId`). **Gated behind the off-by-default `network-body` capability** — full bodies can carry PII / auth tokens; W-F5's `responseShape` (keys only) is the safe default. Bounded (256 KB, `truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request, not retained across navigations. Pairs with W-H1 for realtime payload assertions.",
+      inputSchema: {
+        requestId: z.string().describe("CDP request id from network_read / ActionResult.network.requests[].requestId."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ requestId, session }) => {
+      const g = gateCheck("network_body"); if (g) return g;
+      const e = await entryFor(session);
+      const r = await fetchResponseBody(e.session.cdp(), requestId);
+      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
     },
   );
 
@@ -1160,7 +1179,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll", "set_viewport",
-    "snapshot", "find", "text_search", "inspect", "screenshot", "console_read", "network_read", "ws_read",
+    "snapshot", "find", "text_search", "inspect", "screenshot", "console_read", "network_read", "ws_read", "network_body",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);

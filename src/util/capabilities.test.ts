@@ -46,6 +46,18 @@ describe("isToolEnabled", () => {
     const c = resolveCapabilities({ BROWX_CAPABILITIES: "read" } as NodeJS.ProcessEnv);
     expect(isToolEnabled("unknown_tool", c)).toBe(true);
   });
+
+  it("network_body is off under the default capability set (W-H5 gate)", () => {
+    const def = resolveCapabilities({} as NodeJS.ProcessEnv);
+    expect(isToolEnabled("network_body", def)).toBe(false);
+    const on = resolveCapabilities({ BROWX_CAPABILITIES: "read,network-body" } as NodeJS.ProcessEnv);
+    expect(isToolEnabled("network_body", on)).toBe(true);
+  });
+
+  it("network-body is a valid capability but not in the default set", () => {
+    expect(ALL_CAPABILITIES).toContain("network-body");
+    expect(DEFAULT_CAPABILITIES).not.toContain("network-body");
+  });
 });
 
 describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {
