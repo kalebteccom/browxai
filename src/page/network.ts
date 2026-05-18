@@ -134,6 +134,100 @@ export class NetworkTap {
   }
 }
 
+// ---------------------------------------------------------------------------
+// W-H1: WebSocket / Server-Sent-Events frame capture.
+//
+// `network_read` / `ActionResult.network` only see HTTP. Realtime correctness
+// (chat, multiplayer, collaborative editing, live dashboards) is only
+// observable at the frame level. `WsBuffer` is the session-wide analogue of
+// `NetworkBuffer`: a bounded ring of recent WS/SSE frames, payloads truncated.
+
+export interface WsFrame {
+  /** WS/SSE endpoint URL (best-effort — empty if the create event was missed). */
+  url: string;
+  dir: "sent" | "recv";
+  kind: "ws" | "sse";
+  /** WS opcode (1=text, 2=binary, 8=close, 9=ping, 10=pong). Absent for SSE. */
+  opcode?: number;
+  /** SSE event name when present (`eventName` from CDP). */
+  event?: string;
+  /** Payload, truncated to `maxPayload` chars. */
+  payload: string;
+  truncated?: boolean;
+  ts: number;
+}
+
+export class WsBuffer {
+  private urls = new Map<string, string>(); // requestId → endpoint url
+  private ring: WsFrame[] = [];
+  private enabled = false;
+
+  constructor(private cdp: CDPSession, private cap = 500, private maxPayload = 2000) {}
+
+  private trunc(s: string): { payload: string; truncated?: boolean } {
+    if (s.length <= this.maxPayload) return { payload: s };
+    return { payload: s.slice(0, this.maxPayload), truncated: true };
+  }
+
+  private push(f: WsFrame): void {
+    this.ring.push(f);
+    if (this.ring.length > this.cap) this.ring.shift();
+  }
+
+  async attach(): Promise<void> {
+    if (this.enabled) return;
+    await this.cdp.send("Network.enable").catch(() => undefined); // idempotent w/ NetworkBuffer
+    this.enabled = true;
+    this.cdp.on("Network.webSocketCreated", (e: { requestId: string; url: string }) => {
+      this.urls.set(e.requestId, e.url);
+    });
+    this.cdp.on(
+      "Network.requestWillBeSent",
+      (e: { requestId: string; request: { url: string }; type?: string }) => {
+        if (e.type === "EventSource") this.urls.set(e.requestId, e.request.url);
+      },
+    );
+    const onFrame = (dir: "sent" | "recv") =>
+      (e: { requestId: string; timestamp?: number; response: { opcode: number; payloadData: string } }) => {
+        this.push({
+          url: this.urls.get(e.requestId) ?? "",
+          dir,
+          kind: "ws",
+          opcode: e.response.opcode,
+          ...this.trunc(e.response.payloadData ?? ""),
+          ts: Date.now(),
+        });
+      };
+    this.cdp.on("Network.webSocketFrameSent", onFrame("sent"));
+    this.cdp.on("Network.webSocketFrameReceived", onFrame("recv"));
+    this.cdp.on(
+      "Network.eventSourceMessageReceived",
+      (e: { requestId: string; eventName?: string; data: string }) => {
+        this.push({
+          url: this.urls.get(e.requestId) ?? "",
+          dir: "recv",
+          kind: "sse",
+          event: e.eventName || undefined,
+          ...this.trunc(e.data ?? ""),
+          ts: Date.now(),
+        });
+      },
+    );
+  }
+
+  /** Most-recent N frames, optionally filtered by a url substring. */
+  recent(limit = 50, urlPattern?: string): { total: number; frames: WsFrame[] } {
+    let frames = this.ring;
+    if (urlPattern) frames = frames.filter((f) => f.url.includes(urlPattern));
+    return { total: frames.length, frames: frames.slice(-limit) };
+  }
+
+  /** Frames since a timestamp — for the per-action `ActionResult` slice. */
+  since(ts: number, cap = 25): WsFrame[] {
+    return this.ring.filter((f) => f.ts >= ts).slice(-cap);
+  }
+}
+
 /**
  * Best-effort mutation-detail probe. Fetches the response body via
  * `Network.getResponseBody`, extracts only the *top-level keys* of the parsed

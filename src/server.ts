@@ -18,7 +18,7 @@ import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
-import { NetworkBuffer } from "./page/network.js";
+import { NetworkBuffer, WsBuffer } from "./page/network.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
@@ -194,6 +194,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       consoleBuf.attach(sess.page());
       const networkBuf = new NetworkBuffer(sess.cdp());
       await networkBuf.attach();
+      const wsBuf = new WsBuffer(sess.cdp());
+      await wsBuf.attach();
       const br = new BrowxBridge();
       await br.attach(sess.page().context());
       return {
@@ -203,6 +205,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         refs: new RefRegistry(),
         console: consoleBuf,
         network: networkBuf,
+        ws: wsBuf,
         bridge: br,
         recorder: new Recorder(),
         feedback: new FeedbackMemory(),
@@ -284,6 +287,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     testAttributes: config.testAttributes,
     originPolicy,
     recorder: e.recorder,
+    ws: e.ws,
   });
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
@@ -464,6 +468,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("network_read"); if (g) return g;
       const e = await entryFor(session);
       const result = e.network.recent(limit ?? 50);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "ws_read",
+    {
+      description:
+        "W-H1: session-wide ring of recent WebSocket / Server-Sent-Events frames (HTTP is `network_read`; this is the realtime channel). Each frame: `{ url, dir: sent|recv, kind: ws|sse, opcode?, event?, payload, truncated?, ts }`. Payloads are truncated. Use to verify realtime correctness — chat/multiplayer/collaborative/live-dashboard broadcasts. Per-action frames also land in `ActionResult.network.wsFrames`; this is the across-session view.",
+      inputSchema: {
+        limit: z.number().int().positive().max(500).optional().describe("Most-recent N frames (default 50)."),
+        urlPattern: z.string().optional().describe("Substring filter on the frame's endpoint URL."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ limit, urlPattern, session }) => {
+      const g = gateCheck("ws_read"); if (g) return g;
+      const e = await entryFor(session);
+      const result = e.ws.recent(limit ?? 50, urlPattern);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -1078,7 +1101,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll",
-    "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
+    "snapshot", "find", "text_search", "screenshot", "console_read", "network_read", "ws_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);

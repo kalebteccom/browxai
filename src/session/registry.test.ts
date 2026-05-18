@@ -16,6 +16,8 @@ function fakeEntry(id: string): SessionEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     network: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ws: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     bridge: { detach: vi.fn(async () => undefined) } as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recorder: {} as any,

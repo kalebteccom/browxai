@@ -11,7 +11,7 @@ import type { CDPSession, Page } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { findByRef, serialise } from "./snapshot.js";
-import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry } from "./network.js";
+import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry, type WsFrame } from "./network.js";
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
 
@@ -135,6 +135,10 @@ export interface ActionResult {
      *  mutation succeeded and what shape it wrote back, without exposing the
      *  full response body. Absent when no mutations landed in the window. */
     mutations?: MutationEntry[];
+    /** W-H1: WebSocket/SSE frames that arrived during this action window
+     *  (payloads truncated). Absent when none. Use to verify realtime
+     *  correctness — e.g. that a click produced the expected broadcast. */
+    wsFrames?: WsFrame[];
   };
   tokensEstimate: number;
   warnings: string[];
@@ -157,6 +161,9 @@ export interface ActionContext {
    *  successful actions append to the recording. Best-effort: errors during
    *  recording never affect the action's outcome. */
   recorder?: import("./recording.js").Recorder;
+  /** W-H1: session WS/SSE frame ring. When present, frames that arrived during
+   *  the action window are sliced into `ActionResult.network.wsFrames`. */
+  ws?: import("./network.js").WsBuffer;
 }
 
 export interface ActionWindowOptions {
@@ -279,11 +286,14 @@ export async function runInActionWindow(
     ? (await import("../policy/confirm.js")).countEgressOffAllowlist(network.requests, ctx.originPolicy)
     : 0;
   const mutationsBlock = network.mutations.length > 0 ? { mutations: network.mutations } : {};
+  // W-H1: WS/SSE frames that arrived during this action window.
+  const wsSlice = ctx.ws ? ctx.ws.since(tBefore) : [];
+  const wsBlock = wsSlice.length > 0 ? { wsFrames: wsSlice } : {};
   const networkBlock = network.summary.total > 0
     ? (network.requests.length <= requestCap
-        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock }
-        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock }))
-    : { summary: network.summary, ...mutationsBlock };
+        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock, ...wsBlock }
+        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock, ...wsBlock }))
+    : { summary: network.summary, ...mutationsBlock, ...wsBlock };
 
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,

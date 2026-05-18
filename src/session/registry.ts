@@ -9,7 +9,7 @@
 import type { BrowserSession } from "./types.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ConsoleBuffer } from "../page/console.js";
-import type { NetworkBuffer } from "../page/network.js";
+import type { NetworkBuffer, WsBuffer } from "../page/network.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
@@ -25,6 +25,8 @@ export interface SessionEntry {
   refs: RefRegistry;
   console: ConsoleBuffer;
   network: NetworkBuffer;
+  /** W-H1: session-wide WebSocket/SSE frame ring. */
+  ws: WsBuffer;
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;

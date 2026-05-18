@@ -171,6 +171,9 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+### `ws_read` *(W-H1)*
+Session-wide ring of recent **WebSocket / Server-Sent-Events frames** (cap 500; HTTP is `network_read`, this is the realtime channel). `ws_read({ session?, limit?, urlPattern? })` → `{ total, frames: [{ url, dir: "sent"|"recv", kind: "ws"|"sse", opcode?, event?, payload, truncated?, ts }] }`. Payloads truncated (~2000 chars). The verification primitive for realtime correctness — chat / multiplayer / collaborative-editing / live-dashboard broadcasts, where the frame stream is the only ground truth. Per-action frames also land in **`ActionResult.network.wsFrames`** (frames that arrived during that action's window) — e.g. assert a click produced the expected broadcast without polling `ws_read` separately. Capability: `read`.
+
 #### `ActionResult.network.mutations` (W-F5)
 
 Action windows that include a write-shaped request (`POST` / `PUT` / `PATCH` / `DELETE` with a 2xx response) get a bounded `mutations` array on top of `summary` / `requests`:
