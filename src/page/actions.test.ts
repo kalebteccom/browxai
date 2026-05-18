@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { probe, preProbe, scrollMode, type PreProbeData } from "./actions.js";
+import { probe, preProbe, scrollMode, waitFor, type PreProbeData } from "./actions.js";
 
 // Minimal per-call mock. The `probe()` helper calls in order:
 //   1. count()
@@ -274,5 +274,13 @@ describe("scrollMode — scroll primitive dispatch", () => {
   it("coords target → wheel-at regardless of to/by", () => {
     expect(scrollMode({ target: { coords: { x: 10, y: 20 } } }).kind).toBe("wheel-at");
     expect(scrollMode({ target: { coords: { x: 10, y: 20 } }, by: { y: 300 } }).kind).toBe("wheel-at");
+  });
+});
+
+describe("waitFor — W-J1 text predicate", () => {
+  it("throws a clear error when neither target nor text is given", async () => {
+    // Reaches the validation before touching page/cdp — minimal ctx is fine.
+    const ctx = { page: {}, cdp: {}, refs: {}, console: {}, pages: () => [], testAttributes: [] } as never;
+    await expect(waitFor(ctx, {})).rejects.toThrow(/pass a `target`.*or `text`/);
   });
 });

@@ -331,8 +331,8 @@ Pick an option in a **custom combobox / listbox / menu** by visible text. Generi
 
 `exact` defaults to `true` (option text must match exactly). Set `false` to allow substring. Does **not** simulate type-and-press-Enter — that's prone to picking the wrong option in dense lists.
 
-### `wait_for({ ref?|selector?, timeoutMs?, ...opts })`
-Wait until the element is visible.
+### `wait_for({ ref?|selector?|named?|coords? | text?, timeoutMs?, ...opts })`
+Wait until an element is visible, **or** (W-J1) until visible `text` appears anywhere on the page — the SPA-readiness gate real apps need after a reload/nav (`wait_for({ text: "Dashboard" })`). Pass exactly one of a target or `text`; neither → clear error. Substring match, visible-only. **No arbitrary-JS predicate mode by design** — "poll an in-page condition until truthy" stays `eval_js`'s domain (gated behind the `eval` capability; browxai keeps a single arbitrary-JS loophole).
 
 ### `go_back({ ...opts })` / `go_forward({ ...opts })`
 History navigation.

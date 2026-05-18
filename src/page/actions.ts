@@ -104,13 +104,37 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
   });
 }
 
-export interface WaitForArgs extends ActionWindowOptions { target: ActionTarget; timeoutMs?: number; }
+export interface WaitForArgs extends ActionWindowOptions {
+  /** Element-visibility wait (mutually exclusive with `text`). */
+  target?: ActionTarget;
+  /** W-J1: SPA-readiness wait — poll until this visible text appears anywhere
+   *  in the page. The non-target gating mode real apps need after a reload /
+   *  nav. NO arbitrary-JS predicate mode by design — that stays `eval_js`'s
+   *  domain (the single `eval`-gated loophole). */
+  text?: string;
+  timeoutMs?: number;
+}
 export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "waitFor", ...refOrSelector(args.target) };
+  const timeout = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (args.text !== undefined) {
+    const descriptor: ActionDescriptor = { type: "waitFor", value: `text:${args.text}` };
+    return runInActionWindow(ctx, descriptor, args, async () => {
+      // Playwright text engine, visible-only — exact substring match on
+      // rendered text. Throws on timeout (caught by the action window → ok:false).
+      await ctx.page.locator(`text=${JSON.stringify(args.text)}`).first()
+        .waitFor({ state: "visible", timeout });
+      return { stillAttached: true };
+    });
+  }
+  if (!args.target) {
+    throw new Error("wait_for: pass a `target` (ref/selector/named/coords) or `text`");
+  }
+  const target = args.target;
+  const descriptor: ActionDescriptor = { type: "waitFor", ...refOrSelector(target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    const loc = locatorFor(ctx.page, ctx.refs, args.target);
-    await loc.waitFor({ state: "visible", timeout: args.timeoutMs ?? DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target);
+    const loc = locatorFor(ctx.page, ctx.refs, target);
+    await loc.waitFor({ state: "visible", timeout });
+    return probe(loc, target);
   });
 }
 

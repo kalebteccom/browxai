@@ -704,12 +704,21 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "wait_for",
     {
-      description: "Wait until an element is visible (by `ref` or `selector`). Returns an ActionResult.",
-      inputSchema: { ...REF_OR_SELECTOR, timeoutMs: z.number().int().positive().max(600_000).optional(), ...ACTION_OPTS },
+      description:
+        "Wait until an element is visible (`ref`/`selector`/`named`/`coords`) OR — W-J1 — until visible `text` appears anywhere on the page (SPA-readiness gating after a reload/nav). Pass exactly one of a target or `text`. No arbitrary-JS predicate mode by design (that's `eval_js`, gated behind the `eval` capability). Returns an ActionResult.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        text: z.string().optional().describe("W-J1: wait until this visible text appears (substring match). Mutually exclusive with a target."),
+        timeoutMs: z.number().int().positive().max(600_000).optional(),
+        ...ACTION_OPTS,
+      },
     },
     async (args) => {
       const g = gateCheck("wait_for"); if (g) return g;
       const e = await entryFor(args.session);
+      if (args.text !== undefined) {
+        return asActionResultText(actions.waitFor(ctxFor(e), { text: args.text, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      }
       const target = asTarget(args, "wait_for", e.refs);
       return asActionResultText(actions.waitFor(ctxFor(e), { target, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
