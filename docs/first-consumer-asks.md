@@ -174,6 +174,33 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-9 asks (post-shipping, 2026-05-18 — e2e-verification primitives)
+
+Source: an external bug-list reference (a sibling project's staging-blocker
+findings) read **only** for the *classes* of defects an agent must live-verify
+— no app-specific content enters the codebase. The recurring pattern: large
+green unit-test suites, prod-broken behaviour caught only by live multi-user
+observation of realtime + scroll + responsive-layout state. Reframed to
+generalized primitives. Multi-user isolation (P2.5 sessions), disabled/
+actionable state (`find().actionable` + W-F2), and the `scroll` action are
+already covered — these six are the genuine gaps.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-H1** 🔴 | Realtime correctness is unverifiable — browxai sees HTTP via `network_read` but is blind to WebSocket / SSE frames. A general class (chat, multiplayer, collaborative editing, live dashboards): the only ground truth is the frame stream. | `ws_read({ session, urlPattern?, limit? })` read tool + per-action WS/SSE-frame slice in `ActionResult.network`. CDP `Network.webSocketFrame{Sent,Received}` + EventSource. Bounded/redacted like the existing network surface. Capability: `read`. | **impl-pending** |
+| **W-H6** 🟡 | A session renders at Playwright's default desktop viewport with no device profile — responsive / touch / DPR-dependent behaviour can't be exercised at all. | Three composing layers on the P2.5 model: `open_session({ viewport?, device? })` (explicit dims, or a Playwright `devices` preset → viewport+DPR+mobile+touch+UA); `defaultViewport`/`defaultDevice` in the ConfigStore precedence chain; `set_viewport({ session, width, height })` mid-session resize → `ActionResult`. Honest limits: full device emulation is creation-time only (Playwright context constraint); best-effort on `attached`. | **impl-pending** |
+| **W-H2** 🟡 | Scroll/pagination verification needs geometry the agent can't read ("scrollHeight grew X→Y", "pinned to bottom"). `scroll` mutates but reports no metrics. | `scroll`'s `ActionResult` (+ opt-in element probe) reports `{ scrollX, scrollY, scrollHeight, scrollWidth, clientHeight, clientWidth, atTop, atBottom }` for the scrolled target/window. Makes prepend / pinned-to-bottom assertable without `eval_js`. | **impl-pending** |
+| **W-H3** 🟡 | Layout-break + control-state bugs (a flex row losing a child → misalignment; `cursor-wait` vs `cursor-not-allowed`; label clips/overflows) need computed style + box geometry the curated surface doesn't expose. | Read primitive returning a whitelisted computed-style set (`cursor`, `display`, `visibility`, `overflow{,X,Y}`, `position`, box `width`/`height`) + overflow/clipping state for a target. Generalizes visible-rect to "is this visually broken". Capability: `read`. | **impl-pending** |
+| **W-H5** 🟡 | Asserting an exact payload field in a realtime/HTTP body needs response *bodies*, not just the W-F5 key-shape. The deferred gated tool; this is its validating use case. | `network_body({ session, requestId })` under a new **off-by-default** `network-body` capability (loud startup warning). Returns the bounded full body. Pairs with W-H1 for realtime payloads. | **impl-pending** |
+| **W-H4** 🟢 | Transient-UI timing bugs (two toasts in N seconds; "notification never broadcast") need observation of appear/disappear over a window with no driving action. | `watch({ session, durationMs })` — records `structure` appear/remove + console + network deltas over a fixed window. Catches double-fire / missing-broadcast classes. Capability: `read`. | **impl-pending** |
+
+**Sequence:** W-H1 → W-H6 → W-H2 → W-H3 → W-H5 → W-H4.
+
+**Out of scope:** forged-auth / programmatic state-seeding is the *test
+harness's* job, not browser control — browxai drives the browser; seeding
+state is the consumer's. No app-specific assertion helpers — the primitives
+are generic; consumers compose verification logic on top.
+
 ## Round-7 (forward-looking) — interaction-vocabulary expansion + cross-OS
 
 Captured 2026-05-15. Not shipping in round-6 — these are roadmap items raised once
