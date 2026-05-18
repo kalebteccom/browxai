@@ -118,10 +118,15 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
   const timeout = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (args.text !== undefined) {
     const descriptor: ActionDescriptor = { type: "waitFor", value: `text:${args.text}` };
+    const wanted = args.text;
     return runInActionWindow(ctx, descriptor, args, async () => {
-      // Playwright text engine, visible-only — exact substring match on
-      // rendered text. Throws on timeout (caught by the action window → ok:false).
-      await ctx.page.locator(`text=${JSON.stringify(args.text)}`).first()
+      // W-J1-fix: true substring match (case-insensitive, whitespace-trimmed)
+      // — `getByText(string)` is substring by default. The earlier
+      // `locator('text="…"')` form lowered to Playwright's quoted/exact-ish
+      // engine, contradicting the documented "substring" contract (a short
+      // token inside a longer string timed out). Visible-only; throws on
+      // timeout (caught by the action window → ok:false).
+      await ctx.page.getByText(wanted).first()
         .waitFor({ state: "visible", timeout });
       return { stillAttached: true };
     });
