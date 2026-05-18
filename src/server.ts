@@ -159,6 +159,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   });
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
+  if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
   }
@@ -175,6 +176,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
       const mode: SessionMode = spec?.mode ?? serverDefaultMode;
+      // W-L1: resolve the gated web-security flag *fresh* per session so a
+      // `set_config({disableWebSecurity})` takes effect on the next
+      // open_session without a server restart. Off by default.
+      const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
       // W-H6: resolve device/viewport — spec overrides config-store defaults.
       const device = resolveDevice({
         device: spec?.device ?? resolvedConfig.defaultDevice,
@@ -192,7 +197,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         // retro-applied to an existing context.
         sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
       } else if (mode === "incognito") {
-        sess = await openIncognitoSession({ headless, device });
+        sess = await openIncognitoSession({ headless, device, disableWebSecurity });
       } else {
         // persistent: the default session keeps the legacy single `profile`
         // dir for back-compat; named/explicit profiles get their own dir so
@@ -201,7 +206,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           id === DEFAULT_SESSION_ID && !spec?.profile
             ? workspace.sub("profile")
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
-        sess = await openManagedSession({ headless, profileDir, device });
+        sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity });
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
@@ -1066,6 +1071,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     allowedOrigins: z.array(z.string()).optional(),
     blockedOrigins: z.array(z.string()).optional(),
     headless: z.boolean().optional(),
+    disableWebSecurity: z.boolean().optional(),
     defaultDevice: z.string().optional(),
     defaultViewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
     unstable: z.record(z.unknown()).optional(),

@@ -12,13 +12,24 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   const profileDir = opts.profileDir ?? workspace.sub("profile");
   log.info("session.managed: launching", { profileDir, headless: !!opts.headless });
 
+  // W-L1: opt-in web-security-off. Off by default (safe-by-default is the
+  // Phase-1 non-negotiable); when the gated `disableWebSecurity` config flag
+  // is set, lower it here with a loud per-launch warning.
+  const insecureArgs: string[] = [];
+  if (opts.disableWebSecurity) {
+    insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
+    log.warn(
+      "⚠  session.managed: disableWebSecurity is ON — launching with --disable-web-security. " +
+      "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+    );
+  }
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: !!opts.headless,
     // W-H6: device/viewport emulation applied at context creation.
     ...(opts.device ?? {}),
-    // Deliberately no `args: [...]` — no `--disable-web-security`, no `--no-sandbox`.
-    // These are the lowered-security flags that BYOB attaches to externally; managed
-    // launches stay safe by default. (Phase-1 security non-negotiable.)
+    // No `--no-sandbox`. `--disable-web-security` only when the gated W-L1
+    // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
+    ...(insecureArgs.length ? { args: insecureArgs } : {}),
   });
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);

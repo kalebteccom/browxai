@@ -23,6 +23,13 @@ export interface ResolvedConfig {
   allowedOrigins: string[];
   blockedOrigins: string[];
   headless: boolean;
+  /** W-L1: when true, `managed` / `incognito` sessions launch with
+   *  `--disable-web-security --disable-site-isolation-trials` (SOP/CORS OFF
+   *  browser-wide). Dangerous opt-in — off by default, loud-warned, and
+   *  deliberately NOT mappable from the legacy env layer (set via MCP
+   *  `set_config` or the managed config file only). No effect on
+   *  `attached`/BYOB (externally launched). */
+  disableWebSecurity?: boolean;
   /** W-H6: default device-preset name for new sessions (Playwright device
    *  registry, e.g. "iPhone 14"). Overridable per `open_session`. */
   defaultDevice?: string;
@@ -126,6 +133,7 @@ export class ConfigStore {
       allowedOrigins: layer.allowedOrigins ?? acc.allowedOrigins,
       blockedOrigins: layer.blockedOrigins ?? acc.blockedOrigins,
       headless: layer.headless ?? acc.headless,
+      disableWebSecurity: layer.disableWebSecurity ?? acc.disableWebSecurity,
       defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,

@@ -25,7 +25,9 @@ built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (ope
 - **`set_config({ scope: "user"|"project", patch })`** — the *only* supported way to persist config. Writes `<workspace>/config.json` (machine-managed; do not hand-edit). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after the call.
 - **`reset_config({ scope: "user"|"project" })`** — clears that persistent layer.
 
-Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
+Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, `defaultDevice`, `defaultViewport`, `disableWebSecurity`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
+
+**`disableWebSecurity`** (W-L1, dangerous opt-in): `false` by default. When `true`, **`managed` + `incognito`** sessions launch with `--disable-web-security --disable-site-isolation-trials` — SOP/CORS off browser-wide (any origin → any server). For CORS-less-API / cross-origin QA. `attached`/BYOB is unaffected (externally launched — its flags are whoever started it's responsibility). Loud warning at server boot **and** per session launch. **Deliberately not mappable from any `BROWX_*` env var** — set it only via `set_config({ scope, patch:{ disableWebSecurity:true } })` or the managed config file, so it can't be ambiently enabled. Resolved fresh per `open_session` (no restart needed after `set_config`). Same posture class as `eval` / `network-body` — see `docs/threat-model.md`.
 
 The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer** (one notch above built-in defaults, below user/project) — documented but no longer the recommended path. `BROWX_WORKSPACE` is the exception: it's a *location* anchor (where the config store itself lives), not config.
 

@@ -26,6 +26,9 @@ export interface SessionOptions {
   profileDir?: string;
   /** W-H6: device/viewport emulation, applied at context creation. */
   device?: DeviceConfig;
+  /** W-L1: launch with `--disable-web-security --disable-site-isolation-trials`
+   *  (SOP/CORS OFF browser-wide). managed/incognito only; loud-warned. */
+  disableWebSecurity?: boolean;
 }
 
 export interface BrowserSession {

@@ -131,6 +131,15 @@ detail tools — `text_search`, `inspect`, `ws_read` — also fall under `read`;
 | `network-body` | `network_body` | **off** | Returns full HTTP response bodies — routinely carry PII / auth tokens. W-F5 `responseShape` (keys only) is the safe default; this is the higher-risk "assert exact field value" escape hatch. Loud warning when enabled. |
 | `file-io` | (future) `download_file`, `upload_file` | **off** | Not implemented yet; capability slot reserved. |
 
+### Dangerous config opt-ins (not capabilities — launch options)
+
+Capabilities gate *tools*. One dangerous knob is a *launch option*, not a
+tool, so it's a gated **config key** with the same loud-warning treatment:
+
+| Config key | Default | Effect / gating |
+|---|---|---|
+| `disableWebSecurity` (W-L1) | **off** | `managed`/`incognito` launch with `--disable-web-security --disable-site-isolation-trials` — SOP/CORS off browser-wide. **Not** mappable from any `BROWX_*` env var (can't be ambiently enabled); set only via `set_config` or the managed config file. Loud warning at server boot **and** per session launch. No effect on `attached`/BYOB. Same posture class as `eval`/`byob-attach`: explicit, auditable, off-by-default. |
+
 ### Configuring
 
 ```

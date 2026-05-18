@@ -13,9 +13,19 @@ import type { BrowserSession, SessionOptions } from "./types.js";
 
 export async function openIncognitoSession(opts: SessionOptions = {}): Promise<BrowserSession> {
   log.info("session.incognito: launching ephemeral browser", { headless: !!opts.headless });
+  // W-L1: opt-in web-security-off (off by default; loud per-launch warning).
+  const insecureArgs: string[] = [];
+  if (opts.disableWebSecurity) {
+    insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
+    log.warn(
+      "⚠  session.incognito: disableWebSecurity is ON — launching with --disable-web-security. " +
+      "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+    );
+  }
   const browser = await chromium.launch({
     headless: !!opts.headless,
-    // No lowered-security flags — same posture as managed.
+    // No lowered-security flags unless the gated W-L1 flag is explicitly on.
+    ...(insecureArgs.length ? { args: insecureArgs } : {}),
   });
   const context = await browser.newContext({ ...(opts.device ?? {}) });
   const page = await context.newPage();

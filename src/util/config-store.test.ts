@@ -112,6 +112,33 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_HEADLESS: "0" }).headless).toBe(false);
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
+
+  it("W-L1: disableWebSecurity is NOT mappable from any env var (security invariant)", () => {
+    // Deliberately excluded from the legacy layer — must never be ambiently
+    // enabled via the environment. Any plausible env spelling stays undefined.
+    const l = envLayer({
+      BROWX_DISABLE_WEB_SECURITY: "1",
+      BROWX_DISABLEWEBSECURITY: "true",
+      BROWX_INSECURE: "1",
+    } as NodeJS.ProcessEnv);
+    expect(l.disableWebSecurity).toBeUndefined();
+  });
+});
+
+describe("disableWebSecurity (W-L1) precedence", () => {
+  it("defaults off; settable only via user/project/session layers", () => {
+    const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
+    try {
+      const s = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" } as NodeJS.ProcessEnv);
+      expect(s.resolve().disableWebSecurity).toBeUndefined(); // env can't enable it
+      s.setLayer("project", { disableWebSecurity: true });
+      expect(s.resolve().disableWebSecurity).toBe(true);
+      // session layer can still override back off
+      expect(s.resolve({ disableWebSecurity: false }).disableWebSecurity).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("resolvedToEnv adapter", () => {
