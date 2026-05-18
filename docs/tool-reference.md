@@ -178,6 +178,16 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 ### `network_read`
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
+### `inspect` *(W-H3)*
+Read an element's whitelisted **computed styles + box + overflow/clip state**. `inspect({ session?, ref?|selector?|named?, styles? })` → `{ found, box: {x,y,width,height}, styles, overflowing: {x,y}, visible, childCount }`. The layout-break / control-state verification primitive — distinct from `find()` (ranking) and `text_search` (presence):
+
+- Default style set: `display`, `visibility`, `opacity`, `position`, `cursor`, `pointerEvents`, `overflow{,X,Y}`, `zIndex`, `flexDirection`, `justifyContent`, `alignItems`. `styles: [...]` appends extra camelCase property names.
+- `overflowing.{x,y}` — `scrollWidth/Height > clientWidth/Height` (the "label clips / content overflows" signal).
+- `childCount` — direct element children (catch "a flex row lost its 3rd child → misalignment").
+- `cursor` distinguishes `not-allowed` vs `wait` vs `pointer` (disabled-vs-busy control state).
+
+Read-only (capability `read`). Coords targets unsupported (no element to resolve).
+
 ### `ws_read` *(W-H1)*
 Session-wide ring of recent **WebSocket / Server-Sent-Events frames** (cap 500; HTTP is `network_read`, this is the realtime channel). `ws_read({ session?, limit?, urlPattern? })` → `{ total, frames: [{ url, dir: "sent"|"recv", kind: "ws"|"sse", opcode?, event?, payload, truncated?, ts }] }`. Payloads truncated (~2000 chars). The verification primitive for realtime correctness — chat / multiplayer / collaborative-editing / live-dashboard broadcasts, where the frame stream is the only ground truth. Per-action frames also land in **`ActionResult.network.wsFrames`** (frames that arrived during that action's window) — e.g. assert a click produced the expected broadcast without polling `ws_read` separately. Capability: `read`.
 

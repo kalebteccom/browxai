@@ -15,6 +15,7 @@ import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
 import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
+import { inspectElement } from "./page/inspect.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
@@ -477,6 +478,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("network_read"); if (g) return g;
       const e = await entryFor(session);
       const result = e.network.recent(limit ?? 50);
+      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "inspect",
+    {
+      description:
+        "W-H3: read an element's whitelisted computed styles + box + overflow/clip state. The layout-break / control-state verification primitive — confirm `cursor: not-allowed` vs `wait`, a flex row's `childCount`, a label that overflows (`overflowing.y`), `display:none`/`visibility:hidden`. Returns `{ found, box, styles, overflowing:{x,y}, visible, childCount }`. Read-only (capability `read`); distinct from `find()` (ranking) and `text_search` (presence). Coords targets aren't supported (no element to resolve).",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        styles: z.array(z.string()).optional().describe("Extra computed-style property names to include beyond the default set (camelCase, e.g. \"borderBottomWidth\")."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("inspect"); if (g) return g;
+      const e = await entryFor(args.session);
+      const target = asTarget(args, "inspect", e.refs);
+      if ("coords" in target) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ found: false, error: "inspect requires ref/selector/named, not coords" }, null, 2) }] };
+      }
+      const { locatorFor } = await import("./page/locator.js");
+      const loc = locatorFor(e.session.page(), e.refs, target);
+      const result = await inspectElement(loc, args.styles ?? []);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -1134,7 +1160,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll", "set_viewport",
-    "snapshot", "find", "text_search", "screenshot", "console_read", "network_read", "ws_read",
+    "snapshot", "find", "text_search", "inspect", "screenshot", "console_read", "network_read", "ws_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);

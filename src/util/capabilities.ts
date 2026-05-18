@@ -44,6 +44,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   console_read: "read",
   network_read: "read",
   ws_read: "read",
+  inspect: "read",
   list_named_refs: "read",
   text_search: "read",
   // navigation
