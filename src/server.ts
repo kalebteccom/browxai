@@ -13,6 +13,8 @@ import { composeSnapshot } from "./page/compose.js";
 import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
 import { resolveConfig } from "./util/config.js";
+import { resolveWorkspace } from "./util/workspace.js";
+import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
 import { NetworkBuffer } from "./page/network.js";
 import * as actions from "./page/actions.js";
@@ -124,14 +126,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   let networkBuf: NetworkBuffer | null = null;
   let bridge: BrowxBridge | null = null;
   const refs = new RefRegistry();
-  const config = resolveConfig();
+  // Phase 2.5: config flows through the browxai-managed ConfigStore (precedence
+  // defaults < env(legacy) < user < project < session). The existing env-driven
+  // resolvers consume the *resolved* chain re-expressed as an env shape, so
+  // precedence is centralised in the store without rewriting each resolver.
+  const workspace = resolveWorkspace();
+  const configStore = new ConfigStore(workspace.root);
+  const resolvedConfig = configStore.resolve();
+  const cfgEnv = resolvedToEnv(resolvedConfig);
+  const config = resolveConfig(cfgEnv);
   const recorder = new Recorder();
   const feedback = new FeedbackMemory();
   const approvals = new ApprovalStore();
   // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
-  const caps = resolveCapabilities();
-  const confirmHooks = resolveConfirmHooks();
-  const originPolicy = resolveOriginPolicy();
+  const caps = resolveCapabilities(cfgEnv);
+  const confirmHooks = resolveConfirmHooks(cfgEnv);
+  const originPolicy = resolveOriginPolicy(cfgEnv);
   const isByob = !!opts.attachCdp;
   log.info("browxai: policy", {
     capabilities: [...caps.enabled],
@@ -199,9 +209,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   const openSession = async (): Promise<BrowserSession> => {
     if (session) return session;
+    const headless = opts.headless ?? resolvedConfig.headless;
     session = opts.attachCdp
-      ? await openByobSession({ attachCdp: opts.attachCdp, headless: opts.headless })
-      : await openManagedSession({ headless: opts.headless });
+      ? await openByobSession({ attachCdp: opts.attachCdp, headless })
+      : await openManagedSession({ headless });
     consoleBuf = new ConsoleBuffer();
     consoleBuf.attach(session.page());
     networkBuf = new NetworkBuffer(session.cdp());
@@ -706,6 +717,74 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- config store (Phase 2.5) ----------
+
+  const CONFIG_PATCH_SCHEMA = {
+    testAttributes: z.array(z.string()).optional(),
+    capabilities: z.array(z.string()).optional(),
+    confirmRequired: z.array(z.string()).optional(),
+    allowedOrigins: z.array(z.string()).optional(),
+    blockedOrigins: z.array(z.string()).optional(),
+    headless: z.boolean().optional(),
+    unstable: z.record(z.unknown()).optional(),
+  };
+
+  register(
+    "get_config",
+    {
+      description:
+        "Inspect browxai configuration. Default returns the fully *resolved* view (precedence: built-in defaults < env [legacy BROWX_*] < user < project < session). Pass `scope` to see one raw pre-merge layer. Config is browxai-managed — change it with `set_config`, never by hand-editing files or env.",
+      inputSchema: {
+        scope: z.enum(["defaults", "env", "user", "project", "session", "resolved"]).optional()
+          .describe("Which layer to show. Omit or 'resolved' for the merged view."),
+      },
+    },
+    async ({ scope }) => {
+      const body = !scope || scope === "resolved"
+        ? { scope: "resolved", config: configStore.resolve() }
+        : { scope, config: configStore.getLayer(scope as ConfigScope) };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
+  register(
+    "set_config",
+    {
+      description:
+        "Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). This is the ONLY supported way to set persistent config — no env vars, no hand-edited files. Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes.",
+      inputSchema: {
+        scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
+        patch: z.object(CONFIG_PATCH_SCHEMA).describe("Partial config — only the keys you want to override."),
+      },
+    },
+    async ({ scope, patch }) => {
+      configStore.setLayer(scope as PersistentScope, patch);
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() }, null, 2),
+        }],
+      };
+    },
+  );
+
+  register(
+    "reset_config",
+    {
+      description: "Clear a persistent config layer (`user` or `project`) entirely. The built-in defaults + env layer remain.",
+      inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
+    },
+    async ({ scope }) => {
+      configStore.resetLayer(scope as PersistentScope);
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ ok: true, cleared: scope, resolved: configStore.resolve() }, null, 2),
+        }],
+      };
+    },
+  );
+
   // ---------- session pre-approvals (W-G1) ----------
 
   register(
@@ -829,7 +908,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_back", "go_forward",
     "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
-    "approve_actions", "list_approvals",
+    "approve_actions", "list_approvals", "get_config",
   ]);
   const BATCH_MAX_CALLS = 32;
 

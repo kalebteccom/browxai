@@ -13,11 +13,25 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 - **`browxai chrome stop`** / **`browxai chrome status`** — clean teardown / liveness check.
 - **`browxai init <workspace> [--test-attrs ...]`** — bootstrap a per-app workspace: creates `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed + attached MCP entries, sniffs the consumer codebase for the dominant test-attribute convention and orders `BROWX_TEST_ATTRIBUTES` accordingly. (Wishlist W-B6.)
 
-## Environment
+## Configuration (Phase 2.5)
+
+browxai is configured through the **MCP-managed config store** — no env vars and no hand-edited files are required. Precedence, lowest → highest:
+
+```
+built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (open_session)
+```
+
+- **`get_config({ scope? })`** — resolved merged view by default; pass `scope ∈ {defaults,env,user,project,session,resolved}` for one raw layer.
+- **`set_config({ scope: "user"|"project", patch })`** — the *only* supported way to persist config. Writes `<workspace>/config.json` (machine-managed; do not hand-edit). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after the call.
+- **`reset_config({ scope: "user"|"project" })`** — clears that persistent layer.
+
+Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
+
+The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer** (one notch above built-in defaults, below user/project) — documented but no longer the recommended path. `BROWX_WORKSPACE` is the exception: it's a *location* anchor (where the config store itself lives), not config.
 
 | Env var | Default | What |
 |---|---|---|
-| `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
+| `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |

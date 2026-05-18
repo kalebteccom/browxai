@@ -55,8 +55,11 @@ describe("no-trace contract — static source guard", () => {
       "tmpdir", "join(root", "root,",
     ];
     // util/workspace.ts is the resolver itself — its `mkdirSync(p, ...)` calls are
-    // BY DEFINITION rooted at the workspace `root`. Explicitly allowlisted.
-    const ALLOWED_FILES = new Set(["util/workspace.ts"]);
+    // BY DEFINITION rooted at the workspace `root`. util/config-store.ts writes
+    // `<workspace>/config.json` (constructor takes the workspace root; the path
+    // is `join(workspaceRoot, CONFIG_FILE)` — never cwd). Both explicitly
+    // allowlisted as workspace-rooted by construction.
+    const ALLOWED_FILES = new Set(["util/workspace.ts", "util/config-store.ts"]);
     const files = tsFilesUnder(SRC);
     const offenders: Array<{ file: string; line: string }> = [];
     for (const f of files) {
