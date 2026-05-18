@@ -1,0 +1,97 @@
+// Phase 2.5 — session registry. Holds one isolated SessionEntry per session id;
+// the "default" entry is created lazily on first browser-touching tool call
+// (back-compat: every existing caller that omits `session` resolves here).
+//
+// Browser-agnostic by construction: the registry takes an entry `factory` and
+// a `teardown`, so it's unit-testable without launching Chrome. The factory /
+// teardown that actually wire Playwright live in server.ts.
+
+import type { BrowserSession } from "./types.js";
+import type { RefRegistry } from "../page/refs.js";
+import type { ConsoleBuffer } from "../page/console.js";
+import type { NetworkBuffer } from "../page/network.js";
+import type { BrowxBridge } from "../helper/bridge.js";
+import type { Recorder } from "../page/recording.js";
+import type { FeedbackMemory } from "../page/learning.js";
+
+export type SessionMode = "persistent" | "incognito" | "attached";
+
+/** Per-session state. Everything here was a server-singleton pre-Phase-2.5;
+ *  one of these exists per live session id. */
+export interface SessionEntry {
+  id: string;
+  mode: SessionMode;
+  session: BrowserSession;
+  refs: RefRegistry;
+  console: ConsoleBuffer;
+  network: NetworkBuffer;
+  bridge: BrowxBridge;
+  recorder: Recorder;
+  feedback: FeedbackMemory;
+  openedAt: number;
+}
+
+export const DEFAULT_SESSION_ID = "default";
+
+export class SessionRegistry {
+  private entries = new Map<string, SessionEntry>();
+  /** In-flight creations, so two concurrent first-calls for the same id don't
+   *  each launch a browser. */
+  private creating = new Map<string, Promise<SessionEntry>>();
+
+  constructor(
+    private factory: (id: string) => Promise<SessionEntry>,
+    private teardown: (e: SessionEntry) => Promise<void>,
+  ) {}
+
+  /** Resolve (or lazily create) the entry for `id`. Concurrency-safe. */
+  async get(id: string = DEFAULT_SESSION_ID): Promise<SessionEntry> {
+    const existing = this.entries.get(id);
+    if (existing) return existing;
+    const inflight = this.creating.get(id);
+    if (inflight) return inflight;
+    const p = this.factory(id)
+      .then((e) => {
+        this.entries.set(id, e);
+        this.creating.delete(id);
+        return e;
+      })
+      .catch((err) => {
+        this.creating.delete(id);
+        throw err;
+      });
+    this.creating.set(id, p);
+    return p;
+  }
+
+  has(id: string): boolean {
+    return this.entries.has(id);
+  }
+
+  /** Non-creating peek — returns undefined if not yet open. */
+  peek(id: string): SessionEntry | undefined {
+    return this.entries.get(id);
+  }
+
+  list(): SessionEntry[] {
+    return [...this.entries.values()];
+  }
+
+  /** Tear down + remove one session. Returns false if it wasn't open. */
+  async close(id: string): Promise<boolean> {
+    const e = this.entries.get(id);
+    if (!e) return false;
+    this.entries.delete(id);
+    await this.teardown(e);
+    return true;
+  }
+
+  /** Tear down everything (server shutdown). */
+  async closeAll(): Promise<void> {
+    const all = [...this.entries.values()];
+    this.entries.clear();
+    for (const e of all) {
+      await this.teardown(e).catch(() => undefined);
+    }
+  }
+}

@@ -6,7 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
-import type { BrowserSession } from "./session/types.js";
+import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry } from "./session/registry.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
@@ -37,9 +37,21 @@ export interface StartOptions {
 }
 
 const SNAPSHOT_MODE = z.enum(["scoped_snapshot", "tree_diff", "full", "none"]).optional();
+
+// Phase 2.5: every browser-touching tool accepts an optional `session` id.
+// Omitting it resolves to the lazily-created "default" session — byte-identical
+// to pre-2.5 single-session behaviour. Distinct ids get fully isolated state
+// (own RefRegistry, own BrowserContext / cookie jar, own buffers).
+const SESSION_ARG = {
+  session: z.string().optional().describe(
+    'Session id (default "default"). Each id is an isolated browser context (own cookie jar, own refs). Open non-default sessions with open_session; list with list_sessions.',
+  ),
+};
+
 const ACTION_OPTS = {
   mode: SNAPSHOT_MODE,
   maxResultTokens: z.number().int().positive().max(20_000).optional(),
+  ...SESSION_ARG,
 };
 
 // `target` accepts ref *or* selector *or* named *or* coords. Validated at
@@ -118,14 +130,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
 }> {
-  // Lazy session — open on the first tool call so list_tools / discovery don't launch
-  // a browser just to enumerate the surface. One RefRegistry per session (refs persist
-  // across snapshots within a session — the design's coherence constraint).
-  let session: BrowserSession | null = null;
-  let consoleBuf: ConsoleBuffer | null = null;
-  let networkBuf: NetworkBuffer | null = null;
-  let bridge: BrowxBridge | null = null;
-  const refs = new RefRegistry();
   // Phase 2.5: config flows through the browxai-managed ConfigStore (precedence
   // defaults < env(legacy) < user < project < session). The existing env-driven
   // resolvers consume the *resolved* chain re-expressed as an env shape, so
@@ -135,8 +139,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);
   const config = resolveConfig(cfgEnv);
-  const recorder = new Recorder();
-  const feedback = new FeedbackMemory();
+  // approvals (W-G1) are session-independent policy state — server-level.
   const approvals = new ApprovalStore();
   // Phase-2 policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities(cfgEnv);
@@ -153,7 +156,47 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
   }
 
-  const confirmCtx = () => ({ hooks: confirmHooks, policy: originPolicy, bridge, isByob, approvals });
+  // Phase 2.5: per-session state lives in the SessionRegistry. The "default"
+  // session is created lazily on the first browser-touching tool call — so
+  // list_tools / discovery still don't launch a browser, and every existing
+  // caller that omits `session` keeps working unchanged.
+  const registry = new SessionRegistry(
+    async (id): Promise<SessionEntry> => {
+      const headless = opts.headless ?? resolvedConfig.headless;
+      const sess = opts.attachCdp
+        ? await openByobSession({ attachCdp: opts.attachCdp, headless })
+        : await openManagedSession({ headless });
+      const consoleBuf = new ConsoleBuffer();
+      consoleBuf.attach(sess.page());
+      const networkBuf = new NetworkBuffer(sess.cdp());
+      await networkBuf.attach();
+      const br = new BrowxBridge();
+      await br.attach(sess.page().context());
+      return {
+        id,
+        mode: opts.attachCdp ? "attached" : "persistent",
+        session: sess,
+        refs: new RefRegistry(),
+        console: consoleBuf,
+        network: networkBuf,
+        bridge: br,
+        recorder: new Recorder(),
+        feedback: new FeedbackMemory(),
+        openedAt: Date.now(),
+      };
+    },
+    async (e): Promise<void> => {
+      await e.bridge.detach().catch(() => undefined);
+      await e.session.close().catch(() => undefined);
+    },
+  );
+
+  const entryFor = (sessionId?: string): Promise<SessionEntry> =>
+    registry.get(sessionId ?? DEFAULT_SESSION_ID);
+
+  const confirmCtxFor = (e: SessionEntry) => ({
+    hooks: confirmHooks, policy: originPolicy, bridge: e.bridge, isByob, approvals,
+  });
 
   /** Disabled-tool early-return shape. Used at the top of each handler:
    *    const g = gateCheck("foo"); if (g) return g;
@@ -188,6 +231,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   /** Reconstruct a `selectorHint` string the recorder can write into a flow file
    *  YAML. Mirrors `buildSelectorHint` for `ref`/`named`; passes through `selector`. */
   const hintFromTarget = (
+    e: SessionEntry,
     target: { ref?: string; selector?: string; named?: string; coords?: { x: number; y: number } },
   ): { selectorHint: string; stability?: "high" | "medium" | "low" } | undefined => {
     // Coords targets don't correspond to a stable locator the recorder can replay —
@@ -195,9 +239,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     if (target.coords) return undefined;
     if (target.selector) return { selectorHint: target.selector };
     let ref = target.ref;
-    if (target.named) ref = refs.refByNameLookup(target.named);
+    if (target.named) ref = e.refs.refByNameLookup(target.named);
     if (!ref) return undefined;
-    const inputs = refs.locatorOf(ref);
+    const inputs = e.refs.locatorOf(ref);
     if (!inputs) return undefined;
     if (inputs.testId) {
       const attr = inputs.testIdAttr ?? "data-testid";
@@ -207,34 +251,16 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     return { selectorHint: `role=${inputs.role}`, stability: "low" };
   };
 
-  const openSession = async (): Promise<BrowserSession> => {
-    if (session) return session;
-    const headless = opts.headless ?? resolvedConfig.headless;
-    session = opts.attachCdp
-      ? await openByobSession({ attachCdp: opts.attachCdp, headless })
-      : await openManagedSession({ headless });
-    consoleBuf = new ConsoleBuffer();
-    consoleBuf.attach(session.page());
-    networkBuf = new NetworkBuffer(session.cdp());
-    await networkBuf.attach();
-    bridge = new BrowxBridge();
-    await bridge.attach(session.page().context());
-    return session;
-  };
-
-  const ctx = async (): Promise<ActionContext> => {
-    const s = await openSession();
-    return {
-      page: s.page(),
-      cdp: s.cdp(),
-      refs,
-      console: consoleBuf!,
-      pages: () => s.page().context().pages(),
-      testAttributes: config.testAttributes,
-      originPolicy,
-      recorder,
-    };
-  };
+  const ctxFor = (e: SessionEntry): ActionContext => ({
+    page: e.session.page(),
+    cdp: e.session.cdp(),
+    refs: e.refs,
+    console: e.console,
+    pages: () => e.session.page().context().pages(),
+    testAttributes: config.testAttributes,
+    originPolicy,
+    recorder: e.recorder,
+  });
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
 
@@ -272,12 +298,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         scope: z.string().optional().describe("Limit the snapshot to the subtree rooted at this ref (from a prior snapshot/find). The rest of the tree is omitted."),
         maxNodes: z.number().int().positive().max(5000).optional().describe("Cap on emitted nodes. Excess is elided with a `+N more` marker."),
         omit: z.array(z.string()).optional().describe("Case-insensitive substring patterns matched against each node's role/name/testId. Matching nodes (and their subtrees) are skipped. E.g. `omit: ['timeline-segment-', 'clip-thumbnail']`."),
+        ...SESSION_ARG,
       },
     },
-    async ({ scope, maxNodes, omit }) => {
+    async ({ scope, maxNodes, omit, session }) => {
       const g = gateCheck("snapshot"); if (g) return g;
-      const s = await openSession();
-      const { tree, stats, warnings } = await composeSnapshot(s.cdp(), refs, config.testAttributes);
+      const e = await entryFor(session);
+      const s = e.session;
+      const { tree, stats, warnings } = await composeSnapshot(s.cdp(), e.refs, config.testAttributes);
       const url = s.page().url();
       const title = await s.page().title().catch(() => "");
       // Wishlist W-A1: scope to subtree if requested.
@@ -305,12 +333,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         maxCandidates: z.number().int().positive().max(20).optional(),
         confidenceFloor: z.number().nonnegative().optional().describe("Emit a `warnings` entry when no candidate scored above this floor (default 0 = off)."),
         contextRef: z.string().optional().describe("Limit ranking to descendants of this ref (from a prior snapshot/find). Lets you say 'the X *under* Y' without encoding the relationship in the query."),
+        ...SESSION_ARG,
       },
     },
-    async ({ query, maxCandidates, confidenceFloor, contextRef }) => {
+    async ({ query, maxCandidates, confidenceFloor, contextRef, session }) => {
       const g = gateCheck("find"); if (g) return g;
-      const s = await openSession();
-      const result = await find(s.page(), s.cdp(), refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes, feedback });
+      const e = await entryFor(session);
+      const s = e.session;
+      const result = await find(s.page(), s.cdp(), e.refs, { query, maxCandidates, confidenceFloor, contextRef, testAttributes: config.testAttributes, feedback: e.feedback });
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
     },
   );
@@ -326,12 +356,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         scope: z.string().optional().describe("Limit the search to descendants of this ref (from a prior snapshot/find)."),
         includeHidden: z.boolean().optional().describe("Default false — only visible matches (bbox-having) are returned."),
         maxMatches: z.number().int().positive().max(200).optional().describe("Default 20; hard cap 200."),
+        ...SESSION_ARG,
       },
     },
-    async ({ text, exact, scope, includeHidden, maxMatches }) => {
+    async ({ text, exact, scope, includeHidden, maxMatches, session }) => {
       const g = gateCheck("text_search"); if (g) return g;
-      const s = await openSession();
-      const result = await textSearch(s.cdp(), refs, {
+      const e = await entryFor(session);
+      const result = await textSearch(e.session.cdp(), e.refs, {
         text, exact, scope, includeHidden, maxMatches, testAttributes: config.testAttributes,
       });
       return { content: [{ type: "text", text: JSON.stringify({ query: text, ...result }, null, 2) }] };
@@ -349,12 +380,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         format: z.enum(["png", "jpeg"]).optional().describe("W-F7: image format. Default 'png' (lossless, larger). 'jpeg' is much smaller and pairs well with `quality`."),
         quality: z.number().int().min(0).max(100).optional().describe("W-F7: JPEG quality 0–100 (default 80). Ignored for PNG."),
         scale: z.enum(["css", "device"]).optional().describe("W-F7: pixel scale. Default 'device' (Hi-DPI native). 'css' renders at CSS-pixel size — smaller payload on 2x/3x displays at the cost of detail."),
+        ...SESSION_ARG,
       },
     },
     async (args) => {
       const g = gateCheck("screenshot"); if (g) return g;
-      const s = await openSession();
-      const page = s.page();
+      const e = await entryFor(args.session);
+      const page = e.session.page();
       const fmt: "png" | "jpeg" = args.format ?? "png";
       const mimeType = fmt === "jpeg" ? "image/jpeg" : "image/png";
       const screenshotOpts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = { type: fmt };
@@ -364,13 +396,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let caption = "";
       if (args.ref || args.selector || args.named) {
         const { locatorFor } = await import("./page/locator.js");
-        const target = asTarget(args, "screenshot", refs);
-        const loc = locatorFor(page, refs, target);
+        const target = asTarget(args, "screenshot", e.refs);
+        const loc = locatorFor(page, e.refs, target);
         // Locator.screenshot doesn't accept `scale`; pass type/quality only there.
         const locOpts: { type: "png" | "jpeg"; quality?: number } = { type: fmt };
         if (fmt === "jpeg") locOpts.quality = args.quality ?? 80;
         buf = await loc.screenshot(locOpts);
-        if (args.describe) caption = await describeTarget(loc, refs, target);
+        if (args.describe) caption = await describeTarget(loc, e.refs, target);
       } else {
         buf = await page.screenshot({ fullPage: false, ...screenshotOpts });
         if (args.describe) caption = `viewport (${page.url()})`;
@@ -387,12 +419,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "console_read",
     {
       description: "Recent console messages from the page (ring buffer).",
-      inputSchema: { limit: z.number().int().positive().max(500).optional() },
+      inputSchema: { limit: z.number().int().positive().max(500).optional(), ...SESSION_ARG },
     },
-    async ({ limit }) => {
+    async ({ limit, session }) => {
       const g = gateCheck("console_read"); if (g) return g;
-      await openSession();
-      const rows = consoleBuf!.recent(limit ?? 50);
+      const e = await entryFor(session);
+      const rows = e.console.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
     },
   );
@@ -402,12 +434,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     {
       description:
         "Session-wide ring buffer of recent network requests (500 most recent; oldest evicted on overflow). For per-action attribution use `ActionResult.network` from any action tool — that's the primary surface. This is the 'what happened across the session' view; useful when an XHR isn't tied to a specific action you just ran. Noise types (Image/Font/Stylesheet/Media/beacons) folded into `summary.byType.other`.",
-      inputSchema: { limit: z.number().int().positive().max(500).optional() },
+      inputSchema: { limit: z.number().int().positive().max(500).optional(), ...SESSION_ARG },
     },
-    async ({ limit }) => {
+    async ({ limit, session }) => {
       const g = gateCheck("network_read"); if (g) return g;
-      await openSession();
-      const result = networkBuf!.recent(limit ?? 50);
+      const e = await entryFor(session);
+      const result = e.network.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -420,11 +452,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         expr: z.string().describe("JS expression to evaluate. Wrap in `(() => { … })()` for statements."),
         returnType: z.enum(["json", "void"]).default("json").describe("'json' returns the value (must be JSON-serializable); 'void' discards it (use for fire-and-forget calls)."),
+        ...SESSION_ARG,
       },
     },
-    async ({ expr, returnType }) => {
+    async ({ expr, returnType, session }) => {
       const g = gateCheck("eval_js"); if (g) return g;
-      const s = await openSession();
+      const s = (await entryFor(session)).session;
       try {
         if (returnType === "void") {
           await s.page().evaluate(expr).catch(() => undefined);
@@ -452,11 +485,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         "Navigate the page to a URL. Returns an ActionResult: navigation + structure changes + console/network slice + post-snapshot.",
       inputSchema: { url: z.string().describe("Absolute URL"), ...ACTION_OPTS },
     },
-    async ({ url, mode, maxResultTokens }) => {
+    async ({ url, mode, maxResultTokens, session }) => {
       const g = gateCheck("navigate"); if (g) return g;
-      const decision = await confirmNavigation(url, confirmCtx());
+      const e = await entryFor(session);
+      const decision = await confirmNavigation(url, confirmCtxFor(e));
       if (!decision.ok) return denyContent("navigate", decision);
-      return asActionResultText(actions.navigate(await ctx(), { url, mode, maxResultTokens }));
+      return asActionResultText(actions.navigate(ctxFor(e), { url, mode, maxResultTokens }));
     },
   );
 
@@ -473,10 +507,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("click"); if (g) return g;
-      const c = await confirmByobAction("click", confirmCtx());
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("click", confirmCtxFor(e));
       if (!c.ok) return denyContent("click", c);
-      const target = asTarget(args, "click", refs);
-      return asActionResultText(actions.click(await ctx(), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      const target = asTarget(args, "click", e.refs);
+      return asActionResultText(actions.click(ctxFor(e), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -488,10 +523,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("fill"); if (g) return g;
-      const c = await confirmByobAction("fill", confirmCtx());
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("fill", confirmCtxFor(e));
       if (!c.ok) return denyContent("fill", c);
-      const target = asTarget(args, "fill", refs);
-      return asActionResultText(actions.fill(await ctx(), { target, value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      const target = asTarget(args, "fill", e.refs);
+      return asActionResultText(actions.fill(ctxFor(e), { target, value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -503,12 +539,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("press"); if (g) return g;
-      const conf = await confirmByobAction("press", confirmCtx());
+      const e = await entryFor(args.session);
+      const conf = await confirmByobAction("press", confirmCtxFor(e));
       if (!conf.ok) return denyContent("press", conf);
-      const c = await ctx();
       const hasTarget = !!(args.ref || args.selector || args.named);
-      const target = hasTarget ? asTarget(args, "press", refs) : undefined;
-      return asActionResultText(actions.press(c, { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const target = hasTarget ? asTarget(args, "press", e.refs) : undefined;
+      return asActionResultText(actions.press(ctxFor(e), { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens }));
     },
   );
 
@@ -520,10 +556,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("hover"); if (g) return g;
-      const c = await confirmByobAction("hover", confirmCtx());
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("hover", confirmCtxFor(e));
       if (!c.ok) return denyContent("hover", c);
-      const target = asTarget(args, "hover", refs);
-      return asActionResultText(actions.hover(await ctx(), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      const target = asTarget(args, "hover", e.refs);
+      return asActionResultText(actions.hover(ctxFor(e), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -535,10 +572,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("select"); if (g) return g;
-      const c = await confirmByobAction("select", confirmCtx());
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("select", confirmCtxFor(e));
       if (!c.ok) return denyContent("select", c);
-      const target = asTarget(args, "select", refs);
-      return asActionResultText(actions.select(await ctx(), { target, values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      const target = asTarget(args, "select", e.refs);
+      return asActionResultText(actions.select(ctxFor(e), { target, values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -550,8 +588,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("wait_for"); if (g) return g;
-      const target = asTarget(args, "wait_for", refs);
-      return asActionResultText(actions.waitFor(await ctx(), { target, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(target) }));
+      const e = await entryFor(args.session);
+      const target = asTarget(args, "wait_for", e.refs);
+      return asActionResultText(actions.waitFor(ctxFor(e), { target, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -569,9 +608,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("choose_option"); if (g) return g;
-      const c = await confirmByobAction("choose_option", confirmCtx());
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("choose_option", confirmCtxFor(e));
       if (!c.ok) return denyContent("choose_option", c);
-      const target = asTarget(args, "choose_option", refs);
+      const target = asTarget(args, "choose_option", e.refs);
       if ("coords" in target) {
         return {
           content: [{
@@ -583,13 +623,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           }],
         };
       }
-      return asActionResultText(actions.chooseOption(await ctx(), {
+      return asActionResultText(actions.chooseOption(ctxFor(e), {
         target,
         option: args.option,
         exact: args.exact,
         mode: args.mode,
         maxResultTokens: args.maxResultTokens,
-        recordingHint: hintFromTarget(target),
+        recordingHint: hintFromTarget(e, target),
       }));
     },
   );
@@ -599,7 +639,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     { description: "Navigate back in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
       const g = gateCheck("go_back"); if (g) return g;
-      return asActionResultText(actions.goBack(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      return asActionResultText(actions.goBack(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
     },
   );
 
@@ -608,7 +648,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     { description: "Navigate forward in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
       const g = gateCheck("go_forward"); if (g) return g;
-      return asActionResultText(actions.goForward(await ctx(), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      return asActionResultText(actions.goForward(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
     },
   );
 
@@ -619,11 +659,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     {
       description:
         "Begin recording subsequent action tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds a step (with the resolved selectorHint when a target was given). Call `end_recording` to emit a YAML draft. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding (W-C2).",
-      inputSchema: { flowName: z.string().describe("Name of the flow being recorded, e.g. \"login-and-search\"") },
+      inputSchema: { flowName: z.string().describe("Name of the flow being recorded, e.g. \"login-and-search\""), ...SESSION_ARG },
     },
-    async ({ flowName }) => {
+    async ({ flowName, session }) => {
       const g = gateCheck("start_recording"); if (g) return g;
-      const r = recorder.start(flowName);
+      const r = (await entryFor(session)).recorder.start(flowName);
       return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
     },
   );
@@ -632,12 +672,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "end_recording",
     {
       description: "Stop the current recording and emit the draft flow-file YAML. Returns `{ name, yaml, stepCount }`. Review the locators block (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing the flow into a site-docs workspace.",
-      inputSchema: {},
+      inputSchema: { ...SESSION_ARG },
     },
-    async () => {
+    async ({ session }) => {
       const g = gateCheck("end_recording"); if (g) return g;
       try {
-        const r = recorder.end();
+        const r = (await entryFor(session)).recorder.end();
         return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
       } catch (e) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2) }] };
@@ -654,11 +694,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         arrow: z.string().optional().describe("Arrow position hint (top|top-left|left|bottom-right|...)"),
         target: z.string().optional().describe("Ref to anchor the annotation to (overrides the step's default)"),
         stepId: z.string().optional().describe("Annotate a specific step; default = most-recent"),
+        ...SESSION_ARG,
       },
     },
-    async ({ copy, arrow, target, stepId }) => {
+    async ({ copy, arrow, target, stepId, session }) => {
       const g = gateCheck("record_annotate"); if (g) return g;
-      const r = recorder.annotate({ stepId, copy, arrow, target });
+      const r = (await entryFor(session)).recorder.annotate({ stepId, copy, arrow, target });
       return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
     },
   );
@@ -671,13 +712,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       description:
         "Bind a mnemonic name to a ref. Subsequent action tools accept `named: \"<name>\"` in place of `ref` / `selector`. Refs are stable across snapshots (by element-key), so the binding survives navigation as long as the element persists. Carry session-wide anchor sets without remembering the bare `eN`s.",
       inputSchema: {
-        name: z.string().describe("Mnemonic (e.g. \"voiceover_tab\", \"library_tab\")"),
+        name: z.string().describe("Mnemonic (e.g. \"main_tab\", \"library_tab\")"),
         ref: z.string().describe("The ref to bind to this name"),
+        ...SESSION_ARG,
       },
     },
-    async ({ name, ref }) => {
+    async ({ name, ref, session }) => {
       const g = gateCheck("name_ref"); if (g) return g;
-      refs.nameRef(name, ref);
+      (await entryFor(session)).refs.nameRef(name, ref);
       return { content: [{ type: "text", text: JSON.stringify({ ok: true, name, ref }, null, 2) }] };
     },
   );
@@ -686,11 +728,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "list_named_refs",
     {
       description: "List all current name → ref bindings created via name_ref.",
-      inputSchema: {},
+      inputSchema: { ...SESSION_ARG },
     },
-    async () => {
+    async ({ session }) => {
       const g = gateCheck("list_named_refs"); if (g) return g;
-      return { content: [{ type: "text", text: JSON.stringify(refs.listNames(), null, 2) }] };
+      return { content: [{ type: "text", text: JSON.stringify((await entryFor(session)).refs.listNames(), null, 2) }] };
     },
   );
 
@@ -704,16 +746,74 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         query: z.string().describe("The query you previously passed to find() (or a paraphrase — token overlap is what matters)"),
         ref: z.string().describe("The ref the agent ended up acting on (the right candidate)"),
+        ...SESSION_ARG,
       },
     },
-    async ({ query, ref }) => {
+    async ({ query, ref, session }) => {
       const g = gateCheck("find_feedback"); if (g) return g;
-      const inputs = refs.locatorOf(ref);
+      const e = await entryFor(session);
+      const inputs = e.refs.locatorOf(ref);
       if (!inputs) {
         return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: `ref "${ref}" not in the registry` }, null, 2) }] };
       }
-      feedback.record(query, { testId: inputs.testId, testIdAttr: inputs.testIdAttr, role: inputs.role, name: inputs.name });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true, recorded: { query, identity: inputs }, memorySize: feedback.size() }, null, 2) }] };
+      e.feedback.record(query, { testId: inputs.testId, testIdAttr: inputs.testIdAttr, role: inputs.role, name: inputs.name });
+      return { content: [{ type: "text", text: JSON.stringify({ ok: true, recorded: { query, identity: inputs }, memorySize: e.feedback.size() }, null, 2) }] };
+    },
+  );
+
+  // ---------- session lifecycle (Phase 2.5) ----------
+
+  register(
+    "open_session",
+    {
+      description:
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use; call this to launch up-front or to fail fast. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. (Phase 2.5; session *modes* — persistent/incognito/attached — land in P2.5-3.)",
+      inputSchema: {
+        session: z.string().describe("Session id to create (e.g. \"agent-a\", \"user-2\")."),
+      },
+    },
+    async ({ session }) => {
+      if (registry.has(session)) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
+      }
+      const e = await entryFor(session);
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString() }, null, 2),
+        }],
+      };
+    },
+  );
+
+  register(
+    "close_session",
+    {
+      description:
+        "Tear down a session: detaches the bridge and closes the browser context (a BYOB/attached session detaches only — never closes the user's Chrome). The \"default\" session may be closed too; it'll be lazily re-created on the next call. No-op-safe.",
+      inputSchema: { session: z.string().describe("Session id to close.") },
+    },
+    async ({ session }) => {
+      const closed = await registry.close(session);
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session, wasOpen: closed }, null, 2) }] };
+    },
+  );
+
+  register(
+    "list_sessions",
+    {
+      description: "List live sessions: id, mode, current url, page count, openedAt. Audit / coordination helper for multi-session work.",
+      inputSchema: {},
+    },
+    async () => {
+      const rows = registry.list().map((e) => ({
+        id: e.id,
+        mode: e.mode,
+        url: (() => { try { return e.session.page().url(); } catch { return null; } })(),
+        pages: (() => { try { return e.session.page().context().pages().length; } catch { return null; } })(),
+        openedAt: new Date(e.openedAt).toISOString(),
+      }));
+      return { content: [{ type: "text" as const, text: JSON.stringify({ sessions: rows }, null, 2) }] };
     },
   );
 
@@ -855,11 +955,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         prompt: z.string().describe("Human-readable instruction shown to the operator (logged to stderr)."),
         choices: z.array(z.string()).optional().describe("For `kind:\"choose\"` — labels shown in the prompt; the human responds with an index into this list."),
         timeoutMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
+        ...SESSION_ARG,
       },
     },
-    async ({ kind, prompt, choices, timeoutMs }) => {
+    async ({ kind, prompt, choices, timeoutMs, session }) => {
       const g = gateCheck("await_human"); if (g) return g;
-      await openSession();
+      const e = await entryFor(session);
       const promptBody =
         kind === "choose" && choices
           ? `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`
@@ -871,7 +972,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       log.info(`await_human (${kind}): ${promptBody}`);
       const signalName = kind === "acknowledge" ? "proceed" : "respond";
       try {
-        const sig = await bridge!.awaitSignal(signalName, timeoutMs ?? 0);
+        const sig = await e.bridge.awaitSignal(signalName, timeoutMs ?? 0);
         // For typed kinds the page sends `{ kind, value }`; for acknowledge it sends any/null.
         let value: unknown = sig.data;
         if (kind !== "acknowledge" && sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)) {
@@ -908,7 +1009,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_back", "go_forward",
     "snapshot", "find", "text_search", "screenshot", "console_read", "network_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
-    "approve_actions", "list_approvals", "get_config",
+    "approve_actions", "list_approvals", "get_config", "list_sessions",
   ]);
   const BATCH_MAX_CALLS = 32;
 
@@ -965,8 +1066,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       log.info("browxai: MCP server up on stdio");
     },
     shutdown: async () => {
-      await bridge?.detach().catch(() => undefined);
-      await session?.close().catch(() => undefined);
+      await registry.closeAll();
       await server.close().catch(() => undefined);
     },
   };

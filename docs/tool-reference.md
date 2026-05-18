@@ -40,6 +40,22 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
 | `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
 
+## Sessions (Phase 2.5)
+
+Every browser-touching tool accepts an optional **`session`** arg (default `"default"`). Each session id is a fully isolated browser context — its own cookie jar / storage, its own ref registry, its own console/network buffers, its own recorder + find-feedback memory. This is the concurrency model:
+
+- **Multiple agents, one server** — give each agent its own `session` id; they can't stomp each other (no server-global "active session").
+- **One agent, many sessions** — drive several windows/flows in parallel by id.
+- **Multi-user / multiplayer** — two sessions logged in as different users on the *same* app don't bleed, because they're different browser contexts (different cookie jars).
+
+Omitting `session` resolves to the lazily-created `"default"` session — byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
+
+- **`open_session({ session })`** — eagerly create an id (else it's lazily created on first use). Re-opening a live id errors.
+- **`close_session({ session })`** — tear down (BYOB/attached detaches only, never closes the user's Chrome). `"default"` may be closed; it re-creates lazily.
+- **`list_sessions()`** — `[{ id, mode, url, pages, openedAt }]`.
+
+Session *modes* (persistent / incognito / attached) are P2.5-3; today every session uses the server's launch mode (managed-persistent, or BYOB-attached when `BROWX_ATTACH_CDP` is set).
+
 ## Read-only tools
 
 ### `snapshot`
