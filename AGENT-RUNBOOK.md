@@ -6,21 +6,49 @@
 >
 > **You are the agent.** This document addresses you in the second person.
 >
+> **What browxai is:** a general-purpose, MCP-native, model-agnostic autonomous-browser
+> control server. It owns its Playwright/CDP transport and exposes a curated, token-efficient
+> tool surface (`snapshot` / `find` / action primitives with structured `ActionResult`s) for
+> *any* agent driving *any* website — autonomous task execution, multi-session/multi-user
+> scenarios, canvas/WebGL apps, form-heavy SPAs. site-docs's calibration loop is **one
+> consumer**, not the assumed one; where this doc uses it as an example, that's all it is.
+>
 > Repo: `kalebteccom/browxai` (private; MIT; will go public per the spec's 4-condition trigger
 > in Phase 3). Canonical design lives in the portfolio repo `kalebteccom/project-ideas` →
 > `projects/agent-browser-bridge/` (`spec.md`, `roadmap.md`, `progress.md`). When this repo's
 > docs conflict with the portfolio, the portfolio wins — fix the conflict in *both*.
 
-## Status at a glance (2026-05-15)
+## Status at a glance (2026-05-18)
 
 - **Phase 0** — closed 2026-05-13. Design + divergence notes + lifecycle port-plan + repo skeleton.
 - **Phase 1** — closed 2026-05-15 by a real adoption run on a heavy-SPA authed target.
-- **Phase 1.5** — substantially shipped 2026-05-15. 17 of 19 backlog asks landed in one cycle.
-- **Phase 2** — substantially shipped 2026-05-15 (code-side). Open: a non-Claude-consumer
-  verification run + headless-CI exercise (both manual-setup; see "Open verification work" below).
+- **Phase 1.5** — shipped 2026-05-15. 17 of 19 backlog asks landed in one cycle.
+- **Phase 2** — code-side complete. Rounds 5/6/8 shipped 2026-05-15; the non-Claude-consumer
+  verification leg is **MET** (Codex drove a real authed SPA end-to-end, "gappy green").
+- **Phase 2.5** — session & config architecture, opened 2026-05-18. Shipped: config substrate
+  (MCP-driven `get/set/reset_config`, env demoted to legacy), session registry (per-session
+  isolated state, `session` arg on every tool, `open/close/list_session`), session modes
+  (persistent / incognito / attached). Remaining: general-driving defaults + this docs pass.
+- **Phase-2 close** gates only on the **headless-CI keystone** now (the runbook's sole open
+  verification item — see "Open verification work").
 - **Phase 3** — public release. Gated on the 4-condition trigger in the spec.
 
 The full chronology lives in the portfolio's `projects/agent-browser-bridge/progress.md`.
+
+## Sessions & config (Phase 2.5 — read this before driving)
+
+- **Every browser-touching tool takes an optional `session` id** (default `"default"`).
+  Distinct ids are fully isolated browser contexts (own cookie jar, own refs, own buffers).
+  Omitting it is byte-identical to the old single-session behaviour.
+  - Multiple agents on one server → give each its own `session`; they can't collide (no
+    server-global "active session").
+  - Multi-user / multiplayer → different users go in different sessions; cookie jars don't bleed.
+  - `open_session({ session, mode?, profile? })` / `close_session` / `list_sessions`.
+    `mode ∈ persistent | incognito | attached`.
+- **Config is MCP-driven** — no env vars, no hand-edited files required. `get_config` /
+  `set_config({ scope:"user"|"project", patch })` / `reset_config`. Precedence:
+  `defaults < env(legacy) < user < project < session`. `BROWX_*` still work as a documented
+  legacy layer; `BROWX_WORKSPACE` is a *location* anchor, not config.
 
 ## What's shipped (current tool surface)
 
@@ -150,51 +178,12 @@ The threat model that motivates the capability / allowlist / confirm-hook machin
 
 ## Open verification work (what the next agent run is for)
 
-Phase 2's code-side is shipped. What remains for Phase-2 close is **verification** — running
-the canonical surface against a real consumer scenario and confirming the model-agnostic
-+ headless paths actually hold. Two distinct exercises:
+Phase 2's code-side is shipped and the **non-Claude-consumer leg is already MET**: a Codex
+session drove browxai end-to-end through a real authed SPA on 2026-05-15 ("gappy green" —
+report at `docs/adoption-report-nonclaude-spa-2026-05-15.md`; the rough edges it surfaced
+shipped as round-8 G1–G5). The remaining Phase-2-close item is a single exercise:
 
-### 1. Non-Claude consumer drives a non-trivial web task
-
-**Goal.** Confirm the "model-agnostic, MCP-native" claim holds beyond the home turf — i.e.
-that a non-Claude MCP client (Codex, Cursor's MCP support, a hand-rolled stdio client, …)
-can drive browxai through a real authed flow on a real target site, using only the curated
-surface.
-
-**What "non-trivial" means.** At least all of:
-
-- A `navigate` (with `BROWX_ALLOWED_ORIGINS` configured so the allowlist gate is exercised).
-- An `await_human` (any kind — `acknowledge` for a login pause is the canonical site-docs
-  pattern; `confirm`/`choose`/`input` if your task wants them).
-- A `snapshot` (read the structured output, including `[from-dom]` markers on the heavy-SPA path).
-- A `find()` that produces a tier-1 (testid-anchored) candidate and a non-trivial action through
-  that candidate's `selectorHint` or `ref` (so `find` → `click`/`fill`/etc. round-trips).
-- An `ActionResult` with `structure.appeared` non-empty (e.g. clicking a button that opens a
-  modal) — exercises the snapshot-delta scope-down path and the structure-diff logic.
-- The no-trace contract: `git -C <consumer-repo> status --porcelain` clean at teardown.
-
-The *flow* is target-specific (the human pairing with you will pick it). What you produce —
-the report — must be **target-agnostic**: name the shape of the operations, not the brand
-of the app.
-
-**What to report.** Write `docs/adoption-report-<short-target-tag>-<date>.md` mirroring the
-shape of the 2026-05-13 / 2026-05-15 adoption-run reports already in `docs/`:
-
-- **TL;DR** — verdict + the 3–5 most-load-bearing observations.
-- **What worked** — the primitives that pulled their weight; concrete examples (with the
-  query / hint / `actionable` value, ideally).
-- **What got in the way** — name each rough edge with a severity (🔴 blocks the canonical
-  loop, 🟡 awkward but workaroundable, 🟢 polish). Reproducer (tool call + observed output).
-- **Concrete asks, in priority order** — new asks the run surfaced. Each as a numbered item
-  with severity, minimum-shape, and a one-line implementation note. (The asks tracker at
-  `docs/first-consumer-asks.md` is what these end up in.)
-
-**Sanitise the report.** No client names, no product names, no asset / cookie / route names
-that identify a specific deployment. The audit pattern: grep for any string that isn't
-generic (target SPA, sample asset, target's vendor, etc.). The browxai repo is heading public
-in Phase 3; reports written now are part of the artefact set.
-
-### 2. Headless-CI exercise
+### Headless-CI keystone (the sole remaining Phase-2-close item)
 
 **Goal.** Confirm `BROWX_HEADLESS=1` works against a real flow end-to-end, not just a smoke
 test.
@@ -328,14 +317,17 @@ a structural/name selector or compose: `[data-testid^="card-"]:has-text("…")`.
 ## Definition of done — Phase 2 close
 
 The roadmap's Phase-2 exit criteria (`projects/agent-browser-bridge/roadmap.md` § Phase 2)
-are now 5 of 7 ticked. The remaining two:
+are 6 of 7 ticked. The remaining one:
 
-- [ ] **A non-Claude MCP client has driven a non-trivial task through browxai successfully.**
-      The adoption-style report above is the deliverable.
+- [x] **A non-Claude MCP client has driven a non-trivial task through browxai successfully.**
+      MET 2026-05-15 (Codex / `docs/adoption-report-nonclaude-spa-2026-05-15.md`).
 - [~] **Headless/CI mode works.** `BROWX_HEADLESS=1` is wired; needs the keystone test +
-      green CI run.
+      green CI run. **This is the only thing between here and Phase-2 close.** Note: Phase 2.5
+      (session/config) landed between the verification run and the keystone deliberately, so
+      the keystone exercises the *session/config model* (config via `set_config`, an explicit
+      `session`, `incognito` mode for a no-trace CI run), not the env-var singleton.
 
-When both close, sync back to the portfolio (`progress.md` + roadmap status + portfolio
+When it closes, sync back to the portfolio (`progress.md` + roadmap status + portfolio
 table), open `/gpd:advance-stage` if you want, and the next genuinely-next phase is **Phase 3
 public release** — gated on the 4-condition trigger in the spec:
 
@@ -350,7 +342,7 @@ public release** — gated on the 4-condition trigger in the spec:
 It is once:
 
 - [ ] `pnpm install` + `pnpm install-browser` succeeded in the browxai repo.
-- [ ] `pnpm typecheck` + `pnpm test` pass (~76 tests as of 2026-05-15).
+- [ ] `pnpm typecheck` + `pnpm test` pass (197 tests as of 2026-05-18).
 - [ ] `pnpm build` produced `dist/cli.js` (executable, shebang preserved).
 - [ ] `pnpm browxai -- doctor` (or `node dist/cli.js doctor`) — all ✓.
 - [ ] You've registered browxai with your MCP client per the recipe above (user-scope
