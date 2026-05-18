@@ -17,3 +17,10 @@ coverage/
 .idea/
 .vscode/
 *.log
+
+# Raw client-named field reports — adopters / agents drop these in-tree, but
+# the repo is heading public. They MUST be sanitized into a target-agnostic
+# docs/adoption-report-*.md before anything is committed. The raw form is
+# never tracked. (Hygiene: cf. docs/first-consumer-asks.md round-10/11.)
+FIELD-REPORT-*.md
+*-field-report.md

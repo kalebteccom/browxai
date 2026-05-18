@@ -76,3 +76,30 @@ browxai enabled closing a bug the test suite structurally could not. The
 device-emulation + isolated-session + measurement loop is exactly the right
 toolset for past-the-suite deployed-build verification. The follow-on asks are
 tracked in `docs/first-consumer-asks.md` (round-10).
+
+## Round 2 — verification of the shipped round-10 primitives
+
+The three round-10 additions were exercised live on a follow-up
+predictable-sizing scroll fix. They removed exactly the Round-1 friction.
+
+- **`sample` (W-J3) — biggest win.** A `scrollTop` sample over 3 s at every
+  rAF returned 363 points, all identical — a *provably* flat line, i.e. zero
+  residual sub-pixel scroll creep while idle. This converted "is there
+  jitter?" from a hand-rolled in-page rAF eval loop into a one-call,
+  tamper-proof measurement. The fixed-enum / no-agent-JS shape is the right
+  call — it answered the exact question with no eval surface. **Follow-up
+  (non-blocking):** long high-rate windows serialise large; an optional
+  server-side `summary` reducer (`{min,max,distinctCount,firstChange,…}`)
+  would keep the signal without the payload.
+- **`wait_for({ text })` (W-J1) — works, one sharp edge (fixed).** SPA
+  readiness after reload worked, but a short token timed out because the
+  matcher lowered to Playwright's quoted/exact-ish text engine while the
+  documented contract is *substring*. Doc-vs-behaviour mismatch; corrected to
+  honour true substring matching (round-11).
+- **Visibility-aware `find()` (W-J2) — not retriggered this run** (coords/
+  eval_js used deterministically); the capability-aware warning design was
+  reaffirmed as correct.
+
+Net: the round-10 set turned claims into proofs. The only queued follow-up is
+the optional `sample` reducer; the `wait_for` substring fix shipped in
+round-11. Tracked in `docs/first-consumer-asks.md` (round-11).
