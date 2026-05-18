@@ -14,6 +14,7 @@ import { findByRef, serialise } from "./snapshot.js";
 import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry, type WsFrame } from "./network.js";
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
+import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -189,6 +190,15 @@ export interface ActionWindowOptions {
   networkRequestCap?: number;
   /** Post-dispatch settle delay in ms — let CDP events / framework reconciliations drain. */
   settleMs?: number;
+  /** W-M1: hard anti-wedge deadline (ms) for the action body. Already clamped
+   *  to [1, 3_600_000] by the caller. The body is raced against this; on
+   *  expiry the action returns `ok:false` with the timeout error rather than
+   *  stalling on a wedged page op. */
+  deadlineMs?: number;
+  /** W-M1: if the caller requested an over-ceiling (insane) timeout, this
+   *  carries the "clamped + that's almost always a mistake" warning so it
+   *  surfaces in the ActionResult, not just server stderr. */
+  deadlineWarning?: string;
   /** Wishlist W-C2: caller-supplied selectorHint info for the recorder. Without
    *  this the recorded step has the action + url but no locator for the YAML
    *  scaffold; callers should populate it whenever they resolved a target. */
@@ -211,9 +221,11 @@ export async function runInActionWindow(
 ): Promise<ActionResult> {
   const mode: SnapshotMode = opts.mode ?? "scoped_snapshot";
   const maxTokens = opts.maxResultTokens ?? 600;
+  const deadlineMs = opts.deadlineMs ?? DEFAULT_ACTION_TIMEOUT_MS;
   const requestCap = opts.networkRequestCap ?? 10;
   const settleMs = opts.settleMs ?? 400;
   const warnings: string[] = [];
+  if (opts.deadlineWarning) warnings.push(opts.deadlineWarning);
 
   // --- pre-state ---
   const urlBefore = ctx.page.url();
@@ -238,7 +250,14 @@ export async function runInActionWindow(
   let error: string | undefined;
   let elementProbe: ElementProbe | undefined;
   try {
-    const probe = await body();
+    // W-M1: race the action body against the hard anti-wedge deadline. A
+    // wedged page op (evaluate/CDP that ignores timeouts) becomes a clean
+    // ok:false ActionResult within the deadline instead of an infinite stall.
+    const probe = await withDeadline(
+      Promise.resolve().then(body),
+      deadlineMs,
+      descriptor.type,
+    );
     if (probe) elementProbe = probe;
   } catch (e) {
     ok = false;

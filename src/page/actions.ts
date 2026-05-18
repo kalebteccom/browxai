@@ -14,7 +14,10 @@ import {
 } from "./actionresult.js";
 import { locatorFor, resolveTarget, type ActionTarget } from "./locator.js";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+// W-M1: aligned with the anti-wedge default (5s). Inner Playwright ops use
+// the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
+// by the inner op too (not just the outer race in runInActionWindow).
+const DEFAULT_TIMEOUT_MS = 5_000;
 
 export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
@@ -37,7 +40,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       };
     }
     const pre = await preProbe(resolved.loc);
-    await resolved.loc.click({ timeout: DEFAULT_TIMEOUT_MS, button: args.button });
+    await resolved.loc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS, button: args.button });
     return probe(resolved.loc, args.target, undefined, pre);
   });
 }
@@ -48,7 +51,7 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
-    await loc.fill(args.value, { timeout: DEFAULT_TIMEOUT_MS });
+    await loc.fill(args.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
     return probe(loc, args.target, args.value, pre);
   });
 }
@@ -57,7 +60,7 @@ export interface NavigateArgs extends ActionWindowOptions { url: string; }
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
   const descriptor: ActionDescriptor = { type: "navigate", url: args.url };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    await ctx.page.goto(args.url, { waitUntil: "domcontentloaded", timeout: DEFAULT_TIMEOUT_MS });
+    await ctx.page.goto(args.url, { waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
   });
 }
 
@@ -68,7 +71,7 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
     if (args.target) {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
       const pre = await preProbe(loc);
-      await loc.press(args.key, { timeout: DEFAULT_TIMEOUT_MS });
+      await loc.press(args.key, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
       return probe(loc, args.target, undefined, pre);
     } else {
       await ctx.page.keyboard.press(args.key);
@@ -88,7 +91,7 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
       return { stillAttached: true, hit: { before: hitBefore, after: hitAfter } };
     }
     const pre = await preProbe(resolved.loc);
-    await resolved.loc.hover({ timeout: DEFAULT_TIMEOUT_MS });
+    await resolved.loc.hover({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
     return probe(resolved.loc, args.target, undefined, pre);
   });
 }
@@ -99,7 +102,7 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
-    await loc.selectOption(args.values, { timeout: DEFAULT_TIMEOUT_MS });
+    await loc.selectOption(args.values, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
     return probe(loc, args.target, undefined, pre);
   });
 }
@@ -202,7 +205,7 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     }
     if (mode.kind === "into-view") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
-      await loc.scrollIntoViewIfNeeded({ timeout: DEFAULT_TIMEOUT_MS });
+      await loc.scrollIntoViewIfNeeded({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
       const p = await probe(loc, args.target!);
       p.scroll = await windowScrollGeometry(ctx.page);
       return p;
@@ -336,11 +339,11 @@ export async function chooseOption(ctx: ActionContext, args: ChooseOptionArgs): 
       .evaluate((el: any) => el.getAttribute && el.getAttribute("aria-expanded") === "true")
       .catch(() => false);
     if (!isExpanded) {
-      await trigger.click({ timeout: DEFAULT_TIMEOUT_MS });
+      await trigger.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
     }
 
     const optionLoc = await resolveOption(ctx.page, args.option, args.exact ?? true);
-    await optionLoc.click({ timeout: DEFAULT_TIMEOUT_MS });
+    await optionLoc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
 
     return probe(trigger, args.target, undefined, pre);
   });
@@ -368,14 +371,14 @@ async function resolveOption(page: Page, text: string, exact: boolean): Promise<
 export interface GoBackArgs extends ActionWindowOptions {}
 export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goBack" }, args, async () => {
-    await ctx.page.goBack({ waitUntil: "domcontentloaded", timeout: DEFAULT_TIMEOUT_MS });
+    await ctx.page.goBack({ waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
   });
 }
 
 export interface GoForwardArgs extends ActionWindowOptions {}
 export async function goForward(ctx: ActionContext, args: GoForwardArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goForward" }, args, async () => {
-    await ctx.page.goForward({ waitUntil: "domcontentloaded", timeout: DEFAULT_TIMEOUT_MS });
+    await ctx.page.goForward({ waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
   });
 }
 

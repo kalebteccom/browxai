@@ -19,6 +19,7 @@ import { inspectElement } from "./page/inspect.js";
 import { watchWindow } from "./page/watch.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
+import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "./util/deadline.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
@@ -54,9 +55,20 @@ const SESSION_ARG = {
   ),
 };
 
+// W-M1: per-call anti-wedge override. Default comes from config
+// `actionTimeoutMs` (5000). The wording deliberately deters large values.
+const TIMEOUT_ARG = {
+  timeoutMs: z.number().int().positive().max(3_600_000).optional().describe(
+    "Anti-wedge hard deadline for this call (ms). Default 5000 (config `actionTimeoutMs`). " +
+    "An action needing >5s is almost always a no-op or a wedged page op — raise this " +
+    "ONLY for one specific known-slow call, never as a blanket. Values approaching the " +
+    "3600000 (1h) ceiling are essentially always a mistake; over-ceiling is clamped + warned.",
+  ),
+};
 const ACTION_OPTS = {
   mode: SNAPSHOT_MODE,
   maxResultTokens: z.number().int().positive().max(20_000).optional(),
+  ...TIMEOUT_ARG,
   ...SESSION_ARG,
 };
 
@@ -308,6 +320,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     ws: e.ws,
   });
 
+  // W-M1: resolve the effective anti-wedge deadline for a call —
+  // per-call `timeoutMs` over config `actionTimeoutMs` over the 5000 default,
+  // clamped to [1, 3_600_000]. `warning` is non-empty when the caller asked
+  // for an over-ceiling (insane) value.
+  const cfgActionTimeout = (): number => {
+    const v = configStore.resolve().actionTimeoutMs;
+    return typeof v === "number" && v > 0 ? v : DEFAULT_ACTION_TIMEOUT_MS;
+  };
+  const actionTimeout = (args: { timeoutMs?: number }): { ms: number; warning?: string } =>
+    clampTimeout(args.timeoutMs, cfgActionTimeout());
+
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
 
   // Side-table of handler functions, populated as we register each tool. Lets
@@ -351,7 +374,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("snapshot"); if (g) return g;
       const e = await entryFor(session);
       const s = e.session;
-      const { tree, stats, warnings } = await composeSnapshot(s.cdp(), e.refs, config.testAttributes);
+      // W-M1: getFullAXTree / DOM-walk via CDP have no timeout — a wedged
+      // renderer would stall the read. Race against the config deadline.
+      let composed;
+      try {
+        composed = await withDeadline(composeSnapshot(s.cdp(), e.refs, config.testAttributes), cfgActionTimeout(), "snapshot");
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+      const { tree, stats, warnings } = composed;
       const url = s.page().url();
       const title = await s.page().title().catch(() => "");
       // Wishlist W-A1: scope to subtree if requested.
@@ -386,13 +417,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("find"); if (g) return g;
       const e = await entryFor(session);
       const s = e.session;
-      const result = await find(s.page(), s.cdp(), e.refs, {
-        query, maxCandidates, confidenceFloor, contextRef,
-        testAttributes: config.testAttributes,
-        feedback: e.feedback,
-        // W-J2: capability-aware fallback hints — only name a tool the agent can call.
-        fallbackHints: { coords: caps.enabled.has("action"), evalJs: caps.enabled.has("eval") },
-      });
+      let result;
+      try {
+        result = await withDeadline(find(s.page(), s.cdp(), e.refs, {
+          query, maxCandidates, confidenceFloor, contextRef,
+          testAttributes: config.testAttributes,
+          feedback: e.feedback,
+          // W-J2: capability-aware fallback hints — only name a tool the agent can call.
+          fallbackHints: { coords: caps.enabled.has("action"), evalJs: caps.enabled.has("eval") },
+        }), cfgActionTimeout(), "find");
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ query, ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
       return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
     },
   );
@@ -414,9 +450,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async ({ text, exact, scope, includeHidden, maxMatches, session }) => {
       const g = gateCheck("text_search"); if (g) return g;
       const e = await entryFor(session);
-      const result = await textSearch(e.session.cdp(), e.refs, {
-        text, exact, scope, includeHidden, maxMatches, testAttributes: config.testAttributes,
-      });
+      let result;
+      try {
+        result = await withDeadline(textSearch(e.session.cdp(), e.refs, {
+          text, exact, scope, includeHidden, maxMatches, testAttributes: config.testAttributes,
+        }), cfgActionTimeout(), "text_search");
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ query: text, ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
       return { content: [{ type: "text", text: JSON.stringify({ query: text, ...result }, null, 2) }] };
     },
   );
@@ -569,7 +610,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const { locatorFor } = await import("./page/locator.js");
       const loc = locatorFor(e.session.page(), e.refs, target);
-      const result = await inspectElement(loc, args.styles ?? []);
+      let result;
+      try {
+        result = await withDeadline(inspectElement(loc, args.styles ?? []), cfgActionTimeout(), "inspect");
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ found: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
@@ -619,21 +665,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         expr: z.string().describe("JS expression to evaluate. Wrap in `(() => { … })()` for statements."),
         returnType: z.enum(["json", "void"]).default("json").describe("'json' returns the value (must be JSON-serializable); 'void' discards it (use for fire-and-forget calls)."),
+        ...TIMEOUT_ARG,
         ...SESSION_ARG,
       },
     },
-    async ({ expr, returnType, session }) => {
+    async ({ expr, returnType, timeoutMs, session }) => {
       const g = gateCheck("eval_js"); if (g) return g;
       const s = (await entryFor(session)).session;
+      // W-M1: page.evaluate has NO Playwright timeout — a never-resolving expr
+      // would wedge forever. Race it against the anti-wedge deadline.
+      const td = actionTimeout({ timeoutMs });
       try {
         if (returnType === "void") {
-          await s.page().evaluate(expr).catch(() => undefined);
-          return { content: [{ type: "text", text: JSON.stringify({ ok: true, returnType: "void" }, null, 2) }] };
+          await withDeadline(s.page().evaluate(expr), td.ms, "eval_js").catch(() => undefined);
+          return { content: [{ type: "text", text: JSON.stringify({ ok: true, returnType: "void", ...(td.warning ? { warning: td.warning } : {}) }, null, 2) }] };
         }
-        const value = await s.page().evaluate(expr);
-        return { content: [{ type: "text", text: JSON.stringify({ ok: true, value }, null, 2) }] };
+        const value = await withDeadline(s.page().evaluate(expr), td.ms, "eval_js");
+        return { content: [{ type: "text", text: JSON.stringify({ ok: true, value, ...(td.warning ? { warning: td.warning } : {}) }, null, 2) }] };
       } catch (e) {
-        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e) }, null, 2) }] };
+        return { content: [{ type: "text", text: JSON.stringify({ ok: false, error: e instanceof Error ? e.message : String(e), ...(td.warning ? { warning: td.warning } : {}) }, null, 2) }] };
       }
     },
   );
@@ -652,12 +702,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         "Navigate the page to a URL. Returns an ActionResult: navigation + structure changes + console/network slice + post-snapshot.",
       inputSchema: { url: z.string().describe("Absolute URL"), ...ACTION_OPTS },
     },
-    async ({ url, mode, maxResultTokens, session }) => {
+    async ({ url, mode, maxResultTokens, timeoutMs, session }) => {
       const g = gateCheck("navigate"); if (g) return g;
       const e = await entryFor(session);
       const decision = await confirmNavigation(url, confirmCtxFor(e));
       if (!decision.ok) return denyContent("navigate", decision);
-      return asActionResultText(actions.navigate(ctxFor(e), { url, mode, maxResultTokens }));
+      const td = actionTimeout({ timeoutMs });
+      return asActionResultText(actions.navigate(ctxFor(e), { url, mode, maxResultTokens, deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -678,7 +729,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("click", confirmCtxFor(e));
       if (!c.ok) return denyContent("click", c);
       const target = asTarget(args, "click", e.refs);
-      return asActionResultText(actions.click(ctxFor(e), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.click(ctxFor(e), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -694,7 +746,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("fill", confirmCtxFor(e));
       if (!c.ok) return denyContent("fill", c);
       const target = asTarget(args, "fill", e.refs);
-      return asActionResultText(actions.fill(ctxFor(e), { target, value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.fill(ctxFor(e), { target, value: args.value, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -711,7 +764,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!conf.ok) return denyContent("press", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? asTarget(args, "press", e.refs) : undefined;
-      return asActionResultText(actions.press(ctxFor(e), { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.press(ctxFor(e), { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens, deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -727,7 +781,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("hover", confirmCtxFor(e));
       if (!c.ok) return denyContent("hover", c);
       const target = asTarget(args, "hover", e.refs);
-      return asActionResultText(actions.hover(ctxFor(e), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.hover(ctxFor(e), { target, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -743,7 +798,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("select", confirmCtxFor(e));
       if (!c.ok) return denyContent("select", c);
       const target = asTarget(args, "select", e.refs);
-      return asActionResultText(actions.select(ctxFor(e), { target, values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.select(ctxFor(e), { target, values: args.values, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -755,18 +811,21 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         ...REF_OR_SELECTOR,
         text: z.string().optional().describe("W-J1: wait until this visible text appears (substring match). Mutually exclusive with a target."),
-        timeoutMs: z.number().int().positive().max(600_000).optional(),
+        // wait_for's `timeoutMs` (from ACTION_OPTS) is *both* the max wait and
+        // the anti-wedge deadline — a wait is meant to wait, so its ceiling is
+        // the explicit knob (default 5000, hard max 1h, deterred).
         ...ACTION_OPTS,
       },
     },
     async (args) => {
       const g = gateCheck("wait_for"); if (g) return g;
       const e = await entryFor(args.session);
+      const td = actionTimeout(args);
       if (args.text !== undefined) {
-        return asActionResultText(actions.waitFor(ctxFor(e), { text: args.text, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens }));
+        return asActionResultText(actions.waitFor(ctxFor(e), { text: args.text, timeoutMs: td.ms, deadlineMs: td.ms, deadlineWarning: td.warning, mode: args.mode, maxResultTokens: args.maxResultTokens }));
       }
       const target = asTarget(args, "wait_for", e.refs);
-      return asActionResultText(actions.waitFor(ctxFor(e), { target, timeoutMs: args.timeoutMs, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
+      return asActionResultText(actions.waitFor(ctxFor(e), { target, timeoutMs: td.ms, deadlineMs: td.ms, deadlineWarning: td.warning, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target) }));
     },
   );
 
@@ -797,6 +856,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!c.ok) return denyContent("scroll", c);
       const hasTarget = !!(args.ref || args.selector || args.named || args.coords);
       const target = hasTarget ? asTarget(args, "scroll", e.refs) : undefined;
+      const td = actionTimeout(args);
       return asActionResultText(actions.scroll(ctxFor(e), {
         target,
         to: args.to,
@@ -805,6 +865,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         mode: args.mode,
         maxResultTokens: args.maxResultTokens,
         recordingHint: target ? hintFromTarget(e, target) : undefined,
+        deadlineMs: td.ms,
+        deadlineWarning: td.warning,
       }));
     },
   );
@@ -838,6 +900,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           }],
         };
       }
+      const td = actionTimeout(args);
       return asActionResultText(actions.chooseOption(ctxFor(e), {
         target,
         option: args.option,
@@ -845,6 +908,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         mode: args.mode,
         maxResultTokens: args.maxResultTokens,
         recordingHint: hintFromTarget(e, target),
+        deadlineMs: td.ms,
+        deadlineWarning: td.warning,
       }));
     },
   );
@@ -854,7 +919,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     { description: "Navigate back in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
       const g = gateCheck("go_back"); if (g) return g;
-      return asActionResultText(actions.goBack(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.goBack(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens, deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -863,7 +929,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     { description: "Navigate forward in history. Returns an ActionResult.", inputSchema: { ...ACTION_OPTS } },
     async (args) => {
       const g = gateCheck("go_forward"); if (g) return g;
-      return asActionResultText(actions.goForward(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens }));
+      const td = actionTimeout(args);
+      return asActionResultText(actions.goForward(ctxFor(await entryFor(args.session)), { mode: args.mode, maxResultTokens: args.maxResultTokens, deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -1052,13 +1119,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         width: z.number().int().positive().describe("CSS px."),
         height: z.number().int().positive().describe("CSS px."),
+        ...TIMEOUT_ARG,
         ...SESSION_ARG,
       },
     },
-    async ({ width, height, session }) => {
+    async ({ width, height, timeoutMs, session }) => {
       const g = gateCheck("set_viewport"); if (g) return g;
       const e = await entryFor(session);
-      return asActionResultText(actions.setViewport(ctxFor(e), { width, height }));
+      const td = actionTimeout({ timeoutMs });
+      return asActionResultText(actions.setViewport(ctxFor(e), { width, height, deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -1071,6 +1140,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     allowedOrigins: z.array(z.string()).optional(),
     blockedOrigins: z.array(z.string()).optional(),
     headless: z.boolean().optional(),
+    actionTimeoutMs: z.number().int().positive().max(3_600_000).optional(),
     disableWebSecurity: z.boolean().optional(),
     defaultDevice: z.string().optional(),
     defaultViewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
@@ -1202,13 +1272,21 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
         prompt: z.string().describe("Human-readable instruction shown to the operator (logged to stderr)."),
         choices: z.array(z.string()).optional().describe("For `kind:\"choose\"` — labels shown in the prompt; the human responds with an index into this list."),
-        timeoutMs: z.number().int().positive().max(24 * 60 * 60_000).optional(),
+        timeoutMs: z.number().int().positive().max(3_600_000).optional().describe(
+          "Human response window (ms). Human-paced default 300000 (5min); hard max 3600000 (1h). " +
+          "W-M1: there is no infinite wait — an unanswered prompt times out (the only previously " +
+          "unbounded path). For unattended runs use `approve_actions` (W-G1) instead of a long wait.",
+        ),
         ...SESSION_ARG,
       },
     },
     async ({ kind, prompt, choices, timeoutMs, session }) => {
       const g = gateCheck("await_human"); if (g) return g;
       const e = await entryFor(session);
+      // W-M1: kill the only infinite path. 0/unset → 5min human-paced default,
+      // hard-capped at 1h. await_human is human-paced — NOT under the 5s
+      // action default — but never unbounded.
+      const humanMs = Math.min(timeoutMs && timeoutMs > 0 ? timeoutMs : 300_000, 3_600_000);
       const promptBody =
         kind === "choose" && choices
           ? `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`
@@ -1220,7 +1298,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       log.info(`await_human (${kind}): ${promptBody}`);
       const signalName = kind === "acknowledge" ? "proceed" : "respond";
       try {
-        const sig = await e.bridge.awaitSignal(signalName, timeoutMs ?? 0);
+        const sig = await e.bridge.awaitSignal(signalName, humanMs);
         // For typed kinds the page sends `{ kind, value }`; for acknowledge it sends any/null.
         let value: unknown = sig.data;
         if (kind !== "acknowledge" && sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)) {

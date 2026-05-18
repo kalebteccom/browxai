@@ -23,6 +23,11 @@ export interface ResolvedConfig {
   allowedOrigins: string[];
   blockedOrigins: string[];
   headless: boolean;
+  /** W-M1: hard anti-wedge deadline (ms) applied to every action body /
+   *  `eval_js` / read-CDP path. Default 5000. Per-call `timeoutMs` overrides.
+   *  Clamped to [1, 3_600_000] at use. A real op completes well under this;
+   *  raising it as a blanket masks no-ops/wedges. */
+  actionTimeoutMs?: number;
   /** W-L1: when true, `managed` / `incognito` sessions launch with
    *  `--disable-web-security --disable-site-isolation-trials` (SOP/CORS OFF
    *  browser-wide). Dangerous opt-in — off by default, loud-warned, and
@@ -133,6 +138,7 @@ export class ConfigStore {
       allowedOrigins: layer.allowedOrigins ?? acc.allowedOrigins,
       blockedOrigins: layer.blockedOrigins ?? acc.blockedOrigins,
       headless: layer.headless ?? acc.headless,
+      actionTimeoutMs: layer.actionTimeoutMs ?? acc.actionTimeoutMs,
       disableWebSecurity: layer.disableWebSecurity ?? acc.disableWebSecurity,
       defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,

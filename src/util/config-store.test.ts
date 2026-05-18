@@ -125,6 +125,23 @@ describe("envLayer", () => {
   });
 });
 
+describe("actionTimeoutMs (W-M1) precedence", () => {
+  it("defaults undefined (server falls back to 5000); set via any persistent layer or session", () => {
+    const dir = mkdtempSync(join(tmpdir(), "browx-wm1-"));
+    try {
+      const s = new ConfigStore(dir, {});
+      expect(s.resolve().actionTimeoutMs).toBeUndefined();
+      s.setLayer("user", { actionTimeoutMs: 3000 });
+      expect(s.resolve().actionTimeoutMs).toBe(3000);
+      s.setLayer("project", { actionTimeoutMs: 1500 });
+      expect(s.resolve().actionTimeoutMs).toBe(1500); // project > user
+      expect(s.resolve({ actionTimeoutMs: 20000 }).actionTimeoutMs).toBe(20000); // session > project
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("disableWebSecurity (W-L1) precedence", () => {
   it("defaults off; settable only via user/project/session layers", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
