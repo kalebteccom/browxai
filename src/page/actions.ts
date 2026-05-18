@@ -210,6 +210,20 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
   });
 }
 
+export interface SetViewportArgs extends ActionWindowOptions { width: number; height: number; }
+/** W-H6: mid-session viewport resize. `page.setViewportSize` re-lays-out and
+ *  often triggers responsive re-render / lazy-load — wrapped in the action
+ *  window so `structure` / `network` / `snapshotDelta` show what changed.
+ *  Device emulation (isMobile/touch/UA/DPR) is creation-time only; this only
+ *  changes the size. */
+export async function setViewport(ctx: ActionContext, args: SetViewportArgs): Promise<ActionResult> {
+  const descriptor: ActionDescriptor = { type: "setViewport", value: `${args.width}x${args.height}` };
+  return runInActionWindow(ctx, descriptor, args, async () => {
+    await ctx.page.setViewportSize({ width: args.width, height: args.height });
+    return { stillAttached: true };
+  });
+}
+
 export interface ChooseOptionArgs extends ActionWindowOptions {
   target: ActionTarget;
   option: string;

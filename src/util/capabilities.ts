@@ -51,6 +51,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   go_back: "navigation",
   go_forward: "navigation",
   scroll: "navigation",
+  set_viewport: "navigation",
   // action
   click: "action",
   fill: "action",

@@ -7,6 +7,7 @@ import { z } from "zod";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
 import { openIncognitoSession } from "./session/incognito.js";
+import { resolveDevice } from "./session/device.js";
 import type { BrowserSession } from "./session/types.js";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
 import { RefRegistry } from "./page/refs.js";
@@ -170,6 +171,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
       const mode: SessionMode = spec?.mode ?? serverDefaultMode;
+      // W-H6: resolve device/viewport — spec overrides config-store defaults.
+      const device = resolveDevice({
+        device: spec?.device ?? resolvedConfig.defaultDevice,
+        viewport: spec?.viewport ?? resolvedConfig.defaultViewport,
+      });
       let sess: BrowserSession;
       if (mode === "attached") {
         if (!opts.attachCdp) {
@@ -177,9 +183,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             `session "${id}": mode "attached" requires the server to be started with BROWX_ATTACH_CDP (per-session attach isn't supported yet)`,
           );
         }
+        // Attached Chrome is not-owned: device emulation is best-effort
+        // (viewport via Emulation in byob.ts); isMobile/touch/UA can't be
+        // retro-applied to an existing context.
         sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
       } else if (mode === "incognito") {
-        sess = await openIncognitoSession({ headless });
+        sess = await openIncognitoSession({ headless, device });
       } else {
         // persistent: the default session keeps the legacy single `profile`
         // dir for back-compat; named/explicit profiles get their own dir so
@@ -188,7 +197,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           id === DEFAULT_SESSION_ID && !spec?.profile
             ? workspace.sub("profile")
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
-        sess = await openManagedSession({ headless, profileDir });
+        sess = await openManagedSession({ headless, profileDir, device });
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
@@ -860,14 +869,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           .describe("Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent)."),
         profile: z.string().optional()
           .describe("persistent mode only: named profile dir under <workspace>/profiles/. Default = the session id. Lets two ids share a profile, or one id pin a stable profile name."),
+        device: z.string().optional()
+          .describe("W-H6: Playwright device-preset name (e.g. \"iPhone 14\", \"Pixel 7\", \"Desktop Chrome\") → viewport + DPR + isMobile + hasTouch + UA. Falls back to config `defaultDevice`. Best-effort on `attached`."),
+        viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional()
+          .describe("W-H6: explicit viewport; overrides a preset's viewport. Falls back to config `defaultViewport`."),
       },
     },
-    async ({ session, mode, profile }) => {
+    async ({ session, mode, profile, device, viewport }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile });
+        const e = await registry.get(session, { mode, profile, device, viewport });
         return {
           content: [{
             type: "text" as const,
@@ -911,6 +924,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  register(
+    "set_viewport",
+    {
+      description:
+        "W-H6: resize a session's viewport mid-flight (responsive-breakpoint testing). `page.setViewportSize` re-lays-out and commonly triggers responsive re-render / lazy-load — returns an ActionResult so `structure` / `snapshotDelta` / `network` show what changed. Only the *size* changes live; full device emulation (isMobile/touch/UA/DPR) is creation-time — set it via `open_session({ device })`.",
+      inputSchema: {
+        width: z.number().int().positive().describe("CSS px."),
+        height: z.number().int().positive().describe("CSS px."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ width, height, session }) => {
+      const g = gateCheck("set_viewport"); if (g) return g;
+      const e = await entryFor(session);
+      return asActionResultText(actions.setViewport(ctxFor(e), { width, height }));
+    },
+  );
+
   // ---------- config store (Phase 2.5) ----------
 
   const CONFIG_PATCH_SCHEMA = {
@@ -920,6 +951,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     allowedOrigins: z.array(z.string()).optional(),
     blockedOrigins: z.array(z.string()).optional(),
     headless: z.boolean().optional(),
+    defaultDevice: z.string().optional(),
+    defaultViewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
     unstable: z.record(z.unknown()).optional(),
   };
 
@@ -1100,7 +1133,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // interactive sessions); CLI-style helpers that mutate session config.
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
-    "go_back", "go_forward", "scroll",
+    "go_back", "go_forward", "scroll", "set_viewport",
     "snapshot", "find", "text_search", "screenshot", "console_read", "network_read", "ws_read",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",

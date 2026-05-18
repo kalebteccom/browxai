@@ -17,7 +17,7 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     headless: !!opts.headless,
     // No lowered-security flags — same posture as managed.
   });
-  const context = await browser.newContext();
+  const context = await browser.newContext({ ...(opts.device ?? {}) });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
 

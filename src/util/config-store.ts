@@ -23,6 +23,12 @@ export interface ResolvedConfig {
   allowedOrigins: string[];
   blockedOrigins: string[];
   headless: boolean;
+  /** W-H6: default device-preset name for new sessions (Playwright device
+   *  registry, e.g. "iPhone 14"). Overridable per `open_session`. */
+  defaultDevice?: string;
+  /** W-H6: default viewport for new sessions. Overrides a preset's viewport
+   *  when both are set. Overridable per `open_session`. */
+  defaultViewport?: { width: number; height: number };
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -120,6 +126,8 @@ export class ConfigStore {
       allowedOrigins: layer.allowedOrigins ?? acc.allowedOrigins,
       blockedOrigins: layer.blockedOrigins ?? acc.blockedOrigins,
       headless: layer.headless ?? acc.headless,
+      defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
+      defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }

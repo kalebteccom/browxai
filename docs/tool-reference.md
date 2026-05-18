@@ -50,7 +50,7 @@ Every browser-touching tool accepts an optional **`session`** arg (default `"def
 
 Omitting `session` resolves to the lazily-created `"default"` session — byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
 
-- **`open_session({ session, mode?, profile? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors.
+- **`open_session({ session, mode?, profile?, device?, viewport? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors.
 - **`close_session({ session })`** — tear down (attached detaches only, never closes the user's Chrome; incognito discards its ephemeral context + browser). `"default"` may be closed; it re-creates lazily.
 - **`list_sessions()`** — `[{ id, mode, url, pages, openedAt }]`.
 
@@ -63,6 +63,13 @@ Omitting `session` resolves to the lazily-created `"default"` session — byte-i
 | `attached` *(default when `BROWX_ATTACH_CDP` set)* | the externally-launched Chrome (not-owned) | the user's real profile | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
 
 Different ids are always isolated browser contexts regardless of mode, so multi-user / multiplayer scenarios don't bleed. `profile` (persistent only) lets two ids share a profile dir, or pin a stable name.
+
+**Device / viewport** (W-H6):
+
+- `open_session({ device })` — a Playwright device-preset name (`"iPhone 14"`, `"Pixel 7"`, `"Desktop Chrome"`, … — any name in Playwright's `devices` registry) → viewport + `deviceScaleFactor` + `isMobile` + `hasTouch` + `userAgent`.
+- `open_session({ viewport: { width, height } })` — explicit size; **overrides** a preset's viewport while keeping its mobile/touch/UA.
+- Config defaults `defaultDevice` / `defaultViewport` (via `set_config`) apply when `open_session` doesn't specify — pin "always test mobile" once at the user/project layer.
+- **`set_viewport({ session, width, height })`** — mid-session resize for responsive-breakpoint testing. Returns an `ActionResult` (re-layout commonly triggers responsive re-render / lazy-load → `structure`/`snapshotDelta`/`network` show it). **Only the size changes live**; full device emulation (`isMobile`/`hasTouch`/UA/DPR) is creation-time (Playwright context constraint) and **best-effort on `attached`** (not-owned Chrome — viewport via CDP `Emulation`, no isMobile/touch retro-fit). Unknown preset names return a clear error listing examples.
 
 ## Read-only tools
 

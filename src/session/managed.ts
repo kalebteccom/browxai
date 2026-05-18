@@ -14,6 +14,8 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
 
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: !!opts.headless,
+    // W-H6: device/viewport emulation applied at context creation.
+    ...(opts.device ?? {}),
     // Deliberately no `args: [...]` — no `--disable-web-security`, no `--no-sandbox`.
     // These are the lowered-security flags that BYOB attaches to externally; managed
     // launches stay safe by default. (Phase-1 security non-negotiable.)

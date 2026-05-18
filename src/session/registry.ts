@@ -41,6 +41,10 @@ export interface OpenSpec {
   mode?: SessionMode;
   /** Persistent mode only: named profile dir under the workspace. */
   profile?: string;
+  /** W-H6: Playwright device-preset name (e.g. "iPhone 14"). */
+  device?: string;
+  /** W-H6: explicit viewport; overrides a preset's viewport. */
+  viewport?: { width: number; height: number };
 }
 
 export class SessionRegistry {
