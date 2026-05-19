@@ -174,6 +174,32 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-15 asks (post-shipping, 2026-05-19 — non-Claude Phase-2.5 rerun)
+
+Source: `docs/adoption-report-nonclaude-spa-phase25-2026-05-19.md` — a Codex
+session drove an attached-CDP authed media SPA after the Phase-2.5
+session/config changes. **Verdict: Phase 2.5 green.** `approve_actions`
+closes the prior non-Claude BYOB `byob_action` deadlock (the 2026-05-15
+report's biggest rough edge); named attached sessions + `get_config` +
+`act_and_sample` all worked as a non-Claude consumer expects. Five
+follow-ons, reframed to problem classes (app/transport specifics stripped):
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-O1** 🔴 | Every sink that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, `console_read` — emits URL material verbatim, including credential / identity-bearing query params and encoded context. A tool whose output is explicitly meant to be shareable (issue repros, adoption reports) and which is heading public in Phase 3 must not require manual redaction to be safe. | A **single centralized URL/string sanitizer** at the data-egress boundary, applied uniformly across the HTTP / WebSocket / SSE / console-string paths: scrub query params + encoded identity context, **preserve** method, host, path-pattern, status, timing, response shape. Default-on (a posture default, same discipline as safe-by-default / `network-body` off); not a per-call opt-in to forget. | **impl-pending** |
+| **W-O2** 🟡 | Attached/BYOB sessions mis-compute the visible-rect for DOM-walk-sourced nodes: a visibly-rendered element reports `bbox:null` / `clipped:true` / `actionable:"off-screen"`. This makes the just-shipped `visibleOnly` (W-N5) **drop correct candidates** on an attached SPA — W-N5 is behaving correctly on a bad upstream signal. | In attached mode, fall back to a Playwright **locator bounding box** before classifying actionability; never classify a clickable node off-screen purely from a failed CDP rect. Fixes the root signal W-N5 depends on. | **impl-pending** |
+| **W-O3** 🟡 | A `ref` whose actionability is known-bad (`bbox:null` / `off-screen`) can still dispatch and **act at the wrong visual location** — a hover-revealed overlay routes a high-stability ref click to a different visible item because a cached row/container box is trusted over the concrete element box. | When actionability is bad-but-still-clickable, **re-resolve and verify the concrete element's action point** before dispatch; prefer the element locator's own box over a cached container/row box for hover-revealed overlays. The main remaining mechanical-calibration correctness risk. | **impl-pending** |
+| **W-O4** 🟡 | Icon-only / name-less controls rank below name-bearing neighbours even when a stable test-attr / aria-label / tooltip / selected-state disambiguates them — recurrence of the W-G4 icon-only theme. The discovery path already sees the nodes; scoring lacks tooltip + stable `data-*` context. | Scoring weights exact test-attr + aria-label + tooltip + neighbouring selected-state higher for name-less controls so a feature-panel query outranks unrelated top-nav tabs. Extends W-G4 / the icon-only scoreNode path; no agent JS. | **impl-pending** |
+| **W-O5** 🟢 | Shared-CDP multi-client attach still mixes long-lived page helpers; stale-helper "Function … is not exposed" console errors are benign noise but look like target-app failures. | Doc-only: a short shared-CDP troubleshooting note kept near the site-docs integration docs; helper no-ops after disconnect where it can, else documented as benign unless capture/replay actually fails. | **impl-pending** |
+
+**Validated, no-op:** `approve_actions` (W-G1) confirmed to close the
+non-Claude BYOB blocker end-to-end; DOM-walk fallback (Phase-1.5) confirmed
+load-bearing — it carried an a11y-empty target (0 interactive → 500 useful
+DOM-walk entries).
+
+**Proposed sequence:** W-O1 (security / public-bound, highest) → W-O2
+(unblocks the just-shipped `visibleOnly` on attached) → W-O3 → W-O4 → W-O5.
+
 ## Round-14 asks (post-shipping, 2026-05-19 — multi-agent QA campaign)
 
 Source: `docs/adoption-report-multiagent-qa-2026-05-19.md` — a team-lead-over-
