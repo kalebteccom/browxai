@@ -174,6 +174,31 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-16 asks (post-shipping, 2026-05-19 — non-Claude post-fix revalidation)
+
+Source: `docs/adoption-report-nonclaude-spa-postfix-2026-05-19.md` — the same
+Codex consumer re-ran the real authed target to verify the Round-15 fixes.
+**Verdict: green.** Four of five held cleanly on the live target: **W-O1**
+URL redaction confirmed materially better (host/path/status/timing still
+useful, credential blobs gone), **W-O2** attached `bbox`/`actionable` fixed
+(`visibleOnly:true` keeps visible DOM-walk nodes), **W-O3** ref-action guard
+held (hover-revealed edit ref opened the intended item, not the first), and
+the session/approval surface (`get_config` / named attached session /
+`approve_actions`) all passed. **W-O4** passes with a wording caveat — the
+test-attribute-worded query ranks the tier-1 feature tab #1, but a
+*product-facing alias* phrase still ranks it behind its enclosing layout
+containers. One non-blocker follow-on; no new blocker-class asks.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-P1** 🟡 | When the natural-language query targets a specific interactive control but uses an aliased / product-facing phrasing (rather than the test-attribute tokens), a non-interactive **structural/layout container** that merely *encloses* the target can outrank the actionable control itself — the agent gets the wrapper, not the button/tab. | Post-scoring ranking refinement (role-driven, generic — no app strings): when ≥1 `actionable:true` *interactive* candidate matches the query, **demote non-interactive container-ish matches** (group / region / toolbar / generic / none / landmark roles) below it. "Down-rank the container unless no actionable child matches" expressed structurally, not via query-string heuristics. Extends the W-J2 visibility partition / W-O4 ranking work; no agent JS. | **impl-pending** |
+
+**Validated, no-op:** W-O1 / W-O2 / W-O3 confirmed fixed on the live authed
+target; W-O4 confirmed working for test-attr-worded queries (alias-worded is
+W-P1). `approve_actions` non-Claude BYOB path re-confirmed.
+
+**Proposed sequence:** W-P1 (single ask).
+
 ## Round-15 asks (post-shipping, 2026-05-19 — non-Claude Phase-2.5 rerun)
 
 Source: `docs/adoption-report-nonclaude-spa-phase25-2026-05-19.md` — a Codex
