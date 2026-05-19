@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sampleMetric, ELEMENT_METRICS, summariseSeries } from "./sample.js";
+import { sampleMetric, ELEMENT_METRICS, summariseSeries, shouldOmitSeries, AUTO_SUMMARY_THRESHOLD } from "./sample.js";
 
 const fakePage = {} as never;
 const fakeRefs = {} as never;
@@ -63,5 +63,22 @@ describe("summariseSeries — reducer", () => {
     expect(r.count).toBe(0);
     expect(r.distinctCount).toBe(0);
     expect(r.firstChangeTMs).toBeNull();
+  });
+});
+
+describe("shouldOmitSeries — tri-state series policy", () => {
+  it("summary:true always omits, regardless of size", () => {
+    expect(shouldOmitSeries(true, 1)).toBe(true);
+    expect(shouldOmitSeries(true, 10_000)).toBe(true);
+  });
+
+  it("summary:false always includes, even for huge windows", () => {
+    expect(shouldOmitSeries(false, AUTO_SUMMARY_THRESHOLD + 5_000)).toBe(false);
+  });
+
+  it("unset auto-omits only above the large-window threshold", () => {
+    expect(shouldOmitSeries(undefined, AUTO_SUMMARY_THRESHOLD)).toBe(false);
+    expect(shouldOmitSeries(undefined, AUTO_SUMMARY_THRESHOLD + 1)).toBe(true);
+    expect(shouldOmitSeries(undefined, 5)).toBe(false);
   });
 });

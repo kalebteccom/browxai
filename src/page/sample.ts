@@ -20,6 +20,21 @@ export type Metric = (typeof ELEMENT_METRICS)[number];
 const BBOX_METRICS = new Set<Metric>(["bboxX", "bboxY", "bboxWidth", "bboxHeight"]);
 const MAX_DURATION_MS = 30_000;
 const MAX_SERIES = 2000;
+/** Above this collected-point count, an unset `summary` auto-omits the full
+ *  series (a raf window of a few seconds is hundreds of points; the agent
+ *  almost always wants only the reduced signal, and the raw series balloons
+ *  the tool-result token cost). Explicit `summary:false` opts back in. */
+export const AUTO_SUMMARY_THRESHOLD = 300;
+
+/** Tri-state series-omission policy (pure, unit-tested):
+ *   - `summary === true`  → always omit the series (caller asked for reduced).
+ *   - `summary === false` → always include it (caller opted into the raw set).
+ *   - `summary` unset     → auto-omit only when the series is large. */
+export function shouldOmitSeries(summary: boolean | undefined, count: number): boolean {
+  if (summary === true) return true;
+  if (summary === false) return false;
+  return count > AUTO_SUMMARY_THRESHOLD;
+}
 
 export interface SampleArgs {
   target?: ActionTarget;
@@ -27,9 +42,11 @@ export interface SampleArgs {
   durationMs: number;
   everyFrame?: boolean;
   intervalMs?: number;
-  /** return only the reduced `summary` instead of the full `series`.
-   *  Pure server-side reduction of the already-collected fixed-metric series
-   *  — no agent JS, no eval surface. */
+  /** Series-omission control (the `summary` is *always* returned regardless).
+   *  `true` → omit the full `series`; `false` → always include it; unset →
+   *  auto-omit only for large windows (> AUTO_SUMMARY_THRESHOLD points), with
+   *  `autoSummarised: true` on the result. Pure server-side reduction of the
+   *  already-collected fixed-metric series — no agent JS, no eval surface. */
   summary?: boolean;
 }
 
@@ -54,8 +71,11 @@ export interface SampleResult {
   count: number;
   /** Present unless `summary` was requested. */
   series?: Array<{ tMs: number; value: number }>;
-  /** Present when `summary: true`, or always (cheap) — the reduced signal. */
+  /** Always present (cheap) — the reduced signal. */
   summary?: SampleSummary;
+  /** true when the series was dropped by the auto-large-window policy (caller
+   *  didn't set `summary`). Re-request with `summary:false` for the raw set. */
+  autoSummarised?: boolean;
   truncated?: boolean;
 }
 
@@ -181,11 +201,13 @@ export async function sampleMetric(
     series = await page.evaluate(windowSampler as never, params);
   }
 
-  // `summary` is always cheap to compute and included; the full
-  // `series` is omitted when the caller asked for `summary: true` (long
-  // high-rate windows serialise large — the agent usually just needs the
-  // signal: did it move, bounds, when it first changed).
+  // `summary` is always cheap to compute and included. The full `series` is
+  // omitted when the caller asked for `summary:true` OR (caller unset) the
+  // window is large — long high-rate windows serialise huge and the agent
+  // usually just needs the signal: did it move, bounds, when it first changed.
   const summary = summariseSeries(series);
+  const omitSeries = shouldOmitSeries(args.summary, series.length);
+  const autoSummarised = omitSeries && args.summary === undefined;
   return {
     metric: args.metric,
     scope,
@@ -193,8 +215,9 @@ export async function sampleMetric(
     mode: everyFrame ? "raf" : "interval",
     ...(everyFrame ? {} : { intervalMs }),
     count: series.length,
-    ...(args.summary ? {} : { series }),
+    ...(omitSeries ? {} : { series }),
     summary,
+    ...(autoSummarised ? { autoSummarised: true } : {}),
     ...(series.length >= MAX_SERIES ? { truncated: true } : {}),
   };
 }
