@@ -174,6 +174,38 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-17 asks (post-shipping, 2026-05-19 — multi-agent QA + media-editor QA)
+
+Sources: a multi-agent Claude-Code QA campaign (raw client report — NEVER
+committed, `.gitignore`d; signal lifted as problem classes only) and
+`docs/adoption-report-media-editor-qa-2026-05-19.md` (sanitised). App /
+client / framework names stripped.
+
+**Already shipped — document, don't rebuild** (consumers didn't know): the
+"act-then-capture-window" ask is `act_and_sample` (**W-N1**); the
+"prefix/idle bulk teardown" ask is `close_sessions({prefix|all|idleMs})`
+(**W-N2**) — only an *automatic* idle reaper would be new (folded into W-Q*
+backlog, not this round).
+
+**Phase-3 freeze decision (owner):** W-Q1–Q6 ship to the **stable** surface
+this round; W-Q7–Q11 are the **capability-gated / `unstable.*` deferred
+lane** (the reports themselves ask for them "behind a capability"), so the
+public surface can freeze and the Phase-3 #2 stability clock can start. A
+semver + stability-policy baseline is cut alongside this round.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-Q1** 🔴 | A whole bug class only reproduces when the tab is **backgrounded** (throttled `setTimeout`, paused rAF so framework enter/animation hooks never fire, on-focus refetch/stale-replay). browxai keeps the driven tab foreground, so agentic QA structurally scores these flows PASS while they're broken. | Tab-visibility control: set `document.visibilityState='hidden'` + dispatch `visibilitychange`, AND genuinely deprioritise the page via CDP so real timer/rAF throttling applies (managed/incognito; best-effort + warn on attached). Plus a composed "act → background N ms → foreground" so the triggering transition is reproducible in one call. No agent JS. | **impl-pending** |
+| **W-Q2** 🟡 | `press` drives one combo, but multi-step shortcuts are unergonomic and the agent can't tell whether the app *handled* the shortcut or what was focused/affected; copy/cut/paste are opaque (internal vs OS clipboard). | A `shortcut` action (named chord / multi-step sequence) returning observability — active element at dispatch, which `keydown`/`copy`/`paste`/`cut` listener fired, default-prevented — over the window. Capability-gated clipboard: a **per-session** clipboard model (concurrency-safe across sessions); the OS clipboard is touched **only transactionally on an explicit copy/cut/paste command**, never ambiently, and left as-is between commands. Off-by-default capability (posture class of `eval`/`network-body`). | **impl-pending** |
+| **W-Q3** 🟡 | In canvas / virtualised-timeline / painted UIs the real target isn't a clean element; agents trust a screenshot estimate of what a coordinate hit. | Read-only `point_probe({coords})`: full `elementsFromPoint` stack, each element's role/name/testId/class summary + computed pointer-events/visibility/z-index/cursor/bbox, nearest scroll container + clickable ancestor, optional small crop. Fold the hit-target stack into `click`/`hover({coords})` results (extends the existing `element.hit`). `read` cap; no agent JS. | **impl-pending** |
+| **W-Q4** 🟡 | A browxai-side context detach/teardown is indistinguishable from an app navigation/renderer crash → expensive false "CRITICAL crash" defects. | Add a `reason`/source field on the relevant error/teardown output distinguishing **app-origin** (navigation / renderer crash) from **browxai-origin** (context closed / detached / anti-wedge timeout). Pure output-shape. | **impl-pending** |
+| **W-Q5** 🟢 | Agents read a no-op click as a human "confirmation gate" and mark real features unverified, when the actual requirement was calling `approve_actions` (or it's a selector problem). | Not a primitive: the blocked-action error must explicitly say "call `approve_actions` to enable action tools" (not language implying a human approver), surfaced in the **first** error, not only docs. | **impl-pending** |
+| **W-Q6** 🟢 | `eval_js` `el.click()` doesn't fire framework (`@click`/synthetic) handlers → recurring false "feature broken" negatives. | Not a primitive: prominent tool-level doc + a soft warning in `eval_js` output when `.click()` is detected (use the `click` tool for trusted-equivalent dispatch). | **impl-pending** |
+| **W-Q7–Q11** ⚪ | Heavier media-editor / race-condition QA surface: scoped network route mocking with delay/reorder (Q7), pointer gestures `drag`/`mouse_*`/`double_click` (Q8 — overlaps the deferred Round-7 interaction-vocab backlog), scoped `act_and_diff` class/style/selection diff (Q9), `act_and_wait_for_network` + bounded `poll_eval` (Q10), region screenshots / named visual refs / cross-session capture / session-report export (Q11). | **Deferred capability-gated / `unstable.*` lane** — explicitly out of the stable freeze. Each lands behind an off-by-default capability when scheduled; not this round. | **deferred (post-freeze lane)** |
+
+**Sequence (stable):** W-Q1 → W-Q2 → W-Q3 → W-Q4 → W-Q5/Q6, then cut the
+semver + stability baseline. W-Q7–Q11 tracked in the deferred lane.
+
 ## Round-16 asks (post-shipping, 2026-05-19 — non-Claude post-fix revalidation)
 
 Source: `docs/adoption-report-nonclaude-spa-postfix-2026-05-19.md` — the same
