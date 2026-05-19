@@ -199,6 +199,9 @@ export interface ActionWindowOptions {
    *  carries the "clamped + that's almost always a mistake" warning so it
    *  surfaces in the ActionResult, not just server stderr. */
   deadlineWarning?: string;
+  /** extra warnings computed before the action window opened (e.g. a ref
+   *  re-resolution notice) — seeded into the result's `warnings`. */
+  extraWarnings?: string[];
   /** caller-supplied selectorHint info for the recorder. Without
    *  this the recorded step has the action + url but no locator for the YAML
    *  scaffold; callers should populate it whenever they resolved a target. */
@@ -226,6 +229,7 @@ export async function runInActionWindow(
   const settleMs = opts.settleMs ?? 400;
   const warnings: string[] = [];
   if (opts.deadlineWarning) warnings.push(opts.deadlineWarning);
+  if (opts.extraWarnings) warnings.push(...opts.extraWarnings);
 
   // --- pre-state ---
   const urlBefore = ctx.page.url();

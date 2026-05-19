@@ -12,7 +12,7 @@ import {
   type ElementProbe,
   type HitPoint,
 } from "./actionresult.js";
-import { locatorFor, resolveTarget, type ActionTarget } from "./locator.js";
+import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.js";
 
 // aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
@@ -22,8 +22,9 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
   const descriptor: ActionDescriptor = { type: "click", ...targetDescriptor(args.target) };
-  return runInActionWindow(ctx, descriptor, args, async () => {
-    const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
+  const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
+  const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
+  return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
       const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
       const focusBefore = await captureFocusedRef(ctx.page);
@@ -82,8 +83,9 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
 export interface HoverArgs extends ActionWindowOptions { target: ActionTarget; }
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
   const descriptor: ActionDescriptor = { type: "hover", ...targetDescriptor(args.target) };
-  return runInActionWindow(ctx, descriptor, args, async () => {
-    const resolved = resolveTarget(ctx.page, ctx.refs, args.target);
+  const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
+  const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
+  return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
       const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
       await ctx.page.mouse.move(resolved.x, resolved.y);

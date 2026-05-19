@@ -30,6 +30,61 @@ export function resolveTarget(page: Page, refs: RefRegistry, target: ActionTarge
   return { kind: "locator", loc: locatorFor(page, refs, target) };
 }
 
+/**
+ * Ambiguity-aware target resolution for the *acting* path. A ref built from a
+ * signal that is shared across repeated / hover-revealed items (e.g. a
+ * `data-testid` reused on every row's edit button) resolves via `.first()` to
+ * whatever instance is first in the DOM — which can be a *different* visible
+ * element than the one the agent found, so the action silently lands at the
+ * wrong visual location. When the primary locator matches more than one node
+ * and the ref carries the concrete structural path it was discovered as,
+ * re-resolve to that concrete element and surface a warning. Verify-before-
+ * dispatch: a loud "I re-resolved" beats a silent wrong-place click.
+ */
+export async function resolveTargetChecked(
+  page: Page,
+  refs: RefRegistry,
+  target: ActionTarget,
+): Promise<{ resolved: ResolvedTarget; warning?: string }> {
+  if (target.coords || !target.ref) {
+    return { resolved: resolveTarget(page, refs, target) };
+  }
+  const primary = locatorFor(page, refs, target);
+  const inputs = refs.locatorOf(target.ref);
+  if (!inputs?.cssPath) return { resolved: { kind: "locator", loc: primary } };
+  let count: number;
+  try {
+    count = await primary.count();
+  } catch {
+    count = 1; // can't tell → don't second-guess the primary path
+  }
+  if (count <= 1) return { resolved: { kind: "locator", loc: primary } };
+  const concrete = page.locator(inputs.cssPath).first();
+  let concreteCount: number;
+  try {
+    concreteCount = await concrete.count();
+  } catch {
+    concreteCount = 0;
+  }
+  if (concreteCount >= 1) {
+    return {
+      resolved: { kind: "locator", loc: concrete },
+      warning:
+        `ref "${target.ref}": the primary locator matched ${count} nodes ` +
+        `(ambiguous — likely a shared test-id across repeated/overlay items). ` +
+        `Re-resolved to the concrete element captured when the ref was found, ` +
+        `to avoid acting at the wrong visual location.`,
+    };
+  }
+  return {
+    resolved: { kind: "locator", loc: primary },
+    warning:
+      `ref "${target.ref}": the primary locator is ambiguous (${count} matches) ` +
+      `and the concrete path captured at discovery no longer resolves; acting ` +
+      `on .first() — verify the result, the element may have moved or re-rendered.`,
+  };
+}
+
 export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
   if (target.coords) {
     throw new Error("locatorFor: coords target has no Locator — use resolveTarget() and switch on kind");

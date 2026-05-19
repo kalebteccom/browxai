@@ -311,6 +311,8 @@ Every ref records the pass that discovered it: `a11y` (via the accessibility tre
 4. **`cssPath` fallback** — for `both`-source refs whose a11y pass yielded no name.
 5. **role only** — last resort; `stability: "low"` candidates land here.
 
+**Ambiguity guard on the acting path (`click` / `hover`).** A ref built from a signal shared across repeated or hover-revealed items (e.g. one `data-testid` reused on every row's edit button) would resolve via `.first()` to whatever instance is first in the DOM — a *different* visible element than the one you found, so the action silently lands at the wrong place. Before dispatching a click/hover on a ref, browxai checks the primary locator's match count: if it is ambiguous (>1) and the ref carries the concrete structural path it was discovered as, the action **re-resolves to that concrete element** and adds a `warnings` entry saying so. If the concrete path no longer resolves, it keeps `.first()` but warns you to verify. Verify-before-dispatch — a loud "I re-resolved" beats a silent wrong-location action.
+
 ### Named refs (wishlist W-C1)
 
 For frequently-acted-on anchors across a long session, bind a mnemonic once and reference it from any action tool:

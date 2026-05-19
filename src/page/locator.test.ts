@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Page } from "playwright-core";
-import { locatorFor, resolveTarget } from "./locator.js";
+import { locatorFor, resolveTarget, resolveTargetChecked } from "./locator.js";
 import { RefRegistry } from "./refs.js";
 
 // Minimal Page mock. Each getByRole / locator call records its arguments and
@@ -190,5 +190,83 @@ describe("resolveTarget — coords escape hatch", () => {
     const refs = new RefRegistry();
     expect(() => locatorFor(page, refs, { coords: { x: 0, y: 0 } }))
       .toThrow(/coords target has no Locator/);
+  });
+});
+
+// Count-aware fake: each resolved node carries the selector it came from and a
+// `count()` driven by a per-selector table, so we can exercise the ambiguity
+// branch of resolveTargetChecked deterministically.
+function countingPage(counts: Record<string, number>) {
+  const node = (sel: string) => ({ __sel: sel, count: async () => counts[sel] ?? 1 });
+  return {
+    locator: (selector: string) => ({ first: () => node(selector) }),
+    getByRole: (role: string) => ({ first: () => node(`role:${role}`) }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+}
+const selOf = (loc: unknown) => (loc as { __sel: string }).__sel;
+
+describe("resolveTargetChecked — ambiguity-aware acting path", () => {
+  it("coords pass straight through, no count() probing", async () => {
+    const refs = new RefRegistry();
+    const { resolved, warning } = await resolveTargetChecked(
+      countingPage({}), refs, { coords: { x: 1, y: 2 } },
+    );
+    expect(resolved.kind).toBe("coords");
+    expect(warning).toBeUndefined();
+  });
+
+  it("a ref with no cssPath is left on the primary locator (nothing to re-resolve to)", async () => {
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k", { role: "button", testId: "go", testIdAttr: "data-testid", source: "a11y" });
+    const { resolved, warning } = await resolveTargetChecked(
+      countingPage({ '[data-testid="go"]': 9 }), refs, { ref },
+    );
+    expect(warning).toBeUndefined();
+    expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="go"]');
+  });
+
+  it("unique primary → primary used, no warning", async () => {
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k", {
+      role: "button", testId: "edit", testIdAttr: "data-testid",
+      cssPath: "main > div:nth-child(3) > button", source: "both",
+    });
+    const { resolved, warning } = await resolveTargetChecked(
+      countingPage({ '[data-testid="edit"]': 1 }), refs, { ref },
+    );
+    expect(warning).toBeUndefined();
+    expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="edit"]');
+  });
+
+  it("ambiguous primary + resolvable concrete → re-resolve to the concrete element, warn", async () => {
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k", {
+      role: "button", testId: "edit", testIdAttr: "data-testid",
+      cssPath: "main > div:nth-child(7) > button.edit", source: "both",
+    });
+    const { resolved, warning } = await resolveTargetChecked(
+      countingPage({
+        '[data-testid="edit"]': 6,
+        "main > div:nth-child(7) > button.edit": 1,
+      }),
+      refs, { ref },
+    );
+    expect(selOf((resolved as { loc: unknown }).loc)).toBe("main > div:nth-child(7) > button.edit");
+    expect(warning).toMatch(/ambiguous/);
+    expect(warning).toMatch(/Re-resolved to the concrete element/);
+  });
+
+  it("ambiguous primary + concrete no longer resolves → keep primary, warn to verify", async () => {
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k", {
+      role: "button", testId: "edit", testIdAttr: "data-testid",
+      cssPath: "stale > path", source: "both",
+    });
+    const { resolved, warning } = await resolveTargetChecked(
+      countingPage({ '[data-testid="edit"]': 4, "stale > path": 0 }), refs, { ref },
+    );
+    expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="edit"]');
+    expect(warning).toMatch(/no longer resolves/);
   });
 });
