@@ -268,6 +268,8 @@ Full response-body inspection is intentionally **not** exposed here; that would 
 ### `eval_js`
 Run a JavaScript expression in the page's main frame. The escape hatch when no other tool covers your case (typically: trigger a page-side function the app exposes, e.g. `window.__siteDocs.capture()`). **Use sparingly.** Wishlist W-B1.
 
+> ⚠ **`eval_js` `element.click()` does NOT fire framework click handlers.** A programmatic `.click()` (or dispatched synthetic event) here is not a trusted/synthetic-equivalent event, so Vue `@click` / React synthetic / custom-element listeners never run — the app does nothing and you'll wrongly conclude the feature is broken. This is a recurring, expensive false negative. **Use the `click` tool for any click you're testing**; reserve `eval_js` for reading state or calling app-exposed functions. The server emits a soft `warning` on the result when it detects `.click()` in the expression.
+
 **Inputs:** `{ expr: string, returnType?: "json" | "void" (default "json") }`. The return value must be JSON-serializable for `"json"` mode; `"void"` is fire-and-forget.
 
 **Output:** JSON `{ ok: true, value }` / `{ ok: true, returnType: "void" }` / `{ ok: false, error }`.
@@ -473,7 +475,11 @@ Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, 
 
 ### `approve_actions({ scopes, ttlSeconds? })`
 
-MCP-callable session-scoped pre-approval for confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)` — the canonical Phase-2 confirm path. Pattern:
+MCP-callable session-scoped pre-approval for confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)` — the canonical Phase-2 confirm path.
+
+> **If an action came back `policy: …` blocked:** that is **not** a human-approval wall and **not** a selector failure — call `approve_actions` once at session start and retry. The blocked result's `hint` now says this explicitly (first error, not just docs); don't mark the feature unverified.
+
+Pattern:
 
 1. At session start, the client calls `approve_actions({ scopes: ["byob_action"], ttlSeconds: 3600 })`.
 2. Subsequent action tools that would have hit the BYOB confirm hook auto-approve within the TTL window.
