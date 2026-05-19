@@ -231,7 +231,13 @@ Read an element's whitelisted **computed styles + box + overflow/clip state**. `
 - `childCount` — direct element children (catch "a flex row lost its 3rd child → misalignment").
 - `cursor` distinguishes `not-allowed` vs `wait` vs `pointer` (disabled-vs-busy control state).
 
-Read-only (capability `read`). Coords targets unsupported (no element to resolve).
+Read-only (capability `read`). Coords targets unsupported (no element to resolve) — use `point_probe` for a coordinate.
+
+### `point_probe({ coords, crop?, session? })`
+Read-only: **what is actually under a viewport coordinate**. `point_probe({ coords:{x,y} })` → `{ ok, point, stack:[…], scrollContainer, clickableAncestor, cropBase64? }`. The coordinate-target verifier for canvas / virtualised-timeline / painted UIs where the target isn't a clean accessible element and `find()`/`inspect` can't address it.
+- `stack` — the full `document.elementsFromPoint(x,y)` top-down (capped 8); **`stack[0]` is what a real `click({coords})` would hit**. Each layer carries `tag/id/testId/role/name/classes` + computed `pointerEvents/visibility/display/zIndex/cursor` + `bbox` — enough to prove "this point hits the audio segment, not the video layer above it" and to see *why* (`pointer-events:none` passthrough, z-index ordering).
+- `scrollContainer` / `clickableAncestor` — nearest scrollable ancestor and nearest semantically-clickable ancestor of the top element (what a click here would actually activate).
+- `crop:true` adds a small bounded PNG (base64) around the point; **off by default** (token-cheap). No agent JS. Capability `read`. Pairs with `click({coords})`: probe first, then drive.
 
 ### `ws_read` *(W-H1)*
 Session-wide ring of recent **WebSocket / Server-Sent-Events frames** (cap 500; HTTP is `network_read`, this is the realtime channel). `ws_read({ session?, limit?, urlPattern? })` → `{ total, frames: [{ url, dir: "sent"|"recv", kind: "ws"|"sse", opcode?, event?, payload, truncated?, ts }] }`. Payloads truncated (~2000 chars). The verification primitive for realtime correctness — chat / multiplayer / collaborative-editing / live-dashboard broadcasts, where the frame stream is the only ground truth. Per-action frames also land in **`ActionResult.network.wsFrames`** (frames that arrived during that action's window) — e.g. assert a click produced the expected broadcast without polling `ws_read` separately. Capability: `read`.
@@ -301,7 +307,7 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 - `ref` — preferred for semantic UIs. Stable across snapshots, carries role+name+testId so Playwright auto-waiting + strict-match Just Works.
 - `selector` — accepts the `selectorHint` strings `find()` emits plus arbitrary Playwright locator strings.
 - `named` — mnemonic previously bound via `name_ref` (wishlist W-C1).
-- `coords` — page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see W-F2 below) so the action stays inspectable.
+- `coords` — page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see W-F2 below) so the action stays inspectable; for the *full* hit-stack + why a layer is/ isn't hittable, `point_probe({coords})` first.
 
 Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
 

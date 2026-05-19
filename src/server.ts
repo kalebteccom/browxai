@@ -19,6 +19,7 @@ import { inspectElement } from "./page/inspect.js";
 import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
 import { runShortcut } from "./page/shortcut.js";
+import { pointProbe } from "./page/point_probe.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
@@ -636,6 +637,29 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ found: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  register(
+    "point_probe",
+    {
+      description:
+        "Read-only: what is actually under a viewport coordinate. Returns the full `document.elementsFromPoint` stack (top-down, first = what a real click hits), each layer's tag/id/testId/role/name/classes + computed pointer-events/visibility/display/z-index/cursor + bbox, plus the nearest scroll container and nearest clickable ancestor of the top element. The coordinate-target verifier for canvas / virtualised-timeline / painted UIs where the target isn't a clean accessible element — prove a coordinate hits the intended layer before driving `click({coords})` instead of trusting a screenshot estimate. `crop:true` adds a small bounded PNG around the point (off by default — token-cheap). No agent JS.",
+      inputSchema: {
+        coords: z.object({ x: z.number(), y: z.number() }).describe("Viewport CSS px."),
+        crop: z.boolean().optional().describe("Default false. Include a small (80×80) PNG crop (base64) around the point."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ coords, crop, session }) => {
+      const g = gateCheck("point_probe"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const result = await withDeadline(pointProbe(e.session.page(), coords, { crop }), cfgActionTimeout(), "point_probe");
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 

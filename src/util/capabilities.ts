@@ -47,6 +47,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_read: "read",
   ws_read: "read",
   inspect: "read",
+  point_probe: "read",
   watch: "read",
   sample: "read",
   // act_and_sample: the sampler half is `read`; the inner action's own
