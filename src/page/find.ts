@@ -6,7 +6,7 @@ import type { CDPSession, Page } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshot } from "./compose.js";
-import { visibleRect, type VisibleRect } from "./bbox.js";
+import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 import type { FeedbackMemory } from "./learning.js";
 
@@ -136,9 +136,14 @@ export async function find(
     const { hint: bareHint, tier, stability } = buildSelectorHint(node);
     // disambiguate when the bare hint matches multiple DOM nodes.
     const hint = await disambiguateHint(page, bareHint);
-    const bbox = node.backendDOMNodeId !== undefined
+    let bbox = node.backendDOMNodeId !== undefined
       ? await visibleRect(cdp, node.backendDOMNodeId)
       : null;
+    // attached/BYOB: the CDP rect path can spuriously null out a rendered
+    // DOM-walk node → fall back to Playwright's locator box before we let a
+    // bad signal classify a visible element off-screen (which `visibleOnly`
+    // would then drop entirely).
+    if (bbox === null) bbox = await locatorBoundingBox(page, hint);
     const actionable = await probeActionable(page, hint, bbox);
     candidates.push({
       ref: node.ref,

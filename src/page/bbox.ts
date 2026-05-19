@@ -5,7 +5,7 @@
 // is empty. Same definition site-docs's runtime computes, so calibration-time
 // bbox == execution-time bbox for the same selector.
 
-import type { CDPSession } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 
 export interface VisibleRect {
   x: number;
@@ -88,6 +88,27 @@ export async function visibleRect(cdp: CDPSession, backendDOMNodeId: number): Pr
     return result.value ?? null;
   } catch {
     // Node detached, no live DOM, etc. Treat as clipped.
+    return null;
+  }
+}
+
+/**
+ * Playwright locator-based bounding box, used as a *fallback* when the CDP
+ * `visibleRect` path returns null. On attached/BYOB Chromes the CDP
+ * `DOM.resolveNode` → `Runtime.callFunctionOn` rect path can spuriously fail
+ * for DOM-walk-sourced nodes (no live backend node, cross-frame quirks),
+ * producing a bogus `bbox:null` → `off-screen` for an element that is in fact
+ * rendered. Playwright's own `boundingBox()` resolves the element through the
+ * locator engine and reports its real rendered box; a non-empty box means
+ * "this is on the page" regardless of what the CDP path said. Best-effort:
+ * any error / empty box → null (the caller then treats it as truly clipped).
+ */
+export async function locatorBoundingBox(page: Page, selector: string): Promise<VisibleRect | null> {
+  try {
+    const box = await page.locator(selector).first().boundingBox();
+    if (!box || box.width <= 0 || box.height <= 0) return null;
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  } catch {
     return null;
   }
 }
