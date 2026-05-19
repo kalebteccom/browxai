@@ -320,6 +320,27 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
       if (t.length >= 2 && testIdLower.includes(t)) { s += 3; break; }
     }
   }
+  // Trimmed text content (a `title` tooltip, an sr-only label, visible
+  // glyph-adjacent text) — often the only human-readable hint on an
+  // icon-only control whose accessible name is empty. Weaker than the
+  // accessible name (it can be noisier), stronger when the control is
+  // icon-only and the text is all we have.
+  const textLower = (node.text ?? "").toLowerCase();
+  if (textLower) {
+    if (textLower === q) s += 6;
+    else if (textLower.includes(q)) s += 3;
+    for (const t of qTokens) {
+      if (t.length < 2) continue;
+      if (textLower.includes(t)) s += isIconOnly ? 2 : 1;
+    }
+  }
+  // Active / selected state. A control already in a selected / pressed /
+  // checked state that also matches the query is almost always the live
+  // feature area the agent means — this is what disambiguates the active
+  // side-panel tab from its inert icon-only siblings (the report's
+  // "neighbouring selected-state" signal). Only bonuses an existing match.
+  const isActive = node.selected === true || node.pressed === true || node.checked === true;
+  if (s > 0 && isActive) s += 3;
   return s;
 }
 

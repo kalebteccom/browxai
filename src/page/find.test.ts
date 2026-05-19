@@ -125,6 +125,33 @@ describe("scoreNode — icon-only controls", () => {
     const iconOnly = n("button", undefined, "side-panel-feature-tab");
     expect(scoreNode(named, q, tokens)).toBeGreaterThan(scoreNode(iconOnly, q, tokens));
   });
+
+  it("tooltip/sr-only text lifts an icon-only control over a bare-testId sibling", () => {
+    // Both are name-less; only the target carries a tooltip-derived `text`
+    // that names the intent. The text signal should break the tie.
+    const q = "ai feature panel";
+    const tokens = q.split(/\s+/);
+    const withTooltip = n("button", undefined, "sp-tab-3", { text: "AI feature panel" });
+    const bare = n("button", undefined, "sp-tab-4");
+    expect(scoreNode(withTooltip, q, tokens)).toBeGreaterThan(scoreNode(bare, q, tokens));
+  });
+
+  it("active/selected state disambiguates the live panel tab from inert siblings", () => {
+    // Identical icon-only testId-token signal; the *selected* one is the
+    // feature area the agent means.
+    const q = "side panel feature tab";
+    const tokens = q.split(/\s+/);
+    const active = n("tab", undefined, "side-panel-feature-tab", { selected: true });
+    const inert = n("tab", undefined, "side-panel-feature-tab");
+    expect(scoreNode(active, q, tokens)).toBeGreaterThan(scoreNode(inert, q, tokens));
+  });
+
+  it("active-state bonus never fabricates a match from nothing (gated on s>0)", () => {
+    const q = "totally unrelated query";
+    const tokens = q.split(/\s+/);
+    const selectedButNoMatch = n("tab", undefined, "xyz", { selected: true });
+    expect(scoreNode(selectedButNoMatch, q, tokens)).toBe(0);
+  });
 });
 
 describe("noVisibleCandidateWarning — capability-aware", () => {
