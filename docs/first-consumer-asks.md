@@ -203,8 +203,25 @@ semver + stability-policy baseline is cut alongside this round.
 | **W-Q6** 🟢 | `eval_js` `el.click()` doesn't fire framework (`@click`/synthetic) handlers → recurring false "feature broken" negatives. | Not a primitive: prominent tool-level doc + a soft warning in `eval_js` output when `.click()` is detected (use the `click` tool for trusted-equivalent dispatch). | **impl-done 2026-05-19** (eval_js description ⚠ + regex-detected soft `warning` on the result) |
 | **W-Q7–Q11** ⚪ | Heavier media-editor / race-condition QA surface: scoped network route mocking with delay/reorder (Q7), pointer gestures `drag`/`mouse_*`/`double_click` (Q8 — overlaps the deferred Round-7 interaction-vocab backlog), scoped `act_and_diff` class/style/selection diff (Q9), `act_and_wait_for_network` + bounded `poll_eval` (Q10), region screenshots / named visual refs / cross-session capture / session-report export (Q11). | **Deferred capability-gated / `unstable.*` lane** — explicitly out of the stable freeze. Each lands behind an off-by-default capability when scheduled; not this round. | **deferred (post-freeze lane)** |
 
-**Sequence (stable):** W-Q1 → W-Q2 → W-Q3 → W-Q4 → W-Q5/Q6, then cut the
-semver + stability baseline. W-Q7–Q11 tracked in the deferred lane.
+**Sequence (stable):** W-Q1 → W-Q2 → W-Q3 → W-Q4 → W-Q5/Q6 — **all shipped
+2026-05-19**; semver + stability baseline cut (**v0.1.0**, stable surface
+frozen — see `docs/tool-reference.md` "Stability & semver").
+
+## Deferred lane (capability-gated / `unstable.*`, post-freeze)
+
+Explicitly **out of the v0.1.0 stable freeze** — new adoption asks land here
+by default; promotion into the stable surface is a deliberate, versioned act,
+and a round that only adds to this lane does **not** reset the Phase-3
+"API stable ~1 month" clock. Each item lands behind an off-by-default
+capability when scheduled.
+
+| # | Problem class | Lands behind | Status |
+|---|---|---|---|
+| **W-Q7** | Scoped network route mocking with delay/reorder (race-condition QA: responses out of request order). | new off-by-default `route`/network-mock capability | deferred |
+| **W-Q8** | Pointer-gesture set: `drag`, `mouse_down/move/up`, `double_click`, pointer-path trace (media-editor scrub/trim/lasso). Overlaps the Round-7 interaction-vocab backlog. | `action` (gestures) — but treated as unstable surface until promoted | deferred |
+| **W-Q9** | Scoped `act_and_diff`: class / `aria-*` / `data-*` / inline-style / selection-handle diff around one action (selection-heavy UIs where state isn't text/a11y). | unstable | deferred |
+| **W-Q10** | `act_and_wait_for_network({action,match,timeoutMs})` + bounded `poll_eval` (behind `eval`) for precise async assertions. | `eval` (poll_eval) / unstable | deferred |
+| **W-Q11** | Region screenshots + named visual refs (`name_region`), cross-session capture (drive A, sample B in one call), session labels + `export_session_report`. | unstable | deferred |
 
 ## Round-16 asks (post-shipping, 2026-05-19 — non-Claude post-fix revalidation)
 

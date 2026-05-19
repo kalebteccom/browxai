@@ -41,7 +41,7 @@ import { log } from "./util/logging.js";
 import { runBatch } from "./util/batch.js";
 
 export const NAME = "browxai";
-export const VERSION = "0.0.0";
+export const VERSION = "0.1.0";
 
 export interface StartOptions {
   attachCdp?: string;

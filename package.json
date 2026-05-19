@@ -1,6 +1,6 @@
 {
   "name": "browxai",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
   "license": "MIT",
