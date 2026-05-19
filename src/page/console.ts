@@ -3,6 +3,7 @@
 // `console_read` MCP tool exposes the buffer.
 
 import type { Page } from "playwright-core";
+import { sanitizeUrlsInText } from "../util/url-sanitizer.js";
 
 export interface ConsoleMessage {
   ts: number; // epoch ms
@@ -29,12 +30,19 @@ export class ConsoleBuffer {
     });
   }
 
-  recent(limit = 50): ConsoleMessage[] { return this.msgs.slice(-limit); }
+  // URL substrings in console / page-error text are sanitized at the egress
+  // boundary (read time) — the ring keeps raw text; only what leaves the
+  // server toward an MCP result is redacted.
+  recent(limit = 50): ConsoleMessage[] {
+    return this.msgs.slice(-limit).map((m) => ({ ...m, text: sanitizeUrlsInText(m.text) }));
+  }
   errorsSince(ts: number): string[] {
-    return this.msgs.filter((m) => m.type === "error" && m.ts >= ts).map((m) => m.text);
+    return this.msgs
+      .filter((m) => m.type === "error" && m.ts >= ts)
+      .map((m) => sanitizeUrlsInText(m.text));
   }
   pageErrorsSince(ts: number): string[] {
-    return this.errs.filter((e) => e.ts >= ts).map((e) => e.text);
+    return this.errs.filter((e) => e.ts >= ts).map((e) => sanitizeUrlsInText(e.text));
   }
   warningCountSince(ts: number): number {
     return this.msgs.filter((m) => m.type === "warning" && m.ts >= ts).length;

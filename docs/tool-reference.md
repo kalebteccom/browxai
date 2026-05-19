@@ -80,6 +80,8 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 
 ## Read-only tools
 
+> **URL redaction is default-on.** Every surface that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response *body* remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
+
 ### `snapshot`
 Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot — it makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`. (Phase-1.5 ask #7.)
 

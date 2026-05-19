@@ -4,6 +4,7 @@
 // the summary's `byType.other` bucket if you want the totals back.
 
 import type { CDPSession } from "playwright-core";
+import { sanitizeUrl, sanitizeUrlsInText, patternisePath } from "../util/url-sanitizer.js";
 
 export interface NetworkEntry {
   method: string;
@@ -130,7 +131,9 @@ export class NetworkTap {
       if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
       summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
       if (e.failed) summary.failed += 1;
-      if (bucket !== "other") interesting.push(e);
+      // sanitize at the egress boundary only — the ring keeps the raw url so
+      // beacon detection / url-substring filtering still see the real value.
+      if (bucket !== "other") interesting.push({ ...e, url: sanitizeUrl(e.url) });
     }
     const mutations = (await Promise.all(this.mutationPromises)).filter((m): m is MutationEntry => m !== null);
     return { summary, requests: interesting, mutations };
@@ -158,6 +161,13 @@ export interface WsFrame {
   payload: string;
   truncated?: boolean;
   ts: number;
+}
+
+/** Egress sanitizer for a WS/SSE frame: redact the endpoint url and any url
+ *  substrings inside the payload (a stream payload can echo a credentialled
+ *  URL too). Returns a copy — the ring keeps raw frames for url filtering. */
+function sanitizeFrame(f: WsFrame): WsFrame {
+  return { ...f, url: sanitizeUrl(f.url), payload: sanitizeUrlsInText(f.payload) };
 }
 
 export class WsBuffer {
@@ -221,13 +231,14 @@ export class WsBuffer {
   /** Most-recent N frames, optionally filtered by a url substring. */
   recent(limit = 50, urlPattern?: string): { total: number; frames: WsFrame[] } {
     let frames = this.ring;
+    // filter on the raw url, then sanitize the endpoint on the way out.
     if (urlPattern) frames = frames.filter((f) => f.url.includes(urlPattern));
-    return { total: frames.length, frames: frames.slice(-limit) };
+    return { total: frames.length, frames: frames.slice(-limit).map(sanitizeFrame) };
   }
 
   /** Frames since a timestamp — for the per-action `ActionResult` slice. */
   since(ts: number, cap = 25): WsFrame[] {
-    return this.ring.filter((f) => f.ts >= ts).slice(-cap);
+    return this.ring.filter((f) => f.ts >= ts).slice(-cap).map(sanitizeFrame);
   }
 }
 
@@ -324,14 +335,7 @@ export function patterniseUrl(url: string): string {
   } catch {
     return url;
   }
-  const segments = u.pathname.split("/").map((seg) => {
-    if (!seg) return seg;
-    if (/^\d+$/.test(seg)) return ":id";
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) return ":id";
-    if (/^[0-9a-f]{12,}$/i.test(seg)) return ":id";
-    return seg;
-  });
-  return `${u.origin}${segments.join("/")}`;
+  return `${u.origin}${patternisePath(u.pathname)}`;
 }
 
 /**
@@ -407,7 +411,7 @@ export class NetworkBuffer {
       if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
       summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
       if (e.failed) summary.failed += 1;
-      if (bucket !== "other") interesting.push(e);
+      if (bucket !== "other") interesting.push({ ...e, url: sanitizeUrl(e.url) });
     }
     return { summary, requests: interesting };
   }
