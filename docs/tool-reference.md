@@ -295,6 +295,8 @@ End-recording output: `{ name, yaml, stepCount }`. The YAML draft is the deliver
 
 All action tools return an `ActionResult` (text content; JSON-encoded) — the same shape regardless of which action you used.
 
+**Failure origin.** When `ok:false`, the result carries `failure: { source, hint }` — `source` is `"browxai"` (the context was torn down / detached / hit the anti-wedge deadline — **not** an app crash; re-open the session and retry), `"app"` (a real navigation/renderer failure — a genuine defect signal), or `"unknown"` (verify the session is still open via `list_sessions` before treating it as a defect). This exists because a browxai-side incognito-context teardown otherwise reads identically to "page crashed to about:blank" and produced expensive false CRITICAL defects — never file an app-crash defect on a `source:"browxai"` failure.
+
 ### Common per-call inputs (`ACTION_OPTS`)
 | Field | Default | Effect |
 |---|---|---|

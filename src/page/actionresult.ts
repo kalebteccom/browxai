@@ -15,6 +15,7 @@ import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry,
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
 import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
+import { classifyFailure } from "../util/failure.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -159,6 +160,11 @@ export interface ActionResult {
   tokensEstimate: number;
   warnings: string[];
   error?: string;
+  /** present only when `ok` is false: did the failure originate in the app
+   *  (navigation/renderer crash — a real defect signal) or in browxai
+   *  (context torn down / detached / anti-wedge — NOT an app crash)? Stops
+   *  agents filing false "page crashed" defects for tool teardown. */
+  failure?: import("../util/failure.js").FailureClass;
 }
 
 export interface ActionContext {
@@ -252,6 +258,7 @@ export async function runInActionWindow(
   // --- dispatch ---
   let ok = true;
   let error: string | undefined;
+  let failure: import("../util/failure.js").FailureClass | undefined;
   let elementProbe: ElementProbe | undefined;
   try {
     // race the action body against the hard anti-wedge deadline. A
@@ -266,6 +273,7 @@ export async function runInActionWindow(
   } catch (e) {
     ok = false;
     error = e instanceof Error ? e.message : String(e);
+    failure = classifyFailure(error);
   }
 
   // --- settle ---
@@ -367,6 +375,7 @@ export async function runInActionWindow(
     tokensEstimate,
     warnings,
     error,
+    ...(failure ? { failure } : {}),
   };
 }
 
