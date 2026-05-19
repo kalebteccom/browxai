@@ -148,6 +148,11 @@ function asTarget(
 export async function createServer(opts: StartOptions = {}): Promise<{
   start: () => Promise<void>;
   shutdown: () => Promise<void>;
+  /** Programmatic in-process driving seam: the registered MCP tool handlers,
+   *  keyed by tool name, each returning the same `{ content: [...] }` shape an
+   *  MCP call would. Used by the headless-CI keystone (and any embedder that
+   *  wants to drive the surface without the stdio transport). */
+  handlers: Record<string, (args: unknown) => Promise<{ content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> }>>;
 }> {
   // Phase 2.5: config flows through the browxai-managed ConfigStore (precedence
   // defaults < env(legacy) < user < project < session). The existing env-driven
@@ -1483,5 +1488,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await registry.closeAll();
       await server.close().catch(() => undefined);
     },
+    handlers: toolHandlers,
   };
 }

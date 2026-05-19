@@ -19,3 +19,22 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+
+  keystone:
+    # Phase-2-close gate: real headless Chromium drives the MCP surface
+    # end-to-end (also asserts the Phase-2.5 zero-env / two-user-isolation /
+    # incognito-no-trace criteria). Isolated from the hermetic unit job so a
+    # browser download never slows or flakes `pnpm test`.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright-core install --with-deps chromium
+      - run: pnpm test:keystone
