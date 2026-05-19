@@ -80,6 +80,19 @@ const INTERACTIVE_ROLES = new Set([
   "option", "tab", "treeitem",
 ]);
 
+// Non-interactive structural / layout / landmark wrappers. These *enclose* the
+// thing an agent wants to act on; they are never themselves the click target.
+// When a query is phrased loosely (a product alias rather than the test-attr
+// tokens) one of these can outscore the actual control it contains, so we
+// demote them below an actionable interactive match (W-P1). Deliberately
+// conservative — list/listitem/article/section are omitted because they can
+// legitimately be the intended target in some UIs.
+const CONTAINER_ROLES = new Set([
+  "generic", "group", "region", "toolbar", "none", "presentation",
+  "navigation", "complementary", "banner", "contentinfo", "main",
+  "application", "document", "form", "search",
+]);
+
 /**
  * Rank candidates against a natural-language query. The query is tokenised on
  * whitespace; each token is matched (case-insensitively, as substring) against
@@ -195,14 +208,31 @@ export async function find(
  * slightly-lower-scored *visible* match outranks a high-scored hidden modal.
  * `visibleOnly` drops the hidden tier entirely: an empty result + the
  * "no visible candidate" warning is safer than a confident hidden hit the
- * agent will chase into a coordinate fallback. Pure; exported for tests.
+ * agent will chase into a coordinate fallback.
+ *
+ * Within the actionable tier, a second stable partition demotes
+ * non-interactive structural/layout containers below interactive controls,
+ * but *only* when at least one actionable interactive candidate exists — an
+ * aliased query ("the X panel in the right rail") otherwise lets the
+ * enclosing wrapper outrank the button/tab the agent actually wants. If no
+ * actionable interactive candidate matched, containers are left in place
+ * (they may be the best available target). Pure; exported for tests.
  */
 export function rankByVisibility(
   candidates: FindCandidate[],
   visibleOnly: boolean,
 ): { ranked: FindCandidate[]; visibleCount: number } {
-  const visible = candidates.filter((c) => c.actionable === true);
+  let visible = candidates.filter((c) => c.actionable === true);
   const hidden = candidates.filter((c) => c.actionable !== true);
+
+  const isContainer = (c: FindCandidate) =>
+    CONTAINER_ROLES.has(c.role) && !INTERACTIVE_ROLES.has(c.role);
+  if (visible.some((c) => INTERACTIVE_ROLES.has(c.role))) {
+    const leaves = visible.filter((c) => !isContainer(c));
+    const containers = visible.filter(isContainer);
+    visible = [...leaves, ...containers];
+  }
+
   return {
     ranked: visibleOnly ? visible : [...visible, ...hidden],
     visibleCount: visible.length,

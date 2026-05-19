@@ -2,9 +2,14 @@ import { describe, it, expect } from "vitest";
 import { buildSelectorHint, scoreNode, noVisibleCandidateWarning, rankByVisibility, type FindCandidate } from "./find.js";
 import type { A11yNode } from "./a11y.js";
 
-function cand(ref: string, score: number, actionable: FindCandidate["actionable"]): FindCandidate {
+function cand(
+  ref: string,
+  score: number,
+  actionable: FindCandidate["actionable"],
+  role = "button",
+): FindCandidate {
   return {
-    ref, role: "button", stability: "high", selectorHint: `#${ref}`,
+    ref, role, stability: "high", selectorHint: `#${ref}`,
     selectorTier: 1, bbox: null, clipped: actionable !== true, actionable, score,
   };
 }
@@ -212,5 +217,54 @@ describe("rankByVisibility — visibleOnly partition", () => {
     const { ranked, visibleCount } = rankByVisibility(allHidden, true);
     expect(ranked).toEqual([]);
     expect(visibleCount).toBe(0);
+  });
+});
+
+describe("rankByVisibility — container demotion (W-P1)", () => {
+  it("demotes a high-scored structural container below an actionable interactive match", () => {
+    // The reported failure: an enclosing toolbox container scores highest on
+    // an aliased query, the actual tab is rank 4. Containers must sit behind
+    // the interactive control they enclose.
+    const cands = [
+      cand("toolboxRegion", 90, true, "region"),
+      cand("railGroup", 80, true, "group"),
+      cand("featureTab", 30, true, "tab"),
+    ];
+    const { ranked } = rankByVisibility(cands, false);
+    expect(ranked.map((c) => c.ref)).toEqual(["featureTab", "toolboxRegion", "railGroup"]);
+  });
+
+  it("leaves containers in place when NO actionable interactive candidate matched", () => {
+    // "down-rank the container unless no actionable child matches" — if the
+    // container is the best we have, don't bury it.
+    const cands = [
+      cand("regionA", 50, true, "region"),
+      cand("groupB", 40, true, "group"),
+    ];
+    const { ranked } = rankByVisibility(cands, false);
+    expect(ranked.map((c) => c.ref)).toEqual(["regionA", "groupB"]);
+  });
+
+  it("is stable within each sub-group (leaf order and container order preserved)", () => {
+    const cands = [
+      cand("region1", 95, true, "region"),
+      cand("btnA", 60, true, "button"),
+      cand("nav2", 70, true, "navigation"),
+      cand("tabB", 55, true, "tab"),
+    ];
+    const { ranked } = rankByVisibility(cands, false);
+    // leaves keep their relative order (btnA before tabB), then containers
+    // keep theirs (region1 before nav2).
+    expect(ranked.map((c) => c.ref)).toEqual(["btnA", "tabB", "region1", "nav2"]);
+  });
+
+  it("demotion stays within the visible tier — hidden still last", () => {
+    const cands = [
+      cand("visRegion", 90, true, "region"),
+      cand("visBtn", 20, true, "button"),
+      cand("hidTab", 99, "off-screen", "tab"),
+    ];
+    const { ranked } = rankByVisibility(cands, false);
+    expect(ranked.map((c) => c.ref)).toEqual(["visBtn", "visRegion", "hidTab"]);
   });
 });
