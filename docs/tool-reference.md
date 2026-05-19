@@ -98,7 +98,8 @@ When the a11y tree has fewer than 5 interactive descendants under root, a warnin
 ### `find`
 Find candidate elements by natural-language description.
 
-**Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string }`
+**Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string, visibleOnly?: boolean }`
+- `visibleOnly`: default `false`. When `true`, non-actionable candidates (off-screen / clipped / covered / disabled) are **dropped entirely** rather than ranked last — `find` returns an empty `candidates` list **plus** the "no visible candidate" warning. A confident *hidden* hit otherwise lures agents into coordinate fallbacks despite the warning; an empty result is the safer signal ("the target isn't actionable yet — wait/renavigate, don't chase coordinates").
 - `confidenceFloor` (W-A3): emit a `warnings: ["no candidate scored confidently above N (top score: …)"]` block when no top candidate exceeds this score. Default `0` (off). Pass e.g. `0.5` (or any chosen integer) to get a "fall through to snapshot" signal instead of grinding through low-quality results.
 - `contextRef` (W-A3): limit ranking to descendants of this ref. Lets you say "the X *under* Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
 
@@ -317,6 +318,8 @@ For frequently-acted-on anchors across a long session, bind a mnemonic once and 
 
 ### `navigate({ url, ...opts })`
 Goto a URL. Returns an `ActionResult`.
+
+**Target a deployed URL over a dev tunnel when you can.** A cold dev tunnel (ngrok / cloudflared / framework `--tunnel`) routinely takes **>15 s** for first paint — well past the 5 s anti-wedge default — so the first `navigate` may return `ok:false` "anti-wedge timeout" while the page is, in fact, still loading. Treat `navigate`'s deadline as a **soft signal, not a hard failure**: on a timeout against a known-slow origin, follow with `wait_for({ text })` (or a generous per-call `timeoutMs` on the navigate) and re-check, rather than concluding the target is down. A deployed/static origin avoids the whole class — prefer it for calibration/QA runs.
 
 ### `click({ ref?|selector?|named?|coords?, button?, ...opts })`
 Click. Accepts all four target shapes. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.

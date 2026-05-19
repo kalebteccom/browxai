@@ -419,17 +419,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         maxCandidates: z.number().int().positive().max(20).optional(),
         confidenceFloor: z.number().nonnegative().optional().describe("Emit a `warnings` entry when no candidate scored above this floor (default 0 = off)."),
         contextRef: z.string().optional().describe("Limit ranking to descendants of this ref (from a prior snapshot/find). Lets you say 'the X *under* Y' without encoding the relationship in the query."),
+        visibleOnly: z.boolean().optional().describe("Default false. When true, drop non-actionable candidates (off-screen / clipped / covered / disabled) entirely — an empty list + the 'no visible candidate' warning instead of a confident hidden hit that lures you into coordinate fallbacks."),
         ...SESSION_ARG,
       },
     },
-    async ({ query, maxCandidates, confidenceFloor, contextRef, session }) => {
+    async ({ query, maxCandidates, confidenceFloor, contextRef, visibleOnly, session }) => {
       const g = gateCheck("find"); if (g) return g;
       const e = await entryFor(session);
       const s = e.session;
       let result;
       try {
         result = await withDeadline(find(s.page(), s.cdp(), e.refs, {
-          query, maxCandidates, confidenceFloor, contextRef,
+          query, maxCandidates, confidenceFloor, contextRef, visibleOnly,
           testAttributes: config.testAttributes,
           feedback: e.feedback,
           // capability-aware fallback hints — only name a tool the agent can call.

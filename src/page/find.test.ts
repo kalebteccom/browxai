@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildSelectorHint, scoreNode, noVisibleCandidateWarning } from "./find.js";
+import { buildSelectorHint, scoreNode, noVisibleCandidateWarning, rankByVisibility, type FindCandidate } from "./find.js";
 import type { A11yNode } from "./a11y.js";
+
+function cand(ref: string, score: number, actionable: FindCandidate["actionable"]): FindCandidate {
+  return {
+    ref, role: "button", stability: "high", selectorHint: `#${ref}`,
+    selectorTier: 1, bbox: null, clipped: actionable !== true, actionable, score,
+  };
+}
 
 function n(role: string, name: string | undefined, testId?: string, extra: Partial<A11yNode> = {}): A11yNode {
   return { ref: "e1", role, name, testId, children: [], ...extra };
@@ -150,5 +157,33 @@ describe("noVisibleCandidateWarning — capability-aware", () => {
   it("defaults to no suggestions when hints are omitted", () => {
     const w = noVisibleCandidateWarning(1);
     expect(w).not.toContain("You may want to");
+  });
+});
+
+describe("rankByVisibility — visibleOnly partition", () => {
+  const mixed = [
+    cand("hiHidden", 99, "off-screen"),
+    cand("loVisible", 10, true),
+    cand("midDisabled", 50, "disabled"),
+    cand("hiVisible", 90, true),
+  ];
+
+  it("default: visible first (score order), hidden appended (not dropped)", () => {
+    const { ranked, visibleCount } = rankByVisibility(mixed, false);
+    expect(ranked.map((c) => c.ref)).toEqual(["loVisible", "hiVisible", "hiHidden", "midDisabled"]);
+    expect(visibleCount).toBe(2);
+  });
+
+  it("visibleOnly: hidden tier dropped entirely", () => {
+    const { ranked, visibleCount } = rankByVisibility(mixed, true);
+    expect(ranked.map((c) => c.ref)).toEqual(["loVisible", "hiVisible"]);
+    expect(visibleCount).toBe(2);
+  });
+
+  it("visibleOnly with zero visible → empty list but visibleCount 0 (caller still warns)", () => {
+    const allHidden = [cand("a", 80, "off-screen"), cand("b", 70, "covered")];
+    const { ranked, visibleCount } = rankByVisibility(allHidden, true);
+    expect(ranked).toEqual([]);
+    expect(visibleCount).toBe(0);
   });
 });

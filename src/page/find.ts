@@ -61,6 +61,12 @@ export interface FindOptions {
    *  warning. Capability-aware so we never point an agent at a disabled tool
    *  (`coords` needs `action`; `eval_js` needs `eval`). */
   fallbackHints?: { coords: boolean; evalJs: boolean };
+  /** drop non-actionable candidates (off-screen / clipped / covered /
+   *  disabled) entirely instead of ranking them last. A confident hidden
+   *  hit still lures agents into coordinate fallbacks despite the warning;
+   *  `visibleOnly` returns an empty list + the same warning rather than a
+   *  misleading hit. Default false (hidden candidates kept, ranked last). */
+  visibleOnly?: boolean;
 }
 
 export interface FindResult {
@@ -154,10 +160,7 @@ export async function find(
   // ahead of non-actionable ones (off-screen / clipped / covered / disabled),
   // preserving score order within each tier — so a slightly-lower-scored
   // *visible* match outranks a high-scored hidden modal.
-  const isActionable = (c: FindCandidate) => c.actionable === true;
-  const visible = candidates.filter(isActionable);
-  const hidden = candidates.filter((c) => !isActionable(c));
-  const ranked = [...visible, ...hidden];
+  const { ranked, visibleCount } = rankByVisibility(candidates, opts.visibleOnly === true);
 
   // confidence-floor warning (combined with any earlier warnings).
   const floor = opts.confidenceFloor ?? 0;
@@ -172,11 +175,33 @@ export async function find(
   // "the match is wrong" signal — the field report saw confident off-screen
   // dialogs returned for a plainly-visible target. Flag it, and suggest the
   // fallbacks the caller actually has enabled (never name a disabled tool).
-  if (ranked.length > 0 && visible.length === 0) {
-    warnings.push(noVisibleCandidateWarning(ranked.length, opts.fallbackHints));
+  // base this on the pre-filter match count + visible count so it still
+  // fires under `visibleOnly` (where `ranked` is empty when nothing's visible).
+  if (visibleCount === 0 && candidates.length > 0) {
+    warnings.push(noVisibleCandidateWarning(candidates.length, opts.fallbackHints));
   }
 
   return { candidates: ranked, warnings };
+}
+
+/**
+ * Stable-partition candidates: actionable ones first (preserving score order),
+ * non-actionable (off-screen / clipped / covered / disabled) last — so a
+ * slightly-lower-scored *visible* match outranks a high-scored hidden modal.
+ * `visibleOnly` drops the hidden tier entirely: an empty result + the
+ * "no visible candidate" warning is safer than a confident hidden hit the
+ * agent will chase into a coordinate fallback. Pure; exported for tests.
+ */
+export function rankByVisibility(
+  candidates: FindCandidate[],
+  visibleOnly: boolean,
+): { ranked: FindCandidate[]; visibleCount: number } {
+  const visible = candidates.filter((c) => c.actionable === true);
+  const hidden = candidates.filter((c) => c.actionable !== true);
+  return {
+    ranked: visibleOnly ? visible : [...visible, ...hidden],
+    visibleCount: visible.length,
+  };
 }
 
 /**
