@@ -174,6 +174,27 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-14 asks (post-shipping, 2026-05-19 — multi-agent QA campaign)
+
+Source: `docs/adoption-report-multiagent-qa-2026-05-19.md` — a team-lead-over-
+sub-agents unattended campaign at scale. W-M1 confirmed existential. Five
+follow-ons, reframed to problem classes; the arbitrary-JS posture is
+preserved throughout (W-N1 reuses `sample`'s fixed-enum + `batch`'s tool
+whitelist — no agent-supplied JS).
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-N1** 🔴 | A tool round trip is ~seconds, so `action` then a *separate* `read` lands **after** transient UI (spinner / pending button / in-flight counter) already resolved → the agent wrongly scores it "fine". Today: artisanal `eval_js`-that-acts-and-reads, or `sample`/`watch` blind to the action timing. | `act_and_sample({ action: {tool,args}, metric(s), durationMs, intervalMs\|everyFrame, summary? })` — start the **fixed-enum** sampler (W-J3), dispatch ONE whitelisted inner action concurrently (the `batch` whitelist; no nested batch / no `await_human` / no human-blocking), return `{ result, samples\|summary }`. Anti-wedge (W-M1) + sample caps apply. No agent JS. Closes the state-capture-latency blind spot — highest-value new capability. | **impl-pending** |
+| **W-N2** 🟡 | At multi-agent scale a wedged/killed agent strands sessions; per-id `close_session` is O(n) (≈6 calls/recovery). Memory pressure + orphaned state. | `close_sessions({ prefix?, all?, idleMs? })` — bulk teardown by id-prefix, or all, or idle-age. Registry tracks `lastActivityAt` (touched on every `entryFor`) for the idle form. The team-lead reap primitive. | **impl-pending** |
+| **W-N3** 🟡 | Dev-build overlays (devtools iframe, HMR widgets) intercept coordinate clicks; every agent hand-rolls iframe removal in `eval_js` each session. | `hideOverlaySelectors: string[]` config key (precedence; default `[]`). An init-script applied per navigation sets matching elements `pointer-events:none; display:none` (non-destructive; not `remove()`). Generic, config-driven, no agent JS. | **impl-pending** |
+| **W-N4** 🟢 | Long high-rate `sample`/trace windows (300+ pts) balloon tool-result tokens; the agent almost always wants only the signal. | Auto-default `summary` (omit full `series`) when the projected point count is large (everyFrame + long window, or count over a threshold); explicit `summary:false` opts back into the full series. Tuning on W-K1. | **impl-pending** |
+| **W-N5** 🟢 | `find()` returning only hidden/clipped candidates still misleads agents into coordinate fallbacks despite the W-J2 warning. | `find({ visibleOnly?: true })` — drop non-actionable candidates entirely (return empty + the W-J2 warning rather than confident hidden hits). Plus docs: prefer a deployed target over a dev tunnel (tunnel first-load >15s); `navigate`'s deadline is a soft signal, not a hard failure. | **impl-pending** |
+
+**Affirmed, no-op:** keep W-M1 on-by-default at the 5s default (it is) —
+the campaign calls this "existential, not nice-to-have".
+
+**Sequence:** W-N1 → W-N2 → W-N3 → W-N4 → W-N5.
+
 ## Round-13 ask (post-shipping, 2026-05-18 — owner request: anti-wedge)
 
 Source: owner — sub-agents run actions that become no-ops and the engine
