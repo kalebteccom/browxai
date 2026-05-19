@@ -18,9 +18,16 @@ coverage/
 .vscode/
 *.log
 
-# Raw client-named field reports — adopters / agents drop these in-tree, but
-# the repo is heading public. They MUST be sanitized into a target-agnostic
-# docs/adoption-report-*.md before anything is committed. The raw form is
-# never tracked. (Hygiene: cf. docs/first-consumer-asks.md round-10/11.)
+# Raw client-named adopter/agent reports — they keep dropping these in-tree,
+# but the repo is heading public. They MUST be sanitized into a target-
+# agnostic docs/adoption-report-*.md before anything is committed; the raw
+# form is NEVER tracked. Broad on purpose: any *-REPORT-*.md / REPORT-*.md /
+# *-report.md at the repo ROOT is raw-until-sanitized. Canonical reports live
+# under docs/ (path-anchored rules below don't match docs/).
+# (Hygiene: cf. docs/first-consumer-asks.md round-10/11/14.)
+/*-REPORT-*.md
+/REPORT-*.md
+/*-report.md
 FIELD-REPORT-*.md
+USAGE-REPORT-*.md
 *-field-report.md
