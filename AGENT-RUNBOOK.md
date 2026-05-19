@@ -29,8 +29,12 @@
   (MCP-driven `get/set/reset_config`, env demoted to legacy), session registry (per-session
   isolated state, `session` arg on every tool, `open/close/list_session`), session modes
   (persistent / incognito / attached). Remaining: general-driving defaults + this docs pass.
-- **Phase-2 close** gates only on the **headless-CI keystone** now (the runbook's sole open
-  verification item — see "Open verification work").
+- **Phase-2 close** — **MET 2026-05-19.** The headless-CI keystone landed
+  (`test/keystone/headless.keystone.test.ts`, `pnpm test:keystone`, isolated CI job) and is
+  green end-to-end against a real headless Chromium: the six non-trivial primitives, the
+  MCP-driven config model (zero `BROWX_*` config env), two-user cookie-jar isolation, and
+  incognito no-trace — also closing the three `[~]` Phase-2.5 exit criteria. `await_human` /
+  the `__browx` visual banner are the documented headless gap (human-in-the-loop by design).
 - **Phase 3** — public release. Gated on the 4-condition trigger in the spec.
 
 The full chronology lives in the portfolio's `projects/agent-browser-bridge/progress.md`.
@@ -183,7 +187,18 @@ session drove browxai end-to-end through a real authed SPA on 2026-05-15 ("gappy
 report at `docs/adoption-report-nonclaude-spa-2026-05-15.md`; the rough edges it surfaced
 shipped as round-8 G1–G5). The remaining Phase-2-close item is a single exercise:
 
-### Headless-CI keystone (the sole remaining Phase-2-close item)
+### Headless-CI keystone — DONE 2026-05-19 (Phase-2 close)
+
+**Status.** Landed and green end-to-end on a real headless Chromium:
+`test/keystone/headless.keystone.test.ts` (+ `test/keystone/fixture.ts`, a zero-dep Node
+`http` fixture), run via `pnpm test:keystone` (own `vitest.keystone.config.ts`) in a
+dedicated CI job that installs Chromium — the hermetic `pnpm test` unit job stays
+browser-free. Drives the real MCP tool handlers in-process via the new `createServer().handlers`
+seam: six non-trivial primitives (`snapshot`→`find`→`fill`→`choose_option`→`text_search`→`inspect`)
+with token-equality asserts, the MCP-driven config model under **zero `BROWX_*` config env**,
+two-user cookie-jar isolation, and incognito no-trace (cwd untouched, no profile dir). The
+`await_human` / `__browx` banner case is a deliberately-skipped, *named* headless gap. The
+historical detail below is kept for context.
 
 **Goal.** Confirm `BROWX_HEADLESS=1` works against a real flow end-to-end, not just a smoke
 test.
@@ -314,18 +329,24 @@ a structural/name selector or compose: `[data-testid^="card-"]:has-text("…")`.
   / CDP attach failure / MCP-client misbehaviour. Write a `docs/blockers/<topic>.md`, push
   the branch, summarise in the chat so the human can unblock.
 
-## Definition of done — Phase 2 close
+## Definition of done — Phase 2 close — MET 2026-05-19
 
 The roadmap's Phase-2 exit criteria (`projects/agent-browser-bridge/roadmap.md` § Phase 2)
-are 6 of 7 ticked. The remaining one:
+are **all 7 ticked**:
 
 - [x] **A non-Claude MCP client has driven a non-trivial task through browxai successfully.**
       MET 2026-05-15 (Codex / `docs/adoption-report-nonclaude-spa-2026-05-15.md`).
-- [~] **Headless/CI mode works.** `BROWX_HEADLESS=1` is wired; needs the keystone test +
-      green CI run. **This is the only thing between here and Phase-2 close.** Note: Phase 2.5
-      (session/config) landed between the verification run and the keystone deliberately, so
-      the keystone exercises the *session/config model* (config via `set_config`, an explicit
-      `session`, `incognito` mode for a no-trace CI run), not the env-var singleton.
+- [x] **Headless/CI mode works.** MET 2026-05-19 — the headless-CI keystone landed and is
+      green end-to-end on a real headless Chromium (validated locally; the dedicated CI
+      `keystone` job runs the same `pnpm test:keystone` and confirms on each push). It
+      exercises the *session/config model* (config via `set_config`, explicit `session`,
+      `incognito`) — not the env-var singleton — and also closes the three `[~]` Phase-2.5
+      criteria (zero-env config, two-user isolation, incognito no-trace). Headless gap
+      (`await_human` / `__browx` banner) documented as a deliberate skip.
+
+Phase 2 is closed. The next genuinely-next phase is **Phase 3 public release**, gated on the
+4-condition trigger (below) — still not met (#1 stuck-landed-*weeks* and #2 API-stable-~1mo
+remain open; the round cadence is the #2 bottleneck).
 
 When it closes, sync back to the portfolio (`progress.md` + roadmap status + portfolio
 table), open `/gpd:advance-stage` if you want, and the next genuinely-next phase is **Phase 3
