@@ -378,6 +378,13 @@ Wait until an element is visible, **or** (W-J1) until visible `text` appears any
 ### `go_back({ ...opts })` / `go_forward({ ...opts })`
 History navigation.
 
+### `tab_visibility({ state, holdMs?, session? })`
+Background or foreground the session's tab — the only way to reproduce the bug class that **only fires when the tab is hidden**: throttled `setTimeout`, paused `requestAnimationFrame` (framework enter/animation hooks never run), and an on-return `visibilitychange`/focus handler that replays stale state. browxai otherwise keeps the driven tab foreground, so agentic QA scores these flows PASS while they're broken.
+- `state: "background"` — overrides `document.visibilityState`/`hidden` and dispatches `visibilitychange` (+ `blur`), **and** best-effort takes front focus away from the page (a blank scratch page in the same context is brought to front) so real timer/rAF throttling applies. The synthetic flip is deterministic everywhere; **real throttling is best-effort and may not occur under headless** — the result's `realBackgrounding` and `note` say which you got (named, never silently assumed).
+- `state: "background"` **with `holdMs`** is the headline form: background → hold hidden `holdMs` → auto-foreground, reproducing the background→return transition in one call. Returns `state:"foreground"` + `heldMs`.
+- `state: "foreground"` — restores visibility (+ `focus`) and re-focuses the tab.
+- No agent JS (server-injected fixed script, same posture as the sampler / overlay-hide). Capability: `navigation`.
+
 ### `scroll({ ref?|selector?|named?|coords?, to?, by?, intoView?, ...opts })`
 One general scroll primitive (capability: `navigation`):
 

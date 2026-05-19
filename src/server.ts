@@ -17,6 +17,7 @@ import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
 import { inspectElement } from "./page/inspect.js";
 import { watchWindow } from "./page/watch.js";
+import { setTabVisibility } from "./page/visibility.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
 import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "./util/deadline.js";
@@ -1163,6 +1164,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       const td = actionTimeout({ timeoutMs });
       return asActionResultText(actions.setViewport(ctxFor(e), { width, height, deadlineMs: td.ms, deadlineWarning: td.warning }));
+    },
+  );
+
+  register(
+    "tab_visibility",
+    {
+      description:
+        "Background or foreground the session's tab — the only way to reproduce the bug class that only fires when the tab is hidden (throttled setTimeout, paused requestAnimationFrame so framework enter/animation hooks never run, and on-return a visibilitychange/focus handler replays stale state). `state:\"background\"` overrides document.visibilityState/hidden + dispatches visibilitychange, AND best-effort takes front focus away from the page so real timer/rAF throttling applies (real throttling is best-effort under headless). `state:\"background\"` with `holdMs` is the headline form: background, hold hidden for holdMs, then auto-foreground — reproducing the background→return transition in one call. `state:\"foreground\"` restores visibility and re-focuses the tab.",
+      inputSchema: {
+        state: z.enum(["background", "foreground"]).describe("background = hide/deprioritise the tab; foreground = restore + re-focus."),
+        holdMs: z.number().int().positive().max(120_000).optional().describe("background only: hold hidden this long (ms), then auto-foreground. Cap 120000."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ state, holdMs, session }) => {
+      const g = gateCheck("tab_visibility"); if (g) return g;
+      const e = await entryFor(session);
+      const result = await setTabVisibility(e.session.page(), e.session.page().context(), state, holdMs);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     },
   );
 
