@@ -1,4 +1,4 @@
-// `browxai init <workspace>` — bootstrap a per-app workspace (wishlist W-B6).
+// `browxai init <workspace>` — bootstrap a per-app workspace ().
 //
 // Creates `<workspace>/.browxai/` (the consumer-co-located `BROWX_WORKSPACE`),
 // emits a workspace-scope `.mcp.json` snippet the user can drop into their MCP

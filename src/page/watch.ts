@@ -1,4 +1,4 @@
-// W-H4: timed observation window with no driving action.
+// timed observation window with no driving action.
 //
 // `ActionResult`'s structure diff is endpoint-only (pre vs post) — a *transient*
 // element that appears AND disappears inside the window is invisible to it.

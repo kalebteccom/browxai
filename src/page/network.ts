@@ -12,7 +12,7 @@ export interface NetworkEntry {
   type: string;
   ms?: number;
   failed?: boolean;
-  /** CDP request id — the handle `network_body` resolves (W-H5). Short-lived:
+  /** CDP request id — the handle `network_body` resolves. Short-lived:
    *  the renderer discards bodies fairly quickly, so fetch soon after. */
   requestId?: string;
 }
@@ -23,7 +23,7 @@ export interface NetworkSummary {
   failed: number;
 }
 
-/** W-F5: bounded summary of a write-shaped request whose response landed in the
+/** bounded summary of a write-shaped request whose response landed in the
  *  action window. `responseShape` is the *top-level keys* of the parsed JSON
  *  response — no values, no nested keys. `urlPattern` strips the query string
  *  and replaces id-shaped path segments (numeric / UUID / hex) with `:id`. */
@@ -87,7 +87,7 @@ export class NetworkTap {
         type: r.type,
         ms,
       });
-      // W-F5: write-shaped + 2xx → kick off a bounded body probe for `mutations`.
+      // write-shaped + 2xx → kick off a bounded body probe for `mutations`.
       // Captured request fields are snapshotted into the closure since the entry
       // gets deleted below.
       if (MUTATION_METHODS.has(r.method) && e.response.status >= 200 && e.response.status < 300) {
@@ -138,7 +138,7 @@ export class NetworkTap {
 }
 
 // ---------------------------------------------------------------------------
-// W-H1: WebSocket / Server-Sent-Events frame capture.
+// WebSocket / Server-Sent-Events frame capture.
 //
 // `network_read` / `ActionResult.network` only see HTTP. Realtime correctness
 // (chat, multiplayer, collaborative editing, live dashboards) is only
@@ -232,7 +232,7 @@ export class WsBuffer {
 }
 
 /**
- * W-H5: fetch a response body by CDP request id. Gated behind the off-by-
+ * fetch a response body by CDP request id. Gated behind the off-by-
  * default `network-body` capability — full bodies can carry PII / tokens.
  * Bounded (`maxBytes`, default 256 KB). Best-effort: the renderer discards
  * bodies fairly quickly, so this can legitimately fail with "not available".

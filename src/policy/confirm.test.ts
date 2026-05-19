@@ -14,7 +14,7 @@ function ctx(over: Partial<ConfirmContext> = {}): ConfirmContext {
   };
 }
 
-describe("ApprovalStore — W-G1 session pre-approvals", () => {
+describe("ApprovalStore — session pre-approvals", () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 

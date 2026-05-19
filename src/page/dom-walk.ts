@@ -1,4 +1,4 @@
-// DOM-walk fallback — Phase-1.5 asks #7 + #8 + #11.
+// DOM-walk fallback — Phase-1.5 .
 //
 // The 2026-05-13 target-app adoption found that `Accessibility.getFullAXTree` returns
 // root-only on heavy SPAs whose markup is mostly `div`s with `data-testid`/`data-type`
@@ -126,7 +126,7 @@ const PAGE_SCRIPT = `function(testAttrs, max) {
     }
     var text = (el.textContent || '').replace(/\\s+/g, ' ').trim();
     if (text && text.length <= 120) return text;
-    // W-G4: title attribute as last-resort label source. Icon-only buttons
+    // title attribute as last-resort label source. Icon-only buttons
     // commonly carry their visible label here when neither aria-label nor
     // textContent (the icon's empty span) is set.
     var title = el.getAttribute('title');

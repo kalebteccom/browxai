@@ -7,7 +7,7 @@ function n(role: string, name?: string, children: A11yNode[] = []): A11yNode {
   return { ref: `e${++seq}`, role, name, children };
 }
 
-describe("searchTreeForText — W-F4 pure-tree match", () => {
+describe("searchTreeForText — pure-tree match", () => {
   it("finds substring matches (case-insensitive) by default", () => {
     seq = 0;
     const tree = n("WebArea", undefined, [

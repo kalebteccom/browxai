@@ -1,4 +1,4 @@
-// `browxai doctor` — environment + connectivity health-check (wishlist W-D3).
+// `browxai doctor` — environment + connectivity health-check ().
 //
 // Prints a ✓/✗ checklist + one-line fix per failing check. Exits 0 iff everything
 // passes, 1 otherwise. Writes to stdout (this is a CLI subcommand, not the MCP

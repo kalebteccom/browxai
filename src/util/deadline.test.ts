@@ -4,7 +4,7 @@ import {
   DEFAULT_ACTION_TIMEOUT_MS, MAX_ACTION_TIMEOUT_MS, MIN_ACTION_TIMEOUT_MS,
 } from "./deadline.js";
 
-describe("withDeadline — W-M1", () => {
+describe("withDeadline", () => {
   it("resolves with the value when the op beats the deadline", async () => {
     await expect(withDeadline(Promise.resolve(42), 1000, "x")).resolves.toBe(42);
   });
@@ -37,7 +37,7 @@ describe("withDeadline — W-M1", () => {
   });
 });
 
-describe("clampTimeout — W-M1 ceiling", () => {
+describe("clampTimeout — ceiling", () => {
   it("uses the fallback when no request is given", () => {
     expect(clampTimeout(undefined, DEFAULT_ACTION_TIMEOUT_MS)).toEqual({ ms: DEFAULT_ACTION_TIMEOUT_MS });
   });

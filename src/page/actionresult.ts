@@ -51,7 +51,7 @@ export interface ElementProbe {
    *  no labelled ancestor was found. Convenience alias for
    *  `ownerControl?.displayTextAfter` when an owner was detected. */
   displayText?: string | null;
-  /** W-F2: state of the logical *owning control* (combobox / listbox /
+  /** state of the logical *owning control* (combobox / listbox /
    *  radiogroup / labelled field wrapper) the action targeted. The caller
    *  often acts on an inner element (an option, a hidden input), but what
    *  *changed* is the owner's displayed state. `displayTextBefore` /
@@ -64,7 +64,7 @@ export interface ElementProbe {
     displayTextAfter?: string;
     changed: boolean;
   };
-  /** W-F2: state of the repeated *container* (row / listitem / article /
+  /** state of the repeated *container* (row / listitem / article /
    *  `<tr>` / `<li>`) the target lives inside. `rowText` is the container's
    *  visible text post-action; `changed: true` when it differed pre-vs-post.
    *  Lets the caller confirm a row-level save changed the row without
@@ -76,7 +76,7 @@ export interface ElementProbe {
     rowText?: string;
     changed?: boolean;
   };
-  /** W-F2: coordinate-action evidence. Only populated for `coords` targets.
+  /** coordinate-action evidence. Only populated for `coords` targets.
    *  `before` is `document.elementFromPoint(x, y)` immediately before the
    *  action; `after` is the same point after settling (the page may have
    *  re-rendered or scrolled). `focusChanged` flags whether the active
@@ -86,7 +86,7 @@ export interface ElementProbe {
     after?: HitPoint | null;
     focusChanged?: boolean;
   };
-  /** W-H2: post-scroll geometry of the relevant scroller (the scrolled
+  /** post-scroll geometry of the relevant scroller (the scrolled
    *  container for `scroll` container-mode, else the window/document). Lets a
    *  caller assert "the older page prepended" (`scrollHeight` grew),
    *  "pinned to bottom" (`atBottom`), etc. without `eval_js`. Only populated
@@ -127,7 +127,7 @@ export interface ActionResult {
   console: {
     errors: string[];
     warnings: number;
-    /** Wishlist W-A5: number of chars trimmed from the summarised view of `errors`
+    /** number of chars trimmed from the summarised view of `errors`
      *  (long React stack-traces etc). The full message is retained via `console_read`. */
     truncated_chars?: number;
   };
@@ -145,13 +145,13 @@ export interface ActionResult {
     /** Phase-2: count of requests in this action window that left
      *  `BROWX_ALLOWED_ORIGINS` (0 when no allowlist is set). */
     egressOffAllowlist?: number;
-    /** W-F5: bounded summary of write-shaped requests (POST/PUT/PATCH/DELETE,
+    /** bounded summary of write-shaped requests (POST/PUT/PATCH/DELETE,
      *  2xx) whose response body parsed as JSON. `responseShape` carries the
      *  *top-level keys only* — no values, no nested keys. Use to confirm a
      *  mutation succeeded and what shape it wrote back, without exposing the
      *  full response body. Absent when no mutations landed in the window. */
     mutations?: MutationEntry[];
-    /** W-H1: WebSocket/SSE frames that arrived during this action window
+    /** WebSocket/SSE frames that arrived during this action window
      *  (payloads truncated). Absent when none. Use to verify realtime
      *  correctness — e.g. that a click produced the expected broadcast. */
     wsFrames?: WsFrame[];
@@ -173,11 +173,11 @@ export interface ActionContext {
   /** Phase-2: origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
    *  Empty allow-set means "no allowlist" → egress count is always 0. */
   originPolicy?: import("../policy/origin.js").OriginPolicy;
-  /** Wishlist W-C2: if a recording is active, the recorder is wired in here so
+  /** if a recording is active, the recorder is wired in here so
    *  successful actions append to the recording. Best-effort: errors during
    *  recording never affect the action's outcome. */
   recorder?: import("./recording.js").Recorder;
-  /** W-H1: session WS/SSE frame ring. When present, frames that arrived during
+  /** session WS/SSE frame ring. When present, frames that arrived during
    *  the action window are sliced into `ActionResult.network.wsFrames`. */
   ws?: import("./network.js").WsBuffer;
 }
@@ -190,16 +190,16 @@ export interface ActionWindowOptions {
   networkRequestCap?: number;
   /** Post-dispatch settle delay in ms — let CDP events / framework reconciliations drain. */
   settleMs?: number;
-  /** W-M1: hard anti-wedge deadline (ms) for the action body. Already clamped
+  /** hard anti-wedge deadline (ms) for the action body. Already clamped
    *  to [1, 3_600_000] by the caller. The body is raced against this; on
    *  expiry the action returns `ok:false` with the timeout error rather than
    *  stalling on a wedged page op. */
   deadlineMs?: number;
-  /** W-M1: if the caller requested an over-ceiling (insane) timeout, this
+  /** if the caller requested an over-ceiling (insane) timeout, this
    *  carries the "clamped + that's almost always a mistake" warning so it
    *  surfaces in the ActionResult, not just server stderr. */
   deadlineWarning?: string;
-  /** Wishlist W-C2: caller-supplied selectorHint info for the recorder. Without
+  /** caller-supplied selectorHint info for the recorder. Without
    *  this the recorded step has the action + url but no locator for the YAML
    *  scaffold; callers should populate it whenever they resolved a target. */
   recordingHint?: { selectorHint: string; stability?: "high" | "medium" | "low" };
@@ -250,7 +250,7 @@ export async function runInActionWindow(
   let error: string | undefined;
   let elementProbe: ElementProbe | undefined;
   try {
-    // W-M1: race the action body against the hard anti-wedge deadline. A
+    // race the action body against the hard anti-wedge deadline. A
     // wedged page op (evaluate/CDP that ignores timeouts) becomes a clean
     // ok:false ActionResult within the deadline instead of an infinite stall.
     const probe = await withDeadline(
@@ -283,7 +283,7 @@ export async function runInActionWindow(
       structure.newTabs.push({ url: p.url(), title: await p.title().catch(() => "") });
     }
   }
-  // Wishlist W-A5: summarise long console errors inline. A single React stack-trace
+  // summarise long console errors inline. A single React stack-trace
   // is routinely ~50 lines / ~1500 tokens; the agent rarely needs the full thing in
   // an ActionResult. We truncate per-error to the first line + a token-budget cap,
   // record the trimmed-chars total, and a warnings entry points the agent at
@@ -293,7 +293,7 @@ export async function runInActionWindow(
   consoleSlice.warnings = ctx.console.warningCountSince(tBefore);
   const pageErrors = ctx.console.pageErrorsSince(tBefore);
 
-  // Wishlist W-A6: smarter `mode` defaults. When the default `scoped_snapshot` was
+  // smarter `mode` defaults. When the default `scoped_snapshot` was
   // requested AND the action produced no structural change (no nav, no appeared/
   // removed regions), it's almost never useful to emit any tree — the adopter
   // reported routinely setting `mode: "none"` for this reason. Promote to `none`
@@ -307,7 +307,7 @@ export async function runInActionWindow(
     effectiveMode = "none";
     warnings.push("snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:\"full\" if you need the post-action tree anyway");
   }
-  // Wishlist W-A2: when scoped_snapshot mode is honoured and there are scope-able
+  // when scoped_snapshot mode is honoured and there are scope-able
   // refs (action's ref + appeared regions), serialise *just those subtrees* instead
   // of the full tree.
   const scopeRefs: string[] = [];
@@ -320,7 +320,7 @@ export async function runInActionWindow(
     ? (await import("../policy/confirm.js")).countEgressOffAllowlist(network.requests, ctx.originPolicy)
     : 0;
   const mutationsBlock = network.mutations.length > 0 ? { mutations: network.mutations } : {};
-  // W-H1: WS/SSE frames that arrived during this action window.
+  // WS/SSE frames that arrived during this action window.
   const wsSlice = ctx.ws ? ctx.ws.since(tBefore) : [];
   const wsBlock = wsSlice.length > 0 ? { wsFrames: wsSlice } : {};
   const networkBlock = network.summary.total > 0
@@ -333,7 +333,7 @@ export async function runInActionWindow(
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
   }));
 
-  // W-C2 / W-G5: append to recording when (a) action succeeded, (b) recording
+  // append to recording when (a) action succeeded, (b) recording
   // is active, and (c) the action is *replayable as a flow-file step*. Coord-mode
   // click/hover have neither a descriptor ref/selector nor a recordingHint —
   // they're an escape hatch for visually-located targets that flow files can't
@@ -414,7 +414,7 @@ function buildSnapshotDelta(
   tree: A11yNode | null,
   maxTokens: number,
   warnings: string[],
-  /** Wishlist W-A2: refs to scope the delta to (action's ref + appeared regions).
+  /** refs to scope the delta to (action's ref + appeared regions).
    *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
   scopeRefs: string[] = [],
 ): ActionResult["snapshotDelta"] {
@@ -433,7 +433,7 @@ function buildSnapshotDelta(
   }
 
   if (renderMode === "scoped_snapshot" && scopeRefs.length > 0) {
-    // W-A2: real scope-down. Serialise just the action's element subtree + any
+    // real scope-down. Serialise just the action's element subtree + any
     // newly-appeared top-level regions. Drops 7-10k-token snapshots to ~500-1500
     // on the heavy-SPA / many-elements shape.
     const subtrees = scopeRefs
@@ -472,7 +472,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Wishlist W-A5. Inline summary of console errors — collapse multi-line stack-traces
+ * . Inline summary of console errors — collapse multi-line stack-traces
  * to their first line + a token-budget per error, and emit `truncated_chars` if any
  * were trimmed. The full text is still in the session's `ConsoleBuffer`; an agent
  * who needs it calls `console_read`. Pattern mirrors the existing

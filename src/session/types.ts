@@ -7,7 +7,7 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 
 export type SessionMode = "managed" | "byob";
 
-/** W-H6: resolved device/viewport emulation options applied at context
+/** resolved device/viewport emulation options applied at context
  *  creation. A subset of Playwright's context options — enough for
  *  responsive / touch / DPR testing without re-exposing the whole API. */
 export interface DeviceConfig {
@@ -24,9 +24,9 @@ export interface SessionOptions {
   attachCdp?: string;
   /** Workspace-rooted profile dir (managed only). */
   profileDir?: string;
-  /** W-H6: device/viewport emulation, applied at context creation. */
+  /** device/viewport emulation, applied at context creation. */
   device?: DeviceConfig;
-  /** W-L1: launch with `--disable-web-security --disable-site-isolation-trials`
+  /** launch with `--disable-web-security --disable-site-isolation-trials`
    *  (SOP/CORS OFF browser-wide). managed/incognito only; loud-warned. */
   disableWebSecurity?: boolean;
 }

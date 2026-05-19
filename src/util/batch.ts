@@ -6,10 +6,10 @@
 export interface BatchCall {
   tool: string;
   args?: Record<string, unknown>;
-  /** W-F6: opaque label echoed verbatim in the result for cross-referencing in
+  /** opaque label echoed verbatim in the result for cross-referencing in
    *  long batches ("set type", "set initiative", "save row"). Free-form. */
   label?: string;
-  /** W-F6: optional post-call assertions. Failing any assertion marks the call
+  /** optional post-call assertions. Failing any assertion marks the call
    *  as `ok: false` with `error` set to the failed predicate, and respects
    *  `stopOnError`. Minimal predicate set — not a full assertion DSL. */
   expect?: BatchExpect;
@@ -30,7 +30,7 @@ export interface BatchExpect {
 
 export interface BatchEntry {
   tool: string;
-  /** Echo of the call's `label` (W-F6) when supplied. */
+  /** Echo of the call's `label` when supplied. */
   label?: string;
   ok: boolean;
   result?: unknown;

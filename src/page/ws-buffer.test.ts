@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { WsBuffer, fetchResponseBody } from "./network.js";
 
-describe("fetchResponseBody — W-H5", () => {
+describe("fetchResponseBody", () => {
   it("returns the body for a retained response", async () => {
     const cdp = { send: vi.fn(async () => ({ body: '{"id":1}', base64Encoded: false })) } as never;
     const r = await fetchResponseBody(cdp, "req-1");
@@ -38,7 +38,7 @@ function fakeCdp() {
   };
 }
 
-describe("WsBuffer — W-H1 frame capture", () => {
+describe("WsBuffer — frame capture", () => {
   it("maps webSocketCreated url onto subsequent frames, both directions", async () => {
     const { cdp, fire } = fakeCdp();
     const ws = new WsBuffer(cdp);

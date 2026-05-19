@@ -1,4 +1,4 @@
-// BYOB / CDP-attach session — first-consumer ask #1.
+// BYOB / CDP-attach session — .
 // Off by default; the canonical entrypoint must opt in via BROWX_ATTACH_CDP=<loopback>.
 // Loopback-only (127.0.0.1 / localhost / ::1) — refuses non-loopback hosts.
 // Not-owned semantics: on close we detach the CDP session, but never close the
@@ -52,7 +52,7 @@ export async function openByobSession(opts: SessionOptions & { attachCdp: string
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);
 
-  // W-A5 / W-G3: ensure the attached page reports a usable viewport so the
+  // ensure the attached page reports a usable viewport so the
   // visible-rect bbox path (page/bbox.ts) doesn't intersect against `innerWidth=0
   // innerHeight=0` and produce `null + clipped: true` for every visible element.
   //

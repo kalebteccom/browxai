@@ -117,7 +117,7 @@ describe("runBatch — sequential dispatch", () => {
   });
 });
 
-describe("runBatch — W-F6 labels + expect", () => {
+describe("runBatch — labels + expect", () => {
   it("echoes the call's label on the result entry", async () => {
     const report = await runBatch(
       [{ tool: "click", label: "set type", args: {} }],

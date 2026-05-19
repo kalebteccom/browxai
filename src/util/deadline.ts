@@ -1,4 +1,4 @@
-// W-M1: anti-wedge deadline.
+// anti-wedge deadline.
 //
 // Several inner paths have no Playwright/CDP timeout (`page.evaluate`,
 // CDP `send`, a wedged renderer). `withDeadline` races the operation against

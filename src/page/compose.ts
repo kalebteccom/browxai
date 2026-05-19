@@ -1,5 +1,5 @@
 // Compose the a11y tree + the DOM-walk fallback into a single tree.
-// Phase-1.5 asks #7 / #8 / #11.
+// Phase-1.5 .
 //
 // Behaviour:
 //   - Always get the a11y tree first (it carries roles, accessible names, structure).
@@ -58,7 +58,7 @@ export async function composeSnapshot(
   // After merging a11y + DOM-walk, tag descendants of repeated containers
   // with their structural neighbourhood (row/column/rowText). Cheap O(n)
   // pass; callers like `find()` ship these annotations as candidate
-  // evidence and W-F2's container-probe references them.
+  // evidence and 's container-probe references them.
   if (a11y) annotateStructuralContext(a11y);
 
   const warnings: string[] = [];

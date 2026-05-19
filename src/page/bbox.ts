@@ -1,4 +1,4 @@
-// Visible-rect bbox computation — first-consumer ask #5.
+// Visible-rect bbox computation — .
 //
 // `getBoundingClientRect()` intersected with each ancestor whose `overflow` isn't
 // `visible`, then with the viewport. Returns null + clipped:true when the result
@@ -17,7 +17,7 @@ export interface VisibleRect {
 // Function source (runs in page context). Stringified so we can pass it to
 // `Runtime.callFunctionOn` with the resolved DOM node as `this`.
 //
-// W-G3: clipping is *only* triggered by `overflow: hidden` or `overflow: clip`.
+// clipping is *only* triggered by `overflow: hidden` or `overflow: clip`.
 // `overflow: auto` / `scroll` are scrollable, **not** clipping — the element's
 // `getBoundingClientRect()` already accounts for the current scroll position,
 // so the rect reflects the element's actual visible position. The previous

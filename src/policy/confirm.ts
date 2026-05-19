@@ -20,7 +20,7 @@ export interface ConfirmContext {
   bridge: BrowxBridge | null;
   /** True iff the active session attached over CDP (BYOB). */
   isByob: boolean;
-  /** W-G1: session-scoped pre-approvals. When a scope is granted, confirm
+  /** session-scoped pre-approvals. When a scope is granted, confirm
    *  hooks for that scope auto-approve without the page-side `__browx.confirm`
    *  round-trip. Lets non-Claude MCP clients run unattended without a human
    *  at DevTools to issue confirms. */
@@ -28,7 +28,7 @@ export interface ConfirmContext {
 }
 
 /**
- * W-G1: session-scoped pre-approvals. The non-Claude verification path
+ * session-scoped pre-approvals. The non-Claude verification path
  * surfaced that `__browx.confirm(true)` is operator-driven — a non-Claude MCP
  * client can't drive it from inside a blocked action call. This store lets
  * the client pre-approve confirm scopes for a TTL window. Each grant +
@@ -110,7 +110,7 @@ export async function confirmNavigation(url: string, ctx: ConfirmContext): Promi
     return { ok: true, reason: "off-allowlist; no hook", asked: false };
   }
   if (ctx.approvals?.consume("navigate_off_allowlist")) {
-    return { ok: true, reason: "pre-approved (W-G1)", asked: false };
+    return { ok: true, reason: "pre-approved", asked: false };
   }
   if (!ctx.bridge) {
     // No bridge means no way to confirm — fail closed.
@@ -151,7 +151,7 @@ export async function confirmByobAction(
     return { ok: true, reason: "byob; no confirm hook", asked: false };
   }
   if (ctx.approvals?.consume("byob_action")) {
-    return { ok: true, reason: "pre-approved (W-G1)", asked: false };
+    return { ok: true, reason: "pre-approved", asked: false };
   }
   if (!ctx.bridge) {
     return { ok: false, reason: "byob; no helper bridge to confirm; blocked", asked: false };

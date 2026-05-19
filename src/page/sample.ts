@@ -1,8 +1,8 @@
-// W-J3: bounded frame-aligned metric sampler.
+// bounded frame-aligned metric sampler.
 //
 // Jank / CLS / scroll-drift QA needs "sample this DOM metric every animation
 // frame for N ms and return the series". The metric is a **fixed enum** — the
-// agent supplies NO JavaScript (that would re-open the loophole W-J1 closes;
+// agent supplies NO JavaScript (that would re-open the loophole closes;
 // arbitrary JS stays `eval_js`, gated behind the `eval` capability). browxai
 // supplies the fixed in-page rAF / interval loop.
 
@@ -27,7 +27,7 @@ export interface SampleArgs {
   durationMs: number;
   everyFrame?: boolean;
   intervalMs?: number;
-  /** W-K1: return only the reduced `summary` instead of the full `series`.
+  /** return only the reduced `summary` instead of the full `series`.
    *  Pure server-side reduction of the already-collected fixed-metric series
    *  — no agent JS, no eval surface. */
   summary?: boolean;
@@ -181,7 +181,7 @@ export async function sampleMetric(
     series = await page.evaluate(windowSampler as never, params);
   }
 
-  // W-K1: `summary` is always cheap to compute and included; the full
+  // `summary` is always cheap to compute and included; the full
   // `series` is omitted when the caller asked for `summary: true` (long
   // high-rate windows serialise large — the agent usually just needs the
   // signal: did it move, bounds, when it first changed).

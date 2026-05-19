@@ -19,7 +19,7 @@ export interface A11yNode {
   testIdAttr?: string;
   /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
    *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
-   *  discovered by both paths. Phase-1.5 ask #7 / #8 plumbing. */
+   *  discovered by both paths. #7 / #8 plumbing. */
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Recorder } from "./recording.js";
 
-describe("Recorder (wishlist W-C2)", () => {
+describe("Recorder", () => {
   it("captures action types, urls, and selectorHints into a YAML draft", () => {
     const r = new Recorder();
     r.start("login-and-search");

@@ -11,10 +11,10 @@ export interface SerialiseOptions {
   maxNameLen?: number;
   /** If true, drop generic / presentational nodes that contribute nothing. */
   pruneGeneric?: boolean;
-  /** Wishlist W-A1: cap on emitted lines. When exceeded, the serialisation cuts
+  /** cap on emitted lines. When exceeded, the serialisation cuts
    *  off and appends `... [+N more nodes elided]`. */
   maxNodes?: number;
-  /** Wishlist W-A1: case-insensitive substring patterns matched against each node's
+  /** case-insensitive substring patterns matched against each node's
    *  `role`, `name`, or `testId`. A matching node *and its entire subtree* is skipped.
    *  Useful for omitting known-noisy regions (long lists, virtualised tables). */
   omit?: string[];
@@ -78,7 +78,7 @@ function countSubtree(node: A11yNode): number {
 
 /**
  * Find a subtree by ref. Returns the matching node (or null) so callers can
- * `serialise(findByRef(tree, "e42"), { … })` for scoped snapshots (W-A1).
+ * `serialise(findByRef(tree, "e42"), { … })` for scoped snapshots.
  */
 export function findByRef(root: A11yNode, ref: string): A11yNode | null {
   for (const { node } of walk(root)) {

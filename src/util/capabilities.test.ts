@@ -47,7 +47,7 @@ describe("isToolEnabled", () => {
     expect(isToolEnabled("unknown_tool", c)).toBe(true);
   });
 
-  it("network_body is off under the default capability set (W-H5 gate)", () => {
+  it("network_body is off under the default capability set (gate)", () => {
     const def = resolveCapabilities({} as NodeJS.ProcessEnv);
     expect(isToolEnabled("network_body", def)).toBe(false);
     const on = resolveCapabilities({ BROWX_CAPABILITIES: "read,network-body" } as NodeJS.ProcessEnv);

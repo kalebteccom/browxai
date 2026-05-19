@@ -84,7 +84,7 @@ describe("augmentLocator — provenance merge", () => {
   });
 });
 
-describe("named refs (wishlist W-C1)", () => {
+describe("named refs", () => {
   it("binds a mnemonic to an existing ref and resolves it back", () => {
     const r = new RefRegistry();
     const ref = r.forKey("hash-abc");

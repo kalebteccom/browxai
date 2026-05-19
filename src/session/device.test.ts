@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { devices } from "playwright-core";
 import { resolveDevice, UnknownDeviceError } from "./device.js";
 
-describe("resolveDevice — W-H6", () => {
+describe("resolveDevice", () => {
   it("returns undefined when nothing is specified", () => {
     expect(resolveDevice(undefined)).toBeUndefined();
     expect(resolveDevice({})).toBeUndefined();

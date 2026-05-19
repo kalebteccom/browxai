@@ -14,7 +14,7 @@ import {
 } from "./actionresult.js";
 import { locatorFor, resolveTarget, type ActionTarget } from "./locator.js";
 
-// W-M1: aligned with the anti-wedge default (5s). Inner Playwright ops use
+// aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
 // by the inner op too (not just the outer race in runInActionWindow).
 const DEFAULT_TIMEOUT_MS = 5_000;
@@ -110,7 +110,7 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
 export interface WaitForArgs extends ActionWindowOptions {
   /** Element-visibility wait (mutually exclusive with `text`). */
   target?: ActionTarget;
-  /** W-J1: SPA-readiness wait — poll until this visible text appears anywhere
+  /** SPA-readiness wait — poll until this visible text appears anywhere
    *  in the page. The non-target gating mode real apps need after a reload /
    *  nav. NO arbitrary-JS predicate mode by design — that stays `eval_js`'s
    *  domain (the single `eval`-gated loophole). */
@@ -123,7 +123,7 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
     const descriptor: ActionDescriptor = { type: "waitFor", value: `text:${args.text}` };
     const wanted = args.text;
     return runInActionWindow(ctx, descriptor, args, async () => {
-      // W-J1-fix: true substring match (case-insensitive, whitespace-trimmed)
+      // true substring match (case-insensitive, whitespace-trimmed)
       // — `getByText(string)` is substring by default. The earlier
       // `locator('text="…"')` form lowered to Playwright's quoted/exact-ish
       // engine, contradicting the documented "substring" contract (a short
@@ -291,7 +291,7 @@ async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometry | und
 }
 
 export interface SetViewportArgs extends ActionWindowOptions { width: number; height: number; }
-/** W-H6: mid-session viewport resize. `page.setViewportSize` re-lays-out and
+/** mid-session viewport resize. `page.setViewportSize` re-lays-out and
  *  often triggers responsive re-render / lazy-load — wrapped in the action
  *  window so `structure` / `network` / `snapshotDelta` show what changed.
  *  Device emulation (isMobile/touch/UA/DPR) is creation-time only; this only
@@ -311,11 +311,11 @@ export interface ChooseOptionArgs extends ActionWindowOptions {
 }
 
 /**
- * W-F3 — `choose_option` primitive. Generic combobox/listbox/menu selection
+ * `choose_option` primitive. Generic combobox/listbox/menu selection
  * for custom controls that aren't native `<select>` (so the existing `select`
  * tool can't drive them). The pattern: open the target control, wait for a
  * visible listbox/menu/portal, find the option element by exact text, click
- * it, return the W-F2 probe on the *trigger* so `ownerControl.displayText`
+ * it, return the probe on the *trigger* so `ownerControl.displayText`
  * shows the committed selection.
  *
  * Falls back across `role=option` → `role=menuitem` → `getByText` so works
@@ -497,7 +497,7 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     if (valueRequested !== undefined) out.valueRequested = valueRequested;
     if (displayText !== null) out.displayText = displayText;
 
-    // W-F2: post-action owner/container state. Always read; compose deltas
+    // post-action owner/container state. Always read; compose deltas
     // against `pre` when supplied. Same in-page script as preProbe, so the
     // pre/post values are directly comparable.
     const post = await loc.evaluate(probeAncestorsScript).catch(() => ({} as PreProbeData));

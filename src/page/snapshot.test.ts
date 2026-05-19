@@ -68,7 +68,7 @@ describe("serialise", () => {
   });
 });
 
-describe("serialise — wishlist W-A1 (scoped / maxNodes / omit)", () => {
+describe("serialise — (scoped / maxNodes / omit)", () => {
   it("respects maxNodes with an elided-count marker", () => {
     const tree: A11yNode = node("WebArea", undefined, "e1",
       Array.from({ length: 10 }, (_, i) => node("button", `b${i}`, `e${i + 10}`)));

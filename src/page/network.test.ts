@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { patterniseUrl, extractTopLevelKeys } from "./network.js";
 
-describe("patterniseUrl — W-F5 url redaction", () => {
+describe("patterniseUrl — url redaction", () => {
   it("strips query strings", () => {
     expect(patterniseUrl("https://api.example.com/v1/records?id=42&date=2026-05-15")).toBe(
       "https://api.example.com/v1/records",
@@ -37,7 +37,7 @@ describe("patterniseUrl — W-F5 url redaction", () => {
   });
 });
 
-describe("extractTopLevelKeys — W-F5 response shape redaction", () => {
+describe("extractTopLevelKeys — response shape redaction", () => {
   it("returns top-level keys of a plain JSON object", () => {
     expect(extractTopLevelKeys({ id: 1, name: "x", nested: { a: 1 } })).toEqual(["id", "name", "nested"]);
   });

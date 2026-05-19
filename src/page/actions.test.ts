@@ -135,7 +135,7 @@ describe("probe() — post-action element observability", () => {
   });
 });
 
-describe("probe() — W-F2 ownerControl + container deltas", () => {
+describe("probe() — ownerControl + container deltas", () => {
   it("composes ownerControl with changed=true when displayTextBefore ≠ displayTextAfter", async () => {
     const loc = locator({
       inputValue: "",
@@ -277,7 +277,7 @@ describe("scrollMode — scroll primitive dispatch", () => {
   });
 });
 
-describe("waitFor — W-J1 text predicate", () => {
+describe("waitFor — text predicate", () => {
   it("throws a clear error when neither target nor text is given", async () => {
     // Reaches the validation before touching page/cdp — minimal ctx is fine.
     const ctx = { page: {}, cdp: {}, refs: {}, console: {}, pages: () => [], testAttributes: [] } as never;

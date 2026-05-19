@@ -113,7 +113,7 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
 
-  it("W-L1: disableWebSecurity is NOT mappable from any env var (security invariant)", () => {
+  it("disableWebSecurity is NOT mappable from any env var (security invariant)", () => {
     // Deliberately excluded from the legacy layer — must never be ambiently
     // enabled via the environment. Any plausible env spelling stays undefined.
     const l = envLayer({
@@ -125,7 +125,7 @@ describe("envLayer", () => {
   });
 });
 
-describe("actionTimeoutMs (W-M1) precedence", () => {
+describe("actionTimeoutMs precedence", () => {
   it("defaults undefined (server falls back to 5000); set via any persistent layer or session", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wm1-"));
     try {
@@ -142,7 +142,7 @@ describe("actionTimeoutMs (W-M1) precedence", () => {
   });
 });
 
-describe("disableWebSecurity (W-L1) precedence", () => {
+describe("disableWebSecurity precedence", () => {
   it("defaults off; settable only via user/project/session layers", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
     try {

@@ -1,4 +1,4 @@
-// W-F4 — `text_search` read primitive.
+// `text_search` read primitive.
 //
 // Verification and absence checks: "is the bad value gone?" / "did 'Saved' appear?".
 // Distinct from `find()` (which ranks actionable targets) — `text_search` simply

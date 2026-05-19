@@ -48,7 +48,7 @@ function mockPage(): { page: Page; calls: Recorded[] } {
   return { page, calls };
 }
 
-describe("locatorFor — W-E5 provenance routing", () => {
+describe("locatorFor — provenance routing", () => {
   it("routes testId refs to the attribute-CSS form for any source", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
@@ -114,7 +114,7 @@ describe("locatorFor — W-E5 provenance routing", () => {
   });
 });
 
-describe("locatorFor — W-E4 scoped selectors via contextRef", () => {
+describe("locatorFor — scoped selectors via contextRef", () => {
   it("resolves selector inside contextRef's locator (nested locator semantics)", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
@@ -164,7 +164,7 @@ describe("locatorFor — W-E4 scoped selectors via contextRef", () => {
   });
 });
 
-describe("resolveTarget — W-E3 coords escape hatch", () => {
+describe("resolveTarget — coords escape hatch", () => {
   it("returns kind:'coords' for coord targets without touching Page", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();

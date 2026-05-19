@@ -36,11 +36,11 @@ export class BrowxBridge {
   private waiters: Waiter[] = [];
   private pollers = new Map<Page, NodeJS.Timeout>();
   private bindingOk = false;
-  /** W-G2: track attached contexts so detach() can install in-page opt-out
+  /** track attached contexts so detach() can install in-page opt-out
    *  markers and known-disconnect handlers can stop nagging the user with
    *  "function not exposed" console noise after our session ends. */
   private contexts: BrowserContext[] = [];
-  /** W-G2: once true, our exposeBinding handler quietly drops incoming
+  /** once true, our exposeBinding handler quietly drops incoming
    *  payloads and the page script's `send()` is told (via `__browx_no_binding`)
    *  to skip the binding and use the DOM-attribute path. */
   private detached = false;
@@ -51,7 +51,7 @@ export class BrowxBridge {
     this.contexts.push(context);
     try {
       await context.exposeBinding("__browx_send", (source, payload: string) => {
-        if (this.detached) return; // W-G2: quiet drop after detach.
+        if (this.detached) return; // quiet drop after detach.
         try {
           const o = JSON.parse(payload) as { kind: string; name: string; data: unknown };
           if (o.kind === "signal") this.onSignal({ name: o.name, data: o.data, ts: Date.now(), url: source.page?.url() });
@@ -77,7 +77,7 @@ export class BrowxBridge {
     });
   }
 
-  /** Stop all pollers, reject outstanding waiters, and (W-G2) flip the
+  /** Stop all pollers, reject outstanding waiters, and flip the
    *  in-page `__browx_no_binding` flag so any subsequent `__browx.signal()`
    *  / `.confirm()` etc. from the page goes through the DOM-attribute path
    *  instead of the now-detached `__browx_send` exposeBinding glue —
@@ -107,7 +107,7 @@ export class BrowxBridge {
     this.contexts = [];
   }
 
-  /** W-G2: test introspection — true once detach() has fired. */
+  /** test introspection — true once detach() has fired. */
   isDetached(): boolean { return this.detached; }
 
   /**

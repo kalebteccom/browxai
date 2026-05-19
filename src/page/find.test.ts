@@ -6,7 +6,7 @@ function n(role: string, name: string | undefined, testId?: string, extra: Parti
   return { ref: "e1", role, name, testId, children: [], ...extra };
 }
 
-describe("buildSelectorHint preference order (ask #4)", () => {
+describe("buildSelectorHint preference order", () => {
   it("tier 1: data-testid beats everything, stability=high", () => {
     const h = buildSelectorHint({ role: "button", name: "Save", testId: "save-btn" });
     expect(h.tier).toBe(1);
@@ -49,14 +49,14 @@ describe("buildSelectorHint preference order (ask #4)", () => {
     expect(h.hint).toBe("role=generic");
   });
 
-  it("tier 1 honours testIdAttr — emits the matched attribute, not hardcoded data-testid (ask #10)", () => {
+  it("tier 1 honours testIdAttr — emits the matched attribute, not hardcoded data-testid", () => {
     const h = buildSelectorHint({ role: "generic", testId: "feature-panel-language-input", testIdAttr: "data-type" });
     expect(h.tier).toBe(1);
     expect(h.stability).toBe("high");
     expect(h.hint).toBe('[data-type="feature-panel-language-input"]');
   });
 
-  it("tier 1 fires on a non-roled element (DOM-walk only) — no role gating (ask #10)", () => {
+  it("tier 1 fires on a non-roled element (DOM-walk only) — no role gating", () => {
     // A plain <div data-testid="foo"> has role "generic"/"div"; tier-1 still fires.
     const h = buildSelectorHint({ role: "div", testId: "mini-library", testIdAttr: "data-testid" });
     expect(h.tier).toBe(1);
@@ -65,7 +65,7 @@ describe("buildSelectorHint preference order (ask #4)", () => {
   });
 });
 
-describe("scoreNode (round-3 ask #14: weight testId hits more, especially for inputs)", () => {
+describe("scoreNode — testId weighting for inputs", () => {
   it("exact testId match dominates", () => {
     const q = "app-common-time-input-seconds";
     const node = n("textbox", undefined, "app-common-time-input-seconds");
@@ -95,7 +95,7 @@ describe("scoreNode (round-3 ask #14: weight testId hits more, especially for in
   });
 });
 
-describe("scoreNode — W-G4 icon-only controls", () => {
+describe("scoreNode — icon-only controls", () => {
   it("amplifies per-testId-token weight when the node has no accessible name", () => {
     // Two candidates with overlapping testIds. The "target feature tab" is
     // the intended hit; the "feature other tab" is a neighbouring icon-only
@@ -120,7 +120,7 @@ describe("scoreNode — W-G4 icon-only controls", () => {
   });
 });
 
-describe("noVisibleCandidateWarning — W-J2 capability-aware", () => {
+describe("noVisibleCandidateWarning — capability-aware", () => {
   it("names no fallback tool when none are enabled", () => {
     const w = noVisibleCandidateWarning(3, { coords: false, evalJs: false });
     expect(w).toContain("no visible candidate");

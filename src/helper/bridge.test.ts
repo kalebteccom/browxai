@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { BrowxBridge } from "./bridge.js";
 
-describe("BrowxBridge — W-G2 detach state", () => {
+describe("BrowxBridge — detach state", () => {
   it("isDetached() is false until detach() runs", async () => {
     const b = new BrowxBridge();
     expect(b.isDetached()).toBe(false);

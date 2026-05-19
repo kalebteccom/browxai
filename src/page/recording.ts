@@ -1,4 +1,4 @@
-// Calibration-walk → flow-file scaffold — wishlist W-C2.
+// Calibration-walk → flow-file scaffold — .
 //
 // Records action-tool calls during a session and emits a draft `flow-file.yaml`
 // the agent can hand to site-docs (or any consumer with a similar YAML shape).
@@ -18,7 +18,7 @@ export interface RecordedStep {
   action: ActionDescriptor;
   url: string;
   selectorHint?: string;
-  /** Stability of the locator at calibration time. Phase-1.5 W-D1 friend. */
+  /** Stability of the locator at calibration time. Phase-1.5 friend. */
   stability?: FindCandidate["stability"];
   /** Optional agent-supplied annotation for the doc emission. */
   annotation?: { copy: string; arrow?: string; target?: string };

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { inspectElement, DEFAULT_STYLE_KEYS } from "./inspect.js";
 
-describe("inspectElement — W-H3", () => {
+describe("inspectElement", () => {
   it("returns { found:false } when the locator matches nothing", async () => {
     const loc = { count: async () => 0, evaluate: vi.fn() } as never;
     expect(await inspectElement(loc)).toEqual({ found: false });

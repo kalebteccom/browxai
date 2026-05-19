@@ -25,13 +25,13 @@ export interface SessionEntry {
   refs: RefRegistry;
   console: ConsoleBuffer;
   network: NetworkBuffer;
-  /** W-H1: session-wide WebSocket/SSE frame ring. */
+  /** session-wide WebSocket/SSE frame ring. */
   ws: WsBuffer;
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;
   openedAt: number;
-  /** W-N2: epoch ms of the last `get()` for this id — drives idle-age
+  /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
   lastActivityAt: number;
 }
@@ -44,9 +44,9 @@ export interface OpenSpec {
   mode?: SessionMode;
   /** Persistent mode only: named profile dir under the workspace. */
   profile?: string;
-  /** W-H6: Playwright device-preset name (e.g. "iPhone 14"). */
+  /** Playwright device-preset name (e.g. "iPhone 14"). */
   device?: string;
-  /** W-H6: explicit viewport; overrides a preset's viewport. */
+  /** explicit viewport; overrides a preset's viewport. */
   viewport?: { width: number; height: number };
 }
 
@@ -67,7 +67,7 @@ export class SessionRegistry {
   async get(id: string = DEFAULT_SESSION_ID, spec?: OpenSpec): Promise<SessionEntry> {
     const existing = this.entries.get(id);
     if (existing) {
-      existing.lastActivityAt = Date.now(); // W-N2: touch for idle reaping
+      existing.lastActivityAt = Date.now(); // touch for idle reaping
       return existing;
     }
     const inflight = this.creating.get(id);
@@ -109,7 +109,7 @@ export class SessionRegistry {
   }
 
   /**
-   * W-N2: bulk teardown. Selects live sessions by `prefix` (id starts-with),
+   * bulk teardown. Selects live sessions by `prefix` (id starts-with),
    * `all`, and/or `idleMs` (no `get()` in the last N ms). Filters AND together
    * when multiple are given; at least one selector is required. Returns the
    * closed ids (in selection order). The team-lead reap primitive — at

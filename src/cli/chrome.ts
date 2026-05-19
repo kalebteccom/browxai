@@ -1,4 +1,4 @@
-// `browxai chrome start|stop` — own the `--cdp` Chrome lifecycle (wishlist W-B7).
+// `browxai chrome start|stop` — own the `--cdp` Chrome lifecycle ().
 //
 // Launches a Chromium with `--remote-debugging-port=9222 --user-data-dir=$BROWX_WORKSPACE/chrome-profile`
 // (the right flags every time; profile in the workspace so logins survive across sessions)

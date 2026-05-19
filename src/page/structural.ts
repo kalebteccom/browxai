@@ -1,4 +1,4 @@
-// Structural-context detector (W-F1).
+// Structural-context detector.
 //
 // Annotates A11yNode entries with `context: { collection, rowKey, column,
 // rowText }` when they live inside a recognised repeated layout (semantic

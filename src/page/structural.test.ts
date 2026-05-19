@@ -7,7 +7,7 @@ function n(role: string, name?: string, children: A11yNode[] = []): A11yNode {
   return { ref: `e${++refSeq}`, role, name, children };
 }
 
-describe("annotateStructuralContext — W-F1", () => {
+describe("annotateStructuralContext", () => {
   it("annotates cells in a semantic table with row/column/rowText", () => {
     refSeq = 0;
     // table > [headerRow, dataRow1, dataRow2]

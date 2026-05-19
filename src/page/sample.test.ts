@@ -4,7 +4,7 @@ import { sampleMetric, ELEMENT_METRICS, summariseSeries } from "./sample.js";
 const fakePage = {} as never;
 const fakeRefs = {} as never;
 
-describe("sampleMetric — W-J3 bounded sampler", () => {
+describe("sampleMetric — bounded sampler", () => {
   it("rejects bbox* metrics when there is no target (meaningless for window)", async () => {
     for (const m of ["bboxX", "bboxY", "bboxWidth", "bboxHeight"] as const) {
       await expect(
@@ -33,7 +33,7 @@ describe("sampleMetric — W-J3 bounded sampler", () => {
   });
 });
 
-describe("summariseSeries — W-K1 reducer", () => {
+describe("summariseSeries — reducer", () => {
   it("reduces a flat series (no change → firstChangeTMs null, distinctCount 1)", () => {
     const s = [0, 100, 200, 300].map((tMs) => ({ tMs, value: 6500 }));
     expect(summariseSeries(s)).toEqual({

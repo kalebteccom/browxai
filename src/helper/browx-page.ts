@@ -18,7 +18,7 @@ export const BROWX_PAGE_SCRIPT = `(() => {
     } catch (_) {}
   }
   function send(kind, name, data) {
-    // W-G2: when our bridge has detached (set window.__browx_no_binding = true),
+    // when our bridge has detached (set window.__browx_no_binding = true),
     // skip the now-detached __browx_send exposeBinding glue entirely — it would
     // emit "Function __browx_send is not exposed" console errors on every call.
     if (window.__browx_no_binding || typeof window.__browx_send !== "function") {
@@ -35,7 +35,7 @@ export const BROWX_PAGE_SCRIPT = `(() => {
     proceed: function (data) { send("signal", "proceed", data == null ? null : data); },
     abort: function (reason) { send("signal", "abort", reason == null ? null : reason); },
     done: function (what, data) { send("signal", "did", { what: what, data: data == null ? null : data }); },
-    // W-B5: typed responses to await_human({kind:"confirm|choose|input"}). The
+    // typed responses to await_human({kind:"confirm|choose|input"}). The
     // human reads the prompt from the runbook / terminal stderr, then calls one
     // of these from DevTools (or a future shadow-DOM banner UI will call them).
     respond: function (value) { send("signal", "respond", value); },

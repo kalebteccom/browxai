@@ -1,4 +1,4 @@
-// W-H6: resolve a device/viewport spec into a DeviceConfig.
+// resolve a device/viewport spec into a DeviceConfig.
 //
 // Two inputs, either or both:
 //   - `device`: a Playwright built-in device preset name ("iPhone 14",

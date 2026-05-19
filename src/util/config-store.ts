@@ -23,22 +23,22 @@ export interface ResolvedConfig {
   allowedOrigins: string[];
   blockedOrigins: string[];
   headless: boolean;
-  /** W-M1: hard anti-wedge deadline (ms) applied to every action body /
+  /** hard anti-wedge deadline (ms) applied to every action body /
    *  `eval_js` / read-CDP path. Default 5000. Per-call `timeoutMs` overrides.
    *  Clamped to [1, 3_600_000] at use. A real op completes well under this;
    *  raising it as a blanket masks no-ops/wedges. */
   actionTimeoutMs?: number;
-  /** W-L1: when true, `managed` / `incognito` sessions launch with
+  /** when true, `managed` / `incognito` sessions launch with
    *  `--disable-web-security --disable-site-isolation-trials` (SOP/CORS OFF
    *  browser-wide). Dangerous opt-in — off by default, loud-warned, and
    *  deliberately NOT mappable from the legacy env layer (set via MCP
    *  `set_config` or the managed config file only). No effect on
    *  `attached`/BYOB (externally launched). */
   disableWebSecurity?: boolean;
-  /** W-H6: default device-preset name for new sessions (Playwright device
+  /** default device-preset name for new sessions (Playwright device
    *  registry, e.g. "iPhone 14"). Overridable per `open_session`. */
   defaultDevice?: string;
-  /** W-H6: default viewport for new sessions. Overrides a preset's viewport
+  /** default viewport for new sessions. Overrides a preset's viewport
    *  when both are set. Overridable per `open_session`. */
   defaultViewport?: { width: number; height: number };
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */

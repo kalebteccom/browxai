@@ -1,4 +1,4 @@
-// W-H3: computed-style + box probe.
+// computed-style + box probe.
 //
 // Layout-break and control-state bugs (a flex row losing a child →
 // misalignment; `cursor-wait` vs `cursor-not-allowed`; a label that clips /

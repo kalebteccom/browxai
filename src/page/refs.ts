@@ -50,7 +50,7 @@ export class RefRegistry {
   private refByKey = new Map<string, string>();
   private keyByRef = new Map<string, string>();
   private locatorByRef = new Map<string, RefLocatorInputs>();
-  /** Wishlist W-C1: persistent named refs. Maps an agent-chosen mnemonic (e.g.
+  /** persistent named refs. Maps an agent-chosen mnemonic (e.g.
    *  "play_btn") to the underlying ref. Refs themselves are stable across
    *  snapshots (see elementKey()) so the name effectively pins an element
    *  identity for the whole session. */
@@ -102,7 +102,7 @@ export class RefRegistry {
     this.locatorByRef.set(ref, merged);
   }
 
-  // --- W-C1: named refs ---
+  // --- named refs ---
   /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */
   nameRef(name: string, ref: string): void {
     if (!this.keyByRef.has(ref)) throw new Error(`name_ref: ref "${ref}" not in registry`);

@@ -1,5 +1,5 @@
 // find(query) — natural-language element description → ranked candidate locators
-// with structured evidence. First-consumer asks #4 + #5: selectorHint follows a
+// with structured evidence. First-consumer : selectorHint follows a
 // fixed preference order with a stability flag; bbox is the visible-rect.
 
 import type { CDPSession, Page } from "playwright-core";
@@ -19,7 +19,7 @@ export interface FindCandidate {
   stability: "high" | "medium" | "low";
   /** Concrete selector string a consumer can transcribe into a flow-file. Disambiguated
    *  with `:visible` / `:nth-match(..., 1)` when the bare hint matched multiple DOM
-   *  nodes (round-3 ask #13). */
+   *  nodes (). */
   selectorHint: string;
   /** Which preference-order tier produced the hint (1–5). */
   selectorTier: 1 | 2 | 3 | 4 | 5;
@@ -27,14 +27,14 @@ export interface FindCandidate {
   bbox: VisibleRect | null;
   /** True when the element is fully clipped (bbox is null). */
   clipped: boolean;
-  /** Wishlist W-D1: whether the element can be acted on right now. `true` = visible
+  /** whether the element can be acted on right now. `true` = visible
    *  + enabled + on-screen. `"disabled"` / `"off-screen"` / `"covered"` describe *why*
    *  if not. Lets a calibration agent reject `<input disabled>`-shaped halts at
    *  write-time instead of at run-time. */
   actionable: true | "disabled" | "off-screen" | "covered";
   /** Internal score — higher = better match for the query. */
   score: number;
-  /** W-F1: structural neighbourhood when this candidate sits inside a repeated
+  /** structural neighbourhood when this candidate sits inside a repeated
    *  container (table row, listitem, repeated card). Lets the caller filter
    *  by row / column without re-walking the snapshot. Absent when the
    *  candidate isn't in a recognised repeated structure. */
@@ -46,10 +46,10 @@ export interface FindOptions {
   maxCandidates?: number;
   /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). */
   testAttributes: string[];
-  /** Wishlist W-A3: emit a `warnings: ["no candidate scored confidently…"]` block
+  /** emit a `warnings: ["no candidate scored confidently…"]` block
    *  on the result when no top candidate exceeds this score. Default 0 (off). */
   confidenceFloor?: number;
-  /** Wishlist W-A3: limit ranking to descendants of this ref (from a prior
+  /** limit ranking to descendants of this ref (from a prior
    *  snapshot/find). "The seconds input *under* the AI Voiceover panel" without
    *  encoding the relationship in natural language. Ignored if the ref isn't in
    *  the current snapshot. */
@@ -57,7 +57,7 @@ export interface FindOptions {
   /** Phase-2 learned ranking: prior session feedback applied as a per-candidate
    *  score bonus. Skip / null = no learning bonus. */
   feedback?: FeedbackMemory;
-  /** W-J2: which fallback tools to *name* in the "no visible candidate"
+  /** which fallback tools to *name* in the "no visible candidate"
    *  warning. Capability-aware so we never point an agent at a disabled tool
    *  (`coords` needs `action`; `eval_js` needs `eval`). */
   fallbackHints?: { coords: boolean; evalJs: boolean };
@@ -103,7 +103,7 @@ export async function find(
   const max = opts.maxCandidates ?? 5;
   const warnings: string[] = [];
 
-  // Wishlist W-A3: limit walk to subtree rooted at contextRef.
+  // limit walk to subtree rooted at contextRef.
   let walkRoot: A11yNode = tree;
   if (opts.contextRef) {
     const sub = findByRef(tree, opts.contextRef);
@@ -128,7 +128,7 @@ export async function find(
   const candidates: FindCandidate[] = [];
   for (const { node, score } of top) {
     const { hint: bareHint, tier, stability } = buildSelectorHint(node);
-    // Round-3 ask #13: disambiguate when the bare hint matches multiple DOM nodes.
+    // disambiguate when the bare hint matches multiple DOM nodes.
     const hint = await disambiguateHint(page, bareHint);
     const bbox = node.backendDOMNodeId !== undefined
       ? await visibleRect(cdp, node.backendDOMNodeId)
@@ -150,7 +150,7 @@ export async function find(
     });
   }
 
-  // W-J2: visibility-aware ranking. Stable-partition actionable candidates
+  // visibility-aware ranking. Stable-partition actionable candidates
   // ahead of non-actionable ones (off-screen / clipped / covered / disabled),
   // preserving score order within each tier — so a slightly-lower-scored
   // *visible* match outranks a high-scored hidden modal.
@@ -159,7 +159,7 @@ export async function find(
   const hidden = candidates.filter((c) => !isActionable(c));
   const ranked = [...visible, ...hidden];
 
-  // Wishlist W-A3: confidence-floor warning (combined with any earlier warnings).
+  // confidence-floor warning (combined with any earlier warnings).
   const floor = opts.confidenceFloor ?? 0;
   if (floor > 0 && (ranked.length === 0 || ranked[0]!.score < floor)) {
     warnings.push(
@@ -168,7 +168,7 @@ export async function find(
     );
   }
 
-  // W-J2: when there *are* candidates but none are actionable, that's a strong
+  // when there *are* candidates but none are actionable, that's a strong
   // "the match is wrong" signal — the field report saw confident off-screen
   // dialogs returned for a plainly-visible target. Flag it, and suggest the
   // fallbacks the caller actually has enabled (never name a disabled tool).
@@ -180,7 +180,7 @@ export async function find(
 }
 
 /**
- * W-J2: the "all candidates off-screen → probably the wrong match" warning.
+ * the "all candidates off-screen → probably the wrong match" warning.
  * Capability-aware — only names a fallback tool the caller actually has
  * enabled (`coords` ⇐ `action`, `eval_js` ⇐ `eval`). Pure; exported for tests.
  */
@@ -200,7 +200,7 @@ export function noVisibleCandidateWarning(
 }
 
 /**
- * Round-3 ask #13. After find() produces a `selectorHint` for the visible candidate,
+ * . After find() produces a `selectorHint` for the visible candidate,
  * check whether that bare hint matches multiple DOM nodes; if it does, append a
  * disambiguator (`:visible` first, `:nth-match(..., 1)` last resort) so that a
  * caller who transcribes the hint into a flow-file doesn't re-introduce the
@@ -221,7 +221,7 @@ async function disambiguateHint(page: Page, hint: string): Promise<string> {
 }
 
 /**
- * Wishlist W-D1. Returns `true` iff the element is visible + enabled + on-screen.
+ * . Returns `true` iff the element is visible + enabled + on-screen.
  * Else returns a single-word reason. Best-effort; on any error returns `true`
  * (don't manufacture false-negatives).
  */
@@ -239,10 +239,10 @@ async function probeActionable(
     ]);
     if (!isEnabled) return "disabled";
     if (!isVisible) return "off-screen";
-    // "covered" — Phase-1.5: requires `elementFromPoint` at the bbox center and
-    // an identity check. Skipped for now (~+10 LOC + a CDP call; not load-bearing
-    // for the round-3 / wishlist headline cases). Leave the union member in place
-    // so callers handle it; the value is just never produced yet.
+    // "covered" — requires `elementFromPoint` at the bbox center and an
+    // identity check. Skipped for now (~+10 LOC + a CDP call; not load-bearing
+    // for the headline cases). Leave the union member in place so callers
+    // handle it; the value is just never produced yet.
     return true;
   } catch {
     return true;
@@ -263,7 +263,7 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   // Exact-name match: strongest signal.
   if (nameLower === q) s += 10;
   if (nameLower.includes(q)) s += 5;
-  // Round-3 ask #14: weight testId hits more heavily, especially against
+  // weight testId hits more heavily, especially against
   // `<input>`-shaped roles where `name` is typically empty. Without this, a
   // query like "X-time-input-seconds inside Y-start-time-input" failed to
   // surface an `<input data-testid="X-time-input-seconds">` because the score
@@ -271,7 +271,7 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   if (testIdLower === q) s += 15;             // exact testId match wins big
   if (testIdLower.includes(q)) s += 10;       // (was +5 pre-ask-#14)
   if (roleLower.includes(q)) s += 2;
-  // W-G4: per-testId-token weight is amplified for icon-only controls (no
+  // per-testId-token weight is amplified for icon-only controls (no
   // accessible name) where the only signal is the testId itself. Without this
   // boost, an icon-only side-panel tab whose testId encodes the intent
   // (`side-panel-feature-tab`) loses ranking to a neighbour with one more
@@ -294,7 +294,7 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
 }
 
 /**
- * The five-tier preference order from first-consumer ask #4:
+ * The five-tier preference order from :
  *   1. `[<test-attr>="…"]`           → stability "high"  (any configured test-attribute)
  *   2. role + accessible name        → stability "medium"
  *   3. stable text on stable role    → covered by tier 2 (the DOM-walk's nameFor()

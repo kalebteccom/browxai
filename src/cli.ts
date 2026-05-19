@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // browxai canonical entrypoint.
 //
-// Sub-commands (wishlist W-B6 / W-B7 / W-D3):
+// Sub-commands (/ / ):
 //   browxai                       start the MCP server (stdio)            — default
 //   browxai doctor                env + connectivity health-check
 //   browxai chrome start [opts]   launch an attachable Chrome (BYOB host)
