@@ -1385,6 +1385,63 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- act-then-trace (W-N1) ----------
+
+  register(
+    "act_and_sample",
+    {
+      description:
+        "W-N1: run ONE action and capture a metric trace *across its transition*, in one call — closes the state-capture-latency blind spot (a separate read lands after the spinner/pending UI already resolved). The sampler (W-J3 fixed-enum, no agent JS) starts, the inner action dispatches concurrently, both are awaited. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + W-M1 deadline + the confirm hooks still apply. Sample target via `ref`/`selector`/`named` (or omit for the document scroller; not coords). Returns `{ action: <inner result>, ...sampleResult }`.",
+      inputSchema: {
+        action: z.object({
+          tool: z.string().describe("Inner tool name (batch whitelist)."),
+          args: z.record(z.unknown()).optional().describe("Inner tool args (same shape as a top-level call)."),
+        }),
+        ...REF_OR_SELECTOR,
+        metric: z.enum(ELEMENT_METRICS).describe("Fixed metric to trace (same enum as `sample`)."),
+        durationMs: z.number().int().positive().max(30_000).describe("Trace window (ms, ≤30000)."),
+        everyFrame: z.boolean().optional().describe("Sample every animation frame (rAF). Default false → fixed interval."),
+        intervalMs: z.number().int().positive().max(5000).optional().describe("Interval (ms, default 100, min 16). Ignored when everyFrame:true."),
+        summary: z.boolean().optional().describe("Return only the reduced summary (omit the full series)."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("act_and_sample"); if (g) return g;
+      const innerTool = args.action.tool;
+      if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_sample") {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `act_and_sample: inner tool "${innerTool}" not allowed (must be in the batch whitelist; no batch / await_human / recording / self)` }, null, 2) }] };
+      }
+      const ig = gateCheck(innerTool); if (ig) return ig; // enforce the inner tool's own capability gate
+      const e = await entryFor(args.session);
+      let sampleTarget;
+      if (args.ref || args.selector || args.named || args.coords) {
+        const t = asTarget(args, "act_and_sample", e.refs);
+        if ("coords" in t) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "act_and_sample: sample target can't be coords — use ref/selector/named or omit for the window" }, null, 2) }] };
+        }
+        sampleTarget = t;
+      }
+      // Start the sampler, then dispatch the inner action concurrently so the
+      // trace spans the transition. Sampler self-bounds via durationMs; the
+      // inner action self-bounds via the W-M1 anti-wedge deadline. Both await.
+      const samplePromise = sampleMetric(e.session.page(), e.refs, {
+        target: sampleTarget, metric: args.metric, durationMs: args.durationMs,
+        everyFrame: args.everyFrame, intervalMs: args.intervalMs, summary: args.summary,
+      });
+      const innerArgs = { ...(args.action.args ?? {}), session: args.session };
+      const [sRes, aRes] = await Promise.allSettled([samplePromise, toolHandlers[innerTool]!(innerArgs)]);
+      const parseInner = (resp: { content: Array<{ type: string; text?: string }> }): unknown => {
+        const first = resp.content[0];
+        if (!first || first.type !== "text" || first.text === undefined) return first ?? null;
+        try { return JSON.parse(first.text); } catch { return first.text; }
+      };
+      const sampleOut = sRes.status === "fulfilled" ? sRes.value : { error: sRes.reason instanceof Error ? sRes.reason.message : String(sRes.reason) };
+      const actionOut = aRes.status === "fulfilled" ? parseInner(aRes.value) : { ok: false, error: aRes.reason instanceof Error ? aRes.reason.message : String(aRes.reason) };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ action: actionOut, sample: sampleOut }, null, 2) }] };
+    },
+  );
+
   return {
     start: async () => {
       const transport = new StdioServerTransport();

@@ -194,6 +194,16 @@ Sample a DOM metric over a window → time series. Jank / CLS / scroll-drift QA 
 
 browxai supplies the fixed in-page rAF/interval loop — this is a bounded primitive, **not** an `eval_js` variant.
 
+### `act_and_sample` *(W-N1)*
+Run **one** action and capture a metric trace *across its transition*, in a single call. Closes the state-capture-latency blind spot: a separate `read` after an `action` lands *after* the transient UI (spinner / pending button / in-flight counter) has already resolved, so the agent wrongly scores it "fine". `act_and_sample({ session?, action: { tool, args }, ref?|selector?|named?, metric, durationMs, everyFrame?, intervalMs?, summary? })`:
+
+- `action` is a `{ tool, args }` from the **batch whitelist** (no `batch` / `await_human` / recording-control / self). The inner tool's own capability gate, the confirm hooks, and the W-M1 anti-wedge deadline all still apply.
+- The sampler (`sample`'s **fixed enum**, no agent JS) starts, the inner action dispatches **concurrently**, both are awaited. Sampler self-bounds via `durationMs`; the action via its W-M1 deadline. Pick `durationMs` to cover the expected transition.
+- Sample target via `ref`/`selector`/`named` (or omit → document scroller; coords rejected). Same metric enum / caps / `summary` semantics as `sample`.
+- Returns `{ action: <inner tool result>, sample: { metric, scope, mode, count, series?, summary, … } }`.
+
+No agent JS anywhere — reuses `sample`'s fixed-enum sampler + `batch`'s tool whitelist; `eval_js` (gated) stays the only arbitrary-JS path.
+
 ### `watch` *(W-H4)*
 Observe a fixed time window with **no driving action**. Samples top-level transient surfaces (`dialog`/`alertdialog`/`alert`/`status`/`tooltip`/`log`/`banner`/`timer`) every `sampleMs` (default 250) so a region that appears *and* disappears inside the window is caught — endpoint-only diffs (`ActionResult.structure`) miss it. `watch({ session?, durationMs, sampleMs? })` → `{ durationMs, samples, regions: [{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. `disappearedAtMs: null` = still present at window end. Catches double-fire toasts, flash-of-content, "notification never broadcast". Read-only (`read`); caps at 60 s.
 
