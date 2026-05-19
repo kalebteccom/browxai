@@ -18,6 +18,8 @@ import { textSearch } from "./page/text_search.js";
 import { inspectElement } from "./page/inspect.js";
 import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
+import { runShortcut } from "./page/shortcut.js";
+import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
 import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "./util/deadline.js";
@@ -253,6 +255,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         bridge: br,
         recorder: new Recorder(),
         feedback: new FeedbackMemory(),
+        clipboard: new ClipboardBuffer(),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -782,6 +785,42 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const target = hasTarget ? asTarget(args, "press", e.refs) : undefined;
       const td = actionTimeout(args);
       return asActionResultText(actions.press(ctxFor(e), { target, key: args.key, mode: args.mode, maxResultTokens: args.maxResultTokens, deadlineMs: td.ms, deadlineWarning: td.warning }));
+    },
+  );
+
+  register(
+    "shortcut",
+    {
+      description:
+        "Dispatch a keyboard chord (\"Control+C\") or an ordered sequence ([\"Control+A\",\"Control+C\"]) and return handled-observability: the active element, which keydown/copy/cut/paste listeners fired, and whether the app called preventDefault — so you can prove the app actually handled the shortcut, not just that keys were sent. Optional `ref`/`selector` is focused first; else page-level. Copy/cut/paste integrate the per-session clipboard ONLY when the off-by-default `clipboard` capability is enabled: each session has its own clipboard buffer, and the shared OS clipboard is written only transactionally at the copy/cut (capture selection) or paste (inject this session's buffer) moment — never ambiently, never read into a session (no cross-session/human clipboard bleed). Observability works without the capability.",
+      inputSchema: {
+        keys: z.union([z.string(), z.array(z.string()).min(1)]).describe("A chord (\"Control+C\") or ordered sequence of chords. Playwright key syntax."),
+        ...REF_OR_SELECTOR,
+        ...TIMEOUT_ARG,
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("shortcut"); if (g) return g;
+      const e = await entryFor(args.session);
+      const conf = await confirmByobAction("shortcut", confirmCtxFor(e));
+      if (!conf.ok) return denyContent("shortcut", conf);
+      const hasTarget = !!(args.ref || args.selector || args.named);
+      const target = hasTarget ? asTarget(args, "shortcut", e.refs) : undefined;
+      const td = actionTimeout(args);
+      try {
+        const result = await withDeadline(
+          runShortcut(e.session.page(), e.refs, { keys: args.keys, target }, {
+            clipboardEnabled: caps.enabled.has("clipboard"),
+            clipboard: e.clipboard,
+          }),
+          td.ms,
+          "shortcut",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(td.warning ? { ...result, warning: td.warning } : result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 

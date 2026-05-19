@@ -41,7 +41,7 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `file-io` (future). A disabled tool returns a structured error on call. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (future). A disabled tool returns a structured error on call. |
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
 | `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
 | `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
@@ -355,6 +355,12 @@ A robust confirmation check across input shapes: `value === valueRequested || di
 
 ### `press({ ref?|selector?, key, ...opts })`
 Press a key (Playwright key syntax: `"Enter"`, `"Control+A"`, …). If `ref`/`selector` is omitted, presses on the page.
+
+### `shortcut({ keys, ref?|selector?, session?, timeoutMs? })`
+Dispatch a chord (`"Control+C"`) **or an ordered sequence** (`["Control+A","Control+C"]`) and get **handled-observability** — not just "keys were sent". Optional `ref`/`selector` is focused first; else page-level. Returns `{ ok, keys, activeElement, events:[{type,key,defaultPrevented,target}], handled, clipboard?, clipboardNote? }`:
+- `events` is captured by a fixed server-injected document listener (no agent JS) over the dispatch — `keydown`/`copy`/`cut`/`paste`, each with `defaultPrevented` and a target summary.
+- `handled` = a copy/cut/paste event fired **or** the app `preventDefault`'d a keydown — i.e. the app actually responded, distinguishing "shortcut handled" from "selector/no-op".
+- **Clipboard** (only when the off-by-default `clipboard` capability is enabled — observability works without it): the per-session clipboard model. Each session has its **own** buffer; the shared OS clipboard is touched **only transactionally** — at a copy/cut it captures the current selection into the session buffer and writes it out once; at a paste it writes *this session's* buffer to the OS clipboard immediately before the keystroke (so concurrent sessions never paste each other's content). browxai never reads the OS clipboard into a session (no cross-session/human clipboard bleed) and never touches it between commands. OS write is best-effort (`osSync:false` + note when the platform tool, e.g. `xclip`, is absent). Same posture class as `eval`/`network-body`.
 
 ### `hover({ ref?|selector?|named?|coords?, ...opts })`
 Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-located targets.

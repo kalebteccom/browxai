@@ -13,6 +13,7 @@ import type { NetworkBuffer, WsBuffer } from "../page/network.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
+import type { ClipboardBuffer } from "../page/clipboard.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -30,6 +31,10 @@ export interface SessionEntry {
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;
+  /** per-session clipboard model (capability `clipboard`). Isolated so
+   *  concurrent sessions don't clobber each other through the shared OS
+   *  clipboard; the OS clipboard is touched only transactionally. */
+  clipboard: ClipboardBuffer;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

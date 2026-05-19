@@ -22,10 +22,11 @@ export type Capability =
   | "eval"
   | "byob-attach"
   | "file-io"
-  | "network-body";
+  | "network-body"
+  | "clipboard";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -64,6 +65,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   click: "action",
   fill: "action",
   press: "action",
+  shortcut: "action",
   hover: "action",
   select: "action",
   choose_option: "action",
@@ -81,7 +83,10 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // byob-attach and file-io are not bound to specific tools — byob-attach gates the
   // BROWX_ATTACH_CDP code path at session creation; file-io will gate future
-  // download/upload tools when they ship.
+  // download/upload tools when they ship. `clipboard` is likewise behaviour-gated,
+  // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard
+  // side-effect (copy/cut/paste) only engages when `clipboard` is also enabled —
+  // off by default; same posture class as `eval` / `network-body`.
 };
 
 export interface CapabilityConfig {
