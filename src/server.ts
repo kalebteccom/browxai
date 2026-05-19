@@ -240,6 +240,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         recorder: new Recorder(),
         feedback: new FeedbackMemory(),
         openedAt: Date.now(),
+        lastActivityAt: Date.now(),
       };
     },
     async (e): Promise<void> => {
@@ -1090,6 +1091,26 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async ({ session }) => {
       const closed = await registry.close(session);
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session, wasOpen: closed }, null, 2) }] };
+    },
+  );
+
+  register(
+    "close_sessions",
+    {
+      description:
+        "Bulk session teardown for multi-agent cleanup. Select by `prefix` (id starts-with — e.g. one agent's `agentA-*`), `all`, and/or `idleMs` (no use in the last N ms). Filters AND together; at least one selector is required (`all:true` to close everything). Returns the closed ids. Use to reclaim memory + state when a sub-agent wedged or was killed and stranded its sessions.",
+      inputSchema: {
+        prefix: z.string().optional().describe("Close sessions whose id starts with this."),
+        all: z.boolean().optional().describe("Close every live session. Required if neither prefix nor idleMs is given."),
+        idleMs: z.number().int().positive().optional().describe("Close sessions with no activity in the last N ms (idle-age reap)."),
+      },
+    },
+    async ({ prefix, all, idleMs }) => {
+      if (prefix === undefined && idleMs === undefined && all !== true) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "close_sessions: pass `prefix`, `idleMs`, and/or `all:true` — refusing to close nothing/everything implicitly" }, null, 2) }] };
+      }
+      const closed = await registry.closeMatching({ prefix, all, idleMs });
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, closed, count: closed.length }, null, 2) }] };
     },
   );
 

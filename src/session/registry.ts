@@ -31,6 +31,9 @@ export interface SessionEntry {
   recorder: Recorder;
   feedback: FeedbackMemory;
   openedAt: number;
+  /** W-N2: epoch ms of the last `get()` for this id — drives idle-age
+   *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
+  lastActivityAt: number;
 }
 
 export const DEFAULT_SESSION_ID = "default";
@@ -63,7 +66,10 @@ export class SessionRegistry {
    *  as-is regardless of spec. */
   async get(id: string = DEFAULT_SESSION_ID, spec?: OpenSpec): Promise<SessionEntry> {
     const existing = this.entries.get(id);
-    if (existing) return existing;
+    if (existing) {
+      existing.lastActivityAt = Date.now(); // W-N2: touch for idle reaping
+      return existing;
+    }
     const inflight = this.creating.get(id);
     if (inflight) return inflight;
     const p = this.factory(id, spec)
@@ -100,6 +106,31 @@ export class SessionRegistry {
     this.entries.delete(id);
     await this.teardown(e);
     return true;
+  }
+
+  /**
+   * W-N2: bulk teardown. Selects live sessions by `prefix` (id starts-with),
+   * `all`, and/or `idleMs` (no `get()` in the last N ms). Filters AND together
+   * when multiple are given; at least one selector is required. Returns the
+   * closed ids (in selection order). The team-lead reap primitive — at
+   * multi-agent scale a wedged/killed agent strands sessions.
+   */
+  async closeMatching(sel: { prefix?: string; all?: boolean; idleMs?: number }): Promise<string[]> {
+    const now = Date.now();
+    const victims = [...this.entries.values()].filter((e) => {
+      if (sel.prefix !== undefined && !e.id.startsWith(sel.prefix)) return false;
+      if (sel.idleMs !== undefined && now - e.lastActivityAt < sel.idleMs) return false;
+      // `all` (or prefix/idle match with all unset) — if no positive selector
+      // was given the caller must pass `all`, enforced at the tool layer.
+      return true;
+    });
+    const closed: string[] = [];
+    for (const e of victims) {
+      this.entries.delete(e.id);
+      await this.teardown(e).catch(() => undefined);
+      closed.push(e.id);
+    }
+    return closed;
   }
 
   /** Tear down everything (server shutdown). */

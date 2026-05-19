@@ -56,6 +56,7 @@ Omitting `session` resolves to the lazily-created `"default"` session — byte-i
 
 - **`open_session({ session, mode?, profile?, device?, viewport? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors.
 - **`close_session({ session })`** — tear down (attached detaches only, never closes the user's Chrome; incognito discards its ephemeral context + browser). `"default"` may be closed; it re-creates lazily.
+- **`close_sessions({ prefix?, all?, idleMs? })`** — bulk teardown for multi-agent cleanup. `prefix` (id starts-with, e.g. one agent's `agentA-*`), `all:true`, and/or `idleMs` (no activity in the last N ms). Selectors AND together; at least one required (won't implicitly close nothing/everything). Returns `{ closed:[ids], count }`. The team-lead reap primitive when a sub-agent wedged/was-killed and stranded sessions. Activity is touched on every tool call against a session.
 - **`list_sessions()`** — `[{ id, mode, url, pages, openedAt }]`.
 
 **Session modes** (`open_session({ mode })`):

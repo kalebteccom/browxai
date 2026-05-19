@@ -24,6 +24,7 @@ function fakeEntry(id: string): SessionEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     feedback: {} as any,
     openedAt: Date.now(),
+    lastActivityAt: Date.now(),
   };
 }
 
@@ -103,6 +104,58 @@ describe("SessionRegistry", () => {
     await reg.closeAll();
     expect(teardown).toHaveBeenCalledTimes(2);
     expect(reg.list()).toHaveLength(0);
+  });
+
+  it("closeMatching({ prefix }) tears down only id-prefixed sessions", async () => {
+    const teardown = vi.fn(async () => undefined);
+    const reg = new SessionRegistry(async (id) => fakeEntry(id), teardown);
+    await reg.get("agentA-host");
+    await reg.get("agentA-fan1");
+    await reg.get("agentB-host");
+    const closed = await reg.closeMatching({ prefix: "agentA-" });
+    expect(closed.sort()).toEqual(["agentA-fan1", "agentA-host"]);
+    expect(reg.list().map((e) => e.id)).toEqual(["agentB-host"]);
+    expect(teardown).toHaveBeenCalledTimes(2);
+  });
+
+  it("closeMatching({ all:true }) tears everything down", async () => {
+    const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+    await reg.get("x"); await reg.get("y");
+    expect((await reg.closeMatching({ all: true })).sort()).toEqual(["x", "y"]);
+    expect(reg.list()).toHaveLength(0);
+  });
+
+  it("closeMatching({ idleMs }) reaps only stale sessions; get() touches activity", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
+      const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+      await reg.get("stale");
+      await reg.get("fresh");
+      vi.setSystemTime(new Date("2026-05-19T10:05:00Z")); // +5min
+      await reg.get("fresh"); // touch — resets lastActivityAt to now
+      const closed = await reg.closeMatching({ idleMs: 60_000 }); // idle > 1min
+      expect(closed).toEqual(["stale"]);
+      expect(reg.peek("fresh")?.id).toBe("fresh");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("closeMatching ANDs prefix + idleMs", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
+      const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+      await reg.get("a-1");        // matches prefix, will be idle
+      await reg.get("b-1");        // idle but wrong prefix
+      vi.setSystemTime(new Date("2026-05-19T10:10:00Z"));
+      const closed = await reg.closeMatching({ prefix: "a-", idleMs: 60_000 });
+      expect(closed).toEqual(["a-1"]);
+      expect(reg.peek("b-1")?.id).toBe("b-1");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("peek() never creates; list() reflects live entries", async () => {
