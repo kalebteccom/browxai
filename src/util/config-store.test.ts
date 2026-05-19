@@ -158,6 +158,33 @@ describe("disableWebSecurity precedence", () => {
   });
 });
 
+describe("hideOverlaySelectors precedence", () => {
+  it("defaults []; env layer parses; project/session override", () => {
+    const dir = mkdtempSync(join(tmpdir(), "browx-hos-"));
+    try {
+      const s = new ConfigStore(dir, {
+        BROWX_HIDE_OVERLAY_SELECTORS: "#hmr, .devtools-iframe ",
+      } as NodeJS.ProcessEnv);
+      expect(s.resolve().hideOverlaySelectors).toEqual(["#hmr", ".devtools-iframe"]);
+      s.setLayer("project", { hideOverlaySelectors: ["#cookie-banner"] });
+      expect(s.resolve().hideOverlaySelectors).toEqual(["#cookie-banner"]);
+      // session layer wins (e.g. opt back out)
+      expect(s.resolve({ hideOverlaySelectors: [] }).hideOverlaySelectors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("absent env leaves the built-in [] default", () => {
+    const dir = mkdtempSync(join(tmpdir(), "browx-hos2-"));
+    try {
+      expect(new ConfigStore(dir, {}).resolve().hideOverlaySelectors).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("resolvedToEnv adapter", () => {
   it("round-trips through the env-shaped resolvers", () => {
     const env = resolvedToEnv({
@@ -167,6 +194,7 @@ describe("resolvedToEnv adapter", () => {
       allowedOrigins: ["https://a.com"],
       blockedOrigins: [],
       headless: true,
+      hideOverlaySelectors: [],
       unstable: {},
     });
     expect(env.BROWX_CAPABILITIES).toBe("read,navigation");

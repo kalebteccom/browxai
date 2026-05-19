@@ -27,6 +27,7 @@ import { NetworkBuffer, WsBuffer, fetchResponseBody } from "./page/network.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
+import { applyOverlayHide } from "./helper/overlay-hide.js";
 import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/capabilities.js";
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
@@ -228,6 +229,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await wsBuf.attach();
       const br = new BrowxBridge();
       await br.attach(sess.page().context());
+      // resolve overlay selectors fresh per session so a
+      // `set_config({hideOverlaySelectors})` applies to the next
+      // open_session without a server restart. Empty list → no-op.
+      await applyOverlayHide(
+        sess.page().context(),
+        configStore.resolve().hideOverlaySelectors,
+      );
       return {
         id,
         mode,
@@ -1165,6 +1173,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     disableWebSecurity: z.boolean().optional(),
     defaultDevice: z.string().optional(),
     defaultViewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional(),
+    hideOverlaySelectors: z.array(z.string()).optional(),
     unstable: z.record(z.unknown()).optional(),
   };
 

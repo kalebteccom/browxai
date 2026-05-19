@@ -41,6 +41,13 @@ export interface ResolvedConfig {
   /** default viewport for new sessions. Overrides a preset's viewport
    *  when both are set. Overridable per `open_session`. */
   defaultViewport?: { width: number; height: number };
+  /** CSS selectors for chrome/overlay elements (dev-build HMR widgets,
+   *  devtools iframes, cookie/consent banners) that should be neutralised
+   *  before the agent interacts with the page. A server-injected init
+   *  script applies `pointer-events:none; display:none` to matches on every
+   *  navigation — non-destructive (no node removal), config-driven, no
+   *  agent JS. Default `[]` (feature off). */
+  hideOverlaySelectors: string[];
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -60,6 +67,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   allowedOrigins: [],
   blockedOrigins: [],
   headless: false,
+  hideOverlaySelectors: [],
   unstable: {},
 };
 
@@ -82,6 +90,8 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (bo) layer.blockedOrigins = bo;
   const hl = env.BROWX_HEADLESS?.trim();
   if (hl) layer.headless = hl === "1" || hl.toLowerCase() === "true";
+  const hos = list(env.BROWX_HIDE_OVERLAY_SELECTORS?.trim());
+  if (hos) layer.hideOverlaySelectors = hos;
   return layer;
 }
 
@@ -142,6 +152,7 @@ export class ConfigStore {
       disableWebSecurity: layer.disableWebSecurity ?? acc.disableWebSecurity,
       defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
+      hideOverlaySelectors: layer.hideOverlaySelectors ?? acc.hideOverlaySelectors,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }
