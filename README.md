@@ -1,81 +1,70 @@
 # browxai
 
-> **PRIVATE** for now. MIT-licensed and built OSS-clean, but the repo is not public yet —
-> public release is a gated decision (see the roadmap's Phase 3 trigger). Do not share.
+**An MCP-native, model-agnostic, agentic-first browser-control server for AI agents.**
 
-An **MCP-native, model-agnostic, agentic-first** browser-control server for AI agents —
-Playwright/CDP under the hood, with a curated, token-efficient surface aiming for
-Anthropic Claude-in-Chrome-grade usefulness without being Claude-locked, and headless/CI-capable.
+browxai gives an AI agent a curated, token-efficient browser surface over the
+Model Context Protocol — Playwright/CDP under the hood, a tool surface designed
+for agents rather than for human developers, and headless/CI-capable.
 
-Deliberately **not** a wrapper over Microsoft's `@playwright/mcp` — browxai owns its own
-Playwright/CDP transport so it can own the BYOB / persistent-profile / CDP-attach /
-authenticated-session lifecycle and shape an agent-first surface MS's dev-first design won't give.
+It is deliberately **not** a wrapper over `@playwright/mcp`: browxai owns its
+own Playwright/CDP transport so it can own the full session lifecycle —
+managed profiles, attach-to-an-existing-Chrome (BYOB), authenticated
+sessions, headed and headless — and shape an agent-first surface around it.
 
-Code-name during incubation: `agent-browser-bridge` (the portfolio-folder slug).
+- **Model-agnostic** — any MCP client (Claude, Codex, …), not locked to one model.
+- **Token-efficient** — `snapshot()` is a compact accessibility tree + DOM-walk, not a DOM dump; results are scoped/paginated/budgeted.
+- **Safe by default** — capability-gated tools, an origin allow/blocklist, confirmation hooks, a hard anti-wedge deadline on every call. Dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking) is off by default.
 
-## The surface (Phase 1 target)
+## Install
 
-- **`snapshot()`** — accessibility tree + key interactive elements with stable selectors; compact, token-efficient (scoped/paginated/prioritised, not a DOM dump).
-- **`find(query)`** — natural-language element description → ranked candidate locators with evidence (role/text/test-id/bounding box/screenshot crop/position).
-- **action primitives** (`click` / `fill` / `navigate` / …) — return a structured `ActionResult`: a scoped accessibility re-snapshot of what changed (a `MutationObserver` is the change-detector only), plus always-on `navigation` (from/to/kind), `structure` (appeared/removed/new tabs), `console.errors` + `pageErrors`, and a per-element confirmation; network summarised by default. Per-call `mode` (`scoped_snapshot` | `tree_diff` | `full` | `none`) and a token budget.
-- **vision** — screenshots, optionally cropped to an element.
-- **console + network reads** — over CDP.
-- **session lifecycle** — managed dedicated profile (default), CDP-attach to a human-launched Chrome (BYOB — off by default, behind an explicit "I-accept-the-risks" flag + loud warning), the `window.__browx` human↔agent helper channel (`signal`/`proceed`/`abort`/`done` + a server-side `awaitHuman({kind, prompt, choices?, timeoutMs?})` + a `pick_element` overlay) over a CDP binding, headed / headless modes. CDP bound to loopback only; page content treated as untrusted.
-
-## Where the design lives
-
-The **canonical spec, roadmap, and design research** are in the `project-ideas` portfolio
-repo, under `projects/agent-browser-bridge/` — `spec.md` (what & why), `roadmap.md` (phases),
-`research-open-questions.md` (the `ActionResult` shape, the `__browx` API, the phased security
-posture, the public-release trigger), `progress.md` (history). This repo is the *implementation*;
-treat the portfolio docs as the source of truth and keep them in sync when implementation forces
-a design change.
-
-Current status: **Phase 1 — MVP.** The canonical server is live (typecheck-clean, tests passing; tool reference at [`docs/tool-reference.md`](docs/tool-reference.md)); next step is the site-docs adoption run on a real authed target. Phase 0 closed 2026-05-13 — see [`PHASE-0.md`](PHASE-0.md).
-
-## Consumer #1
-
-`automated-site-documentation-bot` (site-docs) — its discovery/calibration stage will drive
-through browxai in place of Claude-in-Chrome, including a session bearing real `httpOnly` auth
-cookies. That's the dogfood + validation harness for the MVP.
-
-## Layout
-
+```bash
+npm install browxai
+npx playwright-core install chromium    # one-time, ~150 MB
 ```
-src/                       the canonical MCP server — see docs/tool-reference.md for the surface
-  session/                   managed-profile launch + BYOB CDP-attach (not-owned semantics)
-  page/                      a11y / refs / snapshot / find / actions / ActionResult / network / console / bbox
-  helper/                    window.__browx injection + the bridge (exposeBinding + polling fallback)
-  util/                      workspace ($BROWX_WORKSPACE) / token budgeting / stderr logger
-docs/                      tool reference + Phase-1 design + divergence-vs-prior-art + site-docs port-plan + first-consumer asks
-.github/                   CI (typecheck + test on Node 20 / pnpm)
-.claude/                   commit-guard hooks (single-line conventional subjects ≤72 chars, no AI trailers)
-PHASE-0.md                 Phase-0 closure summary (closed 2026-05-13)
-AGENT-RUNBOOK.md           Phase-1 hand-off — the asks, the no-trace contract, the definition of done
+
+Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
+
+```jsonc
+{
+  "mcpServers": {
+    "browxai": { "command": "browxai" }
+  }
+}
 ```
+
+## The surface
+
+- **`snapshot`** — compact accessibility tree + DOM-walk pass; every node gets a stable `[ref=eN]`.
+- **`find`** — natural-language query → ranked candidate locators with `selectorHint`, `stability`, visible-rect `bbox`, and an `actionable` verdict.
+- **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) — each returns a structured `ActionResult`: what navigated, what structure changed, console/network slice, a post-action element probe.
+- **read tools** — `text_search`, `inspect`, `console_read`, `network_read`, `ws_read`, `screenshot`.
+- **sessions** — isolated per-session contexts (own cookie jar / refs); `persistent`, `incognito`, or `attached` (BYOB) modes; MCP-driven config.
+- **capabilities** — `read,navigation,action,human` on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, and the experimental `unstable` lane are explicit opt-ins.
+
+Full per-tool reference, the security model, and the stability policy are in the
+**[documentation site](https://kalebteccom.github.io/browxai/)**.
+
+## Stability
+
+browxai is **v0.1.0** and follows semver. The public tool surface (tool names,
+documented input/output shapes, the `ActionResult` shape, the default
+capability set) is frozen; anything behind an off-by-default capability is
+explicitly experimental and not covered by the stability guarantee. See the
+[Stability & semver](https://kalebteccom.github.io/browxai/tool-reference#stability--semver) policy.
 
 ## Develop
 
 ```bash
 corepack enable && pnpm install
-pnpm install-browser     # downloads Chromium for playwright-core (one-time, ~150 MB)
+pnpm install-browser     # Chromium for playwright-core
 pnpm typecheck && pnpm test
-pnpm build               # builds dist/ — `browxai` bin is dist/cli.js
+pnpm build               # builds dist/ — the `browxai` bin is dist/cli.js
+pnpm test:keystone       # headless end-to-end keystone (real Chromium)
+pnpm docs:dev            # the documentation site, locally
 ```
 
-## Run (local dev)
-
-```bash
-# default (managed profile at $BROWX_WORKSPACE/profile/, ~/.browxai/ if unset)
-pnpm browxai
-
-# BYOB — attach to an externally-launched Chrome on loopback
-BROWX_ATTACH_CDP=http://127.0.0.1:9222 pnpm browxai
-
-# headless managed launch
-BROWX_HEADLESS=1 pnpm browxai
-```
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see [LICENSE](LICENSE).
