@@ -49,7 +49,7 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (future). A disabled tool returns a structured error on call. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `unstable` (the W-Q7+ experimental lane). A disabled tool returns a structured error on call. |
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
 | `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
 | `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
@@ -385,6 +385,9 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 
 ### `select({ ref?|selector?, values, ...opts })`
 `selectOption` on a `<select>`.
+
+### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
+Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name }`. Gated by the off-by-default **`file-io`** capability. No agent JS.
 
 ### `choose_option({ target, option, exact?, ...opts })` *(W-F3)*
 Pick an option in a **custom combobox / listbox / menu** by visible text. Generic primitive for controls that aren't native `<select>` — the kind that open a portal listbox on click and commit on option click. The `target` is the trigger (the combobox itself); `option` is the visible text of the option to commit. Behaviour:

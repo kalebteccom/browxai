@@ -102,9 +102,10 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   export_session_report: "unstable",
   // network-body (off by default — full response bodies can carry PII / tokens)
   network_body: "network-body",
-  // byob-attach and file-io are not bound to specific tools — byob-attach gates the
-  // BROWX_ATTACH_CDP code path at session creation; file-io will gate future
-  // download/upload tools when they ship. `clipboard` is likewise behaviour-gated,
+  // file-io
+  upload_file: "file-io",
+  // byob-attach is not bound to a specific tool — it gates the
+  // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard
   // side-effect (copy/cut/paste) only engages when `clipboard` is also enabled —
   // off by default; same posture class as `eval` / `network-body`.

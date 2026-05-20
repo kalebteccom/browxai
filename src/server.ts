@@ -25,6 +25,7 @@ import { RouteRegistry } from "./page/routes.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
+import { uploadFile } from "./page/upload.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
@@ -1246,6 +1247,40 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
+    },
+  );
+
+  register(
+    "upload_file",
+    {
+      description:
+        "Set a file on a file `<input>` (works on hidden inputs) via Playwright `setInputFiles` — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is exactly one of: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) OR `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there). Gated by the off-by-default **`file-io`** capability.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        name: z.string().optional().describe("Filename presented to the page (content-mode; default \"upload\")."),
+        mimeType: z.string().optional().describe("MIME type (content-mode; default application/octet-stream)."),
+        content: z.string().optional().describe("base64 file content. Mutually exclusive with `path`."),
+        path: z.string().optional().describe("Workspace-rooted file path. Mutually exclusive with `content`."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("upload_file"); if (g) return g;
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("upload_file", confirmCtxFor(e));
+      if (!c.ok) return denyContent("upload_file", c);
+      try {
+        const target = asTarget(args, "upload_file", e.refs);
+        if ("coords" in target) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "upload_file: target must be a ref/selector for the file input, not coords" }, null, 2) }] };
+        }
+        const r = await withDeadline(uploadFile(e.session.page(), e.refs, workspace.root, {
+          target, name: args.name, mimeType: args.mimeType, content: args.content, path: args.path,
+        }), cfgActionTimeout(), "upload_file");
+        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 
