@@ -117,6 +117,53 @@ shapes. The headline pieces:
   `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed +
   attached MCP entries, sniffs the codebase for the dominant test-attribute convention.
 
+## The unstable tool lane (W-Q7–Q11)
+
+A second tier of tools — heavier media-editor / race-condition QA primitives — ships behind
+the off-by-default **`unstable`** capability. They are **explicitly experimental** and **not
+part of the v0.1.0 frozen stable surface** (see `docs/tool-reference.md` "Stability &
+semver"): their shapes may change or vanish in any release, and a round that only touches
+this lane does not reset the Phase-3 API-stability clock.
+
+**What's in it** (per-tool shapes in `docs/tool-reference.md` "Unstable tools"):
+
+- **Pointer gestures** — `drag`, `double_click`, `mouse_down` / `mouse_move` / `mouse_up`.
+- **Network route mocking** — `route`, `route_queue` (per-response `delayMs` → make backend
+  responses arrive out of request order), `unroute`.
+- **`act_and_diff`** — run one action, diff DOM class / `aria-*` / `data-*` / inline-style
+  within a `scope` (selection-heavy UIs where state isn't text or a11y).
+- **`act_and_wait_for_network`** + **`poll_eval`** — precise async assertions.
+- **`screenshot_region`**, **`name_region`** / **`region`**, **`cross_session_sample`**,
+  **`export_session_report`**.
+
+**How an agent uses them — enabling is a launch-time grant, not an agent action:**
+
+1. The `unstable` capability must be in `BROWX_CAPABILITIES` **when the server starts**.
+   Capabilities are resolved **once at server start** (`resolveCapabilities` at
+   `createServer` time) — an agent **cannot** self-grant a capability mid-session; that's
+   the security posture. Set it in the MCP client's server-launch env:
+
+   ```jsonc
+   // .mcp.json — the env the browxai server is launched with
+   "env": { "BROWX_CAPABILITIES": "read,navigation,action,human,unstable" }
+   ```
+
+   Add `eval` as well (`…,unstable,eval`) if you need `poll_eval` — it evaluates page JS and
+   requires **both** `unstable` and `eval`. `set_config({ capabilities })` persists the
+   change but only takes effect on the **next** server start (capabilities are not
+   re-resolved per call).
+
+2. Once enabled, they are ordinary MCP tool calls — e.g.
+   `drag({ from:{ref:"e12"}, to:{coords:{x:740,y:300}}, steps:20 })`.
+
+3. When `unstable` is **not** enabled, every tool in this lane returns a structured refusal —
+   `tool "drag" is disabled (capability not in BROWX_CAPABILITIES)` — which is also how an
+   agent discovers it needs the operator to add the grant. `get_config` reports the active
+   capability set, so an agent can check before attempting these.
+
+Read `docs/threat-model.md` before enabling `unstable` (route mocking + `poll_eval` are the
+sharp edges).
+
 ## The no-trace consumer-repo contract (read this first)
 
 browxai is designed to be **invoked from inside any other repo without leaving traces in
@@ -172,7 +219,7 @@ Full list in `docs/tool-reference.md`. The frequently-touched ones:
 | `BROWX_ATTACH_CDP` | unset | Loopback CDP endpoint (BYOB attach). Off by default. |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` launches headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Order-sensitive; add the target codebase's convention here. |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Off-by-default: `eval`, `byob-attach`, `file-io`. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Off-by-default: `eval`, `byob-attach`, `network-body`, `clipboard`, `unstable`, `file-io`. Resolved **once at server start** — see "The unstable tool lane". |
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Policy hooks that route through `await_human` first. |
 | `BROWX_ALLOWED_ORIGINS` | unset | Comma-separated; wildcards (`https://*.example.com`) supported. |
 | `BROWX_BLOCKED_ORIGINS` | unset | Overrides the allowlist. |
@@ -241,6 +288,13 @@ Quick decision tree for the common cases:
   `end_recording()` produces a draft YAML you can transcribe / commit.
 - **"Find() picked the wrong candidate"** → after the agent locates the right one, call
   `find_feedback({query, ref})` so the next find with overlapping query gets a boost.
+- **"I need drag / a custom gesture, network mocking, a DOM-state diff, an async
+  network/poll wait, or a visual region"** → the **unstable tool lane** (`drag`, `route`/
+  `route_queue`, `act_and_diff`, `act_and_wait_for_network`, `poll_eval`,
+  `screenshot_region`/`name_region`, `cross_session_sample`, `export_session_report`).
+  These need the `unstable` capability enabled at server launch — see "The unstable tool
+  lane". If a call returns `tool "…" is disabled (capability not in BROWX_CAPABILITIES)`,
+  ask the operator to add `unstable` to `BROWX_CAPABILITIES`; an agent can't grant it itself.
 
 ## Adopter quick-reference
 
