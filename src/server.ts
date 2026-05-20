@@ -890,20 +890,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "drag",
     {
-      description: "(unstable) Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}`. For timeline scrub/trim, drag-reorder, slider, lasso. Capability: `unstable`.",
+      description: "(unstable) Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}` (element targets press the box centre). `preflight:true` instead probes the `from` point and returns what's under it (top hit element + `resizeRisk` when a resize-handle cursor is present) WITHOUT dragging — check it first so a narrow item's edge doesn't get resized instead of moved. For timeline scrub/trim, drag-reorder, slider, lasso. Capability: `unstable`.",
       inputSchema: {
         from: gestureTarget().describe("Drag start: {ref}|{selector}|{coords}."),
-        to: gestureTarget().describe("Drag end: {ref}|{selector}|{coords}."),
+        to: gestureTarget().optional().describe("Drag end: {ref}|{selector}|{coords}. Required unless `preflight:true`."),
         steps: z.number().int().positive().max(100).optional().describe("Intermediate mouse-move points (default 12); more = smoother/slower."),
+        preflight: z.boolean().optional().describe("When true, probe the `from` point and report what it hits (resize-handle risk) without dragging."),
         ...SESSION_ARG,
       },
     },
-    async ({ from, to, steps, session }) => {
+    async ({ from, to, steps, preflight, session }) => {
       const g = gateCheck("drag"); if (g) return g;
+      if (!preflight && !to) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "drag: `to` is required unless `preflight:true`" }, null, 2) }] };
+      }
       const e = await entryFor(session);
       try {
         const r = await withDeadline(
-          drag(e.session.page(), e.refs, { from: toActionTarget(from) as never, to: toActionTarget(to) as never, steps }),
+          drag(e.session.page(), e.refs, {
+            from: toActionTarget(from) as never,
+            to: (to ? toActionTarget(to) : { coords: { x: 0, y: 0 } }) as never,
+            steps, preflight,
+          }),
           cfgActionTimeout(), "drag",
         );
         return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };

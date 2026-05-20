@@ -507,7 +507,7 @@ Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remaini
 
 ### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up` (W-Q8)
 For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`hover` can't express.
-- `drag({ from, to, steps?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`.
+- `drag({ from, to, steps?, preflight?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`. **`preflight: true`** instead probes the `from` point and returns `{ ok, preflight: { point, hit, resizeRisk } }` **without dragging** — `hit` is the `point_probe` stack, `resizeRisk` is true when a press-point layer has a `*-resize` cursor. Check it before dragging a narrow item so you grab its body, not a resize handle (`to` is not required when `preflight:true`).
 - `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
 - `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
 

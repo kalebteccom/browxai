@@ -7,6 +7,7 @@
 import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
+import { pointProbe, type PointProbeResult } from "./point_probe.js";
 
 export interface Point { x: number; y: number }
 
@@ -23,14 +24,36 @@ export async function targetPoint(page: Page, refs: RefRegistry, t: ActionTarget
 
 export interface DragResult { ok: boolean; from: Point; to: Point; steps: number }
 
-/** Press at `from`, move to `to` over `steps` intermediate points, release. */
+export interface DragPreflight {
+  ok: boolean;
+  preflight: {
+    point: Point;
+    hit: PointProbeResult;
+    /** true when something under the press point looks like a resize handle
+     *  (a `*-resize` cursor) — dragging here is likely to resize, not move. */
+    resizeRisk: boolean;
+  };
+}
+
+const RESIZE_CURSOR = /resize/i;
+
+/** Press at `from`, move to `to` over `steps` intermediate points, release.
+ *  With `preflight: true`, instead probe the `from` point and report what's
+ *  under it (top hit element + resize-handle risk) WITHOUT dragging — so the
+ *  agent can confirm the press lands on draggable content, not a resize
+ *  handle, before committing. Element targets resolve to the box centre. */
 export async function drag(
   page: Page,
   refs: RefRegistry,
-  args: { from: ActionTarget; to: ActionTarget; steps?: number },
-): Promise<DragResult> {
-  const steps = Math.min(Math.max(args.steps ?? 12, 1), 100);
+  args: { from: ActionTarget; to: ActionTarget; steps?: number; preflight?: boolean },
+): Promise<DragResult | DragPreflight> {
   const from = await targetPoint(page, refs, args.from);
+  if (args.preflight) {
+    const hit = await pointProbe(page, from);
+    const resizeRisk = hit.stack.some((el) => RESIZE_CURSOR.test(el.cursor || ""));
+    return { ok: true, preflight: { point: from, hit, resizeRisk } };
+  }
+  const steps = Math.min(Math.max(args.steps ?? 12, 1), 100);
   const to = await targetPoint(page, refs, args.to);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();

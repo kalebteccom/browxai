@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { drag, doubleClick, mouseAction, targetPoint } from "./gestures.js";
+import { drag, doubleClick, mouseAction, targetPoint, type DragPreflight } from "./gestures.js";
 
 function fakeMouse() {
   const log: string[] = [];
@@ -18,6 +18,18 @@ function pageWithBox(m: ReturnType<typeof fakeMouse>) {
   return {
     mouse: m.mouse,
     locator: () => ({ first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }) }),
+  } as never;
+}
+// page that also answers point_probe's evaluate with a canned hit stack
+function pageWithProbe(m: ReturnType<typeof fakeMouse>, cursors: string[]) {
+  return {
+    mouse: m.mouse,
+    locator: () => ({ first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }) }),
+    evaluate: vi.fn(async () => ({
+      stack: cursors.map((cursor, i) => ({ tag: "div", cursor, classes: `layer-${i}` })),
+      scrollContainer: null,
+      clickableAncestor: null,
+    })),
   } as never;
 }
 const refs = {} as never;
@@ -51,7 +63,32 @@ describe("drag", () => {
       to: { coords: { x: 1, y: 1 } } as never,
       steps: 9999,
     });
-    expect(r.steps).toBe(100);
+    expect("steps" in r && r.steps).toBe(100);
+  });
+});
+
+describe("drag — preflight", () => {
+  it("preflight probes `from` and does NOT move the mouse", async () => {
+    const m = fakeMouse();
+    const r = (await drag(pageWithProbe(m, ["default", "pointer"]), refs, {
+      from: { coords: { x: 30, y: 40 } } as never,
+      to: { coords: { x: 0, y: 0 } } as never,
+      preflight: true,
+    })) as DragPreflight;
+    expect(r.preflight.point).toEqual({ x: 30, y: 40 });
+    expect(r.preflight.resizeRisk).toBe(false);
+    expect(m.log).toEqual([]); // nothing dragged
+  });
+
+  it("flags resizeRisk when a press-point layer has a resize cursor", async () => {
+    const m = fakeMouse();
+    const r = (await drag(pageWithProbe(m, ["ew-resize", "default"]), refs, {
+      from: { coords: { x: 5, y: 5 } } as never,
+      to: { coords: { x: 0, y: 0 } } as never,
+      preflight: true,
+    })) as DragPreflight;
+    expect(r.preflight.resizeRisk).toBe(true);
+    expect(m.log).toEqual([]);
   });
 });
 
