@@ -21,7 +21,10 @@ describe("uploadFile", () => {
       mimeType: "text/csv",
       content: Buffer.from("a,b,c").toString("base64"),
     });
-    expect(r).toEqual({ ok: true, mode: "content", name: "data.csv" });
+    expect(r).toEqual({
+      ok: true, mode: "content", name: "data.csv",
+      bytes: 5, mimeType: "text/csv", target: "selector #file", fileCount: 1,
+    });
     const arg = setInputFiles.mock.calls[0]![0] as { name: string; mimeType: string; buffer: Buffer };
     expect(arg.name).toBe("data.csv");
     expect(arg.mimeType).toBe("text/csv");
@@ -34,7 +37,10 @@ describe("uploadFile", () => {
       target: { selector: "#file" } as never,
       path: "uploads/clip.mp4",
     });
-    expect(r).toEqual({ ok: true, mode: "path", name: "uploads/clip.mp4" });
+    expect(r).toMatchObject({
+      ok: true, mode: "path", name: "uploads/clip.mp4",
+      target: "selector #file", fileCount: 1, bytes: 0, // file doesn't exist → best-effort 0
+    });
     expect(setInputFiles).toHaveBeenCalledWith(join(WS, "uploads/clip.mp4"));
   });
 

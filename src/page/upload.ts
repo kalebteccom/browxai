@@ -14,6 +14,7 @@
 //     posture even with `file-io` enabled. Stage the file in the workspace.
 
 import { resolve, sep } from "node:path";
+import { statSync } from "node:fs";
 import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
@@ -34,6 +35,20 @@ export interface UploadResult {
   ok: boolean;
   mode: "content" | "path";
   name: string;
+  /** byte size of the file that was set. */
+  bytes: number;
+  /** MIME type — set in content-mode (path-mode lets the browser infer). */
+  mimeType?: string;
+  /** short summary of the resolved input target (ref/selector). */
+  target: string;
+  /** number of files set on the input (always 1 today). */
+  fileCount: number;
+}
+
+function targetSummary(t: ActionTarget): string {
+  if (t.ref) return `ref ${t.ref}`;
+  if (t.selector) return `selector ${t.selector}`;
+  return "(unknown)";
 }
 
 export async function uploadFile(
@@ -50,14 +65,14 @@ export async function uploadFile(
   }
   const loc = locatorFor(page, refs, args.target);
 
+  const target = targetSummary(args.target);
+
   if (args.content !== undefined) {
     const name = args.name ?? "upload";
-    await loc.setInputFiles({
-      name,
-      mimeType: args.mimeType ?? "application/octet-stream",
-      buffer: Buffer.from(args.content, "base64"),
-    });
-    return { ok: true, mode: "content", name };
+    const mimeType = args.mimeType ?? "application/octet-stream";
+    const buffer = Buffer.from(args.content, "base64");
+    await loc.setInputFiles({ name, mimeType, buffer });
+    return { ok: true, mode: "content", name, bytes: buffer.length, mimeType, target, fileCount: 1 };
   }
 
   const resolved = resolve(workspaceRoot, args.path!);
@@ -67,5 +82,7 @@ export async function uploadFile(
     );
   }
   await loc.setInputFiles(resolved);
-  return { ok: true, mode: "path", name: args.path! };
+  let bytes = 0;
+  try { bytes = statSync(resolved).size; } catch { /* best-effort size */ }
+  return { ok: true, mode: "path", name: args.path!, bytes, target, fileCount: 1 };
 }

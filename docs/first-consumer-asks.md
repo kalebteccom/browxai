@@ -187,7 +187,7 @@ capability-precedence + restart guidance also confirmed working. Three minor
 
 | # | Problem class | Primitive | Status |
 |---|---|---|---|
-| **W-S1** 🟢 | `upload_file`'s result (`{ok,mode,name}`) is too thin to debug a bad upload (wrong input? wrong file?). | Enrich the result: target summary, byte size, `mimeType`, files-set count. Cheap, on an already-`file-io`-gated tool. | **impl-pending** |
+| **W-S1** 🟢 | `upload_file`'s result (`{ok,mode,name}`) is too thin to debug a bad upload (wrong input? wrong file?). | Enrich the result: target summary, byte size, `mimeType`, files-set count. Cheap, on an already-`file-io`-gated tool. | **impl-done 2026-05-20** (`{bytes,mimeType?,target,fileCount}`) |
 | **W-S2** ⚪ | `drag({preflight})` flags `resizeRisk` but doesn't offer an alternative press point. | Best-effort: when `resizeRisk`, suggest the centre of a non-resize-cursor layer from the hit stack. **Low value / often impossible** — the report itself notes a genuinely narrow clip's resize handles are *wider than the body*, so no safe point exists; preflight already gives the agent the stack to decide. Likely decline. | **deferred (likely decline)** |
 | **W-S3** 🟡 | Persistent-profile destructive media-editor tests carry mutations across runs; no checkpoint/restore. | A profile snapshot/restore helper (copy the workspace-rooted profile dir) so a destructive authed-SPA test can reset without a human reloading the project. New tool → `unstable` lane. | **impl-pending** |
 
