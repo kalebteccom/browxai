@@ -1,4 +1,4 @@
-// Stable `eN` ref scheme — the coherence constraint from docs/phase-1-design.md §2.
+// Stable `eN` ref scheme — the cross-snapshot coherence constraint.
 //
 // A ref is assigned by a *stable element key* (a hash of role + accessible name +
 // structural path + testid-if-any), NOT by enumeration order. When a node persists

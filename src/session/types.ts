@@ -1,7 +1,7 @@
 // BrowserSession is the lifecycle abstraction the rest of the server uses.
 // Two implementations: managed.ts (we launch the browser, we own its lifecycle)
 // and byob.ts (we attach to an externally-launched Chrome via CDP; not-owned —
-// no close, no storage reset on shutdown). See docs/phase-1-design.md §5.
+// no close, no storage reset on shutdown).
 
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
 

@@ -1,6 +1,6 @@
 // ActionResult builder. Wraps a single action with the action-window machinery
 // (network tap, console slice, navigation detection, structure diff, post-snapshot)
-// and emits the structured result documented in docs/phase-1-design.md §3.
+// and emits the structured result.
 //
 // Phase-1 simplification: `snapshotDelta.mode = "scoped_snapshot"` (default) currently
 // returns the *full* a11y tree with a warning noting that scope-down is pending.

@@ -1,9 +1,9 @@
 # browxai — threat model (Phase 2)
 
 > Defines what browxai defends against, what it doesn't, and the boundary between the two.
-> Companion to `phase-1-design.md` §5 (Phase-1 security non-negotiables — managed-profile
-> default, loopback CDP, untrusted page content); this document is the **full Phase-2 model**
-> that the capability-toggle / allowlist / confirmation-hook machinery implements.
+> The security baseline — managed-profile default, loopback-only CDP, untrusted page
+> content — plus the **full model** that the capability-toggle / allowlist /
+> confirmation-hook machinery implements.
 
 ## TL;DR
 

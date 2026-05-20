@@ -38,7 +38,7 @@ const ATTACH_WARNING = [
   "    and authed tab is in scope of any page the agent visits.",
   "  - The CDP port is unauthenticated; any local process can attach.",
   "",
-  "  See docs/phase-1-design.md §5 (Phase-1 security non-negotiables).",
+  "  Managed mode (the default) avoids all of the above. See docs/threat-model.md.",
   "================================================================",
 ].join("\n");
 

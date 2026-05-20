@@ -1,6 +1,6 @@
 // Compact, token-efficient text serialisation of the a11y tree. Same grammar used
 // everywhere browxai emits a tree (snapshot(), find() context, ActionResult.snapshotDelta) —
-// that's the coherence constraint, see docs/phase-1-design.md §2.
+// that's the coherence constraint.
 
 import { walk, type A11yNode } from "./a11y.js";
 

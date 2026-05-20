@@ -1,6 +1,6 @@
-// BROWX_WORKSPACE resolution + subpath helpers. The no-trace contract (see
-// docs/phase-1-design.md §4a) lives or dies here: every write path browxai
-// produces is rooted at this dir, never at cwd. Resolved once at startup.
+// BROWX_WORKSPACE resolution + subpath helpers. The no-trace contract lives
+// or dies here: every write path browxai produces is rooted at this dir,
+// never at cwd. Resolved once at startup.
 
 import { homedir } from "node:os";
 import { existsSync, mkdirSync } from "node:fs";

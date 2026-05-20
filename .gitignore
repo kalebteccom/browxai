@@ -2,9 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 coverage/
-# VitePress build output + cache
-docs/.vitepress/dist/
-docs/.vitepress/cache/
+# VitePress build output + cache (any location)
+.vitepress/dist/
+.vitepress/cache/
 # Transient state lives in $BROWX_WORKSPACE (~/.browxai/), NOT here. Guardrail
 # entries below catch anything that would accidentally land in-tree.
 .browxai/
@@ -21,13 +21,11 @@ docs/.vitepress/cache/
 .vscode/
 *.log
 
-# Raw client-named adopter/agent reports — they keep dropping these in-tree,
-# but the repo is heading public. They MUST be sanitized into a target-
-# agnostic docs/adoption-report-*.md before anything is committed; the raw
-# form is NEVER tracked. Broad on purpose: any *-REPORT-*.md / REPORT-*.md /
-# *-report.md at the repo ROOT is raw-until-sanitized. Canonical reports live
-# under docs/ (path-anchored rules below don't match docs/).
-# (Hygiene: cf. docs/first-consumer-asks.md round-10/11/14.)
+# Raw client-named adopter/agent reports. The repo is public — raw reports
+# (which may carry client / app / credential context) are NEVER tracked.
+# Broad on purpose: any *-REPORT-*.md / REPORT-*.md / *-report.md /
+# *-report-<date>.md at the repo ROOT is raw-until-handled. Sanitize the
+# signal elsewhere; do not commit the raw file.
 /*-REPORT-*.md
 /REPORT-*.md
 /*-report.md

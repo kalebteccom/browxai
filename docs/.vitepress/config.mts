@@ -1,28 +1,17 @@
 import { defineConfig } from "vitepress";
 
 // The documentation site — built from docs/ and deployed to GitHub Pages.
-// Only the public-facing pages are built into the site; the internal working
-// docs (adoption reports, the asks ledger, phase-design notes) are excluded
-// from the build via `srcExclude` — they remain in the repo, just not on the
-// published site.
+// docs/ holds only public-facing pages (the landing/guide + tool-reference +
+// threat-model); internal working docs live in the portfolio repo, not here.
 export default defineConfig({
   title: "browxai",
   description: "MCP-native, model-agnostic, agentic-first browser-control server.",
   base: "/browxai/",
   cleanUrls: true,
   lastUpdated: true,
-  // The reference pages are repo markdown that also link to source paths /
-  // internal docs not built into the site — don't fail the build on those.
+  // The reference pages are repo markdown that also link to source paths —
+  // don't fail the build on those.
   ignoreDeadLinks: true,
-
-  srcExclude: [
-    "adoption-report-*.md",
-    "first-consumer-asks.md",
-    "phase-*.md",
-    "divergence-notes.md",
-    "site-docs-lifecycle-port-plan.md",
-    "wishlist-*.md",
-  ],
 
   themeConfig: {
     nav: [
