@@ -174,6 +174,38 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-18 asks (post-shipping, 2026-05-20 — non-Claude media-editor run on the unstable lane)
+
+Source: a Codex run exercising the just-shipped unstable lane (`drag`,
+`poll_eval`, `eval_js`) on a media-editor SPA (raw client report NOT
+committed — `.gitignore`d; signal lifted as problem classes). App / client
+names stripped.
+
+**Already resolved before this capture** (the run used a pre-fix build):
+the `drag` capability-gate confusion (`get_config` showed `unstable` while
+the live gate didn't) and the `point_probe` `"reading 'stack'"` crash were
+both fixed 2026-05-20 — `get_config` now reports the *live enforced*
+capabilities + a `capabilitiesPendingRestart` block, the disabled-tool error
+spells out the restart + array-replace precedence, and `point_probe` /
+`act_and_diff` use a correct in-page IIFE (a string passed to `page.evaluate`
+is an expression — the `function(arg){…}` form was never called). The
+`drag.to.coords` schema rendering as `string` (shared zod instance →
+`$ref` dedup) is fixed too. The run also **validated** the lane: `drag`
+worked reliably post-restart, `poll_eval` effective for Redux-state waits.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-R1** 🟡 | A coordinate/element `drag` that starts near an element's edge lands on a **resize/drag handle** and triggers the wrong interaction (resize instead of reorder) — the agent can't see what the press point will hit before committing. | A drag **preflight** + a centre-biased element-target press: report the top hit element + nearest draggable / resize-handle ancestors at the `from` point before moving (reuses `point_probe`'s stack logic), and an `avoidEdges`/centre-bias option for element-target drags so the press lands on the content body, not a handle. Capability `unstable` (extends `drag`). | **impl-pending** |
+| **W-R2** 🟡 | Setting files on a file `<input>` has no first-class tool — agents inject a `File` + `DataTransfer` via `eval_js`, a common browser-test primitive forced onto the arbitrary-JS escape hatch. | An `upload_file` action: a `ref`/`selector` to a file input + filename + MIME + content (base64) **or** a workspace-rooted path → Playwright `locator.setInputFiles()`. No agent JS. Gated by the existing off-by-default **`file-io`** capability (reserved for exactly this — its own posture class, not `unstable`). | **impl-pending** |
+| **W-R3** 🟢 | A genuine `point_probe` failure returns a bare `{ok:false,error}` — no coordinate / page URL for triage. | On failure return `{ ok:false, point, url, error }`; the crop path is already best-effort (never fails the probe). Small hardening on top of the crash fix. | **impl-pending** |
+
+**Validated, no-op:** persistent-profile auth restore, `drag` (post-restart),
+`poll_eval` for async store waits, `screenshot` `scale:"css"`+JPEG payload
+sizing — all confirmed working.
+
+**Proposed sequence:** W-R1 → W-R2 → W-R3 (all outside the stable freeze —
+`unstable` / `file-io` capabilities).
+
 ## Round-17 asks (post-shipping, 2026-05-19 — multi-agent QA + media-editor QA)
 
 Sources: a multi-agent Claude-Code QA campaign (raw client report — NEVER
