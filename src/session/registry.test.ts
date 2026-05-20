@@ -27,6 +27,8 @@ function fakeEntry(id: string): SessionEntry {
     clipboard: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     routes: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    regions: {} as any,
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
   };

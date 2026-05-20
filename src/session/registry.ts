@@ -15,6 +15,7 @@ import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
 import type { ClipboardBuffer } from "../page/clipboard.js";
 import type { RouteRegistry } from "../page/routes.js";
+import type { RegionRegistry } from "../page/regions.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -38,6 +39,8 @@ export interface SessionEntry {
   clipboard: ClipboardBuffer;
   /** per-session network route interceptions (capability `unstable`). */
   routes: RouteRegistry;
+  /** per-session named visual regions (capability `unstable`). */
+  regions: RegionRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

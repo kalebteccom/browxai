@@ -526,6 +526,12 @@ Run **one** action and wait for a specific network response — async SPAs fire 
 ### `poll_eval({ expr, intervalMs?, timeoutMs?, session? })` (W-Q10)
 Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). → `{ ok, truthy, value, polls, elapsedMs, timedOut }`. The value is **page-controlled — untrusted**, like `eval_js`. Requires **both** `unstable` **and** `eval` capabilities. `intervalMs` default 250 (min 50); `timeoutMs` default 5000.
 
+### Visual regions + cross-session + session report (W-Q11)
+- `screenshot_region({ box, session? })` — PNG of an arbitrary viewport rectangle (not an element) — virtualised timelines / canvas / unlabelled positioned regions.
+- `name_region({ name, box, session? })` / `region({ name, session? })` — bind a viewport rectangle to a mnemonic and resolve it back to `{ box, center }`; pass `center` to `click({coords})` to act on the same media segment without coordinate drift across a sub-agent's select→copy→re-check.
+- `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })` — drive an action in one session and trace a metric in **another** over the same window, in one call — realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
+- `export_session_report({ note?, session? })` — bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

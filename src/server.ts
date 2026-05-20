@@ -24,6 +24,7 @@ import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
+import { RegionRegistry } from "./page/regions.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
@@ -263,6 +264,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         feedback: new FeedbackMemory(),
         clipboard: new ClipboardBuffer(),
         routes: new RouteRegistry(),
+        regions: new RegionRegistry(),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -1114,6 +1116,121 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         await new Promise((r) => setTimeout(r, interval));
       }
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, truthy: false, value, polls, elapsedMs: Date.now() - start, timedOut: true }, null, 2) }] };
+    },
+  );
+
+  const BOX_SCHEMA = z.object({
+    x: z.number(), y: z.number(),
+    width: z.number().positive(), height: z.number().positive(),
+  });
+
+  register(
+    "screenshot_region",
+    {
+      description: "(unstable) PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply. Capability: `unstable`.",
+      inputSchema: { box: BOX_SCHEMA.describe("Viewport rect {x,y,width,height} in CSS px."), ...SESSION_ARG },
+    },
+    async ({ box, session }) => {
+      const g = gateCheck("screenshot_region"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const buf = await withDeadline(e.session.page().screenshot({ clip: box, type: "png" }), cfgActionTimeout(), "screenshot_region");
+        return { content: [{ type: "image" as const, data: Buffer.from(buf).toString("base64"), mimeType: "image/png" }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "name_region",
+    {
+      description: "(unstable) Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session. Capability: `unstable`.",
+      inputSchema: { name: z.string().describe("Mnemonic, e.g. \"matching_audio_clip\"."), box: BOX_SCHEMA, ...SESSION_ARG },
+    },
+    async ({ name, box, session }) => {
+      const g = gateCheck("name_region"); if (g) return g;
+      const e = await entryFor(session);
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, ...e.regions.set(name, box) }, null, 2) }] };
+    },
+  );
+
+  register(
+    "region",
+    {
+      description: "(unstable) Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region. Capability: `unstable`.",
+      inputSchema: { name: z.string(), ...SESSION_ARG },
+    },
+    async ({ name, session }) => {
+      const g = gateCheck("region"); if (g) return g;
+      const e = await entryFor(session);
+      const r = e.regions.get(name);
+      return { content: [{ type: "text" as const, text: JSON.stringify(r ? { ok: true, ...r } : { ok: false, error: `no region named "${name}" — call name_region first`, known: e.regions.list().map((x) => x.name) }, null, 2) }] };
+    },
+  );
+
+  register(
+    "cross_session_sample",
+    {
+      description: "(unstable) Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`. Capability: `unstable`.",
+      inputSchema: {
+        action: z.object({ tool: z.string(), args: z.record(z.unknown()).optional() }),
+        actionSession: z.string().describe("Session the action runs in."),
+        sampleSession: z.string().describe("Session whose page is sampled."),
+        metric: z.enum(ELEMENT_METRICS).describe("Fixed metric (document scroller of sampleSession)."),
+        durationMs: z.number().int().positive().max(30_000),
+        everyFrame: z.boolean().optional(),
+        intervalMs: z.number().int().positive().max(5000).optional(),
+      },
+    },
+    async (args) => {
+      const g = gateCheck("cross_session_sample"); if (g) return g;
+      const innerTool = args.action.tool;
+      if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "cross_session_sample") {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `cross_session_sample: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)` }, null, 2) }] };
+      }
+      const ig = gateCheck(innerTool); if (ig) return ig;
+      const sampleEntry = await entryFor(args.sampleSession);
+      const samplePromise = sampleMetric(sampleEntry.session.page(), sampleEntry.refs, {
+        metric: args.metric, durationMs: args.durationMs, everyFrame: args.everyFrame, intervalMs: args.intervalMs,
+      });
+      const innerArgs = { ...(args.action.args ?? {}), session: args.actionSession };
+      const parseInner = (resp: { content: Array<{ type: string; text?: string }> }): unknown => {
+        const first = resp.content[0];
+        if (!first || first.type !== "text" || first.text === undefined) return first ?? null;
+        try { return JSON.parse(first.text); } catch { return first.text; }
+      };
+      const [sRes, aRes] = await Promise.allSettled([samplePromise, toolHandlers[innerTool]!(innerArgs)]);
+      const sample = sRes.status === "fulfilled" ? sRes.value : { error: sRes.reason instanceof Error ? sRes.reason.message : String(sRes.reason) };
+      const action = aRes.status === "fulfilled" ? parseInner(aRes.value) : { ok: false, error: aRes.reason instanceof Error ? aRes.reason.message : String(aRes.reason) };
+      return { content: [{ type: "text" as const, text: JSON.stringify({ action, sample }, null, 2) }] };
+    },
+  );
+
+  register(
+    "export_session_report",
+    {
+      description: "(unstable) Bundle a session's current QA evidence into one JSON object — url, console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk). Capability: `unstable`.",
+      inputSchema: { note: z.string().optional().describe("Free-text label / summary for this session's run."), ...SESSION_ARG },
+    },
+    async ({ note, session }) => {
+      const g = gateCheck("export_session_report"); if (g) return g;
+      const e = await entryFor(session);
+      const net = e.network.recent(50);
+      const report = {
+        ok: true,
+        session: e.id,
+        mode: e.mode,
+        url: e.session.page().url(),
+        openedAt: new Date(e.openedAt).toISOString(),
+        generatedAt: new Date().toISOString(),
+        ...(note ? { note } : {}),
+        consoleErrors: e.console.recent(200).filter((m) => m.type === "error").map((m) => m.text).slice(-25),
+        network: net.summary,
+        regions: e.regions.list().map((r) => r.name),
+        liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
     },
   );
 

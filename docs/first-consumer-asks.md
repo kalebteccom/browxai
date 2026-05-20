@@ -221,7 +221,7 @@ capability when scheduled.
 | **W-Q8** | Pointer-gesture set: `drag`, `mouse_down/move/up`, `double_click` (media-editor scrub/trim/lasso). Overlaps the Round-7 interaction-vocab backlog. | capability `unstable` | **impl-done 2026-05-20** (`drag`/`double_click`/`mouse_down`/`mouse_move`/`mouse_up`) |
 | **W-Q9** | Scoped `act_and_diff`: class / `aria-*` / `data-*` / inline-style diff around one action (selection-heavy UIs where state isn't text/a11y). | capability `unstable` | **impl-done 2026-05-20** (`act_and_diff`; structural DOM map before/after, `diffDomMaps` pure diff) |
 | **W-Q10** | `act_and_wait_for_network({action,match,timeoutMs})` + bounded `poll_eval` (behind `eval`) for precise async assertions. | `unstable` (+`eval` for poll_eval) | **impl-done 2026-05-20** (`act_and_wait_for_network` armed pre-dispatch; `poll_eval` requires `unstable`+`eval`, per-poll deadline-bounded) |
-| **W-Q11** | Region screenshots + named visual refs (`name_region`), cross-session capture (drive A, sample B in one call), session labels + `export_session_report`. | unstable | deferred |
+| **W-Q11** | Region screenshots + named visual refs (`name_region`), cross-session capture (drive A, sample B in one call), session labels + `export_session_report`. | capability `unstable` | **impl-done 2026-05-20** (`screenshot_region`, `name_region`/`region`, `cross_session_sample`, `export_session_report` — labels folded into the report's `note`) |
 
 ## Round-16 asks (post-shipping, 2026-05-19 — non-Claude post-fix revalidation)
 

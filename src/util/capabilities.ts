@@ -97,6 +97,8 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   poll_eval: "unstable",
   screenshot_region: "unstable",
   name_region: "unstable",
+  region: "unstable",
+  cross_session_sample: "unstable",
   export_session_report: "unstable",
   // network-body (off by default — full response bodies can carry PII / tokens)
   network_body: "network-body",
