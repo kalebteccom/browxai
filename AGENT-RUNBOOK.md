@@ -407,18 +407,20 @@ are **all 7 ticked**:
       (`await_human` / `__browx` banner) documented as a deliberate skip.
 
 Phase 2 is closed. The next genuinely-next phase is **Phase 3 public release**, gated on the
-4-condition trigger (below) — still not met (#1 stuck-landed-*weeks* and #2 API-stable-~1mo
-remain open; the round cadence is the #2 bottleneck).
+4-condition trigger (below). #3 (security) and #4 (demand + named owner) are met; #2 is met
+once the v0.1.0 stable surface holds ~1 week (→ ~2026-05-26); #1 (Phase 1 stuck-landed for
+*weeks*) is now the binding gate — early-to-mid-June.
 
 When it closes, sync back to the portfolio (`progress.md` + roadmap status + portfolio
 table), open `/gpd:advance-stage` if you want, and the next genuinely-next phase is **Phase 3
 public release** — gated on the 4-condition trigger in the spec:
 
 1. Phase 1 done and stuck-landed for weeks.
-2. Public API stable (~1 month) + tool-ref doc + semver.
+2. Public API stable **~1 week** (revised down from ~1 month, owner 2026-05-20) + tool-ref
+   doc + semver.
 3. Phase-2 security baseline at least partly shipped.
-4. A real demand signal — a second non-site-docs consumer, *or* clear external pull with a
-   named maintenance owner.
+4. A real demand signal — a second non-site-docs consumer, *or* clear external pull. The
+   public-maintenance owner is settled: **Kalebtec / @rowinbot**.
 
 ## When the human asks "is browxai ready to use for the verification run?"
 
