@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 coverage/
+# VitePress build output + cache
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 # Transient state lives in $BROWX_WORKSPACE (~/.browxai/), NOT here. Guardrail
 # entries below catch anything that would accidentally land in-tree.
 .browxai/
