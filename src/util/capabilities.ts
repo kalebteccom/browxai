@@ -100,6 +100,8 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   region: "unstable",
   cross_session_sample: "unstable",
   export_session_report: "unstable",
+  profile_snapshot: "unstable",
+  profile_restore: "unstable",
   // network-body (off by default — full response bodies can carry PII / tokens)
   network_body: "network-body",
   // file-io

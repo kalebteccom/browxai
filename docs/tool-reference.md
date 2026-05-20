@@ -536,6 +536,12 @@ Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elaps
 - `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })` — drive an action in one session and trace a metric in **another** over the same window, in one call — realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
 - `export_session_report({ note?, session? })` — bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk.
 
+### Profile snapshot / restore — `profile_snapshot` / `profile_restore` (W-S3)
+Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
+- `profile_snapshot({ snapshot, profile? })` — copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
+- `profile_restore({ snapshot, profile? })` — copy a named snapshot back over the profile dir.
+- **All sessions must be closed first** (`close_sessions({all:true})`) — copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path traversal).
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

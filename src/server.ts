@@ -26,6 +26,7 @@ import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
+import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
@@ -1252,6 +1253,36 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
     },
   );
+
+  for (const action of ["profile_snapshot", "profile_restore"] as const) {
+    register(
+      action,
+      {
+        description:
+          action === "profile_snapshot"
+            ? "(unstable) Copy a persistent session's profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to \"default\". ALL sessions must be closed first (copying a live profile dir corrupts it). Capability: `unstable`."
+            : "(unstable) Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first. Capability: `unstable`.",
+        inputSchema: {
+          snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
+          profile: z.string().optional().describe("Profile to snapshot/restore. Default \"default\" (the legacy single-profile dir); else a named profile under <workspace>/profiles/."),
+        },
+      },
+      async ({ snapshot, profile }) => {
+        const g = gateCheck(action); if (g) return g;
+        if (registry.list().length > 0) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `${action}: close all sessions first (close_sessions({all:true})) — copying a profile directory while Chromium has it open corrupts it`, openSessions: registry.list().map((s) => s.id) }, null, 2) }] };
+        }
+        try {
+          const r = action === "profile_snapshot"
+            ? snapshotProfile(workspace.root, profile, snapshot)
+            : restoreProfile(workspace.root, profile, snapshot);
+          return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+        }
+      },
+    );
+  }
 
   register(
     "upload_file",
