@@ -22,6 +22,7 @@ import { runShortcut } from "./page/shortcut.js";
 import { pointProbe } from "./page/point_probe.js";
 import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
+import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
@@ -1733,6 +1734,46 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const sampleOut = sRes.status === "fulfilled" ? sRes.value : { error: sRes.reason instanceof Error ? sRes.reason.message : String(sRes.reason) };
       const actionOut = aRes.status === "fulfilled" ? parseInner(aRes.value) : { ok: false, error: aRes.reason instanceof Error ? aRes.reason.message : String(aRes.reason) };
       return { content: [{ type: "text" as const, text: JSON.stringify({ action: actionOut, sample: sampleOut }, null, 2) }] };
+    },
+  );
+
+  register(
+    "act_and_diff",
+    {
+      description:
+        "(unstable) Run ONE action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where the state change (which clip/row became selected) shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to snapshot/find/text_search. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`. Capability: `unstable`.",
+      inputSchema: {
+        action: z.object({
+          tool: z.string().describe("Inner tool name (batch whitelist)."),
+          args: z.record(z.unknown()).optional().describe("Inner tool args."),
+        }),
+        scope: z.string().optional().describe("CSS selector to bound the diff (default: document.body). Must exist before AND after the action."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("act_and_diff"); if (g) return g;
+      const innerTool = args.action.tool;
+      if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_diff") {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `act_and_diff: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)` }, null, 2) }] };
+      }
+      const ig = gateCheck(innerTool); if (ig) return ig;
+      const e = await entryFor(args.session);
+      const parseInner = (resp: { content: Array<{ type: string; text?: string }> }): unknown => {
+        const first = resp.content[0];
+        if (!first || first.type !== "text" || first.text === undefined) return first ?? null;
+        try { return JSON.parse(first.text); } catch { return first.text; }
+      };
+      try {
+        const before = await captureDomMap(e.session.page(), args.scope);
+        const innerArgs = { ...(args.action.args ?? {}), session: args.session };
+        const actionResp = await toolHandlers[innerTool]!(innerArgs);
+        const after = await captureDomMap(e.session.page(), args.scope);
+        const diff = diffDomMaps(before, after);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ action: parseInner(actionResp), diff }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 

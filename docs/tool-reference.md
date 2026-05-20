@@ -517,6 +517,9 @@ Drive Playwright request interception for race-condition QA, per-session (discar
 - `route_queue({ urlPattern, method?, responses:[{status?,body?,contentType?,delayMs?}], session? })` — fulfil **successive** matches from `responses[]` (one per request, in order); once exhausted, matches hit the real network. Each response has its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the exact "response order ≠ request order" failure class).
 - `unroute({ urlPattern?, method?, session? })` — remove one route, or (no `urlPattern`) every route this session registered.
 
+### `act_and_diff({ action, scope?, session? })` (W-Q9)
+Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before *and* after the action.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

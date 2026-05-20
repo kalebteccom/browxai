@@ -219,7 +219,7 @@ capability when scheduled.
 |---|---|---|---|
 | **W-Q7** | Scoped network route mocking with delay/reorder (race-condition QA: responses out of request order). | capability `unstable` | **impl-done 2026-05-20** (`route`/`route_queue`/`unroute`; per-response `delayMs` = the reorder lever; per-session `RouteRegistry`) |
 | **W-Q8** | Pointer-gesture set: `drag`, `mouse_down/move/up`, `double_click` (media-editor scrub/trim/lasso). Overlaps the Round-7 interaction-vocab backlog. | capability `unstable` | **impl-done 2026-05-20** (`drag`/`double_click`/`mouse_down`/`mouse_move`/`mouse_up`) |
-| **W-Q9** | Scoped `act_and_diff`: class / `aria-*` / `data-*` / inline-style / selection-handle diff around one action (selection-heavy UIs where state isn't text/a11y). | unstable | deferred |
+| **W-Q9** | Scoped `act_and_diff`: class / `aria-*` / `data-*` / inline-style diff around one action (selection-heavy UIs where state isn't text/a11y). | capability `unstable` | **impl-done 2026-05-20** (`act_and_diff`; structural DOM map before/after, `diffDomMaps` pure diff) |
 | **W-Q10** | `act_and_wait_for_network({action,match,timeoutMs})` + bounded `poll_eval` (behind `eval`) for precise async assertions. | `eval` (poll_eval) / unstable | deferred |
 | **W-Q11** | Region screenshots + named visual refs (`name_region`), cross-session capture (drive A, sample B in one call), session labels + `export_session_report`. | unstable | deferred |
 
