@@ -511,6 +511,12 @@ For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`
 - `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
 - `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
 
+### Network route mocking — `route` / `route_queue` / `unroute` (W-Q7)
+Drive Playwright request interception for race-condition QA, per-session (discarded with the session).
+- `route({ urlPattern, method?, status?, body?, contentType?, delayMs?, session? })` — fulfil **every** request matching `urlPattern` (Playwright glob) with one canned response; non-matching `method` falls through to the real network.
+- `route_queue({ urlPattern, method?, responses:[{status?,body?,contentType?,delayMs?}], session? })` — fulfil **successive** matches from `responses[]` (one per request, in order); once exhausted, matches hit the real network. Each response has its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the exact "response order ≠ request order" failure class).
+- `unroute({ urlPattern?, method?, session? })` — remove one route, or (no `urlPattern`) every route this session registered.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

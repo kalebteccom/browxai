@@ -14,6 +14,7 @@ import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
 import type { ClipboardBuffer } from "../page/clipboard.js";
+import type { RouteRegistry } from "../page/routes.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -35,6 +36,8 @@ export interface SessionEntry {
    *  concurrent sessions don't clobber each other through the shared OS
    *  clipboard; the OS clipboard is touched only transactionally. */
   clipboard: ClipboardBuffer;
+  /** per-session network route interceptions (capability `unstable`). */
+  routes: RouteRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
