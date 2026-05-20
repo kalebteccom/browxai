@@ -1,10 +1,22 @@
 {
   "name": "browxai",
   "version": "0.1.0",
-  "private": true,
   "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "browser-automation",
+    "playwright",
+    "cdp",
+    "ai-agent",
+    "agentic",
+    "browser-control"
+  ],
+  "homepage": "https://kalebteccom.github.io/browxai/",
+  "repository": { "type": "git", "url": "git+https://github.com/kalebteccom/browxai.git" },
+  "bugs": { "url": "https://github.com/kalebteccom/browxai/issues" },
   "engines": { "node": ">=20" },
   "packageManager": "pnpm@9.0.0",
   "bin": { "browxai": "dist/cli.js" },
@@ -18,7 +30,9 @@
     "test:keystone": "vitest run --config vitest.keystone.config.ts",
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
-    "install-browser": "playwright-core install chromium"
+    "install-browser": "playwright-core install chromium",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -29,6 +43,7 @@
     "@types/node": "^20.14.0",
     "tsx": "^4.19.0",
     "typescript": "^5.5.0",
+    "vitepress": "^1.6.3",
     "vitest": "^2.0.0"
   }
 }
