@@ -23,6 +23,8 @@ import { pointProbe } from "./page/point_probe.js";
 import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
+import { matchesResponse } from "./page/await_network.js";
+import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
@@ -1021,6 +1023,97 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
+    },
+  );
+
+  register(
+    "act_and_wait_for_network",
+    {
+      description:
+        "(unstable) Run ONE action and wait for a specific network response to complete — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed BEFORE the action dispatches (no race). `action` is `{tool,args}` from the batch whitelist. `match` selects the response: `urlPattern` (case-insensitive substring), `method`, `status` — at least one required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` is the max wait (default 10000). Capability: `unstable`.",
+      inputSchema: {
+        action: z.object({
+          tool: z.string().describe("Inner tool name (batch whitelist)."),
+          args: z.record(z.unknown()).optional(),
+        }),
+        match: z.object({
+          urlPattern: z.string().optional().describe("Case-insensitive substring of the request URL."),
+          method: z.string().optional(),
+          status: z.number().int().optional(),
+        }).describe("At least one field required."),
+        timeoutMs: z.number().int().positive().max(120_000).optional().describe("Max wait for the matching response (default 10000)."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("act_and_wait_for_network"); if (g) return g;
+      const innerTool = args.action.tool;
+      if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_wait_for_network") {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `act_and_wait_for_network: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)` }, null, 2) }] };
+      }
+      const ig = gateCheck(innerTool); if (ig) return ig;
+      if (args.match.urlPattern === undefined && args.match.method === undefined && args.match.status === undefined) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "act_and_wait_for_network: `match` needs at least one of urlPattern / method / status" }, null, 2) }] };
+      }
+      const e = await entryFor(args.session);
+      const timeout = args.timeoutMs ?? 10_000;
+      const parseInner = (resp: { content: Array<{ type: string; text?: string }> }): unknown => {
+        const first = resp.content[0];
+        if (!first || first.type !== "text" || first.text === undefined) return first ?? null;
+        try { return JSON.parse(first.text); } catch { return first.text; }
+      };
+      // arm the waiter BEFORE dispatching the action so a fast response can't slip past.
+      const waitP = e.session.page().waitForResponse(
+        (r) => matchesResponse({ url: r.url(), method: r.request().method(), status: r.status() }, args.match),
+        { timeout },
+      ).then(
+        (r) => ({ matched: true as const, method: r.request().method(), url: sanitizeUrl(r.url()), status: r.status() }),
+        () => ({ matched: false as const }),
+      );
+      const innerArgs = { ...(args.action.args ?? {}), session: args.session };
+      const [aRes, network] = await Promise.all([toolHandlers[innerTool]!(innerArgs), waitP]);
+      return { content: [{ type: "text" as const, text: JSON.stringify({ action: parseInner(aRes), network }, null, 2) }] };
+    },
+  );
+
+  register(
+    "poll_eval",
+    {
+      description:
+        "(unstable) Repeatedly evaluate a JS expression in the page until it returns a truthy value or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). The value is page-controlled — treat it as untrusted, like `eval_js`. Requires BOTH the `unstable` AND `eval` capabilities. Returns `{ ok, truthy, value, polls, elapsedMs, timedOut }`.",
+      inputSchema: {
+        expr: z.string().describe("JS expression; must be JSON-serializable. Wrap statements in `(() => { … })()`."),
+        intervalMs: z.number().int().min(50).max(10_000).optional().describe("Poll interval (default 250, min 50)."),
+        timeoutMs: z.number().int().positive().max(120_000).optional().describe("Total budget (default 5000)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ expr, intervalMs, timeoutMs, session }) => {
+      const g = gateCheck("poll_eval"); if (g) return g;
+      if (!caps.enabled.has("eval")) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "poll_eval evaluates page JS — it requires the `eval` capability in addition to `unstable`. Enable both in BROWX_CAPABILITIES." }, null, 2) }] };
+      }
+      const s = (await entryFor(session)).session;
+      const interval = intervalMs ?? 250;
+      const budget = timeoutMs ?? 5000;
+      const perPoll = Math.min(budget, 5000);
+      const start = Date.now();
+      let polls = 0;
+      let value: unknown;
+      while (Date.now() - start < budget) {
+        polls++;
+        try {
+          value = await withDeadline(s.page().evaluate(expr), perPoll, "poll_eval");
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err), polls, elapsedMs: Date.now() - start }, null, 2) }] };
+        }
+        if (value) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, truthy: true, value, polls, elapsedMs: Date.now() - start, timedOut: false }, null, 2) }] };
+        }
+        if (Date.now() - start + interval >= budget) break;
+        await new Promise((r) => setTimeout(r, interval));
+      }
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, truthy: false, value, polls, elapsedMs: Date.now() - start, timedOut: true }, null, 2) }] };
     },
   );
 

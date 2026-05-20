@@ -520,6 +520,12 @@ Drive Playwright request interception for race-condition QA, per-session (discar
 ### `act_and_diff({ action, scope?, session? })` (W-Q9)
 Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before *and* after the action.
 
+### `act_and_wait_for_network({ action, match, timeoutMs? })` (W-Q10)
+Run **one** action and wait for a specific network response — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed **before** the action dispatches (no race). `match` = `urlPattern` (case-insensitive substring) / `method` / `status`, at least one required. → `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` = max wait (default 10000).
+
+### `poll_eval({ expr, intervalMs?, timeoutMs?, session? })` (W-Q10)
+Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). → `{ ok, truthy, value, polls, elapsedMs, timedOut }`. The value is **page-controlled — untrusted**, like `eval_js`. Requires **both** `unstable` **and** `eval` capabilities. `intervalMs` default 250 (min 50); `timeoutMs` default 5000.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`
