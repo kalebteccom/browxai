@@ -153,6 +153,14 @@ this lane does not reset the Phase-3 API-stability clock.
    change but only takes effect on the **next** server start (capabilities are not
    re-resolved per call).
 
+   ⚠ **Precedence gotcha.** `capabilities` is an *array* and arrays **replace** across config
+   layers — they do not merge. A persisted `set_config({ capabilities:[…] })` (user/project
+   layer) therefore **overrides the `BROWX_CAPABILITIES` env value entirely**: if that patch
+   omits `unstable`, the env var is silently ignored. Include *every* capability you want in
+   the one authoritative place. `get_config({ scope:"resolved" }).capabilities` reports the
+   **live enforced** set (what tool gating uses); if it carries a `capabilitiesPendingRestart`
+   block, the config changed but the server hasn't been restarted yet — restart it.
+
 2. Once enabled, they are ordinary MCP tool calls — e.g.
    `drag({ from:{ref:"e12"}, to:{coords:{x:740,y:300}}, steps:20 })`.
 
