@@ -669,7 +669,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const result = await withDeadline(pointProbe(e.session.page(), coords, { crop }), cfgActionTimeout(), "point_probe");
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+        // structured failure — coordinate + page URL for triage (W-R3).
+        let url = "";
+        try { url = e.session.page().url(); } catch { /* page gone */ }
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, point: coords, url, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
     },
   );
