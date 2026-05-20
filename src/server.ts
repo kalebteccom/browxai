@@ -869,10 +869,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // Gated behind the off-by-default `unstable` capability — NOT part of the
   // v0.1.0 frozen stable surface; shapes here may change before promotion.
 
-  const GESTURE_TARGET = z.object({
-    ref: z.string().optional(),
-    selector: z.string().optional(),
-    coords: z.object({ x: z.number(), y: z.number() }).optional(),
+  // A *factory* — each call returns a fresh schema instance. Reusing one
+  // shared instance across `from`/`to`/`target` made zod-to-json-schema emit a
+  // `$ref` for the repeats, which some MCP schema viewers render wrong (the
+  // reported `drag.to.coords` showing as `string`). Distinct instances → no
+  // `$ref` dedup → every field renders identically.
+  const gestureTarget = () => z.object({
+    ref: z.string().optional().describe("Stable [eN] ref."),
+    selector: z.string().optional().describe("CSS / selectorHint."),
+    coords: z.object({ x: z.number(), y: z.number() }).optional().describe("Viewport CSS px."),
   });
   type GestureTargetArg = { ref?: string; selector?: string; coords?: { x: number; y: number } };
   const toActionTarget = (o: GestureTargetArg) => {
@@ -887,8 +892,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     {
       description: "(unstable) Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}`. For timeline scrub/trim, drag-reorder, slider, lasso. Capability: `unstable`.",
       inputSchema: {
-        from: GESTURE_TARGET.describe("Drag start: {ref}|{selector}|{coords}."),
-        to: GESTURE_TARGET.describe("Drag end: {ref}|{selector}|{coords}."),
+        from: gestureTarget().describe("Drag start: {ref}|{selector}|{coords}."),
+        to: gestureTarget().describe("Drag end: {ref}|{selector}|{coords}."),
         steps: z.number().int().positive().max(100).optional().describe("Intermediate mouse-move points (default 12); more = smoother/slower."),
         ...SESSION_ARG,
       },
@@ -912,7 +917,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "double_click",
     {
       description: "(unstable) Double-click a target (`{ref}|{selector}|{coords}`). Capability: `unstable`.",
-      inputSchema: { target: GESTURE_TARGET.describe("{ref}|{selector}|{coords}."), ...SESSION_ARG },
+      inputSchema: { target: gestureTarget().describe("{ref}|{selector}|{coords}."), ...SESSION_ARG },
     },
     async ({ target, session }) => {
       const g = gateCheck("double_click"); if (g) return g;
