@@ -38,7 +38,7 @@ import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { BrowxBridge } from "./helper/bridge.js";
 import { applyOverlayHide } from "./helper/overlay-hide.js";
-import { resolveCapabilities, resolveConfirmHooks, isToolEnabled } from "./util/capabilities.js";
+import { resolveCapabilities, resolveConfirmHooks, isToolEnabled, TOOL_CAPABILITY } from "./util/capabilities.js";
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
@@ -292,8 +292,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         type: "text" as const,
         text: JSON.stringify({
           ok: false,
-          error: `tool "${toolName}" is disabled (capability not in BROWX_CAPABILITIES)`,
-          hint: "enable by setting BROWX_CAPABILITIES to include the relevant category — see docs/threat-model.md",
+          error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
+          requiredCapability: TOOL_CAPABILITY[toolName] ?? null,
+          activeCapabilities: [...caps.enabled],
+          hint: "Capabilities are resolved ONCE at server start — `set_config` alone won't enable this; the server must be RESTARTED. Two gotchas: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a set_config patch that omits this capability silently overrides the env var — include every capability you want; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate uses). Fix: ensure the resolved capabilities include the one above, then restart the browxai server. See docs/threat-model.md.",
         }, null, 2),
       }],
     };
@@ -1663,9 +1665,26 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     },
     async ({ scope }) => {
-      const body = !scope || scope === "resolved"
-        ? { scope: "resolved", config: configStore.resolve() }
-        : { scope, config: configStore.getLayer(scope as ConfigScope) };
+      let body: Record<string, unknown>;
+      if (!scope || scope === "resolved") {
+        const resolved = configStore.resolve();
+        // `capabilities` in the resolved view is the LIVE enforced set — what
+        // tool gating actually uses — not the freshly re-resolved config.
+        // Those diverge after a `set_config({capabilities})` until a restart;
+        // reporting the re-resolved value here would lie to the agent.
+        const live = [...caps.enabled].sort();
+        const persisted = [...resolved.capabilities].sort();
+        body = { scope: "resolved", config: { ...resolved, capabilities: live } };
+        if (live.join(",") !== persisted.join(",")) {
+          body.capabilitiesPendingRestart = {
+            active: live,
+            persisted,
+            note: "`capabilities` was changed via set_config (or env) but is resolved ONCE at server start — the difference takes effect only after a browxai server RESTART. Tool gating enforces `active`.",
+          };
+        }
+      } else {
+        body = { scope, config: configStore.getLayer(scope as ConfigScope) };
+      }
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
     },
   );

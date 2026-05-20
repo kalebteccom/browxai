@@ -24,7 +24,13 @@ const MAX_NODES = 3000;
 // Fixed in-page snapshot — no agent JS. Walks the scope subtree, recording
 // each element's class/style and only its aria-*/data-* attributes (the
 // fields selection state hides in), keyed by structural index path.
-const SNAP_FN = `function (scopeSel) {
+//
+// `page.evaluate(string)` treats the string as an *expression* (a
+// `function(arg){…}` string is never called, args ignored) — so this is an
+// arg-less IIFE with the scope selector interpolated as a JSON string literal.
+function buildSnapScript(scopeSelector: string | null): string {
+  return `(() => {
+  var scopeSel = ${JSON.stringify(scopeSelector)};
   var root = scopeSel ? document.querySelector(scopeSel) : document.body;
   if (!root) return null;
   var out = {};
@@ -49,10 +55,11 @@ const SNAP_FN = `function (scopeSel) {
   }
   walk(root, '0');
   return out;
-}`;
+})()`;
+}
 
 export async function captureDomMap(page: Page, scopeSelector?: string): Promise<DomMap | null> {
-  return (await page.evaluate(SNAP_FN as never, scopeSelector ?? null)) as DomMap | null;
+  return (await page.evaluate(buildSnapScript(scopeSelector ?? null))) as DomMap | null;
 }
 
 export interface DomChange {

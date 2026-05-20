@@ -170,6 +170,18 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
       expect(Math.round(box.box.width)).toBe(200);
       expect(Math.round(box.box.height)).toBe(80);
 
+      // point_probe — exercises the in-page-script-with-args path against a
+      // real browser (a string passed to page.evaluate is an expression, so a
+      // `function(arg){…}` string is never called and args are dropped → the
+      // probe must use an arg-less IIFE). A regression here threw before
+      // returning, so a non-empty `stack` is the guard.
+      const probe = await callJson<{ ok: boolean; stack: unknown[] }>("point_probe", {
+        session, coords: { x: 40, y: 40 },
+      });
+      expect(probe.ok).toBe(true);
+      expect(Array.isArray(probe.stack)).toBe(true);
+      expect(probe.stack.length).toBeGreaterThan(0); // html/body at minimum
+
       await callJson("close_session", { session });
     },
     KEYSTONE_TIMEOUT,

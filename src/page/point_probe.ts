@@ -45,8 +45,12 @@ export interface PointProbeResult {
   cropBase64?: string;
 }
 
-const PROBE_FN = `function (arg) {
-  var x = arg.x, y = arg.y, MAX = arg.max;
+// `page.evaluate(string)` treats the string as an *expression* — a
+// `function(arg){…}` string is never called and args are ignored. So this is
+// an arg-less IIFE with the (numeric, zod-validated) coords interpolated in.
+function buildProbeScript(x: number, y: number, max: number): string {
+  return `(() => {
+  var x = ${x}, y = ${y}, MAX = ${max};
   function summ(el) {
     if (!el || !el.tagName) return null;
     var cs = (el.ownerDocument && el.ownerDocument.defaultView)
@@ -99,18 +103,17 @@ const PROBE_FN = `function (arg) {
     scrollContainer: top ? summ(scrollAncestor(top)) : null,
     clickableAncestor: top ? summ(clickableAncestor(top)) : null,
   };
-}`;
+})()`;
+}
 
 export async function pointProbe(
   page: Page,
   point: { x: number; y: number },
   opts: { crop?: boolean } = {},
 ): Promise<PointProbeResult> {
-  const probed = (await page.evaluate(PROBE_FN as never, {
-    x: point.x,
-    y: point.y,
-    max: MAX_STACK,
-  })) as Pick<PointProbeResult, "stack" | "scrollContainer" | "clickableAncestor">;
+  const probed = (await page.evaluate(
+    buildProbeScript(point.x, point.y, MAX_STACK),
+  )) as Pick<PointProbeResult, "stack" | "scrollContainer" | "clickableAncestor">;
 
   const result: PointProbeResult = {
     ok: true,
