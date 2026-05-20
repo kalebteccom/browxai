@@ -215,6 +215,12 @@ and a round that only adds to this lane does **not** reset the Phase-3
 "API stable ~1 month" clock. Each item lands behind an off-by-default
 capability when scheduled.
 
+**Status: W-Q7–Q11 all shipped 2026-05-19/20**, every tool gated behind the
+single off-by-default **`unstable`** capability (`poll_eval` additionally
+needs `eval`). The v0.1.0 stable surface (default caps
+`read,navigation,action,human`) is **unchanged** — the stability clock keeps
+running. Enable the lane with `BROWX_CAPABILITIES=…,unstable`.
+
 | # | Problem class | Lands behind | Status |
 |---|---|---|---|
 | **W-Q7** | Scoped network route mocking with delay/reorder (race-condition QA: responses out of request order). | capability `unstable` | **impl-done 2026-05-20** (`route`/`route_queue`/`unroute`; per-response `delayMs` = the reorder lever; per-session `RouteRegistry`) |
