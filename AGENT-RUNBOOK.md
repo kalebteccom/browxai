@@ -406,10 +406,12 @@ are **all 7 ticked**:
       criteria (zero-env config, two-user isolation, incognito no-trace). Headless gap
       (`await_human` / `__browx` banner) documented as a deliberate skip.
 
-Phase 2 is closed. The next genuinely-next phase is **Phase 3 public release**, gated on the
-4-condition trigger (below). #3 (security) and #4 (demand + named owner) are met; #2 is met
-once the v0.1.0 stable surface holds ~1 week (→ ~2026-05-26); #1 (Phase 1 stuck-landed for
-*weeks*) is now the binding gate — early-to-mid-June.
+Phase 2 is closed. **Phase 3 (public release) has an explicit GO — recorded 2026-05-20 by
+the owner (@rowinbot):** browxai has decisively proven its worth across multiple independent
+consumers, so the owner authorised Phase 3 now, accelerating past the residual #1/#2 calendar
+windows (the trigger's "explicit go decision" clause permits exactly this). Phase 3 is **in
+execution** — remaining work is the OSS infra + the repo-public / package-publish steps
+(see the portfolio roadmap § Phase 3).
 
 When it closes, sync back to the portfolio (`progress.md` + roadmap status + portfolio
 table), open `/gpd:advance-stage` if you want, and the next genuinely-next phase is **Phase 3
