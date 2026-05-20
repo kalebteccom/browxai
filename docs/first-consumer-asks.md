@@ -174,6 +174,33 @@ G1 shipped, the loop becomes clean (no `__browx.confirm` plumbing). Phase-2
 close still gates on the **headless-CI keystone** — the runbook's other open
 verification item.
 
+## Round-19 asks (post-shipping, 2026-05-20 — file-io rerun, validation)
+
+Source: a Codex rerun on a media-editor SPA after enabling `file-io` +
+`unstable`. **Verdict: clean pass, no defects.** `upload_file` replaced the
+prior `eval_js` `File`/`DataTransfer` injection; `drag({preflight})` caught
+`resizeRisk:true` (overlapping `ew-resize` handles) on a narrow timeline
+clip — the exact earlier failure, now visible before acting. The
+capability-precedence + restart guidance also confirmed working. Three minor
+**wishlist** items, all "not a blocker"; raw client report not committed
+(`.gitignore`d), signal reframed.
+
+| # | Problem class | Primitive | Status |
+|---|---|---|---|
+| **W-S1** 🟢 | `upload_file`'s result (`{ok,mode,name}`) is too thin to debug a bad upload (wrong input? wrong file?). | Enrich the result: target summary, byte size, `mimeType`, files-set count. Cheap, on an already-`file-io`-gated tool. | **impl-pending** |
+| **W-S2** ⚪ | `drag({preflight})` flags `resizeRisk` but doesn't offer an alternative press point. | Best-effort: when `resizeRisk`, suggest the centre of a non-resize-cursor layer from the hit stack. **Low value / often impossible** — the report itself notes a genuinely narrow clip's resize handles are *wider than the body*, so no safe point exists; preflight already gives the agent the stack to decide. Likely decline. | **deferred (likely decline)** |
+| **W-S3** 🟡 | Persistent-profile destructive media-editor tests carry mutations across runs; no checkpoint/restore. | A profile snapshot/restore helper (copy the workspace-rooted profile dir) so a destructive authed-SPA test can reset without a human reloading the project. New tool → `unstable` lane. | **impl-pending** |
+
+**Note:** `upload_file` `path` mode is **already unit-tested**
+(`upload.test.ts` — workspace-relative accepted, escape + absolute-outside
+rejected). The report's ask for that coverage is satisfied at the unit level;
+a real-browser keystone case would need `file-io` in the keystone's
+otherwise-zero-env run — a small follow-up, not a gap in the feature.
+
+**Validated, no-op:** `upload_file` (hidden inputs, content mode),
+`drag({preflight})` resize-risk detection, `poll_eval` for post-upload Redux
+assertions — all confirmed on the live target.
+
 ## Round-18 asks (post-shipping, 2026-05-20 — non-Claude media-editor run on the unstable lane)
 
 Source: a Codex run exercising the just-shipped unstable lane (`drag`,
