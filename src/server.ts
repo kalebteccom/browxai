@@ -20,6 +20,7 @@ import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
 import { runShortcut } from "./page/shortcut.js";
 import { pointProbe } from "./page/point_probe.js";
+import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
@@ -854,6 +855,96 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
     },
   );
+
+  // ---------- unstable lane (W-Q7..Q11) ----------
+  // Gated behind the off-by-default `unstable` capability — NOT part of the
+  // v0.1.0 frozen stable surface; shapes here may change before promotion.
+
+  const GESTURE_TARGET = z.object({
+    ref: z.string().optional(),
+    selector: z.string().optional(),
+    coords: z.object({ x: z.number(), y: z.number() }).optional(),
+  });
+  type GestureTargetArg = { ref?: string; selector?: string; coords?: { x: number; y: number } };
+  const toActionTarget = (o: GestureTargetArg) => {
+    if (o.coords) return { coords: o.coords };
+    if (o.ref) return { ref: o.ref };
+    if (o.selector) return { selector: o.selector };
+    throw new Error("target requires one of ref / selector / coords");
+  };
+
+  register(
+    "drag",
+    {
+      description: "(unstable) Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}`. For timeline scrub/trim, drag-reorder, slider, lasso. Capability: `unstable`.",
+      inputSchema: {
+        from: GESTURE_TARGET.describe("Drag start: {ref}|{selector}|{coords}."),
+        to: GESTURE_TARGET.describe("Drag end: {ref}|{selector}|{coords}."),
+        steps: z.number().int().positive().max(100).optional().describe("Intermediate mouse-move points (default 12); more = smoother/slower."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ from, to, steps, session }) => {
+      const g = gateCheck("drag"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await withDeadline(
+          drag(e.session.page(), e.refs, { from: toActionTarget(from) as never, to: toActionTarget(to) as never, steps }),
+          cfgActionTimeout(), "drag",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "double_click",
+    {
+      description: "(unstable) Double-click a target (`{ref}|{selector}|{coords}`). Capability: `unstable`.",
+      inputSchema: { target: GESTURE_TARGET.describe("{ref}|{selector}|{coords}."), ...SESSION_ARG },
+    },
+    async ({ target, session }) => {
+      const g = gateCheck("double_click"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await withDeadline(
+          doubleClick(e.session.page(), e.refs, toActionTarget(target) as never),
+          cfgActionTimeout(), "double_click",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  for (const act of ["mouse_down", "mouse_move", "mouse_up"] as const) {
+    register(
+      act,
+      {
+        description: `(unstable) Low-level ${act.replace("_", " ")} for custom gestures the higher-level tools don't cover (scrub/trim handles). ${act === "mouse_move" ? "Requires `coords`." : "`coords` optional — moves there first when given, else acts at the current pointer position."} Capability: \`unstable\`.`,
+        inputSchema: {
+          coords: z.object({ x: z.number(), y: z.number() }).optional().describe("Viewport CSS px."),
+          ...SESSION_ARG,
+        },
+      },
+      async ({ coords, session }) => {
+        const g = gateCheck(act); if (g) return g;
+        const e = await entryFor(session);
+        try {
+          const r = await withDeadline(
+            mouseAction(e.session.page(), act.slice(6) as "down" | "move" | "up", coords),
+            cfgActionTimeout(), act,
+          );
+          return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+        }
+      },
+    );
+  }
 
   register(
     "hover",

@@ -23,10 +23,11 @@ export type Capability =
   | "byob-attach"
   | "file-io"
   | "network-body"
-  | "clipboard";
+  | "clipboard"
+  | "unstable";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "unstable",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -80,6 +81,23 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   find_feedback: "human",
   // eval
   eval_js: "eval",
+  // unstable — the explicitly-experimental lane (W-Q7..Q11). Off by default;
+  // NOT part of the v0.1.0 frozen stable surface (see docs/tool-reference.md
+  // "Stability & semver"). Shapes here may change/vanish in any release.
+  drag: "unstable",
+  double_click: "unstable",
+  mouse_down: "unstable",
+  mouse_move: "unstable",
+  mouse_up: "unstable",
+  route: "unstable",
+  route_queue: "unstable",
+  unroute: "unstable",
+  act_and_diff: "unstable",
+  act_and_wait_for_network: "unstable",
+  poll_eval: "unstable",
+  screenshot_region: "unstable",
+  name_region: "unstable",
+  export_session_report: "unstable",
   // network-body (off by default — full response bodies can carry PII / tokens)
   network_body: "network-body",
   // byob-attach and file-io are not bound to specific tools — byob-attach gates the

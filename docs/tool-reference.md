@@ -501,6 +501,16 @@ Scopes match `BROWX_CONFIRM_REQUIRED` vocabulary: `navigate_off_allowlist`, `byo
 
 Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remainingMs }`.
 
+## Unstable tools (capability `unstable`)
+
+> All tools in this section are gated behind the **off-by-default `unstable` capability** and are **NOT part of the v0.1.0 frozen stable surface** (see "Stability & semver"). Shapes may change or vanish in any release; a round that only touches this lane does not reset the stability clock. Enable with `BROWX_CAPABILITIES=…,unstable`. They cover the heavier media-editor / race-condition QA asks (Round-17 W-Q7–Q11).
+
+### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up` (W-Q8)
+For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`hover` can't express.
+- `drag({ from, to, steps?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`.
+- `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
+- `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`
