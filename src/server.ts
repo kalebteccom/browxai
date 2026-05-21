@@ -191,6 +191,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     confirmHooks: [...confirmHooks],
     origins: describePolicy(originPolicy),
   });
+  for (const w of caps.warnings) log.warn(`browxai: ${w}`);
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");

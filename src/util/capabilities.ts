@@ -34,6 +34,25 @@ export const DEFAULT_CAPABILITIES: readonly Capability[] = [
 ];
 
 /**
+ * Capabilities that USED to be valid and have since been retired. A retired
+ * capability is still ACCEPTED in `BROWX_CAPABILITIES` (and the `capabilities`
+ * config key) — it is ignored with a deprecation warning, never an error — so
+ * evolving the capability set can't crash an existing adopter's config.
+ * Genuine typos (a name that was never a capability) are still rejected loudly.
+ * A retired entry may be dropped entirely only in a major version bump.
+ * See the "API evolution" rule in CLAUDE.md.
+ *
+ * The value is the agent/operator-facing reason + what to do instead.
+ */
+export const RETIRED_CAPABILITIES: Readonly<Record<string, string>> = {
+  unstable:
+    "the tools it gated (gestures, route mocking, compound act-and-observe " +
+    "tools, visual regions, profile snapshot/restore) were promoted into the " +
+    "default stable surface — it no longer gates anything; drop it from " +
+    "BROWX_CAPABILITIES",
+};
+
+/**
  * Map each MCP tool name to the capability that governs it. A tool not in this map
  * is treated as `human` (coordination primitive, always safe). The categories match
  * `docs/threat-model.md` "The capability set".
@@ -119,6 +138,9 @@ export interface CapabilityConfig {
   enabled: ReadonlySet<Capability>;
   /** Names of tools rejected at start because their capability isn't enabled. */
   disabledTools: ReadonlyArray<{ tool: string; capability: Capability }>;
+  /** Non-fatal startup warnings — e.g. a retired capability was supplied.
+   *  The caller (server.ts) logs these; they never abort startup. */
+  warnings: readonly string[];
 }
 
 export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): CapabilityConfig {
@@ -126,19 +148,34 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
   const list = raw
     ? raw.split(",").map((s) => s.trim()).filter(Boolean)
     : [...DEFAULT_CAPABILITIES];
-  const unknown = list.filter((c) => !ALL_CAPABILITIES.includes(c as Capability));
+  const warnings: string[] = [];
+  const live: string[] = [];
+  const unknown: string[] = [];
+  for (const c of list) {
+    if (ALL_CAPABILITIES.includes(c as Capability)) {
+      live.push(c);
+    } else if (Object.prototype.hasOwnProperty.call(RETIRED_CAPABILITIES, c)) {
+      // Retired, not unknown — tolerate it so an old config never crashes.
+      warnings.push(
+        `BROWX_CAPABILITIES: "${c}" is a retired capability — ${RETIRED_CAPABILITIES[c]}. ` +
+        `It is ignored (no effect); the rest of your config is honoured.`,
+      );
+    } else {
+      unknown.push(c);
+    }
+  }
   if (unknown.length) {
     throw new Error(
       `BROWX_CAPABILITIES: unknown capability/capabilities ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
       `Valid: ${ALL_CAPABILITIES.join(", ")}.`,
     );
   }
-  const enabled = new Set(list as Capability[]);
+  const enabled = new Set(live as Capability[]);
   const disabledTools: Array<{ tool: string; capability: Capability }> = [];
   for (const [tool, cap] of Object.entries(TOOL_CAPABILITY)) {
     if (!enabled.has(cap)) disabledTools.push({ tool, capability: cap });
   }
-  return { enabled, disabledTools };
+  return { enabled, disabledTools, warnings };
 }
 
 /** Returns true iff the tool is enabled given the active capability set. */

@@ -18,6 +18,21 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
     expect(() => resolveCapabilities({ BROWX_CAPABILITIES: "read,banana" } as NodeJS.ProcessEnv)).toThrow(/banana/);
   });
 
+  it("tolerates a retired capability — warns, never throws (old configs survive)", () => {
+    const c = resolveCapabilities({ BROWX_CAPABILITIES: "read,navigation,unstable" } as NodeJS.ProcessEnv);
+    expect([...c.enabled].sort()).toEqual(["navigation", "read"]); // retired one dropped
+    expect(c.warnings.some((w) => /unstable/.test(w) && /retired/.test(w))).toBe(true);
+  });
+
+  it("a genuine typo still throws even alongside a retired capability", () => {
+    expect(() => resolveCapabilities({ BROWX_CAPABILITIES: "read,unstable,banana" } as NodeJS.ProcessEnv))
+      .toThrow(/banana/);
+  });
+
+  it("emits no warnings for an all-valid capability set", () => {
+    expect(resolveCapabilities({ BROWX_CAPABILITIES: "read,navigation" } as NodeJS.ProcessEnv).warnings).toEqual([]);
+  });
+
   it("default set excludes eval / byob-attach / file-io", () => {
     const c = resolveCapabilities({} as NodeJS.ProcessEnv);
     expect(c.enabled.has("eval")).toBe(false);
