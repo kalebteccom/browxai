@@ -1,4 +1,4 @@
-// Scoped DOM diff around an action (W-Q9) — the `unstable` lane.
+// Scoped DOM diff around an action.
 //
 // For selection-heavy UIs (timeline editors, kanban, custom toggles) the
 // state change an agent must verify — "which clip became selected" — is

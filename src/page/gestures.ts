@@ -1,8 +1,7 @@
-// Pointer-gesture primitives (W-Q8) — the `unstable` lane.
+// Pointer-gesture primitives — capability `action`.
 //
 // `click`/`hover` cover taps; media editors and drag-reorder UIs also need
-// drag, double-click, and raw mouse down/move/up. These are explicitly
-// experimental (capability `unstable`) — shapes may change before promotion.
+// drag, double-click, and raw mouse down/move/up.
 
 import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";

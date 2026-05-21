@@ -23,11 +23,10 @@ export type Capability =
   | "byob-attach"
   | "file-io"
   | "network-body"
-  | "clipboard"
-  | "unstable";
+  | "clipboard";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "unstable",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -81,27 +80,30 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   find_feedback: "human",
   // eval
   eval_js: "eval",
-  // unstable — the explicitly-experimental lane (W-Q7..Q11). Off by default;
-  // NOT part of the v0.1.0 frozen stable surface (see docs/tool-reference.md
-  // "Stability & semver"). Shapes here may change/vanish in any release.
-  drag: "unstable",
-  double_click: "unstable",
-  mouse_down: "unstable",
-  mouse_move: "unstable",
-  mouse_up: "unstable",
-  route: "unstable",
-  route_queue: "unstable",
-  unroute: "unstable",
-  act_and_diff: "unstable",
-  act_and_wait_for_network: "unstable",
-  poll_eval: "unstable",
-  screenshot_region: "unstable",
-  name_region: "unstable",
-  region: "unstable",
-  cross_session_sample: "unstable",
-  export_session_report: "unstable",
-  profile_snapshot: "unstable",
-  profile_restore: "unstable",
+  poll_eval: "eval", // repeatedly evaluates page JS — same posture as eval_js
+  // The tools below were the W-Q7..Q11 experimental lane (formerly the
+  // off-by-default `unstable` capability). Promoted into the stable surface:
+  // each now sits under its natural capability — gestures/route mocking are
+  // `action`, the compound act-and-observe tools are `read` (the inner
+  // action's own capability is still gate-checked separately), region
+  // bind/resolve + profile snapshot/restore are `human` coordination.
+  drag: "action",
+  double_click: "action",
+  mouse_down: "action",
+  mouse_move: "action",
+  mouse_up: "action",
+  route: "action",
+  route_queue: "action",
+  unroute: "action",
+  act_and_diff: "read",
+  act_and_wait_for_network: "read",
+  cross_session_sample: "read",
+  screenshot_region: "read",
+  export_session_report: "read",
+  name_region: "human",
+  region: "human",
+  profile_snapshot: "human",
+  profile_restore: "human",
   // network-body (off by default — full response bodies can carry PII / tokens)
   network_body: "network-body",
   // file-io

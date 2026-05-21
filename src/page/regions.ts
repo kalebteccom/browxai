@@ -1,4 +1,4 @@
-// Named visual regions (W-Q11) — the `unstable` lane.
+// Named visual regions — capability `human`.
 //
 // In virtualised timelines / canvas / unlabelled positioned divs the target
 // is "the third row segment at x=…", not an element ref. `name_region` binds

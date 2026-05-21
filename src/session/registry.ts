@@ -37,9 +37,9 @@ export interface SessionEntry {
    *  concurrent sessions don't clobber each other through the shared OS
    *  clipboard; the OS clipboard is touched only transactionally. */
   clipboard: ClipboardBuffer;
-  /** per-session network route interceptions (capability `unstable`). */
+  /** per-session network route interceptions (capability `action`). */
   routes: RouteRegistry;
-  /** per-session named visual regions (capability `unstable`). */
+  /** per-session named visual regions (capability `human`). */
   regions: RegionRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age

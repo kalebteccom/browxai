@@ -1,4 +1,4 @@
-// Profile snapshot / restore (W-S3) — the `unstable` lane.
+// Profile snapshot / restore — capability `human`.
 //
 // A destructive authenticated-SPA test mutates the persistent profile (an
 // accidental timeline edit, a half-finished form, dirty local state). Repeat

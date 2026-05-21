@@ -870,9 +870,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  // ---------- unstable lane (W-Q7..Q11) ----------
-  // Gated behind the off-by-default `unstable` capability — NOT part of the
-  // v0.1.0 frozen stable surface; shapes here may change before promotion.
+  // ---------- gestures, route mocking, compound act-and-observe tools ----------
+  // These were the W-Q7..Q11 experimental lane; now promoted into the stable
+  // surface under their natural capabilities (gestures/route = `action`,
+  // compound observe tools = `read`, region/profile coordination = `human`).
 
   // A *factory* — each call returns a fresh schema instance. Reusing one
   // shared instance across `from`/`to`/`target` made zod-to-json-schema emit a
@@ -895,7 +896,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "drag",
     {
-      description: "(unstable) Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}` (element targets press the box centre). `preflight:true` instead probes the `from` point and returns what's under it (top hit element + `resizeRisk` when a resize-handle cursor is present) WITHOUT dragging — check it first so a narrow item's edge doesn't get resized instead of moved. For timeline scrub/trim, drag-reorder, slider, lasso. Capability: `unstable`.",
+      description: "Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}` (element targets press the box centre). `preflight:true` instead probes the `from` point and returns what's under it (top hit element + `resizeRisk` when a resize-handle cursor is present) WITHOUT dragging — check it first so a narrow item's edge doesn't get resized instead of moved. For timeline scrub/trim, drag-reorder, slider, lasso.",
       inputSchema: {
         from: gestureTarget().describe("Drag start: {ref}|{selector}|{coords}."),
         to: gestureTarget().optional().describe("Drag end: {ref}|{selector}|{coords}. Required unless `preflight:true`."),
@@ -929,7 +930,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "double_click",
     {
-      description: "(unstable) Double-click a target (`{ref}|{selector}|{coords}`). Capability: `unstable`.",
+      description: "Double-click a target (`{ref}|{selector}|{coords}`).",
       inputSchema: { target: gestureTarget().describe("{ref}|{selector}|{coords}."), ...SESSION_ARG },
     },
     async ({ target, session }) => {
@@ -951,7 +952,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       act,
       {
-        description: `(unstable) Low-level ${act.replace("_", " ")} for custom gestures the higher-level tools don't cover (scrub/trim handles). ${act === "mouse_move" ? "Requires `coords`." : "`coords` optional — moves there first when given, else acts at the current pointer position."} Capability: \`unstable\`.`,
+        description: `Low-level ${act.replace("_", " ")} for custom gestures the higher-level tools don't cover (scrub/trim handles). ${act === "mouse_move" ? "Requires `coords`." : "`coords` optional — moves there first when given, else acts at the current pointer position."}`,
         inputSchema: {
           coords: z.object({ x: z.number(), y: z.number() }).optional().describe("Viewport CSS px."),
           ...SESSION_ARG,
@@ -983,7 +984,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "route",
     {
-      description: "(unstable) Intercept requests matching `urlPattern` (Playwright glob) and fulfil every match with one canned response. For substituting a backend response in QA. Per-session; discarded with the session or via `unroute`. Capability: `unstable`.",
+      description: "Intercept requests matching `urlPattern` (Playwright glob) and fulfil every match with one canned response. For substituting a backend response in QA. Per-session; discarded with the session or via `unroute`.",
       inputSchema: {
         urlPattern: z.string().describe("Playwright URL glob, e.g. `**/api/records*`."),
         method: z.string().optional().describe("Restrict to this HTTP method; other methods fall through to the real network."),
@@ -1006,7 +1007,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "route_queue",
     {
-      description: "(unstable) Intercept `urlPattern` and fulfil *successive* matches from `responses[]` (one per request, in order); once exhausted, matches fall through to the real network. Each response carries its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the race-condition QA case). Per-session. Capability: `unstable`.",
+      description: "Intercept `urlPattern` and fulfil *successive* matches from `responses[]` (one per request, in order); once exhausted, matches fall through to the real network. Each response carries its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the race-condition QA case). Per-session.",
       inputSchema: {
         urlPattern: z.string().describe("Playwright URL glob."),
         method: z.string().optional(),
@@ -1029,7 +1030,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "unroute",
     {
-      description: "(unstable) Remove a route registered by `route`/`route_queue` (by `urlPattern`[+`method`]), or — with no `urlPattern` — every route this session registered. Capability: `unstable`.",
+      description: "Remove a route registered by `route`/`route_queue` (by `urlPattern`[+`method`]), or — with no `urlPattern` — every route this session registered.",
       inputSchema: {
         urlPattern: z.string().optional().describe("Omit to clear ALL of this session's routes."),
         method: z.string().optional(),
@@ -1052,7 +1053,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "act_and_wait_for_network",
     {
       description:
-        "(unstable) Run ONE action and wait for a specific network response to complete — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed BEFORE the action dispatches (no race). `action` is `{tool,args}` from the batch whitelist. `match` selects the response: `urlPattern` (case-insensitive substring), `method`, `status` — at least one required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` is the max wait (default 10000). Capability: `unstable`.",
+        "Run ONE action and wait for a specific network response to complete — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed BEFORE the action dispatches (no race). `action` is `{tool,args}` from the batch whitelist. `match` selects the response: `urlPattern` (case-insensitive substring), `method`, `status` — at least one required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` is the max wait (default 10000).",
       inputSchema: {
         action: z.object({
           tool: z.string().describe("Inner tool name (batch whitelist)."),
@@ -1102,7 +1103,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "poll_eval",
     {
       description:
-        "(unstable) Repeatedly evaluate a JS expression in the page until it returns a truthy value or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). The value is page-controlled — treat it as untrusted, like `eval_js`. Requires BOTH the `unstable` AND `eval` capabilities. Returns `{ ok, truthy, value, polls, elapsedMs, timedOut }`.",
+        "Repeatedly evaluate a JS expression in the page until it returns a truthy value or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). The value is page-controlled — treat it as untrusted, like `eval_js`. Capability: `eval`. Returns `{ ok, truthy, value, polls, elapsedMs, timedOut }`.",
       inputSchema: {
         expr: z.string().describe("JS expression; must be JSON-serializable. Wrap statements in `(() => { … })()`."),
         intervalMs: z.number().int().min(50).max(10_000).optional().describe("Poll interval (default 250, min 50)."),
@@ -1112,9 +1113,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async ({ expr, intervalMs, timeoutMs, session }) => {
       const g = gateCheck("poll_eval"); if (g) return g;
-      if (!caps.enabled.has("eval")) {
-        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "poll_eval evaluates page JS — it requires the `eval` capability in addition to `unstable`. Enable both in BROWX_CAPABILITIES." }, null, 2) }] };
-      }
       const s = (await entryFor(session)).session;
       const interval = intervalMs ?? 250;
       const budget = timeoutMs ?? 5000;
@@ -1147,7 +1145,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "screenshot_region",
     {
-      description: "(unstable) PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply. Capability: `unstable`.",
+      description: "PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply.",
       inputSchema: { box: BOX_SCHEMA.describe("Viewport rect {x,y,width,height} in CSS px."), ...SESSION_ARG },
     },
     async ({ box, session }) => {
@@ -1165,7 +1163,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "name_region",
     {
-      description: "(unstable) Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session. Capability: `unstable`.",
+      description: "Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session.",
       inputSchema: { name: z.string().describe("Mnemonic, e.g. \"matching_audio_clip\"."), box: BOX_SCHEMA, ...SESSION_ARG },
     },
     async ({ name, box, session }) => {
@@ -1178,7 +1176,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "region",
     {
-      description: "(unstable) Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region. Capability: `unstable`.",
+      description: "Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region.",
       inputSchema: { name: z.string(), ...SESSION_ARG },
     },
     async ({ name, session }) => {
@@ -1192,7 +1190,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "cross_session_sample",
     {
-      description: "(unstable) Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`. Capability: `unstable`.",
+      description: "Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`.",
       inputSchema: {
         action: z.object({ tool: z.string(), args: z.record(z.unknown()).optional() }),
         actionSession: z.string().describe("Session the action runs in."),
@@ -1230,7 +1228,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   register(
     "export_session_report",
     {
-      description: "(unstable) Bundle a session's current QA evidence into one JSON object — url, console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk). Capability: `unstable`.",
+      description: "Bundle a session's current QA evidence into one JSON object — url, console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
       inputSchema: { note: z.string().optional().describe("Free-text label / summary for this session's run."), ...SESSION_ARG },
     },
     async ({ note, session }) => {
@@ -1260,8 +1258,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       {
         description:
           action === "profile_snapshot"
-            ? "(unstable) Copy a persistent session's profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to \"default\". ALL sessions must be closed first (copying a live profile dir corrupts it). Capability: `unstable`."
-            : "(unstable) Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first. Capability: `unstable`.",
+            ? "Copy a persistent session's profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to \"default\". ALL sessions must be closed first (copying a live profile dir corrupts it)."
+            : "Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first.",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
           profile: z.string().optional().describe("Profile to snapshot/restore. Default \"default\" (the legacy single-profile dir); else a named profile under <workspace>/profiles/."),
@@ -2052,7 +2050,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "act_and_diff",
     {
       description:
-        "(unstable) Run ONE action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where the state change (which clip/row became selected) shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to snapshot/find/text_search. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`. Capability: `unstable`.",
+        "Run ONE action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where the state change (which clip/row became selected) shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to snapshot/find/text_search. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`.",
       inputSchema: {
         action: z.object({
           tool: z.string().describe("Inner tool name (batch whitelist)."),

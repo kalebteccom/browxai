@@ -9,8 +9,8 @@
 browxai is **v0.1.0**. The public surface is now **frozen** and versioned so it can stabilise toward a Phase-3 public release (the release trigger requires "public API stable ~1 week + semver" — revised down from ~1 month by owner decision 2026-05-20; every adoption round that grew the surface previously reset that clock — this baseline stops that).
 
 - **Stable surface** = the tool *names* + documented input/output shapes in this file, the `eN` ref scheme, the `ActionResult` shape, the default capability set (`read,navigation,action,human`), and the documented `BROWX_*` / config keys. **Pre-1.0 contract:** the stable surface does **not** change in a `patch` release; an additive change is a `minor`; a breaking change to it requires a `minor` bump **plus** a changelog entry **and** a deprecation note (no silent breaks). Goal: ≥1 week with no breaking change to the stable surface before Phase 3.
-- **Explicitly NOT covered by the stability guarantee** (may change/appear/vanish in any release): anything behind an **off-by-default capability** (`eval`, `network-body`, `clipboard`, `byob-attach`, `file-io`, `unstable`), the `unstable.*` config namespace, and everything in the **Unstable tools** section (route mocking, pointer gestures, `act_and_diff`, `act_and_wait_for_network`, `poll_eval`, visual regions, cross-session/report ergonomics). New experimental surface lands **there** by default; promotion into the stable surface is a deliberate, versioned act, not the reflex.
-- Adoption rounds continue, but a round that only adds capability-gated / `unstable` surface (or fixes behaviour) is **not** a stable-surface change and does not reset the stability clock.
+- **Explicitly NOT covered by the stability guarantee** (may change/appear/vanish in any release): anything behind an **off-by-default capability** (`eval`, `network-body`, `clipboard`, `byob-attach`, `file-io`) and the `unstable.*` config namespace. New experimental surface lands behind an off-by-default capability by default; promotion into the stable surface is a deliberate, versioned act, not the reflex.
+- Adoption rounds continue, but a round that only adds capability-gated surface (or fixes behaviour) is **not** a stable-surface change and does not reset the stability clock.
 
 ## Sub-commands (CLI)
 
@@ -49,7 +49,7 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
 | `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` tool), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `unstable` (the W-Q7+ experimental lane). A disabled tool returns a structured error on call. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool). A disabled tool returns a structured error on call. |
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
 | `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
 | `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
@@ -505,38 +505,38 @@ Scopes match `BROWX_CONFIRM_REQUIRED` vocabulary: `navigate_off_allowlist`, `byo
 
 Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remainingMs }`.
 
-## Unstable tools (capability `unstable`)
+## Advanced tools — gestures, route mocking, compound observers
 
-> All tools in this section are gated behind the **off-by-default `unstable` capability** and are **NOT part of the v0.1.0 frozen stable surface** (see "Stability & semver"). Shapes may change or vanish in any release; a round that only touches this lane does not reset the stability clock. Enable with `BROWX_CAPABILITIES=…,unstable`. They cover the heavier media-editor / race-condition QA asks (Round-17 W-Q7–Q11).
+> These tools were formerly an off-by-default experimental lane; as of v0.1.0 they are **promoted into the stable surface** under their natural capabilities. Pointer gestures and route mocking are `action`; the compound act-and-observe tools and region screenshots are `read`; named-region bind/resolve and profile snapshot/restore are `human` coordination — all in the default capability set. The one exception is `poll_eval`: it evaluates page JS, so it sits under the off-by-default `eval` capability. They cover the heavier media-editor / race-condition QA workflows.
 
-### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up` (W-Q8)
+### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up`
 For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`hover` can't express.
 - `drag({ from, to, steps?, preflight?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`. **`preflight: true`** instead probes the `from` point and returns `{ ok, preflight: { point, hit, resizeRisk } }` **without dragging** — `hit` is the `point_probe` stack, `resizeRisk` is true when a press-point layer has a `*-resize` cursor. Check it before dragging a narrow item so you grab its body, not a resize handle (`to` is not required when `preflight:true`).
 - `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
 - `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
 
-### Network route mocking — `route` / `route_queue` / `unroute` (W-Q7)
+### Network route mocking — `route` / `route_queue` / `unroute`
 Drive Playwright request interception for race-condition QA, per-session (discarded with the session).
 - `route({ urlPattern, method?, status?, body?, contentType?, delayMs?, session? })` — fulfil **every** request matching `urlPattern` (Playwright glob) with one canned response; non-matching `method` falls through to the real network.
 - `route_queue({ urlPattern, method?, responses:[{status?,body?,contentType?,delayMs?}], session? })` — fulfil **successive** matches from `responses[]` (one per request, in order); once exhausted, matches hit the real network. Each response has its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the exact "response order ≠ request order" failure class).
 - `unroute({ urlPattern?, method?, session? })` — remove one route, or (no `urlPattern`) every route this session registered.
 
-### `act_and_diff({ action, scope?, session? })` (W-Q9)
+### `act_and_diff({ action, scope?, session? })`
 Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before *and* after the action.
 
-### `act_and_wait_for_network({ action, match, timeoutMs? })` (W-Q10)
+### `act_and_wait_for_network({ action, match, timeoutMs? })`
 Run **one** action and wait for a specific network response — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed **before** the action dispatches (no race). `match` = `urlPattern` (case-insensitive substring) / `method` / `status`, at least one required. → `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` = max wait (default 10000).
 
-### `poll_eval({ expr, intervalMs?, timeoutMs?, session? })` (W-Q10)
-Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). → `{ ok, truthy, value, polls, elapsedMs, timedOut }`. The value is **page-controlled — untrusted**, like `eval_js`. Requires **both** `unstable` **and** `eval` capabilities. `intervalMs` default 250 (min 50); `timeoutMs` default 5000.
+### `poll_eval({ expr, intervalMs?, timeoutMs?, session? })`
+Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). → `{ ok, truthy, value, polls, elapsedMs, timedOut }`. The value is **page-controlled — untrusted**, like `eval_js`. Requires the off-by-default `eval` capability. `intervalMs` default 250 (min 50); `timeoutMs` default 5000.
 
-### Visual regions + cross-session + session report (W-Q11)
+### Visual regions + cross-session + session report
 - `screenshot_region({ box, session? })` — PNG of an arbitrary viewport rectangle (not an element) — virtualised timelines / canvas / unlabelled positioned regions.
 - `name_region({ name, box, session? })` / `region({ name, session? })` — bind a viewport rectangle to a mnemonic and resolve it back to `{ box, center }`; pass `center` to `click({coords})` to act on the same media segment without coordinate drift across a sub-agent's select→copy→re-check.
 - `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })` — drive an action in one session and trace a metric in **another** over the same window, in one call — realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
 - `export_session_report({ note?, session? })` — bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk.
 
-### Profile snapshot / restore — `profile_snapshot` / `profile_restore` (W-S3)
+### Profile snapshot / restore — `profile_snapshot` / `profile_restore`
 Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
 - `profile_snapshot({ snapshot, profile? })` — copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
 - `profile_restore({ snapshot, profile? })` — copy a named snapshot back over the profile dir.

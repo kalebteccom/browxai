@@ -1,4 +1,4 @@
-// act_and_wait_for_network matcher (W-Q10) — the `unstable` lane.
+// act_and_wait_for_network matcher.
 //
 // `ActionResult.network` only sees requests inside the action window; async
 // SPAs fire follow-up requests after it. This lets a caller drive an action

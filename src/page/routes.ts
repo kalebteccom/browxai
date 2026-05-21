@@ -1,4 +1,4 @@
-// Scoped network route mocking (W-Q7) — the `unstable` lane.
+// Scoped network route mocking — capability `action`.
 //
 // Race-condition QA needs to make backend responses arrive in a controlled
 // (often out-of-request) order, or substitute a canned response. Rather than
