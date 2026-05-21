@@ -16,6 +16,7 @@ import type { FeedbackMemory } from "../page/learning.js";
 import type { ClipboardBuffer } from "../page/clipboard.js";
 import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
+import type { WedgeTracker } from "./wedge.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -41,6 +42,9 @@ export interface SessionEntry {
   routes: RouteRegistry;
   /** per-session named visual regions (capability `human`). */
   regions: RegionRegistry;
+  /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
+   *  `sessionWedged` signal once the session times out repeatedly. */
+  wedge: WedgeTracker;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

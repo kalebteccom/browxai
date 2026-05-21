@@ -28,9 +28,15 @@ export function classifyFailure(message: string): FailureClass {
   // more often a session reap than a genuine app crash, and a false
   // app-crash defect is the expensive mistake we're preventing.
   if (BROWXAI_PATTERNS.test(m)) {
+    // Both a context teardown and an anti-wedge deadline match here, but the
+    // right recovery differs — a teardown is fixed by reopening, a deadline
+    // must NOT be blindly retried (that is the wedged-session loop).
+    const isDeadline = /anti-wedge|deadline exceeded|deadlineerror/i.test(m);
     return {
       source: "browxai",
-      hint: "browxai-side context teardown/detach (session closed by another agent, incognito context discarded, or an anti-wedge deadline) — NOT an application crash. Re-open the session and retry; do not file an app-crash defect.",
+      hint: isDeadline
+        ? "anti-wedge deadline fired — browxai returned instead of stalling on a wedged page op. NOT an application crash; do not file an app-crash defect. Retry the call ONCE; if timeouts keep recurring on this session it is wedged — discard it (`close_session`) and `open_session` a fresh one. A bigger `timeoutMs` will not recover a wedged session."
+        : "browxai-side context teardown/detach (session closed by another agent, or an incognito context discarded) — NOT an application crash. Re-open the session and retry; do not file an app-crash defect.",
     };
   }
   if (APP_PATTERNS.test(m)) {

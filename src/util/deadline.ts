@@ -14,9 +14,15 @@ export class DeadlineError extends Error {
   constructor(public readonly label: string, public readonly ms: number) {
     super(
       `anti-wedge timeout: "${label}" did not complete within ${ms}ms. ` +
-      `This is almost always a no-op or a wedged page operation. If it's a ` +
-      `genuinely slow call, raise \`timeoutMs\` for *that one call* — never as ` +
-      `a blanket; values near the 1h ceiling are essentially always a mistake.`,
+      `This is a RECOVERABLE signal, not a fatal error — the tool returned ` +
+      `instead of stalling. Decide which case applies: (a) a transient ` +
+      `hiccup — retry the call ONCE; (b) repeated timeouts on this session ` +
+      `(snapshot / navigate / screenshot all timing out) — the session is ` +
+      `WEDGED: discard it with \`close_session\`, then \`open_session\` a ` +
+      `fresh one; retrying or re-navigating in place will NOT recover it; ` +
+      `(c) one genuinely slow call — raise \`timeoutMs\` for THAT call only. ` +
+      `Raising \`timeoutMs\` never fixes a wedged session, and values near ` +
+      `the 1h ceiling are essentially always a mistake.`,
     );
     this.name = "DeadlineError";
   }

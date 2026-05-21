@@ -14,7 +14,7 @@ describe("withDeadline", () => {
     await expect(withDeadline(slow, 5, "click")).rejects.toBeInstanceOf(DeadlineError);
   });
 
-  it("the DeadlineError names the label + ms and deters blanket raises", async () => {
+  it("the DeadlineError names the label + ms and points at recovery", async () => {
     try {
       await withDeadline(new Promise(() => {}), 3, "eval_js");
       throw new Error("should have timed out");
@@ -22,7 +22,10 @@ describe("withDeadline", () => {
       const msg = (e as Error).message;
       expect(msg).toContain('"eval_js"');
       expect(msg).toContain("3ms");
-      expect(msg).toMatch(/never as a blanket/);
+      // recoverable framing: retry-once / discard-the-session / raise-for-one
+      expect(msg).toMatch(/RECOVERABLE/);
+      expect(msg).toMatch(/close_session/);
+      expect(msg).toMatch(/never fixes a wedged session/);
     }
   });
 

@@ -10,6 +10,7 @@ import { openIncognitoSession } from "./session/incognito.js";
 import { resolveDevice } from "./session/device.js";
 import type { BrowserSession } from "./session/types.js";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
+import { WedgeTracker } from "./session/wedge.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
@@ -73,9 +74,12 @@ const SESSION_ARG = {
 const TIMEOUT_ARG = {
   timeoutMs: z.number().int().positive().max(3_600_000).optional().describe(
     "Anti-wedge hard deadline for this call (ms). Default 5000 (config `actionTimeoutMs`). " +
-    "An action needing >5s is almost always a no-op or a wedged page op — raise this " +
-    "ONLY for one specific known-slow call, never as a blanket. Values approaching the " +
-    "3600000 (1h) ceiling are essentially always a mistake; over-ceiling is clamped + warned.",
+    "An action needing >5s is almost always a no-op or a wedged page op. When a call " +
+    "times out, the fix is to retry it ONCE or — if timeouts keep recurring — discard " +
+    "the session (`close_session` then `open_session`), NOT a bigger timeout: raising " +
+    "this never recovers a wedged session. Raise it ONLY for one specific known-slow " +
+    "call, never as a blanket. Values approaching the 3600000 (1h) ceiling are " +
+    "essentially always a mistake; over-ceiling is clamped + warned.",
   ),
 };
 const ACTION_OPTS = {
@@ -267,6 +271,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         clipboard: new ClipboardBuffer(),
         routes: new RouteRegistry(),
         regions: new RegionRegistry(),
+        wedge: new WedgeTracker(),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -297,7 +302,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
           requiredCapability: TOOL_CAPABILITY[toolName] ?? null,
           activeCapabilities: [...caps.enabled],
-          hint: "Capabilities are resolved ONCE at server start — `set_config` alone won't enable this; the server must be RESTARTED. Two gotchas: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a set_config patch that omits this capability silently overrides the env var — include every capability you want; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate uses). Fix: ensure the resolved capabilities include the one above, then restart the browxai server. See docs/threat-model.md.",
+          hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (or the `capabilities` config), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a patch that omits this capability silently overrides the env var — include every capability you want, not just this one; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
         }, null, 2),
       }],
     };
@@ -372,9 +377,58 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   type ImageItem = { type: "image"; data: string; mimeType: string };
   type ToolResponse = { content: Array<TextItem | ImageItem> };
   const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+
+  // W-T1 — wedge tracking. Only tools that actually exercise the page can
+  // wedge a session; session-management / config / coordination tools are
+  // excluded so their (always fast) results don't reset the streak.
+  const WEDGE_TRACKED_CAPABILITIES = new Set<string>([
+    "read", "navigation", "action", "eval", "network-body", "file-io",
+  ]);
+  /** First text item of a result, parsed as a JSON object — or null when the
+   *  result has no leading JSON object (a plain-text snapshot, an image). */
+  const firstJsonResult = (res: ToolResponse): { obj: Record<string, unknown>; idx: number } | null => {
+    for (let i = 0; i < res.content.length; i++) {
+      const item = res.content[i];
+      if (item && item.type === "text") {
+        try {
+          const parsed: unknown = JSON.parse(item.text);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return { obj: parsed as Record<string, unknown>, idx: i };
+          }
+        } catch { /* not JSON — a plain-text result, e.g. a snapshot tree */ }
+        return null;
+      }
+    }
+    return null;
+  };
+  /** Update the session's wedge counter from a tool result and, once the
+   *  session is wedged, splice `sessionWedged` + a recovery hint onto it.
+   *  An anti-wedge timeout increments the streak; any responsive result
+   *  (success, or a fast non-timeout error) clears it. */
+  const noteWedgeOutcome = (args: unknown, res: ToolResponse): ToolResponse => {
+    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
+    const entry = registry.peek(sessionId);
+    if (!entry) return res; // no live session yet — nothing to track
+    const parsed = firstJsonResult(res);
+    const timedOut = !!parsed && parsed.obj.ok === false &&
+      typeof parsed.obj.error === "string" && /anti-wedge timeout/i.test(parsed.obj.error);
+    if (!timedOut || !parsed) {
+      entry.wedge.recordResponsive();
+      return res;
+    }
+    entry.wedge.recordTimeout();
+    if (!entry.wedge.wedged()) return res;
+    const obj = { ...parsed.obj, sessionWedged: true, sessionWedgedHint: entry.wedge.hint() };
+    return {
+      content: res.content.map((item, i) =>
+        i === parsed.idx ? { type: "text" as const, text: JSON.stringify(obj, null, 2) } : item),
+    };
+  };
+
   // Wrapper that preserves the inner handler's parameter type for typechecking
   // (destructuring inside each registration still works) but stores a
-  // type-erased copy for `batch` dispatch.
+  // type-erased copy for `batch` dispatch. Page-exercising tools additionally
+  // route their result through the W-T1 wedge tracker.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const register = <H extends (...a: any[]) => Promise<ToolResponse>>(
     name: string,
@@ -382,9 +436,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     def: { description: string; inputSchema?: any },
     handler: H,
   ): void => {
-    toolHandlers[name] = handler as (args: unknown) => Promise<ToolResponse>;
+    const raw = handler as (args: unknown) => Promise<ToolResponse>;
+    const tracked = WEDGE_TRACKED_CAPABILITIES.has(TOOL_CAPABILITY[name] ?? "");
+    const wrapped: (args: unknown) => Promise<ToolResponse> = tracked
+      ? async (args: unknown) => noteWedgeOutcome(args, await raw(args))
+      : raw;
+    toolHandlers[name] = wrapped;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (server.registerTool as any)(name, def, handler);
+    (server.registerTool as any)(name, def, wrapped);
   };
 
   // ---------- read-only tools ----------
@@ -1354,7 +1413,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "wait_for",
     {
       description:
-        "Wait until an element is visible (`ref`/`selector`/`named`/`coords`) OR — — until visible `text` appears anywhere on the page (SPA-readiness gating after a reload/nav). Pass exactly one of a target or `text`. No arbitrary-JS predicate mode by design (that's `eval_js`, gated behind the `eval` capability). Returns an ActionResult.",
+        "Wait until an element is visible (`ref`/`selector`/`named`/`coords`), or until visible `text` appears anywhere on the page (SPA-readiness gating after a reload/nav). Pass exactly one of a target or `text`. Bounded by design — it CANNOT hang: `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, 1h hard cap). `ok:false` means the wait expired — on a healthy page that's a real negative (the element/text never appeared); if snapshot/navigate are also timing out it's a wedge symptom, so discard the session rather than re-issuing the wait. No arbitrary-JS predicate mode by design (that's `eval_js`, gated behind the `eval` capability). Returns an ActionResult.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         text: z.string().optional().describe("wait until this visible text appears (substring match). Mutually exclusive with a target."),
@@ -1596,7 +1655,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.",
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.",
       inputSchema: {
         session: z.string().describe("Session id to create (e.g. \"agent-a\", \"user-2\")."),
         mode: z.enum(["persistent", "incognito", "attached"]).optional()
@@ -1631,7 +1690,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "close_session",
     {
       description:
-        "Tear down a session: detaches the bridge and closes the browser context (a BYOB/attached session detaches only — never closes the user's Chrome). The \"default\" session may be closed too; it'll be lazily re-created on the next call. No-op-safe.",
+        "Tear down a session: detaches the bridge and closes the browser context (a BYOB/attached session detaches only — never closes the user's Chrome). The \"default\" session may be closed too; it'll be lazily re-created on the next call. No-op-safe. This is also the RECOVERY path for a wedged session: when calls time out repeatedly (a `sessionWedged` result, or snapshot/navigate/screenshot all timing out), close the session and `open_session` a fresh one — a wedged session is NOT recoverable in place by re-navigating or retrying.",
       inputSchema: { session: z.string().describe("Session id to close.") },
     },
     async ({ session }) => {

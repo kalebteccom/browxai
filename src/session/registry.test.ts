@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry } from "./registry.js";
+import { WedgeTracker } from "./wedge.js";
 
 // Fake entry — only the registry's own bookkeeping is under test here; the
 // browser wiring is exercised by integration, not unit, tests.
@@ -29,6 +30,7 @@ function fakeEntry(id: string): SessionEntry {
     routes: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     regions: {} as any,
+    wedge: new WedgeTracker(),
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
   };
