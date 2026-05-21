@@ -32,6 +32,13 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
 }
 ```
 
+## Harness setup
+
+Ready-to-use setup for the common agent harnesses — MCP-server registration
+plus a portable "driving browxai well" Agent Skill — lives in
+**[`harness/`](harness/)**: [Claude Code](harness/adapters/claude-code/),
+[Codex](harness/adapters/codex/), [Pi](harness/adapters/pi/).
+
 ## The surface
 
 - **`snapshot`** — compact accessibility tree + DOM-walk pass; every node gets a stable `[ref=eN]`.
@@ -39,7 +46,7 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
 - **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) — each returns a structured `ActionResult`: what navigated, what structure changed, console/network slice, a post-action element probe.
 - **read tools** — `text_search`, `inspect`, `console_read`, `network_read`, `ws_read`, `screenshot`.
 - **sessions** — isolated per-session contexts (own cookie jar / refs); `persistent`, `incognito`, or `attached` (BYOB) modes; MCP-driven config.
-- **capabilities** — `read,navigation,action,human` on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, and the experimental `unstable` lane are explicit opt-ins.
+- **capabilities** — `read,navigation,action,human` on by default; `eval`, `network-body`, `clipboard`, `file-io`, and `byob-attach` are explicit opt-ins.
 
 Full per-tool reference, the security model, and the stability policy are in the
 **[documentation site](https://kalebteccom.github.io/browxai/)**.

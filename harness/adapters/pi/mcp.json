@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "browxai": {
+      "command": "browxai",
+      "lifecycle": "lazy",
+      "idleTimeout": 10
+    }
+  }
+}

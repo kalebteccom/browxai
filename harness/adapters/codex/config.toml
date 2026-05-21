@@ -1,0 +1,10 @@
+# Add this block to ~/.codex/config.toml (or .codex/config.toml in a project).
+# browxai starts its MCP server over stdio when run with no sub-command.
+
+[mcp_servers.browxai]
+command = "browxai"
+startup_timeout_sec = 30
+tool_timeout_sec = 120
+
+# To set browxai options, add an env table — resolved once at server start:
+# env = { BROWX_HEADLESS = "1", BROWX_CAPABILITIES = "read,navigation,action,human" }

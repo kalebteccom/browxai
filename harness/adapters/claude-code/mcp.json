@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "browxai": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "browxai"]
+    }
+  }
+}
