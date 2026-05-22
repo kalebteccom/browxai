@@ -49,3 +49,9 @@ explicitly (`git add <paths>`), never `git add .`.
 
 `pnpm typecheck && pnpm test` must pass. For changes to the core dispatch or
 session paths, also run `pnpm test:keystone` (the headless integration test).
+
+The local MCP server runs the **compiled `dist/`** — an `.mcp.json` launches
+`node dist/cli.js` — so source changes are NOT live until `pnpm build`. After
+changing source, rebuild `dist/`; otherwise a running Claude Code / Codex / Pi
+session keeps executing stale compiled code (a stale `dist/` that predates a
+config-parser change can crash the server at MCP handshake).
