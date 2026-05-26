@@ -702,6 +702,46 @@ Per-mode semantics:
 - **persistent** (managed) — Playwright's `launchPersistentContext` doesn't accept `storageState` at creation (the profile's state lives on disk). The session post-seeds via `setStorageState`, **which clears the profile's existing cookies / localStorage / IndexedDB first**. Loud-warned. Use incognito instead if you don't want to touch a persistent profile.
 - **attached** (BYOB) — ignored with a warning. The consumer's Chrome is not-owned; use `inject_storage_state` explicitly if you really mean to overwrite the attached browser's state.
 
+### Per-session artifacts — `artifact_save` / `artifact_get` / `artifact_list`
+
+Session-scoped workspace KV. First-class save/get/list of string or binary
+payloads — the "build your own library over time" loop. Before this lane,
+agents round-tripped scripts/files/blobs through `name_ref`/`name_region`,
+both ref-typed and a poor fit for raw bytes. Three primitives, no new
+capability — `artifact_save` is `action` (writes a file); `artifact_get` /
+`artifact_list` are `read`.
+
+Artifacts live at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. Names are
+restricted to letters / digits / `._-` only — no path separators, no `..`, no
+leading dot. Workspace-escape is rejected.
+
+**Capacity caps** (per session): **200 entries** AND **50 MiB total**. Past
+either cap the **oldest-write** entry is evicted to make room — a runaway
+loop can't exhaust the disk. Both caps are documented constants
+(`ARTIFACT_MAX_ENTRIES` / `ARTIFACT_MAX_BYTES` in `src/session/artifacts.ts`).
+
+**Retention.** Per-session. The on-disk subdir is wiped on `close_session`;
+artifacts don't survive teardown. Sessions that never wrote an artifact never
+create the dir.
+
+**Encoding.** Text by default. Pass `encoding:"base64"` to save or get binary
+payloads — `artifact_get` returns the same encoding the caller asks for
+(round-trip-faithful for both text and binary).
+
+#### `artifact_save({ name, content, encoding?, session? })`
+- `name: string` — `/[A-Za-z0-9._-]+/` only; no separators, no `..`, no leading dot.
+- `content: string` — payload. Text by default; pass `encoding:"base64"` for binary.
+- `encoding?: "utf8" | "base64"` — defaults to `"utf8"`.
+- → `{ ok, name, size, mtime, path }`. Overwrites an existing same-named artifact.
+
+#### `artifact_get({ name, encoding?, session? })`
+- `name: string` — as passed to `artifact_save`.
+- `encoding?: "utf8" | "base64"` — return shape; defaults to `"utf8"`.
+- → `{ ok, name, content, size, mtime, encoding }`. Throws if the name is unknown in this session.
+
+#### `artifact_list({ session? })`
+- → `{ ok, count, artifacts: [{ name, size, mtime }] }` (sorted by name asc).
+
 ### `choose_option({ target, option, exact?, ...opts })` *(W-F3)*
 Pick an option in a **custom combobox / listbox / menu** by visible text. Generic primitive for controls that aren't native `<select>` — the kind that open a portal listbox on click and commit on option click. The `target` is the trigger (the combobox itself); `option` is the visible text of the option to commit. Behaviour:
 

@@ -245,6 +245,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   auth_load: "action",
   auth_list: "read",
   auth_delete: "action",
+  // Per-session artifact KV — save/get/list of session-scoped string/binary
+  // payloads (the "build your own library over time" loop). `artifact_save`
+  // writes a file → `action`; `artifact_get` / `artifact_list` are read-only.
+  // No new capability gate to enable.
+  artifact_save: "action",
+  artifact_get: "read",
+  artifact_list: "read",
   // HAR record/replay — `start_har` / `stop_har` both write/mutate session
   // state and (in the case of start) reserve a workspace-rooted file path
   // the context will write on close. Under `action` (sibling to the storage

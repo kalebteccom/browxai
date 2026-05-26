@@ -89,6 +89,7 @@ import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
 import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
+import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
   dumpStorageState,
@@ -498,6 +499,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const downloadsDir = workspace.sub(`.downloads/${id}`);
       const downloadsReg = new DownloadsRegistry(downloadsDir);
       attachDownloadCapture(sess.page().context(), downloadsReg);
+      // Per-session artifact KV. Storage dir is workspace-rooted +
+      // per-session; the dir itself is created lazily on first save, and
+      // wiped on session teardown (see `teardown` below). Capacity-bounded
+      // — 200 entries / 50 MiB, oldest-write evicted.
+      const artifactsDir = workspace.sub(`.artifacts/${id}`);
+      const artifactsReg = new ArtifactsRegistry(artifactsDir);
       // resolve overlay selectors fresh per session so a
       // `set_config({hideOverlaySelectors})` applies to the next
       // open_session without a server restart. Empty list → no-op.
@@ -559,6 +566,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         secrets: secretsReg,
         extensions: newExtensionRegistry(),
         downloads: downloadsReg,
+        artifacts: artifactsReg,
         ...(mode === "persistent" ? { launchProfile: spec?.profile ?? id } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
@@ -571,6 +579,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await e.perf.closeIfRunning(e.session.cdp()).catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
       await e.session.close().catch(() => undefined);
+      // Clear session-scoped artifacts on teardown. Best-effort: a stuck
+      // rm won't block teardown. Sessions that never wrote an artifact
+      // never create the dir, so this is a no-op for them.
+      try { e.artifacts.clear(); } catch { /* best-effort */ }
     },
   );
 
@@ -3058,6 +3070,80 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const r = authDelete(workspace.root, name);
         return okText({ ...r, name });
       } catch (err) { return errText("auth_delete", err); }
+    },
+  );
+
+  // ---- per-session artifact KV ----------------------------------------------
+  //
+  // Session-scoped workspace primitives. First-class save/get/list of string
+  // or binary payloads (the "build your own library over time" loop). Before
+  // this, agents round-tripped scripts/files/blobs through `name_ref`/
+  // `name_region` — both ref-typed and a poor fit for raw bytes.
+  //
+  // Capability split: `artifact_save` → `action` (writes a file);
+  // `artifact_get` / `artifact_list` → `read`. Workspace-rooted at
+  // `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. Name restricted
+  // (no separators / `..` / leading dots). Capacity-bounded (200 entries,
+  // 50 MiB); oldest-write evicted. The on-disk dir is wiped on session
+  // teardown — sessions that never wrote an artifact leave no trace.
+
+  register(
+    "artifact_save",
+    {
+      description:
+        "Save a session-scoped artifact (string or binary) into the session's workspace-rooted KV. The artifact lives at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` must be letters / digits / `._-` only (no path separators, no `..`, no leading dot — workspace-escape rejected). `content` is text by default (`encoding:\"utf8\"`); pass `encoding:\"base64\"` for binary payloads. Overwrites an existing artifact with the same name. The session's KV is capacity-bounded at 200 entries / 50 MiB — past either cap the OLDEST-write entry is evicted to make room. Cleared on `close_session` — artifacts don't survive teardown. Retrieve with `artifact_get({name})`; enumerate with `artifact_list()`. → `{ ok, name, size, mtime, path }`. Capability `action`.",
+      inputSchema: {
+        name: z.string().describe("Artifact name. Letters/digits/`._-` only — no separators, no `..`, no leading dot."),
+        content: z.string().describe("Content to store. Text by default; pass `encoding:\"base64\"` for binary payloads."),
+        encoding: z.enum(["utf8", "base64"]).optional().describe("How `content` is encoded. Default `utf8` (text). Use `base64` for binary."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ name, content, encoding, session }) => {
+      const g = gateCheck("artifact_save"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const info = e.artifacts.save(name, content, encoding ?? "utf8");
+        return okText({ ok: true, name: info.name, size: info.size, mtime: info.mtime, path: e.artifacts.pathFor(name) });
+      } catch (err) { return errText("artifact_save", err); }
+    },
+  );
+
+  register(
+    "artifact_get",
+    {
+      description:
+        "Read back a previously-saved session artifact. `name` matches the value passed to `artifact_save`. `encoding` controls the return shape — `utf8` (default) returns the bytes as text; `base64` returns them base64-encoded (round-trip-faithful for binary payloads). Throws if the name is unknown in this session. → `{ ok, name, content, size, mtime, encoding }`. Capability `read`.",
+      inputSchema: {
+        name: z.string().describe("Artifact name (as passed to `artifact_save`)."),
+        encoding: z.enum(["utf8", "base64"]).optional().describe("Return encoding. Default `utf8`; use `base64` for binary payloads."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ name, encoding, session }) => {
+      const g = gateCheck("artifact_get"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = e.artifacts.get(name, encoding ?? "utf8");
+        return okText({ ok: true, name, content: r.content, size: r.size, mtime: r.mtime, encoding: r.encoding });
+      } catch (err) { return errText("artifact_get", err); }
+    },
+  );
+
+  register(
+    "artifact_list",
+    {
+      description:
+        "Enumerate every artifact in this session's KV (sorted by name asc). Read-only. → `{ ok, count, artifacts: [{ name, size, mtime }] }`. Per-session, capacity-bounded (200 entries / 50 MiB); cleared on `close_session`. Capability `read`.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("artifact_list"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const artifacts = e.artifacts.list();
+        return okText({ ok: true, count: artifacts.length, artifacts });
+      } catch (err) { return errText("artifact_list", err); }
     },
   );
 

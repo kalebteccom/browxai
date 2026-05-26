@@ -142,6 +142,22 @@ surface" covers.
   posture class as `eval` / `network-body` / `secrets`. See
   [docs/tool-reference.md § Credentials hook](docs/tool-reference.md#credentials-hook-capability-credentials)
   and [docs/threat-model.md](docs/threat-model.md).
+- **Per-session artifact KV** — three new tools (`artifact_save`,
+  `artifact_get`, `artifact_list`) for first-class save/get/list of
+  session-scoped string or binary payloads (the "build your own library
+  over time" loop). Before this lane, agents round-tripped scripts/files/
+  blobs through `name_ref`/`name_region` — both ref-typed and a poor fit
+  for raw bytes. Workspace-rooted at
+  `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`; name restricted to
+  letters/digits/`._-` (no separators, no `..`, no leading dot —
+  workspace-escape rejected). `encoding:"base64"` round-trips binary
+  payloads faithfully. Capacity-bounded per session — **200 entries**
+  AND **50 MiB total**; past either cap the oldest-write entry is evicted
+  so a runaway loop can't exhaust the disk. Cleared on `close_session`
+  (wiped subdir; sessions that never wrote an artifact leave no trace).
+  Capability split: `artifact_save` → `action`; `artifact_get` /
+  `artifact_list` → `read`. No new capability gate.
+  See [docs/tool-reference.md § Per-session artifacts](docs/tool-reference.md#per-session-artifacts--artifact_save--artifact_get--artifact_list).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows

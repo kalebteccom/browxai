@@ -51,6 +51,8 @@ function fakeEntry(id: string): SessionEntry {
     extensions: { loaded: [] },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     downloads: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    artifacts: {} as any,
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
   };

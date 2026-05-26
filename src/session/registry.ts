@@ -28,6 +28,7 @@ import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
 import type { ExtensionRegistry } from "./extensions.js";
 import type { DownloadsRegistry } from "../page/downloads.js";
+import type { ArtifactsRegistry } from "./artifacts.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -120,6 +121,12 @@ export interface SessionEntry {
    *  surfaced on `ActionResult.downloads[]`. Same posture as `upload_file`'s
    *  workspace-rooted-paths model — the reverse direction. */
   downloads: DownloadsRegistry;
+  /** per-session artifact KV (capabilities `action` for save, `read` for
+   *  get/list). Workspace-rooted at `$BROWX_WORKSPACE/.artifacts/<sessionId>/`.
+   *  Capacity-bounded (200 entries / 50 MiB; oldest-write evicted past the
+   *  cap). The on-disk dir is wiped on session teardown — sessions that
+   *  never wrote an artifact leave no trace. */
+  artifacts: ArtifactsRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
