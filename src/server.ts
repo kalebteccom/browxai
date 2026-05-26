@@ -665,7 +665,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
-  // `extract` — structured, schema-driven data extraction (W-V11). The
+  // `extract` — structured, schema-driven data extraction. The
   // schema-as-contract primitive every adopter currently rebuilds on top
   // of `snapshot()`. JSON-schema input (so it transports cleanly over MCP);
   // deterministic mode lowers each property to a `find()`-style query or

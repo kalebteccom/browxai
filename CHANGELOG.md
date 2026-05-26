@@ -69,7 +69,7 @@ surface" covers.
   - **Security gap documented** — cookie *values* may carry credentials. The
     future W-V12 secrets-masking pass will mask them on egress; this cycle
     ships unmasked. Treat dumps + saved named-states as sensitive.
-- **`extract`** *(W-V11)* — structured, schema-driven data extraction. Closes
+- **`extract`** — structured, schema-driven data extraction. Closes
   the Round-22 highest-leverage gap miss: every adopter currently rebuilds the
   same "parse this table into rows" loop on top of `snapshot()`. JSON-schema
   input (wire-compatible over MCP); deterministic mode lowers each property to
@@ -83,7 +83,7 @@ surface" covers.
   object. `mode:"llm-assisted"` is a typed-but-unimplemented seam reserved for
   a v0.2.x follow-up; the deterministic path is the model-agnostic ship. Under
   the `read` capability — no new capability. See
-  [docs/tool-reference.md](docs/tool-reference.md#extract-w-v11).
+  [docs/tool-reference.md](docs/tool-reference.md#extract).
 - **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
   a natural-language query + verb to a serialisable `ActionDescriptor` (bound
   `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves

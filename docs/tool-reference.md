@@ -223,7 +223,7 @@ Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Eac
 
 `count: 0` is the clean absence signal. No more overloading `find()` for presence/absence.
 
-### `extract` *(W-V11)*
+### `extract`
 
 Structured, schema-driven data extraction — the primitive every browxai adopter currently rebuilds on top of `snapshot()`. The schema is the contract: partial matches surface in `evidence.partialMisses` (or `failure.partialMisses` when `required:true`), never silently coerced into a malformed object.
 

@@ -1,4 +1,4 @@
-// Unit tests for the W-V11 deterministic-extract primitive. The full
+// Unit tests for the deterministic-extract primitive. The full
 // `extract()` entry composes a snapshot + resolves scope, so it needs a
 // live Page/CDP — those paths are exercised by `extract:keystone` against
 // the real harness. These tests cover the schema validator, the tree-walk

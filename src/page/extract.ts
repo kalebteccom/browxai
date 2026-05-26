@@ -1,4 +1,4 @@
-// W-V11 — structured `extract(schema)` read primitive.
+// Structured schema-driven extract primitive.
 //
 // The Round-22 audit named this the highest-leverage gap miss: every browxai
 // adopter currently rebuilds the same "parse this table into rows" loop on
@@ -23,7 +23,7 @@
 //
 //   2. **Explicit (the escape hatch):** a property may carry an
 //      `x-browx-source` annotation overriding any of {query, selector,
-//      attr, prop, text, value}. This is the richer DSL the W-V11 task
+//      attr, prop, text, value}. This is the richer DSL the design
 //      called out as a tension — we ship both rules and document the
 //      simple one as the primary path. The escape hatch covers the cases
 //      where the name doesn't carry enough signal (`"theFirstThing":
@@ -214,7 +214,7 @@ export async function extract(
   } else if (opts.scope) {
     scopeLocator = page.locator(opts.scope).first();
     // Verify the scope matches at least one node, else surface a structured
-    // failure — invariant 8 in the W-V11 task.
+    // failure (empty-scope invariant).
     let count = 0;
     try {
       count = await page.locator(opts.scope).count();

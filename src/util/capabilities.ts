@@ -74,7 +74,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   act_and_sample: "read",
   list_named_refs: "read",
   text_search: "read",
-  // W-V11 — structured schema-driven data extraction. Read-only; no new
+  // Structured schema-driven data extraction. Read-only; no new
   // capability (the deterministic mode is selector-only).
   extract: "read",
   // verify-family — assertive read primitives (fail-emitting siblings of
