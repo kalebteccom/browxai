@@ -1,11 +1,18 @@
 name: docs
 
 # Build the VitePress documentation site and deploy it to GitHub Pages.
-# Requires repo Settings → Pages → Source = "GitHub Actions" (one-time).
+#
+# Requires a one-time owner step BEFORE the auto-publish push-trigger
+# is re-enabled:
+#   1. Flip the repo public (Settings → General → Change visibility).
+#   2. Enable Pages: Settings → Pages → Source = "GitHub Actions".
+# Until that lands, this workflow runs ONLY on explicit dispatch
+# (`gh workflow run docs.yml` or the GitHub UI's "Run workflow" button),
+# so a private-repo + Pages-disabled state doesn't red-flag every push.
+# Once the repo is public and Pages is enabled, restore `push: branches: [main]`
+# on the trigger below to resume auto-publish.
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
