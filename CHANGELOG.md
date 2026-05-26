@@ -10,6 +10,16 @@ surface" covers.
 
 ### Added
 
+- **`mouse_wheel`** — coordinate-space wheel event sibling of `mouse_down` /
+  `mouse_move` / `mouse_up`. Dispatched via CDP
+  `Input.dispatchMouseEvent` (`type: "mouseWheel"`) at the caller-supplied
+  `coords` (viewport CSS px) regardless of the current pointer position, with
+  `deltaX` / `deltaY` in CSS px following the DOM `WheelEvent` convention
+  (positive `deltaY` scrolls content up); at least one delta must be non-zero.
+  Closes the gap for canvas, virtualised lists, and map tiles that listen for
+  `wheel` and ignore the element-level `scroll` path. Net-additive — one new
+  tool under capability `action`. See
+  [docs/tool-reference.md § Pointer gestures](docs/tool-reference.md#pointer-gestures--drag--double_click--mouse_down--mouse_move--mouse_up--mouse_wheel).
 - **`seed_random`** — per-session deterministic `Math.random` override. Injects
   a Mulberry32 PRNG via Playwright `context.addInitScript`, seeded by the
   caller-supplied integer in `[0, 2^32 - 1]`. The current page's main realm is

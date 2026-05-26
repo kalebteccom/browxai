@@ -976,11 +976,12 @@ Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remaini
 
 > These tools were formerly an off-by-default experimental lane; as of v0.1.0 they are **promoted into the stable surface** under their natural capabilities. Pointer gestures and route mocking are `action`; the compound act-and-observe tools and region screenshots are `read`; named-region bind/resolve and profile snapshot/restore are `human` coordination — all in the default capability set. The one exception is `poll_eval`: it evaluates page JS, so it sits under the off-by-default `eval` capability. They cover the heavier media-editor / race-condition QA workflows.
 
-### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up`
+### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up` / `mouse_wheel`
 For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`hover` can't express.
 - `drag({ from, to, steps?, preflight?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`. **`preflight: true`** instead probes the `from` point and returns `{ ok, preflight: { point, hit, resizeRisk } }` **without dragging** — `hit` is the `point_probe` stack, `resizeRisk` is true when a press-point layer has a `*-resize` cursor. Check it before dragging a narrow item so you grab its body, not a resize handle (`to` is not required when `preflight:true`).
 - `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
 - `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
+- `mouse_wheel({ coords, deltaX?, deltaY?, session? })` — coordinate-space wheel event dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore `scroll`'s element-level path. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero. → `{ ok, coords, deltaX, deltaY }`.
 
 ### Network route mocking — `route` / `route_queue` / `unroute`
 Drive Playwright request interception for race-condition QA, per-session (discarded with the session).

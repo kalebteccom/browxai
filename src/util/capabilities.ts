@@ -144,6 +144,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   mouse_down: "action",
   mouse_move: "action",
   mouse_up: "action",
+  mouse_wheel: "action",
   route: "action",
   route_queue: "action",
   unroute: "action",

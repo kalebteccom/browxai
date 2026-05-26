@@ -3,7 +3,7 @@
 // `click`/`hover` cover taps; media editors and drag-reorder UIs also need
 // drag, double-click, and raw mouse down/move/up.
 
-import type { Page } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
 import { pointProbe, type PointProbeResult } from "./point_probe.js";
@@ -71,6 +71,34 @@ export async function doubleClick(
   const point = await targetPoint(page, refs, target);
   await page.mouse.dblclick(point.x, point.y);
   return { ok: true, point };
+}
+
+/** Coordinate-space wheel event — for canvas / virtualised lists / map tiles
+ *  that listen for `wheel` and ignore Playwright's element-level scroll.
+ *  Dispatched via CDP `Input.dispatchMouseEvent` (`type: "mouseWheel"`) so the
+ *  event fires at `coords` regardless of the current pointer position, with
+ *  the caller's `deltaX`/`deltaY` (CSS px; positive Y scrolls content up,
+ *  matching the DOM `WheelEvent` convention). One of `deltaX`/`deltaY` must be
+ *  non-zero. */
+export async function mouseWheel(
+  cdp: CDPSession,
+  args: { coords: Point; deltaX?: number; deltaY?: number },
+): Promise<{ ok: boolean; coords: Point; deltaX: number; deltaY: number }> {
+  const deltaX = args.deltaX ?? 0;
+  const deltaY = args.deltaY ?? 0;
+  if (deltaX === 0 && deltaY === 0) {
+    throw new Error("mouse_wheel requires non-zero deltaX or deltaY");
+  }
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseWheel",
+    x: args.coords.x,
+    y: args.coords.y,
+    deltaX,
+    deltaY,
+    button: "none",
+    pointerType: "mouse",
+  });
+  return { ok: true, coords: args.coords, deltaX, deltaY };
 }
 
 export type MouseAction = "down" | "move" | "up";

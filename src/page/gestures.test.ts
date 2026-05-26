@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { drag, doubleClick, mouseAction, targetPoint, type DragPreflight } from "./gestures.js";
+import { drag, doubleClick, mouseAction, mouseWheel, targetPoint, type DragPreflight } from "./gestures.js";
 
 function fakeMouse() {
   const log: string[] = [];
@@ -98,6 +98,51 @@ describe("doubleClick", () => {
     const r = await doubleClick(pageWithBox(m), refs, { coords: { x: 42, y: 24 } } as never);
     expect(r).toEqual({ ok: true, point: { x: 42, y: 24 } });
     expect(m.log).toEqual(["dbl(42,24)"]);
+  });
+});
+
+describe("mouseWheel", () => {
+  function fakeCdp() {
+    const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+    return {
+      calls,
+      cdp: {
+        send: vi.fn(async (method: string, params: Record<string, unknown>) => {
+          calls.push({ method, params });
+          return {};
+        }),
+      } as never,
+    };
+  }
+
+  it("dispatches Input.dispatchMouseEvent at coords with deltas", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await mouseWheel(cdp, { coords: { x: 120, y: 240 }, deltaX: 0, deltaY: -50 });
+    expect(r).toEqual({ ok: true, coords: { x: 120, y: 240 }, deltaX: 0, deltaY: -50 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("Input.dispatchMouseEvent");
+    expect(calls[0]?.params).toMatchObject({
+      type: "mouseWheel",
+      x: 120,
+      y: 240,
+      deltaX: 0,
+      deltaY: -50,
+    });
+  });
+
+  it("defaults missing delta dimension to 0", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await mouseWheel(cdp, { coords: { x: 5, y: 6 }, deltaY: 100 });
+    expect(r.deltaX).toBe(0);
+    expect(r.deltaY).toBe(100);
+    expect(calls[0]?.params).toMatchObject({ deltaX: 0, deltaY: 100 });
+  });
+
+  it("rejects when both deltas are zero / unspecified", async () => {
+    const { cdp, calls } = fakeCdp();
+    await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 } })).rejects.toThrow(/non-zero/);
+    await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 }, deltaX: 0, deltaY: 0 })).rejects.toThrow(/non-zero/);
+    expect(calls).toEqual([]);
   });
 });
 

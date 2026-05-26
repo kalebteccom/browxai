@@ -71,7 +71,7 @@ import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
 import { runShortcut } from "./page/shortcut.js";
 import { pointProbe } from "./page/point_probe.js";
-import { drag, doubleClick, mouseAction } from "./page/gestures.js";
+import { drag, doubleClick, mouseAction, mouseWheel } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { EmulationRegistry } from "./page/emulation.js";
 import { ClockRegistry } from "./page/clock.js";
@@ -1794,6 +1794,33 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     );
   }
+
+  register(
+    "mouse_wheel",
+    {
+      description:
+        "Coordinate-space wheel event — dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore element-level scroll. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero.",
+      inputSchema: {
+        coords: z.object({ x: z.number(), y: z.number() }).describe("Viewport CSS px — where the wheel event fires."),
+        deltaX: z.number().optional().describe("Horizontal wheel delta in CSS px (default 0)."),
+        deltaY: z.number().optional().describe("Vertical wheel delta in CSS px (default 0)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ coords, deltaX, deltaY, session }) => {
+      const g = gateCheck("mouse_wheel"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await withDeadline(
+          mouseWheel(e.session.cdp(), { coords, deltaX, deltaY }),
+          cfgActionTimeout(), "mouse_wheel",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
 
   const ROUTE_RESPONSE = {
     status: z.number().int().optional().describe("HTTP status (default 200)."),
