@@ -114,6 +114,7 @@ import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
+import { screenshotMarks, type MarkCandidate } from "./page/set-of-marks.js";
 import { resolveConfig } from "./util/config.js";
 import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "./util/deadline.js";
 import { estimateTokens } from "./util/tokens.js";
@@ -2166,6 +2167,65 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "image" as const, data: Buffer.from(buf).toString("base64"), mimeType: "image/png" }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "screenshot_marks",
+    {
+      description:
+        "Composed PNG with numbered bounding boxes painted over caller-supplied candidates — the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs (\"click 2\" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}` — fast path, no extra tree walk). `label:\"index\"` (default) paints 1..N positions paired with an `{index→ref}` mapping; `label:\"ref\"` paints the existing `eN` directly; `label:\"role\"` paints the role for visual grounding. The numbering scheme SHARES the existing `name_ref` / `eN` namespace — no parallel ID space — so `mapping[\"2\"] === \"e7\"` and the agent can address either way. Pure compose on top of `find()` / `snapshot()` (no new browser interaction beyond a transient in-page overlay removed before return). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Read-only (`read`).",
+      inputSchema: {
+        candidates: z.array(z.union([
+          z.object({ ref: z.string() }).passthrough(),
+          z.object({}).passthrough(),
+        ])).min(1).max(50).describe(
+          "Either `{ref}` rows (looked up against the current snapshot for bbox) OR full find() candidate rows (passed through). Mix-and-match allowed. Cap 50.",
+        ),
+        label: z.enum(["index", "ref", "role"]).optional().describe(
+          "How to label each painted box. `index` (default) = 1..N array position, paired with the `{index→ref}` mapping in the result. `ref` = paint the existing `eN` ref directly. `role` = paint the candidate's role.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("screenshot_marks"); if (g) return g;
+      const e = await entryFor(args.session);
+      const candidates = args.candidates as unknown as MarkCandidate[];
+      try {
+        const result = await withDeadline(
+          screenshotMarks(e.session.page(), e.session.cdp(), e.refs, {
+            candidates,
+            label: args.label,
+            testAttributes: config.testAttributes,
+          }),
+          cfgActionTimeout(),
+          "screenshot_marks",
+        );
+        const content: Array<{ type: "image"; data: string; mimeType: string } | { type: "text"; text: string }> = [
+          {
+            type: "text",
+            text: JSON.stringify(
+              { marks: result.marks, mapping: result.mapping, warnings: result.warnings },
+              null,
+              2,
+            ),
+          },
+          { type: "image", data: result.imageBase64, mimeType: result.mimeType },
+        ];
+        return { content };
+      } catch (err) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify(
+              { ok: false, error: err instanceof Error ? err.message : String(err) },
+              null,
+              2,
+            ),
+          }],
+        };
       }
     },
   );
@@ -4499,7 +4559,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_back", "go_forward", "scroll", "set_viewport",
     "set_locale", "set_timezone", "set_geolocation", "set_color_scheme", "set_reduced_motion", "set_user_agent", "grant_permissions",
     "plan", "execute",
-    "snapshot", "find", "text_search", "inspect", "watch", "sample", "screenshot", "console_read", "network_read", "ws_read", "network_body",
+    "snapshot", "find", "text_search", "inspect", "watch", "sample", "screenshot", "screenshot_marks", "console_read", "network_read", "ws_read", "network_body",
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
     "eval_js", "list_named_refs", "name_ref", "find_feedback", "generate_locator",
     "approve_actions", "list_approvals", "get_config", "list_sessions",

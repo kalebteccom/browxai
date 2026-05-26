@@ -174,6 +174,11 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   act_and_wait_for_network: "read",
   cross_session_sample: "read",
   screenshot_region: "read",
+  // Composed screenshot: paint numbered bounding boxes over caller-supplied
+  // candidates and return the PNG + an index↔ref mapping. Pure compose on top
+  // of existing primitives (no new browser interaction beyond a transient
+  // in-page overlay) — `read`.
+  screenshot_marks: "read",
   export_session_report: "read",
   // Trace-export sibling to `export_session_report`: lowers the session's
   // recorded action trace to a runnable `@playwright/test` spec file. Under

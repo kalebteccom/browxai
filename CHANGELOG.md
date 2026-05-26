@@ -25,6 +25,24 @@ surface" covers.
   `warning` on the result. Also in the batch whitelist so agents can compose
   `seed_random → action → …` in a single batch. See
   [docs/tool-reference.md § Deterministic `Math.random`](docs/tool-reference.md#deterministic-mathrandom--seed_random).
+- **`screenshot_marks`** — composed PNG with numbered bounding boxes painted
+  over caller-supplied candidates: the set-of-marks primitive multimodal
+  agents reach for when they want to ground a vision read against a small
+  palette of stable refs ("click 2" instead of estimating a coordinate).
+  Each candidate is either a bare `{ref}` (looked up against the current
+  snapshot for its bbox) or a full `find()` candidate row passed through
+  (fast path). `label:"index"` (default) paints 1..N array positions paired
+  with an `{index→ref}` mapping in the result; `label:"ref"` paints the
+  existing `eN` directly; `label:"role"` paints the role for visual
+  grounding. **The numbering scheme shares the existing `name_ref` / `eN`
+  namespace** — no parallel ID space — so `mapping["2"] === "e7"` and an
+  agent can address either way. Painted bboxes match `find().evidence.bbox`
+  (so visible-rect intersection applies — see `src/page/bbox.ts`). Pure
+  compose on top of `find()` / `snapshot()`; the only browser interaction
+  is a transient in-page overlay installed for the duration of the
+  screenshot and removed before return. Net-additive — one new tool under
+  capability `read`; also in the batch whitelist. See
+  [docs/tool-reference.md § Visual regions](docs/tool-reference.md#visual-regions--cross-session--session-report).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows
