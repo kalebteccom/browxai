@@ -384,6 +384,62 @@ Read an element's whitelisted **computed styles + box + overflow/clip state**. `
 
 Read-only (capability `read`). Coords targets unsupported (no element to resolve) — use `point_probe` for a coordinate.
 
+### `generate_locator`
+
+Convert a session-internal `eN` ref (from `snapshot()` / `find()` / `plan()`) into a **Playwright-string locator expression** an adopter can paste verbatim into a `.spec.ts`. The bridge between agent-driven exploration and a deterministic regression suite — `find()` already returns a richer `selectorHint` + `stability` + `actionable` predicate, but the in-process `ref` is browxai-internal; this tool emits the real Playwright expression a human reading a `.spec.ts` would expect to see.
+
+**Inputs:** `{ ref: string, session?: string }`
+
+**Output:** JSON
+
+```jsonc
+{
+  "ok": true,
+  "playwright": "page.getByRole('button', { name: 'Save' })",
+  "stability": "high",
+  "components": [
+    { "kind": "role", "value": "button", "name": "Save" },
+    { "kind": "text", "value": "Save" }
+  ],
+  "tokensEstimate": 28
+}
+```
+
+Or, when the ref isn't in this session's registry (structured failure — no throw):
+
+```jsonc
+{
+  "ok": false,
+  "failure": {
+    "kind": "ref-not-found",
+    "ref": "e42",
+    "hint": "ref \"e42\" is not in this session's registry. Call snapshot() or find() first…"
+  },
+  "tokensEstimate": 41
+}
+```
+
+**Tier mapping** (same five-tier preference order `find()` uses; the emitted expression mirrors how browxai itself would resolve the ref at action time):
+
+| Ref shape                                  | Emitted expression                                        | `stability` |
+|--------------------------------------------|-----------------------------------------------------------|-------------|
+| `data-testid` (default attr)               | `page.getByTestId('save-btn')`                            | `high`      |
+| Custom test attribute (`data-cy`, `data-type`, …) | `page.locator('[data-cy="submit-form"]')`          | `high`      |
+| `role` + accessible `name`                 | `page.getByRole('button', { name: 'Save' })`              | `high`      |
+| Stable structural CSS path (semantic anchor / `#id` / `[data-*]`) | `page.locator('main > table > tbody > tr:nth-child(4)')` | `medium`    |
+| Purely positional CSS path (chains of `:nth-child` under generic tags) | `page.locator('div > div:nth-child(2) > div')` | `low`       |
+| Role only (no name, no path)               | `page.getByRole('button')`                                | `low`       |
+
+**`stability` semantics** are the same as `find()`'s: `high` = "uniquely identifies this element via a stable signal" (testid or role+name); `medium` = "stable structural / stable text on a stable role"; `low` = "positional or role-only — likely to drift on the next render." Both labels reflect per-snapshot uniqueness; long-term deploy stability is still the adopter's call on top.
+
+**`components`** is the structured breakdown of the parts that built the string — `{ kind: "testid"|"role"|"text"|"css", value, name?, attribute? }`. Adopters who want to compose their own locator (chain `.filter()`, combine two kinds, scope into a parent) can read this directly without re-parsing the emitted string.
+
+**Quoting / escaping.** The emitted expression is paste-safe: single-quoted JS string literals, single-quotes and backslashes inside accessible names / testIds are escaped (`page.getByRole('button', { name: 'O\'Brien' })`). For non-default test attributes the attribute-CSS form uses double-quoted JSON-escaped values inside the single-quoted outer string.
+
+**Secrets masking.** Emitted strings + component values pass through the per-session secret registry on egress — same posture as `find().selectorHint`. A registered real-value rendered into a name / testId gets substituted with its alias before the JSON ships.
+
+Read-only (capability `read`); no new capability gate. In the `batch` whitelist — compose `find` → `generate_locator` → record the string somewhere durable in one batch.
+
 ### `point_probe({ coords, crop?, session? })`
 Read-only: **what is actually under a viewport coordinate**. `point_probe({ coords:{x,y} })` → `{ ok, point, stack:[…], scrollContainer, clickableAncestor, cropBase64? }`. The coordinate-target verifier for canvas / virtualised-timeline / painted UIs where the target isn't a clean accessible element and `find()`/`inspect` can't address it.
 - `stack` — the full `document.elementsFromPoint(x,y)` top-down (capped 8); **`stack[0]` is what a real `click({coords})` would hit**. Each layer carries `tag/id/testId/role/name/classes` + computed `pointerEvents/visibility/display/zIndex/cursor` + `bbox` — enough to prove "this point hits the audio segment, not the video layer above it" and to see *why* (`pointer-events:none` passthrough, z-index ordering).

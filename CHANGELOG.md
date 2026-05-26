@@ -105,6 +105,23 @@ surface" covers.
   action surface). See
   [docs/tool-reference.md](docs/tool-reference.md#extensions-registry-capability-extensions)
   and [docs/threat-model.md](docs/threat-model.md).
+- **`generate_locator`** — bridge a session-internal `eN` ref (from
+  `snapshot()` / `find()` / `plan()`) into a **Playwright-string locator
+  expression** an adopter can paste verbatim into a `.spec.ts`. Returns
+  `{ ok, playwright, stability, components }` (or a structured
+  `{ ok:false, failure:{ kind:"ref-not-found" } }` — no throw). The emitted
+  string is real Playwright: `page.getByTestId('save-btn')`,
+  `page.getByRole('button', { name: 'Save' })`,
+  `page.locator('main > table > tbody > tr:nth-child(4)')`. `stability` uses
+  the same five-tier vocabulary `find()` already emits (high = testid OR
+  role+name; medium = stable structural / text on stable role; low =
+  positional / role-only). `components` is the structured breakdown of the
+  parts the string is built from (`testid` / `role` / `text` / `css`) — for
+  adopters who want to compose their own locator. Quote-escaping is paste-safe;
+  emitted strings + component values pass through the secrets-registry mask on
+  egress (same posture as `find().selectorHint`). Read-only — reuses
+  capability `read`, no new gate. Also in the `batch` whitelist. See
+  [docs/tool-reference.md § generate_locator](docs/tool-reference.md#generate_locator).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

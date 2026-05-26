@@ -75,6 +75,10 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // capability is enforced separately via gateCheck(action.tool) at runtime.
   act_and_sample: "read",
   list_named_refs: "read",
+  // Bridge from a session-internal `eN` ref to a Playwright-string locator
+  // expression an adopter can paste into a `.spec.ts`. Pure-read: looks the
+  // ref up in the existing registry, emits a string + structured breakdown.
+  generate_locator: "read",
   text_search: "read",
   // Structured schema-driven data extraction. Read-only; no new
   // capability (the deterministic mode is selector-only).

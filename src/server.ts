@@ -63,6 +63,7 @@ import {
 } from "./page/verify.js";
 import type { Predicate } from "./util/predicates.js";
 import { inspectElement } from "./page/inspect.js";
+import { generateLocator } from "./page/generate-locator.js";
 import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
 import { runShortcut } from "./page/shortcut.js";
@@ -1315,6 +1316,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // is cheap; pin the invariant per-sink.
       const maskedInspect = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
       return { content: [{ type: "text", text: JSON.stringify(maskedInspect, null, 2) }] };
+    },
+  );
+
+  register(
+    "generate_locator",
+    {
+      description:
+        "Convert a session-internal `ref` (from snapshot()/find()) into a Playwright-string locator expression an adopter can paste into a `.spec.ts` — the bridge between agent-driven exploration and a deterministic regression suite. Returns `{ ok, playwright, stability, components }` (or `{ ok:false, failure:{kind:\"ref-not-found\"} }` when the ref isn't in this session's registry — no throw). `playwright` is a real Playwright expression rooted on `page` (e.g. `page.getByRole('button', { name: 'Save' })`, `page.getByTestId('save-btn')`, `page.locator('main > table > tbody > tr:nth-child(4)')`). `stability` is the same per-tier label `find()` emits (high = testid OR role+name; medium = stable structural / text on stable role; low = positional / role-only). `components` is the structured breakdown of the parts the string is built from — adopters who want to compose their own locator (chain `.filter()`, combine two kinds) can read this without re-parsing the string. Read-only; no new capability — reuses `read`.",
+      inputSchema: {
+        ref: z.string().describe("Stable `eN` ref from a prior snapshot()/find()/plan() result."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ ref, session }) => {
+      const g = gateCheck("generate_locator"); if (g) return g;
+      const e = await entryFor(session);
+      const result = generateLocator(ref, (r) => e.refs.locatorOf(r));
+      // Secrets masking: the emitted `playwright` string + `components`
+      // values can echo a real `name` / `testId` that was registered via the
+      // secrets registry. Same exposure class as `find()`'s `selectorHint`
+      // and `inspect`'s stringly outputs — mask through the per-session
+      // registry on egress.
+      const masked = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      const tokensEstimate = estimateTokens(JSON.stringify(masked));
+      return { content: [{ type: "text" as const, text: JSON.stringify({ ...masked, tokensEstimate }, null, 2) }] };
     },
   );
 
@@ -4251,7 +4277,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "plan", "execute",
     "snapshot", "find", "text_search", "inspect", "watch", "sample", "screenshot", "console_read", "network_read", "ws_read", "network_body",
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
-    "eval_js", "list_named_refs", "name_ref", "find_feedback",
+    "eval_js", "list_named_refs", "name_ref", "find_feedback", "generate_locator",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
     "network_emulate", "cpu_emulate", "clock",
     "start_har", "stop_har",
