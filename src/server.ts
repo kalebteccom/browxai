@@ -433,6 +433,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // route handler scoped to its context; warning emitted up-stream).
       if (creationReplayHars && creationReplayHars.length) {
         await applyHarReplay(sess.page().context(), creationReplayHars);
+      }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
       const networkBuf = new NetworkBuffer(sess.cdp());
