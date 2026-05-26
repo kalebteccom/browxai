@@ -74,6 +74,16 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   act_and_sample: "read",
   list_named_refs: "read",
   text_search: "read",
+  // verify-family — assertive read primitives (fail-emitting siblings of
+  // wait_for). Read-only — no `eval` capability gate. `verify_predicate` is
+  // intentionally NOT an arbitrary-JS path; its vocabulary is fixed enum +
+  // allow-listed accessor keys, server-evaluated. See src/util/predicates.ts.
+  verify_visible: "read",
+  verify_text: "read",
+  verify_value: "read",
+  verify_count: "read",
+  verify_attribute: "read",
+  verify_predicate: "read",
   // navigation
   navigate: "navigation",
   go_back: "navigation",

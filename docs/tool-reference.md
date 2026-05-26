@@ -193,6 +193,42 @@ Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Eac
 
 `count: 0` is the clean absence signal. No more overloading `find()` for presence/absence.
 
+### `verify_visible` / `verify_text` / `verify_value` / `verify_count` / `verify_attribute` / `verify_predicate`
+
+Assertive read primitives. `wait_for` is **permissive** — it returns when satisfied OR when its deadline expires with `ok:false` as a normal outcome. The `verify_*` family is the **fail-emitting sibling**: each tool returns `{ok: true}` when the assertion holds *right now*, or `{ok: false, failure: {source, kind, expected, actual, evidence?}, tokensEstimate}` when it doesn't — so an agent loop terminates deterministically instead of relying on the LLM eyeballing a snapshot.
+
+Failure shape carries the standard `{source}` classifier from `failure.ts`:
+- `source: "app"` — the predicate didn't hold against the page (a real signal the agent should act on).
+- `source: "browxai"` — verify itself couldn't run (ref no longer in the snapshot, malformed input, etc — agent should re-snapshot, not file a defect).
+
+All six are read-only (capability `read`). Coords targets are rejected — verify is structural; the rare canvas / dismiss-empty-space case stays on `click` + `screenshot`.
+
+#### `verify_visible({ ref?|selector?|named?, session? })`
+Asserts the element is currently visible (non-zero box, displayed, opacity > 0). On failure, `actual` carries a one-word reason — `"hidden (display:none)"`, `"hidden (visibility:hidden)"`, `"hidden (opacity:0)"`, `"hidden (zero-sized box)"`, `"off-screen or covered"`, or `"missing (locator matched 0 nodes)"`.
+
+#### `verify_text({ ref?|selector?|named?, text, exact?, session? })`
+Asserts the element's visible text matches. Default: case-insensitive substring on the trimmed `innerText`. `exact: true` → case-sensitive equality. `failure.actual` carries the first 200 chars of what we saw.
+
+#### `verify_value({ ref?|selector?|named?, value, session? })`
+Asserts the targeted form-control's current value (input / textarea / select / contenteditable). Strict equality on the DOM-side `value` (or `innerText` for `contenteditable`). Pairs with `ActionResult.element.value` from `fill` — assert the post-fill state without an extra round-trip.
+
+#### `verify_count({ selector?|text?, n, session? })`
+Asserts exactly `n` matches. One of `selector` (raw CSS / Playwright locator) or `text` (case-insensitive visible-text search over the composed a11y tree) is required. Use for grid/list invariants: "5 rows remain after the delete", "no `Wrong Type` chips left in the record grid".
+
+#### `verify_attribute({ ref?|selector?|named?, attr, value?, session? })`
+Asserts the element's HTML attribute. Pass `value` for strict-equality; omit `value` to assert mere presence. Use for `aria-pressed`, `data-state`, `disabled`, role state that doesn't surface as visible text.
+
+#### `verify_predicate({ predicate, data, session? })`
+Composed predicate check over caller-supplied data. **Fixed vocabulary — NOT arbitrary JS.** The agent supplies *data* (which key, which expected value); the *vocabulary* is server-owned.
+
+The `predicate.kind` enum:
+- Leaves: `equals`, `notEquals`, `contains`, `notContains`, `gt`, `lt`, `gte`, `lte`, `between`, `matches` (regex string), `exists`.
+- Combinators: `and`, `or`, `not` (recursive — combinators take a `predicates` array of child predicates).
+
+Each leaf carries `{kind, key, value}` (or `{kind, key, lo, hi}` for `between`). `key` is a dotted accessor (e.g. `"actionResult.element.value"`, `"snapshot.warnings.length"`) and **must start with an allow-listed root**: `actionResult`, `snapshot`, `element`, `value`, `expect`. The `.length` suffix over an array or string returns the numeric length.
+
+`eval_js` (gated behind the `eval` capability) remains the only arbitrary-JS path in browxai. `verify_predicate` does **not** add a second one — it shares the predicate vocabulary with `batch.expect` (one source of truth lives in `src/util/predicates.ts`). Use it as a deterministic gate on an already-captured `ActionResult` / snapshot / metric — the screenshot-judge analogue when chained behind a `screenshot`.
+
 ### `console_read`
 Recent console messages (ring buffer). For per-action attribution, use `ActionResult.console` from any action tool.
 

@@ -19,6 +19,34 @@ surface" covers.
   `fill`, `hover`, `press`, `select`. `plan` is `read`; `execute` is `action`
   AND enforces the underlying verb's capability. See
   [docs/tool-reference.md](docs/tool-reference.md#plan-query-verb-verbargs-contextref-confidencefloor-ttlms-session--execute-descriptor-opts).
+- **`verify_*` family** — assertive read primitives that fail-emit (`ok:false`
+  + `failure:{source,kind,expected,actual,evidence?}`) when an assertion
+  doesn't hold, so agent loops terminate deterministically instead of relying
+  on the LLM eyeballing a snapshot. The fail-emitting sibling of permissive
+  `wait_for`. Six tools, all under capability `read`:
+  - `verify_visible` — element is currently visible (with a one-word reason
+    on failure: `display:none` / `visibility:hidden` / `opacity:0` / zero-
+    sized / off-screen / missing).
+  - `verify_text` — element's visible text matches (default substring + case-
+    insensitive; `exact:true` flips to case-sensitive equality).
+  - `verify_value` — form-control's current DOM value matches.
+  - `verify_count` — exactly `n` elements match a `selector` or visible
+    `text` (grid/list invariants without re-walking the tree).
+  - `verify_attribute` — element's HTML attribute matches (or, with `value`
+    omitted, asserts presence) — `aria-*` / `data-*` / `disabled` / role
+    state that doesn't surface as visible text.
+  - `verify_predicate` — composed-predicate check over a caller-supplied
+    `data` bag. **Fixed vocabulary, NOT arbitrary JS**: predicate `kind` is a
+    fixed enum (`equals`, `notEquals`, `contains`, `notContains`, `gt`, `lt`,
+    `gte`, `lte`, `between`, `matches`, `exists`, `and`, `or`, `not`) and
+    `key` is a dotted accessor restricted to an allow-listed root set
+    (`actionResult`, `snapshot`, `element`, `value`, `expect`). The agent
+    supplies *data*; the *vocabulary* is server-owned. `eval_js` (gated
+    behind `eval`) remains the only arbitrary-JS path.
+- **Shared predicate vocabulary** (`src/util/predicates.ts`) — single source
+  of truth used by both `verify_predicate` and `batch.expect`, so the
+  semantic primitives stay aligned across the assertive and per-batch-call
+  assertion surfaces.
 
 ## [0.1.0] - 2026-05-20
 
