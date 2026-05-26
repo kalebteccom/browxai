@@ -43,6 +43,24 @@ surface" covers.
   screenshot and removed before return. Net-additive — one new tool under
   capability `read`; also in the batch whitelist. See
   [docs/tool-reference.md § Visual regions](docs/tool-reference.md#visual-regions--cross-session--session-report).
+- **`flake_check`** — run the same call sequence N times and report what
+  shifted between runs, for diagnosing intermittent CI flakes BEFORE chasing
+  them through logs. Composes existing primitives — `batch`'s dispatch loop
+  is the inner runner; the cached-selector artifact reuses the
+  `ActionDescriptor` shape from `plan`/`execute`. Each repetition runs with
+  `stopOnError:false` internally so a mid-sequence failure does NOT hide the
+  variance picture for later steps. Returns per-step success-rate, distinct
+  errors, distinct resolution signatures, the earliest `firstDivergence`
+  step where `ok` differed across runs, and a `cachedResolvers[]`
+  self-heal artifact — `{step → resolved ref/selectorHint}` for steps
+  where every reaching-this-step run agreed AND succeeded, with `plan` steps
+  carrying the full descriptor projection so a follow-up `execute()` can
+  consume the cache after re-snapshotting. `stopOnAllGreen: K` short-circuits
+  when K consecutive runs are all-green. `n` is bounded `[3, 20]`. Capability
+  `action` (the inner whitelist mirrors `batch`; nested `batch` / `flake_check`
+  rejected; each inner tool's own gateCheck still fires through the batch
+  handler map). See [docs/tool-reference.md §
+  `flake_check`](docs/tool-reference.md#flake_check-calls-n-stoponallgreen).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows

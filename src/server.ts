@@ -146,6 +146,7 @@ import { lowerTraceToSpec, parseCheck as parsePlaywrightSpec } from "./page/expo
 import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
 import { runBatch } from "./util/batch.js";
+import { runFlakeCheck } from "./util/flake-check.js";
 
 export const NAME = "browxai";
 export const VERSION = "0.1.0";
@@ -4715,6 +4716,75 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
+    },
+  );
+
+  // ---------- flake-check ----------
+
+  register(
+    "flake_check",
+    {
+      description:
+        "Run the same call sequence N times and report what shifted between runs — for diagnosing intermittent CI flakes BEFORE chasing them through logs. Inner calls are dispatched through the `batch` whitelist (capability + confirm hooks unchanged); each run uses `stopOnError:false` internally so a mid-sequence failure does NOT hide the variance picture for later steps. Returns per-step success-rate, distinct errors, distinct resolution signatures, the earliest `firstDivergence` step where ok shifted across runs, and a `cachedResolvers[]` artifact — `{step → resolved ref/selectorHint}` for steps where every run agreed AND succeeded. The artifact mirrors the `ActionDescriptor` shape for `plan` steps so a follow-up call can re-execute against a fresh snapshot. `stopOnAllGreen: K` short-circuits when K consecutive runs are all-green (skips redundant work once you've proved the sequence is stable).",
+      inputSchema: {
+        calls: z
+          .array(
+            z.object({
+              tool: z.string().describe("Tool name (must be in the batch whitelist)"),
+              args: z.record(z.unknown()).optional().describe("Args for the inner tool, same shape as a top-level call"),
+              label: z.string().optional().describe("opaque label echoed in the result entry for cross-referencing"),
+              expect: z
+                .object({
+                  valueEquals: z.string().optional(),
+                  displayTextIncludes: z.string().optional(),
+                  controlDisplayTextIncludes: z.string().optional(),
+                  containerTextIncludes: z.string().optional(),
+                  controlChanged: z.boolean().optional(),
+                })
+                .optional()
+                .describe("optional post-call assertions on the inner ActionResult — same shorthand vocabulary as `batch`."),
+            }),
+          )
+          .min(1)
+          .max(BATCH_MAX_CALLS)
+          .describe(`Up to ${BATCH_MAX_CALLS} inner calls. Same shape and whitelist as \`batch\`.`),
+        n: z
+          .number()
+          .int()
+          .min(3)
+          .max(20)
+          .describe("How many times to repeat the call sequence. Bounded [3, 20] — fewer than 3 can't surface intermittent flakes; more than 20 burns server time without sharpening the picture."),
+        stopOnAllGreen: z
+          .number()
+          .int()
+          .min(1)
+          .max(20)
+          .optional()
+          .describe("Short-circuit when this many consecutive runs all-pass. Off by default."),
+      },
+    },
+    async ({ calls, n, stopOnAllGreen }: {
+      calls: Array<{ tool: string; args?: Record<string, unknown>; label?: string; expect?: import("./util/batch.js").BatchExpect }>;
+      n: number;
+      stopOnAllGreen?: number;
+    }) => {
+      const g = gateCheck("flake_check"); if (g) return g;
+      // Reject self-nesting + the same human-blocking / recording tools `batch`
+      // already excludes. The whitelist is the source of truth.
+      for (const c of calls) {
+        if (!BATCH_ALLOWED_TOOLS.has(c.tool)) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `flake_check: inner tool "${c.tool}" not allowed (batch whitelist; no batch / flake_check / await_human / recording)` }, null, 2) }] };
+        }
+      }
+      const report = await runFlakeCheck(calls, {
+        n,
+        ...(stopOnAllGreen !== undefined ? { stopOnAllGreen } : {}),
+        allowed: BATCH_ALLOWED_TOOLS,
+        handlers: toolHandlers,
+      });
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }],
+      };
     },
   );
 

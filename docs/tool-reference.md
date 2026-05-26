@@ -837,6 +837,23 @@ Returns `{ completed, failedAt, results }`:
 
 Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, `select`, `choose_option`, `scroll`, `wait_for`, `go_back`, `go_forward`, `snapshot`, `find`, `text_search`, `screenshot`, `console_read`, `network_read`, `eval_js`, `list_named_refs`, `name_ref`, `find_feedback`, `approve_actions`, `list_approvals`, `get_config`, `list_sessions`. Excluded: `batch` (no nesting), `await_human` (would block the whole batch), recording-control tools.
 
+### `flake_check({ calls, n, stopOnAllGreen? })`
+
+Run the same call sequence **N times** and report what shifted between runs — for diagnosing intermittent CI flakes **before** you start chasing them through logs. Same inner-call shape and whitelist as `batch` (the inner runner is `batch`'s dispatch loop); capability gating, confirm hooks, and ActionResults are unchanged. Each repetition runs with `stopOnError: false` **internally** so a mid-sequence failure does NOT hide the variance picture for later steps — the whole point of flake-check is knowing that step 4 sometimes fails AND that step 5 then also fails differently.
+
+- `calls` — same shape as `batch.calls` (whitelist, optional `label` + `expect`). 1–32 entries.
+- `n` — repetitions, bounded `[3, 20]`. Fewer than 3 can't surface intermittent flakes; more than 20 burns server time without sharpening the picture.
+- `stopOnAllGreen` — when set to `K`, short-circuit once `K` consecutive runs are all-green. Off by default.
+
+Returns `{ runsCompleted, allGreen, shortCircuitedAfter?, steps, firstDivergence, cachedResolvers, runs }`:
+
+- `steps[]` — per-step roll-up `{ step, tool, label?, runs, ok, successRate, errors[], signatures[] }`. `errors` is the deduped distinct-error list (capped at 8 — anything noisier is itself the finding). `signatures` is the distinct-resolution-signature list — for `plan` / `find` steps, `<ref>::<selectorHint>`; for bound `click/fill/...` calls, the supplied `ref` / `selector` / `named`. **One signature = the step landed identically across every run.**
+- `firstDivergence` — the earliest step (0-based) where `ok` differed across the runs that reached it, or `null` when every run agreed per step (all-green and all-red both count as agreement — agreement IS the finding).
+- `cachedResolvers[]` — the self-heal artifact. For each step where every reaching-this-step run agreed AND succeeded, a `{ step, tool, label?, ref?, selectorHint?, descriptor?, agreedRuns }` entry the caller can hand back as a hint on the next run. `plan` steps carry the full `descriptor` projection (mirrors the `ActionDescriptor` shape so a follow-up `execute()` can consume it after re-snapshotting); `find` steps carry the top-candidate ref + `selectorHint`; bound steps carry the input target. Steps with no extractable target (coords) yield no entry.
+- `runs[]` — the per-run `BatchReport` echoes so the caller can drill into individual failures.
+
+Capability `action` (the calls dispatch through the batch handler map; each inner tool's own gateCheck still fires). Same whitelist as `batch`; nested `flake_check` and `batch` are rejected.
+
 ### `ActionResult` shape
 
 ```jsonc

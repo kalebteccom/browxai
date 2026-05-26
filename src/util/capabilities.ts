@@ -172,6 +172,16 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   grant_permissions: "action",
   act_and_diff: "read",
   act_and_wait_for_network: "read",
+  // flake-check: dispatches the same batch payload N times to surface
+  // intermittent failures + emit a cached-selector artifact. Posture is
+  // `action` — unlike the act_and_* siblings (single inner action, sampled),
+  // flake-check is purpose-built to repeatedly DISPATCH a sequence (each
+  // inner call going through its own per-call gateCheck via the batch
+  // handler map). Treating the outer primitive as `action` makes the intent
+  // explicit at config-time: a `read`-only server should not be silently
+  // re-running fills + clicks N times because someone wrapped them in
+  // flake_check.
+  flake_check: "action",
   cross_session_sample: "read",
   screenshot_region: "read",
   // Composed screenshot: paint numbered bounding boxes over caller-supplied
