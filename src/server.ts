@@ -4,6 +4,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { sep as pathSep } from "node:path";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
 import { openIncognitoSession } from "./session/incognito.js";
@@ -105,6 +107,7 @@ import {
   authList,
   authDelete,
   type StorageStateBlob,
+  resolveWorkspacePath,
 } from "./session/storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
@@ -137,6 +140,7 @@ import { resolveCapabilities, resolveConfirmHooks, isToolEnabled, TOOL_CAPABILIT
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
+import { lowerTraceToSpec, parseCheck as parsePlaywrightSpec } from "./page/export-playwright-script.js";
 import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
 import { runBatch } from "./util/batch.js";
@@ -2220,6 +2224,96 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
+    },
+  );
+
+  register(
+    "export_playwright_script",
+    {
+      description:
+        "Lower a session's recorded action trace into a runnable `@playwright/test` spec file. Adjacent to `export_session_report` (which bundles QA evidence) and to `end_recording` (which emits the site-docs flow-file YAML); this one emits a `.spec.ts` source a code-as-action consumer can run as the seed for a skill-compilation loop. Each recorded step lowers to ONE Playwright call using the BEST stable `selectorHint` captured at the time of the call (tier-1 attribute → `page.locator(...)`, tier-2 role+name → `getByRole({name})`, role-only / tier-5 → `getByRole()` with a `// TODO: fragile selector` comment). Coords-mode actions are not recorded so the export never has to lower a non-replayable target. Requires an ACTIVE recording (call `start_recording` first); inspect-style — does NOT end the recording. With `path`, ALSO writes to a workspace-rooted `.spec.ts` file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Read-only (capability `read`). Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
+      inputSchema: {
+        path: z.string().optional().describe(
+          "Optional workspace-rooted file path to write the `.spec.ts` to (in addition to returning it inline). Rejected if it escapes $BROWX_WORKSPACE.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ path, session }) => {
+      const g = gateCheck("export_playwright_script"); if (g) return g;
+      const e = await entryFor(session);
+      const snap = e.recorder.inspect();
+      if (!snap) {
+        const body = {
+          ok: false,
+          tool: "export_playwright_script",
+          error:
+            "no active recording — call `start_recording({flowName})` first, " +
+            "drive the flow with the usual action tools (navigate/click/fill/..." +
+            "), then call this. The recording is NOT ended by export — `end_recording` " +
+            "still emits the YAML flow-file separately.",
+          failure: { source: "browxai", hint: "start_recording before exporting" },
+          tokensEstimate: 0,
+        };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      }
+      const lowered = lowerTraceToSpec(snap.name, snap.steps);
+      const check = parsePlaywrightSpec(lowered.source);
+      if (!check.ok) {
+        const body = {
+          ok: false,
+          tool: "export_playwright_script",
+          error: `generated spec failed the structural parse-check: ${check.reason}`,
+          source: lowered.source,
+          stats: lowered.stats,
+          tokensEstimate: 0,
+        };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      }
+      let writtenPath: string | undefined;
+      let writtenBytes: number | undefined;
+      if (path !== undefined) {
+        try {
+          const resolved = resolveWorkspacePath(workspace.root, path, "export_playwright_script");
+          // Ensure parent dir exists — same pattern dumpStorageState uses.
+          const parent = resolved.substring(0, Math.max(resolved.lastIndexOf(pathSep), 0));
+          if (parent && !existsSync(parent)) mkdirSync(parent, { recursive: true });
+          writeFileSync(resolved, lowered.source, "utf8");
+          writtenPath = resolved;
+          writtenBytes = Buffer.byteLength(lowered.source, "utf8");
+        } catch (err) {
+          const body = {
+            ok: false,
+            tool: "export_playwright_script",
+            error: err instanceof Error ? err.message : String(err),
+            source: lowered.source,
+            stats: lowered.stats,
+            tokensEstimate: 0,
+          };
+          body.tokensEstimate = estimateTokens(JSON.stringify(body));
+          return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        }
+      }
+      const body: {
+        ok: true;
+        name: string;
+        source: string;
+        stats: typeof lowered.stats;
+        path?: string;
+        bytes?: number;
+        tokensEstimate: number;
+      } = {
+        ok: true,
+        name: snap.name,
+        source: lowered.source,
+        stats: lowered.stats,
+        ...(writtenPath ? { path: writtenPath, bytes: writtenBytes } : {}),
+        tokensEstimate: 0,
+      };
+      body.tokensEstimate = estimateTokens(JSON.stringify(body));
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
     },
   );
 

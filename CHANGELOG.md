@@ -144,6 +144,22 @@ surface" covers.
   Playwright context at creation for both managed and incognito sessions —
   prerequisite for the `download` event to fire; the off-by-default registry
   governs whether anything is persisted.
+- **`export_playwright_script`** — trace-export sibling to `export_session_report`:
+  lowers the session's recorded action trace into a runnable
+  `@playwright/test` spec file (`.spec.ts` source). Each recorded step lowers
+  to ONE Playwright call using the BEST stable `selectorHint` captured at the
+  time of the call — tier-1 attribute → `page.locator(...)`, tier-2 role+name
+  → `getByRole({ name })`, role-only / tier-5 → `getByRole()` with a
+  `// TODO: fragile selector` comment above the line so the consumer SEES the
+  brittle spots in-source. Coords-mode actions are not recorded by the action
+  window, so the export never has to lower a non-replayable target. Requires
+  an active recording (`start_recording` first); inspect-style — does NOT end
+  the recording. With `path`, ALSO writes the source to a workspace-rooted
+  `.spec.ts` file (path-traversal rejected — must resolve under
+  `$BROWX_WORKSPACE`). Capability `read` (exports recorded state — dispatches
+  no new action). Returns `{ ok, name, source, stats: { steps, handled,
+  unhandled, fragile }, path?, bytes?, tokensEstimate }`. Tool reference:
+  [docs/tool-reference.md § export_playwright_script](docs/tool-reference.md#export_playwright_script-path-session-).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

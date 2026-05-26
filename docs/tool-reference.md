@@ -990,6 +990,47 @@ Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elaps
 - `cross_session_sample({ action, actionSession, sampleSession, metric, durationMs, … })` — drive an action in one session and trace a metric in **another** over the same window, in one call — realtime-propagation assertions ("an action in session A should reflect in session B"). → `{ action, sample }`.
 - `export_session_report({ note?, session? })` — bundle a session's QA evidence (url, console errors, recent network summary, named regions, live sessions, `note`) into one JSON object for auditable multi-agent QA. Returned, not written to disk.
 
+### `export_playwright_script({ path?, session? })`
+
+Lower a session's recorded action trace into a runnable `@playwright/test` spec
+file — adjacent to `export_session_report` (QA evidence) and `end_recording`
+(the site-docs flow-file YAML); this one emits TypeScript a code-as-action
+consumer can run as the seed for a skill-compilation loop. Each recorded step
+lowers to ONE Playwright call using the BEST stable `selectorHint` captured at
+the time of the call (tier-1 attribute → `page.locator(...)`, tier-2 role+name
+→ `getByRole({ name })`, role-only / tier-5 → `getByRole()` with a `// TODO:
+fragile selector` comment above the line so the consumer SEES the brittle
+spots). Coords-mode actions are not recorded by the action window, so the
+export never has to lower a non-replayable target — by construction.
+
+**Requires an active recording.** Call `start_recording({flowName})` first,
+drive the flow with the usual action tools, then call this. Export is
+inspect-style — it does NOT end the recording (use `end_recording` separately
+for the YAML flow-file).
+
+With `path`, ALSO writes the source to a workspace-rooted `.spec.ts` file
+(path-traversal rejected — must resolve under `$BROWX_WORKSPACE`).
+
+Capability `read`. → `{ ok, name, source, stats: { steps, handled, unhandled, fragile }, path?, bytes?, tokensEstimate }`.
+
+**Example.** After `start_recording({flowName:"login"})` + a `navigate` +
+`fill({ref:"e1",value:"alice"})` + `click({ref:"e2"})` against a Sign-in
+button discovered via tier-2 role+name, calling
+`export_playwright_script({path:"scripts/login.spec.ts"})` writes a file
+shaped like:
+
+```ts
+import { test, expect } from "@playwright/test";
+
+void expect;
+
+test("login", async ({ page }) => {
+    await page.goto("https://app.example.com/login");
+    await page.locator("[data-testid=\"username\"]").fill("alice");
+    await page.getByRole("button", { name: "Sign in" }).click();
+});
+```
+
 ### Profile snapshot / restore — `profile_snapshot` / `profile_restore`
 Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
 - `profile_snapshot({ snapshot, profile? })` — copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.

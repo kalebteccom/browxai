@@ -174,6 +174,10 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   cross_session_sample: "read",
   screenshot_region: "read",
   export_session_report: "read",
+  // Trace-export sibling to `export_session_report`: lowers the session's
+  // recorded action trace to a runnable `@playwright/test` spec file. Under
+  // `read` — exports recorded state, dispatches no new action.
+  export_playwright_script: "read",
   name_region: "human",
   region: "human",
   profile_snapshot: "human",

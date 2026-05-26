@@ -42,6 +42,16 @@ export class Recorder {
 
   active(): boolean { return this.name !== null; }
 
+  /** Read-only access to the recorded trace + the flow name without ending
+   *  the recording. Used by trace-export tools (e.g. the Playwright-script
+   *  exporter) that need to lower the steps to a runnable artefact while the
+   *  recording is still in progress. Returns null when no recording is
+   *  active. */
+  inspect(): { name: string; steps: ReadonlyArray<RecordedStep> } | null {
+    if (!this.name) return null;
+    return { name: this.name, steps: this.steps.slice() };
+  }
+
   /** Record an action that just happened. The caller (server.ts action handlers)
    *  passes the descriptor + the URL it ended at + whatever selectorHint was
    *  used to resolve the target. Best-effort: if no recording is active, this
