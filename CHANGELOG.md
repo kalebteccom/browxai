@@ -41,6 +41,23 @@ surface" covers.
   surface a print dialog / mutate window state. Open a managed
   (`persistent` / `incognito`) session and re-run there. See
   [docs/tool-reference.md § `pdf_save`](docs/tool-reference.md#pdf_save--path-format-scale-printbackground-session-).
+- **`heap_snapshot` / `heap_retainers`** — V8 heap snapshots + retainer queries.
+  `heap_snapshot` wraps CDP `HeapProfiler.takeHeapSnapshot` and writes a
+  workspace-rooted `.heapsnapshot` JSON (the format `chrome://inspect`'s Memory
+  panel consumes on drag-and-drop); `heap_retainers` parses a written snapshot
+  in-process and reports top retainers (sorted by retainer self-size desc,
+  capped at 50) of nodes matching a `{ name?, type?, nameMatch? }` query —
+  directly answers "who's still holding these objects alive?" without paging
+  through DevTools' Memory panel. One-shot, not a start/stop pair (a heap
+  snapshot is a point-in-time capture). At least one of `query.name` / `type`
+  is required — match-everything is never the right answer. Workspace-rooted
+  paths only; explicit `path` rejected if it escapes `$BROWX_WORKSPACE`. Both
+  under capability `action` (kept under the same capability so a memory-leak
+  diagnosis batch — trigger interaction → `heap_snapshot` → `heap_retainers`
+  — doesn't have to juggle two grants); both batch-allowed. Bring-your-own
+  snapshot works: any `.heapsnapshot` exported from DevTools or saved by CI
+  parses through the same retainer query. See
+  [docs/tool-reference.md § V8 heap snapshots](docs/tool-reference.md#v8-heap-snapshots--heap_snapshot--heap_retainers).
 - **`seed_random`** — per-session deterministic `Math.random` override. Injects
   a Mulberry32 PRNG via Playwright `context.addInitScript`, seeded by the
   caller-supplied integer in `[0, 2^32 - 1]`. The current page's main realm is

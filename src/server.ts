@@ -84,6 +84,13 @@ import {
   readTraceFile,
   extractInsights,
 } from "./page/perf.js";
+import {
+  takeHeapSnapshot,
+  defaultHeapSnapshotPath,
+  writeHeapSnapshotFile,
+  readHeapSnapshotFile,
+  queryRetainers,
+} from "./page/heap.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
@@ -2088,6 +2095,83 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           eventCount: events.length,
           metadata: metadata ?? null,
           insights,
+        };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  // -------- V8 heap snapshots --------
+
+  register(
+    "heap_snapshot",
+    {
+      description:
+        "Take a V8 heap snapshot on this session's target — wraps CDP `HeapProfiler.takeHeapSnapshot`. The output file is the same `.heapsnapshot` JSON DevTools' Memory panel and `chrome://inspect` consume on drag-and-drop. Use to diagnose memory leaks: pair with `heap_retainers({snapshotPath, query})` to ask \"who's still pointing to objects named X / typed Y\" — the answer is invisible in `snapshot` / `find` because the leaked nodes are no longer in the DOM. Per-session; one-shot (a heap snapshot is a point-in-time capture, not a recording window). Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` — explicit `path` is rejected if it escapes `$BROWX_WORKSPACE`. Snapshots are heavy (often tens to hundreds of MiB on a real page); don't take them in a tight loop.",
+      inputSchema: {
+        path: z.string().optional().describe(
+          "Workspace-rooted output path for the .heapsnapshot file. Default: <workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot. Rejected if it escapes $BROWX_WORKSPACE.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ path, session }) => {
+      const g = gateCheck("heap_snapshot"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const snapshotJson = await takeHeapSnapshot(e.session.cdp());
+        const targetPath = path ?? defaultHeapSnapshotPath(workspace.root, e.id);
+        const written = writeHeapSnapshotFile(workspace.root, targetPath, snapshotJson, "heap_snapshot");
+        const body: Record<string, unknown> = {
+          ok: true,
+          path: written.resolved,
+          bytes: written.bytes,
+          hint: "Call heap_retainers({snapshotPath, query:{name|type}}) to find what's holding suspect objects alive. Drag-and-drop this file onto chrome://inspect's Memory panel for the full interactive view.",
+        };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: the snapshot was captured against the human's Chrome. The .heapsnapshot file remains under $BROWX_WORKSPACE.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "heap_retainers",
+    {
+      description:
+        "Run a retainer query against a written `.heapsnapshot` file. Returns the top retainers (sorted by retainer self-size desc, capped at 50) of nodes whose display name and/or V8 type matches the query — directly answers \"who's holding these objects alive?\" without paging through DevTools' Memory panel. Pure file read + in-process parse, no CDP touch. `query.name` defaults to exact match against the node's string-table name (use `nameMatch:\"substring\"` for containment); `query.type` filters by V8 node-type (`\"closure\"`, `\"object\"`, `\"hidden\"`, …). At least one of `name` / `type` is required — a match-everything query is never the right answer. `snapshotPath` is workspace-rooted; rejected if it escapes `$BROWX_WORKSPACE`. Same JSON format `heap_snapshot` writes — bring-your-own snapshot (downloaded from DevTools, saved by a CI run) works too.",
+      inputSchema: {
+        snapshotPath: z.string().describe("Workspace-rooted path to a .heapsnapshot file (the path returned by heap_snapshot)."),
+        query: z.object({
+          name: z.string().optional().describe("Match against the V8 string-table name of a node (e.g. \"Cache\", \"MyLeakyClass\")."),
+          type: z.string().optional().describe("Match against V8 node-type (e.g. \"closure\", \"object\", \"hidden\")."),
+          nameMatch: z.enum(["exact", "substring"]).optional().describe("Default \"exact\". Use \"substring\" for containment matching against `name`."),
+        }).describe("At least one of `name` or `type` is required."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ snapshotPath, query, session: _session }) => {
+      const g = gateCheck("heap_retainers"); if (g) return g;
+      // Pure file read + parse — no session touch needed. We still honour
+      // SESSION_ARG for consistency with the sibling `perf_insights`.
+      try {
+        const { parsed, resolved } = readHeapSnapshotFile(workspace.root, snapshotPath, "heap_retainers");
+        const result = queryRetainers(parsed, query);
+        const body: Record<string, unknown> = {
+          ok: true,
+          snapshotPath: resolved,
+          ...result,
         };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
@@ -5002,6 +5086,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "network_emulate", "cpu_emulate", "clock", "seed_random",
     "start_har", "stop_har",
     "perf_start", "perf_stop", "perf_insights",
+    "heap_snapshot", "heap_retainers",
   ]);
   const BATCH_MAX_CALLS = 32;
 

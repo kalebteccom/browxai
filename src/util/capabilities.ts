@@ -161,6 +161,15 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   perf_start: "action",
   perf_stop: "action",
   perf_insights: "action",
+  // V8 heap snapshots (CDP `HeapProfiler.takeHeapSnapshot` + in-process
+  // retainer query over the `.heapsnapshot` JSON). `heap_snapshot` writes
+  // a workspace-rooted file; `heap_retainers` reads one and reports who
+  // holds objects matching a name/type query. Both are `action` —
+  // `heap_snapshot` writes a file, and `heap_retainers` is a sibling
+  // tool kept under the same capability so a memory-diagnosis batch
+  // doesn't need to juggle two grants.
+  heap_snapshot: "action",
+  heap_retainers: "action",
   // Per-primitive device emulation (locale, timezone, geolocation, colour
   // scheme, reduced motion, user-agent, permissions). Each mutates one
   // Playwright/CDP emulation knob on the live session; under `action`
