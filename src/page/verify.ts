@@ -42,8 +42,14 @@ import {
   type Predicate,
   type PredicateResult,
 } from "../util/predicates.js";
+import type { FailureSource as FailureSourceBase } from "../util/failure.js";
 
-export type FailureSource = "app" | "browxai";
+// The verify family only ever emits the two determinate sources — `app`
+// (predicate didn't hold) or `browxai` (verify itself couldn't run).
+// `unknown` belongs to the post-hoc error classifier in `util/failure.ts`
+// and is intentionally excluded here. Narrowing rather than redeclaring
+// keeps both surfaces speaking the same vocabulary.
+export type FailureSource = Extract<FailureSourceBase, "app" | "browxai">;
 
 export interface VerifyFailure {
   /** `app` when the predicate didn't hold against the page's actual state;
