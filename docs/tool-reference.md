@@ -900,6 +900,13 @@ scanned on the way out:
 | `snapshot()` tree (a11y node names) | masked |
 | `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`) | masked (deep-walk) |
 | `text_search()` matches (visible text) | masked (deep-walk) |
+| `plan().evidence` (`selectorHint` / role / name on the planned descriptor) | masked (deep-walk) |
+| `inspect().styles` (computed `content` / `background-image: url(...)`) | masked (deep-walk) |
+| `point_probe()` (textContent of element-under-point + ancestor text) | masked (deep-walk) |
+| `verify_text` / `verify_value` / `verify_attribute` — `failure.actual` on miss | masked (deep-walk) — without this, a wrong-expected verify would echo the real value back |
+| `verify_count` / `verify_visible` / `verify_predicate` — `failure.actual` | masked (deep-walk) |
+| `act_and_diff().diff` (classDelta / styleDelta / attrDelta values) | masked (deep-walk) — covers `aria-*` / `data-*` attribute values + inline-style values |
+| `watch()` regions / network / WS over the watch window | masked (NetworkTap takes the secrets registry; result deep-walked) |
 | `screenshot()` (image bytes) | **partial — warning only**, see below |
 
 **Masking guarantees.** The egress layer composes with the existing W-O1

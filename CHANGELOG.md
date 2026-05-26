@@ -90,8 +90,10 @@ surface" covers.
   `SESSION_TOKEN`); subsequent `fill({value:"<NAME>"})` / `press({key:"<NAME>"})`
   substitute the real value at Playwright dispatch, while every egress sink
   (`ActionResult.network`, `network_read`, `network_body`, `ws_read`,
-  `console_read`, `snapshot`, `find`, `text_search`) rewrites occurrences of
-  the real value back to `<NAME>` before returning to the agent. Required
+  `console_read`, `snapshot`, `find`, `text_search`, `plan().evidence`,
+  `inspect().styles`, `point_probe`, `verify_*` failure.actual,
+  `act_and_diff().diff`, `watch`) rewrites occurrences of the real value
+  back to `<NAME>` before returning to the agent. Required
   for safely automating auth flows when transcripts are shareable. Composes
   with the existing W-O1 URL sanitiser at the same boundary — both layers
   apply (URL-shape regex first, then literal real-value substring scan).

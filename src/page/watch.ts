@@ -47,7 +47,12 @@ export async function watchWindow(
   const sampleMs = Math.max(opts.sampleMs ?? DEFAULT_SAMPLE_MS, 50);
   const tStart = Date.now();
 
-  const net = new NetworkTap(ctx.cdp);
+  // Thread the session's secrets registry (when capability `secrets` is
+  // active and the registry exists on the action context) so the network
+  // tap's literal-value sanitisation runs over URLs / mutation
+  // responseShape keys during the watch window — same chokepoint the
+  // action-window tap uses.
+  const net = new NetworkTap(ctx.cdp, ctx.secrets ?? null);
   await net.open();
 
   // ref → tracking record across samples.

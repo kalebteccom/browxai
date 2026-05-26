@@ -757,11 +757,23 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   };
 
   /** Wrap a `VerifyResult` in the standard JSON envelope with `tokensEstimate`.
-   *  Same `{ok, failure}` shape across the whole family. */
-  const verifyResultText = (res: VerifyResult): { content: Array<{ type: "text"; text: string }> } => {
-    const body = res.ok
+   *  Same `{ok, failure}` shape across the whole family.
+   *
+   *  Secrets-masking: when `e` is supplied and the `secrets` capability is on,
+   *  the body is run through `applyMaskDeep` BEFORE token-counting and
+   *  envelope construction. The load-bearing path is `failure.actual` for
+   *  `verify_text` / `verify_value` / `verify_attribute` — these echo the
+   *  element's real innerText / value / attribute on a miss, which is a
+   *  direct value-disclosure of any registered secret. Callers that don't
+   *  thread a session entry (no page-derived strings) pass `undefined`. */
+  const verifyResultText = (
+    res: VerifyResult,
+    e?: SessionEntry,
+  ): { content: Array<{ type: "text"; text: string }> } => {
+    const rawBody = res.ok
       ? { ok: true as const }
       : { ok: false as const, failure: res.failure };
+    const body = e && caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(rawBody) : rawBody;
     const tokensEstimate = estimateTokens(JSON.stringify(body));
     return {
       content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }],
@@ -783,7 +795,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "visible", expected: "ref/selector/named target", actual: "coords target" },
-        });
+        }, e);
       }
       try {
         const res = await withDeadline(
@@ -791,12 +803,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "verify_visible",
         );
-        return verifyResultText(res);
+        return verifyResultText(res, e);
       } catch (err) {
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "visible", expected: "verify_visible to complete", actual: err instanceof Error ? err.message : String(err) },
-        });
+        }, e);
       }
     },
   );
@@ -820,7 +832,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "text", expected: "ref/selector/named target", actual: "coords target" },
-        });
+        }, e);
       }
       try {
         const res = await withDeadline(
@@ -828,12 +840,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "verify_text",
         );
-        return verifyResultText(res);
+        return verifyResultText(res, e);
       } catch (err) {
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "text", expected: "verify_text to complete", actual: err instanceof Error ? err.message : String(err) },
-        });
+        }, e);
       }
     },
   );
@@ -856,7 +868,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "value", expected: "ref/selector/named target", actual: "coords target" },
-        });
+        }, e);
       }
       try {
         const res = await withDeadline(
@@ -864,12 +876,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "verify_value",
         );
-        return verifyResultText(res);
+        return verifyResultText(res, e);
       } catch (err) {
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "value", expected: "verify_value to complete", actual: err instanceof Error ? err.message : String(err) },
-        });
+        }, e);
       }
     },
   );
@@ -900,12 +912,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "verify_count",
         );
-        return verifyResultText(res);
+        return verifyResultText(res, e);
       } catch (err) {
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "count", expected: "verify_count to complete", actual: err instanceof Error ? err.message : String(err) },
-        });
+        }, e);
       }
     },
   );
@@ -929,7 +941,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "attribute", expected: "ref/selector/named target", actual: "coords target" },
-        });
+        }, e);
       }
       try {
         const res = await withDeadline(
@@ -937,12 +949,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "verify_attribute",
         );
-        return verifyResultText(res);
+        return verifyResultText(res, e);
       } catch (err) {
         return verifyResultText({
           ok: false,
           failure: { source: "browxai", kind: "attribute", expected: "verify_attribute to complete", actual: err instanceof Error ? err.message : String(err) },
-        });
+        }, e);
       }
     },
   );
@@ -983,12 +995,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async (args) => {
       const g = gateCheck("verify_predicate"); if (g) return g;
-      // No session-touching work — purely a server-side eval over the data the
-      // model supplied. Still resolve a session so the gate / wedge semantics
-      // are consistent across the family (no-op for this tool body).
-      void args.session;
+      // Resolve the session entry so `failure.actual` (which may echo a
+      // string lifted from the caller-supplied `data` bag — e.g. a prior
+      // ActionResult.element.value that pre-dated masking) gets re-masked
+      // through the same egress chokepoint as the other verify_* tools.
+      const e = await entryFor(args.session);
       const res = verifyPredicate(args.predicate, args.data);
-      return verifyResultText(res);
+      return verifyResultText(res, e);
     },
   );
 
@@ -1143,7 +1156,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("watch"); if (g) return g;
       const e = await entryFor(session);
       const result = await watchWindow(ctxFor(e), { durationMs, sampleMs });
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      // Egress sink — the NetworkTap inside `watchWindow` already saw the
+      // secrets registry (via `ctx.secrets`) and sanitised URLs / mutation
+      // responseShape keys. The remaining channel that can echo a literal
+      // value is `regions[].name` (a11y node names — e.g. a status-region
+      // whose visible text reads back the just-filled token). Deep-mask
+      // the whole result so any future string leaf is also covered.
+      const masked = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );
 
@@ -1173,7 +1193,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ found: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      // Egress sink — `styles.content` / `background-image: url(...)` can echo
+      // a registered real-value rendered into the computed-style stream.
+      // Low-risk channel (the reviewer flagged as NIT) but the masking layer
+      // is cheap; pin the invariant per-sink.
+      const maskedInspect = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      return { content: [{ type: "text", text: JSON.stringify(maskedInspect, null, 2) }] };
     },
   );
 
@@ -1193,7 +1218,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const result = await withDeadline(pointProbe(e.session.page(), coords, { crop }), cfgActionTimeout(), "point_probe");
-        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+        // Egress sink — `point_probe.text` / `ancestorText` slice the
+        // textContent of the element-under-point + nearest clickable ancestor.
+        // Same exposure class as snapshot/find name fields; mask through the
+        // session registry before serialising.
+        const maskedProbe = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+        return { content: [{ type: "text" as const, text: JSON.stringify(maskedProbe, null, 2) }] };
       } catch (err) {
         // structured failure — coordinate + page URL for triage (W-R3).
         let url = "";
@@ -2517,7 +2547,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
-      return { content: [{ type: "text" as const, text: JSON.stringify(outcome, null, 2) }] };
+      // Egress sink — `plan().evidence` mirrors `find().evidence` (selectorHint
+      // / role / name) which IS masked. Match the find-handler's pattern so
+      // a planned descriptor's evidence doesn't leak a registered real-value
+      // that find() would have masked.
+      const maskedPlan = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(outcome) : outcome;
+      return { content: [{ type: "text" as const, text: JSON.stringify(maskedPlan, null, 2) }] };
     },
   );
 
@@ -3563,7 +3598,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const actionResp = await toolHandlers[innerTool]!(innerArgs);
         const after = await captureDomMap(e.session.page(), args.scope);
         const diff = diffDomMaps(before, after);
-        return { content: [{ type: "text" as const, text: JSON.stringify({ action: parseInner(actionResp), diff }, null, 2) }] };
+        // Egress sink — `diff.changed[].classDelta` / `styleDelta` / `attrDelta`
+        // surface raw attribute / inline-style values (e.g. `aria-label="hunter2"`
+        // or `style="background-image: url(?token=hunter2)"`). The inner-action
+        // response was already masked by its own handler; the diff is the
+        // remaining literal-value channel and is masked here.
+        const maskedDiff = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(diff) : diff;
+        return { content: [{ type: "text" as const, text: JSON.stringify({ action: parseInner(actionResp), diff: maskedDiff }, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
