@@ -4302,6 +4302,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // defensible) doesn't bypass the egress layer.
       const masked = e.secrets.applyMaskDeep(result);
       const body = { ...masked, tokensEstimate: estimateTokens(JSON.stringify(masked)) };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
   // ---------- credentials hook (capability `credentials`) ----------
   //
   // Pluggable TOTP / username+password lookup against an operator-configured

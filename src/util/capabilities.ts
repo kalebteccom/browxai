@@ -27,14 +27,11 @@ export type Capability =
   | "secrets"
   | "extensions"
   | "stealth"
-  | "captcha";
-
-export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha",
+  | "captcha"
   | "credentials";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "credentials",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
