@@ -6,6 +6,20 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
+## Unreleased
+
+### Added
+
+- **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
+  a natural-language query + verb to a serialisable `ActionDescriptor` (bound
+  `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves
+  the ref via the existing stable-key scheme and runs the verb's action.
+  Refuses with structured `reason: "expired" | "ref-gone" | "invalid"` so caches
+  / self-healing flows can re-plan deterministically. Supported verbs: `click`,
+  `fill`, `hover`, `press`, `select`. `plan` is `read`; `execute` is `action`
+  AND enforces the underlying verb's capability. See
+  [docs/tool-reference.md](docs/tool-reference.md#plan-query-verb-verbargs-contextref-confidencefloor-ttlms-session--execute-descriptor-opts).
+
 ## [0.1.0] - 2026-05-20
 
 First public release. The stable tool surface is frozen at this version.

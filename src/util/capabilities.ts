@@ -90,6 +90,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   select: "action",
   choose_option: "action",
   wait_for: "action",
+  // `plan` resolves an NL query to a bound ActionDescriptor without
+  // dispatching — semantically a read-then-bind primitive over `find()`.
+  // `execute` dispatches a previously-planned descriptor; its handler
+  // additionally enforces the underlying verb's capability (so e.g. a
+  // descriptor with verb:"click" still requires `action`).
+  plan: "read",
+  execute: "action",
   // human
   await_human: "human",
   name_ref: "human",

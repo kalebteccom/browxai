@@ -400,6 +400,30 @@ Pick an option in a **custom combobox / listbox / menu** by visible text. Generi
 
 `exact` defaults to `true` (option text must match exactly). Set `false` to allow substring. Does **not** simulate type-and-press-Enter — that's prone to picking the wrong option in dense lists.
 
+### `plan({ query, verb, verbArgs?, contextRef?, confidenceFloor?, ttlMs?, session? })` / `execute({ descriptor, ...opts })`
+Separate **intent capture** from **dispatch**. `plan` resolves a natural-language `query` against the live tree (same ranker as `find()`), picks the top candidate, validates the verb's args, and returns a serialisable `ActionDescriptor` — *no action runs*. Hand it back verbatim to `execute` to dispatch; cache it for replay; or inspect `evidence` and refuse to dispatch when the stability is too low. This is browxai's caching + self-healing substrate (the agent can re-execute a stored descriptor across runs, detect "ref-gone" / "expired" structurally, and re-plan only when needed).
+
+Not a mock dispatch. `execute` actually runs the action — the value here is *captured intent*, not *suppressed effects*.
+
+**Verbs:** `click`, `fill`, `hover`, `press`, `select` (single-target verbs only — `navigate`/`scroll`/`wait_for`/`choose_option` either don't need a ranked candidate or expand into multiple action-window dispatches and stay as their own primitives).
+
+**`ActionDescriptor` shape (returned by `plan`):**
+- `id` — opaque uuid for this descriptor (caches key on it).
+- `ref` — the bound element ref. **Same `eN` namespace as `snapshot`/`find`/`name_ref` — there is no parallel id system.** A named ref is an alias for an `eN`; a descriptor that targets `e7` and a `name_ref({name:"play_btn",ref:"e7"})` refer to the same element.
+- `verb` — the action verb (one of the five above).
+- `args` — verb-specific args: `value` for fill, `key` for press, `values` for select, `button` (optional) for click.
+- `evidence` — `{ query, selectorHint, selectorTier, stability, role, name?, testId?, score, actionable, warnings, alternatives[≤4] }` — the audit trail. `warnings` carries any low-confidence / no-visible-candidate signal from the underlying `find()`; the caller can refuse to dispatch on that signal alone.
+- `expiresAt` — epoch-ms past which `execute` refuses to dispatch. Default `now + 60000` (1 min); `ttlMs` overrides, clamped to `[1000, 1800000]` (1s..30min).
+
+**`execute` refusal modes** (no action runs, descriptor is rejected up front):
+- `reason: "expired"` — past `expiresAt`. Re-plan.
+- `reason: "ref-gone"` — the ref is no longer in the session's registry (e.g. a navigation evicted it). Re-plan.
+- `reason: "invalid"` — descriptor shape is malformed (bad verb, missing fields, missing required arg).
+
+On a successful dispatch, `execute` returns `{ ok: true, result: <ActionResult>, tokensEstimate }` — the inner `ActionResult` is the same shape calling the verb's tool directly would return.
+
+**Capability gating:** `plan` is `read` (it only ranks candidates). `execute` is `action` AND the **underlying verb's capability** is enforced — a descriptor with `verb:"click"` denied with the `action` capability disabled surfaces as `click` denied, not a generic "execute denied". `byob_action` confirm-hooks apply the same way: a policy that blocks `click` also blocks `execute` of a click descriptor.
+
 ### `wait_for({ ref?|selector?|named?|coords? | text?, timeoutMs?, ...opts })`
 Wait until an element is visible, **or** (W-J1) until visible `text` appears anywhere on the page — the SPA-readiness gate real apps need after a reload/nav (`wait_for({ text: "Dashboard" })`). Pass exactly one of a target or `text`; neither → clear error. **Substring** match — case-insensitive, whitespace-trimmed (Playwright `getByText` default; a short token *inside* a longer string matches), visible-only. **No arbitrary-JS predicate mode by design** — "poll an in-page condition until truthy" stays `eval_js`'s domain (gated behind the `eval` capability; browxai keeps a single arbitrary-JS loophole).
 
