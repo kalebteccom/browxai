@@ -34,6 +34,8 @@ function fakeEntry(id: string): SessionEntry {
     regions: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     emulation: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    clock: {} as any,
     wedge: new WedgeTracker(),
     dialog: new DialogPolicyState(),
     deviceEmulation: newEmulationState(),

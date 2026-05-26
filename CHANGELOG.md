@@ -10,6 +10,21 @@ surface" covers.
 
 ### Added
 
+- **`clock`** — per-session virtual-clock control via CDP
+  `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
+  at `atIso` (or wall-clock now if omitted) so date-sensitive flows
+  (renewal dates, "today" filters, scheduling, expiry edges) read a known
+  instant; `advance` jumps the clock by `byMs` (relative, max 1 year) or to
+  absolute `atIso` and re-pins; `release` resumes real time. Net-additive —
+  one new tool under capability `action`. Persists across navigation
+  (re-applied on main-frame `framenavigated` in case CDP drops it after a
+  renderer swap). Independent of `network_emulate` / `cpu_emulate` — compose
+  freely. In BYOB / `attached` session mode the policy stays in effect on the
+  attached Chrome until released, reloaded, or the page is closed — surfaced
+  as a `warning` on the result (a frozen wall-clock-looking page is a
+  debugging trap). Also in the batch whitelist so agents can compose
+  freeze → action → release in a single batch. See
+  [docs/tool-reference.md § Clock control](docs/tool-reference.md#clock-control--clock).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

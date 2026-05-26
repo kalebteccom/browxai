@@ -827,6 +827,17 @@ Throttle the session's network conditions and the renderer CPU. For flaky-mobile
 
 **BYOB / attached Chrome** — the override applies to the attached browser's page and **stays in effect after browxai detaches**, until the human resets DevTools' Network / Performance panels or closes the page. Both tools surface `warning` on the result in `attached` session mode so the operator knows to reset.
 
+### Clock control — `clock`
+Drive the page's virtual clock deterministically — for date-sensitive flows (renewal dates, "today" filters, scheduling, expiry edges) where rewinding `Date.now()` to a known instant beats matching test data to wall time. Wraps CDP `Emulation.setVirtualTimePolicy`. Per-session; persists across navigation (re-applied on main-frame `framenavigated` in case a renderer swap drops the policy). Independent of `network_emulate` / `cpu_emulate` — compose freely with any combination.
+
+- `clock({ mode: "freeze", atIso?, session? })` — pause virtual time at `atIso` (or wall-clock now if omitted). CDP policy: `pauseIfNetworkFetchesPending` (network keeps running so the page can still load assets; the JS clock is held).
+- `clock({ mode: "advance", byMs?|atIso?, session? })` — jump the clock by `byMs` (relative, max 1 year) **or** to absolute `atIso` (exactly one of the two), then re-pin. Subsequent `advance`s accumulate from the cached anchor, not wall-clock.
+- `clock({ mode: "release", session? })` — resume real time.
+
+→ `{ ok, applied:{ mode, nowIso, paused }, warning?, tokensEstimate }`.
+
+**BYOB / attached Chrome** — the virtual-time policy stays in effect on the attached browser until released (`mode:"release"`), reloaded, or the page is closed. A page that displays a wall-clock-looking time which has actually been frozen is a debugging trap; the result surfaces a `warning` in `attached` session mode.
+
 ### `act_and_diff({ action, scope?, session? })`
 Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before *and* after the action.
 

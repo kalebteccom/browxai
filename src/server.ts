@@ -60,6 +60,7 @@ import { pointProbe } from "./page/point_probe.js";
 import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { EmulationRegistry } from "./page/emulation.js";
+import { ClockRegistry } from "./page/clock.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
@@ -389,6 +390,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         routes: new RouteRegistry(),
         regions: new RegionRegistry(),
         emulation: new EmulationRegistry(),
+        clock: new ClockRegistry(),
         wedge: new WedgeTracker(),
         dialog: dialogState,
         deviceEmulation,
@@ -1670,6 +1672,52 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const body: Record<string, unknown> = { ok: true, applied: state, reset };
         if (e.mode === "attached") {
           body.warning = "BYOB / attached Chrome: this CPU throttle stays in effect on the attached browser even after browxai detaches — reset it (call again with no args / throttleRate:1) or close the page when you're done.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "clock",
+    {
+      description:
+        "Control the page's virtual clock via CDP `Emulation.setVirtualTimePolicy` — deterministic testing of date-sensitive flows (renewal dates, \"today\" filters, scheduling, expiry edges) without changing the OS clock. Three modes: `freeze` pauses virtual time at `atIso` (or wall-clock now if omitted); `advance` jumps the clock by `byMs` or to an absolute `atIso`, then re-pins; `release` resumes real time. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it). Independent of `network_emulate` / `cpu_emulate` — compose freely. **BYOB:** the policy stays in effect on the attached Chrome until released, reloaded, or closed; a `warning` field surfaces this in `attached` mode.",
+      inputSchema: {
+        mode: z.enum(["freeze", "advance", "release"]).describe(
+          "freeze: pause virtual time at `atIso` (or now). advance: jump by `byMs` or to `atIso`. release: resume real time.",
+        ),
+        atIso: z.string().optional().describe(
+          "ISO-8601 instant. freeze → pin time here; advance → jump to this absolute instant. Mutually exclusive with `byMs` on advance.",
+        ),
+        byMs: z.number().int().positive().max(365 * 24 * 60 * 60 * 1000).optional().describe(
+          "Advance only — relative jump in ms (max 1 year). Mutually exclusive with `atIso`.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ mode, atIso, byMs, session }) => {
+      const g = gateCheck("clock"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const { state, mode: appliedMode, appliedAtIso } = await e.clock.apply(
+          e.session.cdp(), e.session.page(), { mode, atIso, byMs },
+        );
+        const body: Record<string, unknown> = {
+          ok: true,
+          applied: {
+            mode: appliedMode,
+            nowIso: appliedAtIso,
+            paused: state?.paused ?? false,
+          },
+        };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: this virtual-clock policy stays in effect on the attached browser even after browxai detaches — release it (mode:\"release\"), reload, or close the page when you're done. A page with a frozen wall clock is a debugging trap.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
@@ -3458,7 +3506,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
-    "network_emulate", "cpu_emulate",
+    "network_emulate", "cpu_emulate", "clock",
   ]);
   const BATCH_MAX_CALLS = 32;
 

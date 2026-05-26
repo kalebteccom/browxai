@@ -141,6 +141,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   unroute: "action",
   network_emulate: "action",
   cpu_emulate: "action",
+  clock: "action",
   // Per-primitive device emulation (locale, timezone, geolocation, colour
   // scheme, reduced motion, user-agent, permissions). Each mutates one
   // Playwright/CDP emulation knob on the live session; under `action`
