@@ -188,6 +188,68 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
   );
 });
 
+describe("headless-CI keystone — multi-field form fill (one dispatch, atomic resolution)", () => {
+  it(
+    "fills one field + clicks submit in a single action window, returning per-field probes",
+    async () => {
+      const session = "ks-fillform";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // Atomic-resolution test 1: one bad selector → ok:false, NO partial fills.
+      // The form's task-input starts blank; if atomic resolution leaked, that
+      // input would carry "ALICE" after this call. We assert it's still blank.
+      const rejected = await callJson<{
+        ok: boolean; error?: string; fieldResolution?: Array<{ ok: boolean; targetSummary: string }>;
+      }>("fill_form", {
+        session,
+        fields: [
+          { selector: '[data-testid="task-input"]', value: "ALICE" },
+          { selector: '[data-testid="this-field-does-not-exist"]', value: "BOB" },
+        ],
+      });
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error).toMatch(/atomic pre-resolution rejected/);
+      expect(rejected.fieldResolution?.some((r) => !r.ok)).toBe(true);
+
+      // Atomic invariant: the resolvable input is still blank because the
+      // call rejected before any fill landed.
+      const blankCheck = await callJson<{ ok: boolean }>("verify_value", {
+        session, selector: '[data-testid="task-input"]', value: "",
+      });
+      expect(blankCheck.ok).toBe(true);
+
+      // Happy path: one field + submit. Asserts the loop reached the submit
+      // click (saved-state flips Unsaved → Saved OK) and that `elements[0]`
+      // probe reflects the post-fill DOM value.
+      const filled = await callJson<{
+        ok: boolean;
+        element?: { stillAttached: boolean };
+        elements?: Array<{ value?: string | null; stillAttached: boolean }>;
+      }>("fill_form", {
+        session,
+        fields: [{ selector: '[data-testid="task-input"]', value: "fill-form-keystone" }],
+        submit: { selector: '[data-testid="save-btn"]' },
+      });
+      expect(filled.ok).toBe(true);
+      expect(filled.elements?.length).toBe(1);
+      expect(filled.elements?.[0]?.value).toBe("fill-form-keystone");
+      // `element` (singular) is the submit's post-click probe, present when
+      // a submit was supplied.
+      expect(filled.element?.stillAttached).toBe(true);
+
+      // App-side proof the submit actually clicked through.
+      const savedState = await callJson<{ ok: boolean }>("verify_text", {
+        session, selector: '[data-testid="saved-state"]', text: "Saved OK", exact: true,
+      });
+      expect(savedState.ok).toBe(true);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 describe("headless-CI keystone — MCP-driven config model (zero env)", () => {
   it("get_config reflects built-in defaults; set_config persists and re-resolves", async () => {
     const before = await callJson<{ config: { confirmRequired: string[] } }>("get_config", {

@@ -411,8 +411,8 @@ export async function goForward(ctx: ActionContext, args: GoForwardArgs = {}): P
 
 /** Dispatch-side secret materialisation. Wraps `SecretRegistry.materialize`
  *  with a no-registry fallback so non-secrets callers don't need to feature-
- *  detect. */
-function materialiseValue(
+ *  detect. Exported for composing primitives (e.g. multi-field fill). */
+export function materialiseValue(
   ctx: ActionContext,
   raw: string,
 ): { ok: true; value: string; alias?: string } | { ok: false; error: string } {
@@ -452,8 +452,9 @@ function secretsFailure(action: DispatchedAction, message: string): ActionResult
 /** Post-probe defence-in-depth: mask any registered real-value that leaked
  *  into the probe's `value` / `displayText` / `ownerControl` / `container`
  *  string fields. The fill / press path is the canonical source of these
- *  leaks — the field's DOM value reflects what we just typed. */
-function maskProbe(probed: ElementProbe | void, ctx: ActionContext): ElementProbe | void {
+ *  leaks — the field's DOM value reflects what we just typed.
+ *  Exported for composing primitives (e.g. multi-field fill). */
+export function maskProbe(probed: ElementProbe | void, ctx: ActionContext): ElementProbe | void {
   if (!probed || !ctx.secrets) return probed;
   const out: ElementProbe = { ...probed };
   if (typeof out.value === "string") out.value = ctx.secrets.applyMaskInText(out.value);

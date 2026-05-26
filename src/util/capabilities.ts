@@ -111,6 +111,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   hover: "action",
   select: "action",
   choose_option: "action",
+  fill_form: "action",
   wait_for: "action",
   // `plan` resolves an NL query to a bound ActionDescriptor without
   // dispatching — semantically a read-then-bind primitive over `find()`.

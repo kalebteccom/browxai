@@ -58,6 +58,27 @@ surface" covers.
   snapshot works: any `.heapsnapshot` exported from DevTools or saved by CI
   parses through the same retainer query. See
   [docs/tool-reference.md § V8 heap snapshots](docs/tool-reference.md#v8-heap-snapshots--heap_snapshot--heap_retainers).
+- **`fill_form`** — multi-field form-fill primitive. Fills N field/value pairs
+  atomically in one action window, with an optional final `submit` click —
+  replaces the fill / fill / fill / click round-trip pattern with a single
+  dispatch and covers roughly 80% of real form work in one tool call. The
+  action-window envelope (navigation / structure / console / network /
+  snapshotDelta) is identical to a single `fill`; per-field probes accumulate
+  on a new `elements: ElementProbe[]` slot in dispatch order. **Atomic
+  pre-resolution**: every field's target — and the submit target, if supplied
+  — is resolved BEFORE any DOM write lands; if any target misses, the call
+  returns `ok:false` with a structured `fieldResolution: [{ index,
+  targetSummary, ok, error? }]` block and **no partial fills happen**. The
+  same atomic posture extends to secrets materialisation: a rejection on
+  field 3 doesn't leave fields 0..2 typed. Mid-loop fill failures surface a
+  `fillFailure: { atIndex, skipped: number[] }` slot so the agent can see how
+  far the dispatch got and that the submit was correctly skipped. Composes
+  with the existing secrets registry (a field value like `<SECRET_NAME>`
+  substitutes at dispatch; the recorded descriptor + probe carry the alias,
+  never the real value). Field targets accept `ref`/`selector`/`named` (no
+  `coords` — fill needs a real input element). Capability `action`. Also in
+  the `batch` whitelist. See [docs/tool-reference.md §
+  `fill_form`](docs/tool-reference.md#fill_form-fields-submit-opts).
 - **`seed_random`** — per-session deterministic `Math.random` override. Injects
   a Mulberry32 PRNG via Playwright `context.addInitScript`, seeded by the
   caller-supplied integer in `[0, 2^32 - 1]`. The current page's main realm is

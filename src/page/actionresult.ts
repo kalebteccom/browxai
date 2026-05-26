@@ -144,6 +144,13 @@ export interface ActionResult {
   };
   pageErrors: string[];
   element?: ElementProbe;
+  /** Multi-element variant of `element`. Populated by composed primitives
+   *  that act on more than one target inside a single action window (e.g.
+   *  multi-field fill). Each entry is the per-target probe in the order the
+   *  primitive dispatched. `element` (singular) when present alongside refers
+   *  to the *final* / submit target — kept so single-target consumers don't
+   *  need to feature-detect. Absent for single-target actions. */
+  elements?: ElementProbe[];
   snapshotDelta?: {
     mode: SnapshotMode;
     scope: string;
