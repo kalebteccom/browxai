@@ -8,6 +8,17 @@ surface" covers.
 
 ## Unreleased
 
+## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
+
+Phase-3.5 baseline-parity release. Adds 24 primitives across observation,
+network/CPU emulation, device emulation, persistence, eval, security, and
+agent-ergonomics — closing the gap against Stagehand / browser-use / Skyvern /
+Browserbase / @playwright/mcp / chrome-devtools-mcp / Vercel `agent-browser`.
+v0.1.0 stable surface is **unchanged** — every addition is net-additive; no
+hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
+`human`); new posture-broadening capabilities (`stealth`, `captcha`, `extensions`,
+`credentials`) are off-by-default and loud-warned.
+
 ### Added
 
 - **`mouse_wheel`** — coordinate-space wheel event sibling of `mouse_down` /
