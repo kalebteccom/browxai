@@ -29,6 +29,16 @@ import {
 } from "./session/emulation.js";
 import type { BrowserSession } from "./session/types.js";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
+import {
+  newExtensionRegistry,
+  resolveExtensionPath,
+  readManifest,
+  refuseIfUnsupported as refuseExtensionsIfUnsupported,
+  applyInstall as applyExtensionInstall,
+  applyUninstall as applyExtensionUninstall,
+  applyReload as applyExtensionReload,
+  type LoadedExtension,
+} from "./session/extensions.js";
 import { WedgeTracker } from "./session/wedge.js";
 import {
   DialogPolicyState,
@@ -300,6 +310,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
   if (caps.enabled.has("secrets")) log.warn("browxai: secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.");
+  if (caps.enabled.has("extensions")) log.warn("browxai: extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.");
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
@@ -397,6 +408,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           id === DEFAULT_SESSION_ID && !spec?.profile
             ? workspace.sub("profile")
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
+        // first launch — no extensions registered yet (the registry is
+        // mutated by the `extensions_*` tools post-creation, and a rebuild
+        // path materialises the list into launch flags then).
         sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context
@@ -419,7 +433,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // route handler scoped to its context; warning emitted up-stream).
       if (creationReplayHars && creationReplayHars.length) {
         await applyHarReplay(sess.page().context(), creationReplayHars);
-      }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
       const networkBuf = new NetworkBuffer(sess.cdp());
@@ -489,6 +502,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         deviceEmulation,
         har: harState,
         secrets: secretsReg,
+        extensions: newExtensionRegistry(),
+        ...(mode === "persistent" ? { launchProfile: spec?.profile ?? id } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -3762,6 +3777,395 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         tokensEstimate: estimateTokens(JSON.stringify({ ok: true, registered: name, scope, names: e.secrets.names() })),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
+  // ---------- extensions registry (capability `extensions`) ----------
+  //
+  // Per-session Chrome extension management. Off-by-default capability;
+  // loud-warned at boot. The 5 tools below all gate behind `extensions` AND
+  // additionally refuse on incognito / attached sessions and on headless
+  // launches (see src/session/extensions.ts for the rationale).
+  //
+  // install/reload/uninstall mutate the session's extension list AND rebuild
+  // the underlying browser context — Chromium does not support adding/
+  // removing extensions on a live context. The rebuild closes the current
+  // BrowserSession, relaunches `openManagedSession` with the updated
+  // `--load-extension` / `--disable-extensions-except` flags, and splices
+  // the new inner pieces (session, console, network, ws, bridge, refs) onto
+  // the existing SessionEntry. Profile state on disk (cookies, localStorage,
+  // IndexedDB) survives; in-memory refs / buffers do not.
+
+  /** Pure refusal check for the extension tools. Returns a typed early-exit
+   *  envelope when the session is incognito / attached / headless; null when
+   *  the session can host extensions. */
+  const extensionRefusal = (e: SessionEntry, tool: string) => {
+    if (e.mode === "persistent" || e.mode === "incognito" || e.mode === "attached") {
+      const headless = !!(opts.headless ?? resolvedConfig.headless);
+      const r = refuseExtensionsIfUnsupported({ mode: e.mode, headless, tool });
+      if (r) {
+        const body = { ok: false, error: r.error, hint: r.hint };
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2),
+          }],
+        };
+      }
+    }
+    return null;
+  };
+
+  /** Rebuild the persistent session's browser context with the entry's
+   *  current extension list reflected as launch flags. Closes the existing
+   *  BrowserSession + bridge, relaunches via `openManagedSession`, and
+   *  replaces the entry's inner pieces in-place so the registry mapping
+   *  (sessionId → entry) stays valid. Caller MUST have verified the entry
+   *  is `persistent` and not headless (via `extensionRefusal`). */
+  const rebuildPersistentForExtensions = async (e: SessionEntry): Promise<void> => {
+    const headless = opts.headless ?? resolvedConfig.headless;
+    const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
+    const profileName = e.launchProfile ?? e.id;
+    const profileDir =
+      e.id === DEFAULT_SESSION_ID && !e.launchProfile
+        ? workspace.sub("profile")
+        : workspace.sub(`profiles/${profileName}`);
+    const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
+    // Tear down the current session BEFORE relaunching — Chromium will not
+    // open a second persistent context on the same profile dir.
+    await e.bridge.detach().catch(() => undefined);
+    await e.session.close().catch(() => undefined);
+    // Resolve device fresh from the current resolved config (no spec stored
+    // post-creation; the device-emulation state on `e.deviceEmulation` is
+    // re-applied below).
+    const device = resolveDevice({
+      device: resolvedConfig.defaultDevice,
+      viewport: resolvedConfig.defaultViewport,
+    });
+    const sess = await openManagedSession({
+      headless,
+      profileDir,
+      device,
+      disableWebSecurity,
+      ...(extensionPaths.length ? { extensionPaths } : {}),
+    });
+    // Rebuild the per-session inner pieces. The secrets / dialog policy /
+    // device-emulation state survive on the entry (intentional — they are
+    // operator-supplied across rebuilds); buffers and refs are replaced
+    // since they referenced the now-closed CDP session.
+    const consoleBuf = new ConsoleBuffer();
+    consoleBuf.attach(sess.page());
+    const networkBuf = new NetworkBuffer(sess.cdp());
+    await networkBuf.attach();
+    const wsBuf = new WsBuffer(sess.cdp());
+    await wsBuf.attach();
+    consoleBuf.setSecrets(e.secrets);
+    networkBuf.setSecrets(e.secrets);
+    wsBuf.setSecrets(e.secrets);
+    const br = new BrowxBridge();
+    await br.attach(sess.page().context());
+    attachDialogPolicy(sess.page().context(), e.dialog);
+    await applyOverlayHide(
+      sess.page().context(),
+      configStore.resolve().hideOverlaySelectors,
+    );
+    // Re-apply per-primitive device emulation state to the fresh context's
+    // pages (locale/timezone/UA via CDP, geolocation/colour-scheme/reduced-
+    // motion/permissions via Playwright). Best-effort — failures don't
+    // abort the rebuild.
+    try {
+      await reapplyEmulation(sess.page().context(), sess.page(), sess.cdp(), e.deviceEmulation);
+    } catch {
+      /* best-effort */
+    }
+    sess.page().context().on("page", (newPage) => {
+      (async () => {
+        try {
+          const newCdp = await sess.page().context().newCDPSession(newPage);
+          await reapplyEmulation(sess.page().context(), newPage, newCdp, e.deviceEmulation);
+        } catch {
+          /* best-effort */
+        }
+      })().catch(() => undefined);
+    });
+    // Splice the new pieces onto the existing entry — sessionId still maps
+    // here so every caller holding `entry` keeps working.
+    e.session = sess;
+    e.console = consoleBuf;
+    e.network = networkBuf;
+    e.ws = wsBuf;
+    e.bridge = br;
+    e.refs = new RefRegistry();
+  };
+
+  /** Envelope helper for the extension tools. */
+  const extensionEnvelope = (
+    e: SessionEntry,
+    extra: Record<string, unknown>,
+  ): { content: Array<{ type: "text"; text: string }> } => {
+    const body: Record<string, unknown> = {
+      ok: true,
+      session: e.id,
+      loaded: e.extensions.loaded.map((x): LoadedExtension => ({ ...x })),
+      ...extra,
+    };
+    body.tokensEstimate = estimateTokens(JSON.stringify(body));
+    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  };
+
+  const extensionErrorEnvelope = (
+    tool: string,
+    err: unknown,
+  ): { content: Array<{ type: "text"; text: string }> } => {
+    const body = { ok: false, action: { type: tool }, error: err instanceof Error ? err.message : String(err) };
+    return {
+      content: [{
+        type: "text" as const,
+        text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2),
+      }],
+    };
+  };
+
+  register(
+    "extensions_install",
+    {
+      description:
+        "Load an unpacked Chromium extension (MV3 or MV2 directory containing `manifest.json`) into the session's managed-profile launch. **Gated behind the off-by-default `extensions` capability** — same posture class as `eval` / `network-body` / `secrets`. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; the extension code itself becomes trust-equivalent to the agent. " +
+        "`path` is workspace-rooted (under $BROWX_WORKSPACE) — traversal / absolute-outside is rejected. Pass the UNPACKED extension directory; `.crx` packed archives must be unpacked first (the directory must contain `manifest.json`). " +
+        "Headed + persistent only — incognito / attached / headless sessions REFUSE with a structured error and hint. **install REBUILDS the underlying browser context** (Chromium doesn't support adding extensions to a live context): the current page navigates to about:blank, refs invalidate, console/network/ws buffers reset. Profile state on disk (cookies, localStorage, IndexedDB) survives. Treat install as a session-restart. " +
+        "Returns `{ok, session, installed:{id,name,version,path}, loaded:[…], note?, tokensEstimate}`. The `id` is a stable hash of the resolved path — pass it back to `extensions_reload` / `extensions_trigger` / `extensions_uninstall`.",
+      inputSchema: {
+        path: z.string().describe("Workspace-rooted directory of the unpacked extension (must contain `manifest.json`)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ path, session }: { path: string; session?: string }) => {
+      const g = gateCheck("extensions_install"); if (g) return g;
+      const e = await entryFor(session);
+      const refused = extensionRefusal(e, "extensions_install");
+      if (refused) return refused;
+      let resolved: string;
+      let manifest;
+      try {
+        resolved = resolveExtensionPath(workspace.root, path, "extensions_install");
+        manifest = readManifest(resolved, "extensions_install");
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_install", err);
+      }
+      let installed;
+      try {
+        const r = applyExtensionInstall(
+          e.extensions,
+          { path: resolved, name: manifest.name, version: manifest.version },
+          "extensions_install",
+        );
+        e.extensions.loaded = r.loaded;
+        installed = e.extensions.loaded.find((x) => x.id === r.id)!;
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_install", err);
+      }
+      try {
+        await rebuildPersistentForExtensions(e);
+      } catch (err) {
+        // rebuild failed — roll back the registry so the next call doesn't
+        // try to re-apply a now-doomed extension list.
+        e.extensions.loaded = e.extensions.loaded.filter((x) => x.id !== installed.id);
+        return extensionErrorEnvelope("extensions_install", err);
+      }
+      return extensionEnvelope(e, {
+        installed: { id: installed.id, name: installed.name, version: installed.version, path: installed.path },
+        note: "browser context rebuilt — refs / console / network / ws buffers reset; on-disk profile state preserved",
+      });
+    },
+  );
+
+  register(
+    "extensions_list",
+    {
+      description:
+        "List extensions currently loaded for this session. Returns `[{id, name, version, path, enabled}]`. Empty list when no extension is loaded (the default). Gated behind the off-by-default `extensions` capability — disabled sessions return a structured error before reaching this list. Headed + persistent sessions only.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }: { session?: string }) => {
+      const g = gateCheck("extensions_list"); if (g) return g;
+      const e = await entryFor(session);
+      const refused = extensionRefusal(e, "extensions_list");
+      if (refused) return refused;
+      return extensionEnvelope(e, {});
+    },
+  );
+
+  register(
+    "extensions_reload",
+    {
+      description:
+        "Reload an installed extension: re-parse its `manifest.json`, then rebuild the underlying browser context so Chromium re-injects content scripts and restarts the MV3 service worker. Identify the extension by its `id` (from `extensions_install` / `extensions_list`). Same rebuild caveat as install — refs / buffers reset, on-disk profile state survives. Headed + persistent sessions only.",
+      inputSchema: {
+        id: z.string().describe("Extension id returned by extensions_install / extensions_list."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ id, session }: { id: string; session?: string }) => {
+      const g = gateCheck("extensions_reload"); if (g) return g;
+      const e = await entryFor(session);
+      const refused = extensionRefusal(e, "extensions_reload");
+      if (refused) return refused;
+      const target = e.extensions.loaded.find((x) => x.id === id);
+      if (!target) {
+        return extensionErrorEnvelope("extensions_reload", new Error(`no extension with id "${id}" is loaded in this session (call extensions_list to see ids)`));
+      }
+      let parsed;
+      try {
+        parsed = readManifest(target.path, "extensions_reload");
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_reload", err);
+      }
+      try {
+        const r = applyExtensionReload(e.extensions, id, parsed, "extensions_reload");
+        e.extensions.loaded = r.loaded;
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_reload", err);
+      }
+      try {
+        await rebuildPersistentForExtensions(e);
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_reload", err);
+      }
+      const after = e.extensions.loaded.find((x) => x.id === id);
+      return extensionEnvelope(e, {
+        reloaded: after ? { id: after.id, name: after.name, version: after.version, path: after.path } : null,
+        note: "browser context rebuilt — content scripts re-injected; refs / buffers reset",
+      });
+    },
+  );
+
+  register(
+    "extensions_trigger",
+    {
+      description:
+        "Best-effort invoke of an installed extension's surface. With `command`, attempts to fire the keyboard-command binding declared in the extension's manifest (`commands` key). Without `command`, navigates the session's active page to the extension's `chrome-extension://<id>/<default_popup>` URL so the popup renders in-tab and is driveable like any other page. Many extensions lack both surfaces; this tool returns `ok:false` with a clear reason in those cases. Read-only side-effects on the extension itself — it does not mutate the loaded list. Headed + persistent sessions only.\n\n" +
+        "**Note on `id`.** browxai's id (a hash of the path) does NOT necessarily equal the Chrome-runtime id of the loaded extension — Chrome derives its id from the extension's signing key when one is present. For popup-style triggers we attempt to read the active page's `chrome-extension://` runtime id from the context's service workers / background pages; on a mismatch the tool returns a hint pointing at extensions_list and the page's own discovery.",
+      inputSchema: {
+        id: z.string().describe("Extension id returned by extensions_install / extensions_list."),
+        command: z.string().optional().describe("Optional manifest `commands` binding name to fire (e.g. \"_execute_action\"). Omit to open the extension's default_popup in the active page."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ id, command, session }: { id: string; command?: string; session?: string }) => {
+      const g = gateCheck("extensions_trigger"); if (g) return g;
+      const e = await entryFor(session);
+      const refused = extensionRefusal(e, "extensions_trigger");
+      if (refused) return refused;
+      const target = e.extensions.loaded.find((x) => x.id === id);
+      if (!target) {
+        return extensionErrorEnvelope("extensions_trigger", new Error(`no extension with id "${id}" is loaded in this session (call extensions_list to see ids)`));
+      }
+      try {
+        // Resolve the Chrome-runtime id of the extension by inspecting the
+        // context's service-worker / background-page URLs (both start with
+        // `chrome-extension://<runtime-id>/`). We don't fail when this comes
+        // up empty — the result surfaces the discovered ids so the caller
+        // can decide.
+        const ctx = e.session.page().context();
+        // service workers (MV3) — newer Playwright surfaces them; older
+        // builds may not. Best-effort.
+        const sw = (ctx as unknown as { serviceWorkers?: () => Array<{ url: () => string }> }).serviceWorkers?.() ?? [];
+        const swIds = sw
+          .map((w) => w.url())
+          .filter((u) => u.startsWith("chrome-extension://"))
+          .map((u) => u.slice("chrome-extension://".length).split("/")[0]!);
+        // background pages (MV2)
+        const bgPages = (ctx as unknown as { backgroundPages?: () => Array<{ url: () => string }> }).backgroundPages?.() ?? [];
+        const bgIds = bgPages
+          .map((p) => p.url())
+          .filter((u) => u.startsWith("chrome-extension://"))
+          .map((u) => u.slice("chrome-extension://".length).split("/")[0]!);
+        const runtimeIds = Array.from(new Set([...swIds, ...bgIds]));
+        // We can't reliably map our path-hash id to the runtime id without
+        // parsing the manifest's `key` field — when there's exactly one
+        // loaded extension AND one runtime id we assume the mapping.
+        const runtimeId = runtimeIds.length === 1 && e.extensions.loaded.length === 1
+          ? runtimeIds[0]
+          : undefined;
+        if (command) {
+          // Chrome keyboard-command bindings are user-keyboard-only; CDP has
+          // no public surface to dispatch them programmatically. Return a
+          // structured "not supported" rather than silently no-op.
+          return extensionErrorEnvelope(
+            "extensions_trigger",
+            new Error(
+              `extensions_trigger: keyboard command "${command}" — Chromium does not expose extension keyboard-command dispatch via CDP / Playwright. ` +
+              `Workaround: invoke the extension's underlying behaviour via its content-script API or open its popup (call extensions_trigger without \`command\`).`,
+            ),
+          );
+        }
+        if (!runtimeId) {
+          return extensionErrorEnvelope(
+            "extensions_trigger",
+            new Error(
+              `extensions_trigger: cannot determine Chrome-runtime extension id for path-hash id "${id}". ` +
+              `Browxai's id is a hash of the unpacked path and does NOT necessarily equal Chrome's runtime id (Chrome derives that from the manifest \`key\` when present). ` +
+              `runtimeIdsDetected: ${JSON.stringify(runtimeIds)}; loaded: ${e.extensions.loaded.length}. ` +
+              `Workaround: navigate the page directly to the extension popup URL once you know the runtime id.`,
+            ),
+          );
+        }
+        // Open the extension's popup (or its background page) in the active
+        // page. The extension serves `chrome-extension://<id>/` from its
+        // manifest's `action.default_popup` / `browser_action.default_popup`.
+        const url = `chrome-extension://${runtimeId}/`;
+        await e.session.page().goto(url, { waitUntil: "domcontentloaded" }).catch(() => undefined);
+        return extensionEnvelope(e, {
+          triggered: { id, runtimeId, url, command: command ?? null },
+          note: "best-effort: navigated active page to extension root; default_popup discovery depends on the extension's manifest",
+        });
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_trigger", err);
+      }
+    },
+  );
+
+  register(
+    "extensions_uninstall",
+    {
+      description:
+        "Remove an installed extension from the session and rebuild the underlying browser context without it. Same rebuild caveat as install — refs / buffers reset, on-disk profile state survives. Headed + persistent sessions only.",
+      inputSchema: {
+        id: z.string().describe("Extension id returned by extensions_install / extensions_list."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ id, session }: { id: string; session?: string }) => {
+      const g = gateCheck("extensions_uninstall"); if (g) return g;
+      const e = await entryFor(session);
+      const refused = extensionRefusal(e, "extensions_uninstall");
+      if (refused) return refused;
+      let removed;
+      try {
+        const r = applyExtensionUninstall(e.extensions, id, "extensions_uninstall");
+        e.extensions.loaded = r.loaded;
+        removed = r.removed;
+      } catch (err) {
+        return extensionErrorEnvelope("extensions_uninstall", err);
+      }
+      try {
+        await rebuildPersistentForExtensions(e);
+      } catch (err) {
+        // rebuild failed after registry mutation — restore the entry so the
+        // agent can retry the operation. The original BrowserSession is
+        // already torn down (we cannot recover it), so the session itself
+        // is in a degraded state; surface that explicitly.
+        return extensionErrorEnvelope(
+          "extensions_uninstall",
+          new Error(
+            `(post-rebuild) ${err instanceof Error ? err.message : String(err)} — session "${e.id}" is now in a degraded state; close it and open a fresh one.`,
+          ),
+        );
+      }
+      return extensionEnvelope(e, {
+        uninstalled: { id: removed.id, name: removed.name, version: removed.version, path: removed.path },
+        note: "browser context rebuilt without this extension — refs / buffers reset",
+      });
     },
   );
 

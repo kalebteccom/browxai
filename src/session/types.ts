@@ -48,6 +48,14 @@ export interface SessionOptions {
     content?: "embed" | "attach" | "omit";
     urlFilter?: string | RegExp;
   };
+  /** Absolute filesystem paths to unpacked Chromium extension directories
+   *  (each containing `manifest.json`). Honoured by **persistent (managed)**
+   *  launches in **headed** mode only — chromium's `--load-extension` +
+   *  `--disable-extensions-except` flags are emitted from this list. Empty /
+   *  unset → no extension flags. Path safety (workspace-rooted) is enforced
+   *  at the tool layer (`extensions_install`); this option is the trusted
+   *  internal pipe. Refused on incognito / attached at the tool layer. */
+  extensionPaths?: readonly string[];
 }
 
 export interface BrowserSession {

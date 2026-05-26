@@ -79,6 +79,32 @@ surface" covers.
   releases the trace buffer on the human's Chrome (also cleaned up by
   `close_session` on the way out). See
   [docs/tool-reference.md § Performance tracing](docs/tool-reference.md#performance-tracing--perf_start--perf_stop--perf_insights).
+- **`extensions_*` + `extensions` capability** — per-session unpacked-
+  Chromium-extension management. Five tools, all under the off-by-default
+  `extensions` capability (same posture class as `eval` / `network-body` /
+  `secrets`): `extensions_install({path})` loads an unpacked extension
+  directory into the session's managed-profile launch (`--load-extension`
+  + `--disable-extensions-except`), `extensions_list()` returns the loaded
+  set (`[{id,name,version,path,enabled}]`), `extensions_reload({id})`
+  re-parses the manifest and restarts the context, `extensions_trigger(
+  {id,command?})` opens the extension's default popup in the active page
+  (the keyboard-command branch returns a structured "not supported" with
+  workaround hint — Chromium does not expose extension keyboard-command
+  dispatch via CDP), `extensions_uninstall({id})` removes it. Workspace-
+  rooted path safety (traversal / absolute-outside / files / missing
+  `manifest.json` all reject). Headed + persistent sessions only —
+  `incognito` (Chromium does not load unpacked extensions in incognito)
+  and `attached`/BYOB (the human's Chrome is not-owned) refuse with
+  structured errors and operator-facing hints. install / reload /
+  uninstall **rebuild the underlying browser context** (Chromium does
+  not support adding or removing extensions on a live context): refs and
+  console / network / ws buffers reset; profile state on disk survives.
+  Loud one-time warning at server boot when the capability is on,
+  naming the trust posture (extensions can read every page and make
+  arbitrary network requests — trust-equivalent to the agent's own
+  action surface). See
+  [docs/tool-reference.md](docs/tool-reference.md#extensions-registry-capability-extensions)
+  and [docs/threat-model.md](docs/threat-model.md).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.
@@ -138,8 +164,8 @@ surface" covers.
   - **Security gap documented** — cookie *values* may carry credentials. The
     future W-V12 secrets-masking pass will mask them on egress; this cycle
     ships unmasked. Treat dumps + saved named-states as sensitive.
-- **`extract`** — structured, schema-driven data extraction. Closes
-  the Round-22 highest-leverage gap miss: every adopter currently rebuilds the
+- **`extract`** — structured, schema-driven data extraction. Closes a
+  highest-leverage gap: every adopter currently rebuilds the
   same "parse this table into rows" loop on top of `snapshot()`. JSON-schema
   input (wire-compatible over MCP); deterministic mode lowers each property to
   a `find()`-style query (implicit: property name = query) or an explicit

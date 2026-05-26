@@ -46,10 +46,10 @@ The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer**
 | Env var | Default | What |
 |---|---|---|
 | `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
-| `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. (First-consumer ask #1.) |
+| `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. |
 | `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
-| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. (Phase-1.5 ask #8.) |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool). A disabled tool returns a structured error on call. |
+| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. |
+| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management — headed + persistent only). A disabled tool returns a structured error on call. |
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
 | `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
 | `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
@@ -121,11 +121,11 @@ Persistence model: each call records the resolved value on the session's `device
 > **URL redaction is default-on.** Every surface that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response *body* remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
 
 ### `snapshot`
-Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot — it makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`. (Phase-1.5 ask #7.)
+Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot — it makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`.
 
 Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient — generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[<test-attr>=…]`) are inlined. Test-attribute hints emit the **actual attribute name** that matched (e.g. `[data-type="feature-panel-language-input"]`) so you can transcribe the selector directly.
 
-When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted (ask #11) — usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
+When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted — usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
 
 **Inputs (all optional — wishlist W-A1):**
 
@@ -156,8 +156,8 @@ Find candidate elements by natural-language description.
       "testId": "save-btn",
       "stability": "high",         // high = data-testid; medium = role+name; low = fallback
       "selectorHint": "[data-testid=\"save-btn\"]",
-      "selectorTier": 1,            // 1..5 preference order (ask #4)
-      "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 },   // visible-rect (ask #5)
+      "selectorTier": 1,            // 1..5 preference order
+      "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 },   // visible-rect
       "clipped": false,             // true → bbox: null (element fully off-screen / clipped)
       "score": 17,
       "context": {                  // W-F1: structural neighbourhood when this candidate
@@ -170,15 +170,15 @@ Find candidate elements by natural-language description.
   ]
 }
 ```
-**selectorHint preference order** (asks #4 + #10): `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role *(Phase-1.5)* → structural (id/semantic) *(Phase-1.5)* → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
+**selectorHint preference order:** `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role *(Phase-1.5)* → structural (id/semantic) *(Phase-1.5)* → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
 
-**Stability semantics** (round-3 ask #16): `stability: "high"` means "**uniquely identifies this element in this snapshot**" — i.e. the locator works *right now*. It does **not** mean "survives content rotation across deploys." An asset card with `[data-testid="asset-container-12345678"]` (a content-keyed numeric suffix) is `"high"` for this snapshot but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer a structural/name selector or compose: `[data-testid^="asset-container-"]:has-text("…")`. The current `stability` field is honest about per-snapshot uniqueness; "deploy stability" is the agent's call to make on top of it.
+**Stability semantics:** `stability: "high"` means "**uniquely identifies this element in this snapshot**" — i.e. the locator works *right now*. It does **not** mean "survives content rotation across deploys." An asset card with `[data-testid="asset-container-12345678"]` (a content-keyed numeric suffix) is `"high"` for this snapshot but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer a structural/name selector or compose: `[data-testid^="asset-container-"]:has-text("…")`. The current `stability` field is honest about per-snapshot uniqueness; "deploy stability" is the agent's call to make on top of it.
 
-**What `find()` matches against** (round-3 ask #16): the query is tokenised on whitespace and matched (case-insensitive substring) against each candidate's **accessible name** + **role** + **test-attribute value** (whichever attribute matched per `BROWX_TEST_ATTRIBUTES`) + the candidate's **trimmed text content** (a weaker signal that picks up a `title` tooltip or sr-only label when it surfaced into the node's text). It does *not* match raw HTML attribute *names*, icon glyphs, `placeholder=`, or off-screen ancestors' text. For truly icon-only controls, the testid/data-attr value is still the strongest query target.
+**What `find()` matches against:** the query is tokenised on whitespace and matched (case-insensitive substring) against each candidate's **accessible name** + **role** + **test-attribute value** (whichever attribute matched per `BROWX_TEST_ATTRIBUTES`) + the candidate's **trimmed text content** (a weaker signal that picks up a `title` tooltip or sr-only label when it surfaced into the node's text). It does *not* match raw HTML attribute *names*, icon glyphs, `placeholder=`, or off-screen ancestors' text. For truly icon-only controls, the testid/data-attr value is still the strongest query target.
 
 **Name-less / icon-only ranking.** For controls with no accessible name, per-test-attribute-token weight is amplified, the trimmed text signal is added, and a control already in a **selected / pressed / checked** state that also matches the query gets a bonus — so the *live* feature-panel tab outranks its inert icon-only siblings and unrelated top-nav tabs. The state bonus only ever lifts an existing match; it never fabricates a hit from nothing.
 
-**Disambiguation** (round-3 ask #13): when the bare `selectorHint` matches multiple DOM nodes (e.g. a visible button + a hidden DOM sibling sharing the same `data-type`), the emitted hint is auto-promoted to `[<attr>="…"]:visible` (or `:nth-match(..., 1)` last-resort) so mechanical transcription into a flow file doesn't re-introduce a hidden-duplicate `boundingBox` hang.
+**Disambiguation:** when the bare `selectorHint` matches multiple DOM nodes (e.g. a visible button + a hidden DOM sibling sharing the same `data-type`), the emitted hint is auto-promoted to `[<attr>="…"]:visible` (or `:nth-match(..., 1)` last-resort) so mechanical transcription into a flow file doesn't re-introduce a hidden-duplicate `boundingBox` hang.
 
 **Actionable predicate** (wishlist W-D1): each candidate carries `actionable: true | "disabled" | "off-screen" | "covered"` alongside `stability` / `bbox`. Lets a calibration agent reject `<input disabled>`-shaped halts at write-time instead of run-time. `"covered"` is reserved for a future check; today the value is `true` / `"disabled"` / `"off-screen"`.
 
@@ -188,7 +188,7 @@ Find candidate elements by natural-language description.
 
 **`confidenceFloor`** (wishlist W-A3): pass `confidenceFloor: <N>` and `find()` emits a `warnings: ["no candidate scored confidently above N (top score: …)"]` entry when nothing crosses the bar — gives the agent a clean "fall through to snapshot" signal instead of grinding through a list of low-quality candidates.
 
-**bbox semantics** (ask #5): `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.
+**bbox semantics:** `getBoundingClientRect()` ∩ each `overflow !== visible` ancestor ∩ viewport. `bbox: null` + `clipped: true` when fully clipped. Matches site-docs's runtime computation.
 
 **Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
@@ -984,6 +984,105 @@ boot (when the capability is on) and at the first `register_secret` call
 (naming the egress sinks now engaged). Mirrors the
 `eval` / `network-body` / `disableWebSecurity` posture documented in
 `docs/threat-model.md`.
+
+## Extensions registry (capability `extensions`)
+
+Per-session unpacked-Chromium-extension management. **Gated behind the
+off-by-default `extensions` capability** — same posture class as `eval` /
+`network-body` / `secrets`.
+
+**Trust posture.** A loaded extension can read every page the session
+visits and make arbitrary network requests. The extension code is
+**trust-equivalent to the agent's own action surface** — treat the
+extension's filesystem path as in-scope trust, just like you would the
+agent's tool calls. Mitigations: workspace-rooted paths (no escape), the
+capability is off by default with a loud boot warning, and extensions
+cannot be loaded on incognito or attached sessions.
+
+**Session-mode constraints.**
+
+- **Headed + persistent sessions only.** Chromium's `--load-extension` flag
+  is reliable only in headed mode; `headless:true` sessions refuse. The
+  attached/BYOB session refuses because the human's Chrome is not-owned
+  (it already has its own extension set). The incognito session refuses
+  because Chromium does not load unpacked extensions in incognito (the
+  per-extension "allowed in incognito" flag is not togglable via the
+  Playwright launch API).
+- **install / reload / uninstall rebuild the underlying browser context.**
+  Chromium does not support adding or removing extensions on a live
+  context, so the tools tear down the current `BrowserSession`, relaunch
+  `openManagedSession` with the updated `--load-extension` flag set, and
+  splice the new pieces (page, console, network, ws, bridge, refs) onto
+  the existing `SessionEntry`. Consequences: open refs invalidate, the
+  page navigates to about:blank, console/network/ws buffers reset.
+  Profile state on disk (cookies, localStorage, IndexedDB) survives — it
+  lives in the profile dir. Treat install/reload/uninstall as
+  "session-restart with new extension set", not as hot reload.
+
+### `extensions_install({ path, session? })`
+
+Load an unpacked extension (MV3 or MV2 directory containing
+`manifest.json`) into the session's managed-profile launch.
+
+- `path` — workspace-rooted directory. Traversal (`..`), absolute paths
+  outside `$BROWX_WORKSPACE`, files (vs directories), and directories
+  missing `manifest.json` all reject with a structured error. Packed
+  `.crx` archives must be unpacked first.
+
+**Returns:** `{ok, session, installed: {id, name, version, path}, loaded:
+[{id, name, version, path, enabled}], note, tokensEstimate}`. The `id`
+is a stable hash of the resolved path — pass it back to
+`extensions_reload` / `extensions_trigger` / `extensions_uninstall`.
+
+### `extensions_list({ session? })`
+
+Return the session's currently-loaded extensions:
+`[{id, name, version, path, enabled}]`. Empty list when none are loaded
+(the default).
+
+### `extensions_reload({ id, session? })`
+
+Re-parse the manifest at the extension's loaded path AND rebuild the
+browser context. Chromium re-injects content scripts and restarts the
+MV3 service worker on context start. Use after editing the extension's
+source.
+
+### `extensions_trigger({ id, command?, session? })`
+
+Best-effort invocation surface.
+
+- Without `command`, navigates the session's active page to the
+  extension's `chrome-extension://<runtime-id>/` URL — the page renders
+  the extension's `default_popup` (when one is declared) and is
+  driveable like any other page.
+- With `command`, attempts to fire the named keyboard-command binding
+  from the manifest's `commands` map. **Chromium does not expose
+  extension keyboard-command dispatch via CDP / Playwright** — this
+  branch returns a structured `ok:false` with a workaround hint. Use the
+  popup branch (no `command`) or drive the extension's underlying
+  content-script API directly.
+
+**The `id` mapping caveat.** browxai's id is a hash of the unpacked
+path. The Chrome **runtime id** (the `<id>` in
+`chrome-extension://<id>/…` URLs) is derived from the extension's
+`manifest.key` field when present; otherwise it's hash-derived but using
+Chrome's own algorithm, not ours. `extensions_trigger` discovers the
+runtime id by inspecting the context's service-worker / background-page
+URLs (both start with `chrome-extension://<runtime-id>/`); when there's
+exactly one loaded extension and one detected runtime id we assume the
+mapping. Otherwise the result returns the detected runtime-id set so
+the caller can decide.
+
+### `extensions_uninstall({ id, session? })`
+
+Remove the extension from the session's registry and rebuild the
+browser context without it.
+
+**Capability gate.** Off by default. Add `extensions` to
+`BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
+boot (when the capability is on) describing the trust posture and the
+rebuild semantics. Mirrors the `eval` / `network-body` / `secrets`
+posture documented in `docs/threat-model.md`.
 
 ## Human↔agent helper
 

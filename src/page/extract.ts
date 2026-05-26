@@ -1,6 +1,6 @@
 // Structured schema-driven extract primitive.
 //
-// The Round-22 audit named this the highest-leverage gap miss: every browxai
+// The schema-as-contract primitive every browxai
 // adopter currently rebuilds the same "parse this table into rows" loop on
 // top of `snapshot()`. Stagehand `extract`, Skyvern, browser-use all ship
 // this. browxai's version is **deterministic by default** (selector-only —

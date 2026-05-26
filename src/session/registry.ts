@@ -24,6 +24,7 @@ import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
+import type { ExtensionRegistry } from "./extensions.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -86,6 +87,19 @@ export interface SessionEntry {
    *  dispatch. The registry is per-session so concurrent sessions don't share
    *  an auth-flow's secrets. */
   secrets: SecretRegistry;
+  /** per-session loaded Chrome extensions (capability `extensions`). Empty
+   *  by default; mutated by `extensions_install` / `extensions_reload` /
+   *  `extensions_uninstall`. The list also drives the launch flags
+   *  (`--load-extension`, `--disable-extensions-except`) when the underlying
+   *  browser context is (re)built — extensions are a launch-time concern in
+   *  Chromium. Persistent (headed) sessions only — `incognito` / `attached`
+   *  reject the mutators with a structured error. */
+  extensions: ExtensionRegistry;
+  /** Profile-name component used at launch (persistent mode only). Recorded
+   *  so the rebuild path used by `extensions_*` can recompute the same
+   *  profileDir without re-deriving the spec. Undefined for incognito /
+   *  attached sessions. */
+  launchProfile?: string;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

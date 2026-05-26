@@ -44,6 +44,7 @@ function fakeEntry(id: string): SessionEntry {
     har: newHarRecorderState(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     secrets: {} as any,
+    extensions: { loaded: [] },
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
   };

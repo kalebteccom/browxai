@@ -23,13 +23,32 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
       "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
     );
   }
+  // Optional Chromium extension launch flags. Empty/unset → no flags.
+  // Extensions are a LAUNCH-time concern in Chromium; the `extensions`-capability
+  // tools mutate this list and rebuild the context. Headed-only (the tool layer
+  // refuses on `headless:true` sessions, so by the time we reach this point the
+  // launch is already headed) and persistent-only (`incognito` / `attached` are
+  // refused upstream).
+  const extensionArgs: string[] = [];
+  if (opts.extensionPaths && opts.extensionPaths.length > 0) {
+    const joined = opts.extensionPaths.join(",");
+    extensionArgs.push(`--disable-extensions-except=${joined}`, `--load-extension=${joined}`);
+    log.info("session.managed: loading extensions", {
+      count: opts.extensionPaths.length,
+      paths: opts.extensionPaths,
+    });
+  }
+  const allArgs = [...insecureArgs, ...extensionArgs];
   const context = await chromium.launchPersistentContext(profileDir, {
     headless: !!opts.headless,
     // device/viewport emulation applied at context creation.
     ...(opts.device ?? {}),
     // No `--no-sandbox`. `--disable-web-security` only when the gated
     // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
-    ...(insecureArgs.length ? { args: insecureArgs } : {}),
+    // `--load-extension` + `--disable-extensions-except` only when the
+    // session has registered extensions (capability `extensions`);
+    // `--disable-web-security` only when explicitly enabled (loud-warned).
+    ...(allArgs.length ? { args: allArgs } : {}),
     // HAR recording at context creation (native Playwright primitive).
     // Finalized on context.close(). No-op when unset.
     ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),

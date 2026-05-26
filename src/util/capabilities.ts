@@ -24,10 +24,11 @@ export type Capability =
   | "file-io"
   | "network-body"
   | "clipboard"
-  | "secrets";
+  | "secrets"
+  | "extensions";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -218,6 +219,18 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // behaviour-gated across every egress sink. See docs/tool-reference.md +
   // docs/threat-model.md.
   register_secret: "secrets",
+  // extensions — per-session Chrome extension management. Off-by-default
+  // capability; loud-warned at boot. Extensions can read every page the
+  // session visits and make arbitrary network requests, so same posture
+  // class as `eval` / `network-body` / `secrets`. The 5 mutator/read tools
+  // all gate behind the same capability; the tool layer additionally
+  // refuses on `incognito` / `attached` sessions and on `headless:true`
+  // launches (Chromium constraints — see src/session/extensions.ts).
+  extensions_install: "extensions",
+  extensions_list: "extensions",
+  extensions_reload: "extensions",
+  extensions_trigger: "extensions",
+  extensions_uninstall: "extensions",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard
