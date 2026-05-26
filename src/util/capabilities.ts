@@ -147,6 +147,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_emulate: "action",
   cpu_emulate: "action",
   clock: "action",
+  seed_random: "action",
   // Performance tracing (CDP `Tracing.start` / `Tracing.end` + structured
   // insights extraction). `perf_start` arms collection on the target;
   // `perf_stop` flushes to a workspace-rooted trace file; `perf_insights`

@@ -950,6 +950,16 @@ Drive the page's virtual clock deterministically — for date-sensitive flows (r
 → `{ ok, applied:{ mode, nowIso, paused }, warning?, tokensEstimate }`.
 
 **BYOB / attached Chrome** — the virtual-time policy stays in effect on the attached browser until released (`mode:"release"`), reloaded, or the page is closed. A page that displays a wall-clock-looking time which has actually been frozen is a debugging trap; the result surfaces a `warning` in `attached` session mode.
+
+### Deterministic `Math.random` — `seed_random`
+Override the page's `Math.random` with a Mulberry32 PRNG seeded from a caller-supplied integer — for flake repros where unseeded randomness drives id generation, dice / card / A-B picks, or jittered retry timing. Injected via Playwright `addInitScript` so every new document in the session (including subsequent navigations) bootstraps the same override; the current page's main realm is re-seeded immediately so the effect is visible without navigating. Per-session; persists across navigation (re-applied on main-frame `framenavigated`, mirroring `network_emulate` / `clock`).
+
+- `seed_random({ seed, session? })` — `seed` is a non-negative integer in `[0, 2^32 - 1]` (the Mulberry32 state domain; `0` is valid). → `{ ok, applied:{seed}, warning?, tokensEstimate }`. Re-calling with a different seed swaps the active seed on both the current realm and any future document bootstrap.
+
+**MVP scope** — only `Math.random` is overridden. `crypto.randomUUID` / `crypto.getRandomValues` are NOT touched: web-crypto is a much bigger deterministic-stub surface and is left to a future tool. Workers (Web / Service) are out of scope — the init script runs in document realms only.
+
+**BYOB / attached Chrome** — the override is installed on the attached browser's `BrowserContext` and stays in effect for as long as the context lives, even after browxai detaches; surfaced as a `warning` in `attached` session mode.
+
 ### HAR record / replay — `start_har` / `stop_har` + `open_session({har})` / `open_session({hars})`
 
 Full-session reproducibility — capture every request the page made into a HAR (HTTP Archive) file, then later replay a session against that archive instead of the live network. Two recording entrypoints + one replay entrypoint:

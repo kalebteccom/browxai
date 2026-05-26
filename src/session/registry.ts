@@ -18,6 +18,7 @@ import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
 import type { EmulationRegistry } from "../page/emulation.js";
 import type { ClockRegistry } from "../page/clock.js";
+import type { SeededRandomRegistry } from "../page/seed-random.js";
 import type { PerfTracingState } from "../page/perf.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
@@ -58,6 +59,11 @@ export interface SessionEntry {
    *  Wraps CDP `Emulation.setVirtualTimePolicy` for deterministic
    *  date-sensitive testing; re-applies on main-frame navigation. */
   clock: ClockRegistry;
+  /** per-session seeded `Math.random` override (capability `action`). Init
+   *  script wraps Mulberry32 so date / pick-randomly / id-gen flake repros
+   *  are deterministic. Per-session; `crypto.randomUUID` /
+   *  `crypto.getRandomValues` NOT touched in MVP. */
+  seededRandom: SeededRandomRegistry;
   /** per-session CDP performance tracing state (capability `action`). One
    *  trace lifecycle at a time per session; `perf_start` while a trace is
    *  already running cleanly restarts (see src/page/perf.ts). */

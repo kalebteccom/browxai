@@ -10,6 +10,21 @@ surface" covers.
 
 ### Added
 
+- **`seed_random`** — per-session deterministic `Math.random` override. Injects
+  a Mulberry32 PRNG via Playwright `context.addInitScript`, seeded by the
+  caller-supplied integer in `[0, 2^32 - 1]`. The current page's main realm is
+  re-seeded immediately so the effect is visible without navigating; every
+  subsequent document in the session bootstraps the same override. Per-session;
+  persists across navigation (re-applied on main-frame `framenavigated` for
+  symmetry with `network_emulate` / `clock`). Net-additive — one new tool under
+  capability `action`. **MVP scope:** only `Math.random` is touched —
+  `crypto.randomUUID` / `crypto.getRandomValues` are left alone (web-crypto is
+  a much bigger deterministic-stub surface for a future tool). Workers are out
+  of scope. In BYOB / `attached` session mode the override is installed on the
+  attached Chrome's context for as long as the context lives — surfaced as a
+  `warning` on the result. Also in the batch whitelist so agents can compose
+  `seed_random → action → …` in a single batch. See
+  [docs/tool-reference.md § Deterministic `Math.random`](docs/tool-reference.md#deterministic-mathrandom--seed_random).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows

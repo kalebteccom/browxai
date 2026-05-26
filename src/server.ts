@@ -74,6 +74,7 @@ import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { EmulationRegistry } from "./page/emulation.js";
 import { ClockRegistry } from "./page/clock.js";
+import { SeededRandomRegistry } from "./page/seed-random.js";
 import {
   PerfTracingState,
   DEFAULT_TRACE_CATEGORIES,
@@ -512,6 +513,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         regions: new RegionRegistry(),
         emulation: new EmulationRegistry(),
         clock: new ClockRegistry(),
+        seededRandom: new SeededRandomRegistry(),
         perf: new PerfTracingState(),
         wedge: new WedgeTracker(),
         dialog: dialogState,
@@ -2013,6 +2015,39 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         };
         if (e.mode === "attached") {
           body.warning = "BYOB / attached Chrome: this virtual-clock policy stays in effect on the attached browser even after browxai detaches — release it (mode:\"release\"), reload, or close the page when you're done. A page with a frozen wall clock is a debugging trap.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "seed_random",
+    {
+      description:
+        "Override the page's `Math.random` with a deterministic Mulberry32 PRNG seeded from `seed`. For flake-repros where unseeded randomness drives id generation, dice / card / A-B picks, or jittered retry timing. Injected via Playwright `addInitScript`, so every new document in the session — including subsequent navigations — bootstraps the same override; the current page's main realm is re-seeded immediately so the effect is visible without navigating. Per-session; persists across navigation (re-applied on main-frame `framenavigated` for symmetry with `network_emulate` / `clock`). **MVP scope:** only `Math.random` is overridden — `crypto.randomUUID` / `crypto.getRandomValues` are NOT touched (web-crypto is a much bigger deterministic-stub surface; revisit later). Workers are out of scope (the init script runs in document realms, not worker realms). **BYOB:** the override is installed on the attached Chrome's context for as long as the context lives; surfaced as a `warning` in `attached` session mode.",
+      inputSchema: {
+        seed: z.number().int().min(0).max(0xffffffff).describe(
+          "Non-negative integer in [0, 2^32 - 1]. The Mulberry32 state domain — 0 is valid.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ seed, session }) => {
+      const g = gateCheck("seed_random"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const { state } = await e.seededRandom.apply(
+          e.session.page().context(), e.session.page(), { seed },
+        );
+        const body: Record<string, unknown> = { ok: true, applied: state };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: this Math.random override is installed on the attached browser's context and stays in effect for as long as the context lives — close the tab / context when you're done to drop it.";
         }
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
@@ -4468,7 +4503,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
     "eval_js", "list_named_refs", "name_ref", "find_feedback", "generate_locator",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
-    "network_emulate", "cpu_emulate", "clock",
+    "network_emulate", "cpu_emulate", "clock", "seed_random",
     "start_har", "stop_har",
     "perf_start", "perf_stop", "perf_insights",
   ]);
