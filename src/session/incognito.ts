@@ -27,7 +27,13 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     // No lowered-security flags unless the gated flag is explicitly on.
     ...(insecureArgs.length ? { args: insecureArgs } : {}),
   });
-  const context = await browser.newContext({ ...(opts.device ?? {}) });
+  const context = await browser.newContext({
+    ...(opts.device ?? {}),
+    // Seed the ephemeral context with a storage state if one was supplied
+    // (the Playwright-native primitive for "open a fresh browser already
+    // logged in as X"). No-op when unset.
+    ...(opts.storageState ? { storageState: opts.storageState } : {}),
+  });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);
 

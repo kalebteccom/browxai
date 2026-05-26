@@ -29,6 +29,14 @@ export interface SessionOptions {
   /** launch with `--disable-web-security --disable-site-isolation-trials`
    *  (SOP/CORS OFF browser-wide). managed/incognito only; loud-warned. */
   disableWebSecurity?: boolean;
+  /** Seed the new context's storage state at creation. Honoured by
+   *  **incognito** mode (where `browser.newContext({storageState})` is the
+   *  native primitive). For **persistent** (managed) mode the context's
+   *  state is on disk in the profile dir — the storageState is applied
+   *  post-create via `context.setStorageState`, which CLEARS the profile's
+   *  existing cookies / localStorage first. For BYOB/attached the value is
+   *  ignored (not-owned: we don't mutate the consumer's Chrome). */
+  storageState?: import("./storage.js").StorageStateBlob;
 }
 
 export interface BrowserSession {

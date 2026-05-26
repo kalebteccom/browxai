@@ -38,6 +38,37 @@ surface" covers.
   sessions surface a warning that CDP overrides persist on the human's Chrome
   after detach. See
   [docs/tool-reference.md § Device emulation](docs/tool-reference.md#device-emulation--set_locale--set_timezone--set_geolocation--set_color_scheme--set_reduced_motion--set_user_agent--grant_permissions).
+- **Three-layer storage-state (W-U7)** — the deferred Phase-2 bulk-state ask,
+  shipped as three layers so adopters don't have to round-trip a full blob to
+  read one cookie. Capability split (no new gate): reads under `read`, writes
+  under `action`.
+  - **Layer 1 — bulk**: `dump_storage_state({path?})` wraps
+    `BrowserContext.storageState()` and (optionally) writes the JSON to a
+    workspace-rooted path (escape-rejected); `inject_storage_state({state, mode?})`
+    applies a blob OR a workspace-rooted JSON path — `mode:"replace"`
+    (default, via `setStorageState`, clears existing state) or
+    `mode:"merge"` (cookies-only via `addCookies`, plus localStorage merge for
+    the currently-loaded origin only — others are skipped + reported).
+  - **Layer 2 — granular CRUD (15 tools)**: cookies `cookies_{get,set,list,delete,clear}`,
+    localStorage `localstorage_{get,set,list,delete,clear}`, sessionStorage
+    `sessionstorage_{get,set,list,delete,clear}`. Cookie writes require either
+    `url` (recommended — derives domain/path/secure) OR both `domain`+`path`.
+    localStorage/sessionStorage are origin-scoped + page-bound — the session
+    must be navigated to the target origin first; calls on `about:blank` or a
+    different origin reject with an explicit "navigate first" hint.
+  - **Layer 3 — named auth-states (4 tools)**: `auth_save({name})`,
+    `auth_load({name})`, `auth_list()`, `auth_delete({name})` — wraps layer 1
+    with workspace-rooted JSON files at `$BROWX_WORKSPACE/.auth-states/<name>.json`.
+    No parallel implementation; names restricted to letters / digits / `._-`
+    (no separators, no `..`).
+  - **`open_session` extension (additive)**: optional `storageState`
+    (inline blob OR workspace-rooted JSON path) and `authState` (slot name)
+    seed the new context's storage state at creation. Native primitive on
+    incognito; on persistent it post-seeds AND clears the profile (loud-warned);
+    ignored on attached/BYOB. Mutually exclusive.
+  - **Security gap documented** — cookie *values* may carry credentials. The
+    future W-V12 secrets-masking pass will mask them on egress; this cycle
+    ships unmasked. Treat dumps + saved named-states as sensitive.
 - **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
   a natural-language query + verb to a serialisable `ActionDescriptor` (bound
   `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves

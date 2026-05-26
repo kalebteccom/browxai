@@ -163,6 +163,34 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // file-io
   upload_file: "file-io",
+  // W-U7 three-layer storage-state (Phase 3.5).
+  //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
+  //   writes (`*_set`, `*_delete`, `*_clear`,
+  //           `inject_storage_state`, `auth_save`, `auth_load`,
+  //           `auth_delete`)                                         → `action`
+  // No new capability gate — these reuse the existing read/action posture so
+  // an existing capability config doesn't need editing to use them.
+  dump_storage_state: "read",
+  inject_storage_state: "action",
+  cookies_get: "read",
+  cookies_list: "read",
+  cookies_set: "action",
+  cookies_delete: "action",
+  cookies_clear: "action",
+  localstorage_get: "read",
+  localstorage_list: "read",
+  localstorage_set: "action",
+  localstorage_delete: "action",
+  localstorage_clear: "action",
+  sessionstorage_get: "read",
+  sessionstorage_list: "read",
+  sessionstorage_set: "action",
+  sessionstorage_delete: "action",
+  sessionstorage_clear: "action",
+  auth_save: "action",
+  auth_load: "action",
+  auth_list: "read",
+  auth_delete: "action",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

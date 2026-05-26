@@ -82,6 +82,17 @@ export interface OpenSpec {
   /** initial dialog policy for this session (default `{mode:"raise"}`).
    *  Mutable at runtime via `set_dialog_policy`; see src/session/dialog.ts. */
   dialogPolicy?: DialogPolicy;
+  /** Seed the new context's storage state at creation (bulk layer).
+   *  Either an inline blob (as returned by `dump_storage_state`) or a
+   *  workspace-rooted JSON path. Mutually exclusive with `authState`.
+   *  See `src/session/storage.ts` for the per-mode semantics
+   *  (incognito: native primitive; managed: post-create + clears profile;
+   *   attached: ignored). */
+  storageState?: import("./storage.js").StorageStateBlob | string;
+  /** Seed the new context's storage state at creation from a named slot
+   *  (`$BROWX_WORKSPACE/.auth-states/<name>.json`, written by `auth_save`).
+   *  Mutually exclusive with `storageState`. */
+  authState?: string;
 }
 
 export class SessionRegistry {

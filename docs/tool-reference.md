@@ -456,6 +456,72 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 ### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
 Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name, bytes, mimeType?, target, fileCount }` (`bytes`/`target`/`fileCount` for debugging a bad upload; `mimeType` set in content-mode). Gated by the off-by-default **`file-io`** capability. No agent JS.
 
+### Storage-state — three layers *(W-U7)*
+
+The deferred bulk-state ask, with the @playwright/mcp lesson baked in: bulk
+alone isn't enough — agents constantly need to read a single cookie ("am I
+logged in?") or set one ("opt-out=1") without round-tripping a full blob.
+Three layers ship together; no parallel implementations.
+
+**Capability split** — reads (`*_get`, `*_list`, `dump_storage_state`,
+`auth_list`) under `read`; writes (`*_set`, `*_delete`, `*_clear`,
+`inject_storage_state`, `auth_save`, `auth_load`, `auth_delete`) under
+`action`. No new capability gate to enable.
+
+**Security note (W-V12 gap)** — cookie *values* may carry credentials. The
+future W-V12 secrets-masking pass will mask them on egress; this cycle
+ships unmasked. Treat dumps + saved named-states as sensitive.
+
+#### Layer 1 — bulk
+
+##### `dump_storage_state({ path?, session? })`
+Wraps Playwright's `BrowserContext.storageState()` — `{cookies, origins:[{origin, localStorage}]}`. Always returns the blob inline; with `path`, also writes the JSON to a workspace-rooted file (path-traversal rejected — must resolve under `$BROWX_WORKSPACE`). Read-only.
+
+##### `inject_storage_state({ state, mode?, session? })`
+Apply a bulk state to the current session's context. `state` accepts an inline blob OR a workspace-rooted JSON path. Two modes:
+- `replace` (default) — uses Playwright's `setStorageState`, which **clears the context's existing cookies / localStorage / IndexedDB before applying**. Clean swap.
+- `merge` — adds cookies via `addCookies` without clearing AND merges localStorage for the **currently-loaded origin only** (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound).
+
+For per-session seeding **at creation**, prefer `open_session({storageState | authState})` — that's the Playwright-native primitive on incognito mode and avoids a clear-then-apply cycle on a fresh context.
+
+#### Layer 2 — granular CRUD
+
+**Cookies** (context-scoped, no navigation required):
+- `cookies_get({ name, url?, session? })` → `{cookie | null}`
+- `cookies_list({ urls?, session? })` → `{count, cookies}` (Playwright's URL-filter is honoured)
+- `cookies_set({ name, value, url?|domain+path, expires?, httpOnly?, secure?, sameSite?, session? })` — Playwright's `addCookies` requires **either `url` (recommended — derives domain/path/secure) OR both `domain` AND `path`**; one form must be supplied.
+- `cookies_delete({ name, url?|domain+path?, session? })` — narrow by url (derives domain/path) or explicit values; idempotent.
+- `cookies_clear({ session? })` — wipes ALL cookies in the context. localStorage/sessionStorage untouched.
+
+**localStorage / sessionStorage** (origin-scoped, page-bound — see caveat below):
+- `localstorage_get` / `sessionstorage_get` `({ key, session? })` → `{value, origin}`
+- `localstorage_list` / `sessionstorage_list` `({ session? })` → `{count, entries:[{key,value}…], origin}`
+- `localstorage_set` / `sessionstorage_set` `({ key, value, session? })`
+- `localstorage_delete` / `sessionstorage_delete` `({ key, session? })`
+- `localstorage_clear` / `sessionstorage_clear` `({ session? })`
+
+> **Origin caveat (loud).** `localStorage` and `sessionStorage` are origin-scoped and tied to the **current page** — the session MUST be navigated to the target origin before any of these tools work. On `about:blank` or a different origin the call rejects with an explicit "navigate first" hint. This is the same constraint Playwright's `storageState()` operates under (each origin's localStorage is captured per-origin). `sessionStorage` is additionally NOT included in `dump_storage_state` (Playwright's bulk capture is intentionally cookies+localStorage only); to checkpoint sessionStorage, use the granular tools directly.
+
+#### Layer 3 — named auth-states
+
+Wraps layer 1 with workspace-rooted JSON files at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are restricted to letters / digits / `._-` (no separators, no `..`). No parallel implementation — these call into the bulk layer under the hood.
+
+- `auth_save({ name, session? })` → captures the session's current storage state into the named slot. Overwrites an existing slot of the same name.
+- `auth_load({ name, session? })` → loads the named slot AND applies it to the session (replace semantics — same as `inject_storage_state({mode:"replace"})`). For SEEDING at creation, prefer `open_session({authState:"<name>"})`.
+- `auth_list()` → `{count, slots:[{name, path, bytes, modifiedAt}…]}`
+- `auth_delete({ name })` → `{ok, existed}` (idempotent).
+
+#### `open_session({ ... storageState?, authState? })` extension *(additive)*
+
+`open_session` now optionally seeds the new context with a storage state at creation. **Mutually exclusive** — pass one or the other:
+- `storageState` — inline blob (as returned by `dump_storage_state`) OR a workspace-rooted JSON path.
+- `authState` — name of a slot from `auth_save`.
+
+Per-mode semantics:
+- **incognito** — Playwright-native primitive (`browser.newContext({storageState})`). Cheapest path; preferred for "open a fresh browser already logged in as X."
+- **persistent** (managed) — Playwright's `launchPersistentContext` doesn't accept `storageState` at creation (the profile's state lives on disk). The session post-seeds via `setStorageState`, **which clears the profile's existing cookies / localStorage / IndexedDB first**. Loud-warned. Use incognito instead if you don't want to touch a persistent profile.
+- **attached** (BYOB) — ignored with a warning. The consumer's Chrome is not-owned; use `inject_storage_state` explicitly if you really mean to overwrite the attached browser's state.
+
 ### `choose_option({ target, option, exact?, ...opts })` *(W-F3)*
 Pick an option in a **custom combobox / listbox / menu** by visible text. Generic primitive for controls that aren't native `<select>` — the kind that open a portal listbox on click and commit on option click. The `target` is the trigger (the combobox itself); `option` is the visible text of the option to commit. Behaviour:
 

@@ -27,12 +27,26 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
     headless: !!opts.headless,
     // device/viewport emulation applied at context creation.
     ...(opts.device ?? {}),
-    // No `--no-sandbox`. `--disable-web-security` only when the gated 
+    // No `--no-sandbox`. `--disable-web-security` only when the gated
     // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
     ...(insecureArgs.length ? { args: insecureArgs } : {}),
   });
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);
+  // Persistent contexts don't take `storageState` at creation (their state
+  // lives on disk). When a caller asks for it on a managed session we apply
+  // it post-create via `setStorageState` — which CLEARS the profile's
+  // existing cookies/localStorage/IndexedDB first. Loud-warn so the override
+  // is visible.
+  if (opts.storageState) {
+    log.warn(
+      "session.managed: applying storageState to a persistent profile — " +
+      "this CLEARS existing cookies/localStorage/IndexedDB on the profile " +
+      `at "${profileDir}" before seeding. Use incognito mode for a fresh ` +
+      "context without touching a persistent profile.",
+    );
+    await context.setStorageState(opts.storageState);
+  }
 
   let closed = false;
   return {
