@@ -223,6 +223,13 @@ export interface ActionContext {
    *  any fired under `raise` mode the action is marked failed with the
    *  documented hint. */
   dialog?: DialogPolicyState;
+  /** per-session secrets registry (capability `secrets`). When non-null,
+   *  the action-window NetworkTap masks egressing URLs / mutation
+   *  responseShape keys against any registered real-values. The action's
+   *  own dispatched-action descriptor is masked by the action handler
+   *  (so a `fill({value:"<PASSWORD>"})` records `value:"<PASSWORD>"`, not
+   *  the materialised real password). */
+  secrets?: import("../util/secrets.js").SecretRegistry;
 }
 
 export interface ActionWindowOptions {
@@ -289,7 +296,7 @@ export async function runInActionWindow(
   ctx.cdp.on("Page.frameNavigated" as never, onFrameNav as never);
   await ctx.cdp.send("Page.enable").catch(() => undefined);
 
-  const net = new NetworkTap(ctx.cdp);
+  const net = new NetworkTap(ctx.cdp, ctx.secrets ?? null);
   await net.open();
 
   // --- dispatch ---

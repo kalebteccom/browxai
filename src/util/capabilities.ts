@@ -23,10 +23,11 @@ export type Capability =
   | "byob-attach"
   | "file-io"
   | "network-body"
-  | "clipboard";
+  | "clipboard"
+  | "secrets";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -194,6 +195,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   auth_load: "action",
   auth_list: "read",
   auth_delete: "action",
+  // secrets — per-session sensitive-data registry + egress masking. Off by
+  // default; loud-warn one-time when a secret is registered. Mirrors
+  // `eval` / `network-body` / `disableWebSecurity` posture. `register_secret`
+  // is the only tool the capability gates; the masking layer it installs is
+  // behaviour-gated across every egress sink. See docs/tool-reference.md +
+  // docs/threat-model.md.
+  register_secret: "secrets",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

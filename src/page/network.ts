@@ -5,6 +5,20 @@
 
 import type { CDPSession } from "playwright-core";
 import { sanitizeUrl, sanitizeUrlsInText, patternisePath } from "../util/url-sanitizer.js";
+import type { SecretRegistry } from "../util/secrets.js";
+
+/** Apply the W-O1 URL sanitiser then the per-session secrets-masking layer.
+ *  Order matters: secrets-masking is literal substring; the URL sanitiser
+ *  may already have stripped a credentialled query, but a real-value that
+ *  landed in the path is still caught by the literal scan after. */
+function maskedUrl(url: string, secrets: SecretRegistry | null): string {
+  const u = sanitizeUrl(url);
+  return secrets ? secrets.applyMaskInText(u) : u;
+}
+function maskedText(text: string, secrets: SecretRegistry | null): string {
+  const t = sanitizeUrlsInText(text);
+  return secrets ? secrets.applyMaskInText(t) : t;
+}
 
 export interface NetworkEntry {
   method: string;
@@ -58,7 +72,10 @@ export class NetworkTap {
   private listeners: Array<() => void> = [];
   private enabled = false;
 
-  constructor(private cdp: CDPSession) {}
+  /** Optional per-session secrets registry. When non-null, every URL +
+   *  response-shape key that leaves through `close()` is run through the
+   *  egress masking layer in addition to the W-O1 URL sanitiser. */
+  constructor(private cdp: CDPSession, private secrets: SecretRegistry | null = null) {}
 
   async open(): Promise<void> {
     if (!this.enabled) {
@@ -133,9 +150,25 @@ export class NetworkTap {
       if (e.failed) summary.failed += 1;
       // sanitize at the egress boundary only — the ring keeps the raw url so
       // beacon detection / url-substring filtering still see the real value.
-      if (bucket !== "other") interesting.push({ ...e, url: sanitizeUrl(e.url) });
+      // The secrets-masking layer composes with the URL sanitiser (no fight:
+      // sanitiser is regex on URL shape; masking is literal real-value scan).
+      if (bucket !== "other") interesting.push({ ...e, url: maskedUrl(e.url, this.secrets) });
     }
-    const mutations = (await Promise.all(this.mutationPromises)).filter((m): m is MutationEntry => m !== null);
+    const mutationsRaw = (await Promise.all(this.mutationPromises)).filter((m): m is MutationEntry => m !== null);
+    // mask mutation URLs + responseShape keys at egress. A response-key name
+    // (`sessionToken`, `apiSecret`) typically won't literally equal a
+    // registered value, but the key list is still string data — applying the
+    // egress layer here keeps the rule "every egress sink masks" absolute.
+    const mutations: MutationEntry[] = mutationsRaw.map((m) => {
+      const out: MutationEntry = {
+        ...m,
+        urlPattern: this.secrets ? this.secrets.applyMaskInText(m.urlPattern) : m.urlPattern,
+      };
+      if (m.responseShape && this.secrets) {
+        out.responseShape = m.responseShape.map((k) => this.secrets!.applyMaskInText(k));
+      }
+      return out;
+    });
     return { summary, requests: interesting, mutations };
   }
 }
@@ -163,19 +196,33 @@ export interface WsFrame {
   ts: number;
 }
 
-/** Egress sanitizer for a WS/SSE frame: redact the endpoint url and any url
+/** Egress sanitizer for a WS/SSE frame: redact the endpoint url, any url
  *  substrings inside the payload (a stream payload can echo a credentialled
- *  URL too). Returns a copy — the ring keeps raw frames for url filtering. */
-function sanitizeFrame(f: WsFrame): WsFrame {
-  return { ...f, url: sanitizeUrl(f.url), payload: sanitizeUrlsInText(f.payload) };
+ *  URL too), and any registered-secret real-values that landed in the
+ *  payload (chat / multiplayer / live-dashboard broadcasts routinely echo
+ *  the auth blob the client sent). Returns a copy — the ring keeps raw
+ *  frames for url filtering. */
+function sanitizeFrame(f: WsFrame, secrets: SecretRegistry | null): WsFrame {
+  return {
+    ...f,
+    url: maskedUrl(f.url, secrets),
+    payload: maskedText(f.payload, secrets),
+  };
 }
 
 export class WsBuffer {
   private urls = new Map<string, string>(); // requestId → endpoint url
   private ring: WsFrame[] = [];
   private enabled = false;
+  /** Optional per-session secrets registry; egress masking is applied on
+   *  every `recent` / `since` read. */
+  private secrets: SecretRegistry | null = null;
 
   constructor(private cdp: CDPSession, private cap = 500, private maxPayload = 2000) {}
+
+  setSecrets(secrets: SecretRegistry): void {
+    this.secrets = secrets;
+  }
 
   private trunc(s: string): { payload: string; truncated?: boolean } {
     if (s.length <= this.maxPayload) return { payload: s };
@@ -233,12 +280,12 @@ export class WsBuffer {
     let frames = this.ring;
     // filter on the raw url, then sanitize the endpoint on the way out.
     if (urlPattern) frames = frames.filter((f) => f.url.includes(urlPattern));
-    return { total: frames.length, frames: frames.slice(-limit).map(sanitizeFrame) };
+    return { total: frames.length, frames: frames.slice(-limit).map((f) => sanitizeFrame(f, this.secrets)) };
   }
 
   /** Frames since a timestamp — for the per-action `ActionResult` slice. */
   since(ts: number, cap = 25): WsFrame[] {
-    return this.ring.filter((f) => f.ts >= ts).slice(-cap).map(sanitizeFrame);
+    return this.ring.filter((f) => f.ts >= ts).slice(-cap).map((f) => sanitizeFrame(f, this.secrets));
   }
 }
 
@@ -252,16 +299,21 @@ export async function fetchResponseBody(
   cdp: CDPSession,
   requestId: string,
   maxBytes = 256_000,
+  secrets: SecretRegistry | null = null,
 ): Promise<{ ok: boolean; body?: string; base64Encoded?: boolean; truncated?: boolean; error?: string }> {
   try {
     const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", { requestId })) as {
       body: string;
       base64Encoded: boolean;
     };
-    if (body.length > maxBytes) {
-      return { ok: true, body: body.slice(0, maxBytes), base64Encoded, truncated: true };
-    }
-    return { ok: true, body, base64Encoded };
+    const sliced = body.length > maxBytes ? body.slice(0, maxBytes) : body;
+    const truncated = body.length > maxBytes;
+    // egress masking. Base64 bodies pass through unchanged — the literal
+    // real-value scan would never match an encoded form, and the agent's
+    // contract for base64 is "decode then re-mask on your side." Document
+    // this caveat in docs/tool-reference.md.
+    const out = !base64Encoded && secrets ? secrets.applyMaskInText(sliced) : sliced;
+    return { ok: true, body: out, base64Encoded, ...(truncated ? { truncated: true } : {}) };
   } catch (e) {
     return {
       ok: false,
@@ -367,8 +419,13 @@ export class NetworkBuffer {
   private requests = new Map<string, { method: string; url: string; type: string; startedAt: number }>();
   private ring: NetworkEntry[] = [];
   private enabled = false;
+  private secrets: SecretRegistry | null = null;
 
   constructor(private cdp: CDPSession, private cap = 500) {}
+
+  setSecrets(secrets: SecretRegistry): void {
+    this.secrets = secrets;
+  }
 
   async attach(): Promise<void> {
     if (this.enabled) return;
@@ -411,7 +468,7 @@ export class NetworkBuffer {
       if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
       summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
       if (e.failed) summary.failed += 1;
-      if (bucket !== "other") interesting.push({ ...e, url: sanitizeUrl(e.url) });
+      if (bucket !== "other") interesting.push({ ...e, url: maskedUrl(e.url, this.secrets) });
     }
     return { summary, requests: interesting };
   }

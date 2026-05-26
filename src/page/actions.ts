@@ -48,12 +48,26 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
 
 export interface FillArgs extends ActionWindowOptions { target: ActionTarget; value: string; }
 export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = { type: "fill", value: args.value, ...refOrSelector(args.target) };
+  // Secrets materialisation: a `<NAME>`-shaped `value` is swapped for the
+  // registered real string AT dispatch. The descriptor records the alias
+  // (`<NAME>`), NEVER the real value — so `ActionResult.action.value`, any
+  // recorder appendage, and the post-probe's `valueRequested` echo the
+  // alias. Plain strings pass through unchanged.
+  const mat = materialiseValue(ctx, args.value);
+  if (!mat.ok) return failedFill(args, mat.error!);
+  const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
+  const descriptor: DispatchedAction = { type: "fill", value: descriptorValue, ...refOrSelector(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
-    await loc.fill(args.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-    return probe(loc, args.target, args.value, pre);
+    await loc.fill(mat.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+    // pass the alias as `valueRequested` so `value === valueRequested`
+    // comparison still works without the real secret reaching the probe.
+    const probed = await probe(loc, args.target, descriptorValue, pre);
+    // Defence-in-depth: the field's DOM value reflects what we typed, so
+    // `probed.value` carries the secret. Mask before returning — the
+    // action-window will surface it on the ActionResult otherwise.
+    return maskProbe(probed, ctx);
   });
 }
 
@@ -67,15 +81,24 @@ export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<
 
 export interface PressArgs extends ActionWindowOptions { target?: ActionTarget; key: string; }
 export async function press(ctx: ActionContext, args: PressArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = { type: "press", value: args.key, ...(args.target ? refOrSelector(args.target) : {}) };
+  // Secrets materialisation on `key` — mirrors `fill`. The realistic case is
+  // a one-shot OTP/passphrase that the agent needs to "press" into a focused
+  // field. Playwright's `press` accepts modifier+key strings ("Shift+A") and
+  // single chars; the `<NAME>` shape doesn't collide with either, so the
+  // alias detection in the registry is unambiguous.
+  const mat = materialiseValue(ctx, args.key);
+  if (!mat.ok) return failedPress(args, mat.error!);
+  const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
+  const descriptor: DispatchedAction = { type: "press", value: descriptorValue, ...(args.target ? refOrSelector(args.target) : {}) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target) {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
       const pre = await preProbe(loc);
-      await loc.press(args.key, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-      return probe(loc, args.target, undefined, pre);
+      await loc.press(mat.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+      const probed = await probe(loc, args.target, undefined, pre);
+      return maskProbe(probed, ctx);
     } else {
-      await ctx.page.keyboard.press(args.key);
+      await ctx.page.keyboard.press(mat.value);
     }
   });
 }
@@ -385,6 +408,71 @@ export async function goForward(ctx: ActionContext, args: GoForwardArgs = {}): P
 }
 
 // ---------- helpers ----------
+
+/** Dispatch-side secret materialisation. Wraps `SecretRegistry.materialize`
+ *  with a no-registry fallback so non-secrets callers don't need to feature-
+ *  detect. */
+function materialiseValue(
+  ctx: ActionContext,
+  raw: string,
+): { ok: true; value: string; alias?: string } | { ok: false; error: string } {
+  if (!ctx.secrets) return { ok: true, value: raw };
+  const m = ctx.secrets.materialize(raw, ctx.page.url());
+  if (!m.ok) return { ok: false, error: m.error! };
+  return m.alias ? { ok: true, value: m.value, alias: m.alias } : { ok: true, value: m.value };
+}
+
+/** Build a clean ActionResult-shaped failure for a secrets-materialisation
+ *  rejection (no Playwright op ever runs). Mirrors the action-window error
+ *  envelope so the agent sees a consistent shape. */
+function failedFill(args: FillArgs, message: string): ActionResult {
+  return secretsFailure({ type: "fill", value: args.value, ...refOrSelector(args.target) }, message);
+}
+function failedPress(args: PressArgs, message: string): ActionResult {
+  return secretsFailure(
+    { type: "press", value: args.key, ...(args.target ? refOrSelector(args.target) : {}) },
+    message,
+  );
+}
+function secretsFailure(action: DispatchedAction, message: string): ActionResult {
+  return {
+    ok: false,
+    action,
+    navigation: { changed: false, from: "", to: "", kind: null },
+    structure: { appeared: [], removed: [], newTabs: [] },
+    console: { errors: [], warnings: 0 },
+    pageErrors: [],
+    network: { summary: { total: 0, byType: {}, failed: 0 } },
+    tokensEstimate: 0,
+    warnings: [],
+    error: message,
+  };
+}
+
+/** Post-probe defence-in-depth: mask any registered real-value that leaked
+ *  into the probe's `value` / `displayText` / `ownerControl` / `container`
+ *  string fields. The fill / press path is the canonical source of these
+ *  leaks — the field's DOM value reflects what we just typed. */
+function maskProbe(probed: ElementProbe | void, ctx: ActionContext): ElementProbe | void {
+  if (!probed || !ctx.secrets) return probed;
+  const out: ElementProbe = { ...probed };
+  if (typeof out.value === "string") out.value = ctx.secrets.applyMaskInText(out.value);
+  if (typeof out.displayText === "string") out.displayText = ctx.secrets.applyMaskInText(out.displayText);
+  if (out.ownerControl) {
+    const oc = { ...out.ownerControl };
+    if (oc.displayTextBefore) oc.displayTextBefore = ctx.secrets.applyMaskInText(oc.displayTextBefore);
+    if (oc.displayTextAfter) oc.displayTextAfter = ctx.secrets.applyMaskInText(oc.displayTextAfter);
+    if (oc.label) oc.label = ctx.secrets.applyMaskInText(oc.label);
+    out.ownerControl = oc;
+  }
+  if (out.container) {
+    const c = { ...out.container };
+    if (c.rowKey) c.rowKey = ctx.secrets.applyMaskInText(c.rowKey);
+    if (c.rowText) c.rowText = ctx.secrets.applyMaskInText(c.rowText);
+    out.container = c;
+  }
+  return out;
+}
 
 function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
   if (t.ref) return { ref: t.ref };

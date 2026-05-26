@@ -86,6 +86,7 @@ import {
   type StorageStateBlob,
 } from "./session/storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
+import { SecretRegistry } from "./util/secrets.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { resolveConfig } from "./util/config.js";
@@ -253,6 +254,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   for (const w of caps.warnings) log.warn(`browxai: ${w}`);
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
+  if (caps.enabled.has("secrets")) log.warn("browxai: secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.");
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
@@ -331,6 +333,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await networkBuf.attach();
       const wsBuf = new WsBuffer(sess.cdp());
       await wsBuf.attach();
+      // per-session secrets registry. Empty until `register_secret` is
+      // called; the egress sinks below all reference this same instance so
+      // a later register-call lights up masking globally for the session.
+      const secretsReg = new SecretRegistry();
+      consoleBuf.setSecrets(secretsReg);
+      networkBuf.setSecrets(secretsReg);
+      wsBuf.setSecrets(secretsReg);
       const br = new BrowxBridge();
       await br.attach(sess.page().context());
       // dialog policy — install per-page on current + future pages.
@@ -383,6 +392,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         wedge: new WedgeTracker(),
         dialog: dialogState,
         deviceEmulation,
+        secrets: secretsReg,
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -466,6 +476,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     recorder: e.recorder,
     ws: e.ws,
     dialog: e.dialog,
+    // pass the secrets registry only when the capability is on; the
+    // registry exists per-session regardless (kept on SessionEntry so
+    // setters wired at creation can reference it), but the action layer
+    // only consults it when the capability gate is open.
+    ...(caps.enabled.has("secrets") ? { secrets: e.secrets } : {}),
   });
 
   // resolve the effective anti-wedge deadline for a call —
@@ -595,7 +610,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         if (sub) root = sub;
         else scopeWarnings.push(`scope=${scope} not found in current snapshot; emitting full tree. Refs are per-session-stable but a navigation may have evicted the node.`);
       }
-      const body = root ? serialise(root, { maxNodes, omit }) : "(empty a11y tree)";
+      const rawBody = root ? serialise(root, { maxNodes, omit }) : "(empty a11y tree)";
+      // egress masking: a snapshot a11y tree carries node names — a
+      // labelled `<input value="hunter2">` would surface "hunter2" verbatim.
+      // Apply the per-session secrets layer on the way out (no-op when the
+      // registry is empty / capability is off).
+      const body = caps.enabled.has("secrets") ? e.secrets.applyMaskInText(rawBody) : rawBody;
       const allWarnings = [...warnings, ...scopeWarnings];
       const header = `url: ${url}\ntitle: ${title}\nstats: ${JSON.stringify(stats)}${scope ? `\nscope: ${scope}` : ""}${allWarnings.length ? `\nwarnings:\n  - ${allWarnings.join("\n  - ")}` : ""}\n`;
       return { content: [{ type: "text", text: `${header}\n${body}` }] };
@@ -632,7 +652,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ query, ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
-      return { content: [{ type: "text", text: JSON.stringify({ query, ...result }, null, 2) }] };
+      // egress masking. `find()` returns candidate `name` / `testId` /
+      // `selectorHint` / `context.rowText` — all string evidence that could
+      // echo a registered secret if the page rendered it (e.g. an
+      // <input value="hunter2"> whose accessible name embeds the value). Mask
+      // the entire result via the deep-walk helper before serialising.
+      const masked = caps.enabled.has("secrets")
+        ? e.secrets.applyMaskDeep({ query, ...result })
+        : { query, ...result };
+      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );
 
@@ -661,7 +689,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ query: text, ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
-      return { content: [{ type: "text", text: JSON.stringify({ query: text, ...result }, null, 2) }] };
+      // egress masking — same posture as `find` (matches carry visible
+      // text). The action-class catch-all so an `<input value=hunter2>`
+      // rendered text leak doesn't slip through text_search.
+      const masked = caps.enabled.has("secrets")
+        ? e.secrets.applyMaskDeep({ query: text, ...result })
+        : { query: text, ...result };
+      return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );
 
@@ -1000,6 +1034,33 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         { type: "image", data: buf.toString("base64"), mimeType },
       ];
       if (caption) content.unshift({ type: "text", text: caption });
+      // Secrets sink — best-effort. PNG/JPEG bytes are NOT searched (no OCR
+      // server-side); instead, sweep the page's text content for any
+      // registered real-value and prepend a warning when one might be
+      // visible. Pixel-level redaction (region-blur of matched bounding
+      // boxes) is deferred — see docs/tool-reference.md for the typed seam.
+      if (caps.enabled.has("secrets") && e.secrets.size() > 0) {
+        // Read the document's visible text (innerText falls back to "" on
+        // failure — the page may be navigating). Bounded so a giant page
+        // doesn't make the scan O(n^2-pathological).
+        const pageText: string = await page
+          .evaluate(() => {
+            const w = globalThis as unknown as { document?: { body?: { innerText?: string } } };
+            return (w.document?.body?.innerText ?? "").slice(0, 200_000);
+          })
+          .catch(() => "");
+        const probe = e.secrets.containsAnySecret(pageText);
+        if (probe.hit) {
+          content.unshift({
+            type: "text",
+            text:
+              `WARNING: screenshot may reveal registered secret values — ` +
+              `the page's text content contains: ${probe.names.map((n) => `<${n}>`).join(", ")}. ` +
+              `Pixel-level redaction (region-blur) is not yet implemented; prefer ` +
+              `snapshot() / find() for verified-clean evidence of these fields.`,
+          });
+        }
+      }
       return { content };
     },
   );
@@ -1155,7 +1216,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async ({ requestId, session }) => {
       const g = gateCheck("network_body"); if (g) return g;
       const e = await entryFor(session);
-      const r = await fetchResponseBody(e.session.cdp(), requestId);
+      // secrets masking: a full response body routinely echoes auth tokens
+      // and session blobs. Pass the per-session registry so any registered
+      // real-value gets substituted with its alias on egress. Base64 bodies
+      // pass through unchanged (the literal scan would never match an
+      // encoded form; documented in tool-reference.md as a known limitation).
+      const r = await fetchResponseBody(
+        e.session.cdp(),
+        requestId,
+        undefined,
+        caps.enabled.has("secrets") ? e.secrets : null,
+      );
       return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
     },
   );
@@ -3232,6 +3303,41 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         text: JSON.stringify({ approvals: approvals.list() }, null, 2),
       }],
     }),
+  );
+
+  // ---------- secrets registry (capability `secrets`) ----------
+
+  register(
+    "register_secret",
+    {
+      description:
+        "Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:\"<NAME>\"})` / `press({key:\"<NAME>\"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (URL substring, case-insensitive) narrows the *dispatch* side: a scoped secret won't be substituted into a `fill` whose page URL doesn't contain the scope (refuses with a clear error). Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page's text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.",
+      inputSchema: {
+        name: z.string().describe("Agent-facing alias, e.g. \"PASSWORD\" / \"OTP\" / \"SESSION_TOKEN\". Uppercase identifier — `<NAME>` mask format."),
+        value: z.string().describe("The real secret value. Stored per-session in memory only; never persisted, never logged."),
+        scope: z.string().optional().describe("Optional URL substring (case-insensitive). When set, dispatch-side substitution refuses if the current page URL doesn't contain the scope (prevents cross-origin leak). Egress masking is global regardless."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ name, value, scope, session }: { name: string; value: string; scope?: string; session?: string }) => {
+      const g = gateCheck("register_secret"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        e.secrets.register({ name, value, ...(scope ? { scope } : {}) });
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+      const body = {
+        ok: true,
+        registered: name,
+        scope: scope ?? null,
+        // never echo the value back. Echo only the registered names — useful
+        // for the agent to confirm what aliases are live without leaking.
+        names: e.secrets.names(),
+        tokensEstimate: estimateTokens(JSON.stringify({ ok: true, registered: name, scope, names: e.secrets.names() })),
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
   );
 
   // ---------- human↔agent helper ----------

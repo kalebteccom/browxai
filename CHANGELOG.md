@@ -84,6 +84,28 @@ surface" covers.
   a v0.2.x follow-up; the deterministic path is the model-agnostic ship. Under
   the `read` capability — no new capability. See
   [docs/tool-reference.md](docs/tool-reference.md#extract).
+- **`register_secret` + `secrets` capability** — per-session sensitive-data
+  registry with dispatch-side materialisation and global egress masking. The
+  agent registers a secret with an uppercase alias (`PASSWORD`, `OTP`,
+  `SESSION_TOKEN`); subsequent `fill({value:"<NAME>"})` / `press({key:"<NAME>"})`
+  substitute the real value at Playwright dispatch, while every egress sink
+  (`ActionResult.network`, `network_read`, `network_body`, `ws_read`,
+  `console_read`, `snapshot`, `find`, `text_search`) rewrites occurrences of
+  the real value back to `<NAME>` before returning to the agent. Required
+  for safely automating auth flows when transcripts are shareable. Composes
+  with the existing W-O1 URL sanitiser at the same boundary — both layers
+  apply (URL-shape regex first, then literal real-value substring scan).
+  Off by default; loud one-time warning at server boot + at first
+  registration. `screenshot` is a partial sink: when the page's visible
+  text contains a registered value, the result prepends a warning naming
+  the affected aliases; pixel-level region-blur is a typed seam for v0.2.x.
+  Base64 response bodies in `network_body` pass through unchanged
+  (literal-substring scan can't match an encoded form). Capacity 32 secrets
+  per session; optional `scope` URL-substring narrows dispatch-side
+  substitution to prevent cross-origin leak. See
+  [docs/tool-reference.md](docs/tool-reference.md#secrets-registry-capability-secrets)
+  for the per-sink masking matrix and limitations,
+  [docs/threat-model.md](docs/threat-model.md) for the threat-model entry.
 - **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
   a natural-language query + verb to a serialisable `ActionDescriptor` (bound
   `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves

@@ -20,6 +20,7 @@ import type { EmulationRegistry } from "../page/emulation.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
+import type { SecretRegistry } from "../util/secrets.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -61,6 +62,13 @@ export interface SessionEntry {
    *  when a new page opens in the context. Distinct from `emulation`
    *  (which holds network/cpu throttling state). */
   deviceEmulation: DeviceEmulationState;
+  /** per-session sensitive-data registry (capability `secrets`). Off by
+   *  default — empty until `register_secret` is called. When non-empty, every
+   *  egress sink masks occurrences of the real value back to `<NAME>` before
+   *  emitting; `fill`/`press` materialise `<NAME>` to the real value at
+   *  dispatch. The registry is per-session so concurrent sessions don't share
+   *  an auth-flow's secrets. */
+  secrets: SecretRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

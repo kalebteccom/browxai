@@ -4,6 +4,7 @@
 
 import type { Page } from "playwright-core";
 import { sanitizeUrlsInText } from "../util/url-sanitizer.js";
+import type { SecretRegistry } from "../util/secrets.js";
 
 export interface ConsoleMessage {
   ts: number; // epoch ms
@@ -16,8 +17,18 @@ const DEFAULT_CAP = 200;
 export class ConsoleBuffer {
   private msgs: ConsoleMessage[] = [];
   private errs: { ts: number; text: string }[] = [];
+  /** Optional per-session secrets registry. Injected by the server after
+   *  session creation so the egress masking layer applies on every read. */
+  private secrets: SecretRegistry | null = null;
 
   constructor(private cap: number = DEFAULT_CAP) {}
+
+  /** Wire a per-session secrets registry. After this, every `recent` /
+   *  `errorsSince` / `pageErrorsSince` read substitutes registered real-values
+   *  with their `<NAME>` aliases AFTER the W-O1 URL sanitiser runs. */
+  setSecrets(secrets: SecretRegistry): void {
+    this.secrets = secrets;
+  }
 
   attach(page: Page): void {
     page.on("console", (m) => {
@@ -30,19 +41,28 @@ export class ConsoleBuffer {
     });
   }
 
-  // URL substrings in console / page-error text are sanitized at the egress
-  // boundary (read time) — the ring keeps raw text; only what leaves the
-  // server toward an MCP result is redacted.
+  /** Compose the two egress layers: URL-sanitise first (regex on URL shape),
+   *  then secrets-mask (literal real-value substitution). They don't fight —
+   *  the URL sanitiser already redacted `?token=…`; the literal scan still
+   *  catches a registered secret that landed elsewhere in the text. */
+  private sanitiseEgress(text: string): string {
+    const afterUrl = sanitizeUrlsInText(text);
+    return this.secrets ? this.secrets.applyMaskInText(afterUrl) : afterUrl;
+  }
+
+  // URL substrings + registered-secret values in console / page-error text are
+  // sanitized at the egress boundary (read time) — the ring keeps raw text;
+  // only what leaves the server toward an MCP result is redacted.
   recent(limit = 50): ConsoleMessage[] {
-    return this.msgs.slice(-limit).map((m) => ({ ...m, text: sanitizeUrlsInText(m.text) }));
+    return this.msgs.slice(-limit).map((m) => ({ ...m, text: this.sanitiseEgress(m.text) }));
   }
   errorsSince(ts: number): string[] {
     return this.msgs
       .filter((m) => m.type === "error" && m.ts >= ts)
-      .map((m) => sanitizeUrlsInText(m.text));
+      .map((m) => this.sanitiseEgress(m.text));
   }
   pageErrorsSince(ts: number): string[] {
-    return this.errs.filter((e) => e.ts >= ts).map((e) => sanitizeUrlsInText(e.text));
+    return this.errs.filter((e) => e.ts >= ts).map((e) => this.sanitiseEgress(e.text));
   }
   warningCountSince(ts: number): number {
     return this.msgs.filter((m) => m.type === "warning" && m.ts >= ts).length;

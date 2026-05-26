@@ -848,6 +848,101 @@ Checkpoint and reset a persistent session's profile directory for repeatable des
 - `profile_restore({ snapshot, profile? })` — copy a named snapshot back over the profile dir.
 - **All sessions must be closed first** (`close_sessions({all:true})`) — copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path traversal).
 
+## Secrets registry (capability `secrets`)
+
+### `register_secret({ name, value, scope?, session? })`
+
+Register a sensitive value the agent will use without ever seeing the real
+string in any tool result. **Gated behind the off-by-default `secrets`
+capability** — same posture class as `eval` / `network-body` /
+`disableWebSecurity`.
+
+**Shape:**
+
+- `name` — agent-facing alias, must match `/^[A-Z][A-Z0-9_]*$/` (uppercase
+  identifier — e.g. `PASSWORD`, `OTP`, `SESSION_TOKEN`). The `<NAME>` mask
+  is the stable contract.
+- `value` — the real secret. Stored per-session in memory only; never
+  persisted, never logged. The registry never echoes it back, even on
+  registration confirmation.
+- `scope?` — optional URL substring (case-insensitive). When set,
+  dispatch-side substitution **refuses** if the current page URL doesn't
+  contain the scope (prevents cross-origin leak). Egress masking is global
+  regardless of scope.
+
+**Returns:** `{ ok, registered, scope, names, tokensEstimate }`. `names`
+echoes the live alias list (NOT values).
+
+**Dispatch-side pairing.** Once registered, the agent calls:
+
+- `fill({value: "<NAME>"})` — runtime substitutes the real value AT
+  Playwright dispatch; the action descriptor on `ActionResult.action.value`
+  records the alias `<NAME>`, never the real value.
+- `press({key: "<NAME>"})` — same substitution path for keypress flows
+  (one-shot OTP into a focused field). Modifier+key shapes like `Shift+A`
+  pass through unchanged — the `<NAME>` shape doesn't collide.
+- Plain string values pass through unchanged. The substitution is
+  structural (`/^<[A-Z][A-Z0-9_]*>$/`), not value-based, so a literal
+  angle-bracketed text in the page stays a literal.
+
+**Egress-side masking.** Every sink that could carry the real value is
+scanned on the way out:
+
+| Sink | Status |
+|---|---|
+| `ActionResult.network.requests[].url` (URLs in action-window tap) | masked |
+| `ActionResult.network.mutations[].urlPattern` + `responseShape` | masked |
+| `ActionResult.network.wsFrames[].payload` + `url` | masked |
+| `network_read.requests[].url` (session ring) | masked |
+| `network_body.body` (response body) | masked — JSON / text only; base64 bodies pass through unchanged (see below) |
+| `ws_read.frames[].payload` + `.url` | masked |
+| `console_read.recent[].text` + `errors` + `pageErrors` | masked |
+| `snapshot()` tree (a11y node names) | masked |
+| `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`) | masked (deep-walk) |
+| `text_search()` matches (visible text) | masked (deep-walk) |
+| `screenshot()` (image bytes) | **partial — warning only**, see below |
+
+**Masking guarantees.** The egress layer composes with the existing W-O1
+URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
+structure — query/fragment/userinfo/token-paths), then the secrets layer
+(literal real-value substring scan). They don't fight: the sanitiser may
+already have stripped a credentialled query, but the literal-value scan
+catches a real value that landed in a path / payload / header value.
+
+Idempotent — re-masking a previously-masked string is a no-op (the
+`<NAME>` mask never contains a registered value, by construction).
+
+Longest-value-first — when two registered values overlap (one is a
+substring of another), the longer one is masked first, so a partial leak
+of the shorter alias is impossible.
+
+**Limitations** (enumerated for the threat model):
+
+1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
+   server-side. Instead, the page's text content is swept for any
+   registered real-value, and when one is detected the result prepends a
+   warning naming the affected aliases. Pixel-level redaction (region-blur
+   of the bounding boxes that contain a matched value) is a typed seam for
+   v0.2.x — for verified-clean evidence, prefer `snapshot()` / `find()` /
+   `text_search()` (all fully masked) over a screenshot.
+2. **Base64 response bodies pass through unchanged in `network_body`.** A
+   literal-substring scan can't match an encoded form. Decode + re-mask on
+   the agent side if you fetch base64 bodies that may carry a secret. The
+   common case (JSON / text) is fully masked.
+3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
+   O(secrets × text-len) reasonable; realistic auth flows fit well under.
+4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
+   substituted into a `fill` on a wrong-origin page (refused with a clear
+   error), but if a registered value reaches a sink for any reason, it's
+   masked regardless of scope.
+
+**Capability gate.** Off by default. Add `secrets` to
+`BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
+boot (when the capability is on) and at the first `register_secret` call
+(naming the egress sinks now engaged). Mirrors the
+`eval` / `network-body` / `disableWebSecurity` posture documented in
+`docs/threat-model.md`.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

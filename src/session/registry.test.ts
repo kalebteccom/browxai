@@ -37,6 +37,8 @@ function fakeEntry(id: string): SessionEntry {
     wedge: new WedgeTracker(),
     dialog: new DialogPolicyState(),
     deviceEmulation: newEmulationState(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    secrets: {} as any,
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
   };

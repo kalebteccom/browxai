@@ -129,7 +129,24 @@ detail tools — `text_search`, `inspect`, `ws_read` — also fall under `read`;
 | `eval` | `eval_js` | **off** | Arbitrary page-side JS execution. Off by default; loud warning when enabled. |
 | `byob-attach` | session via `BROWX_ATTACH_CDP` | **off** | Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning. |
 | `network-body` | `network_body` | **off** | Returns full HTTP response bodies — routinely carry PII / auth tokens. W-F5 `responseShape` (keys only) is the safe default; this is the higher-risk "assert exact field value" escape hatch. Loud warning when enabled. |
+| `secrets` | `register_secret` | **off** | Per-session sensitive-data registry + egress masking. Once registered, `fill` / `press` materialise `<NAME>` → real value at Playwright dispatch; every other egress sink (network, console, ws, snapshot, find, text_search, network_body) substitutes the real value back to `<NAME>` before returning. **The load-bearing invariant: the agent NEVER receives the real value in any tool result.** Required for safely automating auth flows when transcripts are shareable (adoption reports, GitHub issues, eval datasets). Loud one-time warning at server boot + at first `register_secret` call. See `docs/tool-reference.md` for the per-sink masking matrix and limitations — notably `screenshot` is a partial sink (warning when page text reveals a registered value; pixel-level region-blur deferred), and base64 response bodies in `network_body` pass through unchanged. |
 | `file-io` | (future) `download_file`, `upload_file` | **off** | Not implemented yet; capability slot reserved. |
+
+### Why `secrets` is its own capability
+
+The masking layer is technically additive — turning it on **never reduces**
+what the agent can see; it can only redact more. But registering a secret
+is a write into per-session memory, and the *failure mode* of "agent thinks
+it registered a secret but the capability was off, so `fill({value:"<NAME>"})`
+ends up typing the literal string `<NAME>` into the password field" is a
+silent footgun. Gating registration behind a capability turns the failure
+into a clean disabled-tool error at the registration call, before any auth
+flow starts.
+
+The masking machinery itself runs unconditionally inside the per-session
+sink instances — what's gated is whether the agent can *load values into*
+the registry. An empty registry is a no-op pass-through, so leaving the
+capability off has zero runtime cost.
 
 ### Dangerous config opt-ins (not capabilities — launch options)
 
