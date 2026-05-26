@@ -120,6 +120,28 @@ surface" covers.
     per-session secrets registry mask on egress. See
     [docs/tool-reference.md § Captcha solver delegation](docs/tool-reference.md#captcha-solver-delegation-capability-captcha)
     and [docs/threat-model.md](docs/threat-model.md).
+- **`get_totp` / `get_credential` (capability `credentials`)** — pluggable
+  hook into an operator-configured credentials / TOTP vault. Without this,
+  agents driving real auth flows block on 2FA; baking seeds into the prompt
+  defeats W-V12 secrets-masking by leaking them into transcripts.
+  Off-by-default; loud-warned at server boot. Provider matrix selected via
+  `BROWX_CREDENTIALS_PROVIDER`: `oathtool` (default — self-managed seeds
+  via `BROWX_OATHTOOL_SEEDS`, no paid dependency), `1password` (shells out
+  to `op`), `bitwarden` (shells out to `bw`), `lastpass` (shells out to
+  `lpass`), `none` (explicit no-op for testing the surface). Provider is
+  **per-deployment, never bundled, never auto-installed** — a missing CLI
+  surfaces a structured `{ok:false, error, hint}` with the install
+  instruction per call (no startup crash). All shell invocations use fixed
+  argv (no shell interpolation, account passed as a discrete argv
+  element). 5-second per-call wall-clock so a hung CLI can't block
+  dispatch. `get_credential` ADDITIONALLY requires the `secrets`
+  capability — the looked-up password is auto-registered into the W-V12
+  registry under `<PASSWORD_<account>>` and masked across every egress
+  sink; the return value carries `aliasName`, NEVER the cleartext
+  password. Without `secrets`, the lookup refuses rather than leak. Same
+  posture class as `eval` / `network-body` / `secrets`. See
+  [docs/tool-reference.md § Credentials hook](docs/tool-reference.md#credentials-hook-capability-credentials)
+  and [docs/threat-model.md](docs/threat-model.md).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows

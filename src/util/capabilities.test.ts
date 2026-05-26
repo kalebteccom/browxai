@@ -73,6 +73,22 @@ describe("isToolEnabled", () => {
     expect(ALL_CAPABILITIES).toContain("network-body");
     expect(DEFAULT_CAPABILITIES).not.toContain("network-body");
   });
+
+  it("credentials is off under the default capability set; get_totp + get_credential gate on it", () => {
+    const def = resolveCapabilities({} as NodeJS.ProcessEnv);
+    expect(isToolEnabled("get_totp", def)).toBe(false);
+    expect(isToolEnabled("get_credential", def)).toBe(false);
+    const on = resolveCapabilities({
+      BROWX_CAPABILITIES: "read,credentials",
+    } as NodeJS.ProcessEnv);
+    expect(isToolEnabled("get_totp", on)).toBe(true);
+    expect(isToolEnabled("get_credential", on)).toBe(true);
+  });
+
+  it("credentials is a valid capability but not in the default set", () => {
+    expect(ALL_CAPABILITIES).toContain("credentials");
+    expect(DEFAULT_CAPABILITIES).not.toContain("credentials");
+  });
 });
 
 describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {

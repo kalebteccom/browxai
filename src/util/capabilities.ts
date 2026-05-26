@@ -31,6 +31,10 @@ export type Capability =
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha",
+  | "credentials";
+
+export const ALL_CAPABILITIES: readonly Capability[] = [
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "credentials",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -281,6 +285,14 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // stealth is behaviour-gated (no tool of its own). The capability flips
   // per-context init-script patches at session creation (navigator.webdriver
   // / plugins / languages / window.chrome) — see src/helper/stealth.ts.
+  // credentials — off-by-default pluggable hook into an external vault for
+  // TOTP / username+password lookup. Same posture class as `eval` /
+  // `network-body` / `secrets` — provider is configured per-deployment,
+  // never bundled, loud-warned at boot. `get_credential` additionally
+  // requires `secrets` to be enabled at the same time (it auto-registers
+  // the looked-up password into the W-V12 secrets registry).
+  get_totp: "credentials",
+  get_credential: "credentials",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

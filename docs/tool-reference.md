@@ -1168,6 +1168,103 @@ boot (when the capability is on) and at the first `register_secret` call
 `eval` / `network-body` / `disableWebSecurity` posture documented in
 `docs/threat-model.md`.
 
+## Credentials hook (capability `credentials`)
+
+Pluggable hook into an operator-configured credentials / TOTP vault. Without
+this, agents driving real auth flows block on 2FA — and the only escapes
+("bake the seed into the prompt") defeat W-V12 secrets-masking by leaking
+the seed into transcripts. **Gated behind the off-by-default `credentials`
+capability** — same posture class as `eval` / `network-body` / `secrets`.
+
+**CRITICAL:** provider is selected **per-deployment**, **never bundled**.
+The browxai server NEVER auto-installs a CLI binary, NEVER auto-purchases a
+vault, NEVER prompts the operator interactively. If the configured backend
+is missing, every lookup returns a structured `{ok:false, error, hint}`
+with the install instruction; the agent's flow either retries with a
+different account, calls `await_human`, or fails cleanly.
+
+**Provider matrix** (selected via `BROWX_CREDENTIALS_PROVIDER`):
+
+| Provider | TOTP | Credential | Dependency |
+|---|---|---|---|
+| `oathtool` (default) | yes | no (TOTP-only) | system `oathtool` (macOS: `brew install oath-toolkit`; Debian/Ubuntu: `apt install oathtool`); seeds via env |
+| `1password` | yes | yes | 1Password CLI `op` on PATH; `op signin` performed out-of-band |
+| `bitwarden` | yes | yes | Bitwarden CLI `bw` on PATH; `$BW_SESSION` from `bw unlock` in server env |
+| `lastpass` | yes | yes | `lpass` CLI on PATH; `lpass login` performed out-of-band |
+| `none` | no | no | explicit no-op; useful for testing the surface without a real vault |
+
+Configuration env:
+
+```
+BROWX_CREDENTIALS_PROVIDER=oathtool
+BROWX_OATHTOOL_SEEDS="acme=JBSWY3DPEHPK3PXP,other=NBSWY3DPEHPK3PXP"
+# or one of:
+# BROWX_CREDENTIALS_PROVIDER=1password
+# BROWX_CREDENTIALS_PROVIDER=bitwarden
+# BROWX_CREDENTIALS_PROVIDER=lastpass
+```
+
+Optional CLI-path overrides (when the binary lives outside PATH):
+`BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
+`BROWX_LASTPASS_BIN`.
+
+### `get_totp({ account })`
+
+Look up a one-time TOTP code. Returns `{ok, code, provider}` on success;
+`{ok:false, error, hint, provider}` on failure (missing seed / CLI not on
+PATH / CLI not logged in — actionable hint included).
+
+- `account` — provider-specific identifier. For `oathtool`, a key from
+  `BROWX_OATHTOOL_SEEDS`. For `1password` / `lastpass`, an item name. For
+  `bitwarden`, an item id.
+
+TOTP codes are NOT masked through the W-V12 secrets registry: a TOTP is
+single-use and short-lived, so masking buys little while complicating the
+verify-step flow. The agent passes the code directly to
+`fill({value: code})` or compares against on-page text.
+
+### `get_credential({ account, session? })`
+
+Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
+provider}` on success — **never the cleartext password**. The password is
+auto-registered into the per-session W-V12 secrets registry under
+`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`). The
+agent then drives:
+
+```
+get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP"}
+fill({selector:"input[name=username]", value:"alice@…"})
+fill({selector:"input[name=password]", value:"<PASSWORD_ACME_CORP>"})
+```
+
+Dispatch-side substitution materialises the real value at Playwright
+dispatch; egress-side masking strips occurrences across every sink (see
+the `register_secret` matrix above).
+
+**Pairing rule.** `get_credential` ADDITIONALLY requires the `secrets`
+capability to be enabled. Without it, the lookup refuses with a clear
+error (returning a password in cleartext would leak it into the
+transcript on first reference). Enable both:
+`BROWX_CAPABILITIES=read,navigation,action,human,credentials,secrets`.
+
+**Per-provider notes:**
+
+- `oathtool` does NOT support `get_credential` (TOTP-only). Pair with a
+  credential-bearing provider, OR `await_human` for the username/password
+  half and `get_totp` for the TOTP half.
+- `1password` reads the `username` + `password` labelled fields via
+  `op item get <account> --fields label=username,label=password --format json`.
+- `bitwarden` reads `login.username` + `login.password` via
+  `bw get item <account>`.
+- `lastpass` reads via `lpass show --username --password <account>`.
+
+**Posture.** Off by default; loud one-time warning at server boot when the
+capability is on. Provider is per-deployment, never bundled, never
+auto-installed. All shell invocations use fixed argv (no shell
+interpolation, account name passed as a discrete argv element — no
+injection surface). 5-second wall-clock timeout per call so a hung CLI
+can't block tool dispatch.
+
 ## Extensions registry (capability `extensions`)
 
 Per-session unpacked-Chromium-extension management. **Gated behind the

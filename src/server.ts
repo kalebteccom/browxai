@@ -113,6 +113,11 @@ import {
 } from "./session/storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
+import {
+  resolveCredentialsProvider,
+  applyCredentialToRegistry,
+  type ProviderCredentialInternal,
+} from "./util/credentials.js";
 import { ClipboardBuffer } from "./page/clipboard.js";
 import { sampleMetric, ELEMENT_METRICS } from "./page/sample.js";
 import { screenshotMarks, type MarkCandidate } from "./page/set-of-marks.js";
@@ -327,6 +332,16 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (caps.enabled.has("eval")) log.warn("browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.");
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
   if (caps.enabled.has("secrets")) log.warn("browxai: secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.");
+  // Credentials provider: resolved once at server start. The provider object
+  // is constructed even when the capability is off so per-deployment config
+  // validation (unknown provider name → warn) happens up front. Per-call
+  // failures (missing CLI binary, missing seed, etc.) surface as structured
+  // refusals on the tool result — never crash startup.
+  const credentialsResolved = resolveCredentialsProvider(cfgEnv);
+  for (const w of credentialsResolved.config.warnings) log.warn(`browxai: ${w}`);
+  if (caps.enabled.has("credentials")) {
+    log.warn(`browxai: credentials capability is ENABLED — \`get_totp\` / \`get_credential\` will shell out to the configured "${credentialsResolved.config.provider}" backend per call. NEVER bundled, NEVER auto-installed — the operator supplies the CLI / seeds out-of-band. \`get_credential\` ADDITIONALLY requires the \`secrets\` capability so the looked-up password is auto-registered into the per-session W-V12 registry under \`<PASSWORD_<account>>\` and masked across every egress sink (without \`secrets\`, the lookup refuses rather than leak cleartext). Same posture class as \`eval\` / \`network-body\` / \`secrets\`. See docs/threat-model.md.`);
+  }
   if (caps.enabled.has("extensions")) log.warn("browxai: extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.");
   if (caps.enabled.has("stealth")) log.warn("browxai: stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.");
   if (caps.enabled.has("captcha")) log.warn("browxai: captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.");
@@ -4287,6 +4302,58 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // defensible) doesn't bypass the egress layer.
       const masked = e.secrets.applyMaskDeep(result);
       const body = { ...masked, tokensEstimate: estimateTokens(JSON.stringify(masked)) };
+  // ---------- credentials hook (capability `credentials`) ----------
+  //
+  // Pluggable TOTP / username+password lookup against an operator-configured
+  // vault. Off-by-default; loud-warned at boot. Provider is per-deployment,
+  // NEVER bundled. `get_credential` ADDITIONALLY requires the `secrets`
+  // capability (auto-registers the looked-up password into the W-V12
+  // registry under `<PASSWORD_<account>>` — without `secrets`, the lookup
+  // refuses rather than leak cleartext into the result).
+
+  register(
+    "get_totp",
+    {
+      description:
+        "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the W-V12 secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts).",
+      inputSchema: {
+        account: z.string().describe("Provider-specific account identifier (oathtool seed key / 1password item name / bitwarden item id / lastpass item name)."),
+      },
+    },
+    async ({ account }: { account: string }) => {
+      const g = gateCheck("get_totp"); if (g) return g;
+      const result = await credentialsResolved.provider.getTotp(account);
+      const body = {
+        ...result,
+        tokensEstimate: estimateTokens(JSON.stringify(result)),
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
+  register(
+    "get_credential",
+    {
+      description:
+        "Look up a `{username, password}` pair from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would leak it into the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session W-V12 secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`); the agent then passes `fill({value: \"<PASSWORD_acct>\"})` and the runtime materialises the real value AT Playwright dispatch. The returned object carries `{ok, username, aliasName, provider}` — **never the cleartext password**. Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).",
+      inputSchema: {
+        account: z.string().describe("Provider-specific account identifier — see the per-provider notes in docs/tool-reference.md."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ account, session }: { account: string; session?: string }) => {
+      const g = gateCheck("get_credential"); if (g) return g;
+      const e = await entryFor(session);
+      const raw = (await credentialsResolved.provider.getCredential(account)) as ProviderCredentialInternal;
+      // `applyCredentialToRegistry` enforces the `secrets`-capability
+      // pairing rule and strips `_password` before the result leaves this
+      // module — so the response we serialise never contains cleartext.
+      const registry = caps.enabled.has("secrets") ? e.secrets : null;
+      const result = applyCredentialToRegistry(raw, registry, account);
+      const body = {
+        ...result,
+        tokensEstimate: estimateTokens(JSON.stringify(result)),
+      };
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
     },
   );
