@@ -163,7 +163,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // file-io
   upload_file: "file-io",
-  // W-U7 three-layer storage-state (Phase 3.5).
+  // Three-layer storage-state (Phase 3.5).
   //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
   //   writes (`*_set`, `*_delete`, `*_clear`,
   //           `inject_storage_state`, `auth_save`, `auth_load`,

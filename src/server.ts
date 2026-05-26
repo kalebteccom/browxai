@@ -278,9 +278,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         device: spec?.device ?? resolvedConfig.defaultDevice,
         viewport: spec?.viewport ?? resolvedConfig.defaultViewport,
       });
-      // W-U7 — resolve creation-time storageState (inline blob, workspace
-      // path, OR named slot). Mutually exclusive. `attached`/BYOB sessions
-      // ignore it (not-owned: we don't seed someone else's Chrome).
+      // Resolve creation-time storageState (inline blob, workspace path, OR
+      // named slot). Mutually exclusive. `attached`/BYOB sessions ignore it
+      // (not-owned: we don't seed someone else's Chrome).
       let creationStorageState: StorageStateBlob | undefined;
       if (spec?.storageState !== undefined && spec?.authState !== undefined) {
         throw new Error(
@@ -1803,7 +1803,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   );
 
   // ===========================================================================
-  // W-U7 — three-layer storage-state (Phase 3.5).
+  // Three-layer storage-state (Phase 3.5).
   //
   // Layer 1 — bulk:        dump_storage_state, inject_storage_state
   // Layer 2 — granular:    cookies_{get,set,list,delete,clear}
@@ -1839,7 +1839,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "dump_storage_state",
     {
       description:
-        "W-U7 layer 1 — bulk capture of the session's storage state (cookies + per-origin localStorage), the blob format Playwright's `BrowserContext.storageState()` returns. ALWAYS returns the blob; with `path`, also writes JSON to a workspace-rooted file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Use this to checkpoint an authed state for later replay via `inject_storage_state` / `auth_save`. Read-only. SECURITY NOTE: cookie *values* may carry credentials — treat the dump as sensitive (the W-V12 egress-masking pass lands separately).",
+        "Storage-state bulk dump — capture the session's current storage state (cookies + per-origin localStorage), the blob format Playwright's `BrowserContext.storageState()` returns. ALWAYS returns the blob; with `path`, also writes JSON to a workspace-rooted file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Use this to checkpoint an authed state for later replay via `inject_storage_state` / `auth_save`. Read-only. SECURITY NOTE: cookie *values* may carry credentials — treat the dump as sensitive (a future egress-masking pass lands separately).",
       inputSchema: {
         path: z.string().optional().describe("Optional workspace-rooted JSON file to write the state to (in addition to returning it inline). Rejected if it escapes $BROWX_WORKSPACE."),
         ...SESSION_ARG,
@@ -1869,7 +1869,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "inject_storage_state",
     {
       description:
-        "W-U7 layer 1 — apply a bulk storage state to the current session's context. `state` accepts either an inline blob OR a workspace-rooted JSON path (escape rejected). `mode:\"replace\"` (default) uses Playwright's `setStorageState` which CLEARS the context's existing cookies/localStorage/IndexedDB first — clean swap semantics. `mode:\"merge\"` adds cookies via `addCookies` without clearing AND best-effort merges localStorage for the currently-loaded origin only (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound). For per-session seeding at CREATION, prefer `open_session({ storageState | authState })` — that's the Playwright-native primitive on incognito mode.",
+        "Storage-state bulk inject — apply a bulk storage state to the current session's context. `state` accepts either an inline blob OR a workspace-rooted JSON path (escape rejected). `mode:\"replace\"` (default) uses Playwright's `setStorageState` which CLEARS the context's existing cookies/localStorage/IndexedDB first — clean swap semantics. `mode:\"merge\"` adds cookies via `addCookies` without clearing AND best-effort merges localStorage for the currently-loaded origin only (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound). For per-session seeding at CREATION, prefer `open_session({ storageState | authState })` — that's the Playwright-native primitive on incognito mode.",
       inputSchema: {
         state: z.union([
           z.string().describe("Workspace-rooted JSON path to a state file (escape rejected)."),
@@ -1904,7 +1904,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "cookies_get",
     {
       description:
-        "W-U7 layer 2 — read a single cookie by name. Optional `url` narrows the cookie jar (only cookies that would be sent on a request to that URL). Returns the full Playwright cookie object or `null`. Read-only.",
+        "Read a single cookie by name. Optional `url` narrows the cookie jar (only cookies that would be sent on a request to that URL). Returns the full Playwright cookie object or `null`. Read-only.",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         url: z.string().optional().describe("Optional URL — restricts to cookies that match this URL's domain/path/secure-context."),
@@ -1925,7 +1925,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "cookies_list",
     {
       description:
-        "W-U7 layer 2 — list cookies in the session's jar. `urls` filters to cookies that would be sent on requests to those URLs (Playwright's native filter). Returns the full Playwright cookie array. Read-only.",
+        "List cookies in the session's jar. `urls` filters to cookies that would be sent on requests to those URLs (Playwright's native filter). Returns the full Playwright cookie array. Read-only.",
       inputSchema: {
         urls: z.array(z.string()).optional().describe("Optional URL list — restricts the result to cookies matching these URLs."),
         ...SESSION_ARG,
@@ -1945,7 +1945,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "cookies_set",
     {
       description:
-        "W-U7 layer 2 — set a single cookie. Playwright's `addCookies` requires either `url` (recommended — derives domain/path/secure for you) OR both `domain` AND `path` explicitly; one of those two forms must be supplied or the call is rejected. Optional `expires` (Unix seconds), `httpOnly`, `secure`, `sameSite` (`\"Strict\"|\"Lax\"|\"None\"`). Idempotent w.r.t. (name, domain, path).",
+        "Set a single cookie. Playwright's `addCookies` requires either `url` (recommended — derives domain/path/secure for you) OR both `domain` AND `path` explicitly; one of those two forms must be supplied or the call is rejected. Optional `expires` (Unix seconds), `httpOnly`, `secure`, `sameSite` (`\"Strict\"|\"Lax\"|\"None\"`). Idempotent w.r.t. (name, domain, path).",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         value: z.string().describe("Cookie value."),
@@ -1978,7 +1978,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "cookies_delete",
     {
       description:
-        "W-U7 layer 2 — delete cookies by name, optionally narrowed by `url` (derives domain/path) or explicit `domain`/`path`. Returns `{ok:true}` even if no cookie matched (idempotent — distinguish presence via `cookies_get` first if needed).",
+        "Delete cookies by name, optionally narrowed by `url` (derives domain/path) or explicit `domain`/`path`. Returns `{ok:true}` even if no cookie matched (idempotent — distinguish presence via `cookies_get` first if needed).",
       inputSchema: {
         name: z.string().describe("Cookie name."),
         url: z.string().optional().describe("Optional URL — narrows by derived domain/path."),
@@ -2003,7 +2003,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "cookies_clear",
     {
       description:
-        "W-U7 layer 2 — wipe ALL cookies in the session's jar. Destructive across every domain in this context. localStorage and sessionStorage are untouched (use `*_clear` for those, or `inject_storage_state({state, mode:\"replace\"})` to reset everything via a bulk swap).",
+        "Wipe ALL cookies in the session's jar. Destructive across every domain in this context. localStorage and sessionStorage are untouched (use `*_clear` for those, or `inject_storage_state({state, mode:\"replace\"})` to reset everything via a bulk swap).",
       inputSchema: { ...SESSION_ARG },
     },
     async ({ session }) => {
@@ -2035,7 +2035,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       `${prefix}_get`,
       {
-        description: `W-U7 layer 2 — read one key from ${human} of the current page's origin. Returns \`{value: string|null, origin}\`. ${originScope} Read-only.`,
+        description: `Read one key from ${human} of the current page's origin. Returns \`{value: string|null, origin}\`. ${originScope} Read-only.`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -2051,7 +2051,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       `${prefix}_list`,
       {
-        description: `W-U7 layer 2 — list every key/value pair in ${human} of the current page's origin. Returns \`{entries:[{key,value}...], origin}\`. ${originScope} Read-only.`,
+        description: `List every key/value pair in ${human} of the current page's origin. Returns \`{entries:[{key,value}...], origin}\`. ${originScope} Read-only.`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -2067,7 +2067,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       `${prefix}_set`,
       {
-        description: `W-U7 layer 2 — set a key/value in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
+        description: `Set a key/value in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
         inputSchema: {
           key: z.string().describe(`${human} key.`),
           value: z.string().describe(`${human} value (string — same as the DOM API, non-strings must be JSON-stringified by the caller).`),
@@ -2089,7 +2089,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       `${prefix}_delete`,
       {
-        description: `W-U7 layer 2 — remove a key from ${human} of the current page's origin. Idempotent. ${originScope}`,
+        description: `Remove a key from ${human} of the current page's origin. Idempotent. ${originScope}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
       async ({ key, session }) => {
@@ -2107,7 +2107,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     register(
       `${prefix}_clear`,
       {
-        description: `W-U7 layer 2 — wipe ALL keys in ${human} of the current page's origin. ${originScope}`,
+        description: `Wipe ALL keys in ${human} of the current page's origin. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
       async ({ session }) => {
@@ -2133,7 +2133,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "auth_save",
     {
       description:
-        "W-U7 layer 3 — capture the session's current storage state into a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are letters/digits/`._-` only (no separators, no `..`). Overwrites an existing slot of the same name. Pair with `open_session({authState})` to spin up a session pre-logged-in, or with `auth_load` + `inject_storage_state` for in-flight reseating. SECURITY NOTE: cookie *values* may carry credentials — these files are sensitive (W-V12 secrets-masking lands separately).",
+        "Capture the session's current storage state into a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are letters/digits/`._-` only (no separators, no `..`). Overwrites an existing slot of the same name. Pair with `open_session({authState})` to spin up a session pre-logged-in, or with `auth_load` + `inject_storage_state` for in-flight reseating. SECURITY NOTE: cookie *values* may carry credentials — these files are sensitive (a future secrets-masking pass lands separately).",
       inputSchema: {
         name: z.string().describe("Slot name (letters/digits/`._-` only)."),
         ...SESSION_ARG,
@@ -2155,7 +2155,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "auth_load",
     {
       description:
-        "W-U7 layer 3 — load a named storage-state slot AND apply it to an existing session (replaces the context's cookies/localStorage/IndexedDB — same semantics as `inject_storage_state({mode:\"replace\"})`). For SEEDING a new session at creation time, prefer `open_session({authState:\"<name>\"})` — that's cheaper (no clear-then-replace cycle on a fresh context) and lets incognito mode use the Playwright-native primitive.",
+        "Load a named storage-state slot AND apply it to an existing session (replaces the context's cookies/localStorage/IndexedDB — same semantics as `inject_storage_state({mode:\"replace\"})`). For SEEDING a new session at creation time, prefer `open_session({authState:\"<name>\"})` — that's cheaper (no clear-then-replace cycle on a fresh context) and lets incognito mode use the Playwright-native primitive.",
       inputSchema: {
         name: z.string().describe("Slot name (must exist; auth_save it first)."),
         ...SESSION_ARG,
@@ -2181,7 +2181,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "auth_list",
     {
       description:
-        "W-U7 layer 3 — enumerate every named auth-state slot in the workspace. Returns `{name, path, bytes, modifiedAt}` per slot, sorted by name. Read-only.",
+        "Enumerate every named auth-state slot in the workspace. Returns `{name, path, bytes, modifiedAt}` per slot, sorted by name. Read-only.",
       inputSchema: {},
     },
     async () => {
@@ -2197,7 +2197,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "auth_delete",
     {
       description:
-        "W-U7 layer 3 — remove a named auth-state slot from the workspace. Idempotent (`existed:false` if it wasn't there).",
+        "Remove a named auth-state slot from the workspace. Idempotent (`existed:false` if it wasn't there).",
       inputSchema: { name: z.string().describe("Slot name.") },
     },
     async ({ name }) => {
@@ -2599,7 +2599,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.\n\nW-U7: optionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
       inputSchema: {
         session: z.string().describe("Session id to create (e.g. \"agent-a\", \"user-2\")."),
         mode: z.enum(["persistent", "incognito", "attached"]).optional()

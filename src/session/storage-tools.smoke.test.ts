@@ -1,11 +1,11 @@
-// Smoke check: every W-U7 storage tool is registered by createServer().
+// Smoke check: every storage-state tool is registered by createServer().
 // Catches regressions in the for-loop wiring without launching a browser
 // (each handler is reachable; we don't invoke them).
 
 import { describe, it, expect } from "vitest";
 import { createServer } from "../server.js";
 
-const W_U7_TOOLS = [
+const STORAGE_TOOLS = [
   // layer 1
   "dump_storage_state",
   "inject_storage_state",
@@ -34,11 +34,11 @@ const W_U7_TOOLS = [
   "auth_delete",
 ];
 
-describe("W-U7 storage tools — registration smoke", () => {
+describe("storage tools — registration smoke", () => {
   it("every storage tool is reachable through the handler map", async () => {
     const { handlers, shutdown } = await createServer({});
     try {
-      const missing = W_U7_TOOLS.filter((t) => typeof handlers[t] !== "function");
+      const missing = STORAGE_TOOLS.filter((t) => typeof handlers[t] !== "function");
       expect(missing).toEqual([]);
     } finally {
       await shutdown();

@@ -1,4 +1,4 @@
-// Unit tests for the three-layer storage-state primitives (W-U7).
+// Unit tests for the three-layer storage-state primitives.
 //
 // Strategy:
 //   - Layer 1 (bulk) + layer 3 (named slots) — exercised with a fake

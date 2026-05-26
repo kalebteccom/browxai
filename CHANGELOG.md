@@ -38,7 +38,7 @@ surface" covers.
   sessions surface a warning that CDP overrides persist on the human's Chrome
   after detach. See
   [docs/tool-reference.md § Device emulation](docs/tool-reference.md#device-emulation--set_locale--set_timezone--set_geolocation--set_color_scheme--set_reduced_motion--set_user_agent--grant_permissions).
-- **Three-layer storage-state (W-U7)** — the deferred Phase-2 bulk-state ask,
+- **Three-layer storage-state** — the deferred Phase-2 bulk-state ask,
   shipped as three layers so adopters don't have to round-trip a full blob to
   read one cookie. Capability split (no new gate): reads under `read`, writes
   under `action`.
