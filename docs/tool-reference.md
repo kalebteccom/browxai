@@ -223,6 +223,83 @@ Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Eac
 
 `count: 0` is the clean absence signal. No more overloading `find()` for presence/absence.
 
+### `extract` *(W-V11)*
+
+Structured, schema-driven data extraction — the primitive every browxai adopter currently rebuilds on top of `snapshot()`. The schema is the contract: partial matches surface in `evidence.partialMisses` (or `failure.partialMisses` when `required:true`), never silently coerced into a malformed object.
+
+**Default mode: `"deterministic"`** — selector-only. Each schema property lowers to a `find()`-style query or explicit selector scoped to the current subtree. No model-call in the substrate; the model-agnostic principle. `mode:"llm-assisted"` is a typed-but-unimplemented seam reserved for v0.2.x — calling it returns `{ok:false, failure:{kind:"llm-assisted-not-implemented"}}`.
+
+Args:
+- `schema` — a JSON-schema-flavoured shape (object/array/string/number/boolean; `properties` for objects, `items` for arrays). See the lowering rules below.
+- `ref` — scope to this ref's subtree (from a prior snapshot/find).
+- `scope` — scope to this CSS selector's first match. Invalid (zero matches) → structured `failure`, not an empty object. Mutually exclusive with `ref`.
+- `mode` — default `"deterministic"`; `"llm-assisted"` is the reserved seam.
+
+Returns `{ok:true, data:<schema-shaped>, evidence:{refsUsed,selectorsUsed,partialMisses}, tokensEstimate}` — or `{ok:false, failure:{source,kind,expected,actual,partialMisses?}, tokensEstimate}` for misses. `evidence.refsUsed` lets the agent `name_ref` / cache the elements the extraction actually drew from.
+
+#### Lowering rules
+
+Two paths, deliberately layered:
+
+1. **Implicit (the simple rule):** the property *name* is the query. A `{type:"string"}` property `"price"` looks for a node whose accessible name / testid contains `"price"` and reads its visible text. This is the path most testid-rich pages take.
+
+2. **Explicit (the escape hatch):** add `x-browx-source` per property to override. The fields (first-present wins in source-resolution order):
+   - `selector` — raw CSS / `selectorHint`, resolved against the current scope.
+   - `query` — natural-language query for the tree-scan ranker (overrides the implicit name).
+   - `attr` — read this HTML attribute (`"href"`, `"data-state"`).
+   - `prop` — read this DOM property (`"value"`, `"checked"`).
+   - `text` — explicit "read visible text" (the default when no read-mode hint is set).
+   - `value` — alias for `prop:"value"`.
+
+The implicit rule covers the headline case (testid-friendly pages) without ceremony; the explicit hint covers the cases where the property name carries no signal or the value isn't innerText.
+
+#### Per-property modifiers
+
+- `required: true` — a miss surfaces in `failure.partialMisses` and fails the extraction. Optional misses (default) only emit `evidence.partialMisses`.
+- `default` — fallback value applied when an optional miss occurs. The miss is still recorded in `evidence.partialMisses`.
+
+#### Lists (`type:"array"`)
+
+`{type:"array", items:<schema>, "x-browx-source":{collection:"<selectorOrQuery>"}}` finds the container elements and re-runs the inner schema scoped to each. The collection is tried first as a CSS selector; if zero matches, falls back to a tree-scan against the query.
+
+Arrays **without** an `x-browx-source.collection` are rejected as a partial miss — there is no defensible implicit default, and an empty list would lie about ground truth.
+
+#### Examples
+
+Simple object (implicit rule):
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "title": { "type": "string" },
+    "price": { "type": "number" }
+  }
+}
+```
+
+List with per-row sub-schema (explicit collection + mixed implicit/explicit fields):
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "rows": {
+      "type": "array",
+      "x-browx-source": { "collection": "tr.product-row" },
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "x-browx-source": { "selector": ".name" } },
+          "price": { "type": "number", "x-browx-source": { "selector": ".price" } },
+          "href":  { "type": "string", "x-browx-source": { "selector": "a", "attr": "href" } }
+        }
+      }
+    }
+  }
+}
+```
+
 ### `verify_visible` / `verify_text` / `verify_value` / `verify_count` / `verify_attribute` / `verify_predicate`
 
 Assertive read primitives. `wait_for` is **permissive** — it returns when satisfied OR when its deadline expires with `ok:false` as a normal outcome. The `verify_*` family is the **fail-emitting sibling**: each tool returns `{ok: true}` when the assertion holds *right now*, or `{ok: false, failure: {source, kind, expected, actual, evidence?}, tokensEstimate}` when it doesn't — so an agent loop terminates deterministically instead of relying on the LLM eyeballing a snapshot.

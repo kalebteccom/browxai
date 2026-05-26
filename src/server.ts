@@ -41,6 +41,7 @@ import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
 import { find } from "./page/find.js";
 import { textSearch } from "./page/text_search.js";
+import { extract, type ExtractSchema } from "./page/extract.js";
 import {
   verifyVisible,
   verifyText,
@@ -661,6 +662,50 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ query: text, ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       return { content: [{ type: "text", text: JSON.stringify({ query: text, ...result }, null, 2) }] };
+    },
+  );
+
+  // `extract` — structured, schema-driven data extraction (W-V11). The
+  // schema-as-contract primitive every adopter currently rebuilds on top
+  // of `snapshot()`. JSON-schema input (so it transports cleanly over MCP);
+  // deterministic mode lowers each property to a `find()`-style query or
+  // explicit selector via the `x-browx-source` annotation. LLM-assisted
+  // mode is reserved as a typed seam.
+  register(
+    "extract",
+    {
+      description:
+        "Structured, schema-driven data extraction. Returns {ok, data: <schema-shaped>, evidence:{refsUsed,selectorsUsed,partialMisses}, tokensEstimate} (or {ok:false, failure} for misses). The schema is the contract — partial / required misses surface in `evidence.partialMisses` / `failure.partialMisses`, never silently coerced into a malformed object. " +
+        "Deterministic by default: each property lowers to a selector-based query scoped to the current subtree. **Implicit rule**: the property *name* IS the find()-style query — `{type:\"string\"}` property \"price\" matches a node whose accessible name / testid contains \"price\". **Explicit escape hatch**: add `x-browx-source` per property to override — `{selector:\".price\"}` (raw CSS), `{query:\"the price label\"}` (NL query), `{attr:\"href\"}` (HTML attribute), `{prop:\"value\"}` (DOM property), `{value:true}` (form-control value). For lists: `{type:\"array\", items:<schema>, \"x-browx-source\":{collection:\"<selectorOrQuery>\"}}` — each match becomes a per-row scope for the inner schema; arrays without `collection` are rejected as partial misses (no defensible implicit default). " +
+        "Scope to a `ref` (registered) or `scope` (CSS selector); both absent = whole page. Invalid scope (no matches) → structured failure, not empty object. `mode:\"llm-assisted\"` is a typed-but-unimplemented seam reserved for v0.2.x; the deterministic path is the supported ship. Read-only.",
+      inputSchema: {
+        schema: z.record(z.unknown()).describe("JSON-schema-flavoured shape (object/array/string/number/boolean; `properties` for objects, `items` for arrays). `x-browx-source` per-property overrides the implicit name-as-query rule. `required:true` causes a miss to fail-emit; `default` supplies an optional-miss fallback."),
+        ref: z.string().optional().describe("Scope extraction to this ref's subtree (from a prior snapshot/find). Mutually exclusive with `scope`."),
+        scope: z.string().optional().describe("Scope extraction to this CSS selector's first match. Mutually exclusive with `ref`. Invalid (no matches) → structured failure."),
+        mode: z.enum(["deterministic", "llm-assisted"]).optional().describe("Default 'deterministic' (selector-only). 'llm-assisted' is a typed seam reserved for v0.2.x — returns ok:false with kind:'llm-assisted-not-implemented'."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("extract"); if (g) return g;
+      const e = await entryFor(args.session);
+      const s = e.session;
+      try {
+        const result = await withDeadline(
+          extract(s.page(), s.cdp(), e.refs, {
+            schema: args.schema as unknown as ExtractSchema,
+            ref: args.ref,
+            scope: args.scope,
+            mode: args.mode,
+            testAttributes: config.testAttributes,
+          }),
+          cfgActionTimeout(),
+          "extract",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, failure: { source: "browxai", kind: "internal", expected: "extract to complete", actual: err instanceof Error ? err.message : String(err) } }, null, 2) }] };
+      }
     },
   );
 
