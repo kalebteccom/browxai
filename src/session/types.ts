@@ -37,6 +37,17 @@ export interface SessionOptions {
    *  existing cookies / localStorage first. For BYOB/attached the value is
    *  ignored (not-owned: we don't mutate the consumer's Chrome). */
   storageState?: import("./storage.js").StorageStateBlob;
+  /** Enable HAR recording at context creation via Playwright's native
+   *  `recordHar` context option. Honoured by managed + incognito (we own the
+   *  context); ignored on BYOB/attached (not-owned). The HAR is finalized by
+   *  Playwright when the context closes. The path is workspace-rooted by
+   *  construction (resolved upstream). */
+  recordHar?: {
+    path: string;
+    mode?: "full" | "minimal";
+    content?: "embed" | "attach" | "omit";
+    urlFilter?: string | RegExp;
+  };
 }
 
 export interface BrowserSession {

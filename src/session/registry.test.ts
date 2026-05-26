@@ -3,6 +3,7 @@ import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry } from "./regist
 import { WedgeTracker } from "./wedge.js";
 import { DialogPolicyState } from "./dialog.js";
 import { newEmulationState } from "./emulation.js";
+import { newHarRecorderState } from "../page/har.js";
 
 // Fake entry — only the registry's own bookkeeping is under test here; the
 // browser wiring is exercised by integration, not unit, tests.
@@ -39,6 +40,7 @@ function fakeEntry(id: string): SessionEntry {
     wedge: new WedgeTracker(),
     dialog: new DialogPolicyState(),
     deviceEmulation: newEmulationState(),
+    har: newHarRecorderState(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     secrets: {} as any,
     openedAt: Date.now(),

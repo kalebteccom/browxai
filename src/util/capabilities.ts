@@ -196,6 +196,12 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   auth_load: "action",
   auth_list: "read",
   auth_delete: "action",
+  // HAR record/replay — `start_har` / `stop_har` both write/mutate session
+  // state and (in the case of start) reserve a workspace-rooted file path
+  // the context will write on close. Under `action` (sibling to the storage
+  // bulk writers); reuses an existing capability, no new gate to enable.
+  start_har: "action",
+  stop_har: "action",
   // secrets — per-session sensitive-data registry + egress masking. Off by
   // default; loud-warn one-time when a secret is registered. Mirrors
   // `eval` / `network-body` / `disableWebSecurity` posture. `register_secret`

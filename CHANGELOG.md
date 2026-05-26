@@ -25,6 +25,34 @@ surface" covers.
   debugging trap). Also in the batch whitelist so agents can compose
   freeze → action → release in a single batch. See
   [docs/tool-reference.md § Clock control](docs/tool-reference.md#clock-control--clock).
+- **HAR record / replay** — full-session reproducibility. Two new MCP tools
+  + an additive `open_session` schema extension; all under capability `action`.
+  - `start_har({path?, mode?, content?, urlFilter?})` — begin HAR recording on
+    a live session via `context.routeFromHAR(path, {update:true})`. Default
+    path `<workspace>/har/<session-id>-<ISO>.har`; workspace-escape rejected.
+    Re-calling on an already-active recorder transparently flushes the prior
+    one and swaps targets (`replacedPrior:true` on the result).
+  - `stop_har()` — remove the recording route. Returns the reserved path; if
+    the .har is already on disk and ≤ ~256 KB it's also inlined on the result.
+  - `open_session({har:{path?, mode?, content?, urlFilter?}})` — wire HAR at
+    context creation via Playwright's native `recordHar` (the blessed path
+    when the agent knows up-front it wants a HAR for the whole session).
+    Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's
+    Chrome is not-owned — `start_har` is the BYOB runtime path). Once wired
+    this way, `start_har` refuses + `stop_har` reports `nativeRecord:true` —
+    the native primitive can't be toggled off mid-session.
+  - `open_session({hars:["a.har", …]})` — REPLAY HAR(s) against the new
+    session. Each file is wired with `routeFromHAR(notFound:"fallback")`
+    post-create — requests in the archive are served from it, anything
+    missing falls through to live network. Workspace-rooted; a missing file
+    errors (no silent fallback on a typo).
+  - **Finalize timing** — Playwright writes the .har on `context.close()`,
+    so the canonical flow is `start_har → drive → stop_har → close_session`
+    → read the .har. Every result carries `finalizesOn:"close_session"` so
+    the constraint is visible rather than implicit.
+  - Both recording tools are in the batch whitelist so agents can compose
+    `start_har → navigate → … → stop_har` in one call. See
+    [docs/tool-reference.md § HAR record / replay](docs/tool-reference.md#har-record--replay--start_har--stop_har--open_sessionhar--open_sessionhars).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

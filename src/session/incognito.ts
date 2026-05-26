@@ -33,6 +33,9 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     // (the Playwright-native primitive for "open a fresh browser already
     // logged in as X"). No-op when unset.
     ...(opts.storageState ? { storageState: opts.storageState } : {}),
+    // HAR recording at context creation (native Playwright primitive).
+    // Finalized on context.close(). No-op when unset.
+    ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
   });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);

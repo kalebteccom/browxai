@@ -97,6 +97,17 @@ import { resolveWorkspace } from "./util/workspace.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
 import { NetworkBuffer, WsBuffer, fetchResponseBody } from "./page/network.js";
+import {
+  newHarRecorderState,
+  buildRecordHarOption,
+  startHar,
+  stopHar,
+  applyHarReplay,
+  resolveHarReplayPaths,
+  readHarIfSmall,
+  HAR_INLINE_CAP_BYTES,
+  type HarStartConfig,
+} from "./page/har.js";
 import * as actions from "./page/actions.js";
 import type { ActionContext } from "./page/actionresult.js";
 import { plan as planAction, execute as executeAction, PLAN_VERBS, type ActionDescriptor } from "./page/plan.js";
@@ -298,6 +309,23 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       } else if (spec?.storageState) {
         creationStorageState = spec.storageState;
       }
+      // Resolve HAR recording config (native context-creation primitive). The
+      // path is workspace-rooted by construction (resolveWorkspacePath rejects
+      // escape) and the parent dir is created up-front. Ignored on attached
+      // (we don't mutate the consumer's Chrome).
+      let creationRecordHar: { path: string; mode?: "full" | "minimal"; content?: "embed" | "attach" | "omit"; urlFilter?: string | RegExp } | undefined;
+      let creationRecordHarResolved: { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" } | undefined;
+      if (spec?.har) {
+        const built = buildRecordHarOption(workspace.root, id, spec.har);
+        creationRecordHar = built.recordHar;
+        creationRecordHarResolved = { path: built.path, mode: built.mode, content: built.content };
+      }
+      // Resolve replay HAR paths (workspace-escape rejected; missing file
+      // errors loudly so a typo doesn't silently fall back to live network).
+      let creationReplayHars: string[] | undefined;
+      if (spec?.hars && spec.hars.length) {
+        creationReplayHars = resolveHarReplayPaths(workspace.root, spec.hars, "open_session");
+      }
       let sess: BrowserSession;
       if (mode === "attached") {
         if (!opts.attachCdp) {
@@ -312,12 +340,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             "explicitly if you really mean to overwrite the attached browser's state.",
           );
         }
+        if (creationRecordHar) {
+          log.warn(
+            `session "${id}": ignoring \`har\` recording for attached/BYOB session — ` +
+            "the consumer's Chrome is not-owned and we don't wire context-creation primitives on it. " +
+            "Use `start_har` post-attach if you really want HAR on a BYOB session " +
+            "(it routes via runtime `routeFromHAR`, with the same finalize-on-context-close caveat).",
+          );
+          creationRecordHar = undefined;
+          creationRecordHarResolved = undefined;
+        }
         // Attached Chrome is not-owned: device emulation is best-effort
         // (viewport via Emulation in byob.ts); isMobile/touch/UA can't be
         // retro-applied to an existing context.
         sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
       } else if (mode === "incognito") {
-        sess = await openIncognitoSession({ headless, device, disableWebSecurity, storageState: creationStorageState });
+        sess = await openIncognitoSession({ headless, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar });
       } else {
         // persistent: the default session keeps the legacy single `profile`
         // dir for back-compat; named/explicit profiles get their own dir so
@@ -326,7 +364,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           id === DEFAULT_SESSION_ID && !spec?.profile
             ? workspace.sub("profile")
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
-        sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity, storageState: creationStorageState });
+        sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar });
+      }
+      // Initialise HAR recorder state. If `recordHar` was wired at context
+      // creation, mark the recorder `active + nativeRecord:true` so
+      // `start_har` / `stop_har` can refuse cleanly (the native path can't be
+      // toggled mid-session — Playwright finalizes it on context.close()).
+      const harState = newHarRecorderState();
+      if (creationRecordHarResolved) {
+        harState.active = true;
+        harState.nativeRecord = true;
+        harState.path = creationRecordHarResolved.path;
+        harState.mode = creationRecordHarResolved.mode;
+        harState.content = creationRecordHarResolved.content;
+        harState.startedAt = Date.now();
+      }
+      // Apply HAR replay file(s) post-create. `routeFromHAR` is wired with
+      // `notFound:"fallback"` so a request not in the archive falls through
+      // to live network — the safer default. Replay is honoured on every
+      // session mode (incl. attached: the consumer's Chrome receives the
+      // route handler scoped to its context; warning emitted up-stream).
+      if (creationReplayHars && creationReplayHars.length) {
+        await applyHarReplay(sess.page().context(), creationReplayHars);
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
@@ -394,6 +453,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         wedge: new WedgeTracker(),
         dialog: dialogState,
         deviceEmulation,
+        har: harState,
         secrets: secretsReg,
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
@@ -2403,6 +2463,97 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---- HAR record / replay ---------------------------------------------------
+  //
+  // Full-session reproducibility — capture every request the page made into a
+  // HAR file, then later replay with `open_session({hars:[file]})` so XHR/fetch
+  // are served from the archive. Recording sits under capability `action`
+  // (writes a file). Replay is wired at `open_session` time (no separate tool).
+  //
+  // Finalize timing. Playwright writes the HAR file on `context.close()` —
+  // there is no public mid-session flush. Both `start_har` (runtime) and
+  // `open_session({har})` (creation-time, native) hit the same constraint:
+  // the .har on disk is complete after `close_session`. `stop_har` removes
+  // the recording route so further requests aren't logged, but the file
+  // remains pending until session teardown.
+
+  register(
+    "start_har",
+    {
+      description:
+        "Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright's blessed native primitive — same finalize-on-close caveat). Capability `action`. Workspace-rooted paths only; traversal rejected.",
+      inputSchema: {
+        path: z.string().optional().describe("Workspace-rooted .har file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Rejected if it escapes `$BROWX_WORKSPACE`."),
+        mode: z.enum(["full", "minimal"]).optional().describe("`full` (default) records full HAR; `minimal` records only what `routeFromHAR` needs for replay."),
+        content: z.enum(["embed", "attach", "omit"]).optional().describe("Body persistence: `embed` (default, inline), `attach` (sidecar files / .zip entries), `omit` (drop bodies)."),
+        urlFilter: z.string().optional().describe("Optional glob/regex URL filter — only matching requests are stored."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ path, mode, content, urlFilter, session }) => {
+      const g = gateCheck("start_har"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("start_har", confirmCtxFor(e));
+        if (!c.ok) return denyContent("start_har", c);
+        const r = await withDeadline(
+          startHar(e.session.page().context(), e.har, workspace.root, e.id, { path, mode, content, urlFilter }),
+          cfgActionTimeout(),
+          "start_har",
+        );
+        return okText({
+          ok: true,
+          session: e.id,
+          path: r.path,
+          mode: r.mode,
+          content: r.content,
+          replacedPrior: r.replacedPrior,
+          finalizesOn: "close_session",
+          hint: "The HAR file is written to disk when the session closes (Playwright constraint). Call `close_session` to finalize; until then the file at `path` may be absent or incomplete. Re-call `start_har` to swap targets; `stop_har` removes the recording route.",
+        });
+      } catch (err) { return errText("start_har", err); }
+    },
+  );
+
+  register(
+    "stop_har",
+    {
+      description:
+        "Stop HAR recording on the current session. Removes the recording route so further requests aren't logged. **The HAR file is finalized only when the session closes** (`close_session`) — there is no mid-session flush on Playwright's native HAR pipeline. Returns the reserved path; if the file already exists on disk and is under ~256 KB, an inline `har` field is also returned (only happens once the context has actually been closed and re-opened with the same path; usually you'll just read the file after `close_session`). Re-recording within the same session: stop_har, then start_har again with a fresh path. Capability `action`.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("stop_har"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(
+          stopHar(e.session.page().context(), e.har),
+          cfgActionTimeout(),
+          "stop_har",
+        );
+        // Best-effort inline: only succeeds when the file already exists AND
+        // is under the cap. On the routeFromHAR(update:true) path that's
+        // typically not until close_session — surface the path either way so
+        // the caller can pick it up post-teardown.
+        const inline = r.path ? readHarIfSmall(r.path, HAR_INLINE_CAP_BYTES) : undefined;
+        return okText({
+          ok: true,
+          session: e.id,
+          wasActive: r.wasActive,
+          ...(r.path ? { path: r.path } : {}),
+          finalized: r.finalized,
+          nativeRecord: r.nativeRecord,
+          ...(inline !== undefined ? { har: inline, inlineBytes: Buffer.byteLength(inline, "utf8") } : {}),
+          hint: r.nativeRecord
+            ? "HAR was wired at session creation via `open_session({har})` — the native `recordHar` primitive can't be toggled off mid-session. The file will be written when `close_session` runs."
+            : r.wasActive
+              ? "Recording route removed. The .har file is finalized when `close_session` runs (Playwright constraint). To re-record in this session: call `start_har` again with a new `path`."
+              : "No HAR recorder was active.",
+        });
+      } catch (err) { return errText("stop_har", err); }
+    },
+  );
+
   register(
     "hover",
     {
@@ -2823,9 +2974,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         authState: z.string().optional().describe(
           "Named-state seed: load a slot from `$BROWX_WORKSPACE/.auth-states/<name>.json` (written by `auth_save`). Mutually exclusive with `storageState`.",
         ),
+        har: z.object({
+          path: z.string().optional()
+            .describe("Workspace-rooted HAR file path. Default: `<workspace>/har/<session-id>-<ISO>.har`. Path traversal outside `$BROWX_WORKSPACE` is rejected."),
+          mode: z.enum(["full", "minimal"]).optional()
+            .describe("`full` (default — full HAR with sizes/timing/cookies) or `minimal` (just enough to replay via `routeFromHAR`)."),
+          content: z.enum(["embed", "attach", "omit"]).optional()
+            .describe("Body persistence: `embed` (default for `.har`) inlines bodies, `attach` writes sidecar files (default for `.zip`), `omit` drops bodies."),
+          urlFilter: z.string().optional()
+            .describe("Optional glob/regex URL filter — only matching requests are stored."),
+        }).optional().describe(
+          "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
+        ),
+        hars: z.array(z.string()).optional().describe(
+          "REPLAY HAR file(s) — workspace-rooted paths. Each is wired via `context.routeFromHAR(file, {notFound:\"fallback\"})` immediately after context creation: requests in the archive are served from it, anything missing falls through to the live network. Path traversal rejected; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.",
+        ),
       },
     },
-    async ({ session, mode, profile, device, viewport, dialogPolicy, storageState, authState }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy, storageState, authState, har, hars }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
@@ -2836,11 +3002,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, storageState, authState });
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars });
+        const harField = e.har.path
+          ? { har: { path: e.har.path, mode: e.har.mode, content: e.har.content, nativeRecord: !!e.har.nativeRecord, finalizesOn: "close_session" as const } }
+          : {};
+        const replayField = hars && hars.length ? { harsReplay: hars.length } : {};
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString() }, null, 2),
+            text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString(), ...harField, ...replayField }, null, 2),
           }],
         };
       } catch (err) {
@@ -3507,6 +3677,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "eval_js", "list_named_refs", "name_ref", "find_feedback",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
     "network_emulate", "cpu_emulate", "clock",
+    "start_har", "stop_har",
   ]);
   const BATCH_MAX_CALLS = 32;
 

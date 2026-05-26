@@ -22,6 +22,7 @@ import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
+import type { HarRecorderState, HarStartConfig } from "../page/har.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -67,6 +68,12 @@ export interface SessionEntry {
    *  when a new page opens in the context. Distinct from `emulation`
    *  (which holds network/cpu throttling state). */
   deviceEmulation: DeviceEmulationState;
+  /** Per-session HAR recorder state (HTTP Archive record/replay). Drives the
+   *  `start_har`/`stop_har` tools and tracks any HAR wired at session creation
+   *  via `open_session({har})`. Capability `action` (writes a file). The HAR
+   *  file is finalized by Playwright on `context.close()` — the recorder state
+   *  carries the reserved path until then. */
+  har: HarRecorderState;
   /** per-session sensitive-data registry (capability `secrets`). Off by
    *  default — empty until `register_secret` is called. When non-empty, every
    *  egress sink masks occurrences of the real value back to `<NAME>` before
@@ -106,6 +113,16 @@ export interface OpenSpec {
    *  (`$BROWX_WORKSPACE/.auth-states/<name>.json`, written by `auth_save`).
    *  Mutually exclusive with `storageState`. */
   authState?: string;
+  /** Enable HAR recording at context creation (native Playwright `recordHar`).
+   *  The HAR is finalized when the session closes. For mid-session start/stop
+   *  use the `start_har`/`stop_har` tools instead — they wire HAR via
+   *  `routeFromHAR(update:true)` on the running context. */
+  har?: HarStartConfig;
+  /** Workspace-rooted HAR file path(s) to REPLAY against this session. Each
+   *  file is wired post-create with `context.routeFromHAR(file,
+   *  {notFound:"fallback"})` — requests in the archive are served from it,
+   *  anything missing falls through to the live network. */
+  hars?: string[];
 }
 
 export class SessionRegistry {

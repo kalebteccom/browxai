@@ -30,6 +30,9 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
     // No `--no-sandbox`. `--disable-web-security` only when the gated
     // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
     ...(insecureArgs.length ? { args: insecureArgs } : {}),
+    // HAR recording at context creation (native Playwright primitive).
+    // Finalized on context.close(). No-op when unset.
+    ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
   });
   const page = context.pages()[0] ?? (await context.newPage());
   const cdp = await context.newCDPSession(page);
