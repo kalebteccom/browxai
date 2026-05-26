@@ -16,6 +16,8 @@ import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
 import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { classifyFailure } from "../util/failure.js";
+import type { DialogPolicyState, DialogRecord } from "../session/dialog.js";
+import { UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -165,6 +167,20 @@ export interface ActionResult {
      *  correctness — e.g. that a click produced the expected broadcast. */
     wsFrames?: WsFrame[];
   };
+  /** `alert` / `confirm` / `prompt` / `beforeunload` dialogs that fired
+   *  during this action window. Empty/absent when none. Each carries the
+   *  dialog kind, the page-supplied message + default value, and what the
+   *  server's per-session `dialogPolicy` did with it (`accepted`, `dismissed`,
+   *  or `raised` — see `set_dialog_policy`). Independent of `ok`: a policy
+   *  of `accept`/`dismiss`/`accept-prompt-with:<text>` handles the dialog
+   *  and the action proceeds; `raise` mode dismisses server-side AND flips
+   *  `ok` to false with `failure.source:"app"`. */
+  dialogs?: Array<{
+    kind: DialogRecord["kind"];
+    message: string;
+    defaultValue?: string;
+    handledAs: DialogRecord["handledAs"];
+  }>;
   tokensEstimate: number;
   warnings: string[];
   error?: string;
@@ -202,6 +218,11 @@ export interface ActionContext {
   /** session WS/SSE frame ring. When present, frames that arrived during
    *  the action window are sliced into `ActionResult.network.wsFrames`. */
   ws?: import("./network.js").WsBuffer;
+  /** per-session dialog policy state. When present, dialogs that fired
+   *  during the action window are sliced into `ActionResult.dialogs[]`; if
+   *  any fired under `raise` mode the action is marked failed with the
+   *  documented hint. */
+  dialog?: DialogPolicyState;
 }
 
 export interface ActionWindowOptions {
@@ -303,6 +324,23 @@ export async function runInActionWindow(
   const postRegions = postTree ? topLevelRegions(postTree) : new Map();
   const network = await net.close();
 
+  // dialog capture — every alert/confirm/prompt that fired in the action
+  // window is sliced off the per-session buffer (DialogPolicyState). If the
+  // active policy was `raise` at fire time, the action is flipped to
+  // ok:false with a stable hint (UNHANDLED_DIALOG_HINT) — the page was
+  // dismissed server-side so it isn't deadlocked, but its app effect is the
+  // cancel branch and the caller almost certainly didn't want that.
+  const dialogSlice = ctx.dialog ? ctx.dialog.since(tBefore) : [];
+  const dialogRaised = ctx.dialog ? ctx.dialog.raisedSince(tBefore) : false;
+  if (dialogRaised && ok) {
+    // The page-op probably succeeded as a Playwright call, but a dialog the
+    // caller didn't opt to handle fired during the window. The agent-facing
+    // failure is the lack of a policy, not the page-op exception.
+    ok = false;
+    error = error ?? UNHANDLED_DIALOG_HINT;
+    failure = { source: "app", hint: UNHANDLED_DIALOG_HINT };
+  }
+
   // --- shape ---
   const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
   const structure = diffRegions(preRegions, postRegions);
@@ -357,8 +395,16 @@ export async function runInActionWindow(
         : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock, ...wsBlock }))
     : { summary: network.summary, ...mutationsBlock, ...wsBlock };
 
+  const dialogsBlock = dialogSlice.length > 0
+    ? dialogSlice.map((d) => {
+        const { ts: _ts, ...pub } = d;
+        return pub;
+      })
+    : undefined;
+
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
+    ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
   }));
 
   // append to recording when (a) action succeeded, (b) recording
@@ -388,6 +434,7 @@ export async function runInActionWindow(
     element: elementProbe,
     snapshotDelta,
     network: networkBlock,
+    ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
     tokensEstimate,
     warnings,
     error,

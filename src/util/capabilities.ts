@@ -125,6 +125,10 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // bind/resolve + profile snapshot/restore are `human` coordination.
   drag: "action",
   double_click: "action",
+  // per-session dialog policy mutator. Registers under `action` (it changes
+  // how subsequent actions respond to alert/confirm/prompt fires — a
+  // session-state knob, not a capability of its own).
+  set_dialog_policy: "action",
   mouse_down: "action",
   mouse_move: "action",
   mouse_up: "action",

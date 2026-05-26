@@ -11,6 +11,12 @@ import { resolveDevice } from "./session/device.js";
 import type { BrowserSession } from "./session/types.js";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
 import { WedgeTracker } from "./session/wedge.js";
+import {
+  DialogPolicyState,
+  attachDialogPolicy,
+  parseDialogPolicyArg,
+  type DialogPolicy,
+} from "./session/dialog.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
@@ -263,6 +269,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await wsBuf.attach();
       const br = new BrowxBridge();
       await br.attach(sess.page().context());
+      // dialog policy — install per-page on current + future pages.
+      // Default `raise` (deterministic anti-deadlock). `spec.dialogPolicy`
+      // is already a normalised `DialogPolicy` object; the string parsing
+      // happens at the open_session tool layer.
+      const dialogState = new DialogPolicyState(spec?.dialogPolicy ?? { mode: "raise" });
+      attachDialogPolicy(sess.page().context(), dialogState);
       // resolve overlay selectors fresh per session so a
       // `set_config({hideOverlaySelectors})` applies to the next
       // open_session without a server restart. Empty list → no-op.
@@ -285,6 +297,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         routes: new RouteRegistry(),
         regions: new RegionRegistry(),
         wedge: new WedgeTracker(),
+        dialog: dialogState,
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -367,6 +380,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     originPolicy,
     recorder: e.recorder,
     ws: e.ws,
+    dialog: e.dialog,
   });
 
   // resolve the effective anti-wedge deadline for a call —
@@ -2038,14 +2052,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           .describe("Playwright device-preset name (e.g. \"iPhone 14\", \"Pixel 7\", \"Desktop Chrome\") → viewport + DPR + isMobile + hasTouch + UA. Falls back to config `defaultDevice`. Best-effort on `attached`."),
         viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional()
           .describe("explicit viewport; overrides a preset's viewport. Falls back to config `defaultViewport`."),
+        dialogPolicy: z.string().optional()
+          .describe("How the session handles `alert`/`confirm`/`prompt` dialogs. One of: \"accept\" (auto-OK), \"dismiss\" (auto-cancel), \"accept-prompt-with:<text>\" (prompts answered with `<text>`; alert/confirm accepted), \"raise\" (DEFAULT — dialog dismissed server-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a dialog never silently changes app state under an unaware caller). Mutate at runtime with `set_dialog_policy`."),
       },
     },
-    async ({ session, mode, profile, device, viewport }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
+      let parsedDialogPolicy: DialogPolicy | undefined;
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport });
+        parsedDialogPolicy = dialogPolicy ? parseDialogPolicyArg(dialogPolicy) : undefined;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+      try {
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy });
         return {
           content: [{
             type: "text" as const,
@@ -2106,6 +2128,41 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         openedAt: new Date(e.openedAt).toISOString(),
       }));
       return { content: [{ type: "text" as const, text: JSON.stringify({ sessions: rows }, null, 2) }] };
+    },
+  );
+
+  register(
+    "set_dialog_policy",
+    {
+      description:
+        "Mutate the session's dialog policy at runtime. Governs how `alert` / `confirm` / `prompt` / `beforeunload` dialogs are handled when fired by the page — without a policy installed, a dialog blocks every subsequent browser event and the session deadlocks. Modes:\n" +
+        "  - \"accept\"               — accept every dialog (confirm/prompt → OK; prompt answers with the empty string).\n" +
+        "  - \"dismiss\"              — dismiss every dialog (confirm/prompt → Cancel).\n" +
+        "  - \"accept-prompt-with\"   — accept; prompts answer with `text` (required). Alert/confirm just accept.\n" +
+        "  - \"raise\"                — DEFAULT. Dialog is dismissed server-side so the page never deadlocks, but the next action returns ok:false with `failure:{source:\"app\", hint:\"unhandled dialog — set dialogPolicy\"}` so a dialog can't silently change app state under a caller that didn't opt in.\n" +
+        "Persists across navigation: the handler is re-installed on every new page within the session. The initial policy is set at `open_session({dialogPolicy})`; this tool replaces it. Returns the resolved policy. Fired dialogs surface on `ActionResult.dialogs[]`.",
+      inputSchema: {
+        mode: z.enum(["accept", "dismiss", "raise", "accept-prompt-with"]).describe("Policy mode — see tool description."),
+        text: z.string().optional().describe("Required when mode=\"accept-prompt-with\" — the answer text to send for prompts. Ignored for other modes."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("set_dialog_policy"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const next: DialogPolicy = args.mode === "accept-prompt-with"
+          ? { mode: "accept-prompt-with", text: args.text ?? "" }
+          : { mode: args.mode };
+        if (next.mode === "accept-prompt-with" && args.text === undefined) {
+          throw new Error('set_dialog_policy: mode "accept-prompt-with" requires `text`');
+        }
+        const resolved = e.dialog.set(next);
+        const tokensEstimate = estimateTokens(JSON.stringify(resolved));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session: e.id, policy: resolved, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
     },
   );
 

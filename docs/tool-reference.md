@@ -86,6 +86,18 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 - Config defaults `defaultDevice` / `defaultViewport` (via `set_config`) apply when `open_session` doesn't specify — pin "always test mobile" once at the user/project layer.
 - **`set_viewport({ session, width, height })`** — mid-session resize for responsive-breakpoint testing. Returns an `ActionResult` (re-layout commonly triggers responsive re-render / lazy-load → `structure`/`snapshotDelta`/`network` show it). **Only the size changes live**; full device emulation (`isMobile`/`hasTouch`/UA/DPR) is creation-time (Playwright context constraint) and **best-effort on `attached`** (not-owned Chrome — viewport via CDP `Emulation`, no isMobile/touch retro-fit). Unknown preset names return a clear error listing examples.
 
+**Dialog policy** (`alert` / `confirm` / `prompt` / `beforeunload`):
+
+- An `alert` / `confirm` / `prompt` dialog blocks every subsequent browser event until handled — without a server-side handler the session deadlocks. browxai installs `page.on('dialog')` on every page in every session mode (persistent / incognito / attached) and routes each fired dialog through the per-session policy.
+- `open_session({ session, dialogPolicy: "<mode>" })` — set the initial policy. Modes:
+  - `"accept"` — accept every dialog (confirm/prompt → OK; prompt answer = empty string).
+  - `"dismiss"` — dismiss every dialog (confirm/prompt → Cancel).
+  - `"accept-prompt-with:<text>"` — accept; prompts get `<text>` as their answer. Alert/confirm just accept.
+  - `"raise"` — **DEFAULT.** Dialog is dismissed server-side so the page never deadlocks, but the next action returns `ok:false` + `failure:{source:"app", hint:"unhandled dialog — set dialogPolicy …"}`. Prevents a dialog from silently changing app state under a caller that didn't opt in.
+- **`set_dialog_policy({ session, mode, text? })`** — mutate the policy at runtime. `mode:"accept-prompt-with"` requires `text`. Persists across navigation: the handler is re-installed on every new page within the session. Returns the resolved policy. Capability: `action`.
+- Fired dialogs surface on `ActionResult.dialogs[] = [{ kind: "alert"|"confirm"|"prompt"|"beforeunload", message, defaultValue?, handledAs: "accepted"|"dismissed"|"raised" }]` — independent of `ok` (a successful action that happened to fire a dialog under an `accept`/`dismiss`/`accept-prompt-with` policy reports the dialog in this array; `raise` mode additionally flips `ok` to false).
+- **Attached (BYOB) sessions:** policy applies to all pages in the contexts browxai is attached to. If the human navigates the external Chrome to a brand-new tab outside browxai's awareness, that tab's dialogs are not routed through this policy — they're handled by whatever the underlying Chrome instance does (typically auto-dismissal).
+
 ## Read-only tools
 
 > **URL redaction is default-on.** Every surface that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response *body* remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
@@ -536,6 +548,14 @@ Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, 
         "ok": true, "durationMs": 142, "responseShape": ["id", "date", "type", "task"] }
     ]
   },
+
+  // dialogs fired during the action window — absent when none. Independent of
+  // `ok`: under accept/dismiss/accept-prompt-with the dialog is handled and the
+  // action proceeds; under `raise` (default) the page is dismissed server-side
+  // AND `ok` is flipped to false with `failure:{source:"app", hint:"…"}`.
+  "dialogs": [
+    { "kind": "confirm", "message": "Delete this record?", "handledAs": "accepted" }
+  ],
 
   "tokensEstimate": 180,
   "warnings": [],

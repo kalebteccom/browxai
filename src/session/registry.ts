@@ -17,6 +17,7 @@ import type { ClipboardBuffer } from "../page/clipboard.js";
 import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
 import type { WedgeTracker } from "./wedge.js";
+import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -45,6 +46,10 @@ export interface SessionEntry {
   /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
+  /** per-session dialog policy + per-page handler bookkeeping. Survives
+   *  navigation: the `context.on('page')` install re-attaches the handler on
+   *  every new page (capability `action` — no separate capability). */
+  dialog: DialogPolicyState;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
@@ -63,6 +68,9 @@ export interface OpenSpec {
   device?: string;
   /** explicit viewport; overrides a preset's viewport. */
   viewport?: { width: number; height: number };
+  /** initial dialog policy for this session (default `{mode:"raise"}`).
+   *  Mutable at runtime via `set_dialog_policy`; see src/session/dialog.ts. */
+  dialogPolicy?: DialogPolicy;
 }
 
 export class SessionRegistry {

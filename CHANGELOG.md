@@ -47,6 +47,19 @@ surface" covers.
   of truth used by both `verify_predicate` and `batch.expect`, so the
   semantic primitives stay aligned across the assertive and per-batch-call
   assertion surfaces.
+- **Per-session `dialogPolicy` + `set_dialog_policy`** — first-class handling
+  for `alert` / `confirm` / `prompt` / `beforeunload`. Without a policy a
+  fired dialog blocks every subsequent browser event (the session deadlocks);
+  browxai now installs `page.on('dialog')` on every page across all session
+  modes (persistent / incognito / attached) and routes each fire through the
+  session policy. Modes: `accept`, `dismiss`, `accept-prompt-with:<text>`,
+  and `raise` (DEFAULT — dismisses server-side so the page never deadlocks
+  AND fails the next action with `failure:{source:"app", hint:"unhandled
+  dialog — set dialogPolicy"}` so a dialog can't silently change app state
+  under an unaware caller). Set at `open_session({dialogPolicy})`; mutate
+  at runtime with `set_dialog_policy({mode, text?})`. Fired dialogs surface
+  on `ActionResult.dialogs[]`. Additive; default keeps pre-existing callers
+  safe (no silent auto-accept). Capability: `action`.
 
 ## [0.1.0] - 2026-05-20
 
