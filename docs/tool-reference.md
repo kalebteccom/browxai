@@ -589,6 +589,13 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 ### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
 Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name, bytes, mimeType?, target, fileCount }` (`bytes`/`target`/`fileCount` for debugging a bad upload; `mimeType` set in content-mode). Gated by the off-by-default **`file-io`** capability. No agent JS.
 
+### `pdf_save({ path?, format?, scale?, printBackground?, session? })`
+Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF` under the hood) — the first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog through `shortcut`. The mirror of `upload_file`: file-io OUT instead of IN.
+
+Defaults are what an agent reaching for "save the page as a PDF" expects without reading the docs: `format:"A4"`, `scale:1`, `printBackground:false` (matches browser-print's default — opt in when background colour / imagery matters for the artefact). `path` is resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; omit it for a default `pdfs/<sessionId>-<ts>.pdf`. `format` accepts every Playwright paper preset (`Letter`/`Legal`/`Tabloid`/`Ledger`/`A0`–`A6`). `scale` is bounded `[0.1, 2.0]` (Playwright's CDP-layer clamp; out-of-band values are rejected up-front with a clearer error). → `{ ok, path, bytes, format, scale, printBackground }`.
+
+**Chromium constraint.** `page.pdf()` is Chromium-only — every browxai session is Chromium so that's fine. The tool layer **refuses cleanly on `attached` (BYOB) sessions**: driving PrintToPDF on a human's own Chrome would surface a print dialog / mutate the human's window state, so refusal lands before any Playwright call is made. Open a managed session (`open_session({mode:"persistent"})` or `{mode:"incognito"}`) and re-run `pdf_save` against that. Capability `action`.
+
 ### Download capture — `downloads_capture` / `download_get`
 
 The reverse direction of `upload_file`: intercept page-initiated downloads,

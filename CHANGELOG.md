@@ -20,6 +20,27 @@ surface" covers.
   `wheel` and ignore the element-level `scroll` path. Net-additive — one new
   tool under capability `action`. See
   [docs/tool-reference.md § Pointer gestures](docs/tool-reference.md#pointer-gestures--drag--double_click--mouse_down--mouse_move--mouse_up--mouse_wheel).
+- **`pdf_save`** — print the current page to a workspace-rooted PDF via
+  Playwright `page.pdf()` (CDP `Page.printToPDF` under the hood). The mirror
+  of `upload_file`: file-io OUT instead of IN — the first-class alternative
+  to screenshot-and-OCR or driving the browser's print-to-file dialog through
+  `shortcut`. Defaults match what an agent reaching for "save the page as a
+  PDF" expects without reading the docs: `format:"A4"`, `scale:1`,
+  `printBackground:false` (matches browser-print's default; opt in when
+  background colour / imagery matters). `path` is resolved **inside
+  `$BROWX_WORKSPACE` only** (escape rejected, same resolver as `start_har` /
+  `dump_storage_state`); omit it for a default `pdfs/<sessionId>-<ts>.pdf`.
+  `format` accepts every Playwright paper preset (`Letter` / `Legal` /
+  `Tabloid` / `Ledger` / `A0`–`A6`); `scale` is bounded `[0.1, 2.0]`
+  (Playwright's CDP-layer clamp; out-of-band values rejected up-front with a
+  clearer error). Net-additive — one new tool under capability `action`,
+  no new capability gate. **Chromium constraint:** `page.pdf()` is
+  Chromium-only (every browxai session is Chromium so that's fine), and the
+  tool layer refuses cleanly on `attached` / BYOB sessions before any
+  Playwright call is made — driving PrintToPDF on a human's own Chrome would
+  surface a print dialog / mutate window state. Open a managed
+  (`persistent` / `incognito`) session and re-run there. See
+  [docs/tool-reference.md § `pdf_save`](docs/tool-reference.md#pdf_save--path-format-scale-printbackground-session-).
 - **`seed_random`** — per-session deterministic `Math.random` override. Injects
   a Mulberry32 PRNG via Playwright `context.addInitScript`, seeded by the
   caller-supplied integer in `[0, 2^32 - 1]`. The current page's main realm is

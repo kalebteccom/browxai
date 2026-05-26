@@ -218,6 +218,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // capability, workspace-rooted paths only.
   downloads_capture: "file-io",
   download_get: "file-io",
+  // PDF save — print the current page to a workspace-rooted PDF. Mirror of
+  // `upload_file` (file-io OUT instead of IN), but under `action` not
+  // `file-io`: the consequential write is to the *workspace* only (no
+  // user-filesystem read like `upload_file`'s `path` mode), so it sits with
+  // the other DOM-mutating / state-mutating writers. Refused on `attached`
+  // sessions at the tool layer — see src/page/pdf.ts.
+  pdf_save: "action",
   // Three-layer storage-state (Phase 3.5).
   //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
   //   writes (`*_set`, `*_delete`, `*_clear`,

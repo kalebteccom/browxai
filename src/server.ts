@@ -89,6 +89,7 @@ import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
 import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
+import { pdfSave, assertPdfSupported } from "./page/pdf.js";
 import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
@@ -2687,6 +2688,48 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         if (!args.pathOnly) body.content = r.base64;
         const json = JSON.stringify(body);
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `pdf_save` — print the current page to a workspace-rooted PDF via
+  // Playwright `page.pdf()` (CDP `Page.printToPDF`). The mirror of
+  // `upload_file`: file-io OUT instead of IN. Chromium-only (every browxai
+  // session is Chromium so that's fine); refuses cleanly on `attached`/BYOB
+  // sessions where driving PrintToPDF would surface a print dialog / mutate
+  // the human's window state. Workspace-rooted by construction.
+  register(
+    "pdf_save",
+    {
+      description:
+        "Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF`). The first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog with `shortcut`. → `{ ok, path, bytes, format, scale, printBackground }`. Defaults: `format:\"A4\"`, `scale:1`, `printBackground:false` (matches browser-print's default — opt in when background colour/imagery matters). Output `path` is resolved INSIDE `$BROWX_WORKSPACE` (a path escaping the workspace is rejected); omit it for a default `pdfs/<sessionId>-<ts>.pdf`. **Refuses on `attached`/BYOB sessions** — `page.pdf()` drives Chromium's PrintToPDF and would mutate the human's window state; open a managed (`persistent`/`incognito`) session and re-run there. Capability `action`.",
+      inputSchema: {
+        path: z.string().optional().describe("Workspace-rooted file path for the PDF. Default `pdfs/<sessionId>-<ts>.pdf`. Rejected if it escapes $BROWX_WORKSPACE."),
+        format: z.enum(["Letter", "Legal", "Tabloid", "Ledger", "A0", "A1", "A2", "A3", "A4", "A5", "A6"]).optional().describe("Paper format. Default \"A4\"."),
+        scale: z.number().min(0.1).max(2.0).optional().describe("Render scale. Default 1. Bounded to [0.1, 2.0] (Playwright's CDP-layer clamp)."),
+        printBackground: z.boolean().optional().describe("Include CSS background-color / background-image. Default false (matches browser-print default)."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("pdf_save"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const refused = assertPdfSupported({ mode: e.mode });
+        if (refused) {
+          const body = { ok: false, error: refused.error, hint: refused.hint };
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+        }
+        const r = await withDeadline(
+          pdfSave(e.session.page(), workspace.root, e.id, {
+            path: args.path, format: args.format, scale: args.scale, printBackground: args.printBackground,
+          }),
+          cfgActionTimeout(),
+          "pdf_save",
+        );
+        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
