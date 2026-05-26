@@ -10,12 +10,12 @@
 // Format: minimal site-docs-flavoured YAML (the canonical shape lives in the
 // site-docs repo; consumers can post-process if they need a different dialect).
 
-import type { ActionDescriptor } from "./actionresult.js";
+import type { DispatchedAction } from "./actionresult.js";
 import type { FindCandidate } from "./find.js";
 
 export interface RecordedStep {
   id: string;
-  action: ActionDescriptor;
+  action: DispatchedAction;
   url: string;
   selectorHint?: string;
   /** Stability of the locator at calibration time. Phase-1.5 friend. */
@@ -46,7 +46,7 @@ export class Recorder {
    *  passes the descriptor + the URL it ended at + whatever selectorHint was
    *  used to resolve the target. Best-effort: if no recording is active, this
    *  is a no-op. */
-  record(descriptor: ActionDescriptor, url: string, hint?: { selectorHint: string; stability?: FindCandidate["stability"] }): void {
+  record(descriptor: DispatchedAction, url: string, hint?: { selectorHint: string; stability?: FindCandidate["stability"] }): void {
     if (!this.name) return;
     const id = this.suggestId(descriptor);
     this.steps.push({ id, action: descriptor, url, selectorHint: hint?.selectorHint, stability: hint?.stability, ts: Date.now() });
@@ -75,7 +75,7 @@ export class Recorder {
     return { name, yaml, stepCount };
   }
 
-  private suggestId(d: ActionDescriptor): string {
+  private suggestId(d: DispatchedAction): string {
     const base =
       d.type === "navigate" ? "open" :
       d.type === "click" ? "click" :

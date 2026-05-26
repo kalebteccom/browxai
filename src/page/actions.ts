@@ -6,7 +6,7 @@ import type { Locator, Page } from "playwright-core";
 import {
   runInActionWindow,
   type ActionContext,
-  type ActionDescriptor,
+  type DispatchedAction,
   type ActionResult,
   type ActionWindowOptions,
   type ElementProbe,
@@ -21,7 +21,7 @@ const DEFAULT_TIMEOUT_MS = 5_000;
 
 export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "click", ...targetDescriptor(args.target) };
+  const descriptor: DispatchedAction = { type: "click", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
   const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
   return runInActionWindow(ctx, descriptor, opts, async () => {
@@ -48,7 +48,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
 
 export interface FillArgs extends ActionWindowOptions { target: ActionTarget; value: string; }
 export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "fill", value: args.value, ...refOrSelector(args.target) };
+  const descriptor: DispatchedAction = { type: "fill", value: args.value, ...refOrSelector(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
@@ -59,7 +59,7 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
 
 export interface NavigateArgs extends ActionWindowOptions { url: string; }
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "navigate", url: args.url };
+  const descriptor: DispatchedAction = { type: "navigate", url: args.url };
   return runInActionWindow(ctx, descriptor, args, async () => {
     await ctx.page.goto(args.url, { waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
   });
@@ -67,7 +67,7 @@ export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<
 
 export interface PressArgs extends ActionWindowOptions { target?: ActionTarget; key: string; }
 export async function press(ctx: ActionContext, args: PressArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "press", value: args.key, ...(args.target ? refOrSelector(args.target) : {}) };
+  const descriptor: DispatchedAction = { type: "press", value: args.key, ...(args.target ? refOrSelector(args.target) : {}) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target) {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
@@ -82,7 +82,7 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
 
 export interface HoverArgs extends ActionWindowOptions { target: ActionTarget; }
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "hover", ...targetDescriptor(args.target) };
+  const descriptor: DispatchedAction = { type: "hover", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
   const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
   return runInActionWindow(ctx, descriptor, opts, async () => {
@@ -100,7 +100,7 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
 
 export interface SelectArgs extends ActionWindowOptions { target: ActionTarget; values: string[]; }
 export async function select(ctx: ActionContext, args: SelectArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "select", value: args.values.join(", "), ...refOrSelector(args.target) };
+  const descriptor: DispatchedAction = { type: "select", value: args.values.join(", "), ...refOrSelector(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
@@ -122,7 +122,7 @@ export interface WaitForArgs extends ActionWindowOptions {
 export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<ActionResult> {
   const timeout = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (args.text !== undefined) {
-    const descriptor: ActionDescriptor = { type: "waitFor", value: `text:${args.text}` };
+    const descriptor: DispatchedAction = { type: "waitFor", value: `text:${args.text}` };
     const wanted = args.text;
     return runInActionWindow(ctx, descriptor, args, async () => {
       // true substring match (case-insensitive, whitespace-trimmed)
@@ -140,7 +140,7 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
     throw new Error("wait_for: pass a `target` (ref/selector/named/coords) or `text`");
   }
   const target = args.target;
-  const descriptor: ActionDescriptor = { type: "waitFor", ...refOrSelector(target) };
+  const descriptor: DispatchedAction = { type: "waitFor", ...refOrSelector(target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, target);
     await loc.waitFor({ state: "visible", timeout });
@@ -192,7 +192,7 @@ export function scrollMode(args: ScrollArgs): ScrollMode {
 }
 
 export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = {
+  const descriptor: DispatchedAction = {
     type: "scroll",
     value: args.to ?? (args.by ? `by ${args.by.x ?? 0},${args.by.y ?? 0}` : "into-view"),
     ...(args.target ? refOrSelector(args.target) : {}),
@@ -299,7 +299,7 @@ export interface SetViewportArgs extends ActionWindowOptions { width: number; he
  *  Device emulation (isMobile/touch/UA/DPR) is creation-time only; this only
  *  changes the size. */
 export async function setViewport(ctx: ActionContext, args: SetViewportArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "setViewport", value: `${args.width}x${args.height}` };
+  const descriptor: DispatchedAction = { type: "setViewport", value: `${args.width}x${args.height}` };
   return runInActionWindow(ctx, descriptor, args, async () => {
     await ctx.page.setViewportSize({ width: args.width, height: args.height });
     return { stillAttached: true };
@@ -326,7 +326,7 @@ export interface ChooseOptionArgs extends ActionWindowOptions {
  * the wrong option in dense lists.
  */
 export async function chooseOption(ctx: ActionContext, args: ChooseOptionArgs): Promise<ActionResult> {
-  const descriptor: ActionDescriptor = { type: "chooseOption", value: args.option, ...targetDescriptor(args.target) };
+  const descriptor: DispatchedAction = { type: "chooseOption", value: args.option, ...targetDescriptor(args.target) };
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target.coords) {
       throw new Error("choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords");
@@ -393,7 +393,7 @@ function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
 }
 
 function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } {
-  // ActionDescriptor's `ref`/`selector` fields are advisory metadata for the
+  // DispatchedAction's `ref`/`selector` fields are advisory metadata for the
   // recording layer; coords targets simply omit them.
   return refOrSelector(t);
 }

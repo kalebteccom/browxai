@@ -19,7 +19,15 @@ import { classifyFailure } from "../util/failure.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
-export interface ActionDescriptor {
+/**
+ * Internal record of the action being dispatched, attached to every
+ * `ActionResult` as `action: {type,...}` so the result is self-describing.
+ * NOT the same shape as the public `ActionDescriptor` returned by `plan()` —
+ * that one (see `./plan.ts`) carries bound evidence + expiry + a verb-args
+ * envelope; this one is the leaner internal label the action-window writes
+ * into the result envelope.
+ */
+export interface DispatchedAction {
   type: string;
   ref?: string;
   selector?: string;
@@ -113,7 +121,7 @@ export interface HitPoint {
 
 export interface ActionResult {
   ok: boolean;
-  action: ActionDescriptor;
+  action: DispatchedAction;
   navigation: {
     changed: boolean;
     from: string;
@@ -232,7 +240,7 @@ export interface ActionWindowOptions {
  */
 export async function runInActionWindow(
   ctx: ActionContext,
-  descriptor: ActionDescriptor,
+  descriptor: DispatchedAction,
   opts: ActionWindowOptions,
   body: () => Promise<ElementProbe | void>,
 ): Promise<ActionResult> {
