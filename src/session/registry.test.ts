@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry } from "./registry.js";
 import { WedgeTracker } from "./wedge.js";
+import { SessionMetrics } from "./metrics.js";
 import { DialogPolicyState } from "./dialog.js";
 import { newEmulationState } from "./emulation.js";
 import { newHarRecorderState } from "../page/har.js";
@@ -41,6 +42,7 @@ function fakeEntry(id: string): SessionEntry {
     seededRandom: {} as any,
     perf: {} as any,
     wedge: new WedgeTracker(),
+    metrics: new SessionMetrics(),
     dialog: new DialogPolicyState(),
     deviceEmulation: newEmulationState(),
     har: newHarRecorderState(),

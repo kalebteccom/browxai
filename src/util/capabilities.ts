@@ -190,6 +190,11 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // in-page overlay) — `read`.
   screenshot_marks: "read",
   export_session_report: "read",
+  // Sibling to `export_session_report`: rolls up the session's cumulative
+  // tool-call metrics (counts, latency, tokensEstimate sum, capability denials,
+  // per-tool errors). Read-only — accumulates dispatch envelope data the server
+  // already has, no new side-effect.
+  session_metrics: "read",
   // Trace-export sibling to `export_session_report`: lowers the session's
   // recorded action trace to a runnable `@playwright/test` spec file. Under
   // `read` — exports recorded state, dispatches no new action.

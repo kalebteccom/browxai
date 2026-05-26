@@ -42,6 +42,7 @@ import {
   type LoadedExtension,
 } from "./session/extensions.js";
 import { WedgeTracker } from "./session/wedge.js";
+import { SessionMetrics, type DispatchOutcome } from "./session/metrics.js";
 import {
   DialogPolicyState,
   attachDialogPolicy,
@@ -518,6 +519,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         seededRandom: new SeededRandomRegistry(),
         perf: new PerfTracingState(),
         wedge: new WedgeTracker(),
+        metrics: new SessionMetrics(),
         dialog: dialogState,
         deviceEmulation,
         har: harState,
@@ -694,10 +696,49 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     };
   };
 
+  // Classify a dispatched tool result for the per-session metrics
+  // counter. We piggyback on `firstJsonResult` (already defined above) so we
+  // don't pay a second parse. A capability-denied result is the JSON shape the
+  // `gateCheck` helper emits (carries `requiredCapability`); any other
+  // `ok:false` result is an error; everything else is `ok`. The
+  // `tokensEstimate` field is read straight off the envelope when present —
+  // most tools surface it via the standard helper, but image-only / non-JSON
+  // results legitimately don't and that's fine (treated as 0).
+  const classifyOutcome = (res: ToolResponse): { outcome: DispatchOutcome; tokensEstimate?: number } => {
+    const parsed = firstJsonResult(res);
+    if (!parsed) return { outcome: "ok" };
+    const obj = parsed.obj;
+    const tokens = typeof obj.tokensEstimate === "number" ? obj.tokensEstimate : undefined;
+    if (obj.ok === false) {
+      // Capability-denied shape (see `gateCheck`): carries `requiredCapability`.
+      // The denial path is a config-shape signal, not a tool-error signal —
+      // bucket it separately.
+      if (Object.prototype.hasOwnProperty.call(obj, "requiredCapability")) {
+        return { outcome: "denied", tokensEstimate: tokens };
+      }
+      return { outcome: "error", tokensEstimate: tokens };
+    }
+    return { outcome: "ok", tokensEstimate: tokens };
+  };
+
+  /** Record one dispatch on the session's metrics counter — peek-only on the
+   *  registry. Calls against a not-yet-open session (e.g. a capability denial
+   *  fired before the lazy session creation) are silently skipped: there's no
+   *  SessionEntry to accumulate against, and the denial is still visible at the
+   *  capability layer. Same posture as `noteWedgeOutcome` above. */
+  const noteMetrics = (toolName: string, args: unknown, res: ToolResponse, startedAt: number): void => {
+    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
+    const entry = registry.peek(sessionId);
+    if (!entry) return;
+    const { outcome, tokensEstimate } = classifyOutcome(res);
+    entry.metrics.record(toolName, outcome, Date.now() - startedAt, tokensEstimate);
+  };
+
   // Wrapper that preserves the inner handler's parameter type for typechecking
   // (destructuring inside each registration still works) but stores a
   // type-erased copy for `batch` dispatch. Page-exercising tools additionally
-  // route their result through the W-T1 wedge tracker.
+  // route their result through the W-T1 wedge tracker; every tool is timed +
+  // counted on the session's per-session metrics rollup.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const register = <H extends (...a: any[]) => Promise<ToolResponse>>(
     name: string,
@@ -707,9 +748,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   ): void => {
     const raw = handler as (args: unknown) => Promise<ToolResponse>;
     const tracked = WEDGE_TRACKED_CAPABILITIES.has(TOOL_CAPABILITY[name] ?? "");
-    const wrapped: (args: unknown) => Promise<ToolResponse> = tracked
-      ? async (args: unknown) => noteWedgeOutcome(args, await raw(args))
-      : raw;
+    const wrapped: (args: unknown) => Promise<ToolResponse> = async (args: unknown) => {
+      const startedAt = Date.now();
+      const inner = tracked ? noteWedgeOutcome(args, await raw(args)) : await raw(args);
+      noteMetrics(name, args, inner, startedAt);
+      return inner;
+    };
     toolHandlers[name] = wrapped;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (server.registerTool as any)(name, def, wrapped);
@@ -2320,6 +2364,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
+    },
+  );
+
+  register(
+    "session_metrics",
+    {
+      description:
+        "Per-session cumulative tool-call metrics — counts, latency, `tokensEstimate` sum, capability denials, and per-tool error counts. Piggybacks on the existing per-call envelope data (no new instrumentation, no disk writes). Pairs with `export_session_report` (which bundles the session's QA EVIDENCE — url, console errors, recent network summary, named regions, live sessions); this one rolls up DISPATCH EVIDENCE so a consumer can audit which tools the agent leaned on, how token-expensive each got, and whether the agent kept hitting a capability gate that's off. Read-only (capability `read`). → `{ ok, session, callsByTool, durationMsByTool, errorsByTool, tokensEstimateSum, capabilityDenials, sessionStartedAt, sessionDurationMs, tokensEstimate }`.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("session_metrics"); if (g) return g;
+      const e = await entryFor(session);
+      const snap = e.metrics.snapshot();
+      const body = {
+        ok: true as const,
+        session: e.id,
+        ...snap,
+        tokensEstimate: 0,
+      };
+      body.tokensEstimate = estimateTokens(JSON.stringify(body));
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
     },
   );
 
@@ -4564,6 +4630,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
     "eval_js", "list_named_refs", "name_ref", "find_feedback", "generate_locator",
     "approve_actions", "list_approvals", "get_config", "list_sessions",
+    "session_metrics",
     "network_emulate", "cpu_emulate", "clock", "seed_random",
     "start_har", "stop_har",
     "perf_start", "perf_stop", "perf_insights",

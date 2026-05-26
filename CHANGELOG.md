@@ -61,6 +61,28 @@ surface" covers.
   rejected; each inner tool's own gateCheck still fires through the batch
   handler map). See [docs/tool-reference.md §
   `flake_check`](docs/tool-reference.md#flake_check-calls-n-stoponallgreen).
+- **`session_metrics`** — per-session cumulative tool-call rollup. One read-only
+  tool, capability `read`. Returns `{callsByTool, durationMsByTool,
+  errorsByTool, tokensEstimateSum, capabilityDenials, sessionStartedAt,
+  sessionDurationMs}`. Accumulated server-side in the existing dispatch
+  wrapper — no new instrumentation in tool handlers, no per-call disk writes;
+  piggybacks on the per-call `tokensEstimate` envelope field and the dispatch
+  latency the wrapper already measures. Pairs with `export_session_report`:
+  that one bundles the session's **QA evidence** (url, console errors, recent
+  network summary, named regions, live sessions); this one rolls up the
+  session's **dispatch evidence** (what the agent ran, how token-expensive it
+  got, what got refused at the capability gate, which tools kept erroring).
+  `capabilityDenials` is intentionally a session-wide scalar, not per-tool —
+  the denial shape is a property of the capability config, not the tool, so
+  the count alone is the actionable signal. `errorsByTool` counts `ok:false`
+  results that were NOT capability denials. Available in the `batch`
+  whitelist for compose-and-measure flows. Replay-artifact pairing: an
+  **rrweb / video session replay** primitive (a la Browserbase) is not
+  shipped in this cycle — `session_metrics + export_session_report` covers
+  the JSON/numeric audit half; recording the visual stream is a bigger lift
+  tracked separately. See
+  [docs/tool-reference.md § Visual regions + cross-session + session report](docs/tool-reference.md#visual-regions--cross-session--session-report).
+
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows

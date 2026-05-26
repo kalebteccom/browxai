@@ -21,6 +21,7 @@ import type { ClockRegistry } from "../page/clock.js";
 import type { SeededRandomRegistry } from "../page/seed-random.js";
 import type { PerfTracingState } from "../page/perf.js";
 import type { WedgeTracker } from "./wedge.js";
+import type { SessionMetrics } from "./metrics.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
@@ -71,6 +72,11 @@ export interface SessionEntry {
   /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
+  /** Per-session cumulative tool-call metrics (counts, latency,
+   *  tokensEstimate sum, capability denials, errors). Accumulated by the
+   *  dispatch wrapper in `server.ts`; surfaced via the `session_metrics`
+   *  tool. Read-only from the agent's side — no per-call disk writes. */
+  metrics: SessionMetrics;
   /** per-session dialog policy + per-page handler bookkeeping. Survives
    *  navigation: the `context.on('page')` install re-attaches the handler on
    *  every new page (capability `action` — no separate capability). */
