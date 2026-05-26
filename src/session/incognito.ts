@@ -29,6 +29,12 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
   });
   const context = await browser.newContext({
     ...(opts.device ?? {}),
+    // Accept downloads at the context level so the per-session
+    // `DownloadsRegistry` (off-by-default) can intercept them on demand.
+    // The registry discards artefacts when capture is off — `acceptDownloads`
+    // being true is purely the prerequisite for Playwright to emit the
+    // `download` event that the registry's listener hangs off.
+    acceptDownloads: true,
     // Seed the ephemeral context with a storage state if one was supplied
     // (the Playwright-native primitive for "open a fresh browser already
     // logged in as X"). No-op when unset.

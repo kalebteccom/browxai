@@ -43,6 +43,12 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
     headless: !!opts.headless,
     // device/viewport emulation applied at context creation.
     ...(opts.device ?? {}),
+    // Accept downloads at the context level — the per-session
+    // `DownloadsRegistry` (off-by-default) intercepts them via the
+    // `context.on("download")` event. Without `acceptDownloads:true`
+    // Playwright never emits that event, so the off-by-default registry
+    // can never opt in either.
+    acceptDownloads: true,
     // No `--no-sandbox`. `--disable-web-security` only when the gated
     // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
     // `--load-extension` + `--disable-extensions-except` only when the

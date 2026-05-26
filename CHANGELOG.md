@@ -122,6 +122,28 @@ surface" covers.
   egress (same posture as `find().selectorHint`). Read-only — reuses
   capability `read`, no new gate. Also in the `batch` whitelist. See
   [docs/tool-reference.md § generate_locator](docs/tool-reference.md#generate_locator).
+- **Download capture — `downloads_capture` / `download_get`** — the reverse
+  direction of `upload_file`. Off-by-default per session; toggled on with
+  `downloads_capture({on:true})`. While on, every page-initiated download
+  fired during a subsequent action is persisted to
+  `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and
+  surfaced on the new additive field `ActionResult.downloads[{id,
+  suggestedFilename, mimeType, sizeBytes, path}]`. Read the bytes back
+  (base64) via `download_get({id})`, or pass `pathOnly:true` for just the
+  metadata. Page-supplied filenames are sanitised before composing the on-disk
+  name (separators / NULs / leading dots / control bytes stripped, length
+  capped, all-stripped → `"download"`); the raw value is preserved on the
+  entry as `rawSuggestedFilename` when sanitisation diverged. Workspace-escape
+  rejected — same posture as `upload_file`. Net-additive: two new MCP tools
+  under the existing **`file-io`** capability (no new capability) plus one
+  additive `ActionResult` field that's absent unless capture is on and a
+  download actually fired. When capture is off the listener cancels the
+  Playwright temp artefact so a session that never opts in leaves no on-disk
+  trace. Per-session state isn't persisted across `close_session` /
+  `open_session`. Internally: `acceptDownloads:true` is now set on the
+  Playwright context at creation for both managed and incognito sessions —
+  prerequisite for the `download` event to fire; the off-by-default registry
+  governs whether anything is persisted.
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

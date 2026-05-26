@@ -182,6 +182,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // file-io
   upload_file: "file-io",
+  // Download capture — reverse of `upload_file`. `downloads_capture` toggles
+  // per-session interception of Playwright `download` events; `download_get`
+  // returns the captured bytes (or workspace-rooted path) for an id surfaced
+  // on `ActionResult.downloads[]`. Same posture as `upload_file`: no new
+  // capability, workspace-rooted paths only.
+  downloads_capture: "file-io",
+  download_get: "file-io",
   // Three-layer storage-state (Phase 3.5).
   //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
   //   writes (`*_set`, `*_delete`, `*_clear`,

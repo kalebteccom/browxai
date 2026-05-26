@@ -181,6 +181,21 @@ export interface ActionResult {
     defaultValue?: string;
     handledAs: DialogRecord["handledAs"];
   }>;
+  /** Files the page initiated as downloads during this action window —
+   *  populated only when per-session capture has been turned on via
+   *  `downloads_capture({on:true})` (capability `file-io`); absent otherwise.
+   *  Each entry persists at a workspace-rooted path under
+   *  `$BROWX_WORKSPACE/.downloads/<sessionId>/` and can be read back as
+   *  bytes via `download_get({id})`. Multiple captures share the action
+   *  window — bulk-downloading agents see one entry per file. */
+  downloads?: Array<{
+    id: string;
+    suggestedFilename: string;
+    rawSuggestedFilename?: string;
+    mimeType?: string;
+    sizeBytes: number;
+    path: string;
+  }>;
   tokensEstimate: number;
   warnings: string[];
   error?: string;
@@ -230,6 +245,13 @@ export interface ActionContext {
    *  (so a `fill({value:"<PASSWORD>"})` records `value:"<PASSWORD>"`, not
    *  the materialised real password). */
   secrets?: import("../util/secrets.js").SecretRegistry;
+  /** per-session downloads registry. When present, any download fired during
+   *  the action window AND captured (registry was toggled on) is sliced into
+   *  `ActionResult.downloads[]`. Always-present-but-off-by-default at the
+   *  registry level; the action-window only emits entries that actually
+   *  fired during this window, so a session with capture off contributes
+   *  nothing to the result. */
+  downloads?: import("./downloads.js").DownloadsRegistry;
 }
 
 export interface ActionWindowOptions {
@@ -409,9 +431,32 @@ export async function runInActionWindow(
       })
     : undefined;
 
+  // download-capture slice — downloads that fired during this action window.
+  // Off-by-default registry: when capture wasn't toggled on, `since()` returns
+  // an empty list and the block is omitted from the result (keeps results
+  // unchanged for sessions that don't opt in).
+  const downloadsSlice = ctx.downloads ? ctx.downloads.since(tBefore) : [];
+  const downloadsBlock = downloadsSlice.length > 0
+    ? downloadsSlice.map((d) => {
+        const out: {
+          id: string; suggestedFilename: string; rawSuggestedFilename?: string;
+          mimeType?: string; sizeBytes: number; path: string;
+        } = {
+          id: d.id,
+          suggestedFilename: d.suggestedFilename,
+          sizeBytes: d.sizeBytes,
+          path: d.path,
+        };
+        if (d.rawSuggestedFilename !== undefined) out.rawSuggestedFilename = d.rawSuggestedFilename;
+        if (d.mimeType !== undefined) out.mimeType = d.mimeType;
+        return out;
+      })
+    : undefined;
+
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
+    ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
   }));
 
   // append to recording when (a) action succeeded, (b) recording
@@ -442,6 +487,7 @@ export async function runInActionWindow(
     snapshotDelta,
     network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
+    ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
     tokensEstimate,
     warnings,
     error,

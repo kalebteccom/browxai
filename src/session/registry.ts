@@ -25,6 +25,7 @@ import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
 import type { ExtensionRegistry } from "./extensions.js";
+import type { DownloadsRegistry } from "../page/downloads.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -100,6 +101,13 @@ export interface SessionEntry {
    *  profileDir without re-deriving the spec. Undefined for incognito /
    *  attached sessions. */
   launchProfile?: string;
+  /** per-session download-capture registry (capability `file-io`). Off by
+   *  default — every Playwright `download` event is intercepted and discarded
+   *  until `downloads_capture({on:true})` toggles capture on. When on, the
+   *  artifact is persisted to `$BROWX_WORKSPACE/.downloads/<sessionId>/` and
+   *  surfaced on `ActionResult.downloads[]`. Same posture as `upload_file`'s
+   *  workspace-rooted-paths model — the reverse direction. */
+  downloads: DownloadsRegistry;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

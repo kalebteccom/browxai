@@ -589,6 +589,53 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 ### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
 Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name, bytes, mimeType?, target, fileCount }` (`bytes`/`target`/`fileCount` for debugging a bad upload; `mimeType` set in content-mode). Gated by the off-by-default **`file-io`** capability. No agent JS.
 
+### Download capture — `downloads_capture` / `download_get`
+
+The reverse direction of `upload_file`: intercept page-initiated downloads,
+persist the artifact at a workspace-rooted path, and hand the bytes back to the
+agent. Per-session, off by default, no new capability — same off-by-default
+**`file-io`** posture as `upload_file`.
+
+The pipeline is two tools plus an additive field on every `ActionResult`:
+
+1. `downloads_capture({on:true})` — turn capture on for the session.
+2. Run the action that triggers the download (`click({ref})` on a download
+   link, a `navigate(...)` that returns `Content-Disposition: attachment`, etc.).
+   Every download fired during the action window lands on
+   `ActionResult.downloads[]` with an `id`, the (sanitised) `suggestedFilename`,
+   `mimeType` (best-effort, extension-inferred), `sizeBytes`, and a
+   workspace-rooted `path`.
+3. `download_get({id})` — return the bytes (base64) for one capture. Pass
+   `pathOnly:true` to skip the payload and just get the metadata + path (useful
+   for very large artefacts an agent only needs to hand off by path).
+
+Captured artifacts live at `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>`
+(per-session subdir, prefix disambiguates concurrent downloads). The
+page-supplied filename is **sanitised** before composing the on-disk name —
+path separators stripped, leading dots stripped, NUL/control bytes stripped,
+length-capped, all-stripped names fall back to `"download"`. The raw
+page-supplied filename is preserved on the entry as `rawSuggestedFilename` when
+sanitisation diverged.
+
+When capture is OFF (the default), every download is silently discarded by
+cancelling Playwright's temp artifact — sessions that never opt in leave no
+on-disk trace, preserving the no-trace contract.
+
+#### `downloads_capture({ on, clear?, session? })`
+- `on: boolean` — turn capture on or off.
+- `clear?: boolean` — when toggling off, ALSO delete every previously-captured
+  file on disk. No-op when `on:true`.
+- → `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`.
+
+#### `download_get({ id, pathOnly?, session? })`
+- `id: string` — download id from `ActionResult.downloads[].id`.
+- `pathOnly?: boolean` — omit the base64 payload, return only path + metadata.
+- → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`.
+
+Gated by the off-by-default **`file-io`** capability. Per-session capture state
+isn't persisted across `close_session`/`open_session`; a fresh session starts
+with capture off.
+
 ### Storage-state — three layers
 
 The deferred bulk-state ask, with the @playwright/mcp lesson baked in: bulk
@@ -828,6 +875,16 @@ Whitelist (allowed inner tools): `navigate`, `click`, `fill`, `press`, `hover`, 
   // AND `ok` is flipped to false with `failure:{source:"app", hint:"…"}`.
   "dialogs": [
     { "kind": "confirm", "message": "Delete this record?", "handledAs": "accepted" }
+  ],
+
+  // downloads captured during the action window — absent when per-session
+  // download capture (`downloads_capture({on:true})`) hasn't been turned on,
+  // or when no download fired. Each entry's `path` is workspace-rooted under
+  // `$BROWX_WORKSPACE/.downloads/<sessionId>/`. Read the bytes back with
+  // `download_get({id})`. Capability `file-io`.
+  "downloads": [
+    { "id": "d1", "suggestedFilename": "report.pdf", "mimeType": "application/pdf",
+      "sizeBytes": 18420, "path": "/Users/.../.browxai/.downloads/default/1716..-rep.pdf" }
   ],
 
   "tokensEstimate": 180,

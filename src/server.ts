@@ -84,6 +84,7 @@ import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
+import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
   dumpStorageState,
@@ -456,6 +457,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // happens at the open_session tool layer.
       const dialogState = new DialogPolicyState(spec?.dialogPolicy ?? { mode: "raise" });
       attachDialogPolicy(sess.page().context(), dialogState);
+      // Per-session download capture. Storage dir is workspace-rooted +
+      // per-session — kept off the public profile dir so cleaning up captured
+      // artefacts is a single rmdir without touching the profile. The
+      // registry is off by default; the `downloads_capture` MCP tool toggles
+      // it. Always attach the context listener — when capture is off it just
+      // discards Playwright's temp file.
+      const downloadsDir = workspace.sub(`.downloads/${id}`);
+      const downloadsReg = new DownloadsRegistry(downloadsDir);
+      attachDownloadCapture(sess.page().context(), downloadsReg);
       // resolve overlay selectors fresh per session so a
       // `set_config({hideOverlaySelectors})` applies to the next
       // open_session without a server restart. Empty list → no-op.
@@ -505,6 +515,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         har: harState,
         secrets: secretsReg,
         extensions: newExtensionRegistry(),
+        downloads: downloadsReg,
         ...(mode === "persistent" ? { launchProfile: spec?.profile ?? id } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
@@ -598,6 +609,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // setters wired at creation can reference it), but the action layer
     // only consults it when the capability gate is open.
     ...(caps.enabled.has("secrets") ? { secrets: e.secrets } : {}),
+    // pass the downloads registry only when `file-io` is on. The registry
+    // exists per-session regardless (off-by-default state on SessionEntry),
+    // but the action-window only consults it when the capability gate is
+    // open so a server without `file-io` can never surface a downloads
+    // block.
+    ...(caps.enabled.has("file-io") ? { downloads: e.downloads } : {}),
   });
 
   // resolve the effective anti-wedge deadline for a call —
@@ -2264,6 +2281,84 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           target, name: args.name, mimeType: args.mimeType, content: args.content, path: args.path,
         }), cfgActionTimeout(), "upload_file");
         return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // Download capture — the reverse of `upload_file`. Off by default per
+  // session; toggled by `downloads_capture`. When on, any download fired
+  // during a subsequent action lands on `ActionResult.downloads[]` and can
+  // be read back via `download_get`. Workspace-rooted paths only.
+  register(
+    "downloads_capture",
+    {
+      description:
+        "Per-session download capture — toggle interception of Playwright `download` events. When `on:true`, every download fired during a subsequent action is persisted to `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and surfaced on `ActionResult.downloads[{id, suggestedFilename, mimeType, sizeBytes, path}]`. When `on:false` (the default) the artifact is silently discarded so a session that never opted in leaves no on-disk trace. The page-supplied filename is sanitised (no path separators / NULs / leading dots / control bytes; length-capped) before composing the on-disk name — workspace-escape rejected. Read captured bytes with `download_get({id})`. Gated by the off-by-default **`file-io`** capability — same posture as `upload_file`. → `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`. Pass `clear:true` alongside `on:false` to ALSO delete every captured file on disk.",
+      inputSchema: {
+        on: z.boolean().describe("Turn capture on (true) or off (false). Off by default."),
+        clear: z.boolean().optional().describe("When toggling off, also delete every previously-captured file from disk. No-op when `on:true`."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("downloads_capture"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        e.downloads.captureOn = !!args.on;
+        if (!args.on && args.clear) {
+          // best-effort cleanup of previously-captured files. Every entry's
+          // `path` is rooted under BROWX_WORKSPACE/.downloads/<sessionId>/
+          // by construction (see SessionEntry factory + page/downloads.ts).
+          const { unlinkSync } = await import("node:fs");
+          for (const d of e.downloads.list()) {
+            try { unlinkSync(d.path); } catch { /* best-effort */ }
+          }
+        }
+        const captured = e.downloads.list().map((d) => {
+          const out: { id: string; suggestedFilename: string; sizeBytes: number; path: string; mimeType?: string } = {
+            id: d.id, suggestedFilename: d.suggestedFilename, sizeBytes: d.sizeBytes, path: d.path,
+          };
+          if (d.mimeType !== undefined) out.mimeType = d.mimeType;
+          return out;
+        });
+        const body = { ok: true, captureOn: e.downloads.captureOn, storageDir: e.downloads.storageDir, captured };
+        const json = JSON.stringify(body);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "download_get",
+    {
+      description:
+        "Return the bytes (base64) of a previously-captured download. Pass the `id` from `ActionResult.downloads[]` (or `downloads_capture({on:true}).captured[]`). Set `pathOnly:true` to skip the base64 payload and return just the workspace-rooted path metadata (useful for very large artifacts an agent only needs to forward to another tool by path). → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
+      inputSchema: {
+        id: z.string().describe("Download id from ActionResult.downloads[].id."),
+        pathOnly: z.boolean().optional().describe("When true, omit the base64 `content` field and return only path/metadata."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("download_get"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const r = readCapturedBytes(e.downloads, args.id);
+        const body: Record<string, unknown> = {
+          ok: true,
+          id: args.id,
+          suggestedFilename: r.suggestedFilename,
+          sizeBytes: r.bytes,
+          path: r.path,
+        };
+        if (r.mimeType !== undefined) body.mimeType = r.mimeType;
+        if (!args.pathOnly) body.content = r.base64;
+        const json = JSON.stringify(body);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
