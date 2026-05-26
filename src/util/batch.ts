@@ -2,6 +2,20 @@
 // records each result's ok-ness, and halts at the first failure unless the
 // caller opts out. Kept dep-free so the unit tests can exercise it without
 // spinning up the full MCP server.
+//
+// `BatchExpect` exposes a small set of shorthand assertion fields tuned for
+// the per-call post-condition pattern (`valueEquals`, `displayTextIncludes`,
+// …). Their INPUT shape is frozen for back-compat, but their implementation
+// lowers each shorthand into a `Predicate` and delegates to the shared
+// vocabulary in `src/util/predicates.ts` — same engine that backs
+// `verify_predicate`. One source of truth: if the predicate vocabulary's
+// `contains` semantics ever change, both surfaces move together.
+
+import {
+  evaluatePredicate,
+  type Predicate,
+  type PredicateResult,
+} from "./predicates.js";
 
 export interface BatchCall {
   tool: string;
@@ -114,55 +128,94 @@ export async function runBatch(calls: BatchCall[], opts: BatchOptions): Promise<
 /**
  * Evaluate a `BatchExpect` against the parsed inner-call result. Returns null
  * when all predicates pass, or a string describing the first failed predicate.
- * Predicates that touch `element.*` paths assume the inner call returned an
- * ActionResult shape; against other shapes they treat missing paths as fails.
+ *
+ * Implementation: each shorthand field lowers into a `Predicate` and runs
+ * through the shared `evaluatePredicate` engine — same vocabulary that backs
+ * `verify_predicate`. The shorthand INPUT shape stays frozen; the engine
+ * underneath is shared so semantic primitives (`contains`, `equals`) can
+ * never drift between the two surfaces. The data bag is the inner-call body
+ * itself (an ActionResult-shaped `{element: {...}}`); paths use the
+ * `element.*` root, which is on the predicate engine's accessor allow-list.
  *
  * Exported for unit tests.
  */
 export function evaluateExpect(expect: BatchExpect, body: unknown): string | null {
-  const elem = readElement(body);
-  if (expect.valueEquals !== undefined) {
-    if (elem?.value !== expect.valueEquals) {
-      return `element.value !== ${JSON.stringify(expect.valueEquals)} (got ${JSON.stringify(elem?.value ?? null)})`;
-    }
-  }
-  if (expect.displayTextIncludes !== undefined) {
-    if (!(typeof elem?.displayText === "string" && elem.displayText.includes(expect.displayTextIncludes))) {
-      return `element.displayText does not include ${JSON.stringify(expect.displayTextIncludes)} (got ${JSON.stringify(elem?.displayText ?? null)})`;
-    }
-  }
-  if (expect.controlDisplayTextIncludes !== undefined) {
-    const t = elem?.ownerControl?.displayTextAfter;
-    if (!(typeof t === "string" && t.includes(expect.controlDisplayTextIncludes))) {
-      return `element.ownerControl.displayTextAfter does not include ${JSON.stringify(expect.controlDisplayTextIncludes)} (got ${JSON.stringify(t ?? null)})`;
-    }
-  }
-  if (expect.containerTextIncludes !== undefined) {
-    const t = elem?.container?.rowText;
-    if (!(typeof t === "string" && t.includes(expect.containerTextIncludes))) {
-      return `element.container.rowText does not include ${JSON.stringify(expect.containerTextIncludes)} (got ${JSON.stringify(t ?? null)})`;
-    }
-  }
-  if (expect.controlChanged !== undefined) {
-    const c = elem?.ownerControl?.changed;
-    if (c !== expect.controlChanged) {
-      return `element.ownerControl.changed !== ${expect.controlChanged} (got ${JSON.stringify(c ?? null)})`;
-    }
+  for (const lowered of lowerExpect(expect)) {
+    const r = evaluatePredicate(lowered.predicate, body);
+    if (!r.ok) return formatExpectFailure(lowered, r);
   }
   return null;
 }
 
-interface ProbeShape {
-  value?: string | null;
-  displayText?: string | null;
-  ownerControl?: { displayTextAfter?: string; changed?: boolean };
-  container?: { rowText?: string };
+interface LoweredShorthand {
+  /** Source shorthand field name — used in the failure string so the
+   *  user-facing message still names the shorthand they supplied. */
+  field: keyof BatchExpect;
+  /** Path label for the failure message (e.g. "element.value"). */
+  path: string;
+  /** The value the shorthand expected (echoed in the failure message). */
+  expected: unknown;
+  predicate: Predicate;
 }
 
-function readElement(body: unknown): ProbeShape | null {
-  if (!body || typeof body !== "object") return null;
-  const elem = (body as { element?: ProbeShape }).element;
-  return elem ?? null;
+/** Pure; exported for tests + the equivalence-pinning regression. Each
+ *  supplied shorthand field becomes one predicate over the inner body. */
+export function lowerExpect(expect: BatchExpect): LoweredShorthand[] {
+  const out: LoweredShorthand[] = [];
+  if (expect.valueEquals !== undefined) {
+    out.push({
+      field: "valueEquals",
+      path: "element.value",
+      expected: expect.valueEquals,
+      predicate: { kind: "equals", key: "element.value", value: expect.valueEquals },
+    });
+  }
+  if (expect.displayTextIncludes !== undefined) {
+    out.push({
+      field: "displayTextIncludes",
+      path: "element.displayText",
+      expected: expect.displayTextIncludes,
+      predicate: { kind: "contains", key: "element.displayText", value: expect.displayTextIncludes },
+    });
+  }
+  if (expect.controlDisplayTextIncludes !== undefined) {
+    out.push({
+      field: "controlDisplayTextIncludes",
+      path: "element.ownerControl.displayTextAfter",
+      expected: expect.controlDisplayTextIncludes,
+      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: expect.controlDisplayTextIncludes },
+    });
+  }
+  if (expect.containerTextIncludes !== undefined) {
+    out.push({
+      field: "containerTextIncludes",
+      path: "element.container.rowText",
+      expected: expect.containerTextIncludes,
+      predicate: { kind: "contains", key: "element.container.rowText", value: expect.containerTextIncludes },
+    });
+  }
+  if (expect.controlChanged !== undefined) {
+    out.push({
+      field: "controlChanged",
+      path: "element.ownerControl.changed",
+      expected: expect.controlChanged,
+      predicate: { kind: "equals", key: "element.ownerControl.changed", value: expect.controlChanged },
+    });
+  }
+  return out;
+}
+
+function formatExpectFailure(lowered: LoweredShorthand, fail: PredicateResult): string {
+  // Keep the historical message shape so existing string-matching tests +
+  // adopter logs read identically: "<path> <op> <expected> (got <actual>)".
+  if (fail.ok) return ""; // unreachable; appeases the type-checker.
+  const actualJson = JSON.stringify(fail.actual ?? null);
+  const expectedJson = JSON.stringify(lowered.expected);
+  if (lowered.predicate.kind === "equals") {
+    return `${lowered.path} !== ${expectedJson} (got ${actualJson})`;
+  }
+  // contains shorthands
+  return `${lowered.path} does not include ${expectedJson} (got ${actualJson})`;
 }
 
 function parseInner(resp: ToolResponse): { ok: boolean; body: unknown } {

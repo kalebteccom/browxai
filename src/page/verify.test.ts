@@ -8,7 +8,8 @@ import {
   verifyAttribute,
   verifyPredicate,
 } from "./verify.js";
-import type { Predicate } from "../util/predicates.js";
+import { evaluatePredicate, type Predicate } from "../util/predicates.js";
+import { evaluateExpect, type BatchExpect } from "../util/batch.js";
 
 // Mocking strategy: each verify_* helper hits a single Locator. We hand the
 // helper a Page whose locator/getByRole returns a mock Locator with the
@@ -303,40 +304,141 @@ describe("verifyPredicate — pure server-side eval", () => {
   });
 });
 
-describe("shared-vocabulary regression: batch.expect shorthands lower into predicate kinds", () => {
-  // The brief requires the predicate vocabulary to be shared with batch.expect
-  // — same kinds, one source of truth. We don't change the batch.expect input
-  // shape (would be a breaking change per the Phase-3.5 invariants), but the
-  // *semantic* primitives (equals, contains) MUST be the same engine. This
-  // test pins the equivalence: a `valueEquals: "x"` shorthand checks the same
-  // condition as a `{kind:"equals", key:"actionResult.element.value", value:"x"}`
-  // predicate over the same data.
-  it("expect.valueEquals ⇔ predicate equals on element.value", () => {
-    const data = { actionResult: { element: { value: "match" } } };
-    const pred = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "match" } as Predicate,
-      data,
-    );
-    expect(pred.ok).toBe(true);
+describe("shared-vocabulary regression: batch.expect and verify_predicate share one engine", () => {
+  // The Phase-3.5 invariant: `batch.expect` shorthands and `verify_predicate`
+  // must speak the same primitives — one source of truth in
+  // `src/util/predicates.ts`. The shorthand INPUT shape stays frozen
+  // (back-compat with v0.1.0), but each shorthand lowers into a `Predicate`
+  // and runs through the SAME `evaluatePredicate` engine `verifyPredicate`
+  // uses. This block pins that equivalence: a fixed table of
+  // (BatchExpect, matching Predicate) pairs is evaluated by BOTH
+  // `evaluateExpect` (via the batch lowering path) AND `evaluatePredicate`
+  // directly, against the same body, and the pass/fail decisions are
+  // asserted identical. If the predicate engine ever changes — and the
+  // shorthand lowering is not updated, or vice versa — this test fails.
+  //
+  // Edge cases covered: missing element, missing intermediate, null leaf,
+  // case-sensitivity of `contains`, boolean equality.
 
-    // The shorthand check happens inside batch (over the inner-call body
-    // shape `{ element: { value: ... } }` directly, not under actionResult).
-    // Verify the predicate-form holds on the equivalent reshape.
-    const innerShape = { actionResult: { element: { value: "match" } } };
-    const pred2 = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "match" } as Predicate,
-      innerShape,
-    );
-    expect(pred2.ok).toBe(true);
-  });
+  interface Case {
+    name: string;
+    body: unknown;
+    expect: BatchExpect;
+    predicate: Predicate;
+  }
 
-  it("expect.displayTextIncludes ⇔ predicate contains on element.displayText", () => {
-    const data = { actionResult: { element: { displayText: "Engineering Team" } } };
-    expect(
-      verifyPredicate(
-        { kind: "contains", key: "actionResult.element.displayText", value: "Engineer" } as Predicate,
-        data,
-      ).ok,
-    ).toBe(true);
-  });
+  const CASES: Case[] = [
+    {
+      name: "valueEquals hits",
+      body: { element: { value: "hello" } },
+      expect: { valueEquals: "hello" },
+      predicate: { kind: "equals", key: "element.value", value: "hello" },
+    },
+    {
+      name: "valueEquals misses",
+      body: { element: { value: "other" } },
+      expect: { valueEquals: "hello" },
+      predicate: { kind: "equals", key: "element.value", value: "hello" },
+    },
+    {
+      name: "valueEquals — missing element entirely",
+      body: { something: "else" },
+      expect: { valueEquals: "hello" },
+      predicate: { kind: "equals", key: "element.value", value: "hello" },
+    },
+    {
+      name: "valueEquals — element present, value undefined",
+      body: { element: {} },
+      expect: { valueEquals: "hello" },
+      predicate: { kind: "equals", key: "element.value", value: "hello" },
+    },
+    {
+      name: "valueEquals empty string against empty string",
+      body: { element: { value: "" } },
+      expect: { valueEquals: "" },
+      predicate: { kind: "equals", key: "element.value", value: "" },
+    },
+    {
+      name: "displayTextIncludes hits substring",
+      body: { element: { displayText: "Engineering Team" } },
+      expect: { displayTextIncludes: "Engineer" },
+      predicate: { kind: "contains", key: "element.displayText", value: "Engineer" },
+    },
+    {
+      name: "displayTextIncludes is case-sensitive (misses on case flip)",
+      body: { element: { displayText: "Engineering" } },
+      expect: { displayTextIncludes: "engineer" },
+      predicate: { kind: "contains", key: "element.displayText", value: "engineer" },
+    },
+    {
+      name: "displayTextIncludes — missing intermediate",
+      body: { element: {} },
+      expect: { displayTextIncludes: "x" },
+      predicate: { kind: "contains", key: "element.displayText", value: "x" },
+    },
+    {
+      name: "displayTextIncludes — displayText is null (not string)",
+      body: { element: { displayText: null } },
+      expect: { displayTextIncludes: "x" },
+      predicate: { kind: "contains", key: "element.displayText", value: "x" },
+    },
+    {
+      name: "controlDisplayTextIncludes hits",
+      body: { element: { ownerControl: { displayTextAfter: "Engineering" } } },
+      expect: { controlDisplayTextIncludes: "Engineer" },
+      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: "Engineer" },
+    },
+    {
+      name: "controlDisplayTextIncludes — missing ownerControl",
+      body: { element: {} },
+      expect: { controlDisplayTextIncludes: "x" },
+      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: "x" },
+    },
+    {
+      name: "containerTextIncludes hits row text",
+      body: { element: { container: { rowText: "row alpha beta gamma" } } },
+      expect: { containerTextIncludes: "beta" },
+      predicate: { kind: "contains", key: "element.container.rowText", value: "beta" },
+    },
+    {
+      name: "containerTextIncludes — missing container",
+      body: { element: {} },
+      expect: { containerTextIncludes: "x" },
+      predicate: { kind: "contains", key: "element.container.rowText", value: "x" },
+    },
+    {
+      name: "controlChanged true hits",
+      body: { element: { ownerControl: { changed: true } } },
+      expect: { controlChanged: true },
+      predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
+    },
+    {
+      name: "controlChanged false hits when actually false",
+      body: { element: { ownerControl: { changed: false } } },
+      expect: { controlChanged: false },
+      predicate: { kind: "equals", key: "element.ownerControl.changed", value: false },
+    },
+    {
+      name: "controlChanged true misses when actually false",
+      body: { element: { ownerControl: { changed: false } } },
+      expect: { controlChanged: true },
+      predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
+    },
+    {
+      name: "controlChanged — ownerControl absent",
+      body: { element: {} },
+      expect: { controlChanged: true },
+      predicate: { kind: "equals", key: "element.ownerControl.changed", value: true },
+    },
+  ];
+
+  for (const c of CASES) {
+    it(`equivalence: ${c.name}`, () => {
+      const expectResult = evaluateExpect(c.expect, c.body);
+      const predResult = evaluatePredicate(c.predicate, c.body);
+      const expectPassed = expectResult === null;
+      const predPassed = predResult.ok;
+      expect(expectPassed).toBe(predPassed);
+    });
+  }
 });
