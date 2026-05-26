@@ -25,10 +25,12 @@ export type Capability =
   | "network-body"
   | "clipboard"
   | "secrets"
-  | "extensions";
+  | "extensions"
+  | "stealth"
+  | "captcha";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -267,6 +269,18 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   extensions_reload: "extensions",
   extensions_trigger: "extensions",
   extensions_uninstall: "extensions",
+  // captcha — per-session delegated captcha solving via a configured external
+  // provider (2Captcha / CapMonster / etc; provider config via env). Off-by-
+  // default capability; loud-warned at boot. Same posture class as
+  // `eval` / `network-body` / `secrets` / `extensions` / `stealth`. Provider
+  // config is per-deployment (env vars) — browxai NEVER bundles a solver and
+  // NEVER auto-purchases credits. When the capability is on but no provider
+  // is configured the tool returns a structured "no provider configured"
+  // failure.
+  solve_captcha: "captcha",
+  // stealth is behaviour-gated (no tool of its own). The capability flips
+  // per-context init-script patches at session creation (navigator.webdriver
+  // / plugins / languages / window.chrome) — see src/helper/stealth.ts.
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

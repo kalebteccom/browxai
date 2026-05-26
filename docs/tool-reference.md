@@ -1267,6 +1267,99 @@ boot (when the capability is on) describing the trust posture and the
 rebuild semantics. Mirrors the `eval` / `network-body` / `secrets`
 posture documented in `docs/threat-model.md`.
 
+## Stealth fingerprint patches (capability `stealth`)
+
+`stealth` is a **behaviour gate, not a tool** — it registers no new MCP
+tool. When the capability is on, every browser context created by the
+server (managed / incognito / and on the rebuild path used by
+`extensions_*`) loads a per-context init-script that overrides the
+well-known Playwright fingerprint surface BEFORE any page script runs:
+
+- `navigator.webdriver` → `false`
+- `navigator.plugins` → non-empty PluginArray-like (Chrome PDF Viewer)
+- `navigator.languages` → `["en-US", "en"]` when the headless default
+  emitted `[]`
+- `window.chrome` → defined with `runtime: {}` when the UA tells
+
+Patches use `Object.defineProperty({configurable: true})`, so legitimate
+page code can still inspect or replace them — we're spoofing detection,
+not lying to legitimate code. The script is wrapped in an IIFE so no
+helpers leak into page globals, and guarded by a sentinel
+(`window.__browx_stealth`) so it is idempotent against re-application.
+
+**Capability gate.** Off by default. Add `stealth` to
+`BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
+boot (when the capability is on) naming the legal/ToS exposure
+explicitly — circumventing automation detection may violate a site's
+terms of service. browxai does NOT bundle a full anti-fingerprinting
+library; only the four well-known patches above. Mirrors the `eval` /
+`network-body` / `secrets` / `extensions` posture documented in
+`docs/threat-model.md`.
+
+## Captcha solver delegation (capability `captcha`)
+
+### `solve_captcha({ type, selector?, siteKey?, imageBase64?, session? })`
+
+Delegate a captcha challenge to a configured external provider and
+return the provider's solution token / text. browxai is a **delegation
+seam, not a solver** — the tool POSTs the challenge to the provider's
+HTTP API and polls for the answer; the solver runs entirely on the
+provider's infrastructure.
+
+**Provider config (per-deployment, env-driven).** browxai does NOT
+bundle a solver and does NOT auto-purchase credits. Operator chooses a
+provider, funds the account, and sets the env vars:
+
+- `BROWX_CAPTCHA_PROVIDER` (required) — `2captcha` or `capmonster`
+  (case-insensitive).
+- `BROWX_CAPTCHA_API_KEY` (required) — the provider account API key.
+- `BROWX_CAPTCHA_API_BASE` (optional) — override the canonical base URL
+  (useful for self-hosted CapMonster-compatible proxies / testing).
+- `BROWX_CAPTCHA_TIMEOUT_MS` (optional, default `120000`) — per-attempt
+  deadline.
+- `BROWX_CAPTCHA_POLL_MS` (optional, default `5000`) — poll interval.
+
+When the capability is on but no provider is configured, the tool
+returns a structured `{ok:false, error:"no captcha provider
+configured", hint:…}` — it never guesses.
+
+**Protocol target.** v0.2.0 targets the **2Captcha-compatible REST API**
+(`POST /in.php` submit + `GET /res.php` poll). CapMonster Cloud
+documents itself as drop-in compatible with this shape, so the same
+code talks to either provider. Other providers (AntiCaptcha's
+`/createTask` + `/getTaskResult`, etc.) are extensible — add a branch
+in `src/page/solve-captcha.ts` and append the provider name to
+`KNOWN_PROVIDERS`.
+
+**Inputs.**
+
+- `type`: one of `recaptcha2`, `recaptcha3`, `hcaptcha`, `turnstile`,
+  `image`.
+- `selector` (widget captchas): CSS selector for the widget element on
+  the current page. When given, the server reads `data-sitekey` (or
+  `data-site-key` / `sitekey`) to populate `siteKey`.
+- `siteKey` (widget captchas): explicit site-key (alternative to
+  `selector`).
+- `imageBase64` (`image` type): raw base64 image bytes (no
+  `data:image/...;base64,` prefix).
+
+**Returns.** `{ok, provider, solution, taskId, elapsedMs}` on success;
+`{ok:false, provider, error, hint, providerCode?}` on failure. The agent
+is responsible for wiring the `solution` back into the page (different
+sites call recaptcha callbacks differently, fill a hidden form field,
+or invoke `grecaptcha.getResponse`) — we do NOT auto-submit. The
+solution string passes through the per-session secrets registry mask on
+egress (same posture as other egress sinks).
+
+**Capability gate.** Off by default. Add `captcha` to
+`BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
+boot (when the capability is on) naming the legal/ToS exposure
+explicitly — solving captchas may violate the target site's terms of
+service and, depending on jurisdiction, computer-misuse /
+unauthorised-access law; the operator carries that exposure. Mirrors
+the `eval` / `network-body` / `secrets` / `extensions` / `stealth`
+posture documented in `docs/threat-model.md`.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

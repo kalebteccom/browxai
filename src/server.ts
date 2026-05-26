@@ -139,6 +139,13 @@ import type { ActionContext } from "./page/actionresult.js";
 import { plan as planAction, execute as executeAction, PLAN_VERBS, type ActionDescriptor } from "./page/plan.js";
 import { BrowxBridge } from "./helper/bridge.js";
 import { applyOverlayHide } from "./helper/overlay-hide.js";
+import { applyStealth } from "./helper/stealth.js";
+import {
+  resolveCaptchaProvider,
+  submitToProvider,
+  unconfiguredFailure,
+  type CaptchaType,
+} from "./page/solve-captcha.js";
 import { resolveCapabilities, resolveConfirmHooks, isToolEnabled, TOOL_CAPABILITY } from "./util/capabilities.js";
 import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
@@ -321,6 +328,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (caps.enabled.has("network-body")) log.warn("browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.");
   if (caps.enabled.has("secrets")) log.warn("browxai: secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.");
   if (caps.enabled.has("extensions")) log.warn("browxai: extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.");
+  if (caps.enabled.has("stealth")) log.warn("browxai: stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.");
+  if (caps.enabled.has("captcha")) log.warn("browxai: captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.");
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn("browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.");
@@ -481,6 +490,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         sess.page().context(),
         configStore.resolve().hideOverlaySelectors,
       );
+      // Per-context stealth init-script patches (capability `stealth`).
+      // Off by default; when on, overrides navigator.webdriver / plugins /
+      // languages / window.chrome on every page before page scripts run.
+      // Loud-warned at boot — see the `stealth` warning above.
+      if (caps.enabled.has("stealth")) {
+        await applyStealth(sess.page().context()).catch((err) => {
+          log.warn(`stealth: failed to apply init script — ${err instanceof Error ? err.message : String(err)}`);
+        });
+      }
       // Fresh per-primitive device-emulation state (locale, timezone,
       // geolocation, colour scheme, reduced motion, user-agent, permissions).
       // Re-applied on every new page in this context so a mid-session-opened
@@ -4158,6 +4176,121 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- captcha solver delegation (capability `captcha`) ----------
+  //
+  // `solve_captcha` is a delegation seam — it POSTs the captcha challenge to a
+  // provider configured per-deployment via environment variables
+  // (BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY, optional
+  // BROWX_CAPTCHA_API_BASE / BROWX_CAPTCHA_TIMEOUT_MS / BROWX_CAPTCHA_POLL_MS).
+  // browxai does NOT bundle a solver and does NOT auto-purchase credits — when
+  // the capability is on but no provider is configured the tool returns a
+  // structured failure with a clear "no provider configured" hint. Loud-warned
+  // at boot (see the `captcha` warning above). Targets the 2Captcha-
+  // compatible HTTP API for v0.2.0 (`/in.php` submit + `/res.php` poll);
+  // CapMonster Cloud mirrors the same shape. Other providers can be added by
+  // extending src/page/solve-captcha.ts.
+
+  register(
+    "solve_captcha",
+    {
+      description:
+        "Delegate a captcha challenge to a configured external provider (2Captcha / CapMonster / etc — provider speaks the 2Captcha-compatible REST API). **Gated behind the off-by-default `captcha` capability** — same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth`. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE; the operator carries the legal exposure. " +
+        "Provider config is per-deployment via environment variables: BROWX_CAPTCHA_PROVIDER (`2captcha` or `capmonster`) + BROWX_CAPTCHA_API_KEY; optional BROWX_CAPTCHA_API_BASE / BROWX_CAPTCHA_TIMEOUT_MS / BROWX_CAPTCHA_POLL_MS. **browxai does NOT bundle a solver and does NOT auto-purchase credits** — when the capability is on but no provider is configured the tool returns a structured `ok:false` with a clear `no provider configured` hint. " +
+        "For widget captchas (`recaptcha2`, `recaptcha3`, `hcaptcha`, `turnstile`), supply the page's site-key via `siteKey` OR `selector` (when given, the server reads `data-sitekey` from the selected element on the current page). For `image`, supply `imageBase64` (raw base64, no data URL prefix). Returns `{ok, provider, solution, taskId, elapsedMs}` on success — the agent then types `solution` into the hidden form field / invokes the page's recaptcha callback. We do NOT auto-submit the solution; how to wire it into the page is per-site.",
+      inputSchema: {
+        type: z.enum(["recaptcha2", "recaptcha3", "hcaptcha", "turnstile", "image"]).describe(
+          "Captcha kind. `recaptcha2` = checkbox or invisible v2; `recaptcha3` = score-based v3; `hcaptcha` = hCaptcha widget; `turnstile` = Cloudflare Turnstile; `image` = base64 image upload (caller provides `imageBase64`).",
+        ),
+        selector: z.string().optional().describe(
+          "CSS selector for the captcha widget element on the current page. When given, the server reads `data-sitekey` (or equivalent) from the element to populate `siteKey`. Either `selector` or `siteKey` is required for widget captchas.",
+        ),
+        siteKey: z.string().optional().describe(
+          "Explicit site-key for the captcha widget (alternative to `selector`). Required for widget captchas when `selector` is not given.",
+        ),
+        imageBase64: z.string().optional().describe(
+          "Raw base64-encoded image bytes (no `data:image/...;base64,` prefix). Required for `image` type; ignored for widget types.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ type, selector, siteKey, imageBase64, session }: {
+      type: CaptchaType;
+      selector?: string;
+      siteKey?: string;
+      imageBase64?: string;
+      session?: string;
+    }) => {
+      const g = gateCheck("solve_captcha"); if (g) return g;
+      // Resolve provider config fresh per call so an operator can rotate
+      // creds via env without restarting the server (env is the source of
+      // truth — set_config doesn't override; secrets shouldn't live in the
+      // config store).
+      const cfg = resolveCaptchaProvider(process.env);
+      if (!cfg.ok) {
+        if (cfg.reason === "unconfigured") {
+          const body = unconfiguredFailure();
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+        }
+        const body = {
+          ok: false,
+          provider: null,
+          error: cfg.error ?? "captcha provider config is incomplete",
+          hint: "Set BROWX_CAPTCHA_PROVIDER and BROWX_CAPTCHA_API_KEY together. browxai does NOT bundle a solver and does NOT auto-purchase credits.",
+        };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+      const e = await entryFor(session);
+      let pageUrl: string;
+      try { pageUrl = e.session.page().url(); } catch {
+        const body = { ok: false, provider: cfg.config.provider, error: "session has no active page", hint: "Call open_session + navigate first." };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+      // Resolve siteKey: explicit > selector-derived. For `image` neither is
+      // needed (imageBase64 is the payload).
+      let resolvedSiteKey = siteKey;
+      if (!resolvedSiteKey && selector && type !== "image") {
+        try {
+          const handle = await e.session.page().$(selector);
+          if (handle) {
+            // Read `data-sitekey` first (recaptcha/hcaptcha/turnstile
+            // convention); fall back to a few common alternatives.
+            resolvedSiteKey = (await handle.getAttribute("data-sitekey"))
+              ?? (await handle.getAttribute("data-site-key"))
+              ?? (await handle.getAttribute("sitekey"))
+              ?? undefined;
+            await handle.dispose().catch(() => undefined);
+          }
+        } catch {
+          /* fall through — explicit failure below if still no key */
+        }
+        if (!resolvedSiteKey) {
+          const body = {
+            ok: false,
+            provider: cfg.config.provider,
+            error: `solve_captcha: could not read a site-key attribute from selector "${selector}"`,
+            hint: "Pass `siteKey` explicitly, or pass a `selector` that points at an element carrying `data-sitekey` (the standard reCAPTCHA / hCaptcha / Turnstile widget attribute).",
+          };
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+        }
+      }
+      const result = await submitToProvider(
+        {
+          type,
+          pageUrl,
+          ...(resolvedSiteKey ? { siteKey: resolvedSiteKey } : {}),
+          ...(imageBase64 ? { imageBase64 } : {}),
+        },
+        cfg.config,
+      );
+      // Mask the solution through the per-session secrets registry so a
+      // solver-issued token containing a registered value (unlikely but
+      // defensible) doesn't bypass the egress layer.
+      const masked = e.secrets.applyMaskDeep(result);
+      const body = { ...masked, tokensEstimate: estimateTokens(JSON.stringify(masked)) };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
   // ---------- extensions registry (capability `extensions`) ----------
   //
   // Per-session Chrome extension management. Off-by-default capability;
@@ -4247,6 +4380,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       sess.page().context(),
       configStore.resolve().hideOverlaySelectors,
     );
+    // Re-apply per-context stealth init-script (capability `stealth`) on the
+    // rebuilt context. Stealth must engage on every navigation post-rebuild,
+    // not just on the original launch.
+    if (caps.enabled.has("stealth")) {
+      await applyStealth(sess.page().context()).catch((err) => {
+        log.warn(`stealth: rebuild failed to apply init script — ${err instanceof Error ? err.message : String(err)}`);
+      });
+    }
     // Re-apply per-primitive device emulation state to the fresh context's
     // pages (locale/timezone/UA via CDP, geolocation/colour-scheme/reduced-
     // motion/permissions via Playwright). Best-effort — failures don't

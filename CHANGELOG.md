@@ -83,6 +83,43 @@ surface" covers.
   tracked separately. See
   [docs/tool-reference.md § Visual regions + cross-session + session report](docs/tool-reference.md#visual-regions--cross-session--session-report).
 
+- **`stealth` capability + `captcha` capability + `solve_captcha`** —
+  two new off-by-default capabilities, same posture class as `eval` /
+  `network-body` / `secrets` / `extensions`. Both loud-warned at server
+  boot, both name the legal/ToS exposure explicitly.
+  - **`stealth`** is a *behaviour gate* (no new tool): when enabled,
+    every browser context loads a per-context init script that
+    overrides the well-known Playwright fingerprint surface
+    (`navigator.webdriver`, `navigator.plugins`, `navigator.languages`,
+    `window.chrome`) BEFORE any page script runs. Patches use
+    `configurable:true` so legitimate code can still inspect/replace
+    them; idempotent via a `window.__browx_stealth` sentinel. browxai
+    does NOT bundle a general-purpose anti-fingerprinting library
+    (e.g. puppeteer-extra-stealth) — only the four well-known patches
+    above. The init script is also re-applied on the `extensions_*`
+    rebuild path so stealth survives a context rebuild. See
+    [docs/tool-reference.md § Stealth fingerprint patches](docs/tool-reference.md#stealth-fingerprint-patches-capability-stealth).
+  - **`captcha`** gates ONE new tool, `solve_captcha({type, selector?,
+    siteKey?, imageBase64?})`, which **delegates** the challenge to an
+    **external provider configured per-deployment via environment
+    variables** (`BROWX_CAPTCHA_PROVIDER` ∈ {`2captcha`, `capmonster`}
+    + `BROWX_CAPTCHA_API_KEY`; optional `BROWX_CAPTCHA_API_BASE` /
+    `BROWX_CAPTCHA_TIMEOUT_MS` / `BROWX_CAPTCHA_POLL_MS`). The protocol
+    target for v0.2.0 is the **2Captcha-compatible REST API**
+    (`/in.php` submit + `/res.php` poll) which CapMonster Cloud
+    mirrors drop-in; other providers (AntiCaptcha's
+    `/createTask`/`/getTaskResult`, etc.) are extensible — add a
+    branch in `src/page/solve-captcha.ts`. browxai **does NOT bundle a
+    solver** and **does NOT auto-purchase credits** — when the
+    capability is on but no provider is configured, the tool returns a
+    structured `{ok:false, error:"no captcha provider configured",
+    hint:…}` rather than guessing. Supported challenge types:
+    `recaptcha2`, `recaptcha3`, `hcaptcha`, `turnstile`, `image`. The
+    agent is responsible for wiring the returned `solution` back into
+    the page; we do NOT auto-submit. Solutions pass through the
+    per-session secrets registry mask on egress. See
+    [docs/tool-reference.md § Captcha solver delegation](docs/tool-reference.md#captcha-solver-delegation-capability-captcha)
+    and [docs/threat-model.md](docs/threat-model.md).
 - **`clock`** — per-session virtual-clock control via CDP
   `Emulation.setVirtualTimePolicy`. Three modes: `freeze` pauses virtual time
   at `atIso` (or wall-clock now if omitted) so date-sensitive flows
