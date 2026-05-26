@@ -135,6 +135,8 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   route: "action",
   route_queue: "action",
   unroute: "action",
+  network_emulate: "action",
+  cpu_emulate: "action",
   act_and_diff: "read",
   act_and_wait_for_network: "read",
   cross_session_sample: "read",

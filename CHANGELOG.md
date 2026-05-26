@@ -10,6 +10,20 @@ surface" covers.
 
 ### Added
 
+- **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
+  via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
+  Net-additive — two new tools under capability `action`.
+  `network_emulate({offline?, latencyMs?, downloadBps?, uploadBps?, packetLoss?})`
+  drives flaky-mobile / offline / 429-storm repros against a real backend;
+  `cpu_emulate({throttleRate})` simulates a low-end device (rate 1 = none,
+  4–6 = low-end mobile). Both reset on empty input (or `{offline:false}` /
+  `{throttleRate:1}`), both persist across navigation (re-applied on
+  main-frame `framenavigated`), both **compose** with `route_queue` — a
+  route's `delayMs` stacks ON TOP of `network_emulate`'s `latencyMs`. In
+  BYOB / `attached` session mode the override stays in effect on the attached
+  Chrome until the operator resets DevTools or closes the page — surfaced as
+  a `warning` on the result. Both tools are also in the batch whitelist so
+  agents can compose throttle → action → reset in a single batch.
 - **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
   a natural-language query + verb to a serialisable `ActionDescriptor` (bound
   `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves

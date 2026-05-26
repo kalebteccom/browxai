@@ -16,6 +16,7 @@ import type { FeedbackMemory } from "../page/learning.js";
 import type { ClipboardBuffer } from "../page/clipboard.js";
 import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
+import type { EmulationRegistry } from "../page/emulation.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 
@@ -43,6 +44,9 @@ export interface SessionEntry {
   routes: RouteRegistry;
   /** per-session named visual regions (capability `human`). */
   regions: RegionRegistry;
+  /** per-session network + CPU emulation overrides (capability `action`).
+   *  Caches active state and re-applies on main-frame navigation. */
+  emulation: EmulationRegistry;
   /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
