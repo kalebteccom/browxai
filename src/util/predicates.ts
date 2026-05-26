@@ -107,10 +107,22 @@ export function allowedKeyRoots(): readonly string[] {
   return [...ALLOWED_KEY_ROOTS].sort();
 }
 
+/** Segments we refuse to traverse through, regardless of the allow-listed
+ *  root, to defang prototype-pollution-style probes (`actionResult.__proto__.…`).
+ *  Not exploitable today — no leaf kind acts on a returned function/prototype
+ *  in a way that exfiltrates it — but a one-line denylist costs nothing and
+ *  keeps the engine inert under future changes. */
+const DENIED_KEY_SEGMENTS: ReadonlySet<string> = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
 /**
  * Resolve a dotted accessor key against `data`. Supports the special trailing
  * `.length` segment over arrays + strings (returns the numeric length).
- * Returns `undefined` for missing intermediate keys. Pure; exported for tests.
+ * Returns `undefined` for missing intermediate keys, or when any segment
+ * (post-root) is on the prototype-pollution denylist. Pure; exported for tests.
  */
 export function resolveKey(data: unknown, key: string): unknown {
   if (!isAllowedKey(key)) return undefined;
@@ -118,6 +130,7 @@ export function resolveKey(data: unknown, key: string): unknown {
   let cur: unknown = data;
   for (const part of parts) {
     if (cur === null || cur === undefined) return undefined;
+    if (DENIED_KEY_SEGMENTS.has(part)) return undefined;
     if (part === "length" && (Array.isArray(cur) || typeof cur === "string")) {
       cur = (cur as { length: number }).length;
       continue;

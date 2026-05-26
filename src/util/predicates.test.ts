@@ -67,6 +67,28 @@ describe("resolveKey", () => {
   it("returns undefined for non-allow-listed keys", () => {
     expect(resolveKey(SAMPLE, "globalThis.process")).toBeUndefined();
   });
+
+  it("refuses to walk through prototype-pollution segments after an allow-listed root", () => {
+    // The root passes (`actionResult` is allow-listed); the denylist must
+    // still trip on `__proto__` / `constructor` / `prototype` MID-walk so the
+    // engine can never return a function/prototype object.
+    expect(resolveKey(SAMPLE, "actionResult.__proto__")).toBeUndefined();
+    expect(resolveKey(SAMPLE, "actionResult.__proto__.toString")).toBeUndefined();
+    expect(resolveKey(SAMPLE, "actionResult.constructor")).toBeUndefined();
+    expect(resolveKey(SAMPLE, "actionResult.constructor.name")).toBeUndefined();
+    expect(resolveKey(SAMPLE, "actionResult.element.prototype")).toBeUndefined();
+  });
+
+  it("predicates against prototype-pollution-shaped keys fail cleanly (never leak prototype)", () => {
+    // Plumb the denylist all the way through the public evaluator — an
+    // `equals` against `actionResult.__proto__` must fail (actual=undefined)
+    // rather than match the prototype object's stringification.
+    const r = evaluatePredicate(
+      { kind: "exists", key: "actionResult.__proto__.toString" },
+      SAMPLE,
+    );
+    expect(r.ok).toBe(false);
+  });
 });
 
 describe("evaluatePredicate — leaf kinds", () => {
