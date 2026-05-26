@@ -18,6 +18,7 @@ import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
 import type { EmulationRegistry } from "../page/emulation.js";
 import type { ClockRegistry } from "../page/clock.js";
+import type { PerfTracingState } from "../page/perf.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
@@ -55,6 +56,10 @@ export interface SessionEntry {
    *  Wraps CDP `Emulation.setVirtualTimePolicy` for deterministic
    *  date-sensitive testing; re-applies on main-frame navigation. */
   clock: ClockRegistry;
+  /** per-session CDP performance tracing state (capability `action`). One
+   *  trace lifecycle at a time per session; `perf_start` while a trace is
+   *  already running cleanly restarts (see src/page/perf.ts). */
+  perf: PerfTracingState;
   /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;

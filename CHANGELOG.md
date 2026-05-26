@@ -53,6 +53,32 @@ surface" covers.
   - Both recording tools are in the batch whitelist so agents can compose
     `start_har → navigate → … → stop_har` in one call. See
     [docs/tool-reference.md § HAR record / replay](docs/tool-reference.md#har-record--replay--start_har--stop_har--open_sessionhar--open_sessionhars).
+- **`perf_start` / `perf_stop` / `perf_insights`** — per-session performance
+  tracing on top of CDP `Tracing.start` / `Tracing.end`. Closes the "this
+  click took 4s — why?" diagnostic gap that the read-only tools (snapshot /
+  screenshot / network slice) leave open: they show *what* happened, not
+  *why* it was slow. Net-additive — three new tools under capability
+  `action` (no new capability gate). `perf_start({categories?})` arms the
+  trace (default categories mirror DevTools' Performance panel:
+  `devtools.timeline`, `loading`, `blink.user_timing`, frame, latency);
+  `perf_stop({path?})` flushes a chromium-format JSON file under
+  `<workspace>/perf-traces/<sessionId>-<ts>.json` (or an explicit
+  workspace-rooted `path`, escape-rejected) plus a one-glance inline
+  summary; `perf_insights({tracePath})` reads the file and extracts
+  structured long-tasks (≥50 ms blocking, top-50), layout-shifts (per-shift
+  score), render-blocking resources (CSS / sync-JS critical-path with
+  duration), LCP candidates, and navigation milestones (FP / FCP / DCL /
+  load) relative to `navigationStart`. The file format is exactly what
+  DevTools' Performance panel and `chrome://tracing` consume — round-trips
+  with the broader chromium ecosystem. **Idempotent by design:**
+  `perf_start` while a trace is already running cleanly restarts (in-flight
+  events discarded); `perf_stop` without a matching start returns
+  `notRunning:true` rather than erroring. All three are also in the batch
+  whitelist so an agent can express `perf_start` → action → `perf_stop` →
+  `perf_insights` as a single batch. BYOB / `attached` mode: `perf_stop`
+  releases the trace buffer on the human's Chrome (also cleaned up by
+  `close_session` on the way out). See
+  [docs/tool-reference.md § Performance tracing](docs/tool-reference.md#performance-tracing--perf_start--perf_stop--perf_insights).
 - **`network_emulate` / `cpu_emulate`** — per-session network + CPU throttling
   via CDP (`Network.emulateNetworkConditions` / `Emulation.setCPUThrottlingRate`).
   Net-additive — two new tools under capability `action`.

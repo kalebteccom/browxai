@@ -142,6 +142,15 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_emulate: "action",
   cpu_emulate: "action",
   clock: "action",
+  // Performance tracing (CDP `Tracing.start` / `Tracing.end` + structured
+  // insights extraction). `perf_start` arms collection on the target;
+  // `perf_stop` flushes to a workspace-rooted trace file; `perf_insights`
+  // reads a written trace and returns the structured summary. All three are
+  // `action` — they mutate target state (tracing on/off) and `perf_stop`
+  // writes a file. No new capability is introduced.
+  perf_start: "action",
+  perf_stop: "action",
+  perf_insights: "action",
   // Per-primitive device emulation (locale, timezone, geolocation, colour
   // scheme, reduced motion, user-agent, permissions). Each mutates one
   // Playwright/CDP emulation knob on the live session; under `action`

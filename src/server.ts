@@ -61,6 +61,14 @@ import { drag, doubleClick, mouseAction } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { EmulationRegistry } from "./page/emulation.js";
 import { ClockRegistry } from "./page/clock.js";
+import {
+  PerfTracingState,
+  DEFAULT_TRACE_CATEGORIES,
+  defaultTracePath,
+  writeTraceFile,
+  readTraceFile,
+  extractInsights,
+} from "./page/perf.js";
 import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
@@ -209,6 +217,31 @@ async function describeTarget(
     if (enabled === false) bits.push("disabled");
   } catch {/* skip — fall back to whatever we have */}
   return bits.join(" ");
+}
+
+/** Cheap one-pass counter for perf_stop's inline summary — gives the agent a
+ *  one-glance "is this trace worth running insights on?" without parsing
+ *  twice. Matches the surfaces extractInsights exposes. */
+function inlineCounts(events: import("./page/perf.js").TraceEvent[]): {
+  longTaskCount: number;
+  layoutShiftCount: number;
+  renderBlockingCount: number;
+  lcpCandidateCount: number;
+} {
+  let longTaskCount = 0, layoutShiftCount = 0, renderBlockingCount = 0, lcpCandidateCount = 0;
+  for (const ev of events) {
+    if (!ev || typeof ev !== "object") continue;
+    const name = typeof ev.name === "string" ? ev.name : "";
+    if (!name) continue;
+    if ((name === "RunTask" || name === "LongTask") && typeof ev.dur === "number" && ev.dur / 1000 >= 50) longTaskCount++;
+    else if (name === "LayoutShift") layoutShiftCount++;
+    else if (name === "ResourceSendRequest") {
+      const data = (ev.args && (ev.args as Record<string, unknown>).data) as Record<string, unknown> | undefined;
+      const rb = data && typeof data.renderBlocking === "string" ? data.renderBlocking : "";
+      if (rb === "blocking" || rb === "in_body_parser_blocking") renderBlockingCount++;
+    } else if (name === "largestContentfulPaint::Candidate") lcpCandidateCount++;
+  }
+  return { longTaskCount, layoutShiftCount, renderBlockingCount, lcpCandidateCount };
 }
 
 function asTarget(
@@ -450,6 +483,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         regions: new RegionRegistry(),
         emulation: new EmulationRegistry(),
         clock: new ClockRegistry(),
+        perf: new PerfTracingState(),
         wedge: new WedgeTracker(),
         dialog: dialogState,
         deviceEmulation,
@@ -460,6 +494,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       };
     },
     async (e): Promise<void> => {
+      // Stop any in-flight perf trace BEFORE closing CDP — otherwise the
+      // attached Chrome (BYOB) keeps the trace buffer pinned. Best-effort:
+      // a stuck Tracing.end won't block teardown (perf state bounds the wait).
+      await e.perf.closeIfRunning(e.session.cdp()).catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
       await e.session.close().catch(() => undefined);
     },
@@ -1733,6 +1771,140 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         if (e.mode === "attached") {
           body.warning = "BYOB / attached Chrome: this CPU throttle stays in effect on the attached browser even after browxai detaches — reset it (call again with no args / throttleRate:1) or close the page when you're done.";
         }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  // -------- performance tracing --------
+
+  register(
+    "perf_start",
+    {
+      description:
+        "Arm a CDP performance trace on this session — wraps `Tracing.start`. Use to diagnose **why** a slow interaction was slow: a paired `perf_stop` flushes a chromium-format trace file under `<workspace>/perf-traces/` and a `perf_insights` call extracts structured long-tasks / layout-shifts / render-blocking / LCP / navigation-timing data from it. Per-session; one trace in flight at a time. **Idempotent restart:** calling `perf_start` while a trace is already running cleanly stops the in-flight one (events discarded) and starts fresh — an agent that lost track of state always recovers by just calling again. Empty `categories` uses a DevTools-Performance-equivalent default (devtools.timeline + loading + blink.user_timing + frame). Tracing is per-target (the attached chromium); BYOB sessions: a `perf_stop` is REQUIRED to detach the trace buffer on the human's Chrome — `close_session` also cleans up on its way out.",
+      inputSchema: {
+        categories: z.array(z.string()).optional().describe(
+          `Tracing categories to include. Omit for the default set (${DEFAULT_TRACE_CATEGORIES.join(", ")}).`,
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ categories, session }) => {
+      const g = gateCheck("perf_start"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.perf.start(e.session.cdp(), { categories });
+        const body: Record<string, unknown> = {
+          ok: true,
+          running: true,
+          categories: r.categories,
+          restarted: r.restarted,
+          hint: "Drive your action(s), then call perf_stop to flush the trace. Insights come from perf_insights({tracePath}).",
+        };
+        if (r.restarted) {
+          body.warning = "A prior perf_start was still active — it has been cleanly stopped (events discarded) and a fresh trace started.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "perf_stop",
+    {
+      description:
+        "Stop the in-flight performance trace and flush it to a workspace-rooted JSON file. Wraps `Tracing.end`. Returns `{ path, bytes, eventCount, categories, durationMs }` plus a tiny summary (long-task count, layout-shift count, render-blocking count) so you don't have to call `perf_insights` for a one-glance answer. Default file path: `<workspace>/perf-traces/<sessionId>-<ts>.json` (override with `path`, which is rejected if it resolves outside `$BROWX_WORKSPACE`). **Safe to call any number of times:** if no trace is running, returns `notRunning:true` rather than an error — pairs cleanly with idempotent agent retries. The file is chromium-tracing format (`{ traceEvents, metadata }`), so it loads in DevTools' Performance panel and `chrome://tracing` directly.",
+      inputSchema: {
+        path: z.string().optional().describe(
+          "Workspace-rooted output path for the trace JSON. Default: <workspace>/perf-traces/<sessionId>-<ts>.json. Rejected if it escapes $BROWX_WORKSPACE.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ path, session }) => {
+      const g = gateCheck("perf_stop"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.perf.stop(e.session.cdp());
+        if (r.notRunning) {
+          const body = {
+            ok: true,
+            notRunning: true,
+            hint: "No trace was active for this session — perf_stop is idempotent; call perf_start first.",
+          };
+          const tokensEstimate = estimateTokens(JSON.stringify(body));
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+        }
+        const targetPath = path ?? defaultTracePath(workspace.root, e.id);
+        // `targetPath` is rooted at workspace.root by construction (defaultTracePath
+        // uses workspace.root; explicit `path` is enforced by resolvePerfTracePath
+        // inside writeTraceFile).
+        const written = writeTraceFile(
+          workspace.root, targetPath, r.events,
+          { categories: r.categories, sessionId: e.id, durationMs: r.durationMs },
+          "perf_stop",
+        );
+        // Tiny inline summary — agent can decide whether to spend tokens on
+        // perf_insights or move on. Doesn't reparse: we count event names only.
+        const summary = inlineCounts(r.events);
+        const body: Record<string, unknown> = {
+          ok: true,
+          path: written.resolved,
+          bytes: written.bytes,
+          eventCount: r.events.length,
+          categories: r.categories,
+          durationMs: r.durationMs,
+          summary,
+          hint: "Call perf_insights({tracePath}) for structured long-tasks / layout-shifts / render-blocking / LCP / navigation-timing data.",
+        };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: the trace buffer on the human's Chrome has been released. The JSON file remains under $BROWX_WORKSPACE.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "perf_insights",
+    {
+      description:
+        "Extract structured insights from a written performance trace file. Returns `{ longTasks, layoutShifts, renderBlocking, lcpCandidates, navigation?, totals }`: top-50 long tasks (≥50ms blocking work, sorted longest-first); layout shifts with per-shift score + sum; render-blocking CSS/JS resources with duration; LCP candidates (final = effective LCP); navigation milestones (FP / FCP / DCL / load) relative to `navigationStart`. `tracePath` is workspace-rooted (the path `perf_stop` returned) and rejected if it escapes `$BROWX_WORKSPACE`. Same chromium-tracing JSON format the DevTools Performance panel consumes — bring-your-own trace works too.",
+      inputSchema: {
+        tracePath: z.string().describe("Workspace-rooted path to a chromium trace JSON file (the path returned by perf_stop)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ tracePath, session: _session }) => {
+      const g = gateCheck("perf_insights"); if (g) return g;
+      // No session-touching needed — pure file read + parse. But we still
+      // resolve the entry to honour the SESSION_ARG contract for consistency.
+      try {
+        const { events, metadata } = readTraceFile(workspace.root, tracePath, "perf_insights");
+        const insights = extractInsights(events);
+        const body: Record<string, unknown> = {
+          ok: true,
+          tracePath,
+          eventCount: events.length,
+          metadata: metadata ?? null,
+          insights,
+        };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
       } catch (err) {
@@ -3678,6 +3850,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "approve_actions", "list_approvals", "get_config", "list_sessions",
     "network_emulate", "cpu_emulate", "clock",
     "start_har", "stop_har",
+    "perf_start", "perf_stop", "perf_insights",
   ]);
   const BATCH_MAX_CALLS = 32;
 
