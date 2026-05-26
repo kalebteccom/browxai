@@ -19,6 +19,7 @@ import type { RegionRegistry } from "../page/regions.js";
 import type { EmulationRegistry } from "../page/emulation.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
+import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -54,6 +55,12 @@ export interface SessionEntry {
    *  navigation: the `context.on('page')` install re-attaches the handler on
    *  every new page (capability `action` — no separate capability). */
   dialog: DialogPolicyState;
+  /** Per-primitive runtime device-emulation state (locale, timezone,
+   *  geolocation, colour scheme, reduced motion, user-agent, permissions).
+   *  Mutated by the 7 `set_*` / `grant_permissions` tools and re-applied
+   *  when a new page opens in the context. Distinct from `emulation`
+   *  (which holds network/cpu throttling state). */
+  deviceEmulation: DeviceEmulationState;
   openedAt: number;
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */

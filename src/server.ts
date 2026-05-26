@@ -8,6 +8,25 @@ import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
 import { openIncognitoSession } from "./session/incognito.js";
 import { resolveDevice } from "./session/device.js";
+import {
+  newEmulationState,
+  reapplyAll as reapplyEmulation,
+  applyLocaleCdp,
+  clearLocaleCdp,
+  applyTimezoneCdp,
+  clearTimezoneCdp,
+  applyGeolocation,
+  clearGeolocation,
+  applyColorScheme,
+  applyReducedMotion,
+  applyUserAgentCdp,
+  clearUserAgentCdp,
+  applyPermissions,
+  clearPermissions,
+  BYOB_EMULATION_WARNING,
+  type ColorScheme,
+  type ReducedMotion,
+} from "./session/emulation.js";
 import type { BrowserSession } from "./session/types.js";
 import { SessionRegistry, DEFAULT_SESSION_ID, type SessionEntry, type SessionMode } from "./session/registry.js";
 import { WedgeTracker } from "./session/wedge.js";
@@ -283,6 +302,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         sess.page().context(),
         configStore.resolve().hideOverlaySelectors,
       );
+      // Fresh per-primitive device-emulation state (locale, timezone,
+      // geolocation, colour scheme, reduced motion, user-agent, permissions).
+      // Re-applied on every new page in this context so a mid-session-opened
+      // tab inherits the overrides (locale/timezone/UA via CDP, geolocation/
+      // colour-scheme/reduced-motion/permissions via Playwright).
+      const deviceEmulation = newEmulationState();
+      sess.page().context().on("page", (newPage) => {
+        // Best-effort: a new tab fires here. Create its own CDP session to
+        // route locale/timezone/UA overrides. Errors swallowed — re-apply
+        // never breaks a navigation.
+        (async () => {
+          try {
+            const newCdp = await sess.page().context().newCDPSession(newPage);
+            await reapplyEmulation(sess.page().context(), newPage, newCdp, deviceEmulation);
+          } catch {
+            /* best-effort */
+          }
+        })().catch(() => undefined);
+      });
       return {
         id,
         mode,
@@ -300,6 +338,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         emulation: new EmulationRegistry(),
         wedge: new WedgeTracker(),
         dialog: dialogState,
+        deviceEmulation,
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
@@ -2255,6 +2294,277 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- Per-primitive device emulation ----------
+  //
+  // Seven sibling tools (deliberately NOT a bundled `emulate({…})`) — each
+  // mutates ONE Playwright/CDP knob on the live session: `set_locale`,
+  // `set_timezone`, `set_geolocation`, `set_color_scheme`, `set_reduced_motion`,
+  // `set_user_agent`, `grant_permissions`. State persists on the SessionEntry
+  // so new pages within the same context re-apply automatically. CONTEXT-
+  // time-only Playwright settings (locale, timezone, UA) are routed through
+  // their CDP equivalents (`Emulation.setLocaleOverride`,
+  // `Emulation.setTimezoneOverride`, `Network.setUserAgentOverride`) — those
+  // DO take effect mid-session. The other four use Playwright's stable
+  // mutators. BYOB / attached sessions surface a warning that overrides
+  // applied via CDP outlive browxai's detach.
+
+  /** Wrap an emulation-tool result with the standard envelope (`ok`, `applied`,
+   *  `state` snapshot, `tokensEstimate`, plus BYOB warning when applicable). */
+  const emulationResult = (
+    e: SessionEntry,
+    applied: Record<string, unknown>,
+    extra: { warnings?: string[]; note?: string } = {},
+  ): { content: Array<{ type: "text"; text: string }> } => {
+    const warnings: string[] = [...(extra.warnings ?? [])];
+    if (e.mode === "attached") warnings.push(BYOB_EMULATION_WARNING);
+    const body: Record<string, unknown> = {
+      ok: true,
+      session: e.id,
+      applied,
+      state: {
+        locale: e.deviceEmulation.locale ?? null,
+        timezoneId: e.deviceEmulation.timezoneId ?? null,
+        geolocation: e.deviceEmulation.geolocation ?? null,
+        colorScheme: e.deviceEmulation.colorScheme ?? null,
+        reducedMotion: e.deviceEmulation.reducedMotion ?? null,
+        userAgent: e.deviceEmulation.userAgent ?? null,
+        permissions: Object.fromEntries(e.deviceEmulation.permissions),
+      },
+    };
+    if (warnings.length) body.warnings = warnings;
+    if (extra.note) body.note = extra.note;
+    body.tokensEstimate = estimateTokens(JSON.stringify(body));
+    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  };
+
+  /** Standard emulation failure envelope. */
+  const emulationError = (toolName: string, err: unknown) => ({
+    content: [{
+      type: "text" as const,
+      text: JSON.stringify({
+        ok: false,
+        action: { type: toolName },
+        error: err instanceof Error ? err.message : String(err),
+        tokensEstimate: 0,
+      }, null, 2),
+    }],
+  });
+
+  register(
+    "set_locale",
+    {
+      description:
+        "Override the session's browser locale (`navigator.language`, `Intl.*` defaults, `Accept-Language` header). Persists across navigation + new tabs in the same session. Pass `locale: null` to clear the override and restore the browser default. NOTE: Playwright's `BrowserContext.locale` is creation-time-only, so this primitive is implemented via CDP `Emulation.setLocaleOverride` — which DOES take effect mid-session on existing pages. BYOB caveat: the CDP override persists on the attached Chrome until it navigates/restarts after detach.",
+      inputSchema: {
+        locale: z.union([z.string(), z.null()]).optional().describe(
+          "BCP-47 locale tag, e.g. \"en-US\", \"de-DE\", \"ja-JP\". Pass null (or omit) to clear the override and restore the browser default.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ locale, session }) => {
+      const g = gateCheck("set_locale"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        if (locale === null || locale === undefined) {
+          await clearLocaleCdp(e.session.cdp());
+          e.deviceEmulation.locale = undefined;
+          return emulationResult(e, { locale: null });
+        }
+        await applyLocaleCdp(e.session.cdp(), locale);
+        e.deviceEmulation.locale = locale;
+        return emulationResult(e, { locale });
+      } catch (err) {
+        return emulationError("set_locale", err);
+      }
+    },
+  );
+
+  register(
+    "set_timezone",
+    {
+      description:
+        "Override the session's IANA timezone for `Date`, `Intl.DateTimeFormat`, etc. Persists across navigation + new tabs. Pass `timezoneId: null` to clear. NOTE: Playwright's `BrowserContext.timezoneId` is creation-time-only, so this primitive uses CDP `Emulation.setTimezoneOverride` (mid-session-capable). BYOB caveat: the CDP override persists on attached Chrome after detach.",
+      inputSchema: {
+        timezoneId: z.union([z.string(), z.null()]).optional().describe(
+          "IANA timezone, e.g. \"America/New_York\", \"Europe/London\", \"Asia/Tokyo\". Pass null (or omit) to clear.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ timezoneId, session }) => {
+      const g = gateCheck("set_timezone"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        if (timezoneId === null || timezoneId === undefined) {
+          await clearTimezoneCdp(e.session.cdp());
+          e.deviceEmulation.timezoneId = undefined;
+          return emulationResult(e, { timezoneId: null });
+        }
+        await applyTimezoneCdp(e.session.cdp(), timezoneId);
+        e.deviceEmulation.timezoneId = timezoneId;
+        return emulationResult(e, { timezoneId });
+      } catch (err) {
+        return emulationError("set_timezone", err);
+      }
+    },
+  );
+
+  register(
+    "set_geolocation",
+    {
+      description:
+        "Override the session's HTML5 Geolocation reading. The page MUST also be granted the `geolocation` permission via `grant_permissions` for `navigator.geolocation.*` to deliver this value (browsers gate it). Uses Playwright's `context.setGeolocation()` which mutates a live context — no CDP fallback needed. Pass no coords (or `latitude:null`) to clear.",
+      inputSchema: {
+        latitude: z.union([z.number(), z.null()]).optional().describe("Latitude in degrees [-90, 90]. Pass null (or omit) to clear the override."),
+        longitude: z.number().optional().describe("Longitude in degrees [-180, 180]."),
+        accuracy: z.number().nonnegative().optional().describe("Accuracy radius in metres. Default 0."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ latitude, longitude, accuracy, session }) => {
+      const g = gateCheck("set_geolocation"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const isClear = latitude === null || latitude === undefined;
+        if (isClear) {
+          await clearGeolocation(e.session.page().context());
+          e.deviceEmulation.geolocation = undefined;
+          return emulationResult(e, { geolocation: null });
+        }
+        if (longitude === undefined) {
+          return emulationError("set_geolocation", new Error("longitude is required when latitude is set"));
+        }
+        const coords = { latitude, longitude, accuracy };
+        await applyGeolocation(e.session.page().context(), coords);
+        e.deviceEmulation.geolocation = coords;
+        const warnings: string[] = [];
+        const grantedHere = e.deviceEmulation.permissions.get("") ?? [];
+        const grantedAll = [...e.deviceEmulation.permissions.values()].flat();
+        if (![...grantedHere, ...grantedAll].includes("geolocation")) {
+          warnings.push("set_geolocation: pages need the `geolocation` permission for navigator.geolocation to deliver this — call grant_permissions({ permissions: [\"geolocation\"] }) for the relevant origin.");
+        }
+        return emulationResult(e, { geolocation: coords }, { warnings });
+      } catch (err) {
+        return emulationError("set_geolocation", err);
+      }
+    },
+  );
+
+  register(
+    "set_color_scheme",
+    {
+      description:
+        "Override the session's `prefers-color-scheme` media query — drives dark-mode rendering. Mutates a live page via Playwright's `page.emulateMedia({colorScheme})`; takes effect immediately (CSS media queries re-evaluate). Pass `\"no-preference\"` to clear the override.",
+      inputSchema: {
+        scheme: z.enum(["light", "dark", "no-preference"]).describe(
+          "`light` / `dark` force the scheme; `no-preference` clears the override and restores the system default.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ scheme, session }) => {
+      const g = gateCheck("set_color_scheme"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        await applyColorScheme(e.session.page(), scheme as ColorScheme);
+        e.deviceEmulation.colorScheme = scheme === "no-preference" ? undefined : (scheme as ColorScheme);
+        return emulationResult(e, { colorScheme: scheme });
+      } catch (err) {
+        return emulationError("set_color_scheme", err);
+      }
+    },
+  );
+
+  register(
+    "set_reduced_motion",
+    {
+      description:
+        "Override the session's `prefers-reduced-motion` media query — useful when an animation-heavy page is unstable to drive, or to verify a reduced-motion code path. Mutates a live page via Playwright's `page.emulateMedia({reducedMotion})`. Pass `on:false` to clear.",
+      inputSchema: {
+        on: z.boolean().describe("true → `reduce`; false → `no-preference` (clears the override)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ on, session }) => {
+      const g = gateCheck("set_reduced_motion"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const motion: ReducedMotion = on ? "reduce" : "no-preference";
+        await applyReducedMotion(e.session.page(), motion);
+        e.deviceEmulation.reducedMotion = on ? "reduce" : undefined;
+        return emulationResult(e, { reducedMotion: motion });
+      } catch (err) {
+        return emulationError("set_reduced_motion", err);
+      }
+    },
+  );
+
+  register(
+    "set_user_agent",
+    {
+      description:
+        "Override the session's User-Agent (HTTP header + `navigator.userAgent`). Persists across navigation + new tabs. Pass `userAgent: null` to clear. NOTE: Playwright's `BrowserContext.userAgent` is creation-time-only, so this primitive uses CDP `Network.setUserAgentOverride` (mid-session-capable; updates both the network header and the JS-visible value). BYOB caveat: the CDP override persists on attached Chrome after detach.",
+      inputSchema: {
+        userAgent: z.union([z.string(), z.null()]).optional().describe(
+          "Full User-Agent string. Pass null (or omit) to clear and restore the browser default.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ userAgent, session }) => {
+      const g = gateCheck("set_user_agent"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        if (userAgent === null || userAgent === undefined) {
+          await clearUserAgentCdp(e.session.cdp());
+          e.deviceEmulation.userAgent = undefined;
+          return emulationResult(e, { userAgent: null });
+        }
+        await applyUserAgentCdp(e.session.cdp(), userAgent);
+        e.deviceEmulation.userAgent = userAgent;
+        return emulationResult(e, { userAgent });
+      } catch (err) {
+        return emulationError("set_user_agent", err);
+      }
+    },
+  );
+
+  register(
+    "grant_permissions",
+    {
+      description:
+        "Grant browser permissions for the session — `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, etc. (Chromium permission names). Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. Pass `permissions: []` (or omit) to clear all grants for the session — Playwright does not expose per-origin revocation, so clearing is context-wide.",
+      inputSchema: {
+        permissions: z.array(z.string()).optional().describe(
+          "List of Chromium permission names. Pass empty array (or omit) to clear ALL grants (context-wide; per-origin revocation isn't supported by the underlying platform).",
+        ),
+        origin: z.string().optional().describe(
+          "Origin to scope the grant to (e.g. \"https://example.com\"). Omit to use the current page's origin.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ permissions, origin, session }) => {
+      const g = gateCheck("grant_permissions"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        if (!permissions || permissions.length === 0) {
+          const hadOrigin = origin !== undefined;
+          await clearPermissions(e.session.page().context(), e.deviceEmulation, origin);
+          const note = hadOrigin
+            ? "Per-origin permission revocation isn't supported by Playwright; cleared ALL grants for the session context."
+            : "Cleared ALL permission grants for the session context.";
+          return emulationResult(e, { permissions: [], origin: origin ?? null }, { note });
+        }
+        await applyPermissions(e.session.page().context(), e.deviceEmulation, permissions, origin);
+        return emulationResult(e, { permissions, origin: origin ?? null });
+      } catch (err) {
+        return emulationError("grant_permissions", err);
+      }
+    },
+  );
+
   register(
     "tab_visibility",
     {
@@ -2494,6 +2804,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const BATCH_ALLOWED_TOOLS = new Set<string>([
     "navigate", "click", "fill", "press", "hover", "select", "choose_option", "wait_for",
     "go_back", "go_forward", "scroll", "set_viewport",
+    "set_locale", "set_timezone", "set_geolocation", "set_color_scheme", "set_reduced_motion", "set_user_agent", "grant_permissions",
     "plan", "execute",
     "snapshot", "find", "text_search", "inspect", "watch", "sample", "screenshot", "console_read", "network_read", "ws_read", "network_body",
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",

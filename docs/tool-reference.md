@@ -98,6 +98,24 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 - Fired dialogs surface on `ActionResult.dialogs[] = [{ kind: "alert"|"confirm"|"prompt"|"beforeunload", message, defaultValue?, handledAs: "accepted"|"dismissed"|"raised" }]` — independent of `ok` (a successful action that happened to fire a dialog under an `accept`/`dismiss`/`accept-prompt-with` policy reports the dialog in this array; `raise` mode additionally flips `ok` to false).
 - **Attached (BYOB) sessions:** policy applies to all pages in the contexts browxai is attached to. If the human navigates the external Chrome to a brand-new tab outside browxai's awareness, that tab's dialogs are not routed through this policy — they're handled by whatever the underlying Chrome instance does (typically auto-dismissal).
 
+**Per-primitive runtime device emulation** — 7 sibling tools, each setting ONE knob on the live session. State persists on the session and is re-applied to new tabs in the same context. Deliberately NOT a bundled `emulate({...})` — Playwright + chrome-devtools-mcp keep these as siblings for a reason (forcing an over-spec on every call wastes tokens and locks the agent into setting fields it didn't mean to change). All 7 sit under capability `action`.
+
+| Tool | Mechanism | Mid-session mutable? | Reset |
+|---|---|---|---|
+| `set_locale({locale})` | CDP `Emulation.setLocaleOverride` (Playwright `context.locale` is creation-time-only) | yes (CDP) | `locale: null` |
+| `set_timezone({timezoneId})` | CDP `Emulation.setTimezoneOverride` (Playwright `timezoneId` is creation-time-only) | yes (CDP) | `timezoneId: null` |
+| `set_geolocation({latitude, longitude, accuracy?})` | Playwright `context.setGeolocation()` | yes (Playwright) | `latitude: null` |
+| `set_color_scheme({scheme})` | Playwright `page.emulateMedia({colorScheme})`; `light` / `dark` / `no-preference` | yes (Playwright) | `scheme: "no-preference"` |
+| `set_reduced_motion({on})` | Playwright `page.emulateMedia({reducedMotion})`; maps `on:true → "reduce"`, `on:false → "no-preference"` | yes (Playwright) | `on: false` |
+| `set_user_agent({userAgent})` | CDP `Network.setUserAgentOverride` (Playwright `context.userAgent` is creation-time-only) | yes (CDP) | `userAgent: null` |
+| `grant_permissions({permissions, origin?})` | Playwright `context.grantPermissions()` | yes (Playwright) | `permissions: []` (context-wide — per-origin revocation isn't supported by the platform) |
+
+Persistence model: each call records the resolved value on the session's `deviceEmulation` bag; a `BrowserContext.on("page")` listener re-applies every set knob to new tabs in the same context, so an OAuth pop-up or `target=_blank` link inherits the overrides. The four CDP-routed primitives (locale, timezone, UA) are exactly the ones with no Playwright mid-session mutator — the CDP equivalents DO take effect on existing pages, so the runtime distinction is invisible to the agent.
+
+`set_geolocation` paired with `grant_permissions({permissions:["geolocation"]})` is the typical combination: geolocation is browser-gated on the permission, so a set-without-grant silently delivers nothing to the page (the tool surfaces a warning when this is detected).
+
+**BYOB caveat.** Emulation overrides on `mode:"attached"` sessions are applied via CDP into a Chrome browxai does NOT own; they PERSIST on the human's browser until it navigates / restarts after detach. Every emulation tool surfaces a warning to this effect when run against an attached session.
+
 ## Read-only tools
 
 > **URL redaction is default-on.** Every surface that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response *body* remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
@@ -484,6 +502,62 @@ Background or foreground the session's tab — the only way to reproduce the bug
 - `state: "background"` **with `holdMs`** is the headline form: background → hold hidden `holdMs` → auto-foreground, reproducing the background→return transition in one call. Returns `state:"foreground"` + `heldMs`.
 - `state: "foreground"` — restores visibility (+ `focus`) and re-focuses the tab.
 - No agent JS (server-injected fixed script, same posture as the sampler / overlay-hide). Capability: `navigation`.
+
+### Device emulation — `set_locale` / `set_timezone` / `set_geolocation` / `set_color_scheme` / `set_reduced_motion` / `set_user_agent` / `grant_permissions`
+
+Seven sibling primitives (deliberately not a bundled `emulate({...})`) — each sets ONE Playwright/CDP knob on the live session. Capability: `action`. Per-session state persists across navigation and new tabs in the same context. See the **Device / viewport** table in [§ Sessions](#sessions-phase-25) for the at-a-glance summary including the mid-session mechanism per tool and the reset sentinel.
+
+Every emulation-tool result returns:
+
+```jsonc
+{
+  "ok": true,
+  "session": "default",
+  "applied": { /* the field(s) just set */ },
+  "state": {
+    "locale": "en-US" | null,
+    "timezoneId": "America/New_York" | null,
+    "geolocation": { "latitude": 40.7, "longitude": -74, "accuracy": 0 } | null,
+    "colorScheme": "dark" | null,
+    "reducedMotion": "reduce" | null,
+    "userAgent": "Bot/1.0" | null,
+    "permissions": { "": ["geolocation"], "https://example.com": ["clipboard-read"] }
+  },
+  "warnings": [ /* e.g. BYOB CDP-persistence, geolocation-without-grant */ ],
+  "tokensEstimate": 312
+}
+```
+
+#### `set_locale({ locale | null, session? })`
+Override `navigator.language`, `Intl.*` defaults, and the `Accept-Language` header. Pass `locale: null` (or omit) to clear. **Runtime mutation goes through CDP `Emulation.setLocaleOverride`** because Playwright's `BrowserContext.locale` is creation-time-only; the CDP equivalent takes effect immediately on existing pages.
+
+#### `set_timezone({ timezoneId | null, session? })`
+Override the session's IANA timezone (`Date`, `Intl.DateTimeFormat`). Pass `timezoneId: null` to clear. **Runtime mutation via CDP `Emulation.setTimezoneOverride`** for the same reason as `set_locale`.
+
+#### `set_geolocation({ latitude, longitude, accuracy?, session? })`
+Override the HTML5 Geolocation reading. Mutates a live context via Playwright's `context.setGeolocation()`. Pass `latitude: null` (or no coords) to clear. **`navigator.geolocation` is gated on the `geolocation` permission**; pair with `grant_permissions({ permissions: ["geolocation"] })` for the relevant origin. When no `geolocation` grant is recorded for the session, the result includes a warning naming the missing grant.
+
+#### `set_color_scheme({ scheme, session? })`
+Override `prefers-color-scheme` for the session via Playwright's `page.emulateMedia`. `scheme: "light" | "dark" | "no-preference"`; `"no-preference"` clears the override. CSS media queries re-evaluate immediately.
+
+#### `set_reduced_motion({ on, session? })`
+Override `prefers-reduced-motion`. `on: true → "reduce"`, `on: false → "no-preference"` (clears). Mutates a live page via `page.emulateMedia`. Useful when an animation-heavy page is unstable to drive, or to verify a reduced-motion code path.
+
+#### `set_user_agent({ userAgent | null, session? })`
+Override the User-Agent string (HTTP header **and** `navigator.userAgent`). Pass `userAgent: null` to clear. **Runtime mutation via CDP `Network.setUserAgentOverride`** (Playwright's `context.userAgent` is creation-time-only). Updates both surfaces in one call.
+
+#### `grant_permissions({ permissions, origin?, session? })`
+Grant browser permissions for the session — Chromium permission names: `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, …. Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. **Re-granting for the same origin REPLACES** the prior set (Playwright semantics). Pass `permissions: []` (or omit) to clear ALL grants — Playwright does not expose per-origin revocation, so clearing is context-wide; the result names this in `note` whenever `origin` was passed alongside an empty `permissions`.
+
+#### Persistence & reset semantics
+
+- **New tabs in the same context** inherit every override. The registry installs a `BrowserContext.on("page")` listener that re-runs every set knob on the freshly-attached page (each new tab gets its own CDP session for the CDP-routed overrides).
+- **Re-applying the same primitive** with a different value REPLACES the prior value for that knob (mirrors Playwright/CDP semantics for all 7).
+- **Reset sentinels** are per-tool, listed in the [§ Sessions](#sessions-phase-25) table: typically `null` for the optional fields, `[]` for permissions, `"no-preference"` for the two `emulateMedia` knobs.
+
+#### BYOB / attached-mode caveat
+
+When the session is `mode:"attached"`, the locale / timezone / UA overrides go in via CDP to a Chrome browxai does **NOT** own. CDP doesn't revoke these on detach: **the human's Chrome will keep them until it navigates or restarts.** Every emulation tool's `warnings` includes a one-line note to this effect for attached sessions. (Geolocation / colour scheme / reduced motion / permissions are mutated via Playwright on the attached context; the same caveat applies as a defensive default, even though those mechanisms are scoped slightly differently.)
 
 ### `scroll({ ref?|selector?|named?|coords?, to?, by?, intoView?, ...opts })`
 One general scroll primitive (capability: `navigation`):

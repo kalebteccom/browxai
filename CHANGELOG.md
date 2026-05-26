@@ -24,6 +24,20 @@ surface" covers.
   Chrome until the operator resets DevTools or closes the page — surfaced as
   a `warning` on the result. Both tools are also in the batch whitelist so
   agents can compose throttle → action → reset in a single batch.
+- **Per-primitive device emulation** — 7 sibling MCP tools, each setting ONE
+  Playwright/CDP emulation knob on the live session (deliberately not bundled
+  as `emulate({...})`): `set_locale`, `set_timezone`, `set_geolocation`,
+  `set_color_scheme`, `set_reduced_motion`, `set_user_agent`, `grant_permissions`.
+  All under capability `action`, all sit alongside the unchanged `set_viewport`.
+  Per-session state lives on the `SessionEntry` and is re-applied to new tabs
+  in the same context via `BrowserContext.on("page")`. Locale / timezone / UA
+  use CDP (`Emulation.setLocaleOverride`, `Emulation.setTimezoneOverride`,
+  `Network.setUserAgentOverride`) because Playwright's matching context options
+  are creation-time-only; the CDP equivalents DO take effect mid-session. The
+  other four use Playwright's stable mid-session mutators. BYOB / attached
+  sessions surface a warning that CDP overrides persist on the human's Chrome
+  after detach. See
+  [docs/tool-reference.md § Device emulation](docs/tool-reference.md#device-emulation--set_locale--set_timezone--set_geolocation--set_color_scheme--set_reduced_motion--set_user_agent--grant_permissions).
 - **`plan` / `execute`** — separate intent capture from dispatch. `plan` resolves
   a natural-language query + verb to a serialisable `ActionDescriptor` (bound
   `ref`, verb args, evidence, expiry) without dispatching; `execute` re-resolves

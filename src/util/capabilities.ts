@@ -137,6 +137,19 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   unroute: "action",
   network_emulate: "action",
   cpu_emulate: "action",
+  // Per-primitive device emulation (locale, timezone, geolocation, colour
+  // scheme, reduced motion, user-agent, permissions). Each mutates one
+  // Playwright/CDP emulation knob on the live session; under `action`
+  // (mid-session state mutation, sibling to `set_viewport` which is under
+  // `navigation`). Splitting them as 7 siblings — not a bundled
+  // `emulate({…})` — lets agents set just what they need.
+  set_locale: "action",
+  set_timezone: "action",
+  set_geolocation: "action",
+  set_color_scheme: "action",
+  set_reduced_motion: "action",
+  set_user_agent: "action",
+  grant_permissions: "action",
   act_and_diff: "read",
   act_and_wait_for_network: "read",
   cross_session_sample: "read",
