@@ -20,19 +20,22 @@ to v0.2.0. Internal-only fix to the per-candidate probe loop.
   caps each Playwright probe call (`locator.boundingBox`, `locator.isEnabled`)
   at a tight `PROBE_TIMEOUT_MS` (500 ms) and runs the top-N candidate pool in
   parallel via `Promise.all`. Previously the loop probed candidates serially
-  and let each probe call inherit Playwright's default `actionTimeout` (30 s).
-  When a DOM-walk-sourced candidate's selector hint didn't resolve to a real
+  and each probe call inherited Playwright's `actionTimeout`. When a
+  DOM-walk-sourced candidate's selector hint didn't resolve to a real
   Playwright locator (e.g. `role=a[name="..."]` — DOM-walk emits the bare tag
   as `role`, which isn't a valid ARIA role token), the probe would auto-wait
-  the full action-timeout window before returning, multiplied per candidate.
-  This blew through the 60 s anti-wedge `actionTimeoutMs` deadline on pages
-  with non-trivial markup. Observed local benchmarks (headless Chromium,
-  incognito session, default capability set):
+  the full action-timeout window before returning. In default operation
+  `find()` was already capped by the outer 5 s `actionTimeoutMs` anti-wedge
+  but consumed it in full on pages with fall-through-role candidates; without
+  the cap, each probe would auto-wait the action timeout (5 s default) and
+  the 60 s W-M1 anti-wedge deadline would clip in pathological cases.
+  Observed local benchmarks (headless Chromium, incognito session, default
+  capability set):
 
-  | target                                      | before    | after  | factor |
-  | ------------------------------------------- | --------- | ------ | ------ |
-  | `https://example.com` (1 candidate)         | ~30 s     | ~520 ms | ~58×  |
-  | `https://en.wikipedia.org/wiki/Main_Page` (3 candidates) | ~60 s (timeout) | ~560 ms | ~108× |
+  | target                                                   | before (5 s actionTimeoutMs) | after   | factor |
+  | -------------------------------------------------------- | ---------------------------- | ------- | ------ |
+  | `https://example.com`                                    | ~5000 ms                     | ~520 ms | ~10×   |
+  | `https://en.wikipedia.org/wiki/Main_Page`                | ~5000 ms (deadline-clipped)  | ~560 ms | ~9×    |
 
   No contract change: `find()` still returns the same `{ candidates, warnings }`
   shape with the same per-candidate fields. A candidate whose probe times out
@@ -43,11 +46,13 @@ to v0.2.0. Internal-only fix to the per-candidate probe loop.
 ### Tests
 
 - Added a regression-style perf assertion to the headless-CI keystone:
-  `find() against the fixture completes well under the anti-wedge deadline`
-  bounds the call at 3 s (observed post-fix: ~30–60 ms; bound chosen for CI
-  headroom, not aspirationally tight). A regression in the probe timeout cap
-  would surface as a keystone failure rather than a silent wrightxai
-  wall-clock degradation.
+  `find() against a fall-through-role candidate completes well under the
+  anti-wedge deadline` bounds the call at 3 s (observed post-fix: well
+  inside 1 s; bound chosen for CI headroom). The assertion targets a fixture
+  node (`<a>More info link</a>`, no testid) whose DOM-walked role-locator is not a
+  valid ARIA role, so its probe path is exactly the one the cap protects — a
+  regression in `PROBE_TIMEOUT_MS` would surface as a keystone failure rather
+  than a silent wall-clock degradation.
 
 ## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
 

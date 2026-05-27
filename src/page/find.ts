@@ -161,12 +161,14 @@ export async function find(
   // and actionability are computed against the live page in isolation), so
   // run the top-N pool in parallel. Sequential probing was the dominant
   // find() cost: on a DOM-walk-sourced candidate whose role-locator doesn't
-  // resolve to a Playwright role, every probe call would burn the full
-  // `actionTimeout` window before returning — 5 candidates × ~30 s each
-  // would happily eat the 60 s anti-wedge deadline. The probe steps inside
-  // each task remain ordered (hint → bbox → actionable depends on bbox),
-  // and `PROBE_TIMEOUT_MS` caps any single probe call so a no-match hint
-  // fails fast instead of waiting on auto-wait.
+  // resolve to a real Playwright role, every probe call would auto-wait the
+  // full `actionTimeout` window before returning. In default operation
+  // find() was already capped by the outer 5 s `actionTimeoutMs` anti-wedge
+  // but consumed it in full on pages with fall-through-role candidates;
+  // without the cap, the 60 s anti-wedge deadline would clip in pathological
+  // cases. The probe steps inside each task remain ordered (hint → bbox →
+  // actionable depends on bbox), and `PROBE_TIMEOUT_MS` caps any single
+  // probe call so a no-match hint fails fast instead of waiting on auto-wait.
   const candidates: FindCandidate[] = await Promise.all(
     top.map(async ({ node, score }) => {
       const { hint: bareHint, tier, stability } = buildSelectorHint(node);
