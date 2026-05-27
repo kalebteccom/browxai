@@ -80,6 +80,19 @@ const INTERACTIVE_ROLES = new Set([
   "option", "tab", "treeitem",
 ]);
 
+/**
+ * Per-call cap for the auto-waiting Playwright probes (`boundingBox`,
+ * `isEnabled`) used in the candidate-evaluation loop. find() is a probe
+ * tool, not an action — a probe must fail fast when its hint doesn't match
+ * a live element. The default `actionTimeout` (30 s) is appropriate for
+ * acting on a known element; without a cap here, find() against N candidates
+ * whose hints don't resolve to a Playwright locator would burn N × 30 s of
+ * wall-clock waiting for nothing. 500 ms comfortably covers a real
+ * boundingBox resolution on a matched element (typically 1–50 ms) while
+ * keeping the per-candidate worst case bounded.
+ */
+const PROBE_TIMEOUT_MS = 500;
+
 // Non-interactive structural / layout / landmark wrappers. These *enclose* the
 // thing an agent wants to act on; they are never themselves the click target.
 // When a query is phrased loosely (a product alias rather than the test-attr
@@ -144,35 +157,46 @@ export async function find(
   scored.sort((a, b) => b.score - a.score);
   const top = scored.slice(0, max);
 
-  const candidates: FindCandidate[] = [];
-  for (const { node, score } of top) {
-    const { hint: bareHint, tier, stability } = buildSelectorHint(node);
-    // disambiguate when the bare hint matches multiple DOM nodes.
-    const hint = await disambiguateHint(page, bareHint);
-    let bbox = node.backendDOMNodeId !== undefined
-      ? await visibleRect(cdp, node.backendDOMNodeId)
-      : null;
-    // attached/BYOB: the CDP rect path can spuriously null out a rendered
-    // DOM-walk node → fall back to Playwright's locator box before we let a
-    // bad signal classify a visible element off-screen (which `visibleOnly`
-    // would then drop entirely).
-    if (bbox === null) bbox = await locatorBoundingBox(page, hint);
-    const actionable = await probeActionable(page, hint, bbox);
-    candidates.push({
-      ref: node.ref,
-      role: node.role,
-      name: node.name,
-      testId: node.testId,
-      stability,
-      selectorHint: hint,
-      selectorTier: tier,
-      bbox,
-      clipped: bbox === null,
-      actionable,
-      score,
-      ...(node.context ? { context: node.context } : {}),
-    });
-  }
+  // Per-candidate probing is independent (each candidate's hint, bbox,
+  // and actionability are computed against the live page in isolation), so
+  // run the top-N pool in parallel. Sequential probing was the dominant
+  // find() cost: on a DOM-walk-sourced candidate whose role-locator doesn't
+  // resolve to a Playwright role, every probe call would burn the full
+  // `actionTimeout` window before returning — 5 candidates × ~30 s each
+  // would happily eat the 60 s anti-wedge deadline. The probe steps inside
+  // each task remain ordered (hint → bbox → actionable depends on bbox),
+  // and `PROBE_TIMEOUT_MS` caps any single probe call so a no-match hint
+  // fails fast instead of waiting on auto-wait.
+  const candidates: FindCandidate[] = await Promise.all(
+    top.map(async ({ node, score }) => {
+      const { hint: bareHint, tier, stability } = buildSelectorHint(node);
+      // disambiguate when the bare hint matches multiple DOM nodes.
+      const hint = await disambiguateHint(page, bareHint);
+      let bbox = node.backendDOMNodeId !== undefined
+        ? await visibleRect(cdp, node.backendDOMNodeId)
+        : null;
+      // attached/BYOB: the CDP rect path can spuriously null out a rendered
+      // DOM-walk node → fall back to Playwright's locator box before we let a
+      // bad signal classify a visible element off-screen (which `visibleOnly`
+      // would then drop entirely).
+      if (bbox === null) bbox = await locatorBoundingBox(page, hint, PROBE_TIMEOUT_MS);
+      const actionable = await probeActionable(page, hint, bbox);
+      return {
+        ref: node.ref,
+        role: node.role,
+        name: node.name,
+        testId: node.testId,
+        stability,
+        selectorHint: hint,
+        selectorTier: tier,
+        bbox,
+        clipped: bbox === null,
+        actionable,
+        score,
+        ...(node.context ? { context: node.context } : {}),
+      };
+    }),
+  );
 
   // visibility-aware ranking. Stable-partition actionable candidates
   // ahead of non-actionable ones (off-screen / clipped / covered / disabled),
@@ -293,8 +317,11 @@ async function probeActionable(
   if (bbox === null) return "off-screen";
   try {
     const loc = page.locator(hint).first();
+    // isEnabled auto-waits to the action-timeout default (30 s) when the
+    // locator doesn't resolve; cap it. isVisible is documented as
+    // non-waiting (the option is deprecated/ignored) so it costs ~0.
     const [isEnabled, isVisible] = await Promise.all([
-      loc.isEnabled().catch(() => true),
+      loc.isEnabled({ timeout: PROBE_TIMEOUT_MS }).catch(() => true),
       loc.isVisible().catch(() => true),
     ]);
     if (!isEnabled) return "disabled";
