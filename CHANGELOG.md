@@ -8,6 +8,47 @@ surface" covers.
 
 ## Unreleased
 
+## v0.2.1 — 2026-05-27 — find() probe-loop wall-clock fix
+
+Patch release. Public-API contract is **unchanged** — `find()` args, return
+shape, and ranked-candidates + evidence + actionable semantics are byte-identical
+to v0.2.0. Internal-only fix to the per-candidate probe loop.
+
+### Performance
+
+- **`find()` per-candidate probe loop** — the candidate-evaluation step now
+  caps each Playwright probe call (`locator.boundingBox`, `locator.isEnabled`)
+  at a tight `PROBE_TIMEOUT_MS` (500 ms) and runs the top-N candidate pool in
+  parallel via `Promise.all`. Previously the loop probed candidates serially
+  and let each probe call inherit Playwright's default `actionTimeout` (30 s).
+  When a DOM-walk-sourced candidate's selector hint didn't resolve to a real
+  Playwright locator (e.g. `role=a[name="..."]` — DOM-walk emits the bare tag
+  as `role`, which isn't a valid ARIA role token), the probe would auto-wait
+  the full action-timeout window before returning, multiplied per candidate.
+  This blew through the 60 s anti-wedge `actionTimeoutMs` deadline on pages
+  with non-trivial markup. Observed local benchmarks (headless Chromium,
+  incognito session, default capability set):
+
+  | target                                      | before    | after  | factor |
+  | ------------------------------------------- | --------- | ------ | ------ |
+  | `https://example.com` (1 candidate)         | ~30 s     | ~520 ms | ~58×  |
+  | `https://en.wikipedia.org/wiki/Main_Page` (3 candidates) | ~60 s (timeout) | ~560 ms | ~108× |
+
+  No contract change: `find()` still returns the same `{ candidates, warnings }`
+  shape with the same per-candidate fields. A candidate whose probe times out
+  is treated identically to one whose probe returned `null` (best-effort —
+  the call site already swallowed errors). Internal `locatorBoundingBox` gains
+  an optional `timeoutMs` argument with a backward-compatible default of 500 ms.
+
+### Tests
+
+- Added a regression-style perf assertion to the headless-CI keystone:
+  `find() against the fixture completes well under the anti-wedge deadline`
+  bounds the call at 3 s (observed post-fix: ~30–60 ms; bound chosen for CI
+  headroom, not aspirationally tight). A regression in the probe timeout cap
+  would surface as a keystone failure rather than a silent wrightxai
+  wall-clock degradation.
+
 ## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
 
 Phase-3.5 baseline-parity release. Adds 24 primitives across observation,
