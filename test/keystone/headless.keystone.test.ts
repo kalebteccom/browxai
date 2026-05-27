@@ -321,6 +321,62 @@ describe("headless-CI keystone — incognito no-trace", () => {
   });
 });
 
+// Regression-style perf assertion for find() against DOM-walk-sourced
+// candidates whose selector hint is NOT a valid Playwright locator. Pre-v0.2.1
+// the per-candidate probe loop ran serially and let each Playwright probe
+// call (`boundingBox`, `isEnabled`) auto-wait the full action-timeout window
+// (default 5 s) when the hint didn't resolve to a real locator — and DOM-walk
+// emits a bare tag name as `role` (e.g. `role="a"` for an <a>), which is not
+// a valid ARIA role token, so Playwright's role-locator misses and the probe
+// burns the full timeout per candidate. The outer 5 s actionTimeoutMs anti-
+// wedge would clip this in default operation, so the *observed* pre-fix cost
+// against a fixture with multiple such fall-through nodes was ~5 s (the anti-
+// wedge ceiling) rather than candidates × 5 s; without the cap, pathological
+// pages could still bump up against the 60 s W-M1 deadline. Post-fix, find()
+// bounds each probe at `PROBE_TIMEOUT_MS` (500 ms) and runs the per-candidate
+// loop in parallel — bringing this case well under 1 s.
+//
+// The fixture node targeted below (<a data-testid="info-link">More info</a>)
+// is deliberately chosen so its DOM-walked role-locator (`role=a`) is invalid
+// and Playwright falls through the probe path that auto-waits. A different
+// query that landed on a valid role-locator candidate (e.g. `role=button`
+// from a native <button>) would NOT exercise the regression and the
+// assertion would have no bite. The 3 s bound is the observed-after-fix
+// number with headroom for slower CI hardware, not aspirational.
+describe("headless-CI keystone — find() wall-clock regression", () => {
+  it(
+    "find() against a fall-through-role candidate completes well under the anti-wedge deadline",
+    async () => {
+      const session = "ks-find-perf";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // Target the <a>More info link</a> fixture node (no testid). DOM-walk
+      // emits `role="a"` (bare tag), buildSelectorHint() falls through to a
+      // `role=a[name="More info link"]` hint, and Playwright's role-locator
+      // can't resolve "a" as an ARIA role. Pre-fix the per-candidate probe
+      // loop would auto-wait the action-timeout window on this hint until
+      // the outer 5 s anti-wedge clipped the whole call; post-fix the
+      // per-probe cap returns each miss in ≤500 ms and parallel execution
+      // brings the total well inside 1 s.
+      const t0 = Date.now();
+      const found = await callJson<{
+        candidates: Array<{ selectorHint: string }>;
+      }>("find", { session, query: "More info link" });
+      const elapsed = Date.now() - t0;
+
+      expect(found.candidates.length).toBeGreaterThan(0);
+      // Wall-clock bound chosen from observed post-fix numbers with headroom
+      // for CI variance. A failure here means a probe call's auto-wait cap
+      // has regressed — see PROBE_TIMEOUT_MS in src/page/find.ts.
+      expect(elapsed).toBeLessThan(3_000);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Documented, deliberate gap — NOT a silent skip. Under headless there is no
 // human at a screen, so the `__browx` on-page banner is not visually present
 // and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be

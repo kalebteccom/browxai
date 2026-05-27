@@ -49,6 +49,14 @@ const PAGE = `<!doctype html>
       <output data-testid="saved-state" id="saved">Unsaved</output>
     </form>
 
+    <!-- bare <a> with href, NO testid - DOM-walk emits role of the bare tag
+         which is NOT a valid ARIA role token, so buildSelectorHint falls
+         through to a role-locator that Playwright cannot resolve. Pre-v0.2.1
+         the per-candidate probe loop would auto-wait the actionTimeout
+         window on this hint. Targeted by the find wall-clock regression
+         assertion. -->
+    <a href="#">More info link</a>
+
     <div data-testid="status-box" id="status-box" role="status">Idle</div>
 
     <table data-testid="record-grid">

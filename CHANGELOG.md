@@ -8,6 +8,52 @@ surface" covers.
 
 ## Unreleased
 
+## v0.2.1 — 2026-05-27 — find() probe-loop wall-clock fix
+
+Patch release. Public-API contract is **unchanged** — `find()` args, return
+shape, and ranked-candidates + evidence + actionable semantics are byte-identical
+to v0.2.0. Internal-only fix to the per-candidate probe loop.
+
+### Performance
+
+- **`find()` per-candidate probe loop** — the candidate-evaluation step now
+  caps each Playwright probe call (`locator.boundingBox`, `locator.isEnabled`)
+  at a tight `PROBE_TIMEOUT_MS` (500 ms) and runs the top-N candidate pool in
+  parallel via `Promise.all`. Previously the loop probed candidates serially
+  and each probe call inherited Playwright's `actionTimeout`. When a
+  DOM-walk-sourced candidate's selector hint didn't resolve to a real
+  Playwright locator (e.g. `role=a[name="..."]` — DOM-walk emits the bare tag
+  as `role`, which isn't a valid ARIA role token), the probe would auto-wait
+  the full action-timeout window before returning. In default operation
+  `find()` was already capped by the outer 5 s `actionTimeoutMs` anti-wedge
+  but consumed it in full on pages with fall-through-role candidates; without
+  the cap, each probe would auto-wait the action timeout (5 s default) and
+  the 60 s W-M1 anti-wedge deadline would clip in pathological cases.
+  Observed local benchmarks (headless Chromium, incognito session, default
+  capability set):
+
+  | target                                                   | before (5 s actionTimeoutMs) | after   | factor |
+  | -------------------------------------------------------- | ---------------------------- | ------- | ------ |
+  | `https://example.com`                                    | ~5000 ms                     | ~520 ms | ~10×   |
+  | `https://en.wikipedia.org/wiki/Main_Page`                | ~5000 ms (deadline-clipped)  | ~560 ms | ~9×    |
+
+  No contract change: `find()` still returns the same `{ candidates, warnings }`
+  shape with the same per-candidate fields. A candidate whose probe times out
+  is treated identically to one whose probe returned `null` (best-effort —
+  the call site already swallowed errors). Internal `locatorBoundingBox` gains
+  an optional `timeoutMs` argument with a backward-compatible default of 500 ms.
+
+### Tests
+
+- Added a regression-style perf assertion to the headless-CI keystone:
+  `find() against a fall-through-role candidate completes well under the
+  anti-wedge deadline` bounds the call at 3 s (observed post-fix: well
+  inside 1 s; bound chosen for CI headroom). The assertion targets a fixture
+  node (`<a>More info link</a>`, no testid) whose DOM-walked role-locator is not a
+  valid ARIA role, so its probe path is exactly the one the cap protects — a
+  regression in `PROBE_TIMEOUT_MS` would surface as a keystone failure rather
+  than a silent wall-clock degradation.
+
 ## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
 
 Phase-3.5 baseline-parity release. Adds 24 primitives across observation,
