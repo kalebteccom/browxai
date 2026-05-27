@@ -162,13 +162,16 @@ export async function resolveCandidates(
     // Compute the bbox the same way `find()` does: CDP-known DOM node →
     // `visibleRect` first, with the Playwright `locatorBoundingBox` fallback
     // when the CDP path nulls out a still-rendered DOM-walk node (the BYOB /
-    // attached quirk `find()` documents).
+    // attached quirk `find()` documents). The fallback is **fast-failing** —
+    // synthetic a11y refs (e.g. the document root `RootWebArea`) have no
+    // matching DOM, and Playwright's `boundingBox()` auto-waits 30 s before
+    // returning null on a non-matching selector. Cap the fallback at 1 s.
     let bbox: VisibleRect | null = looked.backendDOMNodeId !== undefined
       ? await visibleRect(cdp, looked.backendDOMNodeId)
       : null;
     if (bbox === null) {
       const { hint } = buildSelectorHint(looked);
-      bbox = await locatorBoundingBox(page, hint);
+      bbox = await locatorBoundingBox(page, hint, { timeoutMs: 1000 });
     }
     entries.push({
       index,

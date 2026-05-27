@@ -53,6 +53,27 @@ to v0.2.0. Internal-only fix to the per-candidate probe loop.
   valid ARIA role, so its probe path is exactly the one the cap protects — a
   regression in `PROBE_TIMEOUT_MS` would surface as a keystone failure rather
   than a silent wall-clock degradation.
+### Fixed
+
+- **`screenshot_marks` bare-ref fallback no longer wedges 30 s per unresolved
+  ref.** Same wedge class the `find()` perf fix above addresses, surfaced on a
+  different call site. The CDP `visibleRect` path can return null for synthetic
+  a11y refs whose accessible-tree node has no real DOM backing (e.g. the
+  document root `RootWebArea`). The Playwright `locatorBoundingBox` fallback
+  was then invoked with a hint like `role=RootWebArea[name="…"]`, which matches
+  no element — and Playwright's `boundingBox()` auto-waits 30 s (default
+  action timeout) before returning null on a non-matching selector. So each
+  unresolvable bare-ref candidate added 30 s of dead time to the
+  `screenshot_marks` call. Public-target probe before fix: `example.com` →
+  60 s per call, `wiki` → 60 s, `mdn` → handler timeout. After (with the
+  unified `locatorBoundingBox({ timeoutMs })` cap above): 2 s / 2 s / 3 s on
+  the same targets. `screenshot_marks`'s bare-ref fallback passes
+  `timeoutMs: 1000` explicitly (a touch looser than the unified 500 ms default
+  because the fallback runs at most once per unresolved ref, not in a hot
+  per-candidate loop). Public contract unchanged — same `{marks, mapping,
+  warnings, imageBase64}` shape, same namespace-sharing semantics. The
+  fast-path (caller-supplied bbox via a prior `find()` row) was never
+  affected and remains the recommended call pattern for hot loops.
 
 ## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
 
