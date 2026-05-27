@@ -103,19 +103,22 @@ export async function visibleRect(cdp: CDPSession, backendDOMNodeId: number): Pr
  * "this is on the page" regardless of what the CDP path said. Best-effort:
  * any error / empty box → null (the caller then treats it as truly clipped).
  *
- * `timeoutMs` caps Playwright's auto-wait so a probe call against an unmatched
- * selector fails fast instead of pinning the default `actionTimeout` (30 s).
- * This is the perf hot-path for `find()` candidate evaluation — find() emits
- * locator hints derived from DOM-walk-sourced roles that don't always map to
- * a real Playwright role selector (e.g. `role=a` when the tag is `<a>`), and
- * the bounding-box probe on those mismatched hints would otherwise hang for
- * the full action-timeout window per candidate.
+ * `opts.timeoutMs` caps Playwright's auto-wait so a probe call against an
+ * unmatched selector fails fast instead of pinning the default `actionTimeout`
+ * (30 s). This is the perf hot-path for `find()` candidate evaluation — find()
+ * emits locator hints derived from DOM-walk-sourced roles that don't always
+ * map to a real Playwright role selector (e.g. `role=a` when the tag is `<a>`),
+ * and the bounding-box probe on those mismatched hints would otherwise hang
+ * for the full action-timeout window per candidate. Default cap is 500 ms —
+ * the wedge class is now a known hazard on every call site; per-caller opt-in
+ * (e.g. `{ timeoutMs: 1000 }`) raises it when the caller can absorb the wait.
  */
 export async function locatorBoundingBox(
   page: Page,
   selector: string,
-  timeoutMs = 500,
+  opts: { timeoutMs?: number } = {},
 ): Promise<VisibleRect | null> {
+  const timeoutMs = opts.timeoutMs ?? 500;
   try {
     const box = await page.locator(selector).first().boundingBox({ timeout: timeoutMs });
     if (!box || box.width <= 0 || box.height <= 0) return null;

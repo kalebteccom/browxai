@@ -181,7 +181,7 @@ export async function find(
       // DOM-walk node → fall back to Playwright's locator box before we let a
       // bad signal classify a visible element off-screen (which `visibleOnly`
       // would then drop entirely).
-      if (bbox === null) bbox = await locatorBoundingBox(page, hint, PROBE_TIMEOUT_MS);
+      if (bbox === null) bbox = await locatorBoundingBox(page, hint, { timeoutMs: PROBE_TIMEOUT_MS });
       const actionable = await probeActionable(page, hint, bbox);
       return {
         ref: node.ref,
