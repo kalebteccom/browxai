@@ -321,6 +321,48 @@ describe("headless-CI keystone — incognito no-trace", () => {
   });
 });
 
+// Regression-style perf assertion for find() against DOM-walk-sourced
+// candidates. Pre-v0.2.1 the per-candidate probe loop ran serially and let
+// each Playwright probe call (`boundingBox`, `isEnabled`) auto-wait the full
+// 30 s `actionTimeout` window when the hint didn't resolve to a Playwright
+// locator (DOM-walk role-locators like `role=a` aren't valid ARIA roles).
+// Five candidates × 30 s would hit the 60 s anti-wedge deadline; observed
+// repro against example.com was ~30 s, against Wikipedia Main_Page was the
+// full 60 s timeout. Post-fix, find() bounds each probe at `PROBE_TIMEOUT_MS`
+// (500 ms) and runs the per-candidate loop in parallel — bringing both
+// targets well under 1 s. The bound below (3 s) is the observed-after-fix
+// number with comfortable headroom for slower CI hardware, not aspirational.
+describe("headless-CI keystone — find() wall-clock regression", () => {
+  it(
+    "find() against the fixture completes well under the anti-wedge deadline",
+    async () => {
+      const session = "ks-find-perf";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // A query that intentionally fails to land on the score-0-trigger path
+      // for most fixture nodes but DOES match a DOM-walk-sourced candidate
+      // (testid="save-btn"). Pre-fix this took ~30 s per mismatched candidate;
+      // post-fix it must finish well inside 3 s.
+      const t0 = Date.now();
+      const found = await callJson<{
+        candidates: Array<{ selectorHint: string }>;
+      }>("find", { session, query: "save button" });
+      const elapsed = Date.now() - t0;
+
+      expect(found.candidates.length).toBeGreaterThan(0);
+      // Wall-clock bound chosen from observed post-fix numbers (~30–60 ms on a
+      // dev box) with ~50× headroom for CI variance. A failure here means a
+      // probe call's auto-wait cap has regressed — see PROBE_TIMEOUT_MS in
+      // src/page/find.ts.
+      expect(elapsed).toBeLessThan(3_000);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Documented, deliberate gap — NOT a silent skip. Under headless there is no
 // human at a screen, so the `__browx` on-page banner is not visually present
 // and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be
