@@ -2,6 +2,9 @@ node_modules/
 dist/
 *.tsbuildinfo
 coverage/
+# Investigation artifacts (screenshots, profile JSONs) live under artifacts/
+# and are regenerable via `pnpm exec vitest run --config vitest.investigation.config.ts`.
+artifacts/
 # VitePress build output + cache (any location)
 .vitepress/dist/
 .vitepress/cache/

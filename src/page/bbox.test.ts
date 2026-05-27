@@ -32,4 +32,23 @@ describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () =
     const page = pageWith(async () => { throw new Error("strict mode violation"); });
     expect(await locatorBoundingBox(page, ".dupe")).toBeNull();
   });
+
+  it("forwards opts.timeoutMs to Playwright's boundingBox — caps the auto-wait on a non-matching selector", async () => {
+    // Without a cap, Playwright's `boundingBox()` blocks for 30 s on a
+    // selector that resolves to no element (synthetic a11y refs like
+    // `RootWebArea` are the recurring case). screenshot_marks's bare-ref
+    // fallback path passes timeoutMs=1000 so the failure is fast.
+    const bb = vi.fn(async () => null);
+    const page = { locator: () => ({ first: () => ({ boundingBox: bb }) }) };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await locatorBoundingBox(page as any, "role=RootWebArea[name=\"x\"]", { timeoutMs: 1000 });
+    expect(bb).toHaveBeenCalledWith({ timeout: 1000 });
+    // timeoutMs:0 / undefined → call boundingBox with no args (Playwright default).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await locatorBoundingBox(page as any, "#x");
+    expect(bb).toHaveBeenLastCalledWith();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await locatorBoundingBox(page as any, "#x", { timeoutMs: 0 });
+    expect(bb).toHaveBeenLastCalledWith();
+  });
 });
