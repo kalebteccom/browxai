@@ -111,6 +111,14 @@ export interface ExtractOptions {
    *  with `kind:"llm-assisted-not-implemented"`. */
   mode?: ExtractMode;
   testAttributes: string[];
+  /** When true, v0.2.2's unknown-`x-browx-source`-key diagnostics are
+   *  promoted from `evidence.partialMisses` entries to hard `ok:false`
+   *  `invalid-schema` rejections — adopters who want first-class typo
+   *  detection enable this. Defaults to `process.env.BROWX_EXTRACT_STRICT`
+   *  being set when undefined. The integer→number coerce and the
+   *  selector-as-collection alias are NOT promoted by this flag — those
+   *  are educational signals, not typo-like errors. */
+  strictUnknownHintKeys?: boolean;
 }
 
 export interface ExtractEvidence {
@@ -170,7 +178,14 @@ export async function extract(
       },
     });
   }
-  const schemaError = validateSchema(opts.schema, "");
+  // Schema-dialect relaxations (v0.2.3 Proposals A + B). Clone first so we
+  // never mutate the caller-supplied object. The relaxation notes ride
+  // through to evidence.partialMisses on the successful path.
+  const relaxedSchema = cloneSchema(opts.schema);
+  const relaxationNotes: string[] = [];
+  applySchemaRelaxations(relaxedSchema, "", relaxationNotes);
+
+  const schemaError = validateSchema(relaxedSchema, "");
   if (schemaError) {
     return fail({
       source: "browxai",
@@ -178,6 +193,26 @@ export async function extract(
       expected: "a JSON schema whose root is object or array",
       actual: schemaError,
     });
+  }
+  // Proposal D (v0.2.3): when strict mode is on, promote v0.2.2's
+  // unknown-`x-browx-source`-key diagnostics from soft `partialMisses`
+  // entries to a hard `invalid-schema` rejection. The integer-coerce and
+  // selector-alias notes are NOT promoted — they're educational signals,
+  // not typo-like errors. Default off; opt-in via env or call-arg.
+  const strict =
+    opts.strictUnknownHintKeys ??
+    process.env.BROWX_EXTRACT_STRICT === "1";
+  if (strict) {
+    const unknown: string[] = [];
+    collectUnknownHintKeys(relaxedSchema, "", unknown);
+    if (unknown.length > 0) {
+      return fail({
+        source: "browxai",
+        kind: "invalid-schema",
+        expected: "every `x-browx-source` key to be one of the known set (BROWX_EXTRACT_STRICT=1 is on)",
+        actual: unknown.join(" | "),
+      });
+    }
   }
   if (opts.ref && opts.scope) {
     return fail({
@@ -232,11 +267,16 @@ export async function extract(
   }
 
   const { data, evidence, requiredMisses } = await resolveAgainstTree({
-    schema: opts.schema,
+    schema: relaxedSchema,
     page,
     scopeTree,
     scopeLocator,
   });
+  // Educational A/B notes ride at the head of partialMisses so the agent
+  // sees them on the same observation as the resolved data.
+  if (relaxationNotes.length > 0) {
+    evidence.partialMisses = [...relaxationNotes, ...evidence.partialMisses];
+  }
 
   if (requiredMisses.length > 0) {
     return fail({
@@ -312,6 +352,74 @@ function suggestHintKey(k: string): string | null {
   if (s === "container" || s === "items_selector" || s === "rows" || s === "list") return "collection";
   // `transform`, `format`, `regex`, `parser` are NOT supported at all.
   return null;
+}
+
+/** Walk the schema tree and (1) coerce `type:"integer"` → `type:"number"`
+ *  in place, recording an educational `partialMisses`-bound note per
+ *  coercion site, and (2) promote `x-browx-source.selector` to
+ *  `x-browx-source.collection` on array schemas that lack `collection`
+ *  (the selector key on an array is meaningless today — no leaf-`selector`
+ *  semantics applies — so the alias is a no-op-overlap promotion).
+ *
+ *  Proposal A (v0.2.3): `integer` is now accepted as a schema-dialect
+ *  alias for `number`. The leaf coercer already returns JS numbers; a
+ *  consumer wanting an enforced integer can `Math.trunc()` themselves.
+ *  The educational note preserves the diagnostic trail for adopters
+ *  still on the agent-learning curve.
+ *
+ *  Proposal B (v0.2.3): `selector` on an array is treated as an alias
+ *  for `collection`. If both are present, `collection` wins (the
+ *  canonical name) — `selector` is dropped from the merged hint so the
+ *  resolver doesn't see a stale key. We deliberately do NOT emit a
+ *  partialMisses note for this case: the alias is idiomatic and the
+ *  resolver already explains `collection` semantics elsewhere, so the
+ *  extra noise would dilute the diagnostic surface.
+ *
+ *  Pure-additive on the call's outcome — the v0.2.2 `collectUnknownHintKeys`
+ *  diagnostics still fire (the strict-env opt-in is what changes those
+ *  into hard rejections), and validateSchema runs AFTER this pass, so a
+ *  schema that was previously rejected for `integer` now resolves. */
+export function applySchemaRelaxations(
+  schema: ExtractSchema,
+  path: string,
+  notes: string[],
+): void {
+  // (A) integer → number — in place.
+  if ((schema.type as unknown) === "integer") {
+    schema.type = "number";
+    notes.push(
+      `${path || "<root>"}: schema 'integer' coerced to 'number' for forward-compat; use 'number' explicitly in future schemas`,
+    );
+  }
+  // (B) array `selector` aliased to `collection` — in place.
+  if (schema.type === "array") {
+    const hint = schema["x-browx-source"];
+    if (hint && typeof hint === "object") {
+      const h = hint as ExtractSourceHint & Record<string, unknown>;
+      if (typeof h.selector === "string" && !h.collection) {
+        h.collection = h.selector;
+        delete h.selector;
+      } else if (typeof h.selector === "string" && h.collection) {
+        // Both present — `collection` wins; drop the redundant selector.
+        delete h.selector;
+      }
+    }
+  }
+  // Recurse — into object properties and array items.
+  if (schema.type === "object" && schema.properties) {
+    for (const [k, v] of Object.entries(schema.properties)) {
+      applySchemaRelaxations(v, path ? `${path}.${k}` : k, notes);
+    }
+  } else if (schema.type === "array" && schema.items) {
+    applySchemaRelaxations(schema.items, `${path}[]`, notes);
+  }
+}
+
+/** Deep clone the caller-supplied schema before in-place mutation, so we
+ *  don't surprise an adopter holding a reference. Uses JSON for the
+ *  round-trip — schemas are plain data (no functions, no Dates). */
+export function cloneSchema(schema: ExtractSchema): ExtractSchema {
+  return JSON.parse(JSON.stringify(schema)) as ExtractSchema;
 }
 
 /** Pure-tree validation. Returns a description of the first invariant
