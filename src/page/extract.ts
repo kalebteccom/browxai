@@ -276,28 +276,96 @@ function dedupe<T>(arr: T[]): T[] {
   return [...new Set(arr)];
 }
 
+/** Supported `type` values. The list is closed: JSON-Schema's `integer`,
+ *  `null`, `any`, and union types are NOT supported and will be rejected
+ *  with a "Did you mean...?" hint when the rejection corresponds to a
+ *  known alias (e.g. `integer` → `number`). */
+const SUPPORTED_TYPES = ["object", "array", "string", "number", "boolean"] as const;
+
+/** Known `x-browx-source` keys — used for unknown-key diagnostics. The
+ *  resolver only reads these; any other key is silently dropped today,
+ *  which costs adopters debugging time when (say) `attribute` is used
+ *  instead of `attr`. */
+const KNOWN_HINT_KEYS = ["query", "selector", "attr", "prop", "text", "value", "collection"] as const;
+
+/** Closest known type for a rejected type — used to power "Did you mean?"
+ *  hints in the validator error. Conservative: only suggests when there's
+ *  a clear high-confidence alias (e.g. `integer`/`int` → `number`). */
+function suggestType(t: unknown): string | null {
+  const s = String(t).toLowerCase();
+  if (s === "integer" || s === "int" || s === "float" || s === "double" || s === "long") return "number";
+  if (s === "bool") return "boolean";
+  if (s === "str" || s === "text") return "string";
+  if (s === "list" || s === "tuple") return "array";
+  if (s === "dict" || s === "map" || s === "record") return "object";
+  return null;
+}
+
+/** Closest known hint-key for a rejected key — symmetric to `suggestType`.
+ *  Powers the unknown-hint-key diagnostic ("did you mean `attr`?"). */
+function suggestHintKey(k: string): string | null {
+  const s = k.toLowerCase();
+  if (s === "attribute") return "attr";
+  if (s === "property") return "prop";
+  if (s === "css" || s === "cssselector" || s === "css_selector") return "selector";
+  if (s === "label" || s === "name" || s === "search") return "query";
+  if (s === "container" || s === "items_selector" || s === "rows" || s === "list") return "collection";
+  // `transform`, `format`, `regex`, `parser` are NOT supported at all.
+  return null;
+}
+
 /** Pure-tree validation. Returns a description of the first invariant
  *  violation, or null when the schema is well-formed enough to attempt. */
 export function validateSchema(schema: ExtractSchema | undefined, path: string): string | null {
   if (!schema || typeof schema !== "object") return `${path || "<root>"}: schema must be an object`;
   const t = schema.type;
   if (t !== "object" && t !== "array" && t !== "string" && t !== "number" && t !== "boolean") {
-    return `${path || "<root>"}: unsupported \`type\` ${JSON.stringify(t)} (use one of object/array/string/number/boolean)`;
+    const suggestion = suggestType(t);
+    const hint = suggestion ? ` — did you mean "${suggestion}"?` : "";
+    return `${path || "<root>"}: unsupported \`type\` ${JSON.stringify(t)} (supported: ${SUPPORTED_TYPES.join(", ")})${hint}`;
   }
   if (t === "object") {
     if (!schema.properties || typeof schema.properties !== "object") {
-      return `${path || "<root>"}: object schema requires \`properties\``;
+      return `${path || "<root>"}: object schema requires \`properties\` (a map of property-name → sub-schema)`;
     }
     for (const [k, v] of Object.entries(schema.properties)) {
       const e = validateSchema(v, path ? `${path}.${k}` : k);
       if (e) return e;
     }
   } else if (t === "array") {
-    if (!schema.items) return `${path || "<root>"}: array schema requires \`items\``;
+    if (!schema.items) return `${path || "<root>"}: array schema requires \`items\` (the per-row sub-schema)`;
     const e = validateSchema(schema.items, `${path}[]`);
     if (e) return e;
   }
   return null;
+}
+
+/** Walk the schema tree and emit one diagnostic per unknown
+ *  `x-browx-source` key. Pure inspection — does not modify the schema.
+ *  Adopters who use, e.g., `attribute` instead of `attr` today see the
+ *  schema "succeed" with silently-wrong leaf values (wrightxai trial-1
+ *  turn 6: `url` came back as the title text because `attribute:"href"`
+ *  was silently dropped). The diagnostic surfaces the typo in
+ *  `evidence.partialMisses` so the agent can self-correct on the next
+ *  turn without a third "what shape does this take?" probe. */
+export function collectUnknownHintKeys(schema: ExtractSchema, path: string, out: string[]): void {
+  const hint = schema["x-browx-source"];
+  if (hint && typeof hint === "object") {
+    for (const k of Object.keys(hint)) {
+      if (!(KNOWN_HINT_KEYS as readonly string[]).includes(k)) {
+        const suggestion = suggestHintKey(k);
+        const hintTxt = suggestion ? `; did you mean \`${suggestion}\`?` : ` (known: ${KNOWN_HINT_KEYS.join(", ")})`;
+        out.push(`${path || "<root>"}: unknown \`x-browx-source\` key \`${k}\`${hintTxt}`);
+      }
+    }
+  }
+  if (schema.type === "object" && schema.properties) {
+    for (const [k, v] of Object.entries(schema.properties)) {
+      collectUnknownHintKeys(v, path ? `${path}.${k}` : k, out);
+    }
+  } else if (schema.type === "array" && schema.items) {
+    collectUnknownHintKeys(schema.items, `${path}[]`, out);
+  }
 }
 
 interface ResolveCtx {
@@ -320,6 +388,10 @@ export async function resolveAgainstTree(args: {
 }): Promise<{ data: unknown; evidence: ExtractEvidence; requiredMisses: string[] }> {
   const evidence: ExtractEvidence = { refsUsed: [], selectorsUsed: [], partialMisses: [] };
   const requiredMisses: string[] = [];
+  // Surface unknown `x-browx-source` keys up-front so the agent sees the
+  // typo before deciding whether the silently-wrong leaf value is "good
+  // enough". Pure additive diagnostic — does not change `ok` outcome.
+  collectUnknownHintKeys(args.schema, "", evidence.partialMisses);
   const data = await resolveSchema({
     schema: args.schema,
     path: "",
@@ -378,7 +450,11 @@ const MISS = Symbol.for("browxai.extract.miss");
 async function resolveArray(ctx: ResolveCtx): Promise<unknown[]> {
   const hint = ctx.schema["x-browx-source"];
   if (!hint?.collection) {
-    ctx.evidence.partialMisses.push(`${ctx.path}: array needs \`x-browx-source.collection\``);
+    ctx.evidence.partialMisses.push(
+      `${ctx.path}: array needs \`x-browx-source.collection\` ` +
+        `(a CSS selector or NL query for the row container; ` +
+        `each match becomes a per-row scope for \`items\`)`,
+    );
     if (ctx.schema.required) ctx.requiredMisses.push(ctx.path);
     return [];
   }

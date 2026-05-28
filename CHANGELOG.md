@@ -8,6 +8,78 @@ surface" covers.
 
 ## Unreleased
 
+## v0.2.2 — 2026-05-28 — extract() schema-discovery ergonomics
+
+Patch release. Public-API contract is **unchanged** — `extract()` args, return
+shape, and `{ok, data, evidence, tokensEstimate}` / `{ok:false, failure}`
+semantics are byte-identical to v0.2.1. Validator error messages and
+`evidence.partialMisses` diagnostics improve; nothing previously-succeeding
+now fails, and nothing previously-failing now succeeds. Trigger: wrightxai
+Phase-1 Wave-4 trial-1 burned ~3-5k output tokens across three turns
+learning the schema convention from scratch (rejected `integer`, learned
+arrays need `x-browx-source.collection`, silently mis-spelled `attr` as
+`attribute` causing wrong leaf values).
+
+### Diagnostics
+
+- **Unknown `x-browx-source` keys now surface as `evidence.partialMisses`
+  entries** — schemas that use, e.g., `{selector:"a", attribute:"href"}`
+  (instead of `attr`) or `{selector:"...", transform:"int"}` (which is
+  wholly unsupported) previously had the unknown key silently dropped,
+  letting the resolver fall back to innerText for the leaf — producing
+  silently-wrong values like `url: <title-text>`. The resolver still
+  silently drops them at the read-leaf path (contract preserved) but a
+  diagnostic now lands in `evidence.partialMisses` on the same
+  observation: `"url: unknown \`x-browx-source\` key \`attribute\`;
+  did you mean \`attr\`?"`. Common typos get suggestions
+  (`attribute` → `attr`, `property` → `prop`, `css` → `selector`,
+  `label`/`name` → `query`, `container`/`list` → `collection`); others
+  list the known-key set.
+
+### Validator errors
+
+- **Unsupported `type` values now suggest the closest valid alias.**
+  `{type:"integer"}` is still rejected with `invalid-schema` (contract
+  preserved), but the message now reads `"unsupported \`type\` \"integer\"
+  (supported: object, array, string, number, boolean) — did you mean
+  \"number\"?"`. Same hints for `bool` → `boolean`, `str`/`text` →
+  `string`, `list`/`tuple` → `array`, `dict`/`map`/`record` → `object`,
+  `int`/`float`/`double`/`long` → `number`.
+- **`array` partial-miss now describes what `collection` is.** Was:
+  `"items: array needs \`x-browx-source.collection\`"`. Now: `"items:
+  array needs \`x-browx-source.collection\` (a CSS selector or NL query
+  for the row container; each match becomes a per-row scope for
+  \`items\`)"`. Same `ok` outcome, same `partialMiss` semantics — just
+  carries the fix on the same observation.
+
+### Tool description (MCP-side)
+
+- The `extract` tool description now (a) enumerates the closed type set
+  up-front, (b) explicitly calls out `integer` as NOT supported (with the
+  "use `number`" guidance), (c) lists the full `x-browx-source` key set
+  with `NOT attribute` / `NOT property` callouts, (d) flags that
+  `transform`/`format`/`regex` are not supported (the leaf coercer handles
+  `"$1,234.50" → 1234.5` for `type:"number"` automatically), and (e)
+  states that `collection` is REQUIRED on every array.
+
+### Tests
+
+- 9 new regression tests in `src/page/extract.test.ts` pin the new
+  diagnostic behavior + validator suggestions, including the exact
+  schema shape the wrightxai trial-1 agent emitted on turn 6
+  (`attribute` + `transform` typos). Suite total: 912 → 920 (8 net new
+  after one existing test gained a stricter assertion).
+
+### Deferred — owner sign-off needed
+
+- Three contract-affecting follow-ups are documented in
+  `docs/extract-ergonomics-proposal.md`: (A) auto-coerce
+  `type:"integer"` → `type:"number"` with a warning, (B) treat
+  `x-browx-source.selector` on arrays as an alias for `collection`,
+  (C) `BROWX_EXTRACT_STRICT=1` that turns unknown-key diagnostics into
+  hard rejections. (D) a simpler `dialect:"plain"` is sketched for
+  v0.3.x scope, not patch.
+
 ## v0.2.1 — 2026-05-27 — find() probe-loop wall-clock fix
 
 Patch release. Public-API contract is **unchanged** — `find()` args, return
