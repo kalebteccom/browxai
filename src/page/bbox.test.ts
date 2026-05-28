@@ -43,12 +43,13 @@ describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await locatorBoundingBox(page as any, "role=RootWebArea[name=\"x\"]", { timeoutMs: 1000 });
     expect(bb).toHaveBeenCalledWith({ timeout: 1000 });
-    // timeoutMs:0 / undefined → call boundingBox with no args (Playwright default).
+    // Default (no opts) → 500 ms cap (the v0.2.1 perf-fix default).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await locatorBoundingBox(page as any, "#x");
-    expect(bb).toHaveBeenLastCalledWith();
+    expect(bb).toHaveBeenLastCalledWith({ timeout: 500 });
+    // timeoutMs: 0 → forwarded literally (Playwright treats 0 as "no timeout").
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await locatorBoundingBox(page as any, "#x", { timeoutMs: 0 });
-    expect(bb).toHaveBeenLastCalledWith();
+    expect(bb).toHaveBeenLastCalledWith({ timeout: 0 });
   });
 });
