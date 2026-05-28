@@ -8,6 +8,90 @@ surface" covers.
 
 ## Unreleased
 
+## v0.2.3 — 2026-05-28 — extract() schema-dialect relaxations + strict opt-in
+
+Patch release, layering on v0.2.2's diagnostic improvements. Ships the
+three contract-affecting proposals deferred in v0.2.2's
+`docs/extract-ergonomics-proposal.md` (Proposals A / B / D), now
+explicitly authorized by the owner. **Two of the three (A, B) loosen
+the contract** — previously-rejected schema shapes now succeed; flagged
+explicitly. The third (D) is opt-in only and tightens unknown-key
+diagnostics into hard rejections when enabled.
+
+### Schema-dialect relaxations (additive — previously-failing now succeeds)
+
+- **`type:"integer"` is auto-coerced to `type:"number"`** (Proposal A).
+  v0.2.2 rejected `integer` with `invalid-schema` + a "did you mean
+  number?" hint; v0.2.3 silently coerces and records an educational
+  note in `evidence.partialMisses`:
+  `"<path>: schema 'integer' coerced to 'number' for forward-compat;
+  use 'number' explicitly in future schemas"`. The validator still
+  rejects `integer` at the lower-level `validateSchema()` API — the
+  coerce runs as a preprocessing pass inside `extract()` before
+  validation. Adopters relying on the rejection for typo-detection
+  should opt into Proposal D below.
+- **`x-browx-source.selector` on array schemas is now an alias for
+  `x-browx-source.collection`** (Proposal B). `selector` on an array
+  was silently dropped under v0.2.2 (the resolver only reads
+  `collection` for arrays); v0.2.3 promotes it. When both are present,
+  `collection` wins (the canonical name) and the redundant `selector`
+  is stripped from the merged hint. No partialMisses note for this
+  case by design — the alias is idiomatic, not typo-like.
+
+### Strict mode (opt-in — tightens unknown-key diagnostics)
+
+- **`BROWX_EXTRACT_STRICT=1` env opt-in** (Proposal D). When the env
+  var is set at server boot (or `strictUnknownHintKeys:true` is passed
+  per-call), v0.2.2's `unknown \`x-browx-source\` key` diagnostics are
+  PROMOTED from soft `evidence.partialMisses` entries to hard
+  `ok:false` `{kind:"invalid-schema"}` rejections. The integer-coerce
+  note (A) and the array-`selector`-alias (B) are NOT promoted —
+  those are educational signals, not typo-like errors. Boot emits a
+  loud warn: `"browxai: BROWX_EXTRACT_STRICT=1 — extract()
+  unknown-\`x-browx-source\`-key warnings are PROMOTED to hard ok:false
+  invalid-schema rejections"`. Default off — preserves v0.2.2 behavior
+  out of the box.
+
+### Tool description (MCP-side)
+
+- The `extract` tool description (`server.ts`) now reflects the new
+  semantics: (a) `integer` accepted as a schema-dialect alias (with
+  the `partialMisses` note), (b) `selector` on arrays accepted as an
+  alias for `collection` (with `collection` winning on conflict), and
+  (c) the `BROWX_EXTRACT_STRICT=1` opt-in for first-class typo
+  rejection.
+
+### Tests
+
+- 14 new regression tests in `src/page/extract.test.ts` pin the new
+  behavior, including the exact wrightxai trial-1 turn-2 schema shape
+  (`integer` for rank/points/comments_count). One existing test
+  (`returns invalid-schema when type is unsupported`) updated to use
+  `type:"null"` since `type:"integer"` no longer rejects. Suite total:
+  920 → 934.
+
+### Contract notes (for adopters)
+
+- An adopter test asserting `{type:"integer"} → ok:false` would flip —
+  it now succeeds with `data:<number>` + an `evidence.partialMisses`
+  note. If you relied on the rejection as a typo gate, set
+  `BROWX_EXTRACT_STRICT=1` (which catches typo-like unknown keys but
+  NOT the integer-coerce — those are different problem classes).
+- An adopter using `selector` on an array expecting it to do nothing
+  would see the array now resolve as a collection. If `selector` was
+  emitted intending leaf-`selector` semantics (which never applied to
+  arrays), the data shape change is exactly the previously-intended
+  outcome — i.e. the schema is no longer silently broken.
+
+### Closing the open question
+
+The v0.2.2 close-out flagged the `evidence.partialMisses` growth as a
+strict-sense contract change. v0.2.3 extends the same posture: the
+relaxation notes are additive entries on the previously-succeeding
+path, and the strict-mode rejection is opt-in only. The
+`docs/extract-ergonomics-proposal.md` file is updated to mark all
+three proposals shipped.
+
 ## v0.2.2 — 2026-05-28 — extract() schema-discovery ergonomics
 
 Patch release. Public-API contract is **unchanged** — `extract()` args, return

@@ -4,6 +4,8 @@
 **Investigator:** Claude (Opus 4.7) — `investigation/extract-ergonomics-2026-05-28`
 **Trigger:** wrightxai Phase-1 Wave-4 trial-1 against `hn-frontpage-rank-extract` showed the agent burning ~3-5k output tokens learning `extract()`'s schema convention on a cold start. This doc captures the conservative-NOW fixes (shipped on the same branch) and the contract-affecting proposals deferred for owner approval.
 
+**Status update (2026-05-28):** Proposals A, B, and D are **SHIPPED in v0.2.3** on `release/v0.2.3-extract-relaxations`. Proposal C (`dialect:"plain"`) remains deferred to v0.3.x scope. See `CHANGELOG.md` for the per-proposal contract notes; the per-proposal status flags below are updated inline.
+
 ## What shipped on the branch (contract-preserving)
 
 1. **Validator error messages now include "Did you mean...?" hints.** `type:"integer"` → "supported: object, array, string, number, boolean — did you mean 'number'?". Same for `bool`, `str`, `list`, `dict`, `int`, `float`. The schema is still rejected — the call still returns `{ok:false, failure:{kind:"invalid-schema"}}` with the same shape.
@@ -15,7 +17,7 @@ These four changes ship as v0.2.2 patch — no API break, all 912 existing unit 
 
 ## Proposed but deferred — owner sign-off needed
 
-### Proposal A: auto-coerce `type:"integer"` → `type:"number"` with a warning
+### Proposal A: auto-coerce `type:"integer"` → `type:"number"` with a warning — **SHIPPED in v0.2.3**
 
 **Why it'd help:** the wrightxai trial-1 agent emitted `integer` on its first attempt (turn 2). The schema was rejected with `invalid-schema`; the agent retried. A second observation + retry costs ~400-600 output tokens. If `integer` was accepted (silently coerced to `number` + a deprecation warning in `evidence`), turn 2 would succeed first-try.
 
@@ -25,7 +27,7 @@ These four changes ship as v0.2.2 patch — no API break, all 912 existing unit 
 
 **Recommendation:** SHIP if the owner is willing to call this a "schema-dialect relaxation" rather than a break. Document it under "additive: now accepts `integer` as an alias for `number`" in the changelog. Suggest also accepting `int`, `float`, `double`, `long` by the same logic (they all lower to `number`).
 
-### Proposal B: auto-add `x-browx-source.collection` for top-level array schemas from sibling `selector` / `query` hints
+### Proposal B: auto-add `x-browx-source.collection` for top-level array schemas from sibling `selector` / `query` hints — **SHIPPED in v0.2.3**
 
 **Why it'd help:** the trial-1 turn-5 / turn-6 transition was the agent learning that arrays need an explicit `collection`. A nicer DX would be: if the schema is `{type:"array", items:{...}, "x-browx-source":{selector:"tr.athing"}}`, treat `selector` as `collection`. (Arrays don't have a leaf-`selector` semantics anyway — `selector` on an array is meaningless today.)
 
@@ -39,7 +41,7 @@ These four changes ship as v0.2.2 patch — no API break, all 912 existing unit 
 
 **Recommendation:** scope as a separate v0.3.x feature. Not for this branch.
 
-### Proposal D: tighten the validator on unknown keys (reject vs warn)
+### Proposal D: tighten the validator on unknown keys (reject vs warn) — **SHIPPED in v0.2.3 (opt-in via `BROWX_EXTRACT_STRICT=1`)**
 
 Currently we emit a `partialMisses` diagnostic for unknown `x-browx-source` keys. We could instead reject the schema with `invalid-schema`. **Pro:** the agent gets an immediate, structured failure on turn 1 instead of receiving wrong data + a diagnostic. **Con:** it's a stricter contract — schemas that used to succeed (with silently-wrong leaves) would now fail.
 
