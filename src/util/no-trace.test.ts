@@ -53,6 +53,11 @@ describe("no-trace contract — static source guard", () => {
       "workspace.", "BROWX_WORKSPACE", "browxDir", "profileDir", "runsDir",
       "pidFile", "mcpPath", "ws.sub", "ws.root", "tmp", "/tmp",
       "tmpdir", "join(root", "root,",
+      // Operator-supplied path via a CLI flag (same trust posture as `pidFile`):
+      // `browxai serve --socket <p>` consumes a path the operator hands in. The
+      // path lives in `socketPath`; cleanup/listen-prep mutations against it
+      // are workspace-equivalent (the operator's chosen target).
+      "socketPath", "opts.socketPath",
     ];
     // util/workspace.ts is the resolver itself — its `mkdirSync(p, ...)` calls are
     // BY DEFINITION rooted at the workspace `root`. util/config-store.ts writes

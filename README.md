@@ -32,6 +32,39 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
 }
 ```
 
+## SDK (programmatic surface)
+
+For consumers that author a single TypeScript script and run it
+autonomously, browxai also ships a typed SDK. Same tool registry, same
+capability gates, same egress hygiene — different transport.
+
+```ts
+import { createBrowxai } from "browxai";
+
+const browxai = await createBrowxai();           // in-process, single-script
+await browxai.navigate({ url: "https://example.com" });
+const { data } = await browxai.extract({ schema: { /* … */ } });
+await browxai.close();
+```
+
+Three transports:
+
+- **In-process** (default) — single Node process; the SDK drives the server
+  in-process. `close()` shuts the embedded server.
+- **Stdio child** (`transport: "stdio-child"`) — spawns the `browxai` bin as
+  a subprocess and speaks MCP-over-stdio. `close()` ends the child.
+- **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`) — connects to a
+  long-running `browxai serve --socket /tmp/foo.sock` process. Multiple
+  clients can attach to ONE server (e.g. a parent agent plus a child script
+  sharing one Chromium). `close()` ends only the local connection.
+
+Capability gates apply identically to the MCP path: posture-broadening
+tools (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are
+**off by default** and only appear on the client when their capability is
+named in `createBrowxai({ capabilities })`. Calling a non-exposed tool —
+even via `client.callTool("eval_js", …)` — fails with a
+`BROWXAI_SDK_NOT_EXPOSED` error before any wire dispatch.
+
 ## Harness setup
 
 Ready-to-use setup for the common agent harnesses — MCP-server registration
