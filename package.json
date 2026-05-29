@@ -20,7 +20,12 @@
   "engines": { "node": ">=20" },
   "packageManager": "pnpm@9.0.0",
   "bin": { "browxai": "dist/cli.js" },
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": ["dist"],
   "scripts": {
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
