@@ -9,6 +9,77 @@
 // hygiene the MCP path enforces — NOT to re-author every per-tool schema.
 
 import type { Capability } from "../util/capabilities.js";
+import type {
+  AwaitHumanArgs,
+  AwaitHumanResult,
+  ChooseOptionArgs,
+  ChooseOptionResult,
+  ClickArgs,
+  ClickResult,
+  CloseSessionArgs,
+  CloseSessionResult,
+  CloseSessionsArgs,
+  CloseSessionsResult,
+  ConsoleReadArgs,
+  ConsoleReadResult,
+  ExecuteArgs,
+  ExecuteResult,
+  ExtractArgs,
+  ExtractResult,
+  FillArgs,
+  FillFormArgs,
+  FillFormResult,
+  FillResult,
+  FindArgs,
+  FindResult,
+  GenerateLocatorArgs,
+  GenerateLocatorResult,
+  GoBackArgs,
+  GoBackResult,
+  GoForwardArgs,
+  GoForwardResult,
+  HoverArgs,
+  HoverResult,
+  InspectArgs,
+  InspectResult,
+  ListSessionsArgs,
+  ListSessionsResult,
+  NameRefArgs,
+  NameRefResult,
+  NavigateArgs,
+  NavigateResult,
+  NetworkReadArgs,
+  NetworkReadResult,
+  OpenSessionArgs,
+  OpenSessionResult,
+  PlanArgs,
+  PlanResult,
+  PressArgs,
+  PressResult,
+  ScreenshotArgs,
+  ScreenshotResult,
+  ScrollArgs,
+  ScrollResult,
+  SelectArgs,
+  SelectResult,
+  SetViewportArgs,
+  SetViewportResult,
+  SnapshotArgs,
+  SnapshotResult,
+  TextSearchArgs,
+  TextSearchResult,
+  VerifyAttributeArgs,
+  VerifyCountArgs,
+  VerifyPredicateArgs,
+  VerifyResult,
+  VerifyTextArgs,
+  VerifyValueArgs,
+  VerifyVisibleArgs,
+  WaitForArgs,
+  WaitForResult,
+  WsReadArgs,
+  WsReadResult,
+} from "./tool-types.js";
 
 /** Discriminated content item the SDK forwards from MCP results. */
 export type BrowxaiContentItem =
@@ -119,48 +190,48 @@ export interface BrowxaiSdkOptions {
  */
 export interface BrowxaiClient {
   // --- read ---
-  snapshot(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  find(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  screenshot(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  console_read(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  network_read(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  ws_read(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  inspect(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  text_search(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  extract(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_visible(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_text(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_value(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_count(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_attribute(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  verify_predicate(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  generate_locator(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  plan(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  snapshot(args?: SnapshotArgs): Promise<SnapshotResult>;
+  find(args: FindArgs): Promise<FindResult>;
+  screenshot(args?: ScreenshotArgs): Promise<ScreenshotResult>;
+  console_read(args?: ConsoleReadArgs): Promise<ConsoleReadResult>;
+  network_read(args?: NetworkReadArgs): Promise<NetworkReadResult>;
+  ws_read(args?: WsReadArgs): Promise<WsReadResult>;
+  inspect(args: InspectArgs): Promise<InspectResult>;
+  text_search(args: TextSearchArgs): Promise<TextSearchResult>;
+  extract(args: ExtractArgs): Promise<ExtractResult>;
+  verify_visible(args: VerifyVisibleArgs): Promise<VerifyResult>;
+  verify_text(args: VerifyTextArgs): Promise<VerifyResult>;
+  verify_value(args: VerifyValueArgs): Promise<VerifyResult>;
+  verify_count(args: VerifyCountArgs): Promise<VerifyResult>;
+  verify_attribute(args: VerifyAttributeArgs): Promise<VerifyResult>;
+  verify_predicate(args: VerifyPredicateArgs): Promise<VerifyResult>;
+  generate_locator(args: GenerateLocatorArgs): Promise<GenerateLocatorResult>;
+  plan(args: PlanArgs): Promise<PlanResult>;
   // --- navigation ---
-  navigate(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  go_back(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  go_forward(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  scroll(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  set_viewport(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  navigate(args: NavigateArgs): Promise<NavigateResult>;
+  go_back(args?: GoBackArgs): Promise<GoBackResult>;
+  go_forward(args?: GoForwardArgs): Promise<GoForwardResult>;
+  scroll(args: ScrollArgs): Promise<ScrollResult>;
+  set_viewport(args: SetViewportArgs): Promise<SetViewportResult>;
   // --- action ---
-  click(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  fill(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  press(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  click(args: ClickArgs): Promise<ClickResult>;
+  fill(args: FillArgs): Promise<FillResult>;
+  press(args: PressArgs): Promise<PressResult>;
   shortcut(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  hover(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  select(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  choose_option(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  fill_form(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  wait_for(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  execute(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  hover(args: HoverArgs): Promise<HoverResult>;
+  select(args: SelectArgs): Promise<SelectResult>;
+  choose_option(args: ChooseOptionArgs): Promise<ChooseOptionResult>;
+  fill_form(args: FillFormArgs): Promise<FillFormResult>;
+  wait_for(args: WaitForArgs): Promise<WaitForResult>;
+  execute(args: ExecuteArgs): Promise<ExecuteResult>;
   // --- coordination ---
-  await_human(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  name_ref(args: BrowxaiArgs): Promise<BrowxaiResult>;
+  await_human(args: AwaitHumanArgs): Promise<AwaitHumanResult>;
+  name_ref(args: NameRefArgs): Promise<NameRefResult>;
   // --- session lifecycle ---
-  open_session(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  close_session(args: BrowxaiArgs): Promise<BrowxaiResult>;
-  close_sessions(args?: BrowxaiArgs): Promise<BrowxaiResult>;
-  list_sessions(args?: BrowxaiArgs): Promise<BrowxaiResult>;
+  open_session(args: OpenSessionArgs): Promise<OpenSessionResult>;
+  close_session(args: CloseSessionArgs): Promise<CloseSessionResult>;
+  close_sessions(args?: CloseSessionsArgs): Promise<CloseSessionsResult>;
+  list_sessions(args?: ListSessionsArgs): Promise<ListSessionsResult>;
 
   /**
    * Typed escape hatch for adopters that want to call a tool by name (for

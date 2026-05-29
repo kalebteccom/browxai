@@ -77,52 +77,66 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   // method exists at the type level but throws BROWXAI_SDK_NOT_EXPOSED at
   // call time. This makes `client.eval_js?.(...)` a tractable refactor when
   // the operator later opts the capability in.
-  const guarded = (toolName: string) => async (args?: BrowxaiArgs): Promise<BrowxaiResult> => callTool(toolName, args);
+  //
+  // The runtime wrapper is intentionally `(args?: BrowxaiArgs) => …` — the
+  // dispatch path is shape-agnostic. The per-tool TypeScript signatures
+  // declared on `BrowxaiClient` specialise this at the type layer only; the
+  // cast below assigns one generic factory output to each typed slot without
+  // duplicating the wrapper N times.
+  // The runtime fn signature is uniform; the per-method TS signatures on
+  // `BrowxaiClient` narrow it. `<F>` lets each call site project the wrapper
+  // into the exact typed slot without per-method duplication.
+  const guarded = <F>(toolName: string): F =>
+    (async (args?: BrowxaiArgs): Promise<BrowxaiResult> => callTool(toolName, args)) as unknown as F;
+
+  /** Shorthand: pluck a typed-method slot off `BrowxaiClient` for `guarded<F>`'s
+   *  type parameter. Keeps the assignment table below readable. */
+  type M<K extends keyof BrowxaiClient> = BrowxaiClient[K];
 
   const client: BrowxaiClient = {
     // read
-    snapshot: guarded("snapshot"),
-    find: guarded("find"),
-    screenshot: guarded("screenshot"),
-    console_read: guarded("console_read"),
-    network_read: guarded("network_read"),
-    ws_read: guarded("ws_read"),
-    inspect: guarded("inspect"),
-    text_search: guarded("text_search"),
-    extract: guarded("extract"),
-    verify_visible: guarded("verify_visible"),
-    verify_text: guarded("verify_text"),
-    verify_value: guarded("verify_value"),
-    verify_count: guarded("verify_count"),
-    verify_attribute: guarded("verify_attribute"),
-    verify_predicate: guarded("verify_predicate"),
-    generate_locator: guarded("generate_locator"),
-    plan: guarded("plan"),
+    snapshot: guarded<M<"snapshot">>("snapshot"),
+    find: guarded<M<"find">>("find"),
+    screenshot: guarded<M<"screenshot">>("screenshot"),
+    console_read: guarded<M<"console_read">>("console_read"),
+    network_read: guarded<M<"network_read">>("network_read"),
+    ws_read: guarded<M<"ws_read">>("ws_read"),
+    inspect: guarded<M<"inspect">>("inspect"),
+    text_search: guarded<M<"text_search">>("text_search"),
+    extract: guarded<M<"extract">>("extract"),
+    verify_visible: guarded<M<"verify_visible">>("verify_visible"),
+    verify_text: guarded<M<"verify_text">>("verify_text"),
+    verify_value: guarded<M<"verify_value">>("verify_value"),
+    verify_count: guarded<M<"verify_count">>("verify_count"),
+    verify_attribute: guarded<M<"verify_attribute">>("verify_attribute"),
+    verify_predicate: guarded<M<"verify_predicate">>("verify_predicate"),
+    generate_locator: guarded<M<"generate_locator">>("generate_locator"),
+    plan: guarded<M<"plan">>("plan"),
     // navigation
-    navigate: guarded("navigate"),
-    go_back: guarded("go_back"),
-    go_forward: guarded("go_forward"),
-    scroll: guarded("scroll"),
-    set_viewport: guarded("set_viewport"),
+    navigate: guarded<M<"navigate">>("navigate"),
+    go_back: guarded<M<"go_back">>("go_back"),
+    go_forward: guarded<M<"go_forward">>("go_forward"),
+    scroll: guarded<M<"scroll">>("scroll"),
+    set_viewport: guarded<M<"set_viewport">>("set_viewport"),
     // action
-    click: guarded("click"),
-    fill: guarded("fill"),
-    press: guarded("press"),
-    shortcut: guarded("shortcut"),
-    hover: guarded("hover"),
-    select: guarded("select"),
-    choose_option: guarded("choose_option"),
-    fill_form: guarded("fill_form"),
-    wait_for: guarded("wait_for"),
-    execute: guarded("execute"),
+    click: guarded<M<"click">>("click"),
+    fill: guarded<M<"fill">>("fill"),
+    press: guarded<M<"press">>("press"),
+    shortcut: guarded<M<"shortcut">>("shortcut"),
+    hover: guarded<M<"hover">>("hover"),
+    select: guarded<M<"select">>("select"),
+    choose_option: guarded<M<"choose_option">>("choose_option"),
+    fill_form: guarded<M<"fill_form">>("fill_form"),
+    wait_for: guarded<M<"wait_for">>("wait_for"),
+    execute: guarded<M<"execute">>("execute"),
     // coordination
-    await_human: guarded("await_human"),
-    name_ref: guarded("name_ref"),
+    await_human: guarded<M<"await_human">>("await_human"),
+    name_ref: guarded<M<"name_ref">>("name_ref"),
     // session lifecycle
-    open_session: guarded("open_session"),
-    close_session: guarded("close_session"),
-    close_sessions: guarded("close_sessions"),
-    list_sessions: guarded("list_sessions"),
+    open_session: guarded<M<"open_session">>("open_session"),
+    close_session: guarded<M<"close_session">>("close_session"),
+    close_sessions: guarded<M<"close_sessions">>("close_sessions"),
+    list_sessions: guarded<M<"list_sessions">>("list_sessions"),
     // escape hatch + introspection
     callTool,
     exposedTools: [...exposed].sort(),
