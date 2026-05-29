@@ -8,6 +8,50 @@ surface" covers.
 
 ## Unreleased
 
+## v0.3.1 — 2026-05-29 — typed SDK surface (additive)
+
+Patch on top of v0.3.0's SDK Stage A. Pure type-layer change — no runtime
+behaviour change. The `BrowxaiClient` interface now carries per-tool
+argument and result-data types instead of the Stage-A
+`(args: BrowxaiArgs) => Promise<BrowxaiResult>` uniform shape, because the
+emitted `.d.ts` is the canonical reference for LLM-authoring consumers
+(wrightxai Phase 1.6 generates TypeScript that imports from this surface).
+
+### Added
+
+- **`src/sdk/tool-types.ts`** — per-tool argument interfaces
+  (`NavigateArgs`, `FindArgs`, `VerifyTextArgs`, `ClickArgs`, …) and
+  result-data interfaces (`FindResultData`, `VerifyResultData`,
+  `ActionResultData`, …) covering every stable tool in the curated
+  `SDK_TOOLS` registry. Capability-gated tools (`eval_js`, `network_body`,
+  `upload_file`, `register_secret`) also get typed arg interfaces for
+  consumers calling them through `callTool`.
+- **`Target` / `RefTarget` unions** — exact-one-of `ref|selector|named|coords`
+  shape. The type layer now rejects malformed calls like
+  `client.verify_text({ text: "…" })` (missing target) at compile time.
+- **`exports`** in `package.json` routes the `types` condition to
+  `dist/index.d.ts` so bundlers/IDEs that don't fall back to the legacy
+  top-level `"types"` field pick up the typed surface.
+- **`test/sdk/types.test.ts`** — vitest `expectTypeOf` probes pinning the
+  per-tool method signatures + result-data shapes.
+
+### Changed
+
+- `BrowxaiClient` method signatures are now specialised per tool. The
+  Stage-A `(args: BrowxaiArgs) => Promise<BrowxaiResult>` shape is gone
+  from the typed surface — `callTool(name, args)` remains as the
+  open-ended escape hatch.
+- `buildClient`'s runtime walker is unchanged. The dispatch path still
+  forwards `(args?) => transport.dispatch(name, args)`; per-method TS
+  signatures only narrow at the type layer.
+
+### Unchanged (carry-overs from Stage A)
+
+- Capability gate at the SDK boundary.
+- Per-session isolation, egress sanitisation, `<SECRET_NAME>` substitution.
+- All 954 existing unit tests + 8 keystone tests pass.
+- No new tool registrations; no new capability.
+
 ## v0.2.3 — 2026-05-28 — extract() schema-dialect relaxations + strict opt-in
 
 Patch release, layering on v0.2.2's diagnostic improvements. Ships the
