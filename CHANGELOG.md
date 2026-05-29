@@ -8,6 +8,45 @@ surface" covers.
 
 ## Unreleased
 
+## v0.3.2 — 2026-05-29 — `extract.mode` retired
+
+Reconciliation round (R-1) follow-up from wrightxai bench adoption: the
+LLM-authoring SDK consumer saw `mode` in the typed `ExtractArgs`
+signature, tried `"llm-assisted"` as a fallback when deterministic
+returned partial results, and burned multiple LLM turns on the resulting
+`kind:"llm-assisted-not-implemented"` rejection. Removing the mode from
+the typed surface (so the LLM stops seeing it) while tolerating it at
+runtime (so existing adopters don't break) is the graceful-deprecation
+fix.
+
+### Retired
+
+- **`ExtractArgs.mode`** — the SDK type no longer carries the field.
+  Deterministic was always the only working path; the `"llm-assisted"`
+  literal was a typed-but-unimplemented seam that confused authoring
+  agents into trying it. The MCP `extract` tool's zod schema still
+  accepts the field at the wire layer (graceful-deprecation, per the
+  "never hard-break config-input APIs" policy), but the typed SDK no
+  longer surfaces it — new code should drop the arg.
+
+### Changed
+
+- **`src/page/extract.ts`** — `extract({ mode: "llm-assisted" })` no
+  longer returns a structured `kind:"llm-assisted-not-implemented"`
+  failure. Instead it emits a one-shot `console.warn` and falls through
+  to the deterministic path, returning whatever deterministic mode would
+  have returned. The `"llm-assisted-not-implemented"` failure kind
+  remains in the `ExtractFailure["kind"]` union as a retired-but-defined
+  label for back-compat narrowing; v0.3.2 stops emitting it.
+- **`docs/tool-reference.md`** — `extract.mode` section updated to flag
+  the retirement + tolerance behaviour.
+
+### Unchanged
+
+- All other `extract` semantics (schema lowering, `x-browx-source`
+  hints, `BROWX_EXTRACT_STRICT`, the failure-kind taxonomy beyond the
+  retired entry) are untouched.
+
 ## v0.3.1 — 2026-05-29 — typed SDK surface (additive)
 
 Patch on top of v0.3.0's SDK Stage A. Pure type-layer change — no runtime

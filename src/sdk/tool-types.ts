@@ -230,7 +230,12 @@ export interface ExtractArgs extends SessionArg {
   schema: Record<string, unknown>;
   ref?: string;
   scope?: string;
-  mode?: "deterministic" | "llm-assisted";
+  /** RETIRED in v0.3.2 — the `mode` arg is no longer part of the typed SDK
+   *  surface. Deterministic is the only supported path. Setting
+   *  `mode:"llm-assisted"` at runtime is tolerated for back-compat
+   *  (graceful deprecation — emits a console.warn and proceeds as
+   *  deterministic) but the type no longer exposes it, so new code
+   *  shouldn't pass it. Drop the arg. */
 }
 export interface ExtractEvidence {
   refsUsed?: ReadonlyArray<string>;

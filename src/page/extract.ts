@@ -3,12 +3,12 @@
 // The schema-as-contract primitive every browxai
 // adopter currently rebuilds the same "parse this table into rows" loop on
 // top of `snapshot()`. Stagehand `extract`, Skyvern, browser-use all ship
-// this. browxai's version is **deterministic by default** (selector-only —
-// schema fields lower to `find()` / selector queries scoped to a subtree),
-// with an optional `mode: "llm-assisted"` callback seam reserved for v0.2.x.
+// this. browxai's version is **deterministic only** (selector-only —
+// schema fields lower to `find()` / selector queries scoped to a subtree).
 //
-// Default mode: `"deterministic"`. The model-agnostic principle — substrate
-// doesn't tie itself to a reasoning loop. LLM-assisted is opt-in.
+// The `mode` arg is RETIRED as of v0.3.2 — deterministic is the supported
+// path. `mode:"llm-assisted"` is tolerated for back-compat (warn + fall
+// through to deterministic) but is no longer in the typed SDK surface.
 //
 // The schema is the contract: invalid input / partial matches surface in
 // `failure.partialMisses`, never silently coerced into a malformed object.
@@ -50,8 +50,32 @@ import { composeSnapshot } from "./compose.js";
 import { findByRef } from "./snapshot.js";
 import { estimateTokens } from "../util/tokens.js";
 
-/** Mode toggle. Deterministic is the required-ship default; llm-assisted is a
- *  typed-but-unimplemented seam reserved for a v0.2.x follow-up. */
+/** One-shot warn for the RETIRED `mode:"llm-assisted"` arg (v0.3.2). Module
+ *  state so adopters don't spam stderr on every extract call. Exposed
+ *  internally as `__resetLlmAssistedWarnedForTests` for the regression
+ *  test that asserts the warn fires. */
+let __llmAssistedWarned = false;
+function warnLlmAssistedRetired(): void {
+  if (__llmAssistedWarned) return;
+  __llmAssistedWarned = true;
+  console.warn(
+    'browxai: extract({ mode: "llm-assisted" }) is RETIRED as of v0.3.2 — ' +
+      "the `mode` arg is no longer part of the SDK type. Treating as " +
+      'mode:"deterministic" (the only supported path). Drop the arg from ' +
+      "your call site to silence this warning.",
+  );
+}
+/** Test-only hook — resets the one-shot guard so the warn-emission can be
+ *  re-asserted in isolation. Not exported from `index.ts`. */
+export function __resetLlmAssistedWarnedForTests(): void {
+  __llmAssistedWarned = false;
+}
+
+/** Mode toggle. `"deterministic"` is the only supported value. The legacy
+ *  `"llm-assisted"` literal is retained in the union so that runtime callers
+ *  passing it (pre-v0.3.2 adopters) still type-check at the page-layer
+ *  boundary; the SDK type no longer exposes it. At runtime it is tolerated
+ *  with a `console.warn` and falls through to deterministic. */
 export type ExtractMode = "deterministic" | "llm-assisted";
 
 /** A JSON-Schema-flavoured shape. We accept the subset that has a clear
@@ -106,9 +130,10 @@ export interface ExtractOptions {
   ref?: string;
   /** Scope to a CSS selector match. Mutually exclusive with `ref`. */
   scope?: string;
-  /** Default `"deterministic"`. `"llm-assisted"` is a typed seam — not
-   *  implemented in v0.2.0; returns a structured `{ok:false, failure}`
-   *  with `kind:"llm-assisted-not-implemented"`. */
+  /** Default `"deterministic"` (the only supported path). RETIRED in
+   *  v0.3.2 — `"llm-assisted"` is tolerated at runtime for back-compat
+   *  (warn + treat as deterministic) but is no longer in the SDK type.
+   *  Drop the arg from new code. */
   mode?: ExtractMode;
   testAttributes: string[];
   /** When true, v0.2.2's unknown-`x-browx-source`-key diagnostics are
@@ -137,9 +162,11 @@ export interface ExtractEvidence {
 export interface ExtractFailure {
   /** `"app"` when the schema didn't fit the page (missing required fields);
    *  `"browxai"` when extract itself couldn't run (invalid scope, invalid
-   *  schema, llm-assisted not implemented). */
+   *  schema). */
   source: "app" | "browxai";
-  /** Stable kind label. */
+  /** Stable kind label. `"llm-assisted-not-implemented"` is retained in the
+   *  union as a RETIRED kind — v0.3.2 stopped emitting it (the `mode` arg
+   *  is tolerated with a warn instead). New code should not narrow on it. */
   kind:
     | "invalid-schema"
     | "scope-not-found"
@@ -163,20 +190,13 @@ export async function extract(
   refs: RefRegistry,
   opts: ExtractOptions,
 ): Promise<ExtractResult> {
-  const mode: ExtractMode = opts.mode ?? "deterministic";
-  if (mode === "llm-assisted") {
-    return fail({
-      source: "browxai",
-      kind: "llm-assisted-not-implemented",
-      expected: "deterministic mode (the v0.2.0 default)",
-      actual: 'mode:"llm-assisted"',
-      evidence: {
-        note:
-          "the llm-assisted callback hook is a typed seam reserved for a " +
-          "v0.2.x follow-up; the deterministic mode is the supported path " +
-          "today. Drop the `mode` arg or set mode:\"deterministic\".",
-      },
-    });
+  // The `mode` arg is RETIRED as of v0.3.2 — deterministic is the only
+  // supported path. Tolerate `mode:"llm-assisted"` at runtime (graceful
+  // deprecation per the "never hard-break config-input APIs" policy):
+  // emit a one-shot console.warn and fall through to deterministic. No
+  // downstream code branches on the mode any more.
+  if (opts.mode === "llm-assisted") {
+    warnLlmAssistedRetired();
   }
   // Schema-dialect relaxations (v0.2.3 Proposals A + B). Clone first so we
   // never mutate the caller-supplied object. The relaxation notes ride

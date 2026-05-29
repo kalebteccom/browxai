@@ -16,6 +16,7 @@ import {
   applySchemaRelaxations,
   cloneSchema,
   extract,
+  __resetLlmAssistedWarnedForTests,
   type ExtractSchema,
 } from "./extract.js";
 import type { A11yNode } from "./a11y.js";
@@ -325,18 +326,64 @@ describe("extract() — top-level failure shapes", () => {
   const cdp = noPage as unknown as Parameters<typeof extract>[1];
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
-  it("returns a structured failure when mode is llm-assisted (typed-but-unimplemented seam)", async () => {
-    const res = await extract(noPage, cdp, refs, {
-      mode: "llm-assisted",
-      schema: { type: "object", properties: { x: { type: "string" } } },
+  it("retired `mode:\"llm-assisted\"` is tolerated — warn + fall through to deterministic (v0.3.2)", async () => {
+    // Regression for R-1: wrightxai's bench agent saw `mode` in the SDK type,
+    // tried `"llm-assisted"` as a fallback, and wasted LLM turns on the old
+    // `kind:"llm-assisted-not-implemented"` rejection. As of v0.3.2 the arg
+    // is RETIRED at the typed boundary and tolerated at runtime — passing
+    // `mode:"llm-assisted"` must NOT throw, must warn once, and must produce
+    // the SAME observable result as the deterministic path.
+    //
+    // We use the `ref + scope` early-return (an `invalid-schema` failure that
+    // fires before any Page access) so the assertion runs without a real
+    // CDP / Page. The point of the test is the mode-handling branch, not the
+    // downstream extraction.
+    const schema: ExtractSchema = {
+      type: "object",
+      properties: { x: { type: "string" } },
+    };
+    const commonOpts = {
+      schema,
+      ref: "e1",
+      scope: ".x",
       testAttributes: ["data-testid"],
-    });
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.failure.kind).toBe("llm-assisted-not-implemented");
-      expect(res.failure.source).toBe("browxai");
+    };
+
+    __resetLlmAssistedWarnedForTests();
+    const originalWarn = console.warn;
+    const warnCalls: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    try {
+      // (a) Does NOT throw — the call resolves to a structured failure.
+      const resLegacy = await extract(noPage, cdp, refs, { ...commonOpts, mode: "llm-assisted" });
+      const resDeterministic = await extract(noPage, cdp, refs, { ...commonOpts });
+
+      // (b) Warns exactly once for the legacy mode (one-shot guard), and
+      //     never for the deterministic path.
+      expect(warnCalls.length).toBe(1);
+      const warnMsg = String(warnCalls[0]?.[0] ?? "");
+      expect(warnMsg).toMatch(/RETIRED/);
+      expect(warnMsg).toMatch(/llm-assisted/);
+      expect(warnMsg).toMatch(/v0\.3\.2/);
+
+      // (c) Result is whatever deterministic mode would have returned —
+      //     same `ok`, same failure kind, same source.
+      expect(resLegacy.ok).toBe(false);
+      expect(resDeterministic.ok).toBe(false);
+      if (!resLegacy.ok && !resDeterministic.ok) {
+        expect(resLegacy.failure.kind).toBe(resDeterministic.failure.kind);
+        expect(resLegacy.failure.kind).toBe("invalid-schema");
+        expect(resLegacy.failure.source).toBe(resDeterministic.failure.source);
+      }
+      expect(resLegacy.tokensEstimate).toBeGreaterThan(0);
+
+      // (d) The one-shot guard suppresses repeat warnings within a process.
+      await extract(noPage, cdp, refs, { ...commonOpts, mode: "llm-assisted" });
+      expect(warnCalls.length).toBe(1);
+    } finally {
+      console.warn = originalWarn;
+      __resetLlmAssistedWarnedForTests();
     }
-    expect(res.tokensEstimate).toBeGreaterThan(0);
   });
 
   it("returns invalid-schema when type is genuinely unsupported (post-v0.2.3 `integer` is now auto-coerced; `null` is still rejected)", async () => {
