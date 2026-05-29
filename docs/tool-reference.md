@@ -227,13 +227,15 @@ Returns `{ count, matches: [{ ref, role, text, context, bbox, clipped }] }`. Eac
 
 Structured, schema-driven data extraction — the primitive every browxai adopter currently rebuilds on top of `snapshot()`. The schema is the contract: partial matches surface in `evidence.partialMisses` (or `failure.partialMisses` when `required:true`), never silently coerced into a malformed object.
 
-**Default mode: `"deterministic"`** — selector-only. Each schema property lowers to a `find()`-style query or explicit selector scoped to the current subtree. No model-call in the substrate; the model-agnostic principle. `mode:"llm-assisted"` is a typed-but-unimplemented seam reserved for v0.2.x — calling it returns `{ok:false, failure:{kind:"llm-assisted-not-implemented"}}`.
+**Deterministic, selector-only.** Each schema property lowers to a `find()`-style query or explicit selector scoped to the current subtree. No model-call in the substrate — the model-agnostic principle.
+
+The `mode` parameter is **RETIRED** as of v0.3.2 — the `deterministic` mode is the only supported path, and the typed SDK no longer exposes the field. Setting `mode: "llm-assisted"` is tolerated (treated as deterministic) for back-compat but will emit a one-shot `console.warn` at the call site. Drop the `mode` arg from new code.
 
 Args:
 - `schema` — a JSON-schema-flavoured shape (object/array/string/number/boolean; `properties` for objects, `items` for arrays). See the lowering rules below.
 - `ref` — scope to this ref's subtree (from a prior snapshot/find).
 - `scope` — scope to this CSS selector's first match. Invalid (zero matches) → structured `failure`, not an empty object. Mutually exclusive with `ref`.
-- `mode` — default `"deterministic"`; `"llm-assisted"` is the reserved seam.
+- `mode` — RETIRED. Tolerated for back-compat (warn + treated as deterministic). Drop the arg.
 
 Returns `{ok:true, data:<schema-shaped>, evidence:{refsUsed,selectorsUsed,partialMisses}, tokensEstimate}` — or `{ok:false, failure:{source,kind,expected,actual,partialMisses?}, tokensEstimate}` for misses. `evidence.refsUsed` lets the agent `name_ref` / cache the elements the extraction actually drew from.
 
