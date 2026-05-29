@@ -1,6 +1,6 @@
 {
   "name": "browxai",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
   "license": "MIT",
   "type": "module",
@@ -20,7 +20,12 @@
   "engines": { "node": ">=20" },
   "packageManager": "pnpm@9.0.0",
   "bin": { "browxai": "dist/cli.js" },
-  "exports": { ".": "./dist/index.js" },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": ["dist"],
   "scripts": {
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
