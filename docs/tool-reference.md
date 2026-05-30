@@ -246,12 +246,13 @@ Two paths, deliberately layered:
 1. **Implicit (the simple rule):** the property *name* is the query. A `{type:"string"}` property `"price"` looks for a node whose accessible name / testid contains `"price"` and reads its visible text. This is the path most testid-rich pages take.
 
 2. **Explicit (the escape hatch):** add `x-browx-source` per property to override. The fields (first-present wins in source-resolution order):
-   - `selector` — raw CSS / `selectorHint`, resolved against the current scope.
-   - `query` — natural-language query for the tree-scan ranker (overrides the implicit name).
+   - `selector` — raw CSS / `selectorHint`, resolved against the current scope. **This is the typed escape hatch for per-field targeting.**
    - `attr` — read this HTML attribute (`"href"`, `"data-state"`).
    - `prop` — read this DOM property (`"value"`, `"checked"`).
    - `text` — explicit "read visible text" (the default when no read-mode hint is set).
    - `value` — alias for `prop:"value"`.
+
+The per-field `query` key is **RETIRED as of v0.3.3** — the NL tree-scan ranker is unreliable for explicit prose queries (uniform null/0 across rows with no partialMiss surfaced; see [CHANGELOG v0.3.3](../CHANGELOG.md)). Use `selector` for per-field targeting; the implicit property-name lowering still works on testid-rich pages. Setting `x-browx-source.query` at runtime is tolerated for back-compat — the resolver emits a one-shot `console.warn` and records a `partialMisses` entry naming the field, then proceeds with the tree-scan. New schemas should drop the `query` key.
 
 The implicit rule covers the headline case (testid-friendly pages) without ceremony; the explicit hint covers the cases where the property name carries no signal or the value isn't innerText.
 
