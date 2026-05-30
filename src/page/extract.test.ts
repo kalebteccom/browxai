@@ -17,6 +17,7 @@ import {
   cloneSchema,
   extract,
   __resetLlmAssistedWarnedForTests,
+  __resetExplicitNlQueryWarnedForTests,
   type ExtractSchema,
 } from "./extract.js";
 import type { A11yNode } from "./a11y.js";
@@ -835,6 +836,131 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
     } finally {
       if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
       else delete process.env.BROWX_EXTRACT_STRICT;
+    }
+  });
+});
+
+describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (R-5, v0.3.3)", () => {
+  it("tolerates an explicit per-field `query:` — warns once + records a partialMisses entry naming the field", async () => {
+    // Regression for R-5: wrightxai's smoke trial saw the LLM author a
+    // prose-style `x-browx-source.query` for a per-row numeric field on
+    // Hacker News and the resolver returned null for every row with no
+    // partialMiss surfaced (one stale ref re-used across 30 row scopes —
+    // the agent burned 14 revisions before the judge rejected it).
+    //
+    // Post-R-5 contract: passing an explicit per-field `query:` must NOT
+    // throw, must warn ONCE per process (one-shot guard), and MUST emit a
+    // partialMisses entry for each field that uses it so the diagnostic
+    // surfaces in `evidence` — the caller / authoring LLM now sees the
+    // actionable signal on the FIRST turn instead of burning N revisions.
+    //
+    // The implicit "property-name = query" lowering path is unchanged
+    // (a separate assertion below pins this).
+    seq = 0;
+    const tree = n("WebArea", undefined, [n("text", "Some Text", [], { name: "Some Text" })]);
+
+    __resetExplicitNlQueryWarnedForTests();
+    const originalWarn = console.warn;
+    const warnCalls: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    try {
+      // (a) Does NOT throw — the call resolves normally.
+      const out = await resolveAgainstTree({
+        schema: {
+          type: "object",
+          properties: {
+            comments_count: {
+              type: "number",
+              "x-browx-source": { query: "the number of comments on this story" },
+            },
+          },
+        },
+        page: noPage,
+        scopeTree: tree,
+      });
+
+      // (b) Warns exactly once — process-scoped one-shot guard.
+      expect(warnCalls.length).toBe(1);
+      const warnMsg = String(warnCalls[0]?.[0] ?? "");
+      expect(warnMsg).toMatch(/RETIRED/);
+      expect(warnMsg).toMatch(/v0\.3\.3/);
+      expect(warnMsg).toMatch(/x-browx-source\.selector/);
+
+      // (c) partialMisses carries an entry naming the field, with the
+      //     RETIRED diagnostic and the migration hint — the actionable
+      //     signal the bench agent needed on turn 1.
+      const retired = out.evidence.partialMisses.filter((m) =>
+        /`x-browx-source\.query` is RETIRED/.test(m),
+      );
+      expect(retired.length).toBe(1);
+      expect(retired[0]).toMatch(/comments_count/);
+      expect(retired[0]).toMatch(/selector/);
+
+      // (d) One-shot guard suppresses repeat warnings on subsequent calls.
+      await resolveAgainstTree({
+        schema: {
+          type: "object",
+          properties: {
+            other: {
+              type: "string",
+              "x-browx-source": { query: "another prose query" },
+            },
+          },
+        },
+        page: noPage,
+        scopeTree: tree,
+      });
+      expect(warnCalls.length).toBe(1);
+    } finally {
+      console.warn = originalWarn;
+      __resetExplicitNlQueryWarnedForTests();
+    }
+  });
+
+  it("implicit property-name lowering is UNAFFECTED — no warn, no RETIRED partialMisses entry", async () => {
+    // The implicit "property-name = query" path internally stamps
+    // `{ query: <name> }` on the hint, but it carries a private marker
+    // so the resolver knows it's the implicit lowering (not a
+    // user-authored prose query). This test pins that the implicit path
+    // still works on testid-rich pages without firing the R-5 warning.
+    seq = 0;
+    const tree = n("WebArea", undefined, [n("text", "title", [], { name: "title" })]);
+
+    __resetExplicitNlQueryWarnedForTests();
+    const originalWarn = console.warn;
+    const warnCalls: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    try {
+      const out = await resolveAgainstTree({
+        schema: {
+          type: "object",
+          properties: {
+            // No x-browx-source — implicit lowering applies.
+            title: { type: "string" },
+          },
+        },
+        page: noPage,
+        scopeTree: tree,
+      });
+
+      // (a) No RETIRED warn fires for the implicit path.
+      const retiredWarns = warnCalls.filter((c) =>
+        String(c[0] ?? "").includes("`x-browx-source.query` is RETIRED"),
+      );
+      expect(retiredWarns.length).toBe(0);
+
+      // (b) No RETIRED partialMisses entry — only the implicit-name path
+      //     fed the tree-scan, not an explicit user query.
+      const retiredMisses = out.evidence.partialMisses.filter((m) =>
+        /`x-browx-source\.query` is RETIRED/.test(m),
+      );
+      expect(retiredMisses.length).toBe(0);
+
+      // (c) Implicit lowering still resolves the value.
+      expect((out.data as { title: string }).title).toBe("title");
+    } finally {
+      console.warn = originalWarn;
+      __resetExplicitNlQueryWarnedForTests();
     }
   });
 });

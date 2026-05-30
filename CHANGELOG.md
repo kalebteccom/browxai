@@ -8,6 +8,63 @@ surface" covers.
 
 ## Unreleased
 
+## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
+
+Reconciliation round (R-5) follow-up from wrightxai bench adoption: a
+smoke trial saw an LLM-authoring SDK consumer author
+`x-browx-source: { query: "the number of comments on this story…" }` for
+a per-row numeric field on Hacker News. The resolver returned `null` for
+every one of the 30 rows (the tree-scan ranker picked one a11y node and
+re-used it across all per-row scopes — no `partialMiss` was surfaced
+because the scan still "matched" something). The judge correctly
+rejected the result and the agent burned 14 revisions / 45,746 tokens
+before giving up. Same shape of defect as R-1's `mode:"llm-assisted"`:
+advertised in the SDK surface, unreliable at runtime, no actionable
+diagnostic on the first failure.
+
+### Retired
+
+- **`x-browx-source.query` (per-field)** — the explicit prose-style
+  natural-language query on a leaf property is retired at the typed SDK
+  boundary. The MCP `extract` tool's zod schema is unchanged (graceful
+  deprecation per the "never hard-break config-input APIs" policy — the
+  wire schema still accepts the key), but the typed `ExtractSourceHint`
+  marks `query` as RETIRED in JSDoc, and the MCP tool description /
+  `schema` parameter description no longer advertise the key to
+  authoring agents. Use `x-browx-source.selector` (raw CSS) for explicit
+  per-field targeting; the implicit "property name = query" lowering is
+  unchanged for testid-rich pages.
+
+### Changed
+
+- **`src/page/extract.ts`** — `resolveLeaf` now distinguishes the
+  implicit lowering (set by `resolveObject` from the property name) from
+  an explicit user-authored `x-browx-source.query` via a module-private
+  Symbol marker. When an explicit `query:` is encountered it emits a
+  one-shot `console.warn` and records a per-field `partialMisses` entry
+  naming the field and pointing the caller at `selector`, then proceeds
+  with the existing tree-scan resolution (so any adopter whose page
+  happens to satisfy the scan still gets a value alongside the
+  diagnostic — graceful, never hard-break).
+- **`src/server.ts`** — the `extract` MCP tool description and `schema`
+  parameter description drop `query` from the listed `x-browx-source`
+  keys and flag the retirement + runtime tolerance behaviour.
+- **`docs/tool-reference.md`** — explicit-escape-hatch section updated
+  to drop `query` from the list and flag the retirement.
+
+### Unchanged
+
+- The implicit "property-name = query" lowering path is unaffected — the
+  module-private Symbol marker isolates the retirement behaviour to
+  user-authored explicit `query:` hints only.
+- All other `extract` semantics (schema lowering, `selector`/`attr`/
+  `prop`/`text`/`value`/`collection` hints, `BROWX_EXTRACT_STRICT`,
+  failure-kind taxonomy) are untouched.
+- Array `x-browx-source.collection` still accepts a CSS selector OR a
+  tree-scan query (the array-level NL fallback was not the failure mode
+  R-5 traced — the wrightxai smoke trial's `collection` was the
+  reliable `"tr.athing"` CSS).
+
 ## v0.3.2 — 2026-05-29 — `extract.mode` retired
 
 Reconciliation round (R-1) follow-up from wrightxai bench adoption: the

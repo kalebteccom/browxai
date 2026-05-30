@@ -71,6 +71,51 @@ export function __resetLlmAssistedWarnedForTests(): void {
   __llmAssistedWarned = false;
 }
 
+/** One-shot warn for the RETIRED `x-browx-source.query` per-field hint
+ *  (v0.3.3). The natural-language tree-scan ranker is unreliable in
+ *  production — wrightxai's smoke trial saw the LLM author a prose query
+ *  for a per-row numeric field on Hacker News, and the resolver returned
+ *  null for every row (one stale ref re-used across all 30 row scopes,
+ *  no partialMiss surfaced — the agent burned 14 revisions). Same shape
+ *  of defect as R-1's `mode:"llm-assisted"`: advertised in the typed SDK,
+ *  unreliable at runtime. Retired at the typed boundary; tolerated at
+ *  runtime with a one-shot warn + per-call `partialMisses` entry so the
+ *  caller sees the actionable diagnostic.
+ *
+ *  Note: this guards the EXPLICIT user-supplied `query`. The implicit
+ *  "property-name as query" lowering path (`resolveObject` stamps
+ *  `{ query: name }` for an un-hinted property) is unchanged — the bare
+ *  property-name case still works on testid-rich pages and is the
+ *  documented primary path. */
+let __explicitNlQueryWarned = false;
+function warnExplicitNlQueryRetired(): void {
+  if (__explicitNlQueryWarned) return;
+  __explicitNlQueryWarned = true;
+  console.warn(
+    "browxai: extract() — explicit per-field `x-browx-source.query` is " +
+      "RETIRED as of v0.3.3. The NL tree-scan ranker is unreliable on " +
+      "prose-style queries (uniform null/0 across rows, no partialMiss " +
+      "surfaced — see R-5 / wrightxai smoke trial). Use " +
+      '`x-browx-source.selector` (raw CSS / selectorHint) for per-field ' +
+      "targeting; the implicit property-name lowering still works for " +
+      "testid-friendly pages. The runtime still attempts resolution and " +
+      "records a partialMisses entry so the diagnostic surfaces in " +
+      "evidence — drop explicit `query:` to silence this warning.",
+  );
+}
+/** Test-only hook — resets the one-shot guard so the warn-emission can be
+ *  re-asserted in isolation. Not exported from `index.ts`. */
+export function __resetExplicitNlQueryWarnedForTests(): void {
+  __explicitNlQueryWarned = false;
+}
+
+/** Private marker stamped on a hint when the implicit name-as-query
+ *  lowering ran (so the per-leaf resolver knows the query is internal,
+ *  not user-supplied — and skips the retirement warning). Module-private
+ *  symbol; never surfaces in serialised schemas. */
+const IMPLICIT_QUERY = Symbol.for("browxai.extract.implicitQuery");
+type HintWithMarker = ExtractSourceHint & { [IMPLICIT_QUERY]?: true };
+
 /** Mode toggle. `"deterministic"` is the only supported value. The legacy
  *  `"llm-assisted"` literal is retained in the union so that runtime callers
  *  passing it (pre-v0.3.2 adopters) still type-check at the page-layer
@@ -103,7 +148,14 @@ export interface ExtractSchema {
 }
 
 export interface ExtractSourceHint {
-  /** Natural-language query passed to the tree-scan ranker (find()-style). */
+  /** RETIRED in v0.3.3 — the NL tree-scan ranker is unreliable for
+   *  explicit prose-style per-field queries (uniform null/0 across rows
+   *  with no partialMiss surfaced; see R-5). The typed SDK no longer
+   *  exposes this field; passing it at runtime emits a one-shot warn and
+   *  records a partialMisses entry so the diagnostic surfaces. Use
+   *  `selector` (raw CSS) instead — the implicit property-name lowering
+   *  still works for testid-friendly pages. Retained on the page-layer
+   *  type so the internal implicit-name path keeps compiling. */
   query?: string;
   /** Raw CSS / selectorHint, resolved against the current scope. */
   selector?: string;
@@ -556,7 +608,12 @@ async function resolveObject(ctx: ResolveCtx): Promise<Record<string, unknown>> 
     if (!childSchema["x-browx-source"]?.query &&
         !childSchema["x-browx-source"]?.selector &&
         !childSchema["x-browx-source"]?.collection) {
-      const hint = { ...(childSchema["x-browx-source"] ?? {}), query: name };
+      const hint: HintWithMarker = { ...(childSchema["x-browx-source"] ?? {}), query: name };
+      // Mark the implicit-lowering case so resolveLeaf knows this query
+      // came from the property name (not a user-authored prose query) and
+      // skips the RETIRED-query warning. The marker is a module-private
+      // Symbol — won't leak into serialised schemas.
+      hint[IMPLICIT_QUERY] = true;
       childSchema["x-browx-source"] = hint;
     }
     const value = await resolveSchema({
@@ -672,6 +729,23 @@ async function resolveLeaf(ctx: ResolveCtx): Promise<unknown> {
   // 2. query path: tree-scan within scopeTree.
   const query = hint.query ?? "";
   if (!query) return missLeaf(ctx);
+  // R-5 (v0.3.3): explicit per-field `query` is RETIRED. The implicit
+  // name-as-query lowering still flows through here (marked via
+  // IMPLICIT_QUERY) and works fine on testid-rich pages; the prose-style
+  // explicit query path is the unreliable one we're deprecating. Emit a
+  // one-shot warn + a per-call partialMisses entry that names the field,
+  // so the caller / authoring LLM gets a concrete signal — then fall
+  // through to the existing tree-scan resolution (graceful deprecation,
+  // never hard-break adopters).
+  const isImplicit = (hint as HintWithMarker)[IMPLICIT_QUERY] === true;
+  if (!isImplicit) {
+    warnExplicitNlQueryRetired();
+    ctx.evidence.partialMisses.push(
+      `${ctx.path}: \`x-browx-source.query\` is RETIRED (v0.3.3) — ` +
+        "the NL tree-scan ranker is unreliable for explicit per-field " +
+        "queries. Use `x-browx-source.selector` (raw CSS) instead.",
+    );
+  }
   ctx.evidence.selectorsUsed.push(query);
   const node = scanTreeForBestMatch(ctx.scopeTree, query);
   if (!node) return missLeaf(ctx);
