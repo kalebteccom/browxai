@@ -101,6 +101,22 @@ const PAGE = `<!doctype html>
             onclick="askSavePicker()">Save via picker</button>
     <output data-testid="fs-result" id="fsResult">unset</output>
 
+    <!-- device-emulation keystone (Phase 7): one button per Web platform
+         device-picker API. Each calls navigator.<api>.requestDevice() and
+         writes the outcome ('resolved name=…' / 'rejected name=…' /
+         'empty count=…') into a tagged output so the keystone can assert
+         the wrapper served the staged catalog (or the user-dismissed
+         shape when no catalog is set). -->
+    <button data-testid="bt-btn" id="btBtn" type="button"
+            onclick="askBluetooth()">Ask Bluetooth</button>
+    <output data-testid="bt-result" id="btResult">unset</output>
+    <button data-testid="usb-btn" id="usbBtn" type="button"
+            onclick="askUsb()">Ask USB</button>
+    <output data-testid="usb-result" id="usbResult">unset</output>
+    <button data-testid="hid-btn" id="hidBtn" type="button"
+            onclick="askHid()">Ask HID</button>
+    <output data-testid="hid-result" id="hidResult">unset</output>
+
     <!-- Touch keystone: a div that records touch events in a tagged
          output so the keystone can assert touchstart / touchend actually fire
          on the real headless browser via the CDP touch pipeline. -->
@@ -279,6 +295,52 @@ const PAGE = `<!doctype html>
       }
     })();
 
+    async function askBluetooth() {
+      var out = document.getElementById('btResult');
+      out.textContent = 'pending';
+      if (!navigator.bluetooth || typeof navigator.bluetooth.requestDevice !== 'function') {
+        out.textContent = 'no-bt-api';
+        return;
+      }
+      try {
+        var device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true });
+        out.textContent = 'resolved name=' + (device && device.name) + ' id=' + (device && device.id);
+      } catch (err) {
+        out.textContent = 'rejected name=' + (err && err.name);
+      }
+    }
+    async function askUsb() {
+      var out = document.getElementById('usbResult');
+      out.textContent = 'pending';
+      if (!navigator.usb || typeof navigator.usb.requestDevice !== 'function') {
+        out.textContent = 'no-usb-api';
+        return;
+      }
+      try {
+        var device = await navigator.usb.requestDevice({ filters: [] });
+        out.textContent = 'resolved vendorId=' + device.vendorId + ' productName=' + device.productName;
+      } catch (err) {
+        out.textContent = 'rejected name=' + (err && err.name);
+      }
+    }
+    async function askHid() {
+      var out = document.getElementById('hidResult');
+      out.textContent = 'pending';
+      if (!navigator.hid || typeof navigator.hid.requestDevice !== 'function') {
+        out.textContent = 'no-hid-api';
+        return;
+      }
+      try {
+        var devices = await navigator.hid.requestDevice({ filters: [] });
+        if (!devices.length) {
+          out.textContent = 'empty count=0';
+        } else {
+          out.textContent = 'resolved count=' + devices.length + ' first=' + devices[0].productName;
+        }
+      } catch (err) {
+        out.textContent = 'rejected name=' + (err && err.name);
+      }
+    }
     // Phase 7 — Shadow DOM keystone fixtures.
     // open-widget: attachShadow({mode:"open"}) — Element.shadowRoot returns
     // the root, so Playwright / page-side JS / dom-walk can all pierce it.

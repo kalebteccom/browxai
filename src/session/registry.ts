@@ -30,6 +30,7 @@ import type { PermissionPolicy, PermissionPolicyState } from "./permission.js";
 import type { NotificationPolicy, NotificationPolicyState } from "./notification.js";
 import type { FsPickerPolicy, FsPickerPolicyState } from "./fs-picker.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
+import type { DeviceEmulationState as WebDeviceEmulationState } from "./device-emu.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
 import type { VideoRecorderState, VideoStartConfig } from "../page/video.js";
@@ -138,6 +139,13 @@ export interface SessionEntry {
    *  when a new page opens in the context. Distinct from `emulation`
    *  (which holds network/cpu throttling state). */
   deviceEmulation: DeviceEmulationState;
+  /** Per-session Web Bluetooth / WebUSB / WebHID device-catalog state. Off
+   *  by default — empty catalogs until `emulate_bluetooth` / `emulate_usb`
+   *  / `emulate_hid` populate them. Capability `device-emulation`. When
+   *  the capability is off, the page-side wrappers still install (so the
+   *  default user-dismissed-picker shape is delivered without a deadlock
+   *  on headless), but the check binding short-circuits to `refused`. */
+  webDeviceEmulation: WebDeviceEmulationState;
   /** Per-session HAR recorder state (HTTP Archive record/replay). Drives the
    *  `start_har`/`stop_har` tools and tracks any HAR wired at session creation
    *  via `open_session({har})`. Capability `action` (writes a file). The HAR

@@ -28,10 +28,11 @@ export type Capability =
   | "extensions"
   | "stealth"
   | "captcha"
-  | "credentials";
+  | "credentials"
+  | "device-emulation";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -429,6 +430,21 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // the looked-up password into the W-V12 secrets registry).
   get_totp: "credentials",
   get_credential: "credentials",
+  // device-emulation — per-session Web Bluetooth / WebUSB / WebHID device
+  // catalog synthesis. Off-by-default capability; loud-warned at boot.
+  // The wrappers tell the page it found physical devices that don't exist
+  // (an init-script-wrapped `navigator.bluetooth.requestDevice()` /
+  // `navigator.usb.requestDevice()` / `navigator.hid.requestDevice()`
+  // resolves with synthetic objects matching the agent-supplied catalog).
+  // Same posture class as `eval` / `network-body` / `secrets` /
+  // `extensions` / `captcha` — see docs/threat-model.md. `device_requests`
+  // is the read-side companion (sliced view of which APIs the page has
+  // called); it sits under the same capability so a server without
+  // `device-emulation` can't even see whether a page tried to ask.
+  emulate_bluetooth: "device-emulation",
+  emulate_usb: "device-emulation",
+  emulate_hid: "device-emulation",
+  device_requests: "device-emulation",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

@@ -68,6 +68,61 @@ surface" covers.
     transaction so `idb_put` against a missing store rejects with the schema
     hint instead of silently creating it. → standard envelopes with
     `tokensEstimate`.
+- **Phase 7: Web Bluetooth / WebUSB / WebHID device emulation
+  (`emulate_bluetooth` / `emulate_usb` / `emulate_hid` / `device_requests`).**
+  Per-session synthetic-device catalogs for the three Web platform
+  device-picker APIs. The page-side init-script wrappers around
+  `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` /
+  `navigator.hid.requestDevice` resolve with synthetic device objects matching
+  W3C shapes, so an agent can drive a page that gates a flow behind a device
+  picker without owning the hardware. **Gated behind the off-by-default,
+  loud-warned `device-emulation` capability** — same posture class as `eval`
+  / `network-body` / `secrets` / `extensions` / `stealth` / `captcha`. The
+  capability is posture-broadening (every other policy says "the page CAN'T
+  do X"; this one says "the page CAN do X and we lie about what it found"),
+  so it is gated as its own slot rather than folded into `action`.
+  - **`emulate_bluetooth({devices?, session?})`** — stage a Bluetooth
+    catalog. `{devices: [{name, id, services?, …}]}` installs; `{}` /
+    `{devices: []}` clears (next `requestDevice` rejects with
+    `NotFoundError` — the user-dismissed shape). The synthetic
+    `BluetoothDevice` carries `{id, name, uuids, gatt}`; `gatt.connect()`
+    resolves with a stub server whose `getPrimaryService()` rejects (no
+    GATT emulation in v1 — see below).
+  - **`emulate_usb({devices?, session?})`** — stage a USB catalog. The
+    synthetic `USBDevice` carries vendor/product/class/manufacturer/serial
+    + `usbVersionMajor` etc.; `open()` / `selectConfiguration()` /
+    `claimInterface()` resolve; `transferIn` / `transferOut` /
+    `controlTransfer*` resolve with zero-byte payloads (no synthetic data
+    flow).
+  - **`emulate_hid({devices?, session?})`** — stage a HID catalog. The
+    HID API is multi-result by construction: `requestDevice` resolves with
+    an Array<HIDDevice>; an empty catalog resolves with `[]` (the HID
+    user-dismissed shape), NOT a rejection. The synthetic `HIDDevice`
+    carries vendor/product/productName/collections; `open()` /
+    `sendReport()` / `sendFeatureReport()` resolve; `oninputreport` is
+    never fired (no synthetic device traffic).
+  - **`device_requests({since?, session?})`** — read-side companion.
+    Returns the buffered page-side `requestDevice` calls with
+    `{api, handledAs, returned, filters?, ts}`. `handledAs` is one of
+    `"resolved"` (catalog non-empty), `"rejected"` (Bluetooth/USB +
+    catalog empty), `"empty"` (HID + catalog empty), or `"refused"`
+    (capability was off at call time — the wrapper short-circuited but
+    the buffer records the attempt so the read surfaces "the page asked
+    for hardware and you didn't have the capability on").
+  - Page-side wrapper installs eagerly at session creation
+    (`addInitScript`) so sockets constructed during initial document parse
+    hit the wrapped surface — a lazy install would miss them. Re-injected
+    on every navigation via the existing `addInitScript` flow.
+    Idempotent guard (`window.__browx_device_emu_installed`). BYOB
+    sessions surface a warning that the wrapper outlives browxai's
+    detach (`BYOB_DEVICE_EMU_WARNING`). See `src/session/device-emu.ts`
+    and `docs/threat-model.md`.
+  - v1 scope is deliberately narrow — enough to clear a picker-gated
+    onboarding flow, not enough to drive a real device protocol over the
+    synthetic surface. Deferred follow-ups: GATT service emulation for
+    Bluetooth (synthetic characteristics + read/write/notify);
+    `transferIn` / `transferOut` synthetic data streams for WebUSB;
+    `oninputreport` synthetic input streams for WebHID.
 
 - **Phase 7: `drop_files` — drag-drop files from disk onto a page element.**
   Sibling to `upload_file` for drop-zone uploaders (modern SaaS file pickers

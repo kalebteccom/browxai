@@ -1945,6 +1945,110 @@ unauthorised-access law; the operator carries that exposure. Mirrors
 the `eval` / `network-body` / `secrets` / `extensions` / `stealth`
 posture documented in `docs/threat-model.md`.
 
+### Device emulation — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` / `device_requests`
+
+Per-session synthetic-device catalogs for the three Web platform
+device-picker APIs. The page-side init-script wrappers around
+`navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` /
+`navigator.hid.requestDevice` resolve with synthetic objects matching W3C
+shapes, so an agent can drive a page that gates a flow behind a device
+picker without owning the hardware.
+
+**Capability gate.** Off by default. Add `device-emulation` to
+`BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
+boot. The capability is **posture-broadening** (the wrappers tell the
+page it found physical devices that don't exist), so it sits as its own
+slot rather than folded into `action`. Same posture class as `eval` /
+`network-body` / `secrets` / `extensions` / `stealth` / `captcha`. See
+`docs/threat-model.md`.
+
+The wrappers install eagerly at session creation so a page calling
+`requestDevice` on initial document parse never hangs. When the
+capability is OFF, the wrappers still install (the page sees the
+user-dismissed shape rather than a deadlocked promise), but the check
+binding short-circuits to `refused` — `device_requests` surfaces the
+attempt with `handledAs:"refused"` so an operator without the capability
+can still see that the page asked.
+
+**`emulate_bluetooth({devices?, session?})`** — stage a Bluetooth
+catalog. `{devices:[…]}` installs; omit or pass `{devices:[]}` to clear
+(next `requestDevice` rejects with `NotFoundError` — the user-dismissed
+shape). The synthetic `BluetoothDevice` carries `{id, name, uuids,
+gatt, addEventListener, watchAdvertisements, forget}`. `gatt.connect()`
+resolves with a stub server whose `getPrimaryService` /
+`getPrimaryServices` reject — v1 covers picker-clear flows, not full
+GATT exchange. Returns `{ok, session, api:"bluetooth", catalog:{devices},
+warnings?, tokensEstimate}`.
+
+**`emulate_usb({devices?, session?})`** — stage a USB catalog. The
+synthetic `USBDevice` carries `{vendorId, productId, productName,
+manufacturerName, serialNumber, deviceClass, deviceSubclass,
+deviceProtocol, usbVersionMajor/Minor/Subminor,
+deviceVersionMajor/Minor/Subminor, configuration, configurations}` plus
+the full method surface (`open`, `close`, `selectConfiguration`,
+`claimInterface`, `releaseInterface`, `selectAlternateInterface`,
+`controlTransferIn`/`Out`, `clearHalt`, `transferIn`/`Out`,
+`isochronousTransferIn`/`Out`, `reset`, `forget`). All resolve;
+transfer endpoints resolve with zero-byte payloads (no synthetic data
+flow).
+
+**`emulate_hid({devices?, session?})`** — stage a HID catalog. The HID
+API is multi-result by construction: `requestDevice` resolves with an
+`Array<HIDDevice>`; an EMPTY catalog resolves with `[]` (the HID
+user-dismissed shape), NOT a rejection. The synthetic `HIDDevice`
+carries `{opened, vendorId, productId, productName, collections,
+oninputreport}` plus `open` / `close` / `forget` / `sendReport` /
+`sendFeatureReport` / `receiveFeatureReport` (resolves with an empty
+`DataView`). `oninputreport` is never fired — no synthetic input
+stream.
+
+**`device_requests({since?, session?})`** — read-side companion.
+Returns `{ok, session, supportedApis:["bluetooth","usb","hid"],
+requests:[{api, handledAs, returned, filters?, ts}], tokensEstimate}`.
+`handledAs`:
+- `"resolved"` — catalog non-empty; picker resolved with synthetic
+  device (Bluetooth/USB) or list (HID).
+- `"rejected"` — Bluetooth/USB + catalog empty; picker rejected with
+  `NotFoundError` (user-dismissed shape).
+- `"empty"` — HID + catalog empty; picker resolved with `[]` (the HID
+  user-dismissed shape).
+- `"refused"` — capability was OFF at call time; the wrapper
+  short-circuited but the buffer recorded the attempt.
+
+`since` slices the buffer to `ts >= since`; omit to return everything
+(buffer is capped at 200 records).
+
+**Synthetic device fields (W3C compatibility).** The `devices[]` entries
+accept the W3C-relevant union of fields across the three APIs — each
+wrapper picks the ones its spec exposes:
+
+| Field | Bluetooth | USB | HID | Default |
+| --- | --- | --- | --- | --- |
+| `name` | `device.name` | `device.productName` | `device.productName` | `"browxai-virtual"` |
+| `id` | `device.id` | — | — | `"browxai-<api>-<index>"` |
+| `vendorId` | — | `device.vendorId` | `device.vendorId` | `0x0000` |
+| `productId` | — | `device.productId` | `device.productId` | `0x0000` |
+| `manufacturerName` | — | `device.manufacturerName` | — | `"browxai virtual"` |
+| `serialNumber` | — | `device.serialNumber` | — | `"BROWX-VIRTUAL"` |
+| `deviceClass` | — | `device.deviceClass` | — | `0xFF` |
+| `deviceSubclass` | — | `device.deviceSubclass` | — | `0x00` |
+| `deviceProtocol` | — | `device.deviceProtocol` | — | `0x00` |
+| `services` | `device.uuids` | — | — | `[]` |
+| `collections` | — | — | `device.collections` | `[]` |
+
+Missing fields default to deterministic placeholders so the page sees a
+complete shape regardless of how sparsely the catalog was populated. The
+fields the wrapper doesn't surface for an API are still accepted on the
+agent side (a single catalog entry can carry every field — useful for a
+multi-API page that probes the same device via different APIs).
+
+**Deferred follow-ups (v2+).** GATT service emulation for Bluetooth
+(synthetic characteristics + read/write/notify so a page can exchange
+data over the synthetic device); `transferIn` / `transferOut` synthetic
+data streams for WebUSB; `oninputreport` synthetic input streams for
+WebHID; `getDevices()` cross-permission-grant persistence so an
+already-paired device survives a navigation.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

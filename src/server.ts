@@ -77,6 +77,14 @@ import {
   type FsPickerApi,
   type FsPickerFile,
 } from "./session/fs-picker.js";
+import {
+  DeviceEmulationState as WebDeviceEmulationState,
+  attachDeviceEmulation,
+  SUPPORTED_DEVICE_APIS,
+  BYOB_DEVICE_EMU_WARNING,
+  type DeviceApi,
+  type SyntheticDevice,
+} from "./session/device-emu.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot, composeSnapshotForFrame } from "./page/compose.js";
@@ -431,6 +439,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   }
   if (caps.enabled.has("extensions")) log.warn("browxai: extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.");
   if (caps.enabled.has("stealth")) log.warn("browxai: stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.");
+  if (caps.enabled.has("device-emulation")) log.warn("browxai: device-emulation capability is ENABLED — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` install init-script wrappers around `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` / `navigator.hid.requestDevice` so the page resolves with synthetic device objects the agent staged. THE PAGE WILL BELIEVE IT HAS ACCESS TO PHYSICAL DEVICES THAT DON'T EXIST. v1 covers the picker-clear path only — GATT service emulation (Bluetooth), USB transfer endpoints, and HID input/output reports are stubs (resolve with empty/zero-byte results). Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` — see docs/threat-model.md.");
   if (caps.enabled.has("captcha")) log.warn("browxai: captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.");
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (process.env.BROWX_EXTRACT_STRICT === "1") log.warn("browxai: BROWX_EXTRACT_STRICT=1 — extract() unknown-`x-browx-source`-key warnings are PROMOTED to hard `ok:false` invalid-schema rejections (v0.2.2's partialMisses-only behavior is bypassed). The integer→number coerce and array-`selector`-as-`collection` alias are NOT promoted; only typo-like unknown-key diagnostics are.");
@@ -728,6 +737,16 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // tab inherits the overrides (locale/timezone/UA via CDP, geolocation/
       // colour-scheme/reduced-motion/permissions via Playwright).
       const deviceEmulation = newEmulationState();
+      // Per-session Web Bluetooth / WebUSB / WebHID synthetic-device catalogs
+      // (capability `device-emulation`). The init-script wrappers install
+      // unconditionally — even capability-off, so a page calling
+      // `navigator.bluetooth.requestDevice()` on headless Chromium sees the
+      // user-dismissed-picker shape rather than a hung promise — but the
+      // check binding short-circuits to `refused` when the capability isn't
+      // on. `emulate_bluetooth` / `emulate_usb` / `emulate_hid` populate the
+      // catalog at runtime.
+      const webDeviceEmulation = new WebDeviceEmulationState(caps.enabled.has("device-emulation"));
+      await attachDeviceEmulation(sess.page().context(), webDeviceEmulation).catch(() => undefined);
       sess.page().context().on("page", (newPage) => {
         // Best-effort: a new tab fires here. Create its own CDP session to
         // route locale/timezone/UA overrides. Errors swallowed — re-apply
@@ -796,6 +815,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         notification: notificationState,
         fsPicker: fsPickerState,
         deviceEmulation,
+        webDeviceEmulation,
         har: harState,
         video: videoState,
         secrets: secretsReg,
@@ -5936,6 +5956,126 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- Web Bluetooth / WebUSB / WebHID device emulation
+  // (capability `device-emulation`) ----------
+  //
+  // Three sibling mutators (`emulate_bluetooth` / `emulate_usb` / `emulate_hid`)
+  // plus a read-side companion (`device_requests`). All four gate behind the
+  // off-by-default `device-emulation` capability — same posture class as
+  // `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha`.
+  // The page-side init-script wrappers install eagerly at session creation
+  // (so a page that calls `requestDevice()` on initial document parse never
+  // hangs); the check binding short-circuits to `refused` when the capability
+  // is off, so a server without `device-emulation` still surfaces "page
+  // asked but capability was off" on `device_requests`.
+  //
+  // Shared input schema — the SyntheticDevice union (every field optional;
+  // wrappers default missing fields to deterministic placeholders so the
+  // page sees a complete shape). A single shape covers all three APIs;
+  // each wrapper picks the fields its spec exposes.
+  const SYNTHETIC_DEVICE_SCHEMA = z.object({
+    name: z.string().optional().describe("Display name. Bluetooth: `.name`; USB: `.productName`; HID: `.productName`. Default `\"browxai-virtual\"`."),
+    id: z.string().optional().describe("Bluetooth: stable device id (UUID-style string). Default `\"browxai-<api>-<index>\"`."),
+    vendorId: z.number().int().nonnegative().optional().describe("USB / HID: 16-bit USB-IF vendor id. Default `0x0000`."),
+    productId: z.number().int().nonnegative().optional().describe("USB / HID: 16-bit product id. Default `0x0000`."),
+    manufacturerName: z.string().optional().describe("USB: human-readable manufacturer string. Default `\"browxai virtual\"`."),
+    serialNumber: z.string().optional().describe("USB: serial number string. Default `\"BROWX-VIRTUAL\"`."),
+    deviceClass: z.number().int().nonnegative().optional().describe("USB: 8-bit device class. Default `0xFF` (vendor-specific)."),
+    deviceSubclass: z.number().int().nonnegative().optional().describe("USB: 8-bit device subclass. Default `0x00`."),
+    deviceProtocol: z.number().int().nonnegative().optional().describe("USB: 8-bit device protocol. Default `0x00`."),
+    services: z.array(z.string()).optional().describe("Bluetooth: GATT primary service UUIDs the device advertises. Surfaced on the synthetic device as `device.uuids`. v1 does NOT emulate GATT service exchange — `gatt.getPrimaryService()` rejects."),
+    collections: z.array(z.unknown()).optional().describe("HID: report-descriptor collection topology exposed on `device.collections`. Pass-through — the page sees whatever shape you supplied."),
+  });
+
+  const registerEmulateApi = (toolName: string, api: DeviceApi, hint: string): void => {
+    register(
+      toolName,
+      {
+        description:
+          `Stage a synthetic ${api === "bluetooth" ? "Web Bluetooth" : api === "usb" ? "WebUSB" : "WebHID"} device catalog for this session. The page-side wrapper around \`navigator.${api}.requestDevice()\` resolves with the agent-supplied device(s) the next time the page calls it. ${hint} ` +
+          `Pass \`{devices: [...]}\` to install a non-empty catalog (the next requestDevice call ${api === "hid" ? "resolves with the matching device list" : "resolves with the first matching device"}); pass \`{devices: []}\` or omit \`devices\` to clear the catalog (the next call ${api === "hid" ? "resolves with `[]` — the user-dismissed shape for HID" : "rejects with `NotFoundError` — the user-dismissed shape for the picker"}). Persists across navigation: the init-script is re-injected on every new document within the session. Captured page-side calls surface on \`device_requests({session})\`. ` +
+          `**Gated behind the off-by-default \`device-emulation\` capability** — the wrappers tell the page it found physical devices that don't exist, a posture-broadening change distinct from the surrounding policies. v1 covers the picker-clear path only — ${api === "bluetooth" ? "GATT service exchange (`getPrimaryService()`) rejects" : api === "usb" ? "transfer endpoints (`transferIn`/`transferOut`) resolve with zero-byte results" : "input/output reports (`oninputreport`, `sendReport()`) are stubs"}. Same posture class as \`eval\` / \`network-body\` / \`secrets\` / \`extensions\` / \`stealth\` / \`captcha\` — see docs/threat-model.md. Returns \`{ok, session, api, catalog:{devices:[…]}, warnings?, tokensEstimate}\`.`,
+        inputSchema: {
+          devices: z.array(SYNTHETIC_DEVICE_SCHEMA).optional().describe(
+            `Synthetic devices to expose. Omit or pass \`[]\` to clear the catalog. ${api === "hid" ? "All entries are returned to the page on every requestDevice() call." : "Only the first entry is returned to the page on requestDevice() (Bluetooth/USB pickers are single-result)."}`,
+          ),
+          ...SESSION_ARG,
+        },
+      },
+      async (args) => {
+        const g = gateCheck(toolName); if (g) return g;
+        const e = await entryFor(args.session);
+        try {
+          const devices = (args.devices as SyntheticDevice[] | undefined) ?? [];
+          const catalog = e.webDeviceEmulation.set(api, devices);
+          const warnings: string[] = [];
+          if (e.mode === "attached") warnings.push(BYOB_DEVICE_EMU_WARNING);
+          const body: Record<string, unknown> = {
+            ok: true,
+            session: e.id,
+            api,
+            catalog,
+          };
+          if (warnings.length) body.warnings = warnings;
+          body.tokensEstimate = estimateTokens(JSON.stringify(body));
+          return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+        }
+      },
+    );
+  };
+
+  registerEmulateApi(
+    "emulate_bluetooth",
+    "bluetooth",
+    "The synthetic `BluetoothDevice` carries `{id, name, uuids, gatt}`; `gatt.connect()` resolves with a stub server whose `getPrimaryService()` rejects (no GATT emulation in v1) — enough for pages that gate flow on the picker-clear, not enough for pages that go on to exchange characteristic data.",
+  );
+  registerEmulateApi(
+    "emulate_usb",
+    "usb",
+    "The synthetic `USBDevice` carries vendor/product/class/manufacturer/serial fields; `open()` / `selectConfiguration()` / `claimInterface()` resolve; transfer endpoints (`transferIn` / `transferOut` / `controlTransferIn` / `controlTransferOut`) resolve with zero-byte payloads (no synthetic data flow).",
+  );
+  registerEmulateApi(
+    "emulate_hid",
+    "hid",
+    "The synthetic `HIDDevice` carries vendor/product/productName/collections; `open()` / `sendReport()` / `sendFeatureReport()` resolve; `receiveFeatureReport()` resolves with an empty DataView; `oninputreport` is never fired (no synthetic device traffic).",
+  );
+
+  register(
+    "device_requests",
+    {
+      description:
+        "Read-side companion to `emulate_bluetooth` / `emulate_usb` / `emulate_hid`. Returns the buffer of `requestDevice()` calls the page has made on this session — one entry per page-side call, each with `{api, handledAs, returned, filters?, ts}`. Useful for diagnosing \"did the page even ask?\" when a flow gated on hardware appears stuck. `handledAs`:\n" +
+        "  - `\"resolved\"`  — catalog non-empty; picker resolved with the synthetic device (Bluetooth/USB) or device list (HID).\n" +
+        "  - `\"rejected\"` — catalog empty for Bluetooth/USB; picker rejected with `NotFoundError` (user-dismissed shape).\n" +
+        "  - `\"empty\"`    — catalog empty for HID; picker resolved with `[]` (HID's user-dismissed shape).\n" +
+        "  - `\"refused\"`  — capability `device-emulation` was OFF at the time of the call; the wrapper short-circuited. Recorded so the read surfaces \"the page asked for hardware and you didn't have the capability on\".\n" +
+        "**Gated behind the off-by-default `device-emulation` capability** — a server without the capability can't even read whether the page tried to ask (same posture class as `eval` / `network-body` / `secrets`). Read-only — does not mutate state.",
+      inputSchema: {
+        since: z.number().int().nonnegative().optional().describe("epoch ms — return only records with `ts >= since`. Default 0 (return everything in the buffer)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ since, session }) => {
+      const g = gateCheck("device_requests"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const records = e.webDeviceEmulation.since(typeof since === "number" ? since : 0);
+        const body: Record<string, unknown> = {
+          ok: true,
+          session: e.id,
+          supportedApis: [...SUPPORTED_DEVICE_APIS],
+          requests: records,
+        };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
   register(
     "set_viewport",
     {
@@ -6762,6 +6902,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     } catch {
       /* best-effort */
     }
+    // Re-attach Web Bluetooth / WebUSB / WebHID device-emulation wrappers on
+    // the rebuilt context. The state's wired-contexts WeakSet treats the new
+    // context as fresh — binding + init script reinstall, current catalog is
+    // re-served verbatim on the next page-side requestDevice.
+    await attachDeviceEmulation(sess.page().context(), e.webDeviceEmulation).catch(() => undefined);
     sess.page().context().on("page", (newPage) => {
       (async () => {
         try {

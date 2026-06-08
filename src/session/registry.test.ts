@@ -7,6 +7,7 @@ import { PermissionPolicyState } from "./permission.js";
 import { NotificationPolicyState } from "./notification.js";
 import { FsPickerPolicyState } from "./fs-picker.js";
 import { newEmulationState } from "./emulation.js";
+import { DeviceEmulationState as WebDeviceEmulationState } from "./device-emu.js";
 import { newHarRecorderState } from "../page/har.js";
 import { newVideoRecorderState } from "../page/video.js";
 
@@ -58,6 +59,7 @@ function fakeEntry(id: string): SessionEntry {
     notification: new NotificationPolicyState(),
     fsPicker: new FsPickerPolicyState(),
     deviceEmulation: newEmulationState(),
+    webDeviceEmulation: new WebDeviceEmulationState(false),
     har: newHarRecorderState(),
     video: newVideoRecorderState(),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
