@@ -96,6 +96,7 @@ import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
 import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
+import { assetExport } from "./page/asset-export.js";
 import { pdfSave, assertPdfSupported } from "./page/pdf.js";
 import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
@@ -2831,6 +2832,55 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `asset_export` — filter the session's network ring and persist matching
+  // responses to a workspace-rooted dir. Mirrors `download_get`'s file-io
+  // posture (read session-buffered state, write bytes under $BROWX_WORKSPACE).
+  // CORS caveat: when a response body has aged out of the renderer cache the
+  // tool falls back to an in-page `fetch()` against the original URL —
+  // cross-origin URLs without permissive CORS headers will land in
+  // `droppedCount`, not a crash.
+  register(
+    "asset_export",
+    {
+      description:
+        "Filter every resource the session has loaded (the always-on `NetworkBuffer` ring) and persist matching responses to a workspace-rooted directory — the first-class alternative to scraping `<img src>` / `<link href>` then re-fetching each one through `eval_js`. Filter shape: `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`. `mime` is substring match against the captured response `Content-Type` (case-insensitive, any one match wins; e.g. `[\"image/\", \"video/\"]`). `urlPattern` is a RegExp source matched case-insensitively against the URL (e.g. `\"\\\\.(woff2?|ttf|otf)$\"`). `minBytes`/`maxBytes` bound the encoded response size when known. `status` defaults to 2xx (200..299). Filenames are derived from the URL path basename, **sanitised** (no path separators / NULs / leading dots / control bytes; length-capped), and collision-resolved with `-N` suffix. `intoDir` defaults to `$BROWX_WORKSPACE/assets/<sessionId>-<ISO>/`; an explicit value is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected). Per-call caps: `maxCount` (default 10000) + `maxBytes` (default 500 MiB) bound runaway exports — callers can raise both up to hard ceilings. **CORS caveat**: when the response body has been discarded by the renderer (bodies are short-lived) the tool falls back to an in-page `fetch()` against the original URL — cross-origin URLs without permissive CORS headers land in `droppedCount`, never a crash. → `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`. The manifest is also written to `<intoDir>/_manifest.json`. `tokensEstimate` sizes the result envelope (the manifest blob), NOT the exported files. Gated by the off-by-default **`file-io`** capability — same posture as `download_get`.",
+      inputSchema: {
+        filter: z.object({
+          mime: z.array(z.string()).optional().describe("Substring match against response Content-Type (case-insensitive). Any one match wins."),
+          urlPattern: z.string().optional().describe("RegExp source matched case-insensitively against the URL."),
+          minBytes: z.number().int().nonnegative().optional().describe("Inclusive lower bound on encoded response byte size (when known)."),
+          maxBytes: z.number().int().nonnegative().optional().describe("Inclusive upper bound on encoded response byte size (when known)."),
+          status: z.array(z.number().int()).optional().describe("Allow-list of HTTP status codes. Default: 200..299."),
+        }).describe("Filter applied to every entry in the session's network ring."),
+        intoDir: z.string().optional().describe("Workspace-rooted output directory. Default `assets/<sessionId>-<ISO>/`. Rejected if it escapes $BROWX_WORKSPACE."),
+        maxCount: z.number().int().positive().optional().describe("Override the per-call file count cap (default 10000; clamped to hard ceiling 50000)."),
+        maxBytes: z.number().int().positive().optional().describe("Override the per-call total byte cap (default 500 MiB; clamped to hard ceiling 2 GiB)."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("asset_export"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const result = await withDeadline(
+          assetExport(e.session.cdp(), e.session.page(), e.network, workspace.root, e.id, {
+            filter: args.filter ?? {},
+            intoDir: args.intoDir,
+            maxCount: args.maxCount,
+            maxBytes: args.maxBytes,
+          }),
+          cfgActionTimeout(),
+          "asset_export",
+        );
+        const json = JSON.stringify(result);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...result, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
       }
     },
   );

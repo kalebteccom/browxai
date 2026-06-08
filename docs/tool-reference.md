@@ -683,6 +683,54 @@ Gated by the off-by-default **`file-io`** capability. Per-session capture state
 isn't persisted across `close_session`/`open_session`; a fresh session starts
 with capture off.
 
+### Asset export — `asset_export`
+
+`downloads_capture` only sees what the page chose to *download* (`<a download>`
+links, `Content-Disposition: attachment`, programmatic `download` events).
+Plenty of useful artifacts never trigger a download — every image, font, video,
+audio clip, stylesheet, and script the page actually rendered came in through
+the regular HTTP fetch pipeline and lives in the session's always-on network
+ring. `asset_export` filters that ring and persists matching responses to a
+workspace-rooted directory in a single call — the first-class alternative to
+scraping `<img src>` / `<link href>` from the DOM and re-fetching each one
+through `eval_js`.
+
+#### `asset_export({ filter, intoDir?, maxCount?, maxBytes?, session? })`
+
+- `filter: { mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[] }` —
+  applied to every entry in the session's network ring:
+  - `mime` — substring match against the captured response `Content-Type`
+    (case-insensitive, any one match wins; `["image/", "video/"]`).
+  - `urlPattern` — RegExp source matched case-insensitively against the URL
+    (`"\\.(woff2?|ttf|otf)$"`). Invalid regex returns a structured error.
+  - `minBytes` / `maxBytes` — bound the encoded response size, only enforced
+    when the renderer reported a byte count.
+  - `status` — allow-list of HTTP status codes. **Default: 2xx (200..299).**
+- `intoDir?` — output directory. **Resolved inside `$BROWX_WORKSPACE`** —
+  an escape is rejected. Default: `assets/<sessionId>-<ISO>/`.
+- `maxCount?` — per-call file count cap. Default 10000; clamped to a hard
+  ceiling of 50000.
+- `maxBytes?` — per-call total byte cap. Default 500 MiB; clamped to a hard
+  ceiling of 2 GiB.
+- → `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`.
+  The manifest is also written to `<intoDir>/_manifest.json`. `tokensEstimate`
+  sizes the result envelope (the manifest blob), **not** the exported files.
+
+Filenames are derived from the URL path basename, percent-decoded, and
+**sanitised** — no path separators, no NUL/control bytes, no leading dots,
+length-capped, all-stripped names fall back to `"asset"`. Two responses with
+the same basename are collision-resolved with a `-N` suffix
+(`logo.png`, `logo-1.png`, …).
+
+**CORS caveat.** The renderer discards response bodies fairly quickly. When
+CDP `Network.getResponseBody` returns "not available" the tool falls back to
+an in-page `fetch()` against the original URL. Same-origin URLs work. Cross-
+origin URLs without permissive CORS headers will reject — those land in
+`droppedCount` with a warning, never a crash.
+
+Gated by the off-by-default **`file-io`** capability — same posture as
+`download_get`.
+
 ### Storage-state — three layers
 
 The deferred bulk-state ask, with the @playwright/mcp lesson baked in: bulk

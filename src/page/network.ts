@@ -30,6 +30,17 @@ export interface NetworkEntry {
   /** CDP request id — the handle `network_body` resolves. Short-lived:
    *  the renderer discards bodies fairly quickly, so fetch soon after. */
   requestId?: string;
+  /** Best-effort response `Content-Type` from CDP `Network.responseReceived`
+   *  (`response.mimeType`). Absent on failed requests, attached pre-response,
+   *  or non-HTTP transports. Captured for downstream filtering / asset export;
+   *  NOT emitted on the `network_read` egress (which only surfaces the type
+   *  bucket). */
+  mimeType?: string;
+  /** Best-effort encoded byte size from CDP `Network.loadingFinished`
+   *  (`encodedDataLength`). Absent on requests that haven't finished or where
+   *  the loadingFinished event hasn't landed yet. Captured for downstream
+   *  filtering / asset export. */
+  bytes?: number;
 }
 
 export interface NetworkSummary {
@@ -418,6 +429,10 @@ export function extractTopLevelKeys(parsed: unknown): string[] | null {
 export class NetworkBuffer {
   private requests = new Map<string, { method: string; url: string; type: string; startedAt: number }>();
   private ring: NetworkEntry[] = [];
+  /** requestId → entry pointer for the entries currently in `ring`. Lets
+   *  `Network.loadingFinished` stamp `bytes` onto the corresponding entry
+   *  without a linear scan. Pruned in `push` when an entry is evicted. */
+  private byReqId = new Map<string, NetworkEntry>();
   private enabled = false;
   private secrets: SecretRegistry | null = null;
 
@@ -439,11 +454,31 @@ export class NetworkBuffer {
         startedAt: Date.now(),
       });
     });
-    this.cdp.on("Network.responseReceived", (e: { requestId: string; response: { status: number } }) => {
+    this.cdp.on("Network.responseReceived", (e: { requestId: string; response: { status: number; mimeType?: string } }) => {
       const r = this.requests.get(e.requestId);
       if (!r) return;
-      this.push({ method: r.method, url: r.url, status: e.response.status, type: r.type, ms: Date.now() - r.startedAt, requestId: e.requestId });
+      const entry: NetworkEntry = {
+        method: r.method,
+        url: r.url,
+        status: e.response.status,
+        type: r.type,
+        ms: Date.now() - r.startedAt,
+        requestId: e.requestId,
+      };
+      if (e.response.mimeType) entry.mimeType = e.response.mimeType;
+      this.push(entry);
+      // Index the just-pushed entry by requestId so a subsequent
+      // `Network.loadingFinished` can stamp the encoded byte size on it
+      // without a linear scan. Cleared on eviction (see `push`).
+      this.byReqId.set(e.requestId, entry);
       this.requests.delete(e.requestId);
+    });
+    this.cdp.on("Network.loadingFinished", (e: { requestId: string; encodedDataLength?: number }) => {
+      const entry = this.byReqId.get(e.requestId);
+      if (!entry) return;
+      if (typeof e.encodedDataLength === "number" && e.encodedDataLength >= 0) {
+        entry.bytes = e.encodedDataLength;
+      }
     });
     this.cdp.on("Network.loadingFailed", (e: { requestId: string }) => {
       const r = this.requests.get(e.requestId);
@@ -455,7 +490,19 @@ export class NetworkBuffer {
 
   private push(entry: NetworkEntry): void {
     this.ring.push(entry);
-    if (this.ring.length > this.cap) this.ring.shift();
+    if (this.ring.length > this.cap) {
+      const evicted = this.ring.shift();
+      if (evicted?.requestId) this.byReqId.delete(evicted.requestId);
+    }
+  }
+
+  /** Raw, read-only snapshot of the ring — every entry, no noise/beacon
+   *  folding, no egress masking. The masked / bucketed shape used by the
+   *  `network_read` tool stays unchanged (see `recent`). This view is for
+   *  consumers that need the full set as captured (e.g. `asset_export`
+   *  iterating to pick image/font/media responses out of the ring). */
+  iter(): readonly NetworkEntry[] {
+    return this.ring;
   }
 
   /** Most-recent N entries; noise + beacons are folded into the `other` bucket of the summary. */

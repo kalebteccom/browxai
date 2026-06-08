@@ -228,6 +228,11 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // capability, workspace-rooted paths only.
   downloads_capture: "file-io",
   download_get: "file-io",
+  // Filter the session's network ring and persist matching responses to a
+  // workspace-rooted dir. Same posture as `download_get` (read recent
+  // session-state, write the resulting bytes under $BROWX_WORKSPACE) — no new
+  // capability gate to enable.
+  asset_export: "file-io",
   // PDF save — print the current page to a workspace-rooted PDF. Mirror of
   // `upload_file` (file-io OUT instead of IN), but under `action` not
   // `file-io`: the consequential write is to the *workspace* only (no

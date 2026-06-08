@@ -28,6 +28,32 @@ surface" covers.
 
   When `path` is omitted, the result is **byte-identical to v0.3.x** — no
   breaking change to existing callers.
+- **`asset_export({filter, intoDir?, maxCount?, maxBytes?})`** — new MCP tool
+  that filters the session's always-on network ring (`NetworkBuffer`) and
+  persists matching responses to a workspace-rooted directory. Filter shape:
+  `mime[]` substring on `Content-Type`, `urlPattern` (case-insensitive
+  RegExp), `minBytes` / `maxBytes` size bounds, `status[]` allow-list
+  (default 2xx). Filenames are derived from URL path basenames, sanitised
+  (no separators / NULs / leading dots / control bytes; length-capped) and
+  collision-resolved with `-N` suffix. `intoDir` defaults to
+  `$BROWX_WORKSPACE/assets/<sessionId>-<ISO>/` and is rejected if it escapes
+  the workspace. Per-call caps (default 10000 files / 500 MiB, hard ceilings
+  50000 / 2 GiB) bound runaway exports. Returns `{intoDir, totalCount,
+  matchedCount, persistedCount, droppedCount, manifest, warnings,
+  tokensEstimate}` and writes `<intoDir>/_manifest.json`. When a response
+  body has aged out of the renderer cache the tool falls back to an in-page
+  `fetch()` against the original URL; cross-origin URLs without permissive
+  CORS headers land in `droppedCount`, never a crash. Gated by the
+  off-by-default **`file-io`** capability — same posture as `download_get`.
+
+### Changed
+
+- **`src/page/network.ts`** — `NetworkEntry` gains optional `mimeType` and
+  `bytes` fields, populated from CDP `Network.responseReceived.response.mimeType`
+  and `Network.loadingFinished.encodedDataLength` respectively. The
+  `network_read` egress shape is unchanged (those fields stay off the
+  bucketed `recent()` output). `NetworkBuffer` gains a read-only `iter()`
+  method that exposes the raw ring for `asset_export`'s filter loop.
 
 ## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
 
