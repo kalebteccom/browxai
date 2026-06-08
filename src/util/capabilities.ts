@@ -250,6 +250,12 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // file-io
   upload_file: "file-io",
+  // drop_files — sibling to `upload_file` for drop-zone uploaders (modern
+  // SaaS file pickers that don't expose an `<input type=file>`). Same
+  // posture: an in-page File construction reading bytes from disk
+  // (`path` mode) or inline base64 (`contents` mode). Workspace-rooted
+  // paths only. Under `file-io` (workspace-rooted egress + file-io IN).
+  drop_files: "file-io",
   // Page archive — save current page as a self-contained artefact (directory
   // mode: index.html + assets/ sidecar; single-file mode: data:URI-inlined
   // HTML). Workspace-rooted output by construction. Under `file-io` (same

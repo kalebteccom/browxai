@@ -757,6 +757,19 @@ Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-loc
 ### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
 Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name, bytes, mimeType?, target, fileCount }` (`bytes`/`target`/`fileCount` for debugging a bad upload; `mimeType` set in content-mode). Gated by the off-by-default **`file-io`** capability. No agent JS.
 
+### Drag-drop files from disk — `drop_files({ ref?|selector?|named?|coords?, files, session? })`
+
+Sibling to `upload_file` for **drop-zone uploaders** — modern SaaS file pickers that listen for `dragenter` / `dragover` / `drop` with a populated `DataTransfer.files` and never expose an `<input type=file>` for `setInputFiles` to drive. drop_files synthesizes the standard HTML5 drop sequence: builds an in-page `DataTransfer` populated with `File` objects constructed from the bytes the caller supplies, then dispatches `dragenter` → `dragover` → `drop` on the target element with realistic `clientX` / `clientY` (element box centre for ref/selector; literal coords). The `Files` type is registered on `dataTransfer.types` so apps that gate on it (React-DnD's `NativeTypes.FILE`, e.g.) accept the drop.
+
+Target the drop zone with the standard target shapes (`ref` / `selector` / `named` / `coords`). `files[]` carries one or more file entries; each entry is **exactly one of**:
+
+- `{path, name?, mimeType?}` — workspace-rooted file path. Resolved **inside `$BROWX_WORKSPACE` only** (a path escaping the workspace is rejected — same posture as `upload_file`'s `path` mode). `name` defaults to the basename of `path`; `mimeType` defaults to `application/octet-stream`.
+- `{contents, name, mimeType?}` — base64 inline. No filesystem read. `name` is required; `mimeType` defaults to `application/octet-stream`.
+
+Multiple entries land as a multi-file drop in a single sequence (one `dragenter` / `dragover` / `drop` triple with `dataTransfer.files` populated with all files) — the way every real multi-file drop behaves. → `{ ok, target, files: [{name, mode, bytes, mimeType}], totalBytes, fileCount, eventsFired, dropDispatched, tokensEstimate }`.
+
+**In-page File construction.** The page-side script is shipped inline per call via `page.evaluate` (not `addInitScript`) — each drop is one-shot, the byte payload differs per call, and a boot-time injection would leak page-side identifiers across unrelated tools. Bytes ride the boundary as base64 (then `atob` + `Uint8Array` → `new File(...)` in-page); `Uint8Array` over Playwright's structured-clone boundary explodes into a per-byte object array (~10× larger on the wire). Gated by the off-by-default **`file-io`** capability — same posture as `upload_file`. No agent JS.
+
 ### `pdf_save({ path?, format?, scale?, printBackground?, session? })`
 Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF` under the hood) — the first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog through `shortcut`. The mirror of `upload_file`: file-io OUT instead of IN.
 

@@ -120,6 +120,7 @@ import { captureDomMap, diffDomMaps } from "./page/dom_diff.js";
 import { matchesResponse } from "./page/await_network.js";
 import { RegionRegistry } from "./page/regions.js";
 import { uploadFile } from "./page/upload.js";
+import { dropFiles, type DropFileInput } from "./page/drop-files.js";
 import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
 import { assetExport } from "./page/asset-export.js";
 import { pdfSave, assertPdfSupported } from "./page/pdf.js";
@@ -3329,6 +3330,53 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `drop_files` — sibling to `upload_file` for drop-zone uploaders. Modern
+  // SaaS file pickers listen for `dragenter`/`dragover`/`drop` with a
+  // populated `DataTransfer.files` and never expose an `<input type=file>` —
+  // `setInputFiles` can't drive them. drop_files synthesizes the standard
+  // HTML5 drop sequence with `File` objects built in-page from the bytes the
+  // caller supplies (`path` mode reads from $BROWX_WORKSPACE; `contents`
+  // mode is inline base64). Same `file-io` capability as upload_file.
+  register(
+    "drop_files",
+    {
+      description:
+        "Synthesize an HTML5 file drag-drop on a page element — the first-class alternative to driving DataTransfer through `eval_js` for drop-zone uploaders that don't expose an `<input type=file>` (modern SaaS file pickers). Target via the standard target shapes (`ref`/`selector`/`named`/`coords`). `files[]` carries one or more file entries; each entry is exactly one of: `{path, name?, mimeType?}` (workspace-rooted file — escape-rejected, same posture as `upload_file`'s `path`) OR `{contents, name, mimeType?}` (base64 inline — no filesystem read). Builds an in-page `DataTransfer` populated with `File` objects and dispatches `dragenter` → `dragover` → `drop` on the target with realistic `clientX`/`clientY` (element box centre for ref/selector; literal coords). Drops every file in a single sequence — passing multiple entries simulates the multi-file drop most uploaders support natively. → `{ ok, target, files: [{name, mode, bytes, mimeType}], totalBytes, fileCount, eventsFired, dropDispatched, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
+      inputSchema: {
+        ...REF_OR_SELECTOR,
+        files: z.array(z.object({
+          path: z.string().optional().describe("Workspace-rooted file path. Mutually exclusive with `contents`."),
+          contents: z.string().optional().describe("base64 file content. Mutually exclusive with `path`."),
+          name: z.string().optional().describe("Filename presented to the page. Required in `contents`-mode; defaults to the basename of `path` in `path`-mode."),
+          mimeType: z.string().optional().describe("MIME type. Default \"application/octet-stream\"."),
+        })).min(1).describe("Files to drop. Each entry is exactly one of `{path}` or `{contents}` (plus optional `name`/`mimeType`)."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("drop_files"); if (g) return g;
+      const e = await entryFor(args.session);
+      const c = await confirmByobAction("drop_files", confirmCtxFor(e));
+      if (!c.ok) return denyContent("drop_files", c);
+      try {
+        const target = asTarget(args, "drop_files", e.refs);
+        const r = await withDeadline(
+          dropFiles(e.session.page(), e.refs, workspace.root, {
+            target,
+            files: args.files as DropFileInput[],
+          }),
+          cfgActionTimeout(),
+          "drop_files",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
       }
     },
   );

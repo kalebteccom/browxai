@@ -10,6 +10,22 @@ surface" covers.
 
 ### Added
 
+- **Phase 7: `drop_files` — drag-drop files from disk onto a page element.**
+  Sibling to `upload_file` for drop-zone uploaders (modern SaaS file pickers
+  that listen for `dragenter` / `dragover` / `drop` with a populated
+  `DataTransfer.files` and never expose an `<input type=file>` for
+  `setInputFiles` to drive). Synthesises the standard HTML5 drop sequence
+  with `File` objects built in-page from caller-supplied bytes, then
+  dispatches the event triple on the target with realistic
+  `clientX` / `clientY`. Same target shapes as the rest of the action
+  surface (`ref` / `selector` / `named` / `coords`); `files[]` accepts a
+  mix of `{path}` (workspace-rooted, escape-rejected — same posture as
+  `upload_file`'s `path` mode) and `{contents, name}` (base64 inline).
+  Multi-file drops land in a single sequence the way every real multi-file
+  drop behaves. → `{ ok, target, files, totalBytes, fileCount, eventsFired,
+  dropDispatched, tokensEstimate }`. Gated by the off-by-default
+  **`file-io`** capability — same posture as `upload_file`. No agent JS.
+
 - **Phase 7: frame-scoped observation (iframes + cross-origin frames).**
   Iframes are everywhere on real pages; pre-Phase-7 `find` / `snapshot` saw
   only the top frame. Three additions, all back-compat:

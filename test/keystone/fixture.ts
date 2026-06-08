@@ -67,6 +67,21 @@ const PAGE = `<!doctype html>
             onclick="askGeo()">Ask geolocation</button>
     <output data-testid="geo-result" id="geoResult">unset</output>
 
+    <!-- Drop-files keystone: a div that listens for HTML5 drag-drop and
+         records the dropped files (names, sizes, types, plus the first
+         8 bytes of the first file as base64) into a tagged output. The
+         drop_files keystone reads it back to prove the in-page File +
+         DataTransfer + dragenter/dragover/drop synthesis actually
+         delivers the bytes. -->
+    <div data-testid="drop-zone" id="dropZone"
+         style="width:240px;height:120px;border:2px dashed #888;padding:8px"
+         ondragenter="dzPrevent(event)"
+         ondragover="dzPrevent(event)"
+         ondrop="onDrop(event)">
+      Drop files here
+    </div>
+    <output data-testid="drop-log" id="dropLog">undropped</output>
+
     <!-- Touch keystone: a div that records touch events in a tagged
          output so the keystone can assert touchstart / touchend actually fire
          on the real headless browser via the CDP touch pipeline. -->
@@ -105,6 +120,41 @@ const PAGE = `<!doctype html>
       document.getElementById('typeDisplay').textContent = label;
       document.getElementById('typeList').classList.add('hidden');
       document.getElementById('typeBtn').setAttribute('aria-expanded', 'false');
+    }
+    function dzPrevent(ev) { ev.preventDefault(); ev.stopPropagation(); }
+    function onDrop(ev) {
+      ev.preventDefault();
+      var dt = ev.dataTransfer;
+      var files = (dt && dt.files) ? dt.files : [];
+      var meta = [];
+      var firstHead = '';
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i];
+        meta.push(f.name + ':' + f.type + ':' + f.size);
+      }
+      // Read first 8 bytes of file[0] as base64 so the keystone can
+      // confirm the bytes themselves crossed the boundary.
+      function done(b64) {
+        document.getElementById('dropLog').textContent =
+          'count=' + files.length +
+          ' types=' + ((dt && dt.types) ? Array.prototype.slice.call(dt.types).join(',') : '') +
+          ' files=' + meta.join('|') +
+          ' head8=' + b64;
+      }
+      if (files.length > 0 && typeof files[0].slice === 'function') {
+        var slice = files[0].slice(0, 8);
+        var fr = new FileReader();
+        fr.onload = function() {
+          // FileReader.readAsDataURL → "data:<mime>;base64,<payload>"
+          var s = String(fr.result || '');
+          var idx = s.indexOf('base64,');
+          done(idx >= 0 ? s.slice(idx + 7) : '');
+        };
+        fr.onerror = function() { done(''); };
+        fr.readAsDataURL(slice);
+      } else {
+        done('');
+      }
     }
     var _touchCounts = { start: 0, move: 0, end: 0 };
     var _touchIds = [];
