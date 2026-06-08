@@ -644,6 +644,33 @@ Remove one interceptor (by exact `pattern`) or — with no `pattern` — every i
 
 **Caveats.** The wrapper installs at session creation; if you swap a session out via the BYOB rebuild path, both the wrapper AND any active interceptors are lost (a fresh wrapper installs on the new context, but the registry is empty). Same with full session close. There is no equivalent of `network_emulate`'s "applies cross-context"; the wrapper is per-context by construction.
 
+### Workers visibility — `workers_list` / `worker_message_send` / `worker_messages_read` / `sw_intercept_fetch`
+
+Web Workers + Service Workers are otherwise invisible to the surface — `network_read` shows page fetches but never sees a Service Worker that responds from its cache; the `postMessage` IPC between page and workers is off-grid entirely. This family makes both observable and mutable.
+
+Two completely different transport stories under one façade:
+
+- **Web Workers.** A page-side wrapper of `window.Worker` is installed eagerly at session creation (`Page.addInitScript`, same posture as the WS family), so a worker constructed during initial document parse is captured. Each `new Worker(...)` gets a stable per-session id `ww-1`, `ww-2`, …. The wrapper mirrors every message-from-worker into a 500-entry ring (4 KiB payload cap, oldest evicted first); `worker_message_send` calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event, not a synthetic one.
+- **Service Workers.** SWs are independent CDP targets. Discovery uses CDP `ServiceWorker.enable` + `Target.setAutoAttach({autoAttach:true, waitForDebuggerOnStart:false, flatten:true})` on the session's top-level CDP — newly-registered SWs auto-attach as child sessions. SW listings carry `state` (one of `stopped`, `starting`, `running`, `stopping`). `worker_message_send` to an `sw-N` dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate`. `sw_intercept_fetch` arms CDP `Fetch.enable` on the SW session so requests the SW's `fetch` handler chose to intercept are paused — and the canned response is returned.
+
+#### `workers_list({ type?, session? })`
+
+Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / `"all"` (default). Returns `[{ workerId, type, url, state? }]`. Capability: `read`.
+
+#### `worker_message_send({ workerId, message, session? })`
+
+`postMessage` to a worker — `ww-N` for Web Workers, `sw-N` for Service Workers. `message` is a string; structured-clone / `MessagePort` transfer is not in MVP. Capability: `action`.
+
+#### `worker_messages_read({ workerId?, session? })`
+
+Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Each call drains (removes) what it returned; re-reads see only what arrived since. Capability: `read`.
+
+#### `sw_intercept_fetch({ pattern, response, session? })`
+
+Register a fetch interceptor for Service-Worker-handled requests. `pattern` is a glob matched against the intercepted request URL (same shape as `route` / `ws_intercept`: `*` = single path segment, `**` = any). `response` is `{ status?, body?, contentType?, headers? }` (defaults 200, empty body, `application/json`). Fires only when the SW's `fetch` handler runs — i.e. the SW chose to intercept the request — which cleanly separates SW-mediated traffic from page-direct traffic. Re-add of the same pattern replaces. `sw_unintercept_fetch({ pattern?, session? })` removes one entry or all of them. Capability: `action`.
+
+**Caveats.** Per-context by construction; lost on session close or BYOB rebuild (a fresh wrapper installs on the new context; the registry is empty). Web Worker listings carry only the scriptURL captured at construction — Chromium does not expose it via any public API post-hoc. `MessagePort` transfer is not in MVP. The CDP path for child-session sends relies on flatten-mode routing; SW message round-trips are best-effort under that boundary.
+
 #### `ActionResult.network.mutations` (W-F5)
 
 Action windows that include a write-shaped request (`POST` / `PUT` / `PATCH` / `DELETE` with a 2xx response) get a bounded `mutations` array on top of `summary` / `requests`:

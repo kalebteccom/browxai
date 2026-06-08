@@ -10,6 +10,38 @@ surface" covers.
 
 ### Added
 
+- **Phase 7: Web Workers + Service Workers visibility (`workers_list` / `worker_message_send` / `worker_messages_read` / `sw_intercept_fetch` / `sw_unintercept_fetch`).**
+  Workers were previously off-grid: `network_read` shows page fetches but
+  never the SW that responds from cache, and the `postMessage` IPC between
+  page and workers was invisible to the surface. This family makes both
+  observable and mutable.
+  - **`workers_list({ type?, session? })`** — enumerate live workers; `type ∈
+    "web" | "service" | "all"` (default `"all"`). Returns `[{workerId, type,
+    url, state?}]`. Web Worker ids are `ww-N`; SW ids are `sw-N` (stable per
+    session). Capability: `read`.
+  - **`worker_message_send({ workerId, message, session? })`** — `postMessage`
+    to a worker. For Web Workers, calls the real (unwrapped)
+    `Worker.prototype.postMessage` so the worker's `onmessage` sees a real
+    event. For Service Workers, dispatches a `MessageEvent` into the SW
+    global via CDP `Runtime.evaluate` on the SW's attached session. Strings
+    only; `MessagePort` transfer not in MVP. Capability: `action`.
+  - **`worker_messages_read({ workerId?, session? })`** — drain buffered
+    messages FROM workers since the last read. Page-side ring capped at 500
+    entries with a 4 KiB payload cap. Capability: `read`.
+  - **`sw_intercept_fetch({ pattern, response, session? })`** — register a
+    fetch interceptor for SW-handled requests. Same glob shape as `route` /
+    `ws_intercept`. Fires only when the SW's `fetch` handler runs, cleanly
+    separating SW-mediated traffic from page-direct traffic. Capability:
+    `action`. Paired with **`sw_unintercept_fetch({ pattern?, session? })`**.
+  - Web Worker discovery uses a page-side `Worker` constructor wrapper
+    installed eagerly at session creation (`addInitScript` — same posture as
+    the WS family) so workers constructed during initial document parse are
+    captured. SW discovery uses CDP `ServiceWorker.enable` +
+    `Target.setAutoAttach({autoAttach:true, waitForDebuggerOnStart:false,
+    flatten:true})` on the top-level CDP. Per-session by construction; lost
+    on session close or BYOB rebuild (a fresh wrapper installs on the new
+    context).
+
 - **Phase 7: `drop_files` — drag-drop files from disk onto a page element.**
   Sibling to `upload_file` for drop-zone uploaders (modern SaaS file pickers
   that listen for `dragenter` / `dragover` / `drop` with a populated

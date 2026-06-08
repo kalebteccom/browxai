@@ -12,6 +12,7 @@ import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
 import type { NetworkBuffer, WsBuffer } from "../page/network.js";
 import type { WsInteractiveRegistry } from "../page/ws-interactive.js";
+import type { WorkersRegistry } from "../page/workers.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
@@ -58,6 +59,13 @@ export interface SessionEntry {
    *  `ws_intercept`. Holds the active interceptor patterns server-side
    *  so `unintercept` / `list` answer locally without a page round-trip. */
   wsInteractive: WsInteractiveRegistry;
+  /** Phase-7: per-session worker visibility (Web Workers + Service Workers).
+   *  Holds the page-side `__browxWorkers` wrapper state + the CDP-side SW
+   *  attachments. Lazy in the same shape as `wsInteractive` — eagerly
+   *  installed at session creation when `read` is on so workers opened by
+   *  the initial document are seen; otherwise the wrapper installs on first
+   *  `workers_list` / `worker_message_send` / `sw_intercept_fetch` call. */
+  workers: WorkersRegistry;
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;

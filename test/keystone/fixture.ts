@@ -318,6 +318,44 @@ const WS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Phase-7 workers keystone — the page constructs a real Web Worker (built
+// from a `Blob` so we don't need a separate served script), wires `onmessage`
+// to write every received frame into `#worker-log` (newline-joined), and
+// exposes a button that posts an "INTERCEPT_ME" string into the worker. The
+// worker simply echoes back any message it receives prefixed with `echo:`.
+// This is enough to prove `workers_list` sees `ww-N`, `worker_message_send`
+// drives the worker's `onmessage`, and `worker_messages_read` drains the
+// page-side ring of FROM-worker frames.
+const WORKERS_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>workers keystone</title></head>
+<body>
+<output data-testid="worker-state" id="worker-state">idle</output>
+<pre data-testid="worker-log" id="worker-log"></pre>
+<button data-testid="worker-trigger" id="worker-trigger" onclick="trigger()">trigger</button>
+<script>
+  // Build the worker from a Blob so the fixture stays self-contained.
+  var workerSrc = [
+    "self.addEventListener('message', function (ev) {",
+    "  self.postMessage('echo:' + ev.data);",
+    "});",
+    "self.postMessage('worker-ready');",
+  ].join("\\n");
+  var blob = new Blob([workerSrc], { type: "application/javascript" });
+  var url = URL.createObjectURL(blob);
+  var w = new Worker(url);
+  var log = document.getElementById("worker-log");
+  w.addEventListener("message", function (ev) {
+    log.textContent += ev.data + "\\n";
+    if (ev.data === "worker-ready") {
+      document.getElementById("worker-state").textContent = "ready";
+    }
+  });
+  function trigger() { w.postMessage("page-said-hi"); }
+</script>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -461,6 +499,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/ws-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(WS_PAGE);
+      return;
+    }
+    if (u.pathname === "/workers-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(WORKERS_PAGE);
       return;
     }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };
