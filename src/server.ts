@@ -154,6 +154,7 @@ import { pdfSave, assertPdfSupported } from "./page/pdf.js";
 import { pageArchive } from "./page/archive.js";
 import { elementExportFromRef } from "./page/element-export.js";
 import { domExport } from "./page/dom-export.js";
+import { detectOverflow } from "./page/overflow-detect.js";
 import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
@@ -4332,6 +4333,46 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // `overflow_detect` — diagnose page-layout overflow on the target page.
+  // The silent UI-breakage primitive: clipped buttons, ellipsis-truncated
+  // labels, horizontal-scrollbar-on-mobile bugs. Generalises `inspect`'s
+  // per-element overflow check into a page-wide scan with four typed
+  // detectors (`layout`, `clipped`, `text-ellipsis`, `viewport-horizontal`).
+  // Read-only, no mutation, no new capability — rides `read`.
+  register(
+    "overflow_detect",
+    {
+      description:
+        "Diagnose page-layout overflow — the silent UI-breakage primitive (clipped buttons, ellipsis-truncated labels, horizontal-scrollbar-on-mobile bugs). Walks the DOM and reports one finding per offending element across four detector types: `layout` (`scrollWidth/Height > clientWidth/Height` on an element with `overflow:auto|scroll` — scrollbar present but content overruns), `clipped` (same dimensions but `overflow:hidden|clip` — content invisible with no scrollbar to recover, the highest-value finding), `text-ellipsis` (`text-overflow:ellipsis` with `scrollWidth > clientWidth` — surfaces `visibleText` heuristic + `fullText` truth), `viewport-horizontal` (singleton: `documentElement.scrollWidth > clientWidth` — the body horizontal-scrollbar mobile bug; evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable). EPSILON = 1 CSS px tolerates sub-pixel rounding noise. `scope:\"document\"` (default) walks every element; `scope:\"viewport\"` skips elements fully off-screen. `types:[...]` filters which detectors fire (default = all four; empty array also treated as default). `limit` caps findings (default 50, max 500; over-cap sets `truncated:true`). Walk bounded at 10000 elements — a hit surfaces a `warnings[]` entry suggesting `scope:viewport` for a narrower pass. Each finding: `{selector, bbox: {x,y,w,h} | null, type, evidence}`. Selector synthesis tiers: `[data-testid]` > `[role][aria-label]` > nth-of-type CSS path (≤5 levels) > `tag.classes` (≤3); capped at 200 chars (longer falls through to bare tag with `evidence.selectorTruncated`). Read-only (capability `read`).",
+      inputSchema: {
+        scope: z.enum(["viewport", "document"]).optional().describe("`document` (default) walks every element; `viewport` skips elements fully off-screen — cheaper on very large pages."),
+        types: z.array(z.enum(["layout", "clipped", "text-ellipsis", "viewport-horizontal"])).optional().describe("Detector types to surface. Default = all four. Empty array treated as default (an empty filter would silently match nothing — usage error)."),
+        limit: z.number().int().positive().max(500).optional().describe("Cap on findings returned. Default 50, max 500. Findings past the cap are dropped + `truncated:true` is set."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("overflow_detect"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const r = await withDeadline(
+          detectOverflow(e.session.page(), {
+            scope: args.scope,
+            types: args.types,
+            limit: args.limit,
+          }),
+          cfgActionTimeout(),
+          "overflow_detect",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+    },
+  );
+
   // ===========================================================================
   // Three-layer storage-state (Phase 3.5).
   //
@@ -7596,7 +7637,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "go_back", "go_forward", "scroll", "set_viewport",
     "set_locale", "set_timezone", "set_geolocation", "set_color_scheme", "set_reduced_motion", "set_user_agent", "grant_permissions",
     "plan", "execute",
-    "snapshot", "find", "text_search", "frames_list", "shadow_trees", "inspect", "watch", "sample", "screenshot", "screenshot_marks", "console_read", "network_read", "ws_read", "network_body",
+    "snapshot", "find", "text_search", "frames_list", "shadow_trees", "inspect", "overflow_detect", "watch", "sample", "screenshot", "screenshot_marks", "console_read", "network_read", "ws_read", "network_body",
     "verify_visible", "verify_text", "verify_value", "verify_count", "verify_attribute", "verify_predicate",
     "eval_js", "list_named_refs", "name_ref", "find_feedback", "generate_locator",
     "approve_actions", "list_approvals", "get_config", "list_sessions",

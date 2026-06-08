@@ -25,6 +25,31 @@ surface" covers.
   strategy entirely. New `ElementProbe.warnings` field carries body-side
   warnings through to the result envelope.
 
+### Added
+
+- **`overflow_detect` — page-layout overflow diagnosis primitive.**
+  The silent UI-breakage tool: clipped buttons, ellipsis-truncated labels,
+  horizontal-scrollbar-on-mobile bugs. Walks the DOM and reports one
+  finding per offending element across four detector types — `layout`
+  (`overflow:auto|scroll` with content overrun: scrollbar present but
+  content overflows), `clipped` (`overflow:hidden|clip` with content
+  overrun: invisible content with no scrollbar to recover, the high-value
+  finding), `text-ellipsis` (`text-overflow:ellipsis` with content overrun:
+  evidence carries `visibleText` heuristic + `fullText` truth), and a
+  singleton `viewport-horizontal` (`documentElement.scrollWidth >
+  clientWidth`: the body horizontal-scrollbar mobile bug, evidence carries
+  overrun amount + the widest overrunning descendant when cheaply
+  identifiable). `scope:"document"` (default) walks every element;
+  `scope:"viewport"` skips elements fully off-screen. `types:[...]`
+  filters detectors. `limit` caps findings (default 50, max 500). Walk
+  bounded at 10000 elements; a cap-hit surfaces a `warnings[]` entry
+  suggesting `scope:viewport` for a narrower pass. Selector synthesis
+  prefers `[data-testid]`, falls through to `[role][aria-label]`,
+  nth-of-type CSS path (≤5 levels), then `tag.classes` (≤3); capped at
+  200 chars. Typical use: post-render layout sanity sweep, mobile
+  responsive checks, "the button I clicked got truncated" diagnosis.
+  Read-only (capability `read`).
+
 ## v0.5.1 — 2026-06-08 — Adopter-report fixes
 
 ### Fixed

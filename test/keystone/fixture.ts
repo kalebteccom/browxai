@@ -468,6 +468,84 @@ const WORKERS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Phase-10 overflow_detect keystone — a page deliberately constructed to
+// trip each of the four overflow detectors exactly once:
+//
+//   - `layout`              → #ks-layout: overflow:auto, content larger than box
+//   - `clipped`             → #ks-clipped: overflow:hidden, content overruns
+//   - `text-ellipsis`       → #ks-ellipsis: text-overflow:ellipsis, content longer than width
+//   - `viewport-horizontal` → #ks-wide: 200vw element on the body
+//
+// Also: a fully off-screen `clipped` element (#ks-offscreen) the
+// `scope:"viewport"` test asserts gets skipped. The page sets `width:100vw`
+// on body so the viewport-horizontal check fires reliably.
+const OVERFLOW_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>overflow keystone</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  body { font: 14px sans-serif; }
+  #ks-layout {
+    overflow: auto;
+    height: 50px;
+    width: 200px;
+    border: 1px solid #888;
+  }
+  #ks-layout-inner { width: 100%; height: 200px; background: linear-gradient(#eef, #cce); }
+  #ks-clipped {
+    overflow: hidden;
+    width: 100px;
+    height: 30px;
+    border: 1px solid #888;
+    white-space: nowrap;
+  }
+  #ks-clipped-inner { display: inline-block; width: 300px; background: #fcc; }
+  #ks-ellipsis {
+    display: inline-block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    width: 80px;
+    border: 1px solid #888;
+    vertical-align: top;
+  }
+  #ks-wide {
+    width: 200vw;
+    height: 4px;
+    background: #f00;
+  }
+  /* Off-screen clipped element — used to validate scope:viewport skips it. */
+  #ks-offscreen {
+    position: absolute;
+    top: 5000px;
+    left: 0;
+    width: 100px;
+    height: 30px;
+    overflow: hidden;
+  }
+  #ks-offscreen-inner { width: 400px; height: 60px; display: inline-block; }
+</style></head>
+<body>
+  <h1 data-testid="ks-title">Overflow Keystone</h1>
+
+  <div data-testid="ks-layout" id="ks-layout">
+    <div id="ks-layout-inner">tall content inside an auto-scroll box</div>
+  </div>
+
+  <div data-testid="ks-clipped" id="ks-clipped">
+    <span data-testid="ks-clipped-inner" id="ks-clipped-inner">this content is wider than the box and clipped</span>
+  </div>
+
+  <span data-testid="ks-ellipsis" id="ks-ellipsis">this is a very long sentence that will definitely truncate</span>
+
+  <div data-testid="ks-wide" id="ks-wide"></div>
+
+  <div data-testid="ks-offscreen" id="ks-offscreen">
+    <span data-testid="ks-offscreen-inner" id="ks-offscreen-inner">off-screen content also overflows</span>
+  </div>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -616,6 +694,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/workers-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(WORKERS_PAGE);
+      return;
+    }
+    if (u.pathname === "/overflow-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(OVERFLOW_PAGE);
       return;
     }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };

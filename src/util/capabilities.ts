@@ -76,6 +76,9 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_read: "read",
   ws_read: "read",
   inspect: "read",
+  // Page-wide overflow scan — generalises `inspect`'s per-element overflow
+  // check into a typed multi-detector pass. Pure-read; no new capability.
+  overflow_detect: "read",
   point_probe: "read",
   watch: "read",
   sample: "read",

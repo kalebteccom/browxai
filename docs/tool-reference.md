@@ -558,6 +558,48 @@ Read an element's whitelisted **computed styles + box + overflow/clip state**. `
 
 Read-only (capability `read`). Coords targets unsupported (no element to resolve) — use `point_probe` for a coordinate.
 
+### `overflow_detect`
+Page-wide **overflow scan** — the silent UI-breakage primitive. Generalises `inspect`'s per-element overflow check into a typed multi-detector pass: walks the DOM, applies four overflow-shape detectors, returns one finding per offending element. The bugs this catches are precisely the ones a screenshot looks "fine" for (clipped pixel doesn't shout) and `find()` doesn't surface ("the element rendered but its content was lost"):
+
+`overflow_detect({ session?, scope?, types?, limit? })` → `{ ok, scope, findings: [{ selector, bbox: {x,y,w,h} | null, type, evidence }], truncated, warnings, tokensEstimate }`.
+
+**Detector types** (default = all four; opt out via `types:[…]`):
+
+| Type | Condition | Evidence | Why it matters |
+|------|-----------|----------|----------------|
+| `layout` | `scrollWidth/Height > clientWidth/Height` AND `overflow:auto\|scroll` on the relevant axis | `{ scrollWidth, clientWidth, scrollHeight, clientHeight, overflowX, overflowY }` | Content overflows the padding box; scrollbar IS provided. Subtler than `clipped` — recoverable, but often unintended. |
+| `clipped` | same dimensional check, but `overflow:hidden\|clip` on the relevant axis | same shape as `layout` | **The high-value finding** — content invisible with no scrollbar. "The button got cut off." |
+| `text-ellipsis` | `text-overflow:ellipsis` AND `scrollWidth > clientWidth` | `{ scrollWidth, clientWidth, visibleText, fullText }` | Truncated labels. `visibleText` is a best-effort prefix (offsetWidth-bounded heuristic); the agent reads `fullText` for the truth. |
+| `viewport-horizontal` | `documentElement.scrollWidth > clientWidth` | `{ documentScrollWidth, viewportWidth, overrunPx, widestDescendantSelector?, widestDescendantWidth? }` | The "horizontal scrollbar on body" mobile-layout bug. Singleton finding — selector `"html"`, evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable. |
+
+`EPSILON = 1` CSS px tolerates sub-pixel rounding noise — without it, pages that scale fonts or run on a fractional devicePixelRatio routinely trip false positives by ≤0.5 px.
+
+**Inputs:**
+
+- `scope?: "viewport" | "document"` — `"document"` (default) walks every element; `"viewport"` skips elements fully off-screen (cheaper on very large pages).
+- `types?: ("layout" | "clipped" | "text-ellipsis" | "viewport-horizontal")[]` — default = all four. Empty array is treated as default (an empty filter that silently matches nothing would be a usage error with no signal); unknown values are dropped silently.
+- `limit?: number` — cap on findings returned (default 50, max 500). Findings past the cap are dropped and `truncated:true` is set. Prevents huge result sets on very broken pages.
+
+**Selector synthesis tiers** (per finding's `selector` field):
+
+1. `[data-testid="..."]` if present.
+2. `[role="..."][aria-label="..."]` (both stable).
+3. nth-of-type CSS path bounded at 5 levels.
+4. `tag.classes` (up to 3 class names).
+
+Capped at 200 chars; longer falls through to `tag` only with `evidence.selectorTruncated:true` so the agent can see why the selector is a bare tag.
+
+**Bounded walk** — `MAX_ELEMENTS_SCANNED = 10000`. When the cap is hit the result carries `warnings:["scan stopped at MAX_ELEMENTS_SCANNED (10000) — re-run with scope:viewport for a narrower pass"]`, so an agent that runs against a huge page knows to narrow down.
+
+**Typical use:**
+
+- **Post-render layout sanity sweep** — call after a navigation/render to surface any clipped controls before the agent starts driving them.
+- **Mobile responsive checks** — drive `set_viewport({ width: 375 })` first, then `overflow_detect` to catch horizontal-scrollbar regressions.
+- **"The button I clicked got truncated" diagnosis** — combine with `find()` / `inspect()`: `overflow_detect` finds the offenders; `inspect` reads the full computed-style context for any one element.
+- **CI sanity gate** — fail the build when `truncated:false` AND `findings.length > 0` for `clipped` type (cheap regression catch).
+
+Read-only (capability `read`). Distinct from `inspect` (which targets one element + reads styles+box) and `find` (ranking). On a clean page returns `{ ok:true, findings:[], truncated:false, warnings:[] }`.
+
 ### `generate_locator`
 
 Convert a session-internal `eN` ref (from `snapshot()` / `find()` / `plan()`) into a **Playwright-string locator expression** an adopter can paste verbatim into a `.spec.ts`. The bridge between agent-driven exploration and a deterministic regression suite — `find()` already returns a richer `selectorHint` + `stability` + `actionable` predicate, but the in-process `ref` is browxai-internal; this tool emits the real Playwright expression a human reading a `.spec.ts` would expect to see.
