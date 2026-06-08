@@ -10,6 +10,22 @@ surface" covers.
 
 ### Fixed
 
+- **`dom_export` — `PAGE_WALK_FN` ran as an expression, not a function.**
+  Same root cause as the `element_export` fix below: the page-side walk
+  function was authored as `(args) => {...}` and passed to
+  `Page.evaluate(stringExpr, arg)`. Playwright evaluated the string in
+  page context, which returns the function value uncalled, and CDP
+  can't serialize a function across the boundary — so the result
+  crossed back as `undefined` and the server-side `walked.nodeCount`
+  access threw `Cannot read properties of undefined (reading 'nodeCount')`
+  in both `html` and `jsonl` modes. Fix: pass the walk function as a
+  real TypeScript function literal so Playwright serializes the source
+  and invokes in-page with the arg. `DomExportPage.evaluate` now takes a
+  function rather than a string, removing the type-confusion surface.
+  A new keystone test (`test/keystone/dom-export.keystone.test.ts`)
+  exercises both formats + default-path + workspace-escape against real
+  headless Chromium.
+
 - **`element_export` — `SUBTREE_DISCOVERY_FN` ran as an expression, not a function.**
   The page-side discovery function was authored as a stringified arrow
   expression and passed to `Locator.evaluate(stringExpr)`. Playwright

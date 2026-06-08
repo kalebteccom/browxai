@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -14,7 +15,7 @@ interface PageWalkResult {
 
 function fakePage(result: PageWalkResult, capture?: { args?: unknown }): DomExportPage {
   return {
-    async evaluate<T>(_fn: string, a?: unknown): Promise<T> {
+    async evaluate<T, Arg>(_fn: (arg: Arg) => T | Promise<T>, a?: Arg): Promise<T> {
       if (capture) capture.args = a;
       return result as unknown as T;
     },

@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // `dom_export` — full DOM dump.
 //
 // Two formats:
@@ -80,82 +81,79 @@ export function defaultDomExportPath(sessionId: string, format: DomExportFormat)
 /** Page-side walk function — returns either a single string (html mode)
  *  or an array of JSONL-ready objects (jsonl mode). One round-trip per
  *  invocation; the dump is bounded by the page's DOM size, no per-node
- *  evaluate. */
-const PAGE_WALK_FN = `(args) => {
-  var mode = args.mode;
-  var includeShadow = args.includeShadow;
-  // Best-effort detection: does the document mention any registered
-  // custom element? Used to surface the closed-shadow caveat only when
-  // it's likely relevant. We don't attempt to discriminate open vs
-  // closed; the warning is informational either way.
-  var hasCustomElements = false;
+ *  evaluate.
+ *
+ *  Passed as a real function literal (NOT a stringified expression) so
+ *  Playwright's `Page.evaluate(fn, arg)` path serializes the source and
+ *  invokes in-page with the arg — a stringified `(args) => {...}` would
+ *  evaluate to the function value uncalled, which CDP can't serialize. */
+const PAGE_WALK_FN = (args: { mode: DomExportFormat; includeShadow: boolean }): PageWalkResult => {
+  const mode = args.mode;
+  const includeShadow = args.includeShadow;
+  let hasCustomElements = false;
   try {
-    var all = document.querySelectorAll('*');
-    for (var i = 0; i < all.length && i < 500; i++) {
-      if (all[i].tagName && all[i].tagName.indexOf('-') !== -1) { hasCustomElements = true; break; }
+    const all = document.querySelectorAll('*');
+    for (let i = 0; i < all.length && i < 500; i++) {
+      if (all[i]!.tagName && all[i]!.tagName.indexOf('-') !== -1) { hasCustomElements = true; break; }
     }
   } catch (_) {}
 
   if (mode === 'html') {
-    var html = document.documentElement ? document.documentElement.outerHTML : '';
-    var count = 0;
+    const html = document.documentElement ? document.documentElement.outerHTML : '';
+    let count = 0;
     try { count = document.querySelectorAll('*').length; } catch (_) {}
-    return { html: html, nodeCount: count, shadowRootCount: 0, hasCustomElements: hasCustomElements };
+    return { html, nodeCount: count, shadowRootCount: 0, hasCustomElements };
   }
-  // jsonl
-  var nodes = [];
-  var shadowRoots = 0;
-  function attrsOf(el) {
-    var a = {};
-    var atts = el.attributes;
+  const nodes: Array<Record<string, unknown>> = [];
+  let shadowRoots = 0;
+  function attrsOf(el: Element): Record<string, string> {
+    const a: Record<string, string> = {};
+    const atts = el.attributes;
     if (!atts) return a;
-    for (var i = 0; i < atts.length; i++) {
-      a[atts[i].name] = atts[i].value;
+    for (let i = 0; i < atts.length; i++) {
+      a[atts[i]!.name] = atts[i]!.value;
     }
     return a;
   }
-  function directText(el) {
-    var t = '';
-    var kids = el.childNodes;
-    for (var i = 0; i < kids.length; i++) {
-      if (kids[i].nodeType === 3) t += kids[i].nodeValue || '';
+  function directText(el: Element): string {
+    let t = '';
+    const kids = el.childNodes;
+    for (let i = 0; i < kids.length; i++) {
+      if (kids[i]!.nodeType === 3) t += kids[i]!.nodeValue || '';
     }
-    t = t.replace(/\\s+/g, ' ').trim();
-    return t;
+    return t.replace(/\s+/g, ' ').trim();
   }
-  function visit(node, depth) {
+  function visit(node: Element, depth: number): void {
     if (!node || node.nodeType !== 1) return;
-    var entry = {
+    const entry: Record<string, unknown> = {
       tag: (node.tagName || '').toLowerCase(),
       attrs: attrsOf(node),
-      depth: depth
+      depth,
     };
-    var role = node.getAttribute && node.getAttribute('role');
+    const role = node.getAttribute('role');
     if (role) entry.role = role;
-    var txt = directText(node);
+    const txt = directText(node);
     if (txt) entry.text = txt;
-    // ref hint: surfaces a prior find/snapshot ref if the agent annotated
-    // the DOM with a data-attribute. Pure read — we don't mint refs here.
-    var refAttr = node.getAttribute && (node.getAttribute('data-browx-ref') || '');
+    const refAttr = node.getAttribute('data-browx-ref') || '';
     if (refAttr) entry.ref = refAttr;
     nodes.push(entry);
 
     if (includeShadow && node.shadowRoot) {
       shadowRoots++;
-      var sKids = node.shadowRoot.children;
-      for (var j = 0; j < sKids.length; j++) visit(sKids[j], depth + 1);
+      const sKids = node.shadowRoot.children;
+      for (let j = 0; j < sKids.length; j++) visit(sKids[j]!, depth + 1);
     }
-    var kids = node.children;
-    for (var k = 0; k < kids.length; k++) visit(kids[k], depth + 1);
+    const kids = node.children;
+    for (let k = 0; k < kids.length; k++) visit(kids[k]!, depth + 1);
   }
   if (document.documentElement) visit(document.documentElement, 0);
   return {
-    nodes: nodes,
+    nodes,
     nodeCount: nodes.length,
     shadowRootCount: shadowRoots,
-    hasCustomElements: hasCustomElements
+    hasCustomElements,
   };
-}`;
+};
 
 interface PageWalkResult {
   html?: string;
@@ -167,9 +165,11 @@ interface PageWalkResult {
 
 /** Thin adapter — `Page.evaluate(fn, args)`. Keeps the unit tests
  *  trivial: a stub that returns whatever `PageWalkResult` it was
- *  programmed with. */
+ *  programmed with. `evaluate` takes a real function (Playwright
+ *  serializes it + invokes in-page with arg) — passing a stringified
+ *  arrow expression returns the function value uncalled. */
 export interface DomExportPage {
-  evaluate<T>(fn: string, args?: unknown): Promise<T>;
+  evaluate<T, Arg>(fn: (arg: Arg) => T | Promise<T>, args?: Arg): Promise<T>;
 }
 
 export async function domExport(
@@ -183,7 +183,7 @@ export async function domExport(
   const relPath = args.path ?? defaultDomExportPath(sessionId, format);
   const resolved = resolveWorkspacePath(workspaceRoot, relPath, "dom_export");
 
-  const walked = await page.evaluate<PageWalkResult>(PAGE_WALK_FN, {
+  const walked = await page.evaluate(PAGE_WALK_FN, {
     mode: format,
     includeShadow,
   });
