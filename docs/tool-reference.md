@@ -636,6 +636,25 @@ Defaults are what an agent reaching for "save the page as a PDF" expects without
 
 **Chromium constraint.** `page.pdf()` is Chromium-only — every browxai session is Chromium so that's fine. The tool layer **refuses cleanly on `attached` (BYOB) sessions**: driving PrintToPDF on a human's own Chrome would surface a print dialog / mutate the human's window state, so refusal lands before any Playwright call is made. Open a managed session (`open_session({mode:"persistent"})` or `{mode:"incognito"}`) and re-run `pdf_save` against that. Capability `action`.
 
+### `page_archive({ path?, format?, maxSizeMb?, session? })`
+
+Save the current page as a self-contained archive — HTML plus every linked resource the page references. The first-class alternative to screenshot-then-OCR for a faithful capture an adopter can re-open offline, grep through, or hand to another tool.
+
+Two formats:
+
+- `directory` (default) — writes `<path>/index.html` plus a `<path>/assets/` sidecar containing every fetched resource (images, fonts, scripts, stylesheets, CSS background images discovered via `getComputedStyle`). The HTML's `src`/`href` references are rewritten to relative `assets/<kind>/<file>` paths so the directory opens directly in any browser. Best for large pages — no inline-data size cliff.
+- `single-file` — one self-contained `.html` file at `<path>` with every linked resource inlined as a `data:` URI. The MHTML-equivalent without the MIME-multipart format (which modern browsers no longer support well). One file to copy around, but **browsers commonly struggle past ~150 MB**; very large pages should prefer `directory`.
+
+Output `path` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected — same posture as `pdf_save` / `dump_storage_state`). Omit it for a default `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200) — resources past the budget land in `droppedCount` with a warning explaining which cap was hit. → `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
+
+**Resource fetching runs inside the page.** The tool walks the DOM (`document.querySelectorAll`) to discover URLs and then `await fetch(url, { credentials: 'include' })` from page context, so cookies / auth headers travel correctly. The flip side: page CSP `connect-src` applies — cross-origin fetches the policy refuses are caught, dropped, and surfaced in `droppedCount` + `warnings[]`. Cross-origin iframes are similarly unreachable and are dropped.
+
+**Caller must navigate + settle the page BEFORE calling `page_archive`.** The tool captures `document.documentElement.outerHTML` once and does not inject its own wait — pair with a prior `navigate` (which waits for `load`) or a `wait_for` against the meaningful element.
+
+**Secrets-masking caveat (deliberate gap).** The archive output is intentionally **UNMASKED**. Running the per-session egress masking layer over the bytes would corrupt the archive — masking is literal-substring substitution, would break inline JSON state blobs, CSS, binary image bytes, and produce a file that no longer opens correctly. The `warnings[]` array always carries the caveat as its first entry. Treat the archive the same way you treat the output of `dump_storage_state`: it may carry credentials. See `docs/threat-model.md` "Why archives aren't masked".
+
+Gated by the off-by-default **`file-io`** capability (same posture as `upload_file` / `downloads_capture`): an archive write is a deliberate filesystem egress, not a routine action.
+
 ### Download capture — `downloads_capture` / `download_get`
 
 The reverse direction of `upload_file`: intercept page-initiated downloads,

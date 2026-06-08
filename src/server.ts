@@ -98,6 +98,7 @@ import { uploadFile } from "./page/upload.js";
 import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./page/downloads.js";
 import { assetExport } from "./page/asset-export.js";
 import { pdfSave, assertPdfSupported } from "./page/pdf.js";
+import { pageArchive } from "./page/archive.js";
 import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
@@ -2923,6 +2924,47 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `page_archive` — save the current page (HTML + linked resources) as a
+  // self-contained artefact, either as a directory (`index.html` + `assets/`
+  // sidecar) or as a single-file inlined HTML. Workspace-rooted by
+  // construction (same `resolveWorkspacePath` posture as `pdf_save` /
+  // `start_har`). Under the off-by-default `file-io` capability — a deliberate
+  // filesystem egress, not a routine action. The agent is expected to
+  // navigate + settle the page BEFORE calling: the tool does not inject its
+  // own wait. The output is faithfully UNMASKED — see archive.ts header for
+  // the secrets-masking deliberate-gap rationale.
+  register(
+    "page_archive",
+    {
+      description:
+        "Save the current page as a self-contained archive. Two formats: `directory` (default) writes `<path>/index.html` + `<path>/assets/` sidecar with every linked resource (images, fonts, scripts, stylesheets, CSS background-images surfaced via getComputedStyle); HTML refs rewritten to relative `assets/...` paths. `single-file` writes one HTML at `<path>` with every resource inlined as a `data:` URI (browsers struggle past ~150 MB — large pages should prefer `directory`). `path` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200) — resources past the budget land in `droppedCount`. Resource fetching runs `await fetch(url)` IN-page (subject to the page's CSP `connect-src` — cross-origin blocks are caught, dropped, and counted). → `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. **Secrets-masking caveat**: the archive is intentionally UNMASKED — running the egress masking layer would corrupt inline JSON/CSS/binary bytes; treat the archive as sensitive (same posture as `dump_storage_state`). Caller must navigate + settle the page BEFORE calling; `page_archive` does not inject its own wait. Capability `file-io`.",
+      inputSchema: {
+        path: z.string().optional().describe("Workspace-rooted output path (directory for `directory` format; .html file for `single-file`). Default `archives/<sessionId>-<ISO>[.html]`. Rejected if it escapes $BROWX_WORKSPACE."),
+        format: z.enum(["directory", "single-file"]).optional().describe("`directory` (default) → index.html + assets/ sidecar; `single-file` → one HTML with data:-URI-inlined resources."),
+        maxSizeMb: z.number().positive().max(10_000).optional().describe("Total archive size cap (MB). Default 200. Resources past the budget are dropped + counted."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("page_archive"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const r = await withDeadline(
+          pageArchive(e.session.page(), workspace.root, e.id, {
+            path: args.path, format: args.format, maxSizeMb: args.maxSizeMb,
+          }),
+          cfgActionTimeout(),
+          "page_archive",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
       }
     },
   );

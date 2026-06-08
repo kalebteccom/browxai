@@ -54,6 +54,32 @@ surface" covers.
   `network_read` egress shape is unchanged (those fields stay off the
   bucketed `recent()` output). `NetworkBuffer` gains a read-only `iter()`
   method that exposes the raw ring for `asset_export`'s filter loop.
+- **`page_archive` MCP tool** — save the current page as a self-contained
+  archive. Two formats: `directory` (default) writes `<path>/index.html`
+  plus a `<path>/assets/` sidecar with every linked resource (images,
+  fonts, scripts, stylesheets, CSS background-images surfaced via
+  `getComputedStyle`); HTML refs rewritten to relative `assets/...`
+  paths. `single-file` writes one HTML at `<path>` with every resource
+  inlined as a `data:` URI (browsers struggle past ~150 MB — large pages
+  should prefer `directory`). Workspace-rooted by construction
+  (`resolveWorkspacePath` rejects escape — same posture as `pdf_save` /
+  `dump_storage_state`); omit `path` for a default
+  `archives/<sessionId>-<ISO>[.html]`. `maxSizeMb` caps the total archive
+  (default 200) — resources past the budget land in `droppedCount` with
+  a warning. Result: `{ ok, format, path, sizeBytes, resourceCount,
+  droppedCount, warnings[] }`. Gated by the off-by-default **`file-io`**
+  capability (same posture as `upload_file` / `downloads_capture`).
+  Resource fetching runs `await fetch(url, { credentials:'include' })`
+  in page context — cookies / auth headers travel correctly; CSP
+  `connect-src` blocks are caught, dropped, and surfaced in
+  `droppedCount` + `warnings[]`. **Secrets-masking deliberate gap**: the
+  archive output is intentionally UNMASKED — masking is literal-
+  substring substitution and would corrupt inline JSON / CSS / binary
+  bytes. The `warnings[]` array always carries the caveat as its first
+  entry; treat the archive as sensitive material, same posture as
+  `dump_storage_state`. The caller must navigate + settle the page
+  BEFORE calling — the tool does not inject its own wait.
+  See `src/page/archive.ts`, `docs/tool-reference.md` "Page archive".
 
 ## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
 

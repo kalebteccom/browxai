@@ -221,6 +221,12 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   network_body: "network-body",
   // file-io
   upload_file: "file-io",
+  // Page archive — save current page as a self-contained artefact (directory
+  // mode: index.html + assets/ sidecar; single-file mode: data:URI-inlined
+  // HTML). Workspace-rooted output by construction. Under `file-io` (same
+  // posture as `upload_file` / `downloads_capture`): an archive write is a
+  // deliberate filesystem egress, not a routine action. See src/page/archive.ts.
+  page_archive: "file-io",
   // Download capture — reverse of `upload_file`. `downloads_capture` toggles
   // per-session interception of Playwright `download` events; `download_get`
   // returns the captured bytes (or workspace-rooted path) for an id surfaced
