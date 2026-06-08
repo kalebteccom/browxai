@@ -1067,6 +1067,37 @@ Wraps layer 1 with workspace-rooted JSON files at `$BROWX_WORKSPACE/.auth-states
 - `auth_list()` → `{count, slots:[{name, path, bytes, modifiedAt}…]}`
 - `auth_delete({ name })` → `{ok, existed}` (idempotent).
 
+#### Cache API CRUD *(Phase 7)*
+
+Sibling of cookies / web-storage CRUD on the W3C Cache API (`window.caches`)
+— what Service Workers populate for offline-first apps. Origin-scoped and
+page-bound (same posture as localStorage — navigate the session to the
+target origin first; on `about:blank` or a different origin the call rejects
+with a navigation hint). Reads under `read`; writes under `action`. No
+synthetic IDs — each entry keyed by its `(cacheName, url)` pair.
+
+- `caches_list_storages({ session? })` → `{count, names:[…], origin}` (`caches.keys()`).
+- `caches_list({ cacheName, urlPattern?, session? })` → `{count, entries:[{url, method}], origin, cacheName}`. `urlPattern` is a case-sensitive substring filter on each entry's request URL (no regex — post-filter the result for richer matching).
+- `caches_get({ cacheName, url, session? })` → text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) arrive as `{found:true, kind:"text", text, contentType, status, headers}`; everything else as `{found:true, kind:"binary", contentBase64, byteLength, …}`. `{found:false}` when no entry matches the URL.
+- `caches_put({ cacheName, url, response:{ status?, headers?, body? | contentBase64? }, session? })` — auto-opens (= creates) the named cache storage. `response.body` is a UTF-8 string; for binary content pass `response.contentBase64` instead. The two are mutually exclusive. Default `status` 200.
+- `caches_delete({ cacheName, url, session? })` → `{ok, existed}` (idempotent).
+- `caches_clear({ cacheName, session? })` → `{ok, cleared:N}` (cache storage itself remains).
+- `caches_delete_storage({ cacheName, session? })` → `{ok, existed}` — drops the whole storage.
+
+#### IndexedDB CRUD *(Phase 7)*
+
+Sibling of cookies / web-storage / Cache API CRUD on the W3C IndexedDB API.
+Origin-scoped and page-bound (same caveat as above). Reads under `read`;
+writes under `action`. No synthetic IDs — each entry keyed by its
+`(dbName, storeName, key)` triple.
+
+- `idb_list_databases({ session? })` → `{count, databases:[{name, version}], origin, supported}`. Uses `indexedDB.databases()` (Chromium-family); `supported:false` on engines without it — you can still drive `idb_list_stores({dbName})` if you know the database names.
+- `idb_list_stores({ dbName, session? })` → `{count, stores:[…], dbName, version, origin}`. Read-only — does NOT trigger an upgrade, so it only sees stores that already exist.
+- `idb_get({ dbName, storeName, key, session? })` → `{found:true, value}` or `{found:false}`. **Keys:** IDB accepts strings, numbers, dates, and arrays as keys; all four shapes round-trip through JSON cleanly (Dates as ISO strings). **Values:** IDB stores structured-clonable values (`Blob`/`ArrayBuffer`/`Map`/`Set`/`Date`), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error rather than a silent drop; the platform value is preserved IN the store and only the over-the-wire return is bounded. For binary payloads, store them base64-encoded at the app level.
+- `idb_put({ dbName, storeName, key, value, session? })` — the object store MUST already exist (store creation requires an IDB upgrade transaction, which is the app's schema concern; this tool refuses with a clear hint instead of silently creating). If the store uses an in-line keyPath, `key` is ignored (the keyPath read off `value` is authoritative); otherwise `key` becomes the out-of-line primary key.
+- `idb_delete({ dbName, storeName, key, session? })` — idempotent (same shape whether or not a record was there).
+- `idb_clear({ dbName, storeName, session? })` — clears every record from the store; the store itself remains.
+
 #### `open_session({ ... storageState?, authState? })` extension *(additive)*
 
 `open_session` now optionally seeds the new context with a storage state at creation. **Mutually exclusive** — pass one or the other:

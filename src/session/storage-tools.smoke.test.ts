@@ -32,6 +32,21 @@ const STORAGE_TOOLS = [
   "auth_load",
   "auth_list",
   "auth_delete",
+  // Phase 7 — Cache API
+  "caches_list_storages",
+  "caches_list",
+  "caches_get",
+  "caches_put",
+  "caches_delete",
+  "caches_clear",
+  "caches_delete_storage",
+  // Phase 7 — IndexedDB
+  "idb_list_databases",
+  "idb_list_stores",
+  "idb_get",
+  "idb_put",
+  "idb_delete",
+  "idb_clear",
 ];
 
 describe("storage tools — registration smoke", () => {

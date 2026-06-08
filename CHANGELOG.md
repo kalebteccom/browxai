@@ -41,6 +41,33 @@ surface" covers.
     flatten:true})` on the top-level CDP. Per-session by construction; lost
     on session close or BYOB rebuild (a fresh wrapper installs on the new
     context).
+- **Phase 7: Cache API + IndexedDB CRUD — siblings of cookie / web-storage CRUD.**
+  Completes the storage-state surface so adopters can checkpoint and replay
+  Service-Worker offline caches and app-level IDB stores the same way they
+  already drive cookies and localStorage. Origin-scoped (same posture as
+  `localStorage_*` — navigate first; about:blank rejects with a hint). Zero
+  synthetic IDs — each entry keyed by its native `(cacheName, url)` /
+  `(dbName, storeName, key)`. Capability split: reads under `read`, writes
+  under `action`; no new capability gate.
+  - **Cache API (7 tools).** `caches_list_storages` (`caches.keys()`),
+    `caches_list({cacheName, urlPattern?})` (substring filter on entry URL),
+    `caches_get({cacheName, url})` → text-like content-types arrive as
+    `{kind:"text", text}`, everything else as `{kind:"binary", contentBase64,
+    byteLength}`; `caches_put({cacheName, url, response:{status?, headers?,
+    body? | contentBase64?}})` (auto-creates the cache storage; body XOR
+    contentBase64); `caches_delete`, `caches_clear`, `caches_delete_storage`.
+  - **IndexedDB (6 tools).** `idb_list_databases` (`indexedDB.databases()`;
+    `supported:false` on engines without it), `idb_list_stores({dbName})`
+    (read-only — does not trigger an upgrade), `idb_get({dbName, storeName,
+    key})`, `idb_put`, `idb_delete`, `idb_clear`. Keys round-trip as string /
+    number / array-of-strings-or-numbers. Values cross MCP's JSON-only
+    transport — non-JSON-serialisable IDB values (Blob / ArrayBuffer / Map /
+    Set / Date cycles) surface as a structured error rather than a silent
+    drop; the platform value is preserved IN the store and only the
+    over-the-wire return path is bounded. Store creation requires an upgrade
+    transaction so `idb_put` against a missing store rejects with the schema
+    hint instead of silently creating it. → standard envelopes with
+    `tokensEstimate`.
 
 - **Phase 7: `drop_files` — drag-drop files from disk onto a page element.**
   Sibling to `upload_file` for drop-zone uploaders (modern SaaS file pickers

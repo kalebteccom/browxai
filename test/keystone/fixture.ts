@@ -229,6 +229,56 @@ const PAGE = `<!doctype html>
         out.textContent = 'picker-error name=' + (err && err.name) + ' msg=' + (err && err.message);
       }
     }
+    // Phase 7 — Cache API + IndexedDB keystone seeding.
+    // Populate one cache storage with a text entry + a binary entry, and
+    // one IDB database with a kv store carrying two records. Both run in
+    // an IIFE that flips a tagged <output> to "ready" so the keystone can
+    // poll until the seeds are in place before exercising the tools.
+    (async function seedStorageState() {
+      var ready = document.createElement('output');
+      ready.setAttribute('data-testid', 'storage-seed-state');
+      ready.id = 'storageSeedState';
+      ready.textContent = 'pending';
+      document.body.appendChild(ready);
+      try {
+        // -- Cache API: open "v1", put one text entry + one binary entry.
+        if (typeof caches !== 'undefined') {
+          var c = await caches.open('v1');
+          await c.put(
+            new Request('/cached/hello.json'),
+            new Response('{"hi":"world"}', { status: 200, headers: { 'content-type': 'application/json' } }),
+          );
+          // 4 bytes of binary (0x89 0x50 0x4e 0x47 = PNG magic).
+          var bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+          await c.put(
+            new Request('/cached/img.png'),
+            new Response(bytes, { status: 200, headers: { 'content-type': 'image/png' } }),
+          );
+        }
+        // -- IndexedDB: db "app" with store "kv" (out-of-line key), two records.
+        await new Promise(function (resolve, reject) {
+          var req = indexedDB.open('app', 1);
+          req.onupgradeneeded = function () {
+            var db = req.result;
+            if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');
+          };
+          req.onsuccess = function () {
+            var db = req.result;
+            var tx = db.transaction('kv', 'readwrite');
+            var s = tx.objectStore('kv');
+            s.put({ name: 'Ada' }, 'u1');
+            s.put({ name: 'Linus' }, 'u2');
+            tx.oncomplete = function () { db.close(); resolve(); };
+            tx.onerror = function () { db.close(); reject(tx.error); };
+          };
+          req.onerror = function () { reject(req.error); };
+        });
+        ready.textContent = 'ready';
+      } catch (e) {
+        ready.textContent = 'error msg=' + (e && e.message || e);
+      }
+    })();
+
     // Phase 7 — Shadow DOM keystone fixtures.
     // open-widget: attachShadow({mode:"open"}) — Element.shadowRoot returns
     // the root, so Playwright / page-side JS / dom-walk can all pierce it.

@@ -350,6 +350,24 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   auth_load: "action",
   auth_list: "read",
   auth_delete: "action",
+  // Phase 7 — Cache API + IndexedDB CRUD.
+  //   reads  (`*_list*`, `*_get`)            → `read`
+  //   writes (`*_put`, `*_delete`, `*_clear`,
+  //           `caches_delete_storage`)       → `action`
+  // No new capability gate — same posture as web-storage CRUD.
+  caches_list_storages: "read",
+  caches_list: "read",
+  caches_get: "read",
+  caches_put: "action",
+  caches_delete: "action",
+  caches_clear: "action",
+  caches_delete_storage: "action",
+  idb_list_databases: "read",
+  idb_list_stores: "read",
+  idb_get: "read",
+  idb_put: "action",
+  idb_delete: "action",
+  idb_clear: "action",
   // Per-session artifact KV — save/get/list of session-scoped string/binary
   // payloads (the "build your own library over time" loop). `artifact_save`
   // writes a file → `action`; `artifact_get` / `artifact_list` are read-only.

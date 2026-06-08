@@ -169,6 +169,23 @@ import {
   type StorageStateBlob,
   resolveWorkspacePath,
 } from "./session/storage.js";
+import {
+  cachesListStorages,
+  cachesList,
+  cachesGet,
+  cachesPut,
+  cachesDelete,
+  cachesClear,
+  cachesDeleteStorage,
+} from "./session/cache-storage.js";
+import {
+  idbListDatabases,
+  idbListStores,
+  idbGet,
+  idbPut,
+  idbDelete,
+  idbClear,
+} from "./session/idb-storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
 import {
@@ -4426,6 +4443,313 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const r = authDelete(workspace.root, name);
         return okText({ ...r, name });
       } catch (err) { return errText("auth_delete", err); }
+    },
+  );
+
+  // ===========================================================================
+  // Phase 7 — Cache API + IndexedDB CRUD.
+  //
+  // Sibling families of the cookie / web-storage CRUD above. Both APIs are
+  // ORIGIN-SCOPED — the page MUST be navigated to the target origin first
+  // (same posture as localStorage / sessionStorage). On about:blank or a
+  // different origin the call rejects with a navigation hint.
+  //
+  // Capability split:
+  //   reads  (`caches_list_storages`, `caches_list`, `caches_get`,
+  //           `idb_list_databases`, `idb_list_stores`, `idb_get`)  → `read`
+  //   writes (`caches_put`, `caches_delete`, `caches_clear`,
+  //           `caches_delete_storage`, `idb_put`, `idb_delete`,
+  //           `idb_clear`)                                          → `action`
+  // No new capability gate — same posture as web-storage CRUD.
+  // ===========================================================================
+
+  // ---- Cache API -------------------------------------------------------------
+
+  register(
+    "caches_list_storages",
+    {
+      description:
+        "List every cache storage visible to the current page's origin (`caches.keys()`). Cache API is ORIGIN-SCOPED — the session must be navigated to the target origin first; about:blank rejects with a navigation hint. Returns `{names:[...], origin}`. Read-only.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("caches_list_storages"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(cachesListStorages(e.session.page(), "caches_list_storages"), cfgActionTimeout(), "caches_list_storages");
+        return okText({ ok: true, count: r.names.length, ...r });
+      } catch (err) { return errText("caches_list_storages", err); }
+    },
+  );
+
+  register(
+    "caches_list",
+    {
+      description:
+        "List entries in one cache. Returns `{entries:[{url, method}], origin, cacheName}`. Optional `urlPattern` is a case-sensitive substring filter on each entry's URL (no regex — adopters wanting richer filtering can post-filter the result). Origin-scoped — navigate first. Read-only.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name."),
+        urlPattern: z.string().optional().describe("Optional substring filter on each entry's `request.url`."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, urlPattern, session }) => {
+      const g = gateCheck("caches_list"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(cachesList(e.session.page(), { cacheName, urlPattern }, "caches_list"), cfgActionTimeout(), "caches_list");
+        return okText({ ok: true, count: r.entries.length, ...r });
+      } catch (err) { return errText("caches_list", err); }
+    },
+  );
+
+  register(
+    "caches_get",
+    {
+      description:
+        "Read the response body of a single cache entry. Text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) arrive as `{kind:\"text\", text}`. Everything else arrives as `{kind:\"binary\", contentBase64, byteLength}`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name."),
+        url: z.string().describe("Entry URL key."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, url, session }) => {
+      const g = gateCheck("caches_get"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(cachesGet(e.session.page(), { cacheName, url }, "caches_get"), cfgActionTimeout(), "caches_get");
+        return okText({ ok: true, ...r });
+      } catch (err) { return errText("caches_get", err); }
+    },
+  );
+
+  register(
+    "caches_put",
+    {
+      description:
+        "Put one entry in a cache. `response.body` is a UTF-8 string (default); for binary content pass `response.contentBase64` instead — exactly one of the two. Optional `response.status` (default 200) and `response.headers` build the `Response`. Auto-opens (= creates) the named cache storage if it doesn't exist. Origin-scoped — navigate first.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name (auto-created)."),
+        url: z.string().describe("Entry URL key."),
+        response: z.object({
+          status: z.number().optional().describe("HTTP status (default 200)."),
+          headers: z.record(z.string()).optional().describe("Response headers."),
+          body: z.string().optional().describe("UTF-8 string body. Mutually exclusive with `contentBase64`."),
+          contentBase64: z.string().optional().describe("Base64-encoded binary body. Mutually exclusive with `body`."),
+        }).describe("Response shape — body+headers+status."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, url, response, session }) => {
+      const g = gateCheck("caches_put"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("caches_put", confirmCtxFor(e));
+        if (!c.ok) return denyContent("caches_put", c);
+        const r = await withDeadline(cachesPut(e.session.page(), { cacheName, url, response }, "caches_put"), cfgActionTimeout(), "caches_put");
+        return okText({ ...r });
+      } catch (err) { return errText("caches_put", err); }
+    },
+  );
+
+  register(
+    "caches_delete",
+    {
+      description:
+        "Delete one entry from a cache. Returns `existed:true` when a record was present (idempotent — repeat calls return `existed:false`). Origin-scoped — navigate first.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name."),
+        url: z.string().describe("Entry URL key."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, url, session }) => {
+      const g = gateCheck("caches_delete"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("caches_delete", confirmCtxFor(e));
+        if (!c.ok) return denyContent("caches_delete", c);
+        const r = await withDeadline(cachesDelete(e.session.page(), { cacheName, url }, "caches_delete"), cfgActionTimeout(), "caches_delete");
+        return okText({ ...r });
+      } catch (err) { return errText("caches_delete", err); }
+    },
+  );
+
+  register(
+    "caches_clear",
+    {
+      description:
+        "Clear every entry in a cache (the cache storage itself remains — use `caches_delete_storage` to drop the whole storage). Returns `cleared:N` (the count removed). Origin-scoped — navigate first.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, session }) => {
+      const g = gateCheck("caches_clear"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("caches_clear", confirmCtxFor(e));
+        if (!c.ok) return denyContent("caches_clear", c);
+        const r = await withDeadline(cachesClear(e.session.page(), { cacheName }, "caches_clear"), cfgActionTimeout(), "caches_clear");
+        return okText({ ...r });
+      } catch (err) { return errText("caches_clear", err); }
+    },
+  );
+
+  register(
+    "caches_delete_storage",
+    {
+      description:
+        "Delete a cache storage entirely (`caches.delete(name)`). Returns `existed:true` when the storage was present (idempotent). To clear entries while keeping the storage, use `caches_clear`. Origin-scoped — navigate first.",
+      inputSchema: {
+        cacheName: z.string().describe("Cache storage name to delete."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ cacheName, session }) => {
+      const g = gateCheck("caches_delete_storage"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("caches_delete_storage", confirmCtxFor(e));
+        if (!c.ok) return denyContent("caches_delete_storage", c);
+        const r = await withDeadline(cachesDeleteStorage(e.session.page(), { cacheName }, "caches_delete_storage"), cfgActionTimeout(), "caches_delete_storage");
+        return okText({ ...r });
+      } catch (err) { return errText("caches_delete_storage", err); }
+    },
+  );
+
+  // ---- IndexedDB ------------------------------------------------------------
+
+  register(
+    "idb_list_databases",
+    {
+      description:
+        "Enumerate every IndexedDB database visible to the current page's origin (`indexedDB.databases()`). Returns `{databases:[{name, version}], origin, supported}`. `supported:false` on engines that don't expose `indexedDB.databases()` (older non-Chromium browsers) — the storage is still readable per-database via `idb_list_stores({dbName})`, you just have to know the names. IndexedDB is ORIGIN-SCOPED — navigate first. Read-only.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("idb_list_databases"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(idbListDatabases(e.session.page(), "idb_list_databases"), cfgActionTimeout(), "idb_list_databases");
+        return okText({ ok: true, count: r.databases.length, ...r });
+      } catch (err) { return errText("idb_list_databases", err); }
+    },
+  );
+
+  register(
+    "idb_list_stores",
+    {
+      description:
+        "List the object-store names inside a database. Read-only — does NOT trigger an upgrade transaction, so it will only see stores that already exist. Returns `{stores:[...], dbName, version, origin}`. Origin-scoped — navigate first.",
+      inputSchema: {
+        dbName: z.string().describe("Database name."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ dbName, session }) => {
+      const g = gateCheck("idb_list_stores"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(idbListStores(e.session.page(), { dbName }, "idb_list_stores"), cfgActionTimeout(), "idb_list_stores");
+        return okText({ ok: true, count: r.stores.length, ...r });
+      } catch (err) { return errText("idb_list_stores", err); }
+    },
+  );
+
+  register(
+    "idb_get",
+    {
+      description:
+        "Get the value at a key in an object store. Returns `{found:true, value}` or `{found:false}`. KEY SHAPES: IDB natively accepts strings, numbers, dates, and arrays as keys — all four shapes round-trip through JSON cleanly (Dates as ISO strings; pass the ISO string back in on subsequent calls). VALUE SHAPES: IDB stores structured-clonable values (Blob/ArrayBuffer/Map/Set/Date), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error (the platform value is preserved IN the store; it just can't ride the wire). For binary payloads, store them base64-encoded at the app level. Origin-scoped — navigate first. Read-only.",
+      inputSchema: {
+        dbName: z.string().describe("Database name."),
+        storeName: z.string().describe("Object store name (must exist)."),
+        key: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]).describe("Primary key — string, number, or array of strings/numbers."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ dbName, storeName, key, session }) => {
+      const g = gateCheck("idb_get"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const r = await withDeadline(idbGet(e.session.page(), { dbName, storeName, key }, "idb_get"), cfgActionTimeout(), "idb_get");
+        return okText({ ok: true, ...r });
+      } catch (err) { return errText("idb_get", err); }
+    },
+  );
+
+  register(
+    "idb_put",
+    {
+      description:
+        "Put a value at a key in an object store. The object store MUST already exist — this tool does not create stores (store creation requires an IDB upgrade transaction, which is the app's schema concern). `value` is anything JSON-serialisable; non-JSON inputs reject at MCP-validation time. If the store uses an in-line keyPath, `key` is ignored (the keyPath read off `value` is authoritative); otherwise `key` becomes the out-of-line primary key. Origin-scoped — navigate first.",
+      inputSchema: {
+        dbName: z.string().describe("Database name (must exist)."),
+        storeName: z.string().describe("Object store name (must exist)."),
+        key: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]).describe("Primary key — string, number, or array. Ignored if the store uses an in-line keyPath."),
+        value: z.unknown().describe("JSON-serialisable value to store."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ dbName, storeName, key, value, session }) => {
+      const g = gateCheck("idb_put"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("idb_put", confirmCtxFor(e));
+        if (!c.ok) return denyContent("idb_put", c);
+        const r = await withDeadline(idbPut(e.session.page(), { dbName, storeName, key, value }, "idb_put"), cfgActionTimeout(), "idb_put");
+        return okText({ ...r });
+      } catch (err) { return errText("idb_put", err); }
+    },
+  );
+
+  register(
+    "idb_delete",
+    {
+      description:
+        "Delete the value at a key in an object store. Idempotent — returns the same shape whether or not a record was there. Origin-scoped — navigate first.",
+      inputSchema: {
+        dbName: z.string().describe("Database name."),
+        storeName: z.string().describe("Object store name."),
+        key: z.union([z.string(), z.number(), z.array(z.union([z.string(), z.number()]))]).describe("Primary key to delete."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ dbName, storeName, key, session }) => {
+      const g = gateCheck("idb_delete"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("idb_delete", confirmCtxFor(e));
+        if (!c.ok) return denyContent("idb_delete", c);
+        const r = await withDeadline(idbDelete(e.session.page(), { dbName, storeName, key }, "idb_delete"), cfgActionTimeout(), "idb_delete");
+        return okText({ ...r });
+      } catch (err) { return errText("idb_delete", err); }
+    },
+  );
+
+  register(
+    "idb_clear",
+    {
+      description:
+        "Clear every record from an object store (the store itself remains). Origin-scoped — navigate first.",
+      inputSchema: {
+        dbName: z.string().describe("Database name."),
+        storeName: z.string().describe("Object store name."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ dbName, storeName, session }) => {
+      const g = gateCheck("idb_clear"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        const c = await confirmByobAction("idb_clear", confirmCtxFor(e));
+        if (!c.ok) return denyContent("idb_clear", c);
+        const r = await withDeadline(idbClear(e.session.page(), { dbName, storeName }, "idb_clear"), cfgActionTimeout(), "idb_clear");
+        return okText({ ...r });
+      } catch (err) { return errText("idb_clear", err); }
     },
   );
 
