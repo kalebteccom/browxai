@@ -4464,7 +4464,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "permission_state",
     {
       description:
-        "Read the current CDP-reported permission state(s) for an origin via `Browser.getPermissionState`. Returns `{ [permission]: \"granted\" | \"denied\" | \"prompt\" | \"unknown\" }` per requested name. Defaults the `origin` to the current page's origin when omitted. Read-only — does not mutate state. Supported permission names (v1): " + SUPPORTED_PERMISSIONS.join(", ") + ". Sibling of `set_permission_policy`.",
+        "Read the current permission state(s) for an origin via the W3C Permissions API (`navigator.permissions.query` — which reflects the CDP-applied baseline). Returns `{ [permission]: \"granted\" | \"denied\" | \"prompt\" | \"unknown\" }` per requested name. Defaults the `origin` to the current page's origin when omitted. Read-only — does not mutate state. Supported permission names (v1): " + SUPPORTED_PERMISSIONS.join(", ") + ". Sibling of `set_permission_policy`.",
       inputSchema: {
         permissions: z.array(z.string()).min(1).describe("Canonical permission names to query — see tool description for the supported set. Unknown names map to `\"unknown\"` in the result."),
         origin: z.string().optional().describe("Origin to query (e.g. \"https://example.com\"). Omit to use the current page's origin."),

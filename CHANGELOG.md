@@ -37,7 +37,7 @@ surface" covers.
   Independent of `ok`; `raise`-mode requests additionally flip `ok` to false
   with a stable `unhandled permission request` hint pointing at
   `set_permission_policy`.
-- Supported permission names (v1, 12 total): `camera`, `microphone`,
+- Supported permission names (v1, 13 total): `camera`, `microphone`,
   `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `midi`,
   `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`,
   `gyroscope`, `magnetometer`. USB / Bluetooth / HID are out of scope for v1
