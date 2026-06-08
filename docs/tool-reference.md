@@ -588,6 +588,28 @@ Read-only: **what is actually under a viewport coordinate**. `point_probe({ coor
 ### `ws_read` *(W-H1)*
 Session-wide ring of recent **WebSocket / Server-Sent-Events frames** (cap 500; HTTP is `network_read`, this is the realtime channel). `ws_read({ session?, limit?, urlPattern? })` → `{ total, frames: [{ url, dir: "sent"|"recv", kind: "ws"|"sse", opcode?, event?, payload, truncated?, ts }] }`. Payloads truncated (~2000 chars). The verification primitive for realtime correctness — chat / multiplayer / collaborative-editing / live-dashboard broadcasts, where the frame stream is the only ground truth. Per-action frames also land in **`ActionResult.network.wsFrames`** (frames that arrived during that action's window) — e.g. assert a click produced the expected broadcast without polling `ws_read` separately. Capability: `read`.
 
+### Interactive WebSocket — `ws_send` / `ws_intercept` / `ws_unintercept`
+
+The read-only WS view is `ws_read`; this family is the mutation half — send a frame on a live page-side socket, or rewrite/drop INBOUND frames before app handlers see them. Sibling of the HTTP `route` family on the realtime channel. All three sit under capability `action`.
+
+A page-side wrapper on `window.WebSocket` is installed eagerly at session creation (`Page.addInitScript`) so a socket constructed during initial document parse is captured. Each `new WebSocket(...)` is assigned a stable per-session `wsId` (`ws-1`, `ws-2`, …) you can discover via `eval_js JSON.stringify(window.__browxWs.list())` — `[{wsId, url, readyState}]`.
+
+#### `ws_send({ wsId, message, session? })`
+Push a payload onto an OPEN socket. Calls the real (unwrapped) `WebSocket.prototype.send`, so app-level `message` listeners do NOT observe a fake event — only the server sees the outbound frame. Returns `{ ok:true, wsId, url, bytes }` on success; `{ ok:false, error }` if the id is unknown or the socket isn't `OPEN`. Binary frames are not in MVP — send as text.
+
+#### `ws_intercept({ pattern, response, session? })`
+Install a route-handler for INBOUND frames. `pattern` is a glob (the route family's intent: `*` = single segment, `**` = any) matched against `socket.url` at frame time. Three response modes:
+- `"drop"` — silently discard the frame before app handlers run.
+- `"echo"` — mirror the inbound payload back to the server (the app still receives the original locally).
+- `{ data: "<string>" }` — replace the inbound payload with `data`; app handlers see the replacement.
+
+Re-adding the same pattern replaces the prior entry (no duplication). The interceptor evaluates on every matching frame until removed.
+
+#### `ws_unintercept({ pattern?, session? })`
+Remove one interceptor (by exact `pattern`) or — with no `pattern` — every interceptor this session installed.
+
+**Caveats.** The wrapper installs at session creation; if you swap a session out via the BYOB rebuild path, both the wrapper AND any active interceptors are lost (a fresh wrapper installs on the new context, but the registry is empty). Same with full session close. There is no equivalent of `network_emulate`'s "applies cross-context"; the wrapper is per-context by construction.
+
 #### `ActionResult.network.mutations` (W-F5)
 
 Action windows that include a write-shaped request (`POST` / `PUT` / `PATCH` / `DELETE` with a 2xx response) get a bounded `mutations` array on top of `summary` / `requests`:

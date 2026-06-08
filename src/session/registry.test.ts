@@ -37,6 +37,8 @@ function fakeEntry(id: string): SessionEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     routes: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    wsInteractive: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     regions: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     emulation: {} as any,

@@ -13,6 +13,8 @@
 // isolated cookie jars (set in A, absent in B).
 
 import { createServer, type Server } from "node:http";
+import { createHash } from "node:crypto";
+import type { Duplex } from "node:stream";
 import { AddressInfo } from "node:net";
 
 const PAGE = `<!doctype html>
@@ -237,6 +239,39 @@ const CHILD_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Phase-7 interactive-WS keystone — page opens a WebSocket against the
+// fixture's `/ws` echo endpoint, then writes:
+//   - every received message into `#ws-log` (newline-joined)
+//   - the open/closed state into `#ws-state`
+// The page does NOT call `.send()` on its own past the initial "hello" —
+// the keystone drives `ws_send` from the server side and asserts the echo
+// arrives. For `ws_intercept`, the page emits its own message after a
+// short delay so the server can intercept it before the page handler runs.
+const WS_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ws keystone</title></head>
+<body>
+<output data-testid="ws-state" id="ws-state">idle</output>
+<pre data-testid="ws-log" id="ws-log"></pre>
+<button data-testid="ws-trigger" id="ws-trigger" onclick="trigger()">trigger</button>
+<script>
+  var sock = new WebSocket("ws://" + location.host + "/ws");
+  var log = document.getElementById("ws-log");
+  sock.addEventListener("open", function () {
+    document.getElementById("ws-state").textContent = "open";
+    sock.send("hello");
+  });
+  sock.addEventListener("message", function (ev) {
+    log.textContent += ev.data + "\\n";
+  });
+  sock.addEventListener("close", function () {
+    document.getElementById("ws-state").textContent = "closed";
+  });
+  function trigger() { sock.send("INTERCEPT_ME"); }
+</script>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -253,9 +288,111 @@ export interface Fixture {
   close: () => Promise<void>;
 }
 
+// Minimal RFC 6455 echo server — text frames only. We don't take on a
+// `ws` runtime dep just for the keystone; the protocol surface we need
+// (single-frame text in, single-frame text out, masked client→server,
+// unmasked server→client) is small and self-contained.
+const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+function wsHandshake(key: string): string {
+  const accept = createHash("sha1").update(key + WS_GUID).digest("base64");
+  return [
+    "HTTP/1.1 101 Switching Protocols",
+    "Upgrade: websocket",
+    "Connection: Upgrade",
+    `Sec-WebSocket-Accept: ${accept}`,
+    "\r\n",
+  ].join("\r\n");
+}
+
+/** Parse one client→server text frame from a buffer. Returns null if the
+ *  buffer doesn't yet contain a full frame. Only text (opcode 0x1) +
+ *  control-frame close (0x8) are handled — enough for the echo path. */
+function parseFrame(buf: Buffer): { opcode: number; payload: string; consumed: number } | null {
+  if (buf.length < 2) return null;
+  const b0 = buf[0]!;
+  const b1 = buf[1]!;
+  const opcode = b0 & 0x0f;
+  const masked = (b1 & 0x80) !== 0;
+  let len = b1 & 0x7f;
+  let off = 2;
+  if (len === 126) {
+    if (buf.length < off + 2) return null;
+    len = buf.readUInt16BE(off);
+    off += 2;
+  } else if (len === 127) {
+    if (buf.length < off + 8) return null;
+    // 64-bit length — for the keystone path we cap at 32-bit
+    len = Number(buf.readBigUInt64BE(off));
+    off += 8;
+  }
+  let mask: Buffer | undefined;
+  if (masked) {
+    if (buf.length < off + 4) return null;
+    mask = buf.subarray(off, off + 4);
+    off += 4;
+  }
+  if (buf.length < off + len) return null;
+  const data = buf.subarray(off, off + len);
+  const unmasked = mask ? Buffer.from(data.map((b, i) => b ^ mask![i % 4]!)) : Buffer.from(data);
+  return { opcode, payload: unmasked.toString("utf-8"), consumed: off + len };
+}
+
+/** Build a server→client text frame (unmasked, single-fragment). */
+function buildTextFrame(payload: string): Buffer {
+  const data = Buffer.from(payload, "utf-8");
+  const len = data.length;
+  let header: Buffer;
+  if (len < 126) {
+    header = Buffer.from([0x81, len]);
+  } else if (len < 65536) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 126;
+    header.writeUInt16BE(len, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 127;
+    header.writeBigUInt64BE(BigInt(len), 2);
+  }
+  return Buffer.concat([header, data]);
+}
+
+function handleUpgrade(req: { headers: Record<string, string | string[] | undefined> }, socket: Duplex): void {
+  const key = req.headers["sec-websocket-key"];
+  if (typeof key !== "string") {
+    socket.end();
+    return;
+  }
+  socket.write(wsHandshake(key));
+  let buf = Buffer.alloc(0);
+  socket.on("data", (chunk: Buffer) => {
+    buf = Buffer.concat([buf, chunk]);
+    // Drain any complete frames.
+    for (;;) {
+      const f = parseFrame(buf);
+      if (!f) return;
+      buf = buf.subarray(f.consumed);
+      if (f.opcode === 0x8) {
+        // close — reply with a close frame and end.
+        socket.end(Buffer.from([0x88, 0x00]));
+        return;
+      }
+      if (f.opcode === 0x1) {
+        // text — echo it back (prefixed so the keystone can tell direction).
+        socket.write(buildTextFrame(`echo:${f.payload}`));
+      }
+    }
+  });
+  socket.on("error", () => undefined);
+}
+
 /** Start the fixture on an ephemeral loopback port. Routes:
  *   GET /                 → the primitives page; `?setcookie=1` also sets `ks`
  *   GET /echo             → renders the request's Cookie header (isolation)
+ *   GET /ws-page          → page that opens a WebSocket against /ws
+ *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
   const server: Server = createServer((req, res) => {
@@ -275,6 +412,11 @@ export async function startFixture(): Promise<Fixture> {
       res.end(CHILD_PAGE);
       return;
     }
+    if (u.pathname === "/ws-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(WS_PAGE);
+      return;
+    }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };
     if (u.pathname === "/" && u.searchParams.get("setcookie") === "1") {
       // session-scoped cookie (no Expires) — lives in that context's jar only
@@ -284,6 +426,11 @@ export async function startFixture(): Promise<Fixture> {
     res.end(u.pathname === "/" ? PAGE : "<!doctype html><title>404</title>not found");
   });
 
+  server.on("upgrade", (req, socket) => {
+    const u = new URL(req.url ?? "/", "http://localhost");
+    if (u.pathname === "/ws") handleUpgrade(req as never, socket);
+    else socket.end();
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
   return {

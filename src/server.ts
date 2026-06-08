@@ -98,6 +98,7 @@ import {
   gestureSwipe,
 } from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
+import { WsInteractiveRegistry } from "./page/ws-interactive.js";
 import { EmulationRegistry } from "./page/emulation.js";
 import { ClockRegistry } from "./page/clock.js";
 import { SeededRandomRegistry } from "./page/seed-random.js";
@@ -665,6 +666,21 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         feedback: new FeedbackMemory(),
         clipboard: new ClipboardBuffer(),
         routes: new RouteRegistry(),
+        wsInteractive: await (async () => {
+          // Install the page-side WS wrapper EAGERLY at session creation —
+          // before any navigation — so a page that constructs `new WebSocket(...)`
+          // during initial document parse hits the wrapped constructor. A
+          // lazy install (deferred to first ws_send / ws_intercept) misses
+          // sockets opened by the existing document, since `addInitScript`
+          // only fires on the next nav. Capability-gated: only install
+          // when `action` is on (the gate the three interactive tools sit
+          // under) so a read-only server gets zero overhead.
+          const reg = new WsInteractiveRegistry();
+          if (caps.enabled.has("action")) {
+            await reg.install(sess.page()).catch(() => undefined);
+          }
+          return reg;
+        })(),
         regions: new RegionRegistry(),
         emulation: new EmulationRegistry(),
         clock: new ClockRegistry(),
@@ -2535,6 +2551,99 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, removed, active: e.routes.list() }, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // ---- Interactive WebSocket primitives (capability `action`) ----------------
+  // The read-only WS view is `ws_read` / `ActionResult.network.wsFrames`; this
+  // family is the mutation half — `ws_send` pushes a frame on a live page-side
+  // socket, `ws_intercept` rewrites/drops inbound frames before app handlers
+  // see them. Both engage by lazily installing a page-side `WebSocket` wrapper
+  // on first call (`addInitScript` for future docs + `evaluate` for the live
+  // doc). Active interceptors mirror onto a per-session registry; `unintercept`
+  // can target one pattern or clear them all. See src/page/ws-interactive.ts.
+
+  register(
+    "ws_send",
+    {
+      description:
+        "Send a payload on a live page-side WebSocket. `wsId` is the id surfaced by the page-side `__browxWs.list()` registry (the wrapper assigns `ws-1`, `ws-2`, … as the page opens sockets) — call `ws_read` first to identify the endpoint URL, then `eval_js` `JSON.stringify(window.__browxWs.list())` to map URL → wsId, OR drive a deterministic test where the order of socket creation is known. Calls the real (unwrapped) `WebSocket.prototype.send`, so app-level message listeners do NOT observe a fake event — only the server sees the outbound frame. Returns `{ok:true, wsId, url, bytes}` on success, or `{ok:false, error}` if the id is unknown or the socket isn't OPEN. Capability: `action`.",
+      inputSchema: {
+        wsId: z.string().describe("Page-side socket id, e.g. `ws-1`. See `__browxWs.list()`."),
+        message: z.string().describe("Payload to send. Binary frames are not supported in MVP — send as text."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ wsId, message, session }) => {
+      const g = gateCheck("ws_send"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.wsInteractive.send(e.session.page(), { wsId, message });
+        const body = { ...r, tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err), tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "ws_intercept",
+    {
+      description:
+        "Install a route-style interceptor for INBOUND WebSocket frames. `pattern` is a glob matched against `socket.url` (the route family's intent: `*` = single segment, `**` = any). `response` controls what the page sees: `\"drop\"` — silently discard the frame (app handlers don't run); `\"echo\"` — mirror the inbound payload back to the server (the app still receives it locally); `{data:\"<string>\"}` — replace the inbound payload with `data` (app handlers see the replacement). The interceptor evaluates on every matching frame until removed via `ws_unintercept`; re-adding the same pattern replaces the prior entry. Per-session; lost on session close or session rebuild. Capability: `action`.",
+      inputSchema: {
+        pattern: z.string().describe("Glob matched against `socket.url`, e.g. `wss://chat.example/**`."),
+        response: z.union([
+          z.literal("drop"),
+          z.literal("echo"),
+          z.object({ data: z.string().describe("Replacement payload delivered to app handlers in place of the original.") }),
+        ]).describe("`drop`, `echo`, or `{data: \"…\"}`."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ pattern, response, session }) => {
+      const g = gateCheck("ws_intercept"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.wsInteractive.addInterceptor(e.session.page(), { pattern, response });
+        const body = { ok: true, ...r, tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err), tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "ws_unintercept",
+    {
+      description:
+        "Remove a `ws_intercept` interceptor (by exact `pattern`), or — with no `pattern` — every interceptor this session installed. Capability: `action`.",
+      inputSchema: {
+        pattern: z.string().optional().describe("Omit to clear ALL of this session's WS interceptors."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ pattern, session }) => {
+      const g = gateCheck("ws_unintercept"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.wsInteractive.removeInterceptor(e.session.page(), pattern !== undefined ? { pattern } : {});
+        const body = { ok: true, ...r, tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err), tokensEstimate: 0 };
+        body.tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       }
     },
   );
@@ -5906,6 +6015,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     e.ws = wsBuf;
     e.bridge = br;
     e.refs = new RefRegistry();
+    // Interactive-WS state is page-side; the rebuild destroyed the wrapper
+    // and any active interceptors with it. Discard the server-side mirror
+    // so it doesn't claim live interceptors that no longer exist, then
+    // re-install the wrapper before any nav so the new context's first
+    // page sees the wrapped WebSocket constructor.
+    e.wsInteractive = new WsInteractiveRegistry();
+    if (caps.enabled.has("action")) {
+      await e.wsInteractive.install(sess.page()).catch(() => undefined);
+    }
   };
 
   /** Envelope helper for the extension tools. */

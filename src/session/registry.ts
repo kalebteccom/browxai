@@ -11,6 +11,7 @@ import type { RefRegistry } from "../page/refs.js";
 import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
 import type { NetworkBuffer, WsBuffer } from "../page/network.js";
+import type { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
@@ -50,6 +51,11 @@ export interface SessionEntry {
   network: NetworkBuffer;
   /** session-wide WebSocket/SSE frame ring. */
   ws: WsBuffer;
+  /** per-session interactive-WS registry (capability `action`). Lazy:
+   *  the page-side wrapper is only installed on first `ws_send` /
+   *  `ws_intercept`. Holds the active interceptor patterns server-side
+   *  so `unintercept` / `list` answer locally without a page round-trip. */
+  wsInteractive: WsInteractiveRegistry;
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;

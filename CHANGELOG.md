@@ -26,6 +26,28 @@ surface" covers.
   dropDispatched, tokensEstimate }`. Gated by the off-by-default
   **`file-io`** capability — same posture as `upload_file`. No agent JS.
 
+- **Phase 7: interactive WebSocket primitives (`ws_send` / `ws_intercept` / `ws_unintercept`).**
+  The read-only WS view (`ws_read` + `ActionResult.network.wsFrames`) gets a
+  mutation half. Sibling of the HTTP `route` family on the realtime channel —
+  all three under capability `action`; no new capability gate.
+  - **`ws_send({ wsId, message, session? })`** — push a payload onto a live
+    page-side socket the agent identified via `eval_js
+    JSON.stringify(window.__browxWs.list())`. Calls the real (unwrapped)
+    `WebSocket.prototype.send` so app-level `message` listeners don't see a
+    fake event — only the server sees the outbound frame.
+  - **`ws_intercept({ pattern, response, session? })`** — route-handler-style
+    pattern matching for INBOUND frames. `pattern` is a glob matched against
+    `socket.url`. Three response modes: `"drop"` discards the frame before
+    app handlers run; `"echo"` mirrors it back to the server; `{data:"…"}`
+    replaces the inbound payload before delivery.
+  - **`ws_unintercept({ pattern?, session? })`** — remove one by pattern, or
+    every interceptor when `pattern` is omitted.
+  - Page-side wrapper installs eagerly at session creation (`addInitScript`)
+    so sockets constructed during initial document parse hit the wrapped
+    constructor — a lazy install would miss them. Each socket is assigned a
+    stable per-session `wsId` (`ws-1`, `ws-2`, …) the agent can discover
+    via the page-side `__browxWs.list()` registry. Per-context by
+    construction; lost on session close or BYOB rebuild.
 - **Phase 7: frame-scoped observation (iframes + cross-origin frames).**
   Iframes are everywhere on real pages; pre-Phase-7 `find` / `snapshot` saw
   only the top frame. Three additions, all back-compat:

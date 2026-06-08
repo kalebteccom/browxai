@@ -89,6 +89,19 @@ describe("isToolEnabled", () => {
     expect(ALL_CAPABILITIES).toContain("credentials");
     expect(DEFAULT_CAPABILITIES).not.toContain("credentials");
   });
+
+  it("ws_send / ws_intercept / ws_unintercept gate on `action` (default-on)", () => {
+    const def = resolveCapabilities({} as NodeJS.ProcessEnv);
+    expect(isToolEnabled("ws_send", def)).toBe(true);
+    expect(isToolEnabled("ws_intercept", def)).toBe(true);
+    expect(isToolEnabled("ws_unintercept", def)).toBe(true);
+    // read-only server: WS interactive primitives are off, but `ws_read` stays.
+    const readOnly = resolveCapabilities({ BROWX_CAPABILITIES: "read" } as NodeJS.ProcessEnv);
+    expect(isToolEnabled("ws_send", readOnly)).toBe(false);
+    expect(isToolEnabled("ws_intercept", readOnly)).toBe(false);
+    expect(isToolEnabled("ws_unintercept", readOnly)).toBe(false);
+    expect(isToolEnabled("ws_read", readOnly)).toBe(true);
+  });
 });
 
 describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {

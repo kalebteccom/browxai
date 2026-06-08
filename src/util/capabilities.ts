@@ -178,6 +178,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   route: "action",
   route_queue: "action",
   unroute: "action",
+  // Interactive WebSocket primitives — mutate live realtime traffic
+  // (`ws_send` injects a frame on a page-side socket; `ws_intercept` rewrites
+  // inbound frames before they hit app handlers). Sibling of the HTTP `route`
+  // family on the WS channel — same `action` posture; no new capability gate.
+  ws_send: "action",
+  ws_intercept: "action",
+  ws_unintercept: "action",
   network_emulate: "action",
   cpu_emulate: "action",
   clock: "action",
