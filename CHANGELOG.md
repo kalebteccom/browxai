@@ -35,6 +35,29 @@ surface" covers.
   inside `$BROWX_WORKSPACE` (escape rejected); default
   `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`. UNMASKED output — same
   secrets caveat as `page_archive`. Capability `file-io`.
+- **`screenshot_schedule({ everyMs, count? | durationMs?, intoDir?, format?, session? })`** —
+  periodic screenshot capture at a fixed interval into a workspace-rooted
+  directory. `everyMs` cadence in `[100, 60000]` ms; exactly one of `count`
+  (1..1000) or `durationMs` (`>= everyMs`) is required — unbounded schedules
+  are refused at validation time. `intoDir` defaults to
+  `screenshots/<sessionId>-<isoTs>/`; path-traversal is rejected. Files are
+  named `<seq>-<offsetMs>.<png|jpg>`. A belt-and-braces ceiling of 1000
+  captures per call applies on top of count/duration. A single failed snap is
+  logged as a warning and the schedule continues. Returns
+  `{ ok, intoDir, count, capturedAt: [ms…], paths: […], warnings: […], tokensEstimate }`.
+  Capability: `file-io`.
+- **`screenshot_on({ trigger, durationMs, intoDir?, format?, session? })`** —
+  event-driven screenshot capture. Arms a trigger for the observation window
+  and snaps on every fire. Triggers (fixed enum): `navigation` (main-frame
+  `framenavigated`), `console-error` (console.type==='error' OR `pageerror`),
+  `network-mutation` (write-shaped 2xx — POST/PUT/PATCH/DELETE), `dialog`
+  (alert/confirm/prompt/beforeunload). `durationMs` range `[1, 600000]` ms
+  (10 min ceiling). Per-window cap of 50 captures prevents event-storm
+  runaway (warning emitted if hit; window closes early). Overlapping fires
+  during an in-flight snap are dropped (single screenshot per visible state
+  is the useful unit). Returns
+  `{ ok, intoDir, trigger, capturedAt: [ms…], paths: […], warnings: […], tokensEstimate }`.
+  Capability: `file-io`.
 - **`set_permission_policy({ mode, perPermission?, session? })`** — per-session
   permission policy mirroring `set_dialog_policy`. Governs page-side
   permission requests (`getUserMedia`, `navigator.geolocation.

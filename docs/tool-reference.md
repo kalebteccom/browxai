@@ -230,6 +230,49 @@ For multimodal agents filling a constrained context window, `format: "jpeg", qua
 - Default (no `path`): an MCP `image` content part (base64 PNG/JPEG), optionally preceded by a `text` part with the caption. **Byte-identical to the v0.3.x shape** when `path` is omitted.
 - With `path`: a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }` — no inline image bytes.
 
+### `screenshot_schedule`
+
+Periodic screenshot capture at a fixed interval into a workspace-rooted directory. The "show me what happened across the next N seconds without me babysitting" primitive — pair with a long-running interaction or a wait for an async settle.
+
+**Inputs:** `{ everyMs, count? | durationMs?, intoDir?, format? }`
+
+- `everyMs` — interval between captures, range `[100, 60000]` ms.
+- **Exactly one** of:
+  - `count: integer 1..1000` — stop after N captures.
+  - `durationMs: integer > 0` — stop after this wall-clock window. Must be `>= everyMs`.
+- `intoDir` — workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `format` — `"png"` (default) or `"jpeg"`. JPEGs are written with `.jpg`.
+
+Files are named `<seq>-<offsetMs>.<png|jpg>` so the dir-listing alone reproduces the timeline. A belt-and-braces ceiling of **1000 captures per call** applies on top of the count/duration bound — surfaced as a `warnings[]` entry if hit. A single failed snap is logged as a warning and the schedule continues (does not poison the window). The outer action-timeout wraps the whole call: an unbounded `screenshot_schedule` is refused at validation time, so the deadline is "expected window + slack".
+
+**Output:** `{ ok, intoDir, count, capturedAt: [offsetMs…], paths: […], warnings: […], tokensEstimate }` — paths are absolute, `capturedAt` is offset-from-start in ms.
+
+**Capability:** `file-io` (same posture as `screenshot({path})` / `page_archive`).
+
+### `screenshot_on`
+
+Event-driven screenshot capture. Arms a `trigger` for `durationMs`; every time the trigger fires inside the window, a screenshot is written to a workspace-rooted directory. The "catch the visual state every time X happens" primitive — for after-the-fact debugging of intermittent behaviour where the failure mode is hard to scope to a single action.
+
+**Trigger surface (fixed enum):**
+
+- `navigation` — main-frame `framenavigated` (subframe navigations are noise).
+- `console-error` — page console events with `type==="error"` OR `pageerror`.
+- `network-mutation` — write-shaped (`POST`/`PUT`/`PATCH`/`DELETE`) responses with a 2xx status, same heuristic the `ActionResult.network.mutations` probe uses.
+- `dialog` — `alert` / `confirm` / `prompt` / `beforeunload`.
+
+**Inputs:** `{ trigger, durationMs, intoDir?, format? }`
+
+- `trigger` — one of the four above.
+- `durationMs` — observation window length, range `[1, 600000]` ms (10 min ceiling).
+- `intoDir` — workspace-rooted output directory. Defaults to `screenshots/<sessionId>-<isoTs>/`. Path-traversal rejected.
+- `format` — `"png"` (default) or `"jpeg"`.
+
+A per-window cap of **50 captures** prevents event-storm runaway (e.g. a console-error fired every animation frame) — surfaced as a `warnings[]` entry if reached, and the window closes early. Trigger fires that land while a previous capture is still in flight are dropped (single screenshot per visible state is the useful unit). A snap that errors is logged as a warning; the window keeps observing. The outer action-timeout is at least the observation window plus 1s of slack so the call can run a multi-minute window without aborting.
+
+**Output:** `{ ok, intoDir, trigger, capturedAt: [offsetMs…], paths: […], warnings: […], tokensEstimate }`.
+
+**Capability:** `file-io`.
+
 ### `text_search` *(W-F4)*
 
 Find nodes whose visible text matches a query. **Read-only — distinct from `find()`**: `find()` ranks actionable targets; `text_search` verifies presence/absence ("is the bad value gone?", "did 'Saved' appear?", "no `Wrong Type` chip in the record grid").

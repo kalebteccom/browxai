@@ -259,6 +259,12 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // session-state, write the resulting bytes under $BROWX_WORKSPACE) — no new
   // capability gate to enable.
   asset_export: "file-io",
+  // Screenshot automation — periodic (`screenshot_schedule`) and event-driven
+  // (`screenshot_on`) capture into a workspace-rooted directory. Same posture
+  // as `screenshot({path})` / `page_archive`: the bytes hit disk, so both ride
+  // the existing off-by-default `file-io` capability; no new gate.
+  screenshot_schedule: "file-io",
+  screenshot_on: "file-io",
   // PDF save — print the current page to a workspace-rooted PDF. Mirror of
   // `upload_file` (file-io OUT instead of IN), but under `action` not
   // `file-io`: the consequential write is to the *workspace* only (no
