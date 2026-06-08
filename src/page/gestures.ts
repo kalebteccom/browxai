@@ -121,3 +121,173 @@ export async function mouseAction(
   }
   return { ok: true, action, ...(coords ? { coords } : {}) };
 }
+
+// ---------- Touch primitives ----------
+//
+// CDP `Input.dispatchTouchEvent` is the touch sibling of `dispatchMouseEvent`.
+// It accepts a `type` (`touchStart` / `touchMove` / `touchEnd` / `touchCancel`)
+// and a `touchPoints[]` array — each point carries `{x, y, id?}`. The `id`
+// field is what TouchEvent.changedTouches[].identifier ends up as on the page
+// side; that's how a JS handler distinguishes finger #1 from finger #2 across
+// a multi-touch sequence. We expose it as `identifier` on our API to match
+// the DOM-side vocabulary.
+//
+// Touch events do NOT fire mouse events automatically. Browsers MAY synthesize
+// `mousedown`/`mouseup`/`click` from a touchend on touch-aware pages, but that
+// behaviour is app-policy (touch-action, preventDefault choices) — an agent
+// that needs both pipelines should dispatch both explicitly.
+
+export type TouchAction = "start" | "move" | "end";
+
+const TOUCH_CDP_TYPE: Record<TouchAction, "touchStart" | "touchMove" | "touchEnd"> = {
+  start: "touchStart",
+  move: "touchMove",
+  end: "touchEnd",
+};
+
+/** Dispatch a single touch event at `coords` via CDP. `identifier` tracks the
+ *  finger across a multi-touch sequence (default `1`). `touch_end` accepts
+ *  optional `coords`; when omitted CDP gets an empty `touchPoints[]` — the
+ *  spec's "all fingers up" form. */
+export async function touchAction(
+  cdp: CDPSession,
+  action: TouchAction,
+  args: { coords?: Point; identifier?: number },
+): Promise<{ ok: boolean; action: TouchAction; coords?: Point; identifier: number }> {
+  const identifier = args.identifier ?? 1;
+  if (action !== "end" && !args.coords) {
+    throw new Error(`touch_${action} requires coords`);
+  }
+  const touchPoints = args.coords
+    ? [{ x: args.coords.x, y: args.coords.y, id: identifier }]
+    : [];
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: TOUCH_CDP_TYPE[action],
+    touchPoints,
+  });
+  return {
+    ok: true,
+    action,
+    ...(args.coords ? { coords: args.coords } : {}),
+    identifier,
+  };
+}
+
+export interface GesturePinchResult {
+  ok: boolean;
+  coords: Point;
+  scale: number;
+  steps: number;
+  startOffset: number;
+  endOffset: number;
+}
+
+/** Two-finger pinch in/out, centred on `coords`. Two touch points start at
+ *  `coords ± startOffset` (a fixed 40 CSS px each side — wider than any
+ *  realistic finger pair but small enough to land inside a typical canvas) and
+ *  converge or diverge so the final separation = startOffset × scale.
+ *  `scale < 1` is pinch-in (zoom out); `scale > 1` is pinch-out (zoom in).
+ *  Linear interpolation across `steps` intermediate `touchMove` dispatches —
+ *  pinch handlers (Hammer.js, GoogleMaps, Figma) read the delta between
+ *  successive `changedTouches`, so a linear ramp is sufficient and avoids the
+ *  velocity-detection misfires a sinusoidal curve can trigger on fling-detect
+ *  libraries. */
+export async function gesturePinch(
+  cdp: CDPSession,
+  args: { coords: Point; scale: number; steps?: number; startOffset?: number },
+): Promise<GesturePinchResult> {
+  const scale = args.scale;
+  if (!Number.isFinite(scale) || scale <= 0) {
+    throw new Error("gesture_pinch requires a positive finite scale");
+  }
+  const steps = Math.min(Math.max(args.steps ?? 12, 1), 100);
+  const startOffset = args.startOffset ?? 40;
+  const endOffset = startOffset * scale;
+  const cx = args.coords.x;
+  const cy = args.coords.y;
+  const id1 = 1;
+  const id2 = 2;
+
+  // touchStart with both fingers
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [
+      { x: cx - startOffset, y: cy, id: id1 },
+      { x: cx + startOffset, y: cy, id: id2 },
+    ],
+  });
+
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const offset = startOffset + (endOffset - startOffset) * t;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [
+        { x: cx - offset, y: cy, id: id1 },
+        { x: cx + offset, y: cy, id: id2 },
+      ],
+    });
+  }
+
+  // touchEnd lifts all fingers (empty touchPoints[])
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+
+  return { ok: true, coords: args.coords, scale, steps, startOffset, endOffset };
+}
+
+export interface GestureSwipeResult {
+  ok: boolean;
+  from: Point;
+  to: Point;
+  steps: number;
+  durationMs: number;
+}
+
+/** Single-finger swipe from `from` to `to`. Distinct from `drag` — drag uses
+ *  the mouse pipeline; swipe uses the touch pipeline. `durationMs` controls
+ *  pacing (default 200 ms — fast flick; 500+ ms reads as a deliberate scroll).
+ *  Smoothed via an ease-out curve (`1 - (1-t)²`) — touch libraries derive
+ *  velocity from per-frame deltas; ease-out matches the natural deceleration
+ *  most fling-detect heuristics are tuned for (Hammer.js, native scroll
+ *  inertia, react-spring-style physics). */
+export async function gestureSwipe(
+  cdp: CDPSession,
+  args: { from: Point; to: Point; durationMs?: number; steps?: number; identifier?: number },
+): Promise<GestureSwipeResult> {
+  const identifier = args.identifier ?? 1;
+  const durationMs = Math.min(Math.max(args.durationMs ?? 200, 0), 60_000);
+  const steps = Math.min(Math.max(args.steps ?? 16, 1), 200);
+
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: args.from.x, y: args.from.y, id: identifier }],
+  });
+
+  const dx = args.to.x - args.from.x;
+  const dy = args.to.y - args.from.y;
+  const perStepDelay = durationMs / steps;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    // ease-out: 1 - (1 - t)^2 — fast start, gentle settle
+    const eased = 1 - (1 - t) * (1 - t);
+    const x = args.from.x + dx * eased;
+    const y = args.from.y + dy * eased;
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y, id: identifier }],
+    });
+    if (perStepDelay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, perStepDelay));
+    }
+  }
+
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+
+  return { ok: true, from: args.from, to: args.to, steps, durationMs };
+}

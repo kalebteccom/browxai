@@ -67,6 +67,18 @@ const PAGE = `<!doctype html>
             onclick="askGeo()">Ask geolocation</button>
     <output data-testid="geo-result" id="geoResult">unset</output>
 
+    <!-- Touch keystone: a div that records touch events in a tagged
+         output so the keystone can assert touchstart / touchend actually fire
+         on the real headless browser via the CDP touch pipeline. -->
+    <div data-testid="touch-pad" id="touchPad"
+         style="width:200px;height:120px;border:1px solid #888;touch-action:none"
+         ontouchstart="onTouch(event,'start')"
+         ontouchmove="onTouch(event,'move')"
+         ontouchend="onTouch(event,'end')">
+      Touch me
+    </div>
+    <output data-testid="touch-log" id="touchLog">untouched</output>
+
     <table data-testid="record-grid">
       <thead><tr><th>Name</th><th>Type</th></tr></thead>
       <tbody>
@@ -93,6 +105,22 @@ const PAGE = `<!doctype html>
       document.getElementById('typeDisplay').textContent = label;
       document.getElementById('typeList').classList.add('hidden');
       document.getElementById('typeBtn').setAttribute('aria-expanded', 'false');
+    }
+    var _touchCounts = { start: 0, move: 0, end: 0 };
+    var _touchIds = [];
+    function onTouch(ev, phase) {
+      ev.preventDefault();
+      _touchCounts[phase]++;
+      // Capture identifiers from changedTouches for the multi-touch keystone.
+      for (var i = 0; i < ev.changedTouches.length; i++) {
+        var id = ev.changedTouches[i].identifier;
+        if (_touchIds.indexOf(id) === -1) _touchIds.push(id);
+      }
+      document.getElementById('touchLog').textContent =
+        'start=' + _touchCounts.start +
+        ' move=' + _touchCounts.move +
+        ' end=' + _touchCounts.end +
+        ' ids=' + _touchIds.join(',');
     }
     function askGeo() {
       var out = document.getElementById('geoResult');

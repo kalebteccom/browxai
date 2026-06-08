@@ -64,6 +64,38 @@ surface" covers.
   unavailable on this browser/page` warning and the open-shadow data is
   still returned.
 
+- **Touch + multi-touch gestures** — a separate dispatch pipeline from the
+  `mouse_*` family, for mobile-default apps and canvas / map / drawing
+  widgets that wire `touchstart` / `touchmove` / `touchend` handlers the
+  mouse pipeline does not reach. Dispatched via CDP
+  `Input.dispatchTouchEvent` (the touch sibling of `dispatchMouseEvent`).
+  - **`touch_start({coords, identifier?, session?})`** /
+    **`touch_move({coords, identifier?, session?})`** /
+    **`touch_end({coords?, identifier?, session?})`** — single-touch
+    primitives. `identifier` (default `1`) maps to DOM
+    `TouchEvent.changedTouches[].identifier`; use distinct values per
+    finger when fanning out multi-touch by hand. `touch_end`'s `coords`
+    is optional — omit for the "all fingers up" form, supply for a
+    targeted lift.
+  - **`gesture_pinch({coords, scale, steps?, startOffset?, session?})`** —
+    two-finger pinch in/out centred on `coords`. Touch points start at
+    `coords ± startOffset` (default 40 CSS px) and converge or diverge
+    linearly so the final separation is `startOffset × scale`.
+    `scale < 1` is pinch-in (zoom out); `scale > 1` is pinch-out (zoom
+    in). Linear interpolation by design — pinch handlers read inter-
+    frame deltas and velocity-detecting curves misfire fling heuristics
+    on libraries like Hammer.js.
+  - **`gesture_swipe({from, to, durationMs?, steps?, identifier?, session?})`** —
+    single-finger swipe; distinct from `drag` which uses the mouse
+    pipeline. `durationMs` (default 200) split across `steps` (default
+    16) `touchMove` dispatches, smoothed via an ease-out curve
+    (`1 - (1 - t)²`) to match the natural deceleration most fling-
+    detect heuristics expect.
+  - Touch does NOT auto-fire mouse events (browsers MAY synthesize
+    mouse events from touchend, but it is app-policy via `touch-action`
+    / `preventDefault`); agents that need both pipelines must dispatch
+    both explicitly. Capability `action` (extends the existing gesture
+    surface — no new capability).
 - **`element_export({ ref, format?, intoDir?, maxSizeMb?, session? })`** —
   save the subtree under one ref as a self-contained snippet (outerHTML +
   page-wide stylesheets + linked resources). Two formats: `directory`

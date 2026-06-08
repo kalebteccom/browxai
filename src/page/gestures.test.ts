@@ -1,5 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
-import { drag, doubleClick, mouseAction, mouseWheel, targetPoint, type DragPreflight } from "./gestures.js";
+import {
+  drag,
+  doubleClick,
+  mouseAction,
+  mouseWheel,
+  targetPoint,
+  touchAction,
+  gesturePinch,
+  gestureSwipe,
+  type DragPreflight,
+} from "./gestures.js";
 
 function fakeMouse() {
   const log: string[] = [];
@@ -160,5 +170,197 @@ describe("mouseAction", () => {
     const r = await mouseAction(pageWithBox(m), "up");
     expect(m.log).toEqual(["up"]);
     expect(r).toEqual({ ok: true, action: "up" });
+  });
+});
+
+// CDP recorder for touch tests. Every dispatched Input.dispatchTouchEvent
+// lands as `{method, params}` in `calls`, so we can assert both event type
+// and touchPoints contents (including identifier propagation).
+function fakeCdp() {
+  const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  return {
+    calls,
+    cdp: {
+      send: vi.fn(async (method: string, params: Record<string, unknown>) => {
+        calls.push({ method, params });
+        return {};
+      }),
+    } as never,
+  };
+}
+
+describe("touchAction", () => {
+  it("touch_start dispatches touchStart with default identifier 1", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await touchAction(cdp, "start", { coords: { x: 10, y: 20 } });
+    expect(r).toEqual({ ok: true, action: "start", coords: { x: 10, y: 20 }, identifier: 1 });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.method).toBe("Input.dispatchTouchEvent");
+    expect(calls[0]?.params).toMatchObject({
+      type: "touchStart",
+      touchPoints: [{ x: 10, y: 20, id: 1 }],
+    });
+  });
+
+  it("touch_move propagates a custom identifier — multi-finger fan-out", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await touchAction(cdp, "move", { coords: { x: 5, y: 6 }, identifier: 7 });
+    expect(r.identifier).toBe(7);
+    expect(calls[0]?.params).toMatchObject({
+      type: "touchMove",
+      touchPoints: [{ x: 5, y: 6, id: 7 }],
+    });
+  });
+
+  it("touch_end with no coords dispatches an empty touchPoints[] (all fingers up)", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await touchAction(cdp, "end", {});
+    expect(r).toEqual({ ok: true, action: "end", identifier: 1 });
+    expect(calls[0]?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
+  });
+
+  it("touch_end with coords keeps the identifier on the lifted point", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await touchAction(cdp, "end", { coords: { x: 1, y: 2 }, identifier: 3 });
+    expect(r).toEqual({ ok: true, action: "end", coords: { x: 1, y: 2 }, identifier: 3 });
+    expect(calls[0]?.params).toMatchObject({
+      type: "touchEnd",
+      touchPoints: [{ x: 1, y: 2, id: 3 }],
+    });
+  });
+
+  it("touch_start / touch_move without coords reject", async () => {
+    const { cdp } = fakeCdp();
+    await expect(touchAction(cdp, "start", {})).rejects.toThrow(/requires coords/);
+    await expect(touchAction(cdp, "move", {})).rejects.toThrow(/requires coords/);
+  });
+});
+
+describe("gesturePinch", () => {
+  it("pinch-in (scale<1): two fingers start ±startOffset and converge", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await gesturePinch(cdp, { coords: { x: 100, y: 100 }, scale: 0.5, steps: 4, startOffset: 40 });
+    expect(r.ok).toBe(true);
+    expect(r.startOffset).toBe(40);
+    expect(r.endOffset).toBe(20);
+    expect(r.steps).toBe(4);
+
+    // 1 touchStart + 4 touchMove + 1 touchEnd = 6 dispatches
+    expect(calls).toHaveLength(6);
+    expect(calls[0]?.params).toMatchObject({
+      type: "touchStart",
+      touchPoints: [
+        { x: 60, y: 100, id: 1 },
+        { x: 140, y: 100, id: 2 },
+      ],
+    });
+    // final touchMove at t=1 → offset = endOffset (20)
+    expect(calls[4]?.params).toMatchObject({
+      type: "touchMove",
+      touchPoints: [
+        { x: 80, y: 100, id: 1 },
+        { x: 120, y: 100, id: 2 },
+      ],
+    });
+    expect(calls[5]?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
+  });
+
+  it("pinch-out (scale>1): fingers diverge from startOffset to startOffset × scale", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await gesturePinch(cdp, { coords: { x: 50, y: 50 }, scale: 2, steps: 2, startOffset: 30 });
+    expect(r.endOffset).toBe(60);
+    // last move: offset 60 → points at (-10, 50) and (110, 50)
+    expect(calls.at(-2)?.params).toMatchObject({
+      type: "touchMove",
+      touchPoints: [
+        { x: -10, y: 50, id: 1 },
+        { x: 110, y: 50, id: 2 },
+      ],
+    });
+  });
+
+  it("rejects non-positive scale", async () => {
+    const { cdp } = fakeCdp();
+    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: 0 })).rejects.toThrow(/positive/);
+    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: -1 })).rejects.toThrow(/positive/);
+  });
+
+  it("clamps steps into [1,100]", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: 1.5, steps: 9999 });
+    expect(r.steps).toBe(100);
+    // 1 start + 100 moves + 1 end
+    expect(calls).toHaveLength(102);
+  });
+});
+
+describe("gestureSwipe", () => {
+  it("single-touch swipe: touchStart → many touchMove → touchEnd", async () => {
+    const { cdp, calls } = fakeCdp();
+    const r = await gestureSwipe(cdp, {
+      from: { x: 100, y: 200 },
+      to: { x: 300, y: 200 },
+      durationMs: 0, // skip real waits in the unit test
+      steps: 4,
+    });
+    expect(r).toMatchObject({
+      ok: true,
+      from: { x: 100, y: 200 },
+      to: { x: 300, y: 200 },
+      steps: 4,
+      durationMs: 0,
+    });
+    expect(calls[0]?.params).toMatchObject({
+      type: "touchStart",
+      touchPoints: [{ x: 100, y: 200, id: 1 }],
+    });
+    // last move lands at `to`
+    expect(calls.at(-2)?.params).toMatchObject({
+      type: "touchMove",
+      touchPoints: [{ x: 300, y: 200, id: 1 }],
+    });
+    expect(calls.at(-1)?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
+  });
+
+  it("custom durationMs is reflected on the result", async () => {
+    const { cdp } = fakeCdp();
+    const r = await gestureSwipe(cdp, {
+      from: { x: 0, y: 0 },
+      to: { x: 10, y: 0 },
+      durationMs: 50,
+      steps: 1,
+    });
+    expect(r.durationMs).toBe(50);
+  });
+
+  it("uses ease-out curve — intermediate moves are not linear", async () => {
+    const { cdp, calls } = fakeCdp();
+    await gestureSwipe(cdp, {
+      from: { x: 0, y: 0 },
+      to: { x: 100, y: 0 },
+      durationMs: 0,
+      steps: 4,
+    });
+    // moves are at indices 1..4 (after touchStart). ease-out: 1-(1-t)^2.
+    // t=1/4 → 0.4375 → x=43.75; t=2/4 → 0.75 → x=75; linear would give 25/50.
+    const move1X = (calls[1]!.params.touchPoints as Array<{ x: number }>)[0]!.x;
+    const move2X = (calls[2]!.params.touchPoints as Array<{ x: number }>)[0]!.x;
+    expect(move1X).toBeCloseTo(43.75, 2);
+    expect(move2X).toBeCloseTo(75, 2);
+  });
+
+  it("propagates a custom identifier across the whole gesture", async () => {
+    const { cdp, calls } = fakeCdp();
+    await gestureSwipe(cdp, {
+      from: { x: 0, y: 0 },
+      to: { x: 1, y: 1 },
+      durationMs: 0,
+      steps: 2,
+      identifier: 9,
+    });
+    for (const c of calls) {
+      const tps = c.params.touchPoints as Array<{ id?: number }>;
+      if (tps.length) expect(tps[0]!.id).toBe(9);
+    }
   });
 });

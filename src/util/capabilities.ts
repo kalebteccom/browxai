@@ -168,6 +168,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   mouse_move: "action",
   mouse_up: "action",
   mouse_wheel: "action",
+  // Touch + multi-touch gesture pipeline. Separate CDP dispatch path from
+  // the mouse_* family — extends `action`, no new capability.
+  touch_start: "action",
+  touch_move: "action",
+  touch_end: "action",
+  gesture_pinch: "action",
+  gesture_swipe: "action",
   route: "action",
   route_queue: "action",
   unroute: "action",

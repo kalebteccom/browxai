@@ -88,7 +88,15 @@ import { watchWindow } from "./page/watch.js";
 import { setTabVisibility } from "./page/visibility.js";
 import { runShortcut } from "./page/shortcut.js";
 import { pointProbe } from "./page/point_probe.js";
-import { drag, doubleClick, mouseAction, mouseWheel } from "./page/gestures.js";
+import {
+  drag,
+  doubleClick,
+  mouseAction,
+  mouseWheel,
+  touchAction,
+  gesturePinch,
+  gestureSwipe,
+} from "./page/gestures.js";
 import { RouteRegistry } from "./page/routes.js";
 import { EmulationRegistry } from "./page/emulation.js";
 import { ClockRegistry } from "./page/clock.js";
@@ -2345,6 +2353,112 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  // ---------- Touch + multi-touch gestures ----------
+  //
+  // A separate dispatch pipeline from the `mouse_*` family. CDP
+  // `Input.dispatchTouchEvent` is the touch sibling of `dispatchMouseEvent`;
+  // mobile-default apps and canvas apps wire touch handlers that the mouse
+  // pipeline does NOT reach. Touch events do not auto-fire mouse events
+  // (browsers MAY synthesize mouse events from touchend, but it's app-policy
+  // via `touch-action` / `preventDefault`); an agent that needs both must
+  // dispatch both. The `identifier` field is the DOM-side
+  // TouchEvent.changedTouches[].identifier — distinct ids for distinct
+  // fingers across a multi-touch sequence (default 1).
+  for (const act of ["touch_start", "touch_move", "touch_end"] as const) {
+    const requiresCoords = act !== "touch_end";
+    register(
+      act,
+      {
+        description:
+          `Dispatch ${act.replace("_", " ")} via CDP Input.dispatchTouchEvent — a separate pipeline from \`mouse_*\` for mobile-default apps and canvas / map / drawing widgets that listen for \`touchstart\` / \`touchmove\` / \`touchend\`. ${requiresCoords ? "`coords` required (viewport CSS px)." : "`coords` optional — when omitted, dispatches an empty touchPoints[] (the 'all fingers up' form)."} ` +
+          "`identifier` (default 1) maps to DOM `TouchEvent.changedTouches[].identifier` — use distinct ids per finger to fan out multi-touch. Touch does NOT synthesise mouse events — dispatch mouse_* explicitly if both pipelines are needed.",
+        inputSchema: {
+          coords: (requiresCoords
+            ? z.object({ x: z.number(), y: z.number() }).describe("Viewport CSS px.")
+            : z.object({ x: z.number(), y: z.number() }).optional().describe("Viewport CSS px. Omit to dispatch empty touchPoints[] (all fingers up).")),
+          identifier: z.number().int().nonnegative().optional().describe("Touch identifier (default 1) — distinct values per finger for multi-touch fan-out."),
+          ...SESSION_ARG,
+        },
+      },
+      async ({ coords, identifier, session }) => {
+        const g = gateCheck(act); if (g) return g;
+        const e = await entryFor(session);
+        try {
+          const r = await withDeadline(
+            touchAction(e.session.cdp(), act.slice(6) as "start" | "move" | "end", { coords, identifier }),
+            cfgActionTimeout(), act,
+          );
+          const json = JSON.stringify(r);
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+        } catch (err) {
+          const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+        }
+      },
+    );
+  }
+
+  register(
+    "gesture_pinch",
+    {
+      description:
+        "Two-finger pinch in/out centred on `coords`. Two touch points start at `coords ± startOffset` (default 40 CSS px) and converge or diverge linearly so the final separation = `startOffset × scale`. `scale < 1` is pinch-in (zoom out); `scale > 1` is pinch-out (zoom in). Linear interpolation across `steps` (default 12, clamped 1–100) — pinch handlers read inter-frame deltas; a velocity-detecting curve can misfire fling heuristics, linear is the safe default. Dispatches via CDP touch pipeline; touch does not fire mouse events automatically.",
+      inputSchema: {
+        coords: z.object({ x: z.number(), y: z.number() }).describe("Pinch centre, viewport CSS px."),
+        scale: z.number().positive().describe("Final separation / initial separation. <1 = pinch-in (zoom out); >1 = pinch-out (zoom in)."),
+        steps: z.number().int().positive().max(100).optional().describe("Intermediate touchMove dispatches (default 12)."),
+        startOffset: z.number().positive().optional().describe("Initial half-separation in CSS px (default 40)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ coords, scale, steps, startOffset, session }) => {
+      const g = gateCheck("gesture_pinch"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await withDeadline(
+          gesturePinch(e.session.cdp(), { coords, scale, steps, startOffset }),
+          cfgActionTimeout(), "gesture_pinch",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "gesture_swipe",
+    {
+      description:
+        "Single-finger swipe from `from` to `to` via the touch pipeline. Distinct from `drag` (mouse pipeline) — mobile carousels, pull-to-refresh, swipeable list items wire touch handlers that ignore mouse events. `durationMs` (default 200 — fast flick; 500+ reads as deliberate scroll) is split across `steps` (default 16, clamped 1–200) touchMove dispatches. Smoothed via an ease-out curve (`1 - (1 - t)²`) — matches the natural deceleration most fling-detect heuristics are tuned for (Hammer.js, native scroll inertia, react-spring physics).",
+      inputSchema: {
+        from: z.object({ x: z.number(), y: z.number() }).describe("Swipe start, viewport CSS px."),
+        to: z.object({ x: z.number(), y: z.number() }).describe("Swipe end, viewport CSS px."),
+        durationMs: z.number().int().nonnegative().max(60_000).optional().describe("Total swipe duration in ms (default 200)."),
+        steps: z.number().int().positive().max(200).optional().describe("Intermediate touchMove dispatches (default 16)."),
+        identifier: z.number().int().nonnegative().optional().describe("Touch identifier (default 1)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ from, to, durationMs, steps, identifier, session }) => {
+      const g = gateCheck("gesture_swipe"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await withDeadline(
+          gestureSwipe(e.session.cdp(), { from, to, durationMs, steps, identifier }),
+          cfgActionTimeout(), "gesture_swipe",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
       }
     },
   );
