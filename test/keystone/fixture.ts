@@ -74,6 +74,13 @@ const PAGE = `<!doctype html>
         <tr><td data-testid="row-2-name">Persisted Row Two</td><td>Beta</td></tr>
       </tbody>
     </table>
+
+    <!-- Phase 7: Shadow DOM keystone. Two custom elements with shadow
+         roots (open + closed) carrying interactive content the agent
+         should be able to discover via shadow_trees + via the pierce-
+         aware find / snapshot. -->
+    <open-widget id="open-widget"></open-widget>
+    <closed-widget id="closed-widget"></closed-widget>
   </main>
   <script>
     function toggleList() {
@@ -96,6 +103,24 @@ const PAGE = `<!doctype html>
         function (err) { out.textContent = 'denied code=' + err.code; }
       );
     }
+    // Phase 7 — Shadow DOM keystone fixtures.
+    // open-widget: attachShadow({mode:"open"}) — Element.shadowRoot returns
+    // the root, so Playwright / page-side JS / dom-walk can all pierce it.
+    customElements.define('open-widget', class extends HTMLElement {
+      connectedCallback() {
+        var root = this.attachShadow({ mode: 'open' });
+        root.innerHTML = '<button data-testid="open-widget-cta">Open Shadow CTA</button>';
+      }
+    });
+    // closed-widget: attachShadow({mode:"closed"}) — Element.shadowRoot
+    // returns null. The CDP DOM.getDocument({pierce:true}) path is the
+    // only way to introspect the subtree.
+    customElements.define('closed-widget', class extends HTMLElement {
+      connectedCallback() {
+        var root = this.attachShadow({ mode: 'closed' });
+        root.innerHTML = '<button data-testid="closed-widget-cta">Closed Shadow CTA</button>';
+      }
+    });
   </script>
 </body>
 </html>`;

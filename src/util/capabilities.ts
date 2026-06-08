@@ -86,6 +86,13 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // ref up in the existing registry, emits a string + structured breakdown.
   generate_locator: "read",
   text_search: "read",
+  // Phase 7 — read-only introspection of Shadow DOM trees under a given
+  // host ref (or the document root). Open-shadow walk runs as a
+  // Runtime.evaluate; closed-shadow walk uses CDP DOM.getDocument({pierce:
+  // true}). Best-effort — when CDP refuses the pierce call, returns the
+  // open-only view plus a warning. Read-only, same posture as `snapshot`
+  // / `find` — under `read`. No new capability.
+  shadow_trees: "read",
   // Structured schema-driven data extraction. Read-only; no new
   // capability (the deterministic mode is selector-only).
   extract: "read",

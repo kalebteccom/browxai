@@ -17,10 +17,11 @@
 import type { CDPSession, Frame } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { runDomWalk, runDomWalkOnFrame, mergeDomWalkIntoTree } from "./dom-walk.js";
+import { runDomWalk, runDomWalkOnFrame, mergeDomWalkIntoTree, type DomWalkEntry } from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
 import { LOW_A11Y_THRESHOLD } from "../util/config.js";
 import { elementKey } from "./refs.js";
+import { harvestClosedShadowElements } from "./shadow.js";
 
 const INTERACTIVE_ROLES = new Set([
   "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
@@ -37,23 +38,68 @@ export interface ComposedSnapshot {
     domWalkEntries: number;
     domWalkNew: number;
     domWalkCombined: number;
+    /** Phase 7 — count of closed-shadow elements harvested via CDP.
+     *  Always zero when `pierce !== "closed"` or CDP refused the pierce
+     *  call. */
+    closedShadowEntries?: number;
   };
-  /** Phase-1.5 warnings — currently #11 (low-content) when a11y is sparse. */
+  /** Non-fatal warnings — low-content a11y tree, closed-shadow CDP
+   *  unavailable when pierce: "closed" was requested, etc. */
   warnings: string[];
+}
+
+export interface ComposeOptions {
+  /** Phase 7 — shadow DOM piercing.
+   *  - `undefined` (default) — pre-Phase-7 behaviour. Playwright's a11y tree
+   *    already includes open shadow content, but the DOM-walk fallback does
+   *    not recurse into shadow roots.
+   *  - `"open"` — additionally have the DOM-walk recurse through every open
+   *    shadow root reachable from the page side.
+   *  - `"closed"` — open-walk + CDP `pierce:true` pass that surfaces
+   *    interactive / test-attr-bearing elements inside CLOSED shadow roots.
+   *    Best-effort: when CDP refuses the pierce call (older Chromium,
+   *    detached attached-mode session), falls back to the open-only result
+   *    and emits a warning.
+   *  - `false` — neither path recurses into shadow content. The DOM-walk
+   *    sticks to the top document. */
+  pierce?: "open" | "closed" | false;
 }
 
 export async function composeSnapshot(
   cdp: CDPSession,
   refs: RefRegistry,
   testAttributes: string[],
+  opts: ComposeOptions = {},
 ): Promise<ComposedSnapshot> {
   const a11y = await getA11yTree(cdp, refs, testAttributes).catch(() => null);
   if (a11y) markSource(a11y, "a11y");
 
   const a11yInteractive = a11y ? countInteractive(a11y) : 0;
-  const entries = await runDomWalk(cdp, { testAttributes });
+  const entries = await runDomWalk(cdp, { testAttributes, pierce: opts.pierce });
+  // Phase 7 — closed-shadow elements come from a separate CDP pass.
+  // Same DomWalkEntry shape; merged via the same registry path so the
+  // selectorHint tier + `[from-dom]` evidence remain coherent.
+  let closedEntries: DomWalkEntry[] = [];
+  let closedShadowWarning: string | undefined;
+  let closedShadowCount = 0;
+  if (opts.pierce === "closed") {
+    const harvested = await harvestClosedShadowElements(cdp, testAttributes, 500);
+    closedEntries = harvested.entries.map((e) => ({
+      role: e.role,
+      name: e.name,
+      testId: e.testId,
+      testIdAttr: e.testIdAttr,
+      tag: e.tag,
+      id: e.id,
+      structuralPath: e.structuralPath,
+      cssPath: e.cssPath,
+    }));
+    closedShadowCount = closedEntries.length;
+    closedShadowWarning = harvested.warning;
+  }
+  const allEntries = [...entries, ...closedEntries];
   const merge = a11y
-    ? mergeDomWalkIntoTree(a11y, entries, refs)
+    ? mergeDomWalkIntoTree(a11y, allEntries, refs)
     : { added: 0, combined: 0 };
 
   // After merging a11y + DOM-walk, tag descendants of repeated containers
@@ -66,18 +112,28 @@ export async function composeSnapshot(
   if (a11yInteractive < LOW_A11Y_THRESHOLD) {
     warnings.push(
       `low-content a11y tree (${a11yInteractive} interactive descendants under root); ` +
-      `the DOM-walk fallback supplied ${merge.added} new node(s) (${entries.length} total candidates seen). ` +
+      `the DOM-walk fallback supplied ${merge.added} new node(s) (${allEntries.length} total candidates seen). ` +
       `Heavy SPAs with non-semantic markup often surface useful state through the DOM-walk source — ` +
       `use [from-dom]-marked entries with their [testid=…] hints when present.`,
+    );
+  }
+  if (closedShadowWarning) warnings.push(closedShadowWarning);
+  if (closedShadowCount > 0) {
+    warnings.push(
+      `${closedShadowCount} candidate(s) discovered inside CLOSED shadow root(s) via CDP. ` +
+      `Closed-shadow elements are platform-protected — action tools (click/fill/etc) ` +
+      `CANNOT reach them through Playwright's locator engine. Use them as evidence ` +
+      `("this widget exists at depth N") only.`,
     );
   }
   return {
     tree: a11y,
     stats: {
       a11yInteractive,
-      domWalkEntries: entries.length,
+      domWalkEntries: allEntries.length,
       domWalkNew: merge.added,
       domWalkCombined: merge.combined,
+      ...(opts.pierce === "closed" ? { closedShadowEntries: closedShadowCount } : {}),
     },
     warnings,
   };
@@ -104,6 +160,7 @@ export async function composeSnapshotForFrame(
   refs: RefRegistry,
   testAttributes: string[],
   frameId: string,
+  opts: ComposeOptions = {},
 ): Promise<ComposedSnapshot> {
   // Synthetic root so the serialiser has a tree to walk; child-frame
   // discovery is leaf-shaped (DOM-walk produces flat entries).
@@ -123,13 +180,18 @@ export async function composeSnapshotForFrame(
     children: [],
   };
 
-  const entries = await runDomWalkOnFrame(frame, { testAttributes });
+  const entries = await runDomWalkOnFrame(frame, { testAttributes, pierce: opts.pierce });
   const merge = mergeDomWalkIntoTree(root, entries, refs, { frameId, frame });
   annotateStructuralContext(root);
 
   const warnings: string[] = [
     `frame "${frameId}": snapshot is DOM-walk-sourced only — CDP accessibility-tree extraction is not run for child frames (OOPIF / cross-origin compatibility). [from-dom] markers reflect the source, not a deficiency.`,
   ];
+  if (opts.pierce === "closed") {
+    warnings.push(
+      `frame "${frameId}": closed-shadow piercing via CDP is not run inside child frames (the CDP pierce path is rooted at the top target). pierce: "closed" degraded to "open" for this frame.`,
+    );
+  }
   return {
     tree: root,
     stats: {

@@ -76,6 +76,22 @@ export interface FindOptions {
   /** Phase-7: stable frame ID of `frame`, used for ref namespacing in the
    *  registry and for the snapshot warning. Required when `frame` is set. */
   frameId?: string;
+  /** Phase 7 — shadow DOM piercing.
+   *  - `undefined` (default) — preserves pre-Phase-7 behaviour. Playwright's
+   *    a11y tree auto-pierces open shadow roots; the DOM-walk fallback does
+   *    not recurse into shadow content.
+   *  - `"open"` — additionally have the DOM-walk fallback recurse through
+   *    every reachable open shadow root.
+   *  - `"closed"` — open-walk + a CDP `pierce:true` pass that surfaces
+   *    elements inside CLOSED shadow roots. Best-effort: when CDP refuses
+   *    the pierce call (older Chromium, attached-mode quirks), falls back
+   *    to open-only and the result carries a warning. Closed-shadow
+   *    candidates carry a warning of their own — they're inspectable
+   *    evidence, not actionable targets (Playwright's locator engine
+   *    cannot reach them). Closed-shadow CDP harvesting only runs on the
+   *    main frame; in a frame-scoped find, `"closed"` degrades to `"open"`.
+   *  - `false` — neither path recurses into shadow content. */
+  pierce?: "open" | "closed" | false;
 }
 
 export interface FindResult {
@@ -140,11 +156,21 @@ export async function find(
   // Phase-7: when `frame` is set, scope to that frame's DOM-walk-only compose
   // path and bind refs to the frame on the registry so subsequent actions land
   // inside the iframe.
+  // Phase 7 — `pierce` propagates through to the dom-walk + (when "closed",
+  // main-frame only) the CDP pierce path. Omitting `pierce` preserves
+  // byte-identical pre-Phase-7 output.
   const composed = opts.frame && opts.frameId
-    ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId)
-    : await composeSnapshot(cdp, refs, opts.testAttributes);
-  const tree = composed.tree;
-  if (!tree) return { candidates: [], warnings: [] };
+    ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, { pierce: opts.pierce })
+    : await composeSnapshot(cdp, refs, opts.testAttributes, { pierce: opts.pierce });
+  const { tree } = composed;
+  if (!tree) {
+    // Same byte-identical-back-compat reasoning as the success path:
+    // surface compose warnings only when pierce was explicitly opted in.
+    const w = opts.pierce !== undefined
+      ? composed.warnings.filter((s) => !s.startsWith("low-content"))
+      : [];
+    return { candidates: [], warnings: w };
+  }
   // The locator-resolution root: page for main-frame finds, frame for
   // frame-scoped finds. Probes (disambiguation, bbox fallback, actionable)
   // use this root so they exercise the correct DOM tree.
@@ -153,6 +179,21 @@ export async function find(
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
   const warnings: string[] = [];
+  // Phase 7 — when pierce was explicitly opted into, surface the compose
+  // layer's shadow-DOM warnings (closed-shadow CDP availability, the
+  // "closed-shadow candidates are inspect-only" caveat). Without an
+  // explicit pierce arg, the find() envelope stays byte-identical to
+  // pre-Phase-7.
+  if (opts.pierce !== undefined) {
+    for (const w of composed.warnings) {
+      // Skip the low-content warning — it pre-dates Phase 7 and was
+      // surfaced through snapshot only; smuggling it into find() now
+      // would change pre-existing pierce-less callers' output the moment
+      // they opt into pierce.
+      if (w.startsWith("low-content")) continue;
+      warnings.push(w);
+    }
+  }
 
   // limit walk to subtree rooted at contextRef.
   let walkRoot: A11yNode = tree;

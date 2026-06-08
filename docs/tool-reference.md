@@ -236,6 +236,46 @@ List every frame in the current page tree with a stable per-session ID (`fN`; `f
 - Actions work: `frame.locator(…).click()` (etc.) cross the same boundary.
 - The CDP accessibility-tree skip on child frames means a heavily a11y-driven page in an iframe surfaces less context than the same page would as a top-level document — the DOM-walk pass still surfaces every `BROWX_TEST_ATTRIBUTES`-bearing element and every interactive control, which is what action targeting needs.
 - Frame-scoped `bbox` is computed via Playwright's locator `.boundingBox()` rather than the CDP `getBoxModel` path used for main-frame finds; behaviour is identical for visible elements.
+### Shadow DOM piercing (Phase 7)
+
+Modern web components default to shadow DOM; `find` / `snapshot` see open shadow content through Playwright's a11y tree automatically. Phase 7 adds two opt-in extensions plus a dedicated read-only tool for direct introspection.
+
+**`find({ …, pierce? })` and `snapshot({ …, includeShadow? })`.** Both accept a `pierce` (find) / `includeShadow` (snapshot) parameter:
+
+- *omitted* — back-compat. Playwright's a11y tree already auto-pierces open shadow roots; the DOM-walk fallback does **not** recurse into shadow content. Pre-Phase-7 callers see byte-identical output.
+- `"open"` — additionally have the DOM-walk recurse through every reachable open shadow root (`Element.shadowRoot` for each host). Useful on heavy-SPA targets whose a11y tree is sparse and whose interactive controls live behind web-component boundaries.
+- `"closed"` — open-walk **plus** a CDP `DOM.getDocument({pierce:true})` pass that harvests interactive / test-attr-bearing elements behind **closed** shadow boundaries. Closed-shadow candidates carry `[from-dom]` source marks like any other DOM-walk entry; the result envelope additionally surfaces a warning that closed-shadow elements **cannot** be actioned through Playwright's locator engine — treat them as evidence ("this widget exists at depth N"), not actionable targets.
+- `false` — disables shadow recursion entirely.
+
+Closed-shadow piercing is **best-effort** by construction. `DOM.getDocument({pierce:true})` is a Chromium DevTools facility, not a web-platform guarantee. On older Chromium builds or attached-mode endpoints whose CDP vintage differs from the launcher's, the call may fail; the result envelope then carries `closed-shadow piercing unavailable on this browser/page` in `warnings[]` and falls back to the open-only view. Open shadow is always reachable.
+
+**`shadow_trees({ ref?, maxHosts?, session? })`.** Dedicated read-only introspection. Returns:
+
+```jsonc
+{
+  "trees": [
+    {
+      "hostRef": "backend:1234",  // or "backend:0" when the page-side fallback ran
+      "hostTag": "my-widget",
+      "mode": "open",              // or "closed"
+      "children": [
+        { "tag": "div", "text": "Hello", "childCount": 2 },
+        { "tag": "button", "childCount": 0 }
+      ],
+      "descendantCount": 12
+    }
+  ],
+  "closedShadowAvailable": true,
+  "warnings": [],
+  "tokensEstimate": 142
+}
+```
+
+`ref` (optional) limits the walk to one host's subtree (the ref comes from a prior `snapshot` / `find`); omit it to walk every shadow root in the document. `maxHosts` (default 200, max 1000) caps the result with a `cappedAt` field when hit.
+
+`closedShadowAvailable` is `true` when the CDP pierce call returned at least one closed-mode root anywhere in the walked subtree (proves the CDP path is live on this browser); `false` is informational — the page may simply not contain a closed root, or CDP refused the call.
+
+Capability `read` (same posture as `snapshot` / `find`; no new capability gate).
 
 ### `screenshot`
 PNG or JPEG of the viewport, optionally cropped to an element, optionally full-page, optionally written to a workspace-rooted file instead of returned inline.

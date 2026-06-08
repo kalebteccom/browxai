@@ -36,6 +36,18 @@ export interface DomWalkOptions {
   testAttributes?: string[];
   /** Hard cap on returned entries (sanity bound; the JS side already caps). */
   maxEntries?: number;
+  /** Phase 7 — shadow DOM piercing.
+   *  - `"open"` (the implicit default — preserves pre-Phase-7 behaviour;
+   *    the page-side walk recurses into every `Element.shadowRoot` it sees,
+   *    same as `querySelectorAll` semantics on open roots).
+   *  - `"closed"` — additionally invokes the CDP `DOM.getDocument(
+   *    {pierce:true})` path and harvests interactive / test-attr-bearing
+   *    elements that live inside closed shadow roots. Best-effort; falls
+   *    back to open-only when CDP refuses pierce.
+   *  - `false` — no shadow recursion. Equivalent to walking only the top
+   *    document's children.
+   */
+  pierce?: "open" | "closed" | false;
 }
 
 const DEFAULT_TEST_ATTRS = ["data-testid", "data-test", "data-cy", "data-qa"];
@@ -58,7 +70,14 @@ export async function runDomWalk(
 ): Promise<DomWalkEntry[]> {
   const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
   const max = opts.maxEntries ?? DEFAULT_MAX;
-  const expr = `(${PAGE_SCRIPT})(${JSON.stringify(testAttrs)}, ${max})`;
+  // Back-compat: `pierce: undefined` preserves pre-Phase-7 behaviour
+  // (top-document walk only). `pierce: "open"` / `"closed"` opts into the
+  // shadow-aware walk that recurses through every open shadow root we can
+  // see from the page side. Closed shadow roots are platform-inaccessible
+  // here; the CDP path in src/page/shadow.ts covers them and adds the
+  // result via the merge layer.
+  const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
+  const expr = `(${PAGE_SCRIPT})(${JSON.stringify(testAttrs)}, ${max}, ${walkOpen})`;
   try {
     const { result } = (await cdp.send("Runtime.evaluate", {
       expression: expr,
@@ -76,6 +95,11 @@ export async function runDomWalk(
  * a Playwright `Frame` via `frame.evaluate(...)` instead of the top-level
  * CDP `Runtime.evaluate`. Works transparently for both same-origin and
  * cross-origin (OOPIF) child frames — Playwright's frame API spans both.
+ *
+ * Honours `pierce` the same way the top-level walk does: `"open"` / `"closed"`
+ * recurses into reachable open shadow roots inside the frame; `false` /
+ * undefined sticks to the frame's top document. Closed-shadow CDP harvesting
+ * is not run for child frames (the CDP path is rooted at the top target).
  */
 export async function runDomWalkOnFrame(
   frame: Frame,
@@ -83,13 +107,14 @@ export async function runDomWalkOnFrame(
 ): Promise<DomWalkEntry[]> {
   const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
   const max = opts.maxEntries ?? DEFAULT_MAX;
+  const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = await frame.evaluate(
-      ({ script, attrs, cap }: { script: string; attrs: string[]; cap: number }) =>
+      ({ script, attrs, cap, openShadow }: { script: string; attrs: string[]; cap: number; openShadow: boolean }) =>
         // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-        (new Function("attrs", "cap", `return (${script})(attrs, cap)`))(attrs, cap),
-      { script: PAGE_SCRIPT, attrs: testAttrs, cap: max },
+        (new Function("attrs", "cap", "openShadow", `return (${script})(attrs, cap, openShadow)`))(attrs, cap, openShadow),
+      { script: PAGE_SCRIPT, attrs: testAttrs, cap: max, openShadow: walkOpen },
     );
     return (raw as DomWalkEntry[]) ?? [];
   } catch {
@@ -97,12 +122,41 @@ export async function runDomWalkOnFrame(
   }
 }
 
-/** Build the page-side script. Returned as a stringified IIFE. */
-const PAGE_SCRIPT = `function(testAttrs, max) {
+/** Build the page-side script. Returned as a stringified IIFE.
+ *  `walkOpenShadow` — when true, the DOM-walk additionally recurses into every
+ *  `Element.shadowRoot` (open mode) and runs the same predicate-match on its
+ *  descendants. Closed shadow roots are platform-protected and unreachable from
+ *  the page side; the CDP path in `src/page/shadow.ts` covers them. */
+const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
   var ATTR_INTERACTIVE_SEL = '[role],button,a[href],input,select,textarea,[onclick],[tabindex],[contenteditable="true"]';
   var attrSel = testAttrs.map(function(a){ return '['+a+']'; }).join(',');
   var sel = ATTR_INTERACTIVE_SEL + (attrSel ? ',' + attrSel : '');
+  // Collect matches from the top document AND, when walkOpenShadow is set,
+  // from every open shadow root we can reach. querySelectorAll does NOT
+  // pierce shadow boundaries by web-platform design, so we walk shadow
+  // roots explicitly.
   var els = Array.prototype.slice.call(document.querySelectorAll(sel));
+  if (walkOpenShadow) {
+    var shadowHosts = [];
+    function collectHosts(root) {
+      var all = root.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var sr = all[i].shadowRoot;
+        if (sr) shadowHosts.push(sr);
+      }
+    }
+    collectHosts(document);
+    var seen = 0;
+    while (shadowHosts.length > seen) {
+      var sr2 = shadowHosts[seen++];
+      var matches = sr2.querySelectorAll(sel);
+      for (var j = 0; j < matches.length; j++) els.push(matches[j]);
+      collectHosts(sr2);
+      // Hard bound — a pathological page could embed thousands of nested
+      // shadow roots; cap the walk to keep snapshot latency predictable.
+      if (seen > 500) break;
+    }
+  }
 
   function isVisible(el) {
     if (!el.isConnected) return false;

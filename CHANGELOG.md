@@ -33,6 +33,37 @@ surface" covers.
     DOM-walk-sourced only and surface a warning so the agent isn't
     surprised by `[from-dom]` markers. Read + action still work for both
     same-origin and cross-origin iframes.
+- **Shadow DOM deep piercing (Phase 7)** — three pieces:
+  - `find({ …, pierce? })` — optional `pierce: "open" | "closed" | false`.
+    Omitting `pierce` preserves pre-Phase-7 behaviour byte-for-byte
+    (Playwright's a11y tree already auto-pierces open shadow; the DOM-walk
+    fallback didn't recurse into shadow content). `"open"` extends the
+    DOM-walk into every reachable open shadow root. `"closed"` additionally
+    invokes CDP `DOM.getDocument({pierce:true})` and surfaces interactive
+    / test-attr-bearing elements behind CLOSED shadow boundaries — those
+    candidates are **inspect-only** (Playwright's locator engine cannot
+    reach them; the result envelope carries the warning). `false`
+    disables shadow recursion entirely.
+  - `snapshot({ …, includeShadow? })` — the symmetric knob for the
+    snapshot tree. Same semantics as `pierce`. Closed-shadow entries flow
+    through the same merge layer as DOM-walk entries (`[from-dom]`-marked,
+    stable refs via the registry); the header surfaces a
+    `closedShadowEntries` stat when present.
+  - `shadow_trees({ ref?, maxHosts?, session? })` — read-only introspection
+    of Shadow DOM hosts. Returns `{ trees: [{hostRef, hostTag, mode,
+    children, descendantCount}], closedShadowAvailable, warnings,
+    tokensEstimate }`. Pass `ref` to limit the walk to one host's
+    subtree; omit it to walk every shadow root in the document. Falls
+    back to a page-side open-only walk when CDP refuses `pierce:true`.
+    Capability `read` (no new gate).
+
+  Closed-shadow piercing is best-effort by construction — `DOM.getDocument
+  ({pierce:true})` is a Chromium DevTools facility, not a web-platform
+  guarantee. When CDP refuses the call (older Chromium, attached-mode
+  quirks), the result envelope carries the `closed-shadow piercing
+  unavailable on this browser/page` warning and the open-shadow data is
+  still returned.
+
 - **`element_export({ ref, format?, intoDir?, maxSizeMb?, session? })`** —
   save the subtree under one ref as a self-contained snippet (outerHTML +
   page-wide stylesheets + linked resources). Two formats: `directory`

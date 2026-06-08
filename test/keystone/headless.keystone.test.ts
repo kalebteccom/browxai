@@ -543,6 +543,88 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
   );
 });
 
+// Phase 7 — Shadow DOM deep piercing. Exercises the three new surfaces
+// (find/snapshot pierce options + shadow_trees) against a real Chromium
+// page that defines one open-shadow and one closed-shadow custom element.
+//
+// The closed-shadow assertions are the load-bearing ones — they prove the
+// CDP DOM.getDocument({pierce:true}) path actually surfaces content that
+// is genuinely inaccessible from page-side JavaScript. Open-shadow is
+// already covered by Playwright's a11y tree; this test is here to keep
+// the pierce surface from regressing.
+describe("headless-CI keystone — Shadow DOM deep piercing (Phase 7)", () => {
+  it(
+    "shadow_trees surfaces open + closed shadow hosts, find({pierce:'closed'}) sees closed-shadow content",
+    async () => {
+      const session = "ks-shadow";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+      // Custom-element upgrades + the shadow attachment happen on
+      // `connectedCallback`, which is microtask-deferred relative to
+      // navigation settlement. Give it a beat to land.
+      await new Promise((r) => setTimeout(r, 50));
+
+      // (1) Default `snapshot` (no `includeShadow`) — back-compat. The
+      // shadow content must NOT leak into the standard tree (Playwright's
+      // a11y tree covers open-shadow at the AX level, but the DOM-walk
+      // fallback's `[from-dom]` markers don't apply to shadow content
+      // unless pierce is requested).
+      const defaultSnap = await callText("snapshot", { session });
+      expect(defaultSnap.toLowerCase()).toContain("keystone fixture");
+
+      // (2) `shadow_trees` with no ref — walks the whole document, must
+      // discover BOTH the open and closed widget hosts via the CDP path.
+      const trees = await callJson<{
+        trees: Array<{ hostTag: string; mode: "open" | "closed"; children: Array<{ tag: string; text?: string }> }>;
+        closedShadowAvailable: boolean;
+        warnings: string[];
+        tokensEstimate: number;
+      }>("shadow_trees", { session });
+      expect(typeof trees.tokensEstimate).toBe("number");
+      expect(trees.tokensEstimate).toBeGreaterThan(0);
+      const openHost = trees.trees.find((t) => t.hostTag === "open-widget");
+      const closedHost = trees.trees.find((t) => t.hostTag === "closed-widget");
+      expect(openHost, "open-widget host surfaced").toBeTruthy();
+      expect(openHost!.mode).toBe("open");
+      expect(openHost!.children.some((c) => c.tag === "button")).toBe(true);
+      expect(closedHost, "closed-widget host surfaced — proves CDP pierce works").toBeTruthy();
+      expect(closedHost!.mode).toBe("closed");
+      expect(closedHost!.children.some((c) => c.tag === "button")).toBe(true);
+      expect(trees.closedShadowAvailable).toBe(true);
+
+      // (3) `find({pierce:'closed'})` discovers the closed-shadow CTA's
+      // test-attr, but warns it's inspect-only. The selectorHint will be
+      // tier-1 ([data-testid=…]) because the CDP walker reads the attr.
+      const found = await callJson<{
+        candidates: Array<{ selectorHint: string; stability: string; testId?: string }>;
+        warnings: string[];
+      }>("find", { session, query: "closed-widget-cta", pierce: "closed" });
+      const closedCand = found.candidates.find((c) => c.testId === "closed-widget-cta");
+      expect(closedCand, "closed-shadow candidate surfaced under pierce:'closed'").toBeTruthy();
+      expect(closedCand!.selectorHint).toContain("closed-widget-cta");
+      expect(found.warnings.some((w) => w.includes("CLOSED shadow root"))).toBe(true);
+
+      // (4) Back-compat — find() without `pierce` MUST NOT surface
+      // closed-shadow candidates (the CDP pierce call wasn't made).
+      const foundDefault = await callJson<{ candidates: Array<{ testId?: string }> }>(
+        "find",
+        { session, query: "closed-widget-cta" },
+      );
+      const leaked = foundDefault.candidates.find((c) => c.testId === "closed-widget-cta");
+      expect(leaked, "closed-shadow content must not leak into pierce-less find").toBeFalsy();
+
+      // (5) `snapshot({includeShadow:'closed'})` — header surfaces the
+      // closed-shadow stat and the inspect-only warning.
+      const piercedSnap = await callText("snapshot", { session, includeShadow: "closed" });
+      expect(piercedSnap).toMatch(/closedShadowEntries/);
+      expect(piercedSnap).toMatch(/CLOSED shadow root/);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Documented, deliberate gap — NOT a silent skip. Under headless there is no
 // human at a screen, so the `__browx` on-page banner is not visually present
 // and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be
