@@ -287,6 +287,15 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // bulk writers); reuses an existing capability, no new gate to enable.
   start_har: "action",
   stop_har: "action",
+  // Session video recording — `stop_video` signals intent to finalize the
+  // recording (Playwright finalizes on context.close — same constraint as
+  // native HAR); `get_video` reads the finalized .webm. Both write/read a
+  // workspace-rooted file path, so they sit under `file-io` (sibling to
+  // `upload_file` / `download_get`). The start path is `open_session(
+  // {recordVideo})` — Playwright doesn't expose a runtime start, so the
+  // tool surface here is stop + get only.
+  stop_video: "file-io",
+  get_video: "file-io",
   // secrets — per-session sensitive-data registry + egress masking. Off by
   // default; loud-warn one-time when a secret is registered. Mirrors
   // `eval` / `network-body` / `disableWebSecurity` posture. `register_secret`

@@ -26,6 +26,7 @@ import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
+import type { VideoRecorderState, VideoStartConfig } from "../page/video.js";
 import type { ExtensionRegistry } from "./extensions.js";
 import type { DownloadsRegistry } from "../page/downloads.js";
 import type { ArtifactsRegistry } from "./artifacts.js";
@@ -94,6 +95,13 @@ export interface SessionEntry {
    *  file is finalized by Playwright on `context.close()` — the recorder state
    *  carries the reserved path until then. */
   har: HarRecorderState;
+  /** Per-session video recorder state. Drives the `stop_video` / `get_video`
+   *  tools and tracks any video wired at session creation via
+   *  `open_session({recordVideo})`. Same finalize-on-close caveat as HAR:
+   *  Playwright writes the .webm only when the context closes; the
+   *  registry's teardown calls `page.video().saveAs(targetPath)` for a
+   *  deterministic output filename. Capability `file-io` (writes a file). */
+  video: VideoRecorderState;
   /** per-session sensitive-data registry (capability `secrets`). Off by
    *  default — empty until `register_secret` is called. When non-empty, every
    *  egress sink masks occurrences of the real value back to `<NAME>` before
@@ -164,6 +172,16 @@ export interface OpenSpec {
    *  use the `start_har`/`stop_har` tools instead — they wire HAR via
    *  `routeFromHAR(update:true)` on the running context. */
   har?: HarStartConfig;
+  /** Enable video recording at context creation via Playwright's native
+   *  `recordVideo` context option. The .webm is finalized when the session
+   *  closes. There is no runtime `start_video` tool (Playwright doesn't
+   *  expose a mid-context start) — wire it here at session creation. The
+   *  target path is workspace-rooted (default
+   *  `<workspace>/videos/<session-id>-<ISO>.webm`); on `close_session` the
+   *  registry calls `page.video().saveAs(targetPath)` for a deterministic
+   *  filename. Honoured on `persistent` + `incognito`; refused on
+   *  `attached` (not-owned). */
+  recordVideo?: VideoStartConfig;
   /** Workspace-rooted HAR file path(s) to REPLAY against this session. Each
    *  file is wired post-create with `context.routeFromHAR(file,
    *  {notFound:"fallback"})` — requests in the archive are served from it,

@@ -42,6 +42,11 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     // HAR recording at context creation (native Playwright primitive).
     // Finalized on context.close(). No-op when unset.
     ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
+    // Video recording at context creation (native Playwright primitive).
+    // Finalized on context.close(). The dir is workspace-rooted by
+    // construction; the registry's teardown calls
+    // `page.video().saveAs(targetPath)` for a deterministic filename.
+    ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
   });
   const page = await context.newPage();
   const cdp = await context.newCDPSession(page);

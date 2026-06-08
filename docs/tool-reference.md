@@ -1146,6 +1146,23 @@ Full-session reproducibility — capture every request the page made into a HAR 
 **Re-recording within a session** — `stop_har` then `start_har` again with a fresh `path` works cleanly; on the runtime path the prior recorder is transparently flushed before the new one wires. On the native (`open_session({har})`) path the recorder is locked to the session's lifetime — close + reopen the session to swap.
 
 **Inline cap** — `stop_har` inlines the .har on the result when the file exists and is ≤ ~256 KB; otherwise the caller reads it from `path` after `close_session`.
+
+### Video recording — `open_session({recordVideo})` / `stop_video` / `get_video`
+
+Record every page in the session as a `.webm` via Playwright's native `recordVideo` context option. The same shape as the native HAR path (`open_session({har})`): video is wired at context creation and finalized when the context closes — Playwright does NOT expose a runtime start or a mid-context flush, so the tool surface is the symmetric stop + read pair rather than start/stop. Capability `file-io` (sibling to `upload_file` / `download_get`).
+
+- **`open_session({ recordVideo: { path?, size? }, … })`** — wire video at context creation via Playwright's native `recordVideo` option. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/videos/<session-id>-<ISO>.webm`. **`size`** is `{width, height}` (Playwright's option — defaults to viewport scaled to fit 800x800). Honoured on `persistent` + `incognito` (we own the context); **refused on `attached`** with a structured error (the consumer's Chrome is not-owned — we don't wire context-creation primitives on it). Returns a `video: { path, size?, finalizesOn:"close_session" }` field on the `open_session` result.
+- **`stop_video({ session? })`** — signal that the recording should be finalized. **The .webm is written to disk only when the session closes** (`close_session`) — Playwright provides no mid-context flush on the native `recordVideo` primitive. This call marks the recorder as `pendingFinalize:true` and returns the reserved target path; the actual file appears on disk after `close_session`. → `{ ok, session, wasActive, path?, pendingFinalize, finalized:false, finalizesOn:"close_session", hint, tokensEstimate }`. Returns a structured error on `attached` sessions or when no recorder is active. Capability `file-io`.
+- **`get_video({ format?, session? })`** — read the finalized video off disk. `format:"path"` (default) returns the absolute path + on-disk size. `format:"bytes"` additionally inlines as base64 when the file is under ~1 MiB; larger files return path + `tooLargeToInline:true` so the caller reads them off disk. → `{ ok, session, path, bytes, format, videoBase64?, tooLargeToInline?, hint, tokensEstimate }`. Returns a structured error when the file isn't yet on disk (the get-before-`close_session` case — pointing the caller at `close_session`), on `attached` sessions, or when no recorder was wired. Capability `file-io`.
+
+**Finalize timing** — the canonical flow is **`open_session({recordVideo})` → drive the session → `stop_video` (optional, signals intent) → `close_session` → `get_video`**. Playwright finalizes the `.webm` on `context.close()` (which `close_session` triggers); the registry's teardown then calls `page.video().saveAs(targetPath)` for a deterministic output filename. The `finalizesOn:"close_session"` field on every result envelope makes the constraint visible.
+
+**No runtime start** — Playwright's `recordVideo` is a context-creation primitive; there is no public mid-context start. To swap target paths in one session: `close_session`, then `open_session` again with the new `recordVideo.path`.
+
+**BYOB / attached Chrome** — `open_session({recordVideo})` is **refused** on `attached` sessions with a hard error. The consumer's Chrome is not-owned; we don't wire context-creation primitives on it. Open a managed `persistent` or `incognito` session with `{recordVideo:{...}}` to record.
+
+**Inline cap** — `get_video({format:"bytes"})` inlines as base64 when the file is ≤ ~1 MiB; larger files return `tooLargeToInline:true` and the caller reads from `path`.
+
 ### Performance tracing — `perf_start` / `perf_stop` / `perf_insights`
 "This click took 4s — why?" has no diagnostic surface in the read-only tools: a screenshot/snapshot/network slice shows *what* happened, not *why* it was slow. These three tools wrap CDP `Tracing.start` / `Tracing.end` to produce a chromium-format trace file (the same shape DevTools' Performance panel and `chrome://tracing` consume), then extract structured insights from it. Per-session; one trace lifecycle at a time. All three are under capability `action` (`perf_stop` writes a file).
 

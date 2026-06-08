@@ -80,6 +80,68 @@ surface" covers.
   `dump_storage_state`. The caller must navigate + settle the page
   BEFORE calling — the tool does not inject its own wait.
   See `src/page/archive.ts`, `docs/tool-reference.md` "Page archive".
+- **Session video recording** — Playwright's native `recordVideo` context
+  option, surfaced as the symmetric stop + read pair around an
+  `open_session` extension (Playwright doesn't expose a runtime start, so
+  the shape mirrors the native HAR path rather than `start_har` /
+  `stop_har`).
+  - `open_session({ recordVideo: { path?, size? } })` — wire video at
+    context creation. `path` is workspace-rooted (default
+    `<workspace>/videos/<session-id>-<ISO>.webm`); path traversal outside
+    `$BROWX_WORKSPACE` is rejected. `size` maps to Playwright's
+    `recordVideo.size`. Honoured on `persistent` + `incognito`; **refused
+    on `attached`** with a hard error (consumer's Chrome is not-owned —
+    we don't wire context-creation primitives on it). Returns a
+    `video: { path, size?, finalizesOn:"close_session" }` field on the
+    `open_session` result.
+  - `stop_video({ session? })` — signal that the recording should be
+    finalized. The .webm is written to disk only when the session closes
+    (Playwright constraint — same shape as the native HAR path). Returns
+    `{ pendingFinalize:true, finalized:false, finalizesOn:"close_session",
+    path, hint, tokensEstimate }`. Returns a structured error on
+    `attached` sessions or when no recorder is active. Capability
+    `file-io`.
+  - `get_video({ format?, session? })` — read the finalized video off
+    disk. `format:"path"` (default) returns the absolute path + on-disk
+    size; `format:"bytes"` additionally inlines as base64 when the file
+    is under ~1 MiB. Returns a structured error when the file isn't yet
+    on disk (the get-before-`close_session` case), on `attached`
+    sessions, or when no recorder was wired. Capability `file-io`.
+
+### Changed
+
+- **`src/page/video.ts`** — new module mirroring `src/page/har.ts` for the
+  native-record axis: workspace-rooted target path resolution, per-session
+  staging directory (under `videos/.staging/<sessionId>-<ISO>/` so
+  Playwright's auto-named file doesn't pollute the user-facing
+  `videos/` dir), state machine, BYOB refusal, and `finalizeVideoOnClose`
+  (calls `page.video().saveAs(targetPath)` for a deterministic output
+  filename on session teardown).
+- **`src/session/types.ts`** — `SessionOptions.recordVideo` added
+  (Playwright-shaped `{dir, size?}` — the upstream `buildRecordVideoOption`
+  resolves the user-facing target path + staging dir).
+- **`src/session/managed.ts` + `src/session/incognito.ts`** — pass
+  `recordVideo` through to `chromium.launchPersistentContext` /
+  `browser.newContext` when set.
+- **`src/session/registry.ts`** — `SessionEntry.video` (per-session
+  `VideoRecorderState`) + `OpenSpec.recordVideo` added.
+- **`src/server.ts`** — open_session factory resolves `recordVideo` at
+  creation, refuses cleanly on `attached`, and finalizes the recording on
+  teardown via `finalizeVideoOnClose` (called after `context.close()`
+  triggers the .webm flush). New `stop_video` + `get_video` MCP tools
+  registered; `open_session` schema extended with `recordVideo`.
+- **`src/util/capabilities.ts`** — `stop_video` + `get_video` mapped to
+  the existing `file-io` capability (sibling of `upload_file` /
+  `download_get` — no new capability gate to enable).
+- **`docs/tool-reference.md`** — Video recording section under "Advanced
+  tools" documenting the lifecycle, BYOB refusal, and inline cap.
+
+### Unchanged
+
+- The native HAR path, the storage / artifact / download primitives, the
+  capability set, and every other adopter-visible surface are byte-
+  identical for sessions that don't pass `recordVideo`. Strictly additive.
+
 
 ## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
 

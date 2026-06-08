@@ -150,6 +150,16 @@ import {
   HAR_INLINE_CAP_BYTES,
   type HarStartConfig,
 } from "./page/har.js";
+import {
+  newVideoRecorderState,
+  buildRecordVideoOption,
+  assertVideoSupported,
+  stopVideo,
+  finalizeVideoOnClose,
+  readVideoIfReady,
+  VIDEO_INLINE_CAP_BYTES,
+  type VideoStartConfig,
+} from "./page/video.js";
 import * as actions from "./page/actions.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
@@ -418,6 +428,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (spec?.hars && spec.hars.length) {
         creationReplayHars = resolveHarReplayPaths(workspace.root, spec.hars, "open_session");
       }
+      // Resolve video recording config (native context-creation primitive).
+      // The target path is workspace-rooted by construction; the staging dir
+      // (where Playwright auto-names the file) is also under the workspace.
+      // Ignored on attached (we don't mutate the consumer's Chrome).
+      let creationRecordVideo: { dir: string; size?: { width: number; height: number } } | undefined;
+      let creationRecordVideoResolved: { targetPath: string; stagingDir: string; size?: { width: number; height: number } } | undefined;
+      if (spec?.recordVideo) {
+        const built = buildRecordVideoOption(workspace.root, id, spec.recordVideo);
+        creationRecordVideo = built.recordVideo;
+        creationRecordVideoResolved = { targetPath: built.targetPath, stagingDir: built.stagingDir, size: built.size };
+      }
       let sess: BrowserSession;
       if (mode === "attached") {
         if (!opts.attachCdp) {
@@ -442,12 +463,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           creationRecordHar = undefined;
           creationRecordHarResolved = undefined;
         }
+        if (creationRecordVideo) {
+          // Hard refusal: video has no runtime fallback (Playwright doesn't
+          // expose mid-context video start), so a silent ignore would leave
+          // the agent expecting a .webm that never lands. Surface it loudly.
+          throw new Error(
+            `session "${id}": \`recordVideo\` is not supported on attached / BYOB sessions — ` +
+            "Playwright's `recordVideo` is a context-creation primitive and we don't " +
+            "wire context-creation primitives on the consumer's Chrome (not-owned). " +
+            "Open a managed session (open_session({mode:\"persistent\"}) or {mode:\"incognito\"}) " +
+            "with {recordVideo:{...}} to record.",
+          );
+        }
         // Attached Chrome is not-owned: device emulation is best-effort
         // (viewport via Emulation in byob.ts); isMobile/touch/UA can't be
         // retro-applied to an existing context.
         sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
       } else if (mode === "incognito") {
-        sess = await openIncognitoSession({ headless, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar });
+        sess = await openIncognitoSession({ headless, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar, recordVideo: creationRecordVideo });
       } else {
         // persistent: the default session keeps the legacy single `profile`
         // dir for back-compat; named/explicit profiles get their own dir so
@@ -459,7 +492,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         // first launch — no extensions registered yet (the registry is
         // mutated by the `extensions_*` tools post-creation, and a rebuild
         // path materialises the list into launch flags then).
-        sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar });
+        sess = await openManagedSession({ headless, profileDir, device, disableWebSecurity, storageState: creationStorageState, recordHar: creationRecordHar, recordVideo: creationRecordVideo });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context
       // creation, mark the recorder `active + nativeRecord:true` so
@@ -473,6 +506,19 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         harState.mode = creationRecordHarResolved.mode;
         harState.content = creationRecordHarResolved.content;
         harState.startedAt = Date.now();
+      }
+      // Initialise video recorder state. If `recordVideo` was wired at
+      // context creation, mark the recorder active so `stop_video` /
+      // `get_video` can refer to the reserved target path. The .webm is
+      // finalized when the context closes (Playwright constraint) —
+      // teardown calls `page.video().saveAs(targetPath)`.
+      const videoState = newVideoRecorderState();
+      if (creationRecordVideoResolved) {
+        videoState.active = true;
+        videoState.targetPath = creationRecordVideoResolved.targetPath;
+        videoState.stagingDir = creationRecordVideoResolved.stagingDir;
+        videoState.size = creationRecordVideoResolved.size;
+        videoState.startedAt = Date.now();
       }
       // Apply HAR replay file(s) post-create. `routeFromHAR` is wired with
       // `notFound:"fallback"` so a request not in the archive falls through
@@ -576,6 +622,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         dialog: dialogState,
         deviceEmulation,
         har: harState,
+        video: videoState,
         secrets: secretsReg,
         extensions: newExtensionRegistry(),
         downloads: downloadsReg,
@@ -591,7 +638,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // a stuck Tracing.end won't block teardown (perf state bounds the wait).
       await e.perf.closeIfRunning(e.session.cdp()).catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
+      // Capture page reference BEFORE close — `page.video()` resolves the
+      // Video handle, but the actual .webm is only flushed by the underlying
+      // context.close() that `e.session.close()` triggers. `video.saveAs()`
+      // (called inside finalizeVideoOnClose) blocks until the page is closed
+      // AND the recording is fully written, so the order is: grab page →
+      // close context → saveAs to deterministic target path.
+      const videoPage = e.video.active ? e.session.page() : undefined;
       await e.session.close().catch(() => undefined);
+      if (videoPage) {
+        await finalizeVideoOnClose(videoPage, e.video).catch(() => undefined);
+      }
       // Clear session-scoped artifacts on teardown. Best-effort: a stuck
       // rm won't block teardown. Sessions that never wrote an artifact
       // never create the dir, so this is a no-op for them.
@@ -3541,6 +3598,124 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---- Session video recording ----------------------------------------------
+  //
+  // Playwright's `recordVideo` is a context-creation primitive — there is no
+  // public runtime start. Mirror of the native `recordHar` path: the recorder
+  // is wired by `open_session({recordVideo})` and finalized on context.close
+  // (which `close_session` triggers). `stop_video` signals intent — it
+  // surfaces the constraint instead of pretending to flush mid-context.
+  // `get_video` reads the finalized .webm. Both gated by `file-io`.
+
+  register(
+    "stop_video",
+    {
+      description:
+        "Signal that the session's video recording should be finalized. Mirrors the `stop_har` native-record posture: **the .webm is written to disk only when the session closes** (`close_session`) — Playwright provides no mid-context flush on the `recordVideo` primitive. This call marks the recorder as `pendingFinalize:true` and returns the reserved target path; the actual file appears on disk after `close_session`. Use `get_video` afterwards to retrieve the bytes or absolute path. Returns a structured error if no video recorder is active (you didn't pass `recordVideo` to `open_session`). Capability `file-io`.",
+      inputSchema: { ...SESSION_ARG },
+    },
+    async ({ session }) => {
+      const g = gateCheck("stop_video"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        if (e.mode === "attached") {
+          return errText(
+            "stop_video",
+            new Error(
+              "stop_video: not supported on attached / BYOB sessions — recordVideo is " +
+              "a context-creation primitive and we don't wire it on the consumer's " +
+              "Chrome (not-owned). Open a managed session ({mode:\"persistent\"} or " +
+              "{mode:\"incognito\"}) with {recordVideo:{...}} and re-run.",
+            ),
+          );
+        }
+        if (!e.video.active) {
+          return errText(
+            "stop_video",
+            new Error(
+              "stop_video: no video recorder is active on this session. Video must be " +
+              "wired at session creation via `open_session({recordVideo:{...}})` — " +
+              "Playwright doesn't expose a runtime `start_video` primitive.",
+            ),
+          );
+        }
+        const r = stopVideo(e.video);
+        return okText({
+          ok: true,
+          session: e.id,
+          wasActive: r.wasActive,
+          ...(r.targetPath ? { path: r.targetPath } : {}),
+          pendingFinalize: r.pendingFinalize,
+          finalized: r.finalized,
+          finalizesOn: "close_session",
+          hint: "Playwright finalizes the .webm only when the context closes. Call `close_session` to flush; then `get_video` to read the file. There is no mid-context flush on the native recordVideo primitive — same constraint shape as `open_session({har})`.",
+        });
+      } catch (err) { return errText("stop_video", err); }
+    },
+  );
+
+  register(
+    "get_video",
+    {
+      description:
+        "Read the session's recorded video. **The .webm is written only after `close_session`** — calling `get_video` before then returns a structured error pointing at the close requirement. `format:\"path\"` (default) returns the absolute path + on-disk size. `format:\"bytes\"` additionally inlines the file as base64 when under ~1 MiB; larger files return path + `tooLargeToInline:true` so the caller reads them off disk. Returns a structured error if no recorder was wired (no `recordVideo` on `open_session`). Capability `file-io`.",
+      inputSchema: {
+        format: z.enum(["path", "bytes"]).optional().describe("`path` (default) returns absolute path + size. `bytes` additionally inlines the file as base64 when under ~1 MiB."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ format, session }) => {
+      const g = gateCheck("get_video"); if (g) return g;
+      try {
+        const e = await entryFor(session);
+        if (e.mode === "attached") {
+          return errText(
+            "get_video",
+            new Error(
+              "get_video: not supported on attached / BYOB sessions — recordVideo is " +
+              "a context-creation primitive and was refused at session-open time on " +
+              "this session. Open a managed session with {recordVideo:{...}} to record.",
+            ),
+          );
+        }
+        if (!e.video.active || !e.video.targetPath) {
+          return errText(
+            "get_video",
+            new Error(
+              "get_video: no video recorder is active on this session. Video must be " +
+              "wired at session creation via `open_session({recordVideo:{...}})`.",
+            ),
+          );
+        }
+        const r = readVideoIfReady(e.video.targetPath, format ?? "path", VIDEO_INLINE_CAP_BYTES);
+        if (!r.exists) {
+          return errText(
+            "get_video",
+            new Error(
+              `get_video: the .webm is not yet on disk at "${e.video.targetPath}". ` +
+              "Playwright finalizes recordVideo only when the context closes. " +
+              "Call `close_session` to flush, then re-call `get_video`.",
+            ),
+          );
+        }
+        return okText({
+          ok: true,
+          session: e.id,
+          path: r.path,
+          bytes: r.bytes ?? 0,
+          format: format ?? "path",
+          ...(r.inlineBase64 !== undefined ? { videoBase64: r.inlineBase64 } : {}),
+          ...(r.tooLargeToInline ? { tooLargeToInline: true } : {}),
+          hint: r.inlineBase64 !== undefined
+            ? "Video bytes inlined as base64 (under the 1 MiB inline cap). Decode and pipe to a .webm consumer."
+            : r.tooLargeToInline
+              ? "Video exceeds the 1 MiB inline cap. Read it off disk at `path`."
+              : "Video on disk. Read it at `path`, or re-call with `format:\"bytes\"` for inline base64 (under-cap files only).",
+        });
+      } catch (err) { return errText("get_video", err); }
+    },
+  );
+
   register(
     "hover",
     {
@@ -4066,9 +4241,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         hars: z.array(z.string()).optional().describe(
           "REPLAY HAR file(s) — workspace-rooted paths. Each is wired via `context.routeFromHAR(file, {notFound:\"fallback\"})` immediately after context creation: requests in the archive are served from it, anything missing falls through to the live network. Path traversal rejected; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.",
         ),
+        recordVideo: z.object({
+          path: z.string().optional()
+            .describe("Workspace-rooted .webm file path. Default: `<workspace>/videos/<session-id>-<ISO>.webm`. Path traversal outside `$BROWX_WORKSPACE` is rejected."),
+          size: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }).optional()
+            .describe("Recorded video frame size. Defaults to the viewport scaled to fit 800x800 (Playwright default)."),
+        }).optional().describe(
+          "Record session video for the lifetime of this session via Playwright's native `recordVideo` context option. The .webm is finalized when the session closes (Playwright constraint — there is no mid-context flush). `stop_video` signals intent + reserves the target path; `get_video` reads the file after `close_session`. Honoured on `persistent` + `incognito` (we own the context); refused on `attached` (consumer's Chrome is not-owned). Capability `file-io` on the stop/get tools.",
+        ),
       },
     },
-    async ({ session, mode, profile, device, viewport, dialogPolicy, storageState, authState, har, hars }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy, storageState, authState, har, hars, recordVideo }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
@@ -4079,15 +4262,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars });
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
         const harField = e.har.path
           ? { har: { path: e.har.path, mode: e.har.mode, content: e.har.content, nativeRecord: !!e.har.nativeRecord, finalizesOn: "close_session" as const } }
           : {};
         const replayField = hars && hars.length ? { harsReplay: hars.length } : {};
+        const videoField = e.video.active && e.video.targetPath
+          ? { video: { path: e.video.targetPath, size: e.video.size, finalizesOn: "close_session" as const } }
+          : {};
         return {
           content: [{
             type: "text" as const,
-            text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString(), ...harField, ...replayField }, null, 2),
+            text: JSON.stringify({ ok: true, session: e.id, mode: e.mode, url: e.session.page().url(), openedAt: new Date(e.openedAt).toISOString(), ...harField, ...replayField, ...videoField }, null, 2),
           }],
         };
       } catch (err) {
@@ -5324,6 +5510,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "session_metrics",
     "network_emulate", "cpu_emulate", "clock", "seed_random",
     "start_har", "stop_har",
+    "stop_video", "get_video",
     "perf_start", "perf_stop", "perf_insights",
     "heap_snapshot", "heap_retainers",
   ]);

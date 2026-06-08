@@ -48,6 +48,17 @@ export interface SessionOptions {
     content?: "embed" | "attach" | "omit";
     urlFilter?: string | RegExp;
   };
+  /** Enable video recording at context creation via Playwright's native
+   *  `recordVideo` context option. Honoured by managed + incognito (we own
+   *  the context); ignored on BYOB/attached (not-owned). The .webm is
+   *  finalized by Playwright when the context closes — the registry's
+   *  teardown calls `page.video().saveAs(targetPath)` for a deterministic
+   *  output filename. The `dir` is workspace-rooted by construction
+   *  (resolved upstream — Playwright auto-names the file inside). */
+  recordVideo?: {
+    dir: string;
+    size?: { width: number; height: number };
+  };
   /** Absolute filesystem paths to unpacked Chromium extension directories
    *  (each containing `manifest.json`). Honoured by **persistent (managed)**
    *  launches in **headed** mode only — chromium's `--load-extension` +
