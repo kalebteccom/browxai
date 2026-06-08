@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // `element_export` — save a specific element subtree as a self-contained
 // HTML snippet plus its rendered CSS + linked resources.
 //
@@ -119,60 +120,67 @@ interface SubtreeDiscovery {
 }
 
 /** Page-side discovery function. Receives `el` as the element handle the
- *  Playwright locator resolved to. ECMAScript-only (no TS) — runs in page
- *  context as the body of `loc.evaluate(fn, args)`. */
-const SUBTREE_DISCOVERY_FN = `(el) => {
-  function abs(u) {
+ *  Playwright locator resolved to. Passed as a real function literal (NOT
+ *  a stringified expression) — `locator.evaluate(stringExpr)` evaluates
+ *  the string in page context but returns the function value uncalled,
+ *  which CDP can't serialize → undefined. The function literal is
+ *  serialized by Playwright and invoked in-page with the element.
+ *
+ *  Body uses only DOM types the page context provides (Element + standard
+ *  globals); no TS-only constructs survive serialization. */
+const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
+  function abs(u: string): string | null {
     try { return new URL(u, document.baseURI).href; } catch (_) { return null; }
   }
-  function bgUrls(node) {
-    var out = [];
+  function bgUrls(node: Element): string[] {
+    const out: string[] = [];
     try {
-      var cs = getComputedStyle(node);
-      var bg = cs && cs.backgroundImage;
+      const cs = getComputedStyle(node);
+      const bg = cs && cs.backgroundImage;
       if (bg && bg !== 'none') {
-        var re = /url\\((['"]?)([^'")]+)\\1\\)/g, m;
-        while ((m = re.exec(bg)) !== null) out.push(m[2]);
+        const re = /url\((['"]?)([^'")]+)\1\)/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(bg)) !== null) out.push(m[2]!);
       }
     } catch (_) {}
     return out;
   }
-  var resources = [];
-  var seen = Object.create(null);
-  function push(raw, kind) {
+  const resources: DiscoveredResource[] = [];
+  const seen: Record<string, true> = Object.create(null);
+  function push(raw: string | null | undefined, kind: DiscoveredResource["kind"]): void {
     if (!raw) return;
-    var a = abs(raw);
+    const a = abs(raw);
     if (!a) return;
     if (!/^https?:|^ftp:|^file:/i.test(a)) return;
-    var key = a + '|' + kind;
+    const key = a + '|' + kind;
     if (seen[key]) return;
-    seen[key] = 1;
-    resources.push({ url: a, kind: kind, rawRef: raw });
+    seen[key] = true;
+    resources.push({ url: a, kind, rawRef: raw });
   }
-  function scan(root) {
-    var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll('*')));
-    for (var i = 0; i < nodes.length && i < 5000; i++) {
-      var n = nodes[i];
+  function scan(root: Element): void {
+    const nodes: Element[] = [root, ...Array.from(root.querySelectorAll('*'))];
+    for (let i = 0; i < nodes.length && i < 5000; i++) {
+      const n = nodes[i]!;
       if (n.nodeType !== 1) continue;
-      var tag = (n.tagName || '').toLowerCase();
-      var s = n.getAttribute && n.getAttribute('src');
+      const tag = (n.tagName || '').toLowerCase();
+      const s = n.getAttribute('src');
       if (s) {
-        var k = 'other';
+        let k: DiscoveredResource["kind"] = 'other';
         if (tag === 'img' || tag === 'source') k = 'image';
         else if (tag === 'script') k = 'script';
         else if (tag === 'video' || tag === 'audio' || tag === 'track') k = 'media';
         else if (tag === 'iframe') k = 'other';
         push(s, k);
       }
-      var href = n.getAttribute && n.getAttribute('href');
+      const href = n.getAttribute('href');
       if (href && (tag === 'link' || tag === 'a' || tag === 'use' || tag === 'image')) {
-        var rel = ((n.getAttribute && n.getAttribute('rel')) || '').toLowerCase();
-        var hk = 'other';
+        const rel = (n.getAttribute('rel') || '').toLowerCase();
+        let hk: DiscoveredResource["kind"] = 'other';
         if (tag === 'link') {
           if (rel.indexOf('stylesheet') !== -1) hk = 'stylesheet';
           else if (rel.indexOf('icon') !== -1) hk = 'image';
           else {
-            var asAttr = ((n.getAttribute && n.getAttribute('as')) || '').toLowerCase();
+            const asAttr = (n.getAttribute('as') || '').toLowerCase();
             if (asAttr === 'font') hk = 'font';
             else if (asAttr === 'script') hk = 'script';
             else if (asAttr === 'image') hk = 'image';
@@ -180,54 +188,46 @@ const SUBTREE_DISCOVERY_FN = `(el) => {
           }
           push(href, hk);
         } else if (tag === 'image' || tag === 'use') {
-          // SVG <image href=> / <use href=> — best effort, treat as image.
           push(href, 'image');
         }
-        // <a href=> intentionally NOT pushed: links are not embedded resources.
       }
-      var ss = n.getAttribute && n.getAttribute('srcset');
+      const ss = n.getAttribute('srcset');
       if (ss) {
-        var first = ss.split(',')[0].trim().split(/\\s+/)[0];
+        const first = ss.split(',')[0]!.trim().split(/\s+/)[0];
         if (first) push(first, 'image');
       }
-      var poster = n.getAttribute && n.getAttribute('poster');
+      const poster = n.getAttribute('poster');
       if (poster) push(poster, 'image');
-      var bgs = bgUrls(n);
-      for (var j = 0; j < bgs.length; j++) push(bgs[j], 'image');
+      const bgs = bgUrls(n);
+      for (const b of bgs) push(b, 'image');
     }
   }
   scan(el);
-  // Collect page-wide stylesheet text. A stylesheet's rules may target the
-  // subtree from afar, so we keep them. Cross-origin sheets without CORS
-  // throw on cssRules access — count + carry on.
-  var cssParts = [];
-  var unreadable = 0;
+  const cssParts: string[] = [];
+  let unreadable = 0;
   try {
-    var sheets = document.styleSheets || [];
-    for (var i = 0; i < sheets.length; i++) {
+    const sheets = document.styleSheets;
+    for (let si = 0; si < sheets.length; si++) {
       try {
-        var rules = sheets[i].cssRules;
+        const rules = sheets[si]!.cssRules;
         if (!rules) { unreadable++; continue; }
-        var part = '';
-        for (var j = 0; j < rules.length; j++) {
-          part += rules[j].cssText + '\\n';
+        let part = '';
+        for (let ri = 0; ri < rules.length; ri++) {
+          part += rules[ri]!.cssText + '\n';
         }
         cssParts.push(part);
-      } catch (e) {
-        // SecurityError on cross-origin stylesheets without CORS.
+      } catch (_) {
         unreadable++;
       }
     }
   } catch (_) {}
-  // Inline <style> blocks — already covered via cssRules iteration above,
-  // but iterate explicitly for safety in case browser exposes them differently.
   return {
     html: el.outerHTML || '',
-    css: cssParts.join('\\n'),
+    css: cssParts.join('\n'),
     unreadableStylesheets: unreadable,
-    resources: resources,
+    resources,
   };
-}`;
+};
 
 /** Build the page-side fetch script — identical posture to
  *  `archive.ts::buildFetchScript`. We import it here rather than the
@@ -382,10 +382,12 @@ function directorySize(dir: string): number {
 
 /** Thin Locator-shaped adapter so unit tests can stub the page surface
  *  without spawning Chromium. The runner only needs `count` + `evaluate`
- *  on the target element. */
+ *  on the target element. `evaluate` takes a real function (Playwright
+ *  serializes it + invokes in-page with the resolved element) — passing
+ *  a stringified arrow expression returns the function value uncalled. */
 export interface ElementExportLocator {
   count(): Promise<number>;
-  evaluate<T>(fn: string, args?: unknown): Promise<T>;
+  evaluate<T>(fn: (element: Element) => T | Promise<T>): Promise<T>;
 }
 
 /** Thin Page-shaped adapter — used for `page.evaluate(buildFetchScript)`. */
@@ -643,12 +645,8 @@ export async function elementExportFromRef(
   const locator: Locator = locatorFor(page, refs, { ref: args.ref });
   const adapter: ElementExportLocator = {
     count: () => locator.count(),
-    evaluate: <T,>(fn: string, evalArgs?: unknown): Promise<T> =>
-      // Playwright's Locator.evaluate accepts a function or stringified body.
-      // We stringify the discovery function at module top-level, so cast
-      // through `unknown` to keep the public surface a plain string.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (locator as any).evaluate(fn, evalArgs) as Promise<T>,
+    evaluate: <T,>(fn: (element: Element) => T | Promise<T>): Promise<T> =>
+      locator.evaluate(fn),
   };
   const pageAdapter: ElementExportPage = { evaluate: (expr) => page.evaluate(expr) };
   return elementExport(pageAdapter, adapter, workspaceRoot, sessionId, args);

@@ -8,6 +8,25 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`element_export` — `SUBTREE_DISCOVERY_FN` ran as an expression, not a function.**
+  The page-side discovery function was authored as a stringified arrow
+  expression and passed to `Locator.evaluate(stringExpr)`. Playwright
+  evaluated the string in page context — which returns the function value
+  uncalled — and CDP can't serialize a function across the boundary, so
+  the return crossed back as `undefined`. The server-side code then threw
+  `Cannot read properties of undefined (reading 'unreadableStylesheets')`
+  in both `directory` and `single-file` modes. Fix: pass the discovery
+  function as a real TypeScript function literal (`(el: Element) => {...}`)
+  so Playwright serializes the source and invokes in-page with the
+  resolved element — the canonical pattern. A new end-to-end keystone
+  test (`test/keystone/element-export.keystone.test.ts`) exercises both
+  formats against real headless Chromium plus default-path / workspace-
+  escape / ref-not-found — the regression class can't reappear silently.
+  The `ElementExportLocator` adapter interface now takes a real function
+  rather than a string, removing the type-confusion surface.
+
 ## v0.5.0 — 2026-05-30 — Automation completeness (Phase 7)
 
 ### Added

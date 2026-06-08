@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -24,7 +25,7 @@ function fakeLocator(opts: {
     async count(): Promise<number> {
       return opts.count ?? 1;
     },
-    async evaluate<T>(_fn: string): Promise<T> {
+    async evaluate<T>(_fn: (element: Element) => T | Promise<T>): Promise<T> {
       return {
         html: opts.html,
         css: opts.css,
