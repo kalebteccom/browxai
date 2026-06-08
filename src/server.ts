@@ -2415,10 +2415,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "click",
     {
       description:
-        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). Returns an ActionResult.",
+        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). `force:true` skips Playwright's actionability checks (visibility / stability / receives-events / hit-test) — escape hatch for perpetually-busy SPAs where rAF loops + frequent re-renders make the stability check thrash forever; use only on targets you've verified clickable via snapshot/find first. Returns an ActionResult.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         button: z.enum(["left", "right", "middle"]).optional().describe("Mouse button (default: left)"),
+        force: z.boolean().optional().describe("Skip actionability checks (visibility/stability/receives-events). Use sparingly — only for known-clickable targets on perpetually-busy SPAs where Playwright's stability check thrashes forever."),
         ...ACTION_OPTS,
       },
     },
@@ -2429,7 +2430,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!c.ok) return denyContent("click", c);
       const target = asTarget(args, "click", e.refs);
       const td = actionTimeout(args);
-      return asActionResultText(actions.click(ctxFor(e), { target, button: args.button, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
+      return asActionResultText(actions.click(ctxFor(e), { target, button: args.button, force: args.force, mode: args.mode, maxResultTokens: args.maxResultTokens, recordingHint: hintFromTarget(e, target), deadlineMs: td.ms, deadlineWarning: td.warning }));
     },
   );
 
@@ -4955,7 +4956,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "idb_get",
     {
       description:
-        "Get the value at a key in an object store. Returns `{found:true, value}` or `{found:false}`. KEY SHAPES: IDB natively accepts strings, numbers, dates, and arrays as keys — all four shapes round-trip through JSON cleanly (Dates as ISO strings; pass the ISO string back in on subsequent calls). VALUE SHAPES: IDB stores structured-clonable values (Blob/ArrayBuffer/Map/Set/Date), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error (the platform value is preserved IN the store; it just can't ride the wire). For binary payloads, store them base64-encoded at the app level. Origin-scoped — navigate first. Read-only.",
+        "Get the value at a key in an object store. Returns `{found:true, value}` or `{found:false}`. KEY SHAPES: IDB natively accepts strings, numbers, dates, and arrays as keys — all four shapes round-trip through JSON cleanly (Dates as ISO strings; pass the ISO string back in on subsequent calls). VALUE SHAPES: IDB stores structured-clonable values (Blob/ArrayBuffer/Map/Set/Date), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error (the platform value is preserved IN the store; it just can't ride the wire). For binary payloads, store them base64-encoded at the app level. **JSON-string fidelity**: if the app under test stored a value via `JSON.stringify(obj)` (a localStorage-habit common in older code), `idb_get` returns the raw JSON STRING verbatim — IDB faithfully preserves shape, and browxai does NOT auto-detect-and-parse stringified values because some apps legitimately store JSON strings as strings. Call-site responsibility: `JSON.parse` if you expect an object. The companion `idb_put` warning surfaces the opposite footgun (an MCP client double-encoding the input). Origin-scoped — navigate first. Read-only.",
       inputSchema: {
         dbName: z.string().describe("Database name."),
         storeName: z.string().describe("Object store name (must exist)."),

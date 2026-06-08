@@ -79,6 +79,8 @@ Omitting `session` resolves to the lazily-created `"default"` session — byte-i
 
 Different ids are always isolated browser contexts regardless of mode, so multi-user / multiplayer scenarios don't bleed. `profile` (persistent only) lets two ids share a profile dir, or pin a stable name.
 
+**MCP-server restart vs Chrome lifecycle (gotcha).** In `persistent` and `incognito` modes browxai spawns Chromium as a **child process of the MCP server**. When the MCP client (e.g. Claude Code) restarts the MCP server — for a config edit, a code reload, or simply because the user re-invoked the server — that Chrome child process dies with it, and any active page state is gone. The next browxai instance starts fresh; if a stored ref points at a now-dead page you'll see `about:blank` or a fresh document instead of the page you were on. **Recovery posture**: for adopters who need page state to survive MCP-server restarts, run Chrome separately (`google-chrome --remote-debugging-port=9222 --user-data-dir=$BROWX_WORKSPACE/byob-profile`) and connect browxai via `BROWX_ATTACH_CDP=http://127.0.0.1:9222`. The attached Chrome is **not-owned** and survives browxai restarts cleanly. (Tracked: making managed-mode Chrome detach-spawn an opt-in flag is queued as a future cycle — see `feedback_chrome_child_dies_with_server`.)
+
 **Device / viewport** (W-H6):
 
 - `open_session({ device })` — a Playwright device-preset name (`"iPhone 14"`, `"Pixel 7"`, `"Desktop Chrome"`, … — any name in Playwright's `devices` registry) → viewport + `deviceScaleFactor` + `isMobile` + `hasTouch` + `userAgent`.

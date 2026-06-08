@@ -19,7 +19,7 @@ import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.j
 // by the inner op too (not just the outer race in runInActionWindow).
 const DEFAULT_TIMEOUT_MS = 5_000;
 
-export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; }
+export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; force?: boolean; }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "click", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
@@ -41,7 +41,13 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       };
     }
     const pre = await preProbe(resolved.loc);
-    await resolved.loc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS, button: args.button });
+    // `force: true` skips Playwright's actionability checks (visibility,
+    // stability, receives-events, hit-test) — the click event fires
+    // unconditionally. Escape hatch for perpetually-busy SPAs where rAF
+    // loops + frequent re-renders make the stability check thrash forever
+    // even though the target is logically clickable. Use only on targets
+    // verified clickable by snapshot / find first.
+    await resolved.loc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS, button: args.button, force: args.force });
     return probe(resolved.loc, args.target, undefined, pre);
   });
 }
