@@ -164,6 +164,11 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // CDP-reported state per permission (granted/denied/prompt). Same
   // posture as `console_read` / `network_read`.
   permission_state: "read",
+  // per-session notification-construction policy mutator. Sibling of
+  // `set_permission_policy`: governs `new Notification(...)` constructor
+  // calls (distinct from the permission check, which lives in
+  // permission_policy). Registers under `action` — no new capability.
+  set_notification_policy: "action",
   mouse_down: "action",
   mouse_move: "action",
   mouse_up: "action",

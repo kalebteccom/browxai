@@ -182,6 +182,27 @@ surface" covers.
   is the useful unit). Returns
   `{ ok, intoDir, trigger, capturedAt: [ms…], paths: […], warnings: […], tokensEstimate }`.
   Capability: `file-io`.
+- **`set_notification_policy({ mode, session? })`** — per-session policy for
+  the `new Notification(title, opts)` *constructor*. Sibling of
+  `set_permission_policy` (which gates `Notification.requestPermission` / the
+  permission check); the two policies compose — `permissionPolicy.notifications`
+  controls whether the page MAY notify, `notificationPolicy` controls what
+  happens when it actually constructs one. Four modes: `allow` (DEFAULT —
+  browser default; constructor proceeds, OS displays per its settings) /
+  `deny` (constructor throws `NotAllowedError`) / `raise` (constructor throws
+  AND flips next action's `ok:false` with the unhandled-notification hint) /
+  `ask-human` (server blocks on `__browx.confirm(true|false)` via the
+  `await_human({kind:"confirm"})` mechanism). Captured calls surface on
+  `ActionResult.notifications[] = [{title, body?, icon?, tag?, timestamp,
+  origin?, handledAs}]` — `body`/`icon`/`tag` are the documented subset of
+  `NotificationOptions` captured; the rest are dropped to bound the result.
+  Persists across navigation. Init-script wraps the constructor with a fresh
+  prototype so platform accessor-only properties don't shadow our writes —
+  `instanceof Notification` returns false for the wrapped stub (rare in
+  practice). Capability: `action`.
+- **`open_session({ notificationPolicy })`** — additive schema extension. Accepts
+  either the compact string form (`"allow"`/`"deny"`/`"raise"`/`"ask-human"`)
+  or `{mode}`. Mutable at runtime via `set_notification_policy`.
 - **`set_permission_policy({ mode, perPermission?, session? })`** — per-session
   permission policy mirroring `set_dialog_policy`. Governs page-side
   permission requests (`getUserMedia`, `navigator.geolocation.

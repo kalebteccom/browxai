@@ -4,6 +4,7 @@ import { WedgeTracker } from "./wedge.js";
 import { SessionMetrics } from "./metrics.js";
 import { DialogPolicyState } from "./dialog.js";
 import { PermissionPolicyState } from "./permission.js";
+import { NotificationPolicyState } from "./notification.js";
 import { newEmulationState } from "./emulation.js";
 import { newHarRecorderState } from "../page/har.js";
 import { newVideoRecorderState } from "../page/video.js";
@@ -51,6 +52,7 @@ function fakeEntry(id: string): SessionEntry {
     metrics: new SessionMetrics(),
     dialog: new DialogPolicyState(),
     permission: new PermissionPolicyState(),
+    notification: new NotificationPolicyState(),
     deviceEmulation: newEmulationState(),
     har: newHarRecorderState(),
     video: newVideoRecorderState(),

@@ -26,6 +26,7 @@ import type { WedgeTracker } from "./wedge.js";
 import type { SessionMetrics } from "./metrics.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { PermissionPolicy, PermissionPolicyState } from "./permission.js";
+import type { NotificationPolicy, NotificationPolicyState } from "./notification.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
@@ -102,6 +103,16 @@ export interface SessionEntry {
    *  `set_permission_policy`; persists across navigation (init-script is
    *  re-injected on every new document). Capability `action`. */
   permission: PermissionPolicyState;
+  /** per-session notification policy + per-context binding/init-script
+   *  bookkeeping. Sibling of `permission`: governs `new Notification(...)`
+   *  *constructor* calls (the page actually attempting to notify the human).
+   *  Distinct from `permission.notifications` — that gates the W3C permission
+   *  check (`Notification.requestPermission` + `Notification.permission`),
+   *  this gates the constructor surface. The two policies compose. Default
+   *  `allow` (browser default — most apps expect the constructor to succeed).
+   *  Mutable at runtime via `set_notification_policy`; persists across
+   *  navigation. Capability `action`. */
+  notification: NotificationPolicyState;
   /** Per-primitive runtime device-emulation state (locale, timezone,
    *  geolocation, colour scheme, reduced motion, user-agent, permissions).
    *  Mutated by the 7 `set_*` / `grant_permissions` tools and re-applied
@@ -179,6 +190,12 @@ export interface OpenSpec {
    *  Mutable at runtime via `set_permission_policy`; see
    *  src/session/permission.ts. */
   permissionPolicy?: PermissionPolicy;
+  /** initial notification policy for this session (default `{mode:"allow"}`).
+   *  Governs `new Notification(...)` constructor calls (distinct from the
+   *  permission check, which lives in `permissionPolicy.notifications`).
+   *  Mutable at runtime via `set_notification_policy`; see
+   *  src/session/notification.ts. */
+  notificationPolicy?: NotificationPolicy;
   /** Seed the new context's storage state at creation (bulk layer).
    *  Either an inline blob (as returned by `dump_storage_state`) or a
    *  workspace-rooted JSON path. Mutually exclusive with `authState`.

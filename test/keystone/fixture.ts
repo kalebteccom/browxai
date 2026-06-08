@@ -83,6 +83,14 @@ const PAGE = `<!doctype html>
       Drop files here
     </div>
     <output data-testid="drop-log" id="dropLog">undropped</output>
+    <!-- notification_policy keystone: a click constructs new Notification(...)
+         which is intercepted by attachNotificationPolicy's init-script wrapper.
+         The button records whether the constructor returned (allow / ask-human)
+         or threw NotAllowedError (deny / raise), so the keystone can assert
+         the constructor surface tracks the policy. -->
+    <button data-testid="notif-btn" id="notifBtn" type="button"
+            onclick="showNotif()">Show notification</button>
+    <output data-testid="notif-result" id="notifResult">unset</output>
 
     <!-- Touch keystone: a div that records touch events in a tagged
          output so the keystone can assert touchstart / touchend actually fire
@@ -182,6 +190,16 @@ const PAGE = `<!doctype html>
         function (pos) { out.textContent = 'allowed lat=' + pos.coords.latitude + ' lng=' + pos.coords.longitude; },
         function (err) { out.textContent = 'denied code=' + err.code; }
       );
+    }
+    function showNotif() {
+      var out = document.getElementById('notifResult');
+      if (typeof Notification === 'undefined') { out.textContent = 'no-notif-api'; return; }
+      try {
+        var n = new Notification('hello', { body: 'world', icon: 'i.png', tag: 'kt' });
+        out.textContent = 'constructed title=' + n.title;
+      } catch (e) {
+        out.textContent = 'threw name=' + e.name;
+      }
     }
     // Phase 7 — Shadow DOM keystone fixtures.
     // open-widget: attachShadow({mode:"open"}) — Element.shadowRoot returns

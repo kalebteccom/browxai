@@ -60,6 +60,13 @@ import {
   type PermissionPolicy,
   type SupportedPermission,
 } from "./session/permission.js";
+import {
+  NotificationPolicyState,
+  attachNotificationPolicy,
+  parseNotificationPolicyArg,
+  propagateSyncDecision as propagateNotificationSyncDecision,
+  type NotificationPolicy,
+} from "./session/notification.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot, composeSnapshotForFrame } from "./page/compose.js";
@@ -602,6 +609,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         },
       );
       await applyPermissionCdpBaseline(sess.page().context(), permissionState).catch(() => undefined);
+      // Notification-construction policy — install per-context wrapper +
+      // binding around `new Notification(...)`. Default `allow` preserves
+      // browser default (constructor proceeds; OS displays per its settings)
+      // while still surfacing every call on ActionResult.notifications[].
+      // Distinct policy from `permissionPolicy.notifications` — that one
+      // governs the permission *request* (`Notification.requestPermission`),
+      // this one governs the *constructor* (`new Notification()`); they
+      // compose. Best-effort: install failures still leave the browser-default
+      // path in place (the wrapper falls through when the binding is missing).
+      const notificationState = new NotificationPolicyState(spec?.notificationPolicy ?? { mode: "allow" });
+      await attachNotificationPolicy(
+        sess.page().context(),
+        notificationState,
+        async (n) => {
+          log.info(`notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`);
+          try {
+            const sig = await br.awaitSignal("respond", 300_000);
+            const data = sig.data as { kind?: string; value?: unknown } | null;
+            if (data && data.kind === "confirm" && data.value === true) return "allow";
+            return "deny";
+          } catch {
+            return "deny";
+          }
+        },
+      );
       // Per-session download capture. Storage dir is workspace-rooted +
       // per-session — kept off the public profile dir so cleaning up captured
       // artefacts is a single rmdir without touching the profile. The
@@ -690,6 +722,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         metrics: new SessionMetrics(),
         dialog: dialogState,
         permission: permissionState,
+        notification: notificationState,
         deviceEmulation,
         har: harState,
         video: videoState,
@@ -800,6 +833,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     ws: e.ws,
     dialog: e.dialog,
     permission: e.permission,
+    notification: e.notification,
     // pass the secrets registry only when the capability is on; the
     // registry exists per-session regardless (kept on SessionEntry so
     // setters wired at creation can reference it), but the action layer
@@ -4973,7 +5007,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             perPermission: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional(),
           }),
         ]).optional()
-          .describe("How the session handles page-side permission requests (camera, microphone, geolocation, notifications, clipboard, sensors). String form sets the top-level mode (\"allow\"|\"deny\"|\"raise\"|\"ask-human\"); object form takes `{mode, perPermission?:{<name>:<mode>}}` for per-permission overrides. DEFAULT \"raise\" — request rejected page-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a permission request never silently changes app state under an unaware caller. Mutate at runtime with `set_permission_policy`."),
+          .describe("How the session handles page-side permission requests (camera, microphone, geolocation, notifications, clipboard, sensors). String form sets the top-level mode (\"allow\"|\"deny\"|\"raise\"|\"ask-human\"); object form takes `{mode, perPermission?:{<name>:<mode>}}` for per-permission overrides. DEFAULT \"raise\" — request rejected page-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a permission request never silently changes app state under an unaware caller. Mutate at runtime with `set_permission_policy`. NOTE: governs the *permission check* (`Notification.requestPermission`) only — the `new Notification(...)` constructor surface is governed separately by `notificationPolicy`."),
+        notificationPolicy: z.union([
+          z.string(),
+          z.object({ mode: z.enum(["allow", "deny", "raise", "ask-human"]) }),
+        ]).optional()
+          .describe("How the session handles `new Notification(title, opts)` constructor calls. String form sets the mode; object form is `{mode}`. Modes mirror permissionPolicy. DEFAULT \"allow\" (browser default — constructor proceeds, OS displays per its settings) — but every call is still captured on `ActionResult.notifications[]` for observability. Distinct from `permissionPolicy.notifications` (which gates the W3C permission check); the two policies compose. Mutate at runtime with `set_notification_policy`."),
         storageState: z.union([
           z.string(),
           z.object({
@@ -5011,20 +5050,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         ),
       },
     },
-    async ({ session, mode, profile, device, viewport, dialogPolicy, permissionPolicy, storageState, authState, har, hars, recordVideo }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy, permissionPolicy, notificationPolicy, storageState, authState, har, hars, recordVideo }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
       let parsedDialogPolicy: DialogPolicy | undefined;
       let parsedPermissionPolicy: PermissionPolicy | undefined;
+      let parsedNotificationPolicy: NotificationPolicy | undefined;
       try {
         parsedDialogPolicy = dialogPolicy ? parseDialogPolicyArg(dialogPolicy) : undefined;
         parsedPermissionPolicy = permissionPolicy ? parsePermissionPolicyArg(permissionPolicy as string | PermissionPolicy) : undefined;
+        parsedNotificationPolicy = notificationPolicy ? parseNotificationPolicyArg(notificationPolicy as string | NotificationPolicy) : undefined;
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, permissionPolicy: parsedPermissionPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, permissionPolicy: parsedPermissionPolicy, notificationPolicy: parsedNotificationPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
         const harField = e.har.path
           ? { har: { path: e.har.path, mode: e.har.mode, content: e.har.content, nativeRecord: !!e.har.nativeRecord, finalizesOn: "close_session" as const } }
           : {};
@@ -5205,6 +5246,39 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           states: out,
           tokensEstimate: estimateTokens(JSON.stringify(out)),
         };
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "set_notification_policy",
+    {
+      description:
+        "Mutate the session's notification policy at runtime. Governs `new Notification(title, opts)` *constructor* calls — the page actually attempting to display a notification. Distinct from `set_permission_policy` (which gates `Notification.requestPermission` and the `Notification.permission` state); the two policies compose. Modes:\n" +
+        "  - \"allow\"     — DEFAULT (browser default). Constructor proceeds; the OS displays per its own settings. Every call is still captured on `ActionResult.notifications[]` for observability.\n" +
+        "  - \"deny\"      — Constructor throws `NotAllowedError` (the same exception the browser raises when permission is denied). Use to suppress OS notifications while still observing what the page would have shown.\n" +
+        "  - \"raise\"     — Constructor throws AND RECORDS; the next ActionResult flips `ok:false` with `failure:{source:\"app\", hint:\"unhandled notification — set notificationPolicy\"}`. Useful when notifications should be a hard signal that the action triggered an unexpected user-facing event.\n" +
+        "  - \"ask-human\" — server blocks on `__browx.confirm(true|false)` (the `await_human({kind:\"confirm\"})` mechanism), then resolves to allow/deny per the human's answer. The constructor returns a stub synchronously (the spec requires a sync return); the real OS notification fires once the human-decision resolves.\n" +
+        "Persists across navigation: the init-script is re-injected on every new document within the session. Returns the resolved policy. Captured calls surface on `ActionResult.notifications[] = [{title, body?, icon?, tag?, timestamp, origin?, handledAs}]`.",
+      inputSchema: {
+        mode: z.enum(["allow", "deny", "raise", "ask-human"]).describe("Policy mode — see tool description."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("set_notification_policy"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const next: NotificationPolicy = { mode: args.mode };
+        const resolved = e.notification.set(next);
+        // Push the new sync-decision hint to every live page so the
+        // constructor's throw timing tracks the policy without a reload.
+        await propagateNotificationSyncDecision(e.session.page().context(), e.notification).catch(() => undefined);
+        const tokensEstimate = estimateTokens(JSON.stringify(resolved));
+        const body = { ok: true, session: e.id, policy: resolved, tokensEstimate };
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
@@ -5976,6 +6050,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       },
     );
     await applyPermissionCdpBaseline(sess.page().context(), e.permission).catch(() => undefined);
+    // Re-attach notification-constructor policy on the rebuilt context. The
+    // state's wired-contexts WeakSet ensures the new context is treated as
+    // fresh (the old one was torn down), so the binding + init-script install
+    // afresh and the sync-decision hint is re-seeded.
+    await attachNotificationPolicy(
+      sess.page().context(),
+      e.notification,
+      async (n) => {
+        log.info(`notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`);
+        try {
+          const sig = await br.awaitSignal("respond", 300_000);
+          const data = sig.data as { kind?: string; value?: unknown } | null;
+          if (data && data.kind === "confirm" && data.value === true) return "allow";
+          return "deny";
+        } catch {
+          return "deny";
+        }
+      },
+    );
     await applyOverlayHide(
       sess.page().context(),
       configStore.resolve().hideOverlaySelectors,

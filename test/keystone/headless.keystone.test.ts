@@ -462,6 +462,99 @@ describe("headless-CI keystone — permission_policy (geolocation, real Chromium
   );
 });
 
+// notification_policy keystone — exercises the full stack against a real
+// Chromium: the page's `new Notification(...)` constructor is intercepted
+// by attachNotificationPolicy's init-script wrapper, captured on
+// ActionResult.notifications[], and the policy mode controls whether the
+// constructor returns or throws NotAllowedError. This is the constructor-
+// surface analog of the permission_policy keystone above (which covers
+// Notification.requestPermission / the permission check — disjoint surface).
+describe("headless-CI keystone — notification_policy (Notification constructor, real Chromium)", () => {
+  it(
+    "allow → constructor returns + recorded; deny → throws + recorded; raise flips ok:false",
+    async () => {
+      const session = "ks-notif";
+      // Open with notificationPolicy:"allow" so the constructor returns;
+      // permissionPolicy:"allow" (no "raise" deadlock) so the page side has
+      // permission to construct in the first place.
+      await callJson("open_session", {
+        session, mode: "incognito",
+        permissionPolicy: "allow",
+        notificationPolicy: "allow",
+      });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // (1) allow — the constructor returns a stub; notifications[] captures
+      // the call.
+      const clickAllow = await callJson<{
+        ok: boolean;
+        notifications?: Array<{ title: string; body?: string; tag?: string; handledAs: string }>;
+      }>("click", { session, selector: '[data-testid="notif-btn"]' });
+      expect(Array.isArray(clickAllow.notifications)).toBe(true);
+      const nAllow = clickAllow.notifications!.find((n) => n.title === "hello");
+      expect(nAllow, "Notification constructor captured under allow").toBeTruthy();
+      expect(nAllow!.handledAs).toBe("allowed");
+      expect(nAllow!.body).toBe("world");
+      expect(nAllow!.tag).toBe("kt");
+      // The page-side result text shows the stub's `title` property was
+      // readable.
+      let outText = "";
+      for (let i = 0; i < 30 && !outText.includes("constructed"); i++) {
+        outText = await callText("snapshot", { session });
+        if (outText.includes("constructed title=hello")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(outText).toMatch(/constructed title=hello/);
+
+      // (2) flip to deny — the constructor throws NotAllowedError.
+      const setDeny = await callJson<{ ok: boolean; policy: { mode: string } }>(
+        "set_notification_policy", { session, mode: "deny" },
+      );
+      expect(setDeny.ok).toBe(true);
+      expect(setDeny.policy.mode).toBe("deny");
+
+      const clickDeny = await callJson<{
+        ok: boolean;
+        notifications?: Array<{ title: string; handledAs: string }>;
+      }>("click", { session, selector: '[data-testid="notif-btn"]' });
+      expect(Array.isArray(clickDeny.notifications)).toBe(true);
+      // The denied call's async binding records `handledAs: "denied"`; the
+      // sync throw fires from the wrapper's pre-check hint.
+      const nDeny = clickDeny.notifications!.find((n) => n.title === "hello");
+      expect(nDeny, "deny call captured").toBeTruthy();
+      let denyText = "";
+      for (let i = 0; i < 30 && !denyText.includes("threw"); i++) {
+        denyText = await callText("snapshot", { session });
+        if (denyText.includes("threw name=NotAllowedError")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(denyText).toMatch(/threw name=NotAllowedError/);
+
+      // (3) flip to raise — the constructor throws + flips ok:false on the
+      // next action with the documented hint.
+      const setRaise = await callJson<{ ok: boolean; policy: { mode: string } }>(
+        "set_notification_policy", { session, mode: "raise" },
+      );
+      expect(setRaise.ok).toBe(true);
+      expect(setRaise.policy.mode).toBe("raise");
+
+      const clickRaise = await callJson<{
+        ok: boolean;
+        notifications?: Array<{ title: string; handledAs: string }>;
+        failure?: { source: string; hint: string };
+      }>("click", { session, selector: '[data-testid="notif-btn"]' });
+      expect(clickRaise.ok).toBe(false);
+      expect(clickRaise.failure?.source).toBe("app");
+      expect(clickRaise.failure?.hint).toMatch(/notification/i);
+      const nRaise = clickRaise.notifications!.find((n) => n.title === "hello");
+      expect(nRaise?.handledAs).toBe("raised");
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Phase-7 frame-scoped observation — exercises frames_list, frame-scoped
 // snapshot, frame-scoped find, and a frame-scoped action that fires inside
 // the iframe (state mutation observable in a follow-up frame-scoped snapshot).

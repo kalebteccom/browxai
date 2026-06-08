@@ -20,6 +20,8 @@ import type { DialogPolicyState, DialogRecord } from "../session/dialog.js";
 import { UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
 import type { PermissionPolicyState, PermissionRecord } from "../session/permission.js";
 import { UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
+import type { NotificationPolicyState, NotificationRecord } from "../session/notification.js";
+import { UNHANDLED_NOTIFICATION_HINT } from "../session/notification.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -205,6 +207,31 @@ export interface ActionResult {
     origin?: string;
     handledAs: PermissionRecord["handledAs"];
   }>;
+  /** `new Notification(title, opts)` constructor calls the page made during
+   *  this action window. Each entry carries the constructor arguments
+   *  (title + the documented subset of `NotificationOptions`: body, icon,
+   *  tag), the page origin at construction time, and what the server's
+   *  per-session `notificationPolicy` did with it (`allowed`, `denied`,
+   *  `raised`, or `asked-human` — see `set_notification_policy`).
+   *  Independent of `ok`: `allow`/`deny`/`ask-human` resolve the call and
+   *  the action proceeds; `raise` mode rejects page-side AND flips `ok` to
+   *  false with `failure.source:"app"`. Empty/absent when none.
+   *
+   *  Coordination with `permissionRequests[]`: the two surfaces are
+   *  disjoint. `permissionRequests[].permission === "notifications"` is the
+   *  page asking *whether it MAY notify* (`Notification.requestPermission`);
+   *  `notifications[]` is the page actually *constructing* a notification
+   *  (`new Notification(...)`). Both can fire in one action — typical apps
+   *  call requestPermission once at startup, then construct freely. */
+  notifications?: Array<{
+    title: string;
+    body?: string;
+    icon?: string;
+    tag?: string;
+    timestamp: number;
+    origin?: string;
+    handledAs: NotificationRecord["handledAs"];
+  }>;
   /** Files the page initiated as downloads during this action window —
    *  populated only when per-session capture has been turned on via
    *  `downloads_capture({on:true})` (capability `file-io`); absent otherwise.
@@ -267,6 +294,12 @@ export interface ActionContext {
    *  `ActionResult.permissionRequests[]`; if any fired under `raise` mode the
    *  action is marked failed with the documented hint. */
   permission?: PermissionPolicyState;
+  /** per-session notification policy state. When present, `new
+   *  Notification(...)` constructor calls that fired during the action
+   *  window are sliced into `ActionResult.notifications[]`; if any fired
+   *  under `raise` mode the action is marked failed with
+   *  `UNHANDLED_NOTIFICATION_HINT`. */
+  notification?: NotificationPolicyState;
   /** per-session secrets registry (capability `secrets`). When non-null,
    *  the action-window NetworkTap masks egressing URLs / mutation
    *  responseShape keys against any registered real-values. The action's
@@ -414,6 +447,20 @@ export async function runInActionWindow(
     failure = { source: "app", hint: UNHANDLED_PERMISSION_HINT };
   }
 
+  // notification-construction capture — every `new Notification(...)` the
+  // page invoked during the action window is sliced off the per-session
+  // buffer (NotificationPolicyState). Same posture as the permission slice:
+  // `raise` mode flips ok to false with a stable hint. Default `allow`
+  // preserves typical app behaviour (the OS displays per its settings) and
+  // still populates `notifications[]` for observability.
+  const notificationSlice = ctx.notification ? ctx.notification.since(tBefore) : [];
+  const notificationRaised = ctx.notification ? ctx.notification.raisedSince(tBefore) : false;
+  if (notificationRaised && ok) {
+    ok = false;
+    error = error ?? UNHANDLED_NOTIFICATION_HINT;
+    failure = { source: "app", hint: UNHANDLED_NOTIFICATION_HINT };
+  }
+
   // --- shape ---
   const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
   const structure = diffRegions(preRegions, postRegions);
@@ -486,6 +533,21 @@ export async function runInActionWindow(
       })
     : undefined;
 
+  const notificationsBlock = notificationSlice.length > 0
+    ? notificationSlice.map((n) => {
+        const out: {
+          title: string; body?: string; icon?: string; tag?: string;
+          timestamp: number; origin?: string;
+          handledAs: NotificationRecord["handledAs"];
+        } = { title: n.title, timestamp: n.timestamp, handledAs: n.handledAs };
+        if (n.body !== undefined) out.body = n.body;
+        if (n.icon !== undefined) out.icon = n.icon;
+        if (n.tag !== undefined) out.tag = n.tag;
+        if (n.origin !== undefined) out.origin = n.origin;
+        return out;
+      })
+    : undefined;
+
   // download-capture slice — downloads that fired during this action window.
   // Off-by-default registry: when capture wasn't toggled on, `since()` returns
   // an empty list and the block is omitted from the result (keeps results
@@ -512,6 +574,7 @@ export async function runInActionWindow(
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
     ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
+    ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
   }));
 
@@ -544,6 +607,7 @@ export async function runInActionWindow(
     network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
     ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
+    ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
     tokensEstimate,
     warnings,
