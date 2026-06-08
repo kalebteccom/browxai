@@ -93,6 +93,48 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
    *  type parameter. Keeps the assignment table below readable. */
   type M<K extends keyof BrowxaiClient> = BrowxaiClient[K];
 
+  // Phase 8 — namespaced caller for plugin tools. Every tool the
+  // server exposes whose name contains a `.` is a plugin tool; the
+  // client surfaces it lazily under `client.plugins[namespace][tool]`
+  // so an adopter can write `client.plugins.figma.moveNode({...})`
+  // without manually round-tripping through `callTool`.
+  //
+  // The plugin tools an SDK client sees are sourced from the
+  // transport's introspection: at construction time the SDK doesn't
+  // know which plugin tools the server has registered (the in-process
+  // transport COULD inspect the handler map, but for parity with
+  // socket/stdio-child we defer to a lazy first-access pattern —
+  // every namespaced access just dispatches via `callTool`, which
+  // round-trips to the server and surfaces a clear error if the tool
+  // doesn't exist).
+  const plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>> =
+    new Proxy(
+      {},
+      {
+        get(_target, namespace: string) {
+          if (typeof namespace !== "string") return undefined;
+          return new Proxy(
+            {},
+            {
+              get(_t2, toolName: string) {
+                if (typeof toolName !== "string") return undefined;
+                return (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
+                  // Mirror tool naming: `namespace.tool`. Convert camelCase
+                  // tool name back to snake_case? No — the SDK uses the
+                  // tool name as-is. Plugin authors declare e.g.
+                  // `figma.move_node` AND `figma.moveNode`'s caller hits
+                  // `figma.moveNode` — so the JS-style access maps 1:1 to
+                  // whatever the plugin registered. Plugin authors who
+                  // want snake_case at the wire and camelCase at the JS
+                  // level can ship a `.d.ts` wrapper (documented).
+                  callTool(`${namespace}.${toolName}`, args);
+              },
+            },
+          );
+        },
+      },
+    );
+
   const client: BrowxaiClient = {
     // read
     snapshot: guarded<M<"snapshot">>("snapshot"),
@@ -143,6 +185,8 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     exposedTools: [...exposed].sort(),
     capabilities,
     session,
+    // Phase 8 — namespaced plugin caller (proxy-based; see comment above).
+    plugins,
     close: async () => {
       if (closed) return;
       closed = true;

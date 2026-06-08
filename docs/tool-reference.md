@@ -20,6 +20,31 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 - **`browxai chrome start [--port N] [--insecure]`** — launch an attachable Chromium with persistent profile at `$BROWX_WORKSPACE/chrome-profile/`. PID stored at `$BROWX_WORKSPACE/chrome.pid`. `--insecure` opts into `--disable-web-security` (use only against test/dev targets). (Wishlist W-B7.)
 - **`browxai chrome stop`** / **`browxai chrome status`** — clean teardown / liveness check.
 - **`browxai init <workspace> [--test-attrs ...]`** — bootstrap a per-app workspace: creates `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed + attached MCP entries, sniffs the consumer codebase for the dominant test-attribute convention and orders `BROWX_TEST_ATTRIBUTES` accordingly. (Wishlist W-B6.)
+- **`browxai plugin <sub>`** (Phase 8) — manage browxai plugins. Subcommands: `install <pkg>` / `remove <pkg>` / `list` / `info <pkg>` / `upgrade [<pkg>]` / `sync`. All ops write under the workspace root (the declarative `plugins.json`, the install dir at `plugins/`, and the auto-generated `plugins-lock.json` pin). Every command emits a "Server restart required" notice — plugin lifecycle is resolved-once-at-server-start. See `docs/plugins.md` and `docs/plugin-authoring.md`.
+
+## Plugins (Phase 8)
+
+browxai ships a v1 plugin runtime that lets external packages register namespaced tools on the MCP + SDK surface. The runtime is **in-process JS modules only** (v1), the lifecycle is **resolved-once-at-server-start**, and tool registration is **globally namespaced** (`<namespace>.<tool>` — plugins cannot override or wrap core tools).
+
+- **Install model:**
+  - **Kalebtec-maintained** plugins ship in the monorepo at `packages/plugins/<name>/` and publish as `@kalebtec/browxai-plugin-<name>`.
+  - **Community** plugins are `browxai-plugin-<name>` or `@<org>/browxai-plugin-<name>` on npm, installed via `browxai plugin install <pkg>`.
+  - **Local/dev** plugins install via file path (`browxai plugin install file:./my-plugin/`), trust-tagged `local`.
+
+- **Reproducibility surface** — three files live under the workspace root:
+  - `plugins.json` — declarative truth of which plugins should load.
+  - `plugins/node_modules/` — pnpm-managed install dir.
+  - `plugins-lock.json` — auto-generated `{version, sha256, source}` pin per plugin.
+
+- **Lifecycle** — `set_config({plugins})` persists into config.json but takes effect on **next restart** (mirrors `capabilities`). The `pluginsPendingRestart` flag on `get_config({scope:"resolved"})` mirrors `capabilitiesPendingRestart` and surfaces the live↔persisted divergence.
+
+- **Inter-plugin composition** — plugin manifests declare `dependsOn: [{plugin, version}]`. At server start the runtime topo-sorts the graph and **rejects cycles loudly** before any plugin runs. At runtime `api.callTool(name, args)` enforces the call graph — a call to a tool owned by a plugin NOT in this plugin's transitively-declared `dependsOn` set is rejected with `{ok:false, code:"plugin-call-graph-violation"}`. Plugins **cannot** override or wrap core tools; namespace prefix is mandatory.
+
+- **MCP tools:**
+  - **`plugins_list()`** → array of `{name, namespace, version, trust, capabilities, dependsOn, status, declaredAt, enabledAt?}`. `status` ∈ `loaded | disabled-by-capability-mismatch | disabled-by-cycle | disabled-by-dep-missing | disabled-by-namespace-conflict | load-error`. Capability `read`.
+  - **`plugins_info({name})`** → full manifest dump + transitive dep set + tools registered + their schemas. Capability `read`.
+
+See [`docs/plugin-authoring.md`](./plugin-authoring.md) for the full author guide (manifest fields, capability rules, dep declarations, call-graph enforcement, trust tiers, local-dev workflow, npm publishing, the typed SDK seam) and [`docs/plugins.md`](./plugins.md) for the marketplace index.
 
 ## Configuration (Phase 2.5)
 

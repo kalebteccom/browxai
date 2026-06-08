@@ -48,6 +48,13 @@ export interface ResolvedConfig {
    *  navigation — non-destructive (no node removal), config-driven, no
    *  agent JS. Default `[]` (feature off). */
   hideOverlaySelectors: string[];
+  /** Phase 8 — declarative plugin set. Mirrors what `plugins.json`
+   *  declares; persisted alongside other config so `set_config({plugins})`
+   *  and `get_config({scope:"resolved"}).plugins` work without hand-editing
+   *  the plugins.json file. Plugin lifecycle is RESOLVED ONCE AT SERVER
+   *  START — `set_config` persists, but takes effect on next restart
+   *  (mirrors `capabilities`). Empty array = "no plugins declared". */
+  plugins: string[];
   /** Experimental / feature-flag knobs. Not stable; shallow-merged across layers. */
   unstable: Record<string, unknown>;
 }
@@ -68,6 +75,7 @@ export const BUILTIN_DEFAULTS: ResolvedConfig = {
   blockedOrigins: [],
   headless: false,
   hideOverlaySelectors: [],
+  plugins: [],
   unstable: {},
 };
 
@@ -153,6 +161,7 @@ export class ConfigStore {
       defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
       hideOverlaySelectors: layer.hideOverlaySelectors ?? acc.hideOverlaySelectors,
+      plugins: layer.plugins ?? acc.plugins,
       unstable: layer.unstable ? { ...acc.unstable, ...layer.unstable } : acc.unstable,
     };
   }

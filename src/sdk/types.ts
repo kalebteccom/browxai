@@ -247,6 +247,23 @@ export interface BrowxaiClient {
    */
   callTool(name: string, args?: BrowxaiArgs): Promise<BrowxaiResult>;
 
+  /**
+   * Phase 8 — namespaced caller for plugin-registered tools. Indexed
+   * twice: `client.plugins.<namespace>.<tool>(args)`. The wrapper
+   * round-trips through {@link BrowxaiClient.callTool}, so
+   * capability gating + the call-graph enforcement applied at the
+   * server still fire.
+   *
+   * The default type is intentionally permissive — plugin authors
+   * ship typed `.d.ts` overlays so consumers get `client.plugins.figma.moveNode`
+   * autocomplete. Cast through `BrowxaiClientWithPlugins<Schema>`
+   * (see docs/plugin-authoring.md) to enable the typed path.
+   */
+  readonly plugins: Record<
+    string,
+    Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>
+  >;
+
   /** Names of every MCP tool currently exposed on this client. */
   readonly exposedTools: ReadonlyArray<string>;
 

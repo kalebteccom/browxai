@@ -11,6 +11,8 @@
 //                                 — accepts MCP-over-socket connections from SDK clients
 //                                 (`createBrowxai({ endpoint: "unix:///..." })`).
 //                                 Off-by-default; explicit operator opt-in.
+//   browxai plugin <sub>          install / remove / list / info / upgrade / sync
+//                                 plugins (Phase 8). All ops are workspace-rooted.
 //
 // All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 
@@ -19,6 +21,7 @@ import { runDoctor } from "./cli/doctor.js";
 import { runChrome } from "./cli/chrome.js";
 import { runInit } from "./cli/init.js";
 import { runServe } from "./cli/serve.js";
+import { runPlugin } from "./plugin/cli.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
@@ -36,13 +39,15 @@ async function main(): Promise<void> {
       process.exit(await runInit(rest));
     case "serve":
       process.exit(await runServe(rest));
+    case "plugin":
+      process.exit(await runPlugin(rest));
     case undefined:
       break; // fall through to MCP server
     default:
       // Unknown subcommand — print help and exit non-zero (don't silently start the
       // MCP server, since stdout is the MCP wire and we'd corrupt any caller's expectation).
       process.stderr.write(
-        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | serve | (no args = start MCP server)\n`,
+        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | serve | plugin | (no args = start MCP server)\n`,
       );
       process.exit(2);
   }

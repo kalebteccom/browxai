@@ -195,6 +195,7 @@ describe("resolvedToEnv adapter", () => {
       blockedOrigins: [],
       headless: true,
       hideOverlaySelectors: [],
+      plugins: [],
       unstable: {},
     });
     expect(env.BROWX_CAPABILITIES).toBe("read,navigation");

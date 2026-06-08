@@ -58,6 +58,13 @@ describe("no-trace contract — static source guard", () => {
       // path lives in `socketPath`; cleanup/listen-prep mutations against it
       // are workspace-equivalent (the operator's chosen target).
       "socketPath", "opts.socketPath",
+      // Phase 8 — plugin CLI subcommands write to paths derived from
+      // `pluginPaths(workspaceRoot)` (see src/plugin/resolver.ts). Every
+      // `paths.root` / `paths.installDir` / `paths.declarationFile` /
+      // `paths.lockFile` / `paths.nodeModulesDir` is workspace-rooted
+      // by construction — `paths.` is a workspace-derived prefix in the
+      // same sense as `workspace.`.
+      "paths.", "pluginPaths",
     ];
     // util/workspace.ts is the resolver itself — its `mkdirSync(p, ...)` calls are
     // BY DEFINITION rooted at the workspace `root`. util/config-store.ts writes

@@ -171,6 +171,7 @@ export type {
 } from "./tool-types.js";
 export { NOT_EXPOSED_ERROR } from "./client.js";
 export { resolveEndpointPath } from "./transport-socket.js";
+export type { BrowxaiClientWithPlugins, PluginSchema } from "./plugin-types.js";
 
 /**
  * Create a typed `BrowxaiClient`. The transport is chosen by these rules:

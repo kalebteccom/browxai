@@ -50,6 +50,64 @@ surface" covers.
   responsive checks, "the button I clicked got truncated" diagnosis.
   Read-only (capability `read`).
 
+### Added — Phase 8 — Plugin runtime
+
+The v1 plugin runtime foundations: external packages register
+namespaced tools on the MCP + SDK surface. In-process JS modules
+only (v1); lifecycle resolved-once-at-server-start; tool
+registration globally namespaced (`<namespace>.<tool>` — plugins
+cannot override or wrap core tools).
+
+- **Manifest contract** — `package.json#browxai` field carrying
+  `{apiVersion, namespace, register, capabilities, dependsOn, trust, browxaiVersion}`.
+  Zod-validated; reserved-namespace enforcement; semver-compatible
+  apiVersion gating against the host runtime version
+  (`RUNTIME_API_VERSION = 1.0.0`).
+- **Runtime core** (`src/plugin/runtime.ts`) — manifest resolver,
+  dep-graph builder with Tarjan-SCC cycle detection (cycles abort
+  startup loudly, naming every plugin in every cycle), topo-sort
+  load order, namespace uniqueness check, capability-subset check,
+  per-plugin `register(api)` invocation, runtime call-graph
+  enforcement via `api.callTool` (a plugin may call core tools +
+  its own tools + tools owned by plugins in its transitively-
+  declared `dependsOn` set — anything else returns the structured
+  `{ok:false, code:"plugin-call-graph-violation"}` error).
+- **`browxai plugin` CLI** — `install <pkg>` / `remove <pkg>` /
+  `list` / `info <pkg>` / `upgrade [<pkg>]` / `sync`. Shells out to
+  `pnpm` against `<workspace>/plugins/`; writes the
+  declarative `plugins.json` + the reproducibility pin
+  `plugins-lock.json` (version + content sha256). Every command
+  emits a "Server restart required" notice.
+- **MCP tools** — `plugins_list` (every declared plugin's load
+  status) and `plugins_info` (full manifest + tool registry dump).
+  Both `read`-gated.
+- **Config integration** — `set_config({plugins})` persists a
+  plugin set into `config.json` (unioned with `plugins.json` at
+  load time); `get_config({scope:"resolved"}).plugins` reports the
+  LIVE enabled set plus the `pluginsPendingRestart` flag (same
+  posture as `capabilitiesPendingRestart`).
+- **SDK type-gen seam** — `client.plugins.<namespace>.<tool>(args)`
+  proxy-based caller; `BrowxaiClientWithPlugins<Schema>` type
+  helper composes plugin-shipped `schema.d.ts` overlays into the
+  consumer's typed client.
+- **Reference plugin** — `@kalebtec/browxai-plugin-example` at
+  `packages/plugins/example/`. Three trivial tools (`example.echo`,
+  `example.add`, `example.now`) exercising every primitive of the
+  v1 contract; vitest unit suite; ships a typed `schema.d.ts` for
+  SDK consumers. Used as the Phase 8 keystone fodder.
+- **Author guide** — `docs/plugin-authoring.md` (manifest fields,
+  capability rules, dep declarations, call-graph enforcement, trust
+  tiers, local-dev workflow, npm publishing, typed SDK seam) and
+  `docs/plugins.md` (operator-facing marketplace index).
+- **pnpm workspaces** — `pnpm-workspace.yaml` declares
+  `packages/*` + `packages/plugins/*` so the reference plugin
+  builds in the same `pnpm install` cycle as the host.
+
+Plugin lifecycle mirrors capability lifecycle: changes take effect
+on next server restart, never mid-session. Phase 9 (canvas plugins)
+and the diagnostics-report plugin follow-up are the first real
+consumers of this foundation.
+
 ## v0.5.1 — 2026-06-08 — Adopter-report fixes
 
 ### Fixed
