@@ -10,6 +10,51 @@ surface" covers.
 
 ### Fixed
 
+- **`sessionWedged` false positive on perpetually-busy SPAs.**
+  Adopter report 2026-06-08: 3 consecutive `click` timeouts against a heavy
+  Vite SPA (SignalR keepalive WS + rAF loops + library-search re-renders)
+  latched `sessionWedged: true` and forced a session discard — but
+  `eval_js` immediately after proved the page was fully responsive. The
+  wedge tracker was conflating "action-shaped timeouts" (Playwright
+  actionability + probe stuck on a busy SPA) with "the session itself is
+  wedged". Fix: before stamping `sessionWedged: true`, run a 1-second
+  `page.evaluate(() => 1)` liveness probe; if the page answers, clear the
+  streak rather than declaring the session dead. Real wedges (CDP frozen)
+  still trip — only the false-positive shape is filtered.
+
+- **Post-action probe could consume the whole click deadline on busy SPAs.**
+  Same adopter report. The post-action `probe()` runs multiple
+  `loc.evaluate()` calls — each defaults to Playwright's 30s timeout. On
+  SPAs where re-renders constantly re-attach the element handle, a probe
+  evaluate can hang far longer than makes sense for a read-only check,
+  consuming the whole action deadline and surfacing as a "click timeout"
+  even though the click already fired. Fix: bound every probe-side
+  `loc.evaluate()` (and the matching `preProbe` call + `inputValue`) to
+  1500 ms each; on timeout the `.catch()` returns the fallback so the
+  probe degrades to partial data instead of failing the whole action.
+
+- **Diagnostics JSONL is now KEPT across `close_session` / `close_sessions`.**
+  Same adopter report. The Phase-7.5 builder wired per-session removal of
+  the diagnostics directory on close. But `close_session` IS the
+  wedge-recovery path — notes filed right before a (real OR falsely-flagged)
+  wedge were exactly the most valuable feedback the curator gets, and they
+  were being deleted at the worst possible moment. Fix: stop deleting on
+  close; retention sweep (default 30 days, configurable via
+  `BROWX_DIAGNOSTICS_RETENTION_DAYS`) handles long-term cleanup. Per-session
+  removal was the wrong scope.
+
+- **`idb_put` now surfaces a structured warning when `value` arrives as a JSON-encoded string.**
+  Adopter saw `idb_put({value:{hello:'world',…}})` write a JSON STRING to
+  IDB rather than the structured object. Through the curated handler path
+  (keystone-tested), objects round-trip as objects. The observed shape
+  happens when an MCP client double-encodes complex args — `value` reaches
+  the server as `'{"hello":"world"}'` (a string). The page-side code
+  faithfully stores a string. Fix: at the handler, detect when `value` is
+  a string that JSON-parses to an object/array and surface a
+  `warnings[]` entry pointing at the double-encoding gotcha. The value is
+  still stored verbatim (some apps legitimately store JSON strings);
+  the warning lets the agent diagnose the case.
+
 - **`dom_export` — `PAGE_WALK_FN` ran as an expression, not a function.**
   Same root cause as the `element_export` fix below: the page-side walk
   function was authored as `(args) => {...}` and passed to

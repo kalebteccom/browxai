@@ -503,10 +503,11 @@ export interface PreProbeData {
  * Exported for unit tests; runs at the DOM level (cheap, no a11y tree).
  */
 export async function preProbe(loc: Locator): Promise<PreProbeData> {
+  // Same 1.5s bound as `probe` — see PROBE_EVAL_MS rationale there.
   try {
     const count = await loc.count();
     if (count === 0) return {};
-    return await loc.evaluate(probeAncestorsScript).catch(() => ({}));
+    return await loc.evaluate(probeAncestorsScript, undefined, { timeout: 1500 }).catch(() => ({}));
   } catch {
     return {};
   }
@@ -522,32 +523,43 @@ export async function preProbe(loc: Locator): Promise<PreProbeData> {
  */
 export async function probe(loc: Locator, target: ActionTarget, valueRequested?: string, pre?: PreProbeData): Promise<ElementProbe> {
   const ref = target.ref;
+  // Post-action probe runs MULTIPLE `loc.evaluate()` calls — each defaults to
+  // Playwright's 30s timeout. On busy SPAs where re-renders re-attach the
+  // element handle constantly, a probe evaluate can hang far longer than
+  // makes sense for a read-only check. Bound each evaluate to PROBE_EVAL_MS
+  // so a stuck probe returns partial data instead of consuming the whole
+  // action deadline (which then surfaces as a click "timeout" even though
+  // the click already fired — adopter report 2026-06-08).
+  const PROBE_EVAL_MS = 1500;
   try {
     const count = await loc.count();
     if (count === 0) return { ref, stillAttached: false };
-    // Run in page context — TS doesn't have DOM lib here, so cast loosely.
     const focused = await loc
-      .evaluate((el: { ownerDocument?: { activeElement?: unknown } }) => el === el.ownerDocument?.activeElement)
+      .evaluate((el: { ownerDocument?: { activeElement?: unknown } }) => el === el.ownerDocument?.activeElement, undefined, { timeout: PROBE_EVAL_MS })
       .catch(() => false);
-    // Always probe DOM `value` directly. `loc.inputValue()` is defined for
-    // <input>/<textarea>/<select>; for everything else it throws, so we null
-    // it out via the catch. Contenteditable falls through to textContent.
-    const inputValue = await loc.inputValue().catch(() => undefined);
+    const inputValue = await loc.inputValue({ timeout: PROBE_EVAL_MS }).catch(() => undefined);
     const value = inputValue !== undefined
       ? inputValue
       : await loc
-          .evaluate((el: { isContentEditable?: boolean; textContent?: string | null }) =>
-            el.isContentEditable ? (el.textContent ?? "") : null,
+          .evaluate(
+            (el: { isContentEditable?: boolean; textContent?: string | null }) =>
+              el.isContentEditable ? (el.textContent ?? "") : null,
+            undefined,
+            { timeout: PROBE_EVAL_MS },
           )
           .catch(() => null);
     const checked = await loc
-      .evaluate((el: { tagName?: string; type?: string; checked?: boolean; indeterminate?: boolean }) => {
-        const tag = el.tagName?.toLowerCase();
-        const type = el.type?.toLowerCase();
-        if (tag !== "input" || (type !== "checkbox" && type !== "radio")) return undefined;
-        if (el.indeterminate) return "mixed" as const;
-        return el.checked === true;
-      })
+      .evaluate(
+        (el: { tagName?: string; type?: string; checked?: boolean; indeterminate?: boolean }) => {
+          const tag = el.tagName?.toLowerCase();
+          const type = el.type?.toLowerCase();
+          if (tag !== "input" || (type !== "checkbox" && type !== "radio")) return undefined;
+          if (el.indeterminate) return "mixed" as const;
+          return el.checked === true;
+        },
+        undefined,
+        { timeout: PROBE_EVAL_MS },
+      )
       .catch(() => undefined);
     // Visible-wrapper text. Covers controls that render the post-action state
     // outside `input.value` (chip-style selects, combobox displays, badge
@@ -556,32 +568,36 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     // `data-testid|test|cy|qa`); falls back to immediate parent's innerText.
     // Capped at 200 chars.
     const displayText = await loc
-      .evaluate((el: unknown) => {
-        const DOC_BODY_TAG = "BODY";
-        const isElement = (n: unknown): n is { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string } =>
-          !!n && typeof n === "object";
-        type ElLike = { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string };
-        let cur: ElLike | null = isElement(el) ? el : null;
-        for (let i = 0; i < 4 && cur; i++) {
-          const next = cur.parentElement;
-          if (!isElement(next) || next.tagName === DOC_BODY_TAG) break;
-          cur = next;
-          const role = cur.getAttribute?.("role") || null;
-          const ds = cur.dataset || {};
-          if (role || ds.testid || ds.test || ds.cy || ds.qa) {
-            const t = (cur.innerText || "").trim();
-            return t ? t.slice(0, 200) : null;
+      .evaluate(
+        (el: unknown) => {
+          const DOC_BODY_TAG = "BODY";
+          const isElement = (n: unknown): n is { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string } =>
+            !!n && typeof n === "object";
+          type ElLike = { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string };
+          let cur: ElLike | null = isElement(el) ? el : null;
+          for (let i = 0; i < 4 && cur; i++) {
+            const next = cur.parentElement;
+            if (!isElement(next) || next.tagName === DOC_BODY_TAG) break;
+            cur = next;
+            const role = cur.getAttribute?.("role") || null;
+            const ds = cur.dataset || {};
+            if (role || ds.testid || ds.test || ds.cy || ds.qa) {
+              const t = (cur.innerText || "").trim();
+              return t ? t.slice(0, 200) : null;
+            }
           }
-        }
-        if (isElement(el)) {
-          const parent = el.parentElement;
-          if (isElement(parent)) {
-            const t = (parent.innerText || "").trim();
-            return t ? t.slice(0, 200) : null;
+          if (isElement(el)) {
+            const parent = el.parentElement;
+            if (isElement(parent)) {
+              const t = (parent.innerText || "").trim();
+              return t ? t.slice(0, 200) : null;
+            }
           }
-        }
-        return null;
-      })
+          return null;
+        },
+        undefined,
+        { timeout: PROBE_EVAL_MS },
+      )
       .catch(() => null);
     const out: ElementProbe = { ref, stillAttached: true, focused, value: value ?? null };
     if (checked !== undefined) out.checked = checked;
@@ -591,7 +607,7 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     // post-action owner/container state. Always read; compose deltas
     // against `pre` when supplied. Same in-page script as preProbe, so the
     // pre/post values are directly comparable.
-    const post = await loc.evaluate(probeAncestorsScript).catch(() => ({} as PreProbeData));
+    const post = await loc.evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS }).catch(() => ({} as PreProbeData));
     if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
       const before = pre.ownerText;
       const after = post.ownerText;

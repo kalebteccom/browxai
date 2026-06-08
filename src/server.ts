@@ -214,7 +214,6 @@ import {
   buildReportSummary,
   ensureDiagnosticsRoot,
   redactArgs,
-  removeSessionDiagnostics,
   resolveRetentionDays,
   sweepRetention,
   type DiagnosticsRecord,
@@ -1034,11 +1033,19 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   /** Update the session's wedge counter from a tool result and, once the
    *  session is wedged, splice `sessionWedged` + a recovery hint onto it.
    *  An anti-wedge timeout increments the streak; any responsive result
-   *  (success, or a fast non-timeout error) clears it. */
-  const noteWedgeOutcome = (args: unknown, res: ToolResponse): ToolResponse => {
+   *  (success, or a fast non-timeout error) clears it.
+   *
+   *  Before stamping `sessionWedged: true`, the threshold-trip path probes
+   *  the page with a 1s `evaluate(() => 1)` — if the page answers, the
+   *  session is alive (the timeouts were action-shaped, not page-shaped:
+   *  perpetually-busy SPAs hold WS keepalives / rAF loops that prevent
+   *  Playwright actionability from settling, but the page itself responds
+   *  fine to evaluate). A successful probe clears the streak instead of
+   *  falsely tipping the caller into a session-discard. */
+  const noteWedgeOutcome = async (args: unknown, res: ToolResponse): Promise<ToolResponse> => {
     const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
     const entry = registry.peek(sessionId);
-    if (!entry) return res; // no live session yet — nothing to track
+    if (!entry) return res;
     const parsed = firstJsonResult(res);
     const timedOut = !!parsed && parsed.obj.ok === false &&
       typeof parsed.obj.error === "string" && /anti-wedge timeout/i.test(parsed.obj.error);
@@ -1048,6 +1055,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     }
     entry.wedge.recordTimeout();
     if (!entry.wedge.wedged()) return res;
+    // Threshold tripped — confirm before stamping. Cheap liveness probe:
+    // if the page answers evaluate() within 1s, the session is alive and
+    // the timeouts were action-shaped (e.g. busy SPA blocks click
+    // actionability). Clear the streak rather than falsely wedge the
+    // caller. If the probe fails or times out, the session genuinely is
+    // wedged — stamp the response as before.
+    let aliveByProbe = false;
+    try {
+      const page = entry.session.page();
+      await withDeadline(page.evaluate(() => 1), 1_000, "wedge_probe");
+      aliveByProbe = true;
+    } catch {
+      aliveByProbe = false;
+    }
+    if (aliveByProbe) {
+      entry.wedge.recordResponsive();
+      return res;
+    }
     const obj = { ...parsed.obj, sessionWedged: true, sessionWedgedHint: entry.wedge.hint() };
     return {
       content: res.content.map((item, i) =>
@@ -1171,7 +1196,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     const tracked = WEDGE_TRACKED_CAPABILITIES.has(TOOL_CAPABILITY[name] ?? "");
     const wrapped: (args: unknown) => Promise<ToolResponse> = async (args: unknown) => {
       const startedAt = Date.now();
-      const inner = tracked ? noteWedgeOutcome(args, await raw(args)) : await raw(args);
+      const inner = tracked ? await noteWedgeOutcome(args, await raw(args)) : await raw(args);
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       return inner;
@@ -4967,8 +4992,30 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const e = await entryFor(session);
         const c = await confirmByobAction("idb_put", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_put", c);
+        // Defensive: if `value` reaches the handler as a JSON-shaped string
+        // (some MCP clients double-encode complex args), the page-side path
+        // faithfully stores a string — adopter wrote an object, IDB holds
+        // a string, app reads back a string. Surface the case as a warning
+        // without auto-parsing (some apps legitimately store JSON strings).
+        const warnings: string[] = [];
+        if (typeof value === "string" && value.length > 1) {
+          const first = value[0];
+          if (first === "{" || first === "[") {
+            try {
+              const parsed = JSON.parse(value);
+              if (parsed !== null && typeof parsed === "object") {
+                warnings.push(
+                  "idb_put: `value` arrived as a JSON-encoded STRING (e.g. `'{\"k\":1}'`). " +
+                  "browxai stored it verbatim as a string — IDB now holds a string, not the parsed object. " +
+                  "Most MCP clients pass structured args directly; if yours double-encodes complex values, " +
+                  "JSON.parse them client-side before calling idb_put. Use idb_get to confirm what was written.",
+                );
+              }
+            } catch { /* not JSON; plain string — no warning */ }
+          }
+        }
         const r = await withDeadline(idbPut(e.session.page(), { dbName, storeName, key, value }, "idb_put"), cfgActionTimeout(), "idb_put");
-        return okText({ ...r });
+        return okText({ ...r, ...(warnings.length > 0 ? { warnings } : {}) });
       } catch (err) { return errText("idb_put", err); }
     },
   );
@@ -5905,12 +5952,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async ({ session }) => {
       const closed = await registry.close(session);
-      // Phase 7.5 — clean up the session's diagnostics directory on close.
-      // No-op when the recorder is disabled OR the directory doesn't exist
-      // (e.g. session never had a recorded call). Best-effort.
-      if (diagnostics.enabled && closed) {
-        try { removeSessionDiagnostics(workspace.root, session); } catch { /* best-effort */ }
-      }
+      // Diagnostics JSONL is intentionally KEPT across close_session — the
+      // recovery path for a (real OR falsely-flagged) wedge IS close_session,
+      // and the notes / calls filed right before the close are the most
+      // valuable feedback the curator gets. Retention sweep (default 30d)
+      // handles long-term cleanup; per-session removal is the wrong scope.
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session, wasOpen: closed }, null, 2) }] };
     },
   );
@@ -5931,12 +5977,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "close_sessions: pass `prefix`, `idleMs`, and/or `all:true` — refusing to close nothing/everything implicitly" }, null, 2) }] };
       }
       const closed = await registry.closeMatching({ prefix, all, idleMs });
-      // Phase 7.5 — clean up diagnostics directories for the closed sessions.
-      if (diagnostics.enabled && closed.length) {
-        for (const id of closed) {
-          try { removeSessionDiagnostics(workspace.root, id); } catch { /* best-effort */ }
-        }
-      }
+      // Diagnostics JSONL is intentionally KEPT across session teardown —
+      // notes filed pre-close are exactly the valuable feedback. Retention
+      // sweep (default 30d) handles long-term cleanup.
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, closed, count: closed.length }, null, 2) }] };
     },
   );
