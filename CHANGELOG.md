@@ -8,6 +8,27 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`screenshot({ path?, format?, fullPage? })`** — three optional params extend
+  the existing `screenshot` tool without breaking the v0.3.x shape:
+  - `path` (workspace-rooted) writes the bytes to disk and returns a JSON
+    envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }`
+    instead of the inline `image` content part. Path-traversal is rejected
+    (must resolve under `$BROWX_WORKSPACE`); parent directories auto-created.
+    Requires the `file-io` capability in addition to the tool's own `read`
+    gate — the default (no `path`) mode is unchanged and needs no extra
+    capability.
+  - `format` (`"png" | "jpeg"`) — already present; called out here as part of
+    the extended surface. Default `"png"`.
+  - `fullPage` (boolean) — when `true`, captures the whole document via
+    Playwright's `page.screenshot({fullPage:true})`. Mutually exclusive with
+    `ref`/`selector`/`named` (element-scoped captures are already bounded by
+    the element's box) — combining returns a structured rejection.
+
+  When `path` is omitted, the result is **byte-identical to v0.3.x** — no
+  breaking change to existing callers.
+
 ## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
 
 Reconciliation round (R-5) follow-up from wrightxai bench adoption: a

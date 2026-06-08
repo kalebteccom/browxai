@@ -193,7 +193,7 @@ Find candidate elements by natural-language description.
 **Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
 ### `screenshot`
-PNG or JPEG of the viewport, optionally cropped to an element.
+PNG or JPEG of the viewport, optionally cropped to an element, optionally full-page, optionally written to a workspace-rooted file instead of returned inline.
 
 **Format / size knobs (W-F7):**
 
@@ -203,10 +203,17 @@ PNG or JPEG of the viewport, optionally cropped to an element.
 
 For multimodal agents filling a constrained context window, `format: "jpeg", quality: 70, scale: "css"` often cuts payload size by ~5–10× with minimal impact on a vision model's ability to read the page. Not OCR-on-the-server — the agent's own vision capability does the work; F7 just lets the caller tune what it ingests.
 
-**Inputs:** `{ ref?, selector?, named?, describe?: boolean }` *(pass at most one of ref/selector/named; none = viewport)*
-- `describe` (wishlist W-B2): emit a structured one-line caption alongside the PNG (`role "name" [<attr>="…"] bbox=x,y w×h [not-visible|disabled]`). Lets the agent skip vision-reading when it just needs to confirm presence.
+**Scope / output knobs:**
 
-**Output:** an MCP `image` content part (base64 PNG), optionally preceded by a `text` part with the caption.
+- `fullPage: boolean` — default `false`. When `true`, captures the whole document (Playwright's `page.screenshot({fullPage:true})`) rather than just the viewport. Mutually exclusive with `ref` / `selector` / `named` — element-scoped captures are already bounded by the element's box; combining them returns a structured rejection.
+- `path: string` — workspace-rooted file path. When set, writes the bytes to disk and the result swaps the inline `image` content part for a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }`. Path-traversal is rejected (must resolve under `$BROWX_WORKSPACE` — same chokepoint as `pdf_save` / `start_har` / `dump_storage_state`). Parent directories are auto-created. **Requires the `file-io` capability** (in addition to the tool's own `read` gate); a request with `path` set against a server without `file-io` returns a structured `requiredCapability: "file-io"` rejection. Default mode (no `path`) is unchanged and needs no extra capability.
+
+**Inputs:** `{ ref?, selector?, named?, describe?: boolean, fullPage?: boolean, path?: string }` *(pass at most one of ref/selector/named; none = viewport unless `fullPage:true`)*
+- `describe`: emit a structured one-line caption alongside the PNG (`role "name" [<attr>="…"] bbox=x,y w×h [not-visible|disabled]`). Lets the agent skip vision-reading when it just needs to confirm presence. When `path` is set, the caption rides on the JSON envelope as `caption`.
+
+**Output:**
+- Default (no `path`): an MCP `image` content part (base64 PNG/JPEG), optionally preceded by a `text` part with the caption. **Byte-identical to the v0.3.x shape** when `path` is omitted.
+- With `path`: a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }` — no inline image bytes.
 
 ### `text_search` *(W-F4)*
 
