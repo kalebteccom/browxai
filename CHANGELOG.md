@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## v0.7.0 — 2026-06-08 — Canvas substrate + canvas plugins + perf optimization module
+
+Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; v1.0 launches with the public flip per the standing roadmap.
+
 ### Added
 
 - **Phase 9b — first-party canvas-app adapter plugins.** Three Kalebtec
