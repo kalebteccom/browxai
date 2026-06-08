@@ -29,10 +29,11 @@ export type Capability =
   | "stealth"
   | "captcha"
   | "credentials"
-  | "device-emulation";
+  | "device-emulation"
+  | "diagnostics";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation", "diagnostics",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -445,6 +446,22 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   emulate_usb: "device-emulation",
   emulate_hid: "device-emulation",
   device_requests: "device-emulation",
+  // diagnostics — off-by-default per-call recording layer + agent self-feedback.
+  // Loud-warned at boot. `diagnostics_note` is the write-side primitive (under
+  // the `diagnostics` capability — registering a note implies the recorder is
+  // engaged); `diagnostics_search` + `diagnostics_report` are read-side
+  // queries over the JSONL store, sitting under `read` so a report can be
+  // pulled even when no further notes are being filed. The implicit fourth
+  // surface is the dispatch-boundary recorder hook in server.ts: when the
+  // capability is OFF the hook short-circuits to a no-op (zero allocations
+  // beyond a gate check); when ON, every tool call lands as a JSONL line
+  // DOWNSTREAM of the URL sanitiser + secrets-masking chokepoint so
+  // registered secret values never reach the store raw. Same posture class
+  // as `eval` / `network-body` / `secrets` / `extensions` / `stealth` /
+  // `captcha` / `device-emulation`. See docs/threat-model.md.
+  diagnostics_note: "diagnostics",
+  diagnostics_search: "read",
+  diagnostics_report: "read",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

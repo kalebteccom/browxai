@@ -2049,6 +2049,133 @@ data streams for WebUSB; `oninputreport` synthetic input streams for
 WebHID; `getDevices()` cross-permission-grant persistence so an
 already-paired device survives a navigation.
 
+## Diagnostics (capability `diagnostics`)
+
+Off-by-default per-call recording layer + agent self-feedback (Phase 7.5). The
+capability adds three surfaces and one implicit recorder hook:
+
+1. **The recorder hook** at the MCP-handler dispatch boundary — when the
+   capability is OFF, the hook is a single boolean gate check (no allocations,
+   no file IO, no observable side-effect). When ON, every dispatched tool call
+   lands as a JSONL line. The recorder runs **DOWNSTREAM of the URL sanitiser
+   + secrets-masking egress chokepoint** — by the time the recorder sees a
+   result, every egress sink has already rewritten registered secret values
+   back to `<NAME>` aliases; args are additionally walked through
+   `applyMaskDeep` so a secret echoed in the call args never lands raw in
+   the store. Capability: `diagnostics`.
+2. `diagnostics_note` — agent self-feedback.
+3. `diagnostics_search` — read-side query (rides `read`).
+4. `diagnostics_report` — analysis primitive (rides `read`).
+
+### JSONL store layout + retention
+
+Recorded under `$BROWX_WORKSPACE/diagnostics/<sessionId>/<server-start-ISO>.jsonl`
+— one file per session per server-start ISO timestamp, append-only. Retention is
+config-driven via `BROWX_DIAGNOSTICS_RETENTION_DAYS` (default 30; `0` disables
+the sweep). Expired session directories are removed on server start AND on
+session close — a closed session's recorded history is **discarded** along with
+its other per-session state. Workspace-rooted by construction: a session id
+that escapes the diagnostics subdir (`../escape`, an absolute path) is
+rejected at the path-resolution chokepoint and the dispatch path falls back to
+a no-op (the call still runs; only the recording is skipped).
+
+### Record shapes
+
+Call records (`kind:"call"`):
+
+```jsonc
+{
+  "kind": "call",
+  "ts": "2026-06-08T12:34:56.789Z",
+  "tool": "click",
+  "sessionId": "default",
+  "argsRedacted": {                     // structural — keys + types + sizes
+    "selector": "button[data-testid=save]",
+    "value": { "__redacted": true, "sha256": "…", "byteLength": 12345 }
+  },
+  "resultMeta": {
+    "ok": true,
+    "sizeBytes": 482,                   // total result envelope byte length
+    "warningsCount": 0,
+    "failureKind": "target-not-found"   // only present on ok:false
+  },
+  "durationMs": 12,
+  "capabilityDenials": 3,               // cumulative across the recorder
+  "evalJs": {                           // only present for eval_js / poll_eval
+    "exprSha": "…",
+    "exprHead": "document.querySelector('#save')",
+    "returnType": "string",
+    "returnSizeBytes": 24,
+    "taxonomy": "dom-query"             // dom-query | storage-access | computed-style | callback-trigger | feature-detect | custom
+  }
+}
+```
+
+Note records (`kind:"note"`):
+
+```jsonc
+{
+  "kind": "note",
+  "ts": "2026-06-08T12:34:56.789Z",
+  "sessionId": "default",
+  "insight": "would like an inner_text tool that returns text without eval_js",
+  "category": "missing-primitive",      // missing-primitive | workaround | perf-concern | ergonomic-friction | other
+  "severity": "warn",                   // info | warn | blocker
+  "ref": "eval_js:2026-06-08T12:34:56.000Z"  // optional pointer at a prior call
+}
+```
+
+`failureKind` taxonomy (synthesised from the structured error string): one of
+`capability-denied`, `timeout`, `target-not-found`, `bad-arg`, `internal`.
+
+### `diagnostics_note({ insight, category?, severity?, ref?, session? })`
+
+Agent self-feedback. Writes a `kind:"note"` record carrying a free-text
+observation plus optional `category` / `severity` / `ref`. Default category
+`other`, default severity `info`. Filing a note implies the recorder is engaged,
+so this tool sits under the `diagnostics` capability — a server with the
+capability OFF returns a structured refusal rather than silently swallowing
+feedback. Intended consumer: the curator deciding which primitive to lift next.
+
+### `diagnostics_search({ since?, tool?, category?, sessionId?, limit?, session? })`
+
+Read-side query over the JSONL store. Returns matching records — calls + notes
+combined — up to `limit` (default 100, hard cap 1000). `since` filters by ts
+(ISO); `tool` filters by tool name (exact match — applies to `kind:"call"` only);
+`category` filters by note category (exact match — applies to `kind:"note"`
+only); `sessionId` filters by session. The recorder is gated on `diagnostics`;
+this query reads whatever lives on disk, so a server with diagnostics OFF but a
+non-empty workspace history can still surface prior runs. Capability: `read`.
+Returns `{ ok, records, count, truncated }`.
+
+### `diagnostics_report({ format?, since?, sessionId?, session? })`
+
+Analysis primitive. `format` defaults to `summary`:
+
+- `perTool` — per-tool `{ count, failureCount, p50Duration, p95Duration }`.
+- `topEvalJsPatterns` — the top 10 `eval_js` patterns by count, each carrying
+  `{ exprSha, exprHead, count, taxonomy }`.
+- `capabilityDenials` — per-tool denial counts.
+- `notesByCategory` — note-bucket counts.
+- `missingPrimitiveHypotheses` — `eval_js` taxonomy buckets surfaced as
+  candidates for a curated primitive. Heuristic: any non-`custom` taxonomy
+  with count ≥ 3, or any `custom` pattern with count ≥ 5.
+
+`format: "full"` additionally streams the per-record list capped at 500
+records (`truncated: true` when exceeded). Optional `since` (ISO) windowing +
+`sessionId` filter narrow the rollup. Capability: `read`.
+
+### Secrets-masking composability
+
+The recorder hook composes with the per-session secrets registry by
+construction: args land in the JSONL after `applyMaskDeep` has rewritten every
+registered real value back to its `<NAME>` alias; results land in the JSONL
+after every egress sink (network, console, ws, snapshot, find, text_search,
+network_body) has already done the same. Test
+`src/util/diagnostics.test.ts > secrets-masking composability` registers a
+secret, drives a tool call that carries the raw value in args, and asserts the
+JSONL records the redacted form — never the raw value.
+
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`

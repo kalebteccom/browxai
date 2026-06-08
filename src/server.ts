@@ -208,6 +208,19 @@ import { resolveConfig } from "./util/config.js";
 import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "./util/deadline.js";
 import { estimateTokens } from "./util/tokens.js";
 import { resolveWorkspace } from "./util/workspace.js";
+import {
+  DiagnosticsRecorder,
+  buildEvalJsCapture,
+  buildReportSummary,
+  ensureDiagnosticsRoot,
+  redactArgs,
+  removeSessionDiagnostics,
+  resolveRetentionDays,
+  sweepRetention,
+  type DiagnosticsRecord,
+  type NoteCategory,
+  type NoteSeverity,
+} from "./util/diagnostics.js";
 import { ConfigStore, resolvedToEnv, type ConfigScope, type PersistentScope } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
 import { NetworkBuffer, WsBuffer, fetchResponseBody } from "./page/network.js";
@@ -441,6 +454,36 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   if (caps.enabled.has("stealth")) log.warn("browxai: stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.");
   if (caps.enabled.has("device-emulation")) log.warn("browxai: device-emulation capability is ENABLED — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` install init-script wrappers around `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` / `navigator.hid.requestDevice` so the page resolves with synthetic device objects the agent staged. THE PAGE WILL BELIEVE IT HAS ACCESS TO PHYSICAL DEVICES THAT DON'T EXIST. v1 covers the picker-clear path only — GATT service emulation (Bluetooth), USB transfer endpoints, and HID input/output reports are stubs (resolve with empty/zero-byte results). Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` — see docs/threat-model.md.");
   if (caps.enabled.has("captcha")) log.warn("browxai: captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.");
+  // Phase 7.5 — diagnostics recorder. Constructed eagerly so the dispatch
+  // wrapper can reference it; the `enabled` flag is what gates every
+  // actual side-effect. OFF → zero allocations beyond a gate check on
+  // every tool call.
+  const diagnosticsEnabled = caps.enabled.has("diagnostics");
+  const diagRetentionDays = resolveRetentionDays(cfgEnv);
+  if (diagnosticsEnabled) {
+    log.warn(
+      "browxai: diagnostics capability is ENABLED — every MCP tool call is " +
+      `recorded as a JSONL line under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl ` +
+      `(retention: ${diagRetentionDays} days; configure via BROWX_DIAGNOSTICS_RETENTION_DAYS). ` +
+      "Args are structurally redacted (large/sensitive payload fields → sha256 + byteLength); " +
+      "the recorder runs DOWNSTREAM of the URL sanitiser + secrets-masking egress " +
+      "chokepoint, so registered secret values never reach the store raw. The agent " +
+      "self-feedback tool `diagnostics_note` ALSO requires this capability; read-side " +
+      "queries (`diagnostics_search`, `diagnostics_report`) ride the `read` capability " +
+      "so a report can be pulled even when no further notes are being filed. Same posture " +
+      "class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` / " +
+      "`device-emulation`. See docs/threat-model.md.",
+    );
+    // Create the diagnostics root + run the retention sweep up-front so a
+    // long-idle workspace doesn't keep months of stale JSONL.
+    try { ensureDiagnosticsRoot(workspace.root); } catch { /* best-effort */ }
+    try { sweepRetention(workspace.root, diagRetentionDays); } catch { /* best-effort */ }
+  }
+  const diagnostics = new DiagnosticsRecorder({
+    enabled: diagnosticsEnabled,
+    workspaceRoot: workspace.root,
+    retentionDays: diagRetentionDays,
+  });
   if (resolvedConfig.disableWebSecurity) log.warn("browxai: disableWebSecurity is ENABLED — managed/incognito sessions launch with SOP/CORS OFF (--disable-web-security). Use only against test/dev targets.");
   if (process.env.BROWX_EXTRACT_STRICT === "1") log.warn("browxai: BROWX_EXTRACT_STRICT=1 — extract() unknown-`x-browx-source`-key warnings are PROMOTED to hard `ok:false` invalid-schema rejections (v0.2.2's partialMisses-only behavior is bypassed). The integer→number coerce and array-`selector`-as-`collection` alias are NOT promoted; only typo-like unknown-key diagnostics are.");
   if (isByob && !caps.enabled.has("byob-attach")) {
@@ -1050,11 +1093,73 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     entry.metrics.record(toolName, outcome, Date.now() - startedAt, tokensEstimate);
   };
 
+  /** Record one dispatched call into the diagnostics JSONL store. No-op when
+   *  the diagnostics capability is OFF — the caller short-circuits on
+   *  `diagnostics.enabled` BEFORE allocating anything. The recorder runs
+   *  DOWNSTREAM of the URL sanitiser + secrets-masking chokepoint:
+   *  by the time `res` lands here, every egress sink has already rewritten
+   *  registered secret values back to `<NAME>` aliases. Args are additionally
+   *  walked through `applyMaskDeep` so a secret echoed in the call args
+   *  never reaches the JSONL raw. */
+  const noteDiagnostics = (toolName: string, args: unknown, res: ToolResponse, startedAt: number): void => {
+    if (!diagnostics.enabled) return;
+    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
+    const entry = registry.peek(sessionId);
+    // Apply the per-session secrets mask to args BEFORE structural redaction
+    // so a registered secret value echoed in the call args never lands raw
+    // in the JSONL store.
+    const maskedArgsIn = entry?.secrets ? entry.secrets.applyMaskDeep(args) : args;
+    const parsed = firstJsonResult(res);
+    const sizeBytes = res.content.reduce((n, item) => {
+      if (item.type === "text") return n + Buffer.byteLength(item.text, "utf8");
+      if (item.type === "image") return n + (typeof item.data === "string" ? item.data.length : 0);
+      return n;
+    }, 0);
+    const obj = parsed?.obj ?? null;
+    const ok = obj ? obj.ok !== false : true;
+    const warningsCount = obj && Array.isArray(obj.warnings) ? obj.warnings.length : 0;
+    let failureKind: string | undefined;
+    if (!ok && obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, "requiredCapability")) {
+        failureKind = "capability-denied";
+        diagnostics.noteDenial();
+      } else {
+        const err = typeof obj.error === "string" ? obj.error : "";
+        if (/anti-wedge timeout/i.test(err)) failureKind = "timeout";
+        else if (/not found|no element matches|ref not found|locator did not resolve/i.test(err)) failureKind = "target-not-found";
+        else if (/must |invalid |unknown |expected /i.test(err)) failureKind = "bad-arg";
+        else failureKind = "internal";
+      }
+    }
+    const record: DiagnosticsRecord = {
+      kind: "call",
+      ts: new Date(startedAt).toISOString(),
+      tool: toolName,
+      sessionId,
+      argsRedacted: redactArgs(maskedArgsIn),
+      resultMeta: {
+        ok,
+        sizeBytes,
+        warningsCount,
+        ...(failureKind ? { failureKind } : {}),
+      },
+      durationMs: Date.now() - startedAt,
+      capabilityDenials: diagnostics.denialsCount(),
+    };
+    const evalCap = buildEvalJsCapture(toolName, maskedArgsIn, obj);
+    if (evalCap) record.evalJs = evalCap;
+    diagnostics.write(record);
+  };
+
   // Wrapper that preserves the inner handler's parameter type for typechecking
   // (destructuring inside each registration still works) but stores a
   // type-erased copy for `batch` dispatch. Page-exercising tools additionally
   // route their result through the W-T1 wedge tracker; every tool is timed +
-  // counted on the session's per-session metrics rollup.
+  // counted on the session's per-session metrics rollup. When the
+  // `diagnostics` capability is on, each dispatch ALSO lands as a JSONL
+  // record under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl;
+  // when off, the recorder is a zero-overhead gate check (no allocations,
+  // no file IO).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const register = <H extends (...a: any[]) => Promise<ToolResponse>>(
     name: string,
@@ -1068,6 +1173,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const startedAt = Date.now();
       const inner = tracked ? noteWedgeOutcome(args, await raw(args)) : await raw(args);
       noteMetrics(name, args, inner, startedAt);
+      noteDiagnostics(name, args, inner, startedAt);
       return inner;
     };
     toolHandlers[name] = wrapped;
@@ -3570,6 +3676,147 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
   );
 
+  // ---------- diagnostics (Phase 7.5) ----------
+
+  register(
+    "diagnostics_note",
+    {
+      description:
+        "Agent self-feedback. File a structured insight against the diagnostics JSONL store: a missing primitive, a workaround that worked, a perf concern, or an ergonomic friction the curated tool surface didn't cover. `ref` optionally points at a prior tool call (a record id or `tool:ts` shorthand). The recorder is engaged by the same `diagnostics` capability — registering a note while the capability is OFF returns a structured refusal (so a polling agent on a server with diagnostics off doesn't silently lose feedback). Default category `other`, default severity `info`. Capability: `diagnostics`.",
+      inputSchema: {
+        insight: z.string().min(1).describe("Free-text observation — what was tried, what was missing, what ergonomic friction surfaced."),
+        category: z.enum(["missing-primitive", "workaround", "perf-concern", "ergonomic-friction", "other"]).optional().describe("Default `other`. `missing-primitive` is the most actionable bucket for the curator — surface when an `eval_js` pattern keeps recurring."),
+        severity: z.enum(["info", "warn", "blocker"]).optional().describe("Default `info`. `blocker` means \"this stopped me completing the task\"."),
+        ref: z.string().optional().describe("Optional reference to a prior record — e.g. `eval_js:2026-06-08T12:34:56.000Z` or a record id surfaced by `diagnostics_search`."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ insight, category, severity, ref, session }: {
+      insight: string;
+      category?: NoteCategory;
+      severity?: NoteSeverity;
+      ref?: string;
+      session?: string;
+    }) => {
+      const g = gateCheck("diagnostics_note"); if (g) return g;
+      const sessionId = session ?? DEFAULT_SESSION_ID;
+      const record: DiagnosticsRecord = {
+        kind: "note",
+        ts: new Date().toISOString(),
+        sessionId,
+        insight,
+        category: category ?? "other",
+        severity: severity ?? "info",
+        ...(ref ? { ref } : {}),
+      };
+      diagnostics.write(record);
+      const body = {
+        ok: true as const,
+        session: sessionId,
+        recorded: { kind: record.kind, ts: record.ts, category: record.category, severity: record.severity },
+        tokensEstimate: estimateTokens(JSON.stringify({ insight, category, severity, ref })),
+      };
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
+  register(
+    "diagnostics_search",
+    {
+      description:
+        "Read-side query over the diagnostics JSONL store. Returns matching records — calls + notes — up to `limit` (default 100, max 1000). `since` filters by ts (ISO); `tool` filters by tool name (exact match); `category` filters notes only; `sessionId` filters by session. The recorder is gated on the `diagnostics` capability; this query reads whatever lives on disk, so a server with diagnostics OFF but a non-empty workspace history can still surface prior runs. Read-only (capability `read`). → `{ ok, records, count, truncated }`.",
+      inputSchema: {
+        since: z.string().optional().describe("ISO timestamp filter — only records with `ts >= since` are returned."),
+        tool: z.string().optional().describe("Tool-name filter (exact match) — applies to `kind:\"call\"` records only."),
+        category: z.string().optional().describe("Note-category filter — applies to `kind:\"note\"` records only."),
+        sessionId: z.string().optional().describe("Session-id filter."),
+        limit: z.number().int().positive().max(1000).optional().describe("Max records to return. Default 100, hard cap 1000."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ since, tool, category, sessionId, limit, session: _session }: {
+      since?: string;
+      tool?: string;
+      category?: string;
+      sessionId?: string;
+      limit?: number;
+      session?: string;
+    }) => {
+      const g = gateCheck("diagnostics_search"); if (g) return g;
+      const lim = limit ?? 100;
+      const sinceMs = since ? Date.parse(since) : undefined;
+      const all = diagnostics.readAll();
+      const matched: DiagnosticsRecord[] = [];
+      let truncated = false;
+      for (const r of all) {
+        if (sinceMs !== undefined && Date.parse(r.ts) < sinceMs) continue;
+        if (sessionId && r.sessionId !== sessionId) continue;
+        if (tool && r.kind === "call" && r.tool !== tool) continue;
+        if (tool && r.kind !== "call") continue;
+        if (category && r.kind === "note" && r.category !== category) continue;
+        if (category && r.kind !== "note") continue;
+        if (matched.length >= lim) { truncated = true; break; }
+        matched.push(r);
+      }
+      const body = {
+        ok: true as const,
+        records: matched,
+        count: matched.length,
+        truncated,
+        tokensEstimate: 0,
+      };
+      body.tokensEstimate = estimateTokens(JSON.stringify(body));
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
+  register(
+    "diagnostics_report",
+    {
+      description:
+        "Analysis primitive over the diagnostics JSONL store. `summary` (default) returns per-tool counts + p50/p95 durations, the top 10 eval_js patterns by count + their taxonomy classification, capability-denial counts, note counts by category, and a `missingPrimitiveHypotheses` list — eval_js taxonomy buckets with high count flagged as candidates for a curated primitive (heuristic: non-`custom` taxonomy with count ≥ 3 OR `custom` pattern with count ≥ 5). `full` returns the same + a per-record stream capped at 500 records (`truncated:true` when exceeded). Optional `since` (ISO) windowing + `sessionId` filter. Read-only (capability `read`).",
+      inputSchema: {
+        format: z.enum(["summary", "full"]).optional().describe("Default `summary`. `full` additionally streams the per-record list (capped at 500)."),
+        since: z.string().optional().describe("ISO timestamp filter — only records with `ts >= since` are aggregated."),
+        sessionId: z.string().optional().describe("Restrict the rollup to one session id."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ format, since, sessionId, session: _session }: {
+      format?: "summary" | "full";
+      since?: string;
+      sessionId?: string;
+      session?: string;
+    }) => {
+      const g = gateCheck("diagnostics_report"); if (g) return g;
+      const fmt = format ?? "summary";
+      const all = diagnostics.readAll();
+      const summary = buildReportSummary(all, { since, session: sessionId });
+      let records: DiagnosticsRecord[] | undefined;
+      let truncated = false;
+      if (fmt === "full") {
+        const CAP = 500;
+        const sinceMs = since ? Date.parse(since) : undefined;
+        records = [];
+        for (const r of all) {
+          if (sinceMs !== undefined && Date.parse(r.ts) < sinceMs) continue;
+          if (sessionId && r.sessionId !== sessionId) continue;
+          if (records.length >= CAP) { truncated = true; break; }
+          records.push(r);
+        }
+      }
+      const body = {
+        ok: true as const,
+        format: fmt,
+        summary,
+        ...(records ? { records, truncated } : {}),
+        tokensEstimate: 0,
+      };
+      body.tokensEstimate = estimateTokens(JSON.stringify(body));
+      return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+    },
+  );
+
   register(
     "export_playwright_script",
     {
@@ -5658,6 +5905,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     async ({ session }) => {
       const closed = await registry.close(session);
+      // Phase 7.5 — clean up the session's diagnostics directory on close.
+      // No-op when the recorder is disabled OR the directory doesn't exist
+      // (e.g. session never had a recorded call). Best-effort.
+      if (diagnostics.enabled && closed) {
+        try { removeSessionDiagnostics(workspace.root, session); } catch { /* best-effort */ }
+      }
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session, wasOpen: closed }, null, 2) }] };
     },
   );
@@ -5678,6 +5931,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: "close_sessions: pass `prefix`, `idleMs`, and/or `all:true` — refusing to close nothing/everything implicitly" }, null, 2) }] };
       }
       const closed = await registry.closeMatching({ prefix, all, idleMs });
+      // Phase 7.5 — clean up diagnostics directories for the closed sessions.
+      if (diagnostics.enabled && closed.length) {
+        for (const id of closed) {
+          try { removeSessionDiagnostics(workspace.root, id); } catch { /* best-effort */ }
+        }
+      }
       return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, closed, count: closed.length }, null, 2) }] };
     },
   );

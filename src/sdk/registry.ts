@@ -64,6 +64,13 @@ export const SDK_TOOLS = [
   "network_body",
   "upload_file",
   "register_secret",
+  // Phase 7.5 — diagnostics. `diagnostics_note` rides the off-by-default
+  // `diagnostics` capability; the two read-side queries ride `read` so an
+  // adopter who only enabled diagnostics for a prior run can still pull the
+  // report from a fresh SDK client.
+  "diagnostics_note",
+  "diagnostics_search",
+  "diagnostics_report",
 ] as const;
 
 export type SdkToolName = (typeof SDK_TOOLS)[number];

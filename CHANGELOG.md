@@ -27,6 +27,48 @@ surface" covers.
   The `ElementExportLocator` adapter interface now takes a real function
   rather than a string, removing the type-confusion surface.
 
+### Added
+
+- **Phase 7.5: structured usage diagnostics + agent self-feedback (`diagnostics` capability + recorder hook + 3 tools).**
+  Promotes agent friction from anecdote to data — so the curator can answer
+  "what primitive is missing?" with evidence instead of guesses. Off-by-default
+  capability; loud-warned at boot. Same posture class as `eval` /
+  `network-body` / `secrets` / `extensions` / `stealth` / `captcha` /
+  `device-emulation`.
+  - **Recorder hook at the MCP-handler dispatch boundary.** When the capability
+    is OFF, the hook is a single boolean gate check — zero allocations beyond
+    that, zero file IO. When ON, every dispatched tool call lands as a JSONL
+    line under `$BROWX_WORKSPACE/diagnostics/<sessionId>/<server-start-ISO>.jsonl`
+    with `{ts, tool, sessionId, argsRedacted, resultMeta:{ok, sizeBytes,
+    warningsCount, failureKind}, durationMs, capabilityDenials}`. Args are
+    structurally redacted (keys + types + sizes preserved; large payload fields
+    rewritten to sha256 + byteLength). The recorder runs DOWNSTREAM of the URL
+    sanitiser + secrets-masking egress chokepoint so registered secret values
+    never reach the store raw. Retention is config-driven via
+    `BROWX_DIAGNOSTICS_RETENTION_DAYS` (default 30); expired session directories
+    are removed on server start AND on session close.
+  - **`eval_js` deep-capture.** For `eval_js` / `poll_eval` specifically, each
+    record additionally carries `{exprSha, exprHead<80chars, returnType,
+    returnSizeBytes, taxonomy}`. The taxonomy bucket is a heuristic substring
+    classifier — one of `dom-query`, `storage-access`, `computed-style`,
+    `callback-trigger`, `feature-detect`, `custom`. High-recurrence buckets
+    feed the report's `missingPrimitiveHypotheses`.
+  - **`diagnostics_note({ insight, category?, severity?, ref?, session? })`** —
+    agent self-feedback. Files a `kind:"note"` record (categories
+    `missing-primitive` / `workaround` / `perf-concern` / `ergonomic-friction`
+    / `other`; severities `info` / `warn` / `blocker`). Capability:
+    `diagnostics`. Paired with **`diagnostics_search`** (read-side query;
+    filters by `since` / `tool` / `category` / `sessionId`; capped at 1000
+    records; capability `read`).
+  - **`diagnostics_report({ format?, since?, sessionId? })`** — analysis
+    primitive. `summary` (default) returns per-tool counts + p50/p95
+    durations, the top 10 `eval_js` patterns by count + taxonomy,
+    capability-denial counts, note counts by category, and a
+    `missingPrimitiveHypotheses` list (heuristic: non-`custom` taxonomy with
+    count ≥ 3 OR `custom` pattern with count ≥ 5). `full` additionally streams
+    the per-record list capped at 500 (`truncated:true` when exceeded).
+    Capability: `read`.
+
 ## v0.5.0 — 2026-05-30 — Automation completeness (Phase 7)
 
 ### Added
