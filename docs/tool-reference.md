@@ -2118,6 +2118,112 @@ data streams for WebUSB; `oninputreport` synthetic input streams for
 WebHID; `getDevices()` cross-permission-grant persistence so an
 already-paired device survives a navigation.
 
+## Canvas-app automation (capability `canvas`)
+
+Off-by-default. App-agnostic primitives for driving canvas-based editors (Figma, Tldraw, Excalidraw, video editors, drawing apps, anything that paints into a `<canvas>` instead of laying out DOM). Five MCP tools + a pure-RGBA diff:
+
+- `canvas_capture` — framebuffer / 2D ImageData / PNG bytes.
+- `canvas_diff` — pixel/region delta over RGBA captures (`read` capability — pure byte math).
+- `gesture_chain` — multi-step pointer program.
+- `canvas_world_to_screen` / `canvas_screen_to_world` — affine helpers (explicit or heuristic-discovery).
+- `canvas_query` — dispatcher to a canvas-app adapter plugin (Phase 9b — the first adapter plugins land separately).
+
+### `canvas_capture({ ref?, selector?, format, session? })`
+Extract framebuffer or 2D ImageData from a `<canvas>` element. Three formats:
+
+- `format:"png"` — `canvas.toDataURL("image/png")`. Returns `{ ok, format:"png", contentBase64, byteLength, width, height }`. Suitable for handoff to the host agent's multimodal vision call (see BYO-vision pattern below).
+- `format:"2d-imagedata"` — `getImageData(0, 0, width, height)`. Returns `{ ok, format:"2d-imagedata", contentBase64 (RGBA, row-major, top-left origin), width, height, channelCount: 4 }`. Feed to `canvas_diff` for pixel math.
+- `format:"webgl-framebuffer"` — `gl.readPixels(0, 0, w, h, RGBA, UNSIGNED_BYTE, …)`. Returns the same RGBA shape as `2d-imagedata` plus `isWebGL: true`. The page-side capture flips the result into top-left order so downstream `canvas_diff` math is consistent across the two RGBA formats.
+
+`ref` optional (canvas element ref from a prior `snapshot()` / `find()`); `selector` is a fallback selector path; omitting both targets the first `<canvas>` in the document.
+
+**Bounded** — canvases larger than 16384×16384 pixels refuse with `{ ok:false, code:"too-large" }`. Defensive cap: most editors stay well below this; a multi-megapixel buffer round-tripped through base64 is genuinely a problem.
+
+**Taint** — `toDataURL` / `getImageData` throw `SecurityError` on canvases that have drawn cross-origin images without CORS. The page-side function catches and surfaces `{ ok:false, code:"taint-or-encode" }` / `{ ok:false, code:"taint-or-read" }`.
+
+**WebGL preserveDrawingBuffer** — `canvas_capture` requests `preserveDrawingBuffer:true` when it acquires a WebGL context, but it cannot undo a prior context's choice. Pages that explicitly set `preserveDrawingBuffer:false` may read back as zero bytes; this is a platform constraint, not a browxai bug.
+
+### `canvas_diff({ beforeBase64, afterBase64, width?, height?, region?, inputFormat?, session? })`
+Pure function — pixel/region delta over two RGBA captures. → `{ ok, changedPixelCount, changedBytes, percentageChanged, bboxOfChanges:{x,y,w,h}|null, warnings[] }`.
+
+- RGBA inputs require `width` + `height` (the byte buffer alone does not carry dimensions). Over-flow `region` rectangles clamp to image bounds rather than throwing.
+- `changedBytes` is the sum of absolute per-channel deltas. Useful for "how much changed", not just "did anything".
+- `bboxOfChanges` is the tight bounding box of the changed area in image coordinates. Null when no pixels changed.
+
+**PNG-format inputs (deferred)** — pass `inputFormat:"png"`; this cycle compares base64 byte equality only and surfaces a warning. Per-pixel diff over PNG is a follow-up; for `bbox` + per-channel math today, recapture with `2d-imagedata` or `webgl-framebuffer`.
+
+### `gesture_chain({ steps, session? })`
+Multi-step pointer program. Each step is `{ kind, x?, y?, deltaX?, deltaY?, ms?, pointerId? }`. → `{ ok, stepsExecuted, totalDurationMs, warnings[] }`.
+
+- `kind:"down" | "up" | "move"` — require numeric `x` + `y`. `move` accepts optional `ms` pacing delay; values below 5 ms floor to 5 ms with a warning (tighter pacing rarely changes app behaviour and starves the renderer).
+- `kind:"wait"` — bounded sleep; `ms` clamped at 5000 ms with a warning (split longer waits across calls).
+- `kind:"wheel"` — requires non-zero `deltaX` or `deltaY`; accepts optional `x` + `y` to move the pointer first.
+- **200 steps max** total — refuses with `code:"too-many-steps"`. Split larger programs across multiple calls.
+
+`pointerId` is accepted on input but the v1 implementation routes through Playwright's single-mouse pipeline; multi-pointer fan-out is a future extension. For multi-touch gestures today use `touch_*` / `gesture_pinch` / `gesture_swipe`.
+
+### `canvas_world_to_screen({ worldX, worldY, ref?, selector?, transform?, session? })` and `canvas_screen_to_world({ screenX, screenY, ref?, selector?, transform?, session? })`
+Affine coord-space translation. Two modes:
+
+- **Explicit** — caller passes `transform: { scale, panX, panY, originX?, originY? }`. Math: `screenX = (worldX + panX) * scale + originX` (and the inverse). Pure function — no page contact.
+- **Discovery** — omit `transform` to trigger a page-side probe of common app-side globals:
+  - `app.viewport.zoom` + `app.viewport.center.{x,y}` → Figma / Excalidraw shape (`adapterHint:"figma"`).
+  - `app.scale` + `app.offset.{x,y}` → Tldraw shape (`adapterHint:"tldraw"`).
+  - `app.transform.matrix` (6-element affine `[a,b,c,d,e,f]`) → generic shape (`adapterHint:"generic"`).
+
+On discovery success: `{ ok, screenX, screenY, transformDiscovered, adapterHint, warnings:["discovery probes are HEURISTIC — …"] }`.
+
+On discovery failure: `{ ok:false, error:"no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin", code:"no-transform" }`.
+
+**Discovery is HEURISTIC by design.** For production, either pass `transform` explicitly (e.g. read it out of your app's React state via `eval_js`, then feed it to the explicit-mode path) or install a canvas-app adapter plugin that owns the transform discovery for your app.
+
+The inverse round-trips with the forward call to within floating-point precision under the same explicit transform.
+
+### `canvas_query({ adapter, op, args?, session? })`
+Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `"figma"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args` (with the session passed through).
+
+When no plugin matches: `{ ok:false, error:"no canvas adapter registered for <adapter>; install @kalebtec/browxai-plugin-<adapter> or pass a registered adapter namespace", code:"no-adapter", requestedAdapter, requestedOp }`.
+
+When a plugin matches: the inner plugin tool's own capability is enforced via the Phase-8 plugin call-graph gate, so a `canvas` capability turned on alone is not enough to invoke an adapter operation whose plugin declared a different gate.
+
+Phase 9a ships the dispatcher only. The first canvas-app adapter plugins land separately in Phase 9b — they will be `@kalebtec/browxai-plugin-figma`, `@kalebtec/browxai-plugin-tldraw`, `@kalebtec/browxai-plugin-excalidraw` (subject to scope). Until then `canvas_query` is useful as a forward-compatible API: writing an agent loop against `canvas_query({adapter:"figma", op:"…"})` today means the loop starts working as soon as the operator installs the plugin.
+
+### Canvas-app automation — BYO vision pattern
+
+**browxai is BYO-vision by design.** Owner direction 2026-05-30: no bundled OCR, no hosted vision API. browxai's job is to be a *substrate* for canvas-app automation — pixels, gestures, transform math, plugin dispatch. *Understanding* what the pixels mean is the host agent's multimodal vision call.
+
+The composition loop:
+
+1. **Capture**: `canvas_capture({format:"png"})` → base64 PNG bytes.
+2. **Understand**: the host agent passes the PNG to its own multimodal-vision call (Claude / GPT-4V / Gemini Pro Vision / etc) with a prompt like "Identify the bounding box of the 'Delete' button on this Figma canvas". The agent returns viewport-space coordinates.
+3. **Act**: `gesture_chain({steps:[{kind:"down", x, y}, {kind:"up", x, y}]})` or `mouse_*` / `click` to drive the next step.
+
+Worked example — "click the Delete button on the currently-selected Figma node":
+
+```
+// 1. Capture the canvas as a PNG.
+const png = await client.callTool("canvas_capture", { format: "png" });
+
+// 2. Hand it to your multimodal vision call. (Pseudocode — adopter wires
+//    their own model invocation here.)
+const { x, y } = await yourVisionAgent.locate({
+  imageBase64: JSON.parse(png.content[0].text).contentBase64,
+  query: "the Delete button on the top toolbar",
+});
+
+// 3. Drive the gesture.
+await client.callTool("gesture_chain", {
+  steps: [
+    { kind: "down", x, y },
+    { kind: "up",   x, y },
+  ],
+});
+```
+
+**Why BYO** — bundling a vision call into browxai would (a) lock the substrate to a single vision provider (the curator does NOT want to pick winners on the modality side), (b) require browxai to ship model credentials / per-call billing / a configured-provider chain analogous to the captcha and credentials capabilities (additional ops burden, additional posture-broadening surface), (c) collapse a clean composition boundary — host-agent owns *what to do*, browxai owns *how to do it*. The BYO posture preserves the property that browxai is RC-independent and substrate-pure; the vision dimension is the host agent's choice.
+
+**For app-specific understanding without vision** — install a canvas-app adapter plugin (Phase 9b). An adapter plugin can read scene-graph node bounds / layer ids / frame names directly from the app's own state (via `eval_js` or app-specific RPC) and surface them as structured `canvas_query({adapter:"figma", op:"getNodeBounds"})` lookups — no vision call required for the cases the app's internals already answer.
+
 ## Diagnostics (capability `diagnostics`)
 
 Off-by-default per-call recording layer + agent self-feedback (Phase 7.5). The

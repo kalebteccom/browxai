@@ -30,10 +30,11 @@ export type Capability =
   | "captcha"
   | "credentials"
   | "device-emulation"
-  | "diagnostics";
+  | "diagnostics"
+  | "canvas";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation", "diagnostics",
+  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation", "diagnostics", "canvas",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -465,6 +466,27 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   diagnostics_note: "diagnostics",
   diagnostics_search: "read",
   diagnostics_report: "read",
+  // canvas — off-by-default per-session canvas-app automation primitives.
+  // The five tools (`canvas_capture` / `canvas_diff` / `gesture_chain` /
+  // `canvas_world_to_screen` / `canvas_screen_to_world` / `canvas_query`)
+  // provide app-agnostic substrate for driving canvas-based editors
+  // (Figma, Tldraw, Excalidraw, etc) without bundling vision or knowing
+  // any specific app's internals. Loud-warned at boot. Same posture class
+  // as `eval` / `network-body` / `secrets` / `extensions` /
+  // `device-emulation` / `diagnostics`. `canvas_capture` reads framebuffer
+  // bytes — pixel-level page surface; `gesture_chain` dispatches raw
+  // pointer programs (custom paint strokes, lasso paths); the world↔screen
+  // helpers do affine math + heuristic discovery on common app globals.
+  // `canvas_query` is the dispatcher into canvas-app adapter plugins
+  // (Phase 9b — landed separately); it returns a structured no-adapter
+  // error when no plugin registers under the namespace. `canvas_diff` is
+  // pure-RGBA-bytes math — under `read` (no canvas-pixel touch of its own).
+  canvas_capture: "canvas",
+  canvas_diff: "read",
+  gesture_chain: "canvas",
+  canvas_world_to_screen: "canvas",
+  canvas_screen_to_world: "canvas",
+  canvas_query: "canvas",
   // byob-attach is not bound to a specific tool — it gates the
   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard

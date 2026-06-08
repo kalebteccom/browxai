@@ -8,6 +8,78 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **Phase 9a — canvas-app automation core.** Five MCP tools + a pure-RGBA
+  diff under the new off-by-default `canvas` capability — the generic,
+  app-agnostic substrate for driving canvas-based editors (Figma, Tldraw,
+  Excalidraw, video editors, drawing apps). The capability is loud-warned
+  at boot in the same posture class as `eval` / `network-body` /
+  `secrets` / `extensions` / `device-emulation` / `diagnostics`.
+  - **`canvas_capture({ ref?, selector?, format, session? })`** — extract
+    framebuffer or 2D ImageData from a `<canvas>` element. Three formats:
+    `png` (`toDataURL` — handoff to host-agent multimodal vision),
+    `2d-imagedata` (`getImageData` RGBA bytes, top-left origin),
+    `webgl-framebuffer` (`gl.readPixels` RGBA, flipped to top-left to
+    match imagedata convention). Bounded at 16384×16384 px (refuses
+    larger with a structured `too-large` error); tainted canvases
+    refuse cleanly; WebGL requests `preserveDrawingBuffer:true` on
+    context acquisition (cannot undo a prior context's choice).
+    Capability `canvas` (+ `read`).
+  - **`canvas_diff({ beforeBase64, afterBase64, width?, height?, region?, inputFormat?, session? })`** —
+    pure pixel/region delta over two RGBA captures. → `{ ok,
+    changedPixelCount, changedBytes, percentageChanged,
+    bboxOfChanges:{x,y,w,h}|null, warnings[] }`. `bboxOfChanges` is the
+    tight bounding box of the changed area; over-flow regions clamp to
+    image bounds. PNG-format inputs (`inputFormat:"png"`) byte-compare
+    only this cycle (PNG-decoded pixel diff is a follow-up); a warning
+    surfaces so callers know to recapture as `2d-imagedata` for bbox
+    math. Capability `read` (pure math; no canvas-pixel touch of its
+    own).
+  - **`gesture_chain({ steps, session? })`** — multi-step pointer
+    program (`down` / `move` / `up` / `wait` / `wheel`). Custom paint
+    strokes, lasso paths, signature widgets, hand-drawn gestures the
+    canned `drag` / `gesture_swipe` family doesn't cover. Bounded:
+    200 steps max, `move` floored at 5 ms per step, `wait` clamped at
+    5000 ms per step. `pointerId` accepted on input but routes through
+    Playwright's single-mouse pipeline (multi-pointer fan-out is a
+    future extension — for multi-touch today use `touch_*` /
+    `gesture_pinch`). Capability `canvas` (+ `action`).
+  - **`canvas_world_to_screen({ worldX, worldY, ref?, selector?, transform?, session? })`** +
+    inverse **`canvas_screen_to_world({ screenX, screenY, … })`** —
+    affine coord-space translation, two modes: **explicit** (caller
+    passes `transform: {scale, panX, panY, originX?, originY?}` — pure
+    math `screenX = (worldX + panX) * scale + originX`); **discovery**
+    (omit `transform` — page-side probe walks common app-side globals:
+    `app.viewport.zoom`+`app.viewport.center` (Figma/Excalidraw shape),
+    `app.scale`+`app.offset` (Tldraw shape), `app.transform.matrix`
+    (generic 6-element affine)). Discovery success surfaces
+    `transformDiscovered` + `adapterHint` + a HEURISTIC warning;
+    discovery failure returns `{ ok:false, error:"no transform
+    discoverable — pass \`transform\` explicitly OR use a canvas-app
+    adapter plugin", code:"no-transform" }`. Round-trips with the
+    inverse to within fp precision under the same explicit transform.
+    Capability `canvas` (+ `read`).
+  - **`canvas_query({ adapter, op, args?, session? })`** — dispatcher
+    routing to a canvas-app adapter plugin's handler. Looks up
+    `<adapter>.<op>` in the live plugin tool registry and forwards
+    `args` (with `session` passed through). When no plugin matches:
+    `{ ok:false, error:"no canvas adapter registered for <adapter>;
+    install @kalebtec/browxai-plugin-<adapter> or pass a registered
+    adapter namespace", code:"no-adapter", requestedAdapter,
+    requestedOp }`. The inner plugin tool's own capability is enforced
+    via the Phase-8 plugin call-graph gate. Phase 9a ships the
+    dispatcher only — the first canvas-app adapter plugins land
+    separately in Phase 9b. Capability `canvas` (+ the inner tool's
+    own capability).
+  - **BYO-vision pattern** — `docs/tool-reference.md` documents the
+    composition loop: `canvas_capture({format:"png"})` → host-agent's
+    own multimodal vision call → `gesture_chain` / `mouse_*`. browxai
+    does NOT bundle OCR or a hosted vision API by design (owner
+    direction 2026-05-30); the BYO posture preserves browxai's
+    substrate-pure / RC-independent property and keeps the modality
+    dimension the host agent's choice.
+
 ## v0.6.0 — 2026-06-08 — Plugin runtime + overflow_detect + click auto-recovery
 
 ### Fixed

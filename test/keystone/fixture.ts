@@ -546,6 +546,57 @@ const OVERFLOW_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Phase-9a canvas keystone — a fixture page with a real `<canvas>` painted
+// with a recognizable pattern (red square top-left, blue square bottom-
+// right) so `canvas_capture` round-trips through Chromium with predictable
+// bytes. Also wires mousedown/mousemove/mouseup listeners on the canvas
+// that record an event log into a tagged output so the `gesture_chain`
+// keystone can assert the page-side events fire.
+const CANVAS_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>canvas keystone</title>
+<style>
+  html, body { margin: 0; padding: 0; }
+  #canvas-target { display: block; border: 1px solid #888; }
+</style></head>
+<body>
+  <h1 data-testid="kc-title">Canvas Keystone</h1>
+  <canvas data-testid="kc-canvas" id="canvas-target" width="64" height="64"></canvas>
+  <output data-testid="kc-event-log" id="event-log">none</output>
+  <script>
+    var c = document.getElementById('canvas-target');
+    var ctx = c.getContext('2d');
+    // Background — opaque white so getImageData has predictable RGBA.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, 64, 64);
+    // Red square top-left 8x8 — exact channel values, easy to assert.
+    ctx.fillStyle = 'rgb(255,0,0)';
+    ctx.fillRect(0, 0, 8, 8);
+    // Blue square bottom-right 8x8.
+    ctx.fillStyle = 'rgb(0,0,255)';
+    ctx.fillRect(56, 56, 8, 8);
+    // Event log — record mousedown / mousemove / mouseup counts so the
+    // gesture_chain keystone can confirm the page-side listeners fired.
+    var counts = { down: 0, move: 0, up: 0 };
+    function bump(k) {
+      counts[k]++;
+      document.getElementById('event-log').textContent =
+        'down=' + counts.down + ' move=' + counts.move + ' up=' + counts.up;
+    }
+    c.addEventListener('mousedown', function() { bump('down'); });
+    c.addEventListener('mousemove', function() { bump('move'); });
+    c.addEventListener('mouseup', function() { bump('up'); });
+    // Stage a synthetic app-side viewport global so the canvas_world_to_screen
+    // discovery probe has a deterministic shape to match. The keystone's
+    // explicit-mode test asserts math on a known transform; this global
+    // lets a future discovery-mode keystone (or an adopter walking the
+    // BYO-vision example) confirm the probe sees what's documented.
+    window.app = window.app || {};
+    window.app.viewport = { zoom: 2.0, center: { x: -50, y: -30 } };
+  </script>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -699,6 +750,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/overflow-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(OVERFLOW_PAGE);
+      return;
+    }
+    if (u.pathname === "/canvas-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(CANVAS_PAGE);
       return;
     }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };
