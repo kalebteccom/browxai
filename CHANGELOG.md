@@ -10,6 +10,29 @@ surface" covers.
 
 ### Added
 
+- **Phase 9b — first-party canvas-app adapter plugins.** Three Kalebtec
+  plugins demonstrating that the Phase-8 plugin runtime + the Phase-9a
+  canvas substrate compose into a real ecosystem story. Each declares
+  capabilities `eval` + `canvas`, routes every tool through
+  `api.callTool("eval_js", {expr})`, and returns a structured
+  `code:"<adapter>-not-loaded"` envelope when the host app isn't on the
+  page. Resolved via `canvas_query({adapter, op, args})` from the
+  Phase-9a dispatcher.
+  - **`@kalebtec/browxai-plugin-figma`** — namespace `figma`; surfaces
+    `figma.get_selection`, `figma.get_viewport`, `figma.select_node`,
+    `figma.move_node`, `figma.create_rectangle` over the page-side
+    `figma.*` global (selection, viewport, node mutate, rectangle
+    create).
+  - **`@kalebtec/browxai-plugin-tldraw`** — namespace `tldraw`;
+    surfaces `tldraw.get_selected_shapes`, `tldraw.get_viewport`,
+    `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`
+    over Tldraw's `window.editor` global.
+  - **`@kalebtec/browxai-plugin-excalidraw`** — namespace `excalidraw`;
+    surfaces `excalidraw.get_scene_state`, `excalidraw.get_viewport`,
+    `excalidraw.add_element`, `excalidraw.delete_element`,
+    `excalidraw.set_scroll` over the host-page `window.excalidrawAPI`
+    ref.
+
 - **Phase 9a — canvas-app automation core.** Five MCP tools + a pure-RGBA
   diff under the new off-by-default `canvas` capability — the generic,
   app-agnostic substrate for driving canvas-based editors (Figma, Tldraw,

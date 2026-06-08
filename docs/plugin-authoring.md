@@ -324,3 +324,29 @@ The example:
 Copy that layout, change `package.json#browxai`, swap in your own
 handlers. The runtime contract is identical regardless of what your
 plugin actually does.
+
+## Real-world plugins
+
+The example plugin is the toy / learning path. For a look at how real
+first-party plugins consume the runtime — declared capabilities, an
+`api.callTool("eval_js", …)` inner loop, structured app-not-loaded
+errors, the typed schema overlay — see the three Phase 9b canvas-app
+adapter plugins:
+
+- [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/) —
+  selection / viewport / node mutate / rectangle create over Figma's
+  page-side `figma.*` global.
+- [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/) —
+  shapes / viewport / create / delete / select over Tldraw's
+  `window.editor` global.
+- [`@kalebtec/browxai-plugin-excalidraw`](../packages/plugins/excalidraw/) —
+  scene state / viewport / add / delete / scroll over Excalidraw's
+  `window.excalidrawAPI` global.
+
+Each is small (one `register(api)`, five tool handlers, a unit-test
+file, a README). They all share a common shape: declare `eval` + `canvas`
+at the manifest level, route every tool through `api.callTool("eval_js",
+{expr})`, parse the envelope back to a structured `{ok, …}` shape, and
+return a clear `code:"<adapter>-not-loaded"` error when the host app
+isn't on the page. That shape is the recommended pattern for any new
+canvas-app adapter.
