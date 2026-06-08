@@ -52,6 +52,8 @@ function fakeEntry(id: string): SessionEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     seededRandom: {} as any,
     perf: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    coverage: {} as any,
     wedge: new WedgeTracker(),
     metrics: new SessionMetrics(),
     dialog: new DialogPolicyState(),

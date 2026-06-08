@@ -80,6 +80,78 @@ surface" covers.
     substrate-pure / RC-independent property and keeps the modality
     dimension the host agent's choice.
 
+### Added — Phase 10 — perf optimization module
+
+Promotes browxai's perf surface from *measurement* (the v0.2.0 `perf_start`
+/ `perf_stop` / `perf_insights` trio that produces raw chromium traces) to
+*actionable* — an agent can run a structured audit and receive remediation
+recommendations, not just trace blobs. Closes Phase 10 with five new MCP
+tools (the prior `overflow_detect` Phase-10 entry landed in v0.6.0).
+
+- **`perf_audit({categories?, durationMs?, format?, session?})`** — the
+  headline tool. Records a CDP trace + JS/CSS precise coverage + network
+  response metadata for `durationMs` (default 5000, max 30000), then runs
+  8 pluggable category analysers against the assembled context and
+  composes a report. Categories (default = all): `render-blocking`
+  (resources blocking first paint), `unused-code` (scripts/stylesheets
+  with <30% usage), `oversize-images` (>500KB), `layout-thrashing` (>5
+  forced sync layouts in window), `long-tasks` (>50ms main-thread
+  blockers), `leak-suspects` (>10% retainer growth — consumes
+  `memory_diff` data when passed on the context), `cache-opportunities`
+  (static assets with missing/short Cache-Control), `font-loading` (fonts
+  loaded >200ms after document start). Output: `{summary:{score,
+  topIssues}, byCategory:{[cat]:{issues[], remediations[]}},
+  evidence:{tracePath, coveragePath?}, durationMs, categoriesRun,
+  warnings}`. `format:"summary"` (default) caps each category to 3 issues
+  + 3 remediations AND enforces a 2000-token body budget — over-budget
+  low/medium severity entries are dropped + a `warnings[]` entry surfaces
+  it. `format:"full"` is unbounded. Score = `100 − sum(severity-weight ×
+  issue-count)` floored at 0 (high=10, medium=4, low=1). Evidence files
+  (workspace-rooted): trace under `<workspace>/perf/<sessionId>-audit-<ts>.json`
+  + coverage JSON alongside; both load in DevTools' Performance / Coverage
+  panels. Category set is internally pluggable — adding a category =
+  adding a registry entry in `src/page/perf-audit.ts`; the public surface
+  doesn't change. Capability `read` (non-mutating observation).
+- **`coverage_start({session?})` / `coverage_stop({session?})`** —
+  precise JS + CSS coverage tracking. Wraps CDP
+  `Profiler.startPreciseCoverage` (per-script byte-level use counts) +
+  `CSS.startRuleUsageTracking` (per-stylesheet rule-level use counts) in
+  lockstep. `coverage_stop` returns `{jsCoverage:[{url, totalBytes,
+  usedBytes, usagePercent, deadRanges?}], cssCoverage:[{url, totalBytes,
+  usedBytes, usedRules, totalRules, usagePercent, deadRules?}],
+  durationMs}`. JS coverage follows DevTools' Coverage panel semantics: a
+  function with a `count:0` root range is fully dead; `count:1` root with
+  `count:0` sub-blocks = dead conditional branches. `usagePercent < 30`
+  is the audit's `unused-code` floor. Idempotent restart on
+  `coverage_start`; `coverage_stop` is safe to call when no tracker is
+  running (`notRunning:true`). `coverage_start` is `action` (mutates
+  target state); `coverage_stop` is `read` (pure parse + compose past the
+  CDP fetch). `perf_audit` calls both internally — use directly for raw
+  reports or longer windows than the audit's 5s default.
+- **`layout_thrash_trace({durationMs?, session?})`** — focused CDP trace
+  just for forced synchronous layouts + LayoutShift + Recalc Style
+  events, aggregated by originating call-stack. Returns
+  `{forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack,
+  count, totalDurationMs}], tracePath, durationMs}`. `originatingStack`
+  reads from the trace's `stackTrace` field on each event (chromium
+  populates it when DevTools is attached); `"<anonymous>"` when no stack
+  is available. `tracePath` is workspace-rooted under
+  `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json` — loadable in
+  DevTools' Performance panel. Capped at top 50 origins. `durationMs`
+  default 5000, max 30000. Capability `read`.
+- **`memory_diff({beforePath, afterPath, session?})`** — pure-function
+  consumer of two `.heapsnapshot` files (the format `heap_snapshot` writes
+  / DevTools exports). No browser interaction. Groups nodes by
+  `${type}:${name}`, sums `self_size` per group, reports per-group
+  deltas. Returns `{retainerGrowth:[{node, type, sizeBefore, sizeAfter,
+  deltaBytes, deltaPercent}], summary:{totalGrowth,
+  top3Growers:[...]}}`. Groups whose `|deltaBytes| < 1024` are dropped
+  (sub-KB noise filter). `deltaPercent` is a number or the string
+  `"+inf"` when `sizeBefore:0`. Sorted by `deltaBytes` desc, capped at
+  100 rows. Both paths are workspace-rooted; rejected on escape.
+  Capability `read`. Pairs with `heap_snapshot` (snapshot before suspect
+  interaction → drive the action → snapshot after → `memory_diff`).
+
 ## v0.6.0 — 2026-06-08 — Plugin runtime + overflow_detect + click auto-recovery
 
 ### Fixed

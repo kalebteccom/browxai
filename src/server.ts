@@ -136,6 +136,11 @@ import {
   readTraceFile,
   extractInsights,
 } from "./page/perf.js";
+import { CoverageTrackerState } from "./page/coverage.js";
+import { runLayoutThrashTrace } from "./page/layout-thrash.js";
+import { diffHeapSnapshots } from "./page/memory-diff.js";
+import { runPerfAudit } from "./page/perf-audit-runner.js";
+import { ALL_AUDIT_CATEGORIES } from "./page/perf-audit.js";
 import {
   takeHeapSnapshot,
   defaultHeapSnapshotPath,
@@ -864,6 +869,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         clock: new ClockRegistry(),
         seededRandom: new SeededRandomRegistry(),
         perf: new PerfTracingState(),
+        coverage: new CoverageTrackerState(),
         wedge: new WedgeTracker(),
         metrics: new SessionMetrics(),
         dialog: dialogState,
@@ -888,6 +894,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // attached Chrome (BYOB) keeps the trace buffer pinned. Best-effort:
       // a stuck Tracing.end won't block teardown (perf state bounds the wait).
       await e.perf.closeIfRunning(e.session.cdp()).catch(() => undefined);
+      // Phase 10 — also release any in-flight Profiler/CSS coverage on
+      // the attached target so a BYOB Chrome doesn't keep coverage state
+      // pinned past detach.
+      await e.coverage.closeIfRunning(e.session.cdp()).catch(() => undefined);
       // Phase 7 — workers registry CDP listeners. Detach before CDP closes
       // so we don't race the parent session shutdown.
       try { e.workers.dispose(); } catch { /* best-effort */ }
@@ -3270,6 +3280,230 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           eventCount: events.length,
           metadata: metadata ?? null,
           insights,
+        };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  // -------- Phase 10 — perf optimization module --------
+  //
+  // Four new primitives that promote browxai's perf surface from
+  // measurement to actionable:
+  //   - perf_audit            → orchestrated audit across 8 pluggable
+  //                              categories, with remediation suggestions.
+  //                              Summary mode capped at 2000 tokens.
+  //   - coverage_start/stop   → CDP Profiler.startPreciseCoverage +
+  //                              CSS.startRuleUsageTracking pair, exposing
+  //                              per-script + per-stylesheet usage% for the
+  //                              dead-code analysis the audit consumes.
+  //   - layout_thrash_trace   → focused 5-30s trace just for forced
+  //                              synchronous layouts + LayoutShift events,
+  //                              aggregated by originating call-stack.
+  //   - memory_diff           → pure-function heap-snapshot diff (two
+  //                              existing `.heapsnapshot` paths in) →
+  //                              retainer-growth report.
+  //
+  // Capability split (also in util/capabilities.ts):
+  //   perf_audit, coverage_stop, layout_thrash_trace, memory_diff → `read`
+  //   coverage_start                                                 → `action`
+
+  register(
+    "perf_audit",
+    {
+      description:
+        "Run a structured performance audit on this session and return remediation-shaped findings — the headline Phase-10 tool. Records a CDP trace + JS/CSS precise coverage + network response metadata for `durationMs` (default 5000, max 30000), then runs 8 pluggable category analysers against the assembled context and composes a report. **Categories** (default = all): `render-blocking` (resources blocking first paint), `unused-code` (scripts/stylesheets with <30% usage), `oversize-images` (>500KB), `layout-thrashing` (>5 forced sync layouts), `long-tasks` (>50ms main-thread blockers), `leak-suspects` (>10% retainer growth — requires `memory_diff` data passed via the runner), `cache-opportunities` (static assets with missing/short Cache-Control), `font-loading` (fonts loaded >200ms after document start). **Output shape:** `{summary:{score, topIssues[]}, byCategory:{[cat]:{issues[], remediations[]}}, evidence:{tracePath, coveragePath?}, warnings[], tokensEstimate}`. **`format`** (default `\"summary\"`) caps each category to 3 issues + 3 remediations AND enforces a 2000-token budget on the body — over-budget low/medium severity entries are dropped + a `warnings[]` entry surfaces it. `\"full\"` is unbounded. **Evidence files** (workspace-rooted): the trace under `<workspace>/perf/<sessionId>-audit-<ts>.json` + coverage JSON alongside; both are loadable in DevTools' Performance / Coverage panels. Internally pluggable — future categories add by extending `ANALYSERS` in `src/page/perf-audit.ts` without changing this public surface. Capability `read` (non-mutating observation).",
+      inputSchema: {
+        categories: z.array(z.enum(ALL_AUDIT_CATEGORIES as [string, ...string[]])).optional().describe(
+          "Subset of audit categories. Default = all 8.",
+        ),
+        durationMs: z.number().int().positive().max(30_000).optional().describe(
+          "Observation window in ms. Default 5000, max 30000. Longer windows give more data but cost more wall-clock.",
+        ),
+        format: z.enum(["summary", "full"]).optional().describe(
+          "`summary` (default) caps each category to 3 issues + enforces a 2000-token body budget. `full` is unbounded.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ categories, durationMs, format, session }) => {
+      const g = gateCheck("perf_audit"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await runPerfAudit(
+          e.session.cdp(),
+          workspace.root,
+          e.id,
+          {
+            categories: categories as string[] | undefined,
+            durationMs,
+            format,
+          },
+        );
+        const body: Record<string, unknown> = {
+          ok: true,
+          summary: r.report.summary,
+          byCategory: r.report.byCategory,
+          evidence: r.evidence,
+          durationMs: r.durationMs,
+          categoriesRun: r.categoriesRun,
+          warnings: r.report.warnings,
+        };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: trace + coverage state has been released on the human's Chrome. Evidence files remain under $BROWX_WORKSPACE.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "coverage_start",
+    {
+      description:
+        "Arm precise JS + CSS coverage tracking on this session — wraps CDP `Profiler.startPreciseCoverage` (per-script byte-level use counts) + `CSS.startRuleUsageTracking` (per-stylesheet rule-level use counts) in lockstep. Use to identify dead JS + dead CSS that ships but boot never executes. Pairs with `coverage_stop` (returns the parsed report). Per-session; one lifecycle in flight at a time. **Idempotent restart:** calling `coverage_start` while a tracker is already running cleanly stops the in-flight one (results discarded) and starts fresh. Captures stylesheet metadata (URL + length) via the `CSS.styleSheetAdded` event stream during the tracking window. Capability `action` (mutates target state). The audit tool `perf_audit` calls this internally — only use the direct primitives when you want the raw report or want a longer window than the audit's default.",
+      inputSchema: {
+        ...SESSION_ARG,
+      },
+    },
+    async ({ session }) => {
+      const g = gateCheck("coverage_start"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.coverage.start(e.session.cdp());
+        const body: Record<string, unknown> = {
+          ok: true,
+          running: true,
+          startedAt: r.startedAt,
+          restarted: r.restarted,
+          hint: "Drive your action(s), then call coverage_stop to get the {jsCoverage, cssCoverage} report.",
+        };
+        if (r.restarted) {
+          body.warning = "A prior coverage_start was still active — it has been cleanly stopped (results discarded) and a fresh tracker started.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "coverage_stop",
+    {
+      description:
+        "Stop precise JS + CSS coverage tracking and return the parsed report. Calls `Profiler.takePreciseCoverage` + `CSS.stopRuleUsageTracking` then aggregates the raw byte-range output into per-script + per-stylesheet entries. Returns `{ok, jsCoverage:[{url, totalBytes, usedBytes, usagePercent, deadRanges?}], cssCoverage:[{url, totalBytes, usedBytes, usedRules, totalRules, usagePercent, deadRules?}], durationMs}`. `usagePercent` is the agent's scan metric — `<30` indicates substantial dead code (the audit's `unused-code` analyser flags it). `deadRanges` / `deadRules` are top-50 byte ranges per file. **Safe to call any number of times:** if no tracker is running, returns `notRunning:true` rather than an error. Pure parsing + composition past the CDP fetches — no file written; the caller decides whether to persist the report. Capability `read`.",
+      inputSchema: {
+        ...SESSION_ARG,
+      },
+    },
+    async ({ session }) => {
+      const g = gateCheck("coverage_stop"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await e.coverage.stop(e.session.cdp());
+        if (r.notRunning) {
+          const body = {
+            ok: true,
+            notRunning: true,
+            hint: "No coverage was active for this session — coverage_stop is idempotent; call coverage_start first.",
+          };
+          const tokensEstimate = estimateTokens(JSON.stringify(body));
+          return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+        }
+        const body: Record<string, unknown> = {
+          ok: true,
+          jsCoverage: r.jsCoverage,
+          cssCoverage: r.cssCoverage,
+          durationMs: r.durationMs,
+        };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "layout_thrash_trace",
+    {
+      description:
+        "Record a focused CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts + LayoutShift + Recalc Style events, then aggregate by originating call-stack so the agent sees `\"this rAF loop fired 200 forced layouts\"` at a glance instead of paging through a 100MB chromium trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`. `originatingStack` reads from the trace's `stackTrace` field on each event (chromium populates it when DevTools is attached) — `\"<anonymous>\"` when no stack was attached. `tracePath` is a workspace-rooted JSON file under `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json` — loadable in DevTools' Performance panel for the full visual. Capped at the top 50 origins, sorted by count desc. Capability `read`.",
+      inputSchema: {
+        durationMs: z.number().int().positive().max(30_000).optional().describe(
+          "Trace recording window in ms. Default 5000, max 30000.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ durationMs, session }) => {
+      const g = gateCheck("layout_thrash_trace"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const r = await runLayoutThrashTrace(
+          e.session.cdp(),
+          workspace.root,
+          e.id,
+          { durationMs },
+        );
+        const body: Record<string, unknown> = {
+          ok: true,
+          forcedLayoutsCount: r.forcedLayoutsCount,
+          layoutShiftsCount: r.layoutShiftsCount,
+          eventsByOrigin: r.eventsByOrigin,
+          tracePath: r.tracePath,
+          durationMs: r.durationMs,
+        };
+        if (e.mode === "attached") {
+          body.warning = "BYOB / attached Chrome: trace buffer on the human's Chrome has been released. The JSON file remains under $BROWX_WORKSPACE.";
+        }
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        const tokensEstimate = estimateTokens(JSON.stringify(body));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "memory_diff",
+    {
+      description:
+        "Diff two V8 heap snapshots (paths to existing `.heapsnapshot` files from `heap_snapshot`) and report retainer growth per node-type group. Pure function — no browser interaction; no CDP touch; reads + parses two existing JSON-shaped V8 heap snapshots on disk and emits the structured diff. **Inputs:** `beforePath` + `afterPath`, both workspace-rooted (path-escape rejected). **Output:** `{ok, retainerGrowth:[{node, type, sizeBefore, sizeAfter, deltaBytes, deltaPercent}], summary:{totalGrowth, top3Growers}}`. `node` is the V8 `${type}:${name}` display (matches `heap_retainers`'s shape). Groups whose `|deltaBytes| < 1024` are dropped as noise. Sorted by `deltaBytes` desc, capped at 100 rows. Typical leak-detection flow: `heap_snapshot` (before suspect interaction) → drive the action → `heap_snapshot` (after) → `memory_diff({beforePath, afterPath})`. The audit's `leak-suspects` analyser consumes this shape directly. Capability `read`.",
+      inputSchema: {
+        beforePath: z.string().describe("Workspace-rooted path to a `.heapsnapshot` file (the 'before' snapshot)."),
+        afterPath: z.string().describe("Workspace-rooted path to a `.heapsnapshot` file (the 'after' snapshot)."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ beforePath, afterPath, session: _session }) => {
+      const g = gateCheck("memory_diff"); if (g) return g;
+      // Pure file read + parse — no session touch required. SESSION_ARG
+      // honoured for surface consistency with the sibling `perf_insights`.
+      try {
+        const r = diffHeapSnapshots(workspace.root, beforePath, afterPath, "memory_diff");
+        const body: Record<string, unknown> = {
+          ok: true,
+          retainerGrowth: r.retainerGrowth,
+          summary: r.summary,
         };
         const tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) }] };
@@ -7950,6 +8184,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "start_har", "stop_har",
     "stop_video", "get_video",
     "perf_start", "perf_stop", "perf_insights",
+    "perf_audit", "coverage_start", "coverage_stop", "layout_thrash_trace", "memory_diff",
     "heap_snapshot", "heap_retainers",
   ]);
   const BATCH_MAX_CALLS = 32;

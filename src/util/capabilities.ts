@@ -224,6 +224,16 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   perf_start: "action",
   perf_stop: "action",
   perf_insights: "action",
+  // Phase 10 perf module additions. `perf_audit` and `coverage_stop` are
+  // `read` — non-mutating observation/composition over the trace + coverage
+  // they collected. `coverage_start` is `action` (arms CDP state on the
+  // target). `layout_thrash_trace` and `memory_diff` are `read` — focused
+  // trace observation + pure file-diff, no further mutation.
+  perf_audit: "read",
+  coverage_start: "action",
+  coverage_stop: "read",
+  layout_thrash_trace: "read",
+  memory_diff: "read",
   // V8 heap snapshots (CDP `HeapProfiler.takeHeapSnapshot` + in-process
   // retainer query over the `.heapsnapshot` JSON). `heap_snapshot` writes
   // a workspace-rooted file; `heap_retainers` reads one and reports who

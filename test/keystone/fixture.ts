@@ -597,6 +597,123 @@ const CANVAS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// -- Phase 10 perf fixtures ---------------------------------------------------
+//
+// Three pages + two static asset routes that together exercise:
+//   - perf_audit: a page with intentionally dead CSS (90% unused selectors),
+//     a known long task in inline JS, and an oversize image-ish data URL.
+//   - coverage_*: a page that loads a separate small JS file whose half of
+//     the code is dead, and a CSS file with unused selectors.
+//   - layout_thrash_trace: a page with a rAF loop that thrashes layout by
+//     alternating writes/reads of offsetHeight.
+
+const PERF_DEAD_CSS = `
+/* used: only .used appears in markup */
+.used { color: blue; padding: 4px; border: 1px solid #888; }
+/* dead bulk — purgeable */
+.dead-1 { color: red; }
+.dead-2 { color: green; }
+.dead-3 { color: orange; }
+.dead-4 { display: flex; flex-direction: column; }
+.dead-5 { background: #ddd; padding: 10px; margin: 4px; }
+.dead-6 { transform: rotate(15deg) translateX(20px); }
+.dead-7 { font-family: "Helvetica Neue", Arial, sans-serif; }
+.dead-8 { box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+.dead-9 { grid-template-columns: repeat(3, 1fr); }
+.dead-10 { background: linear-gradient(45deg, red, blue, green); }
+.dead-11 { animation: fade 2s ease-in-out infinite; }
+.dead-12 { backdrop-filter: blur(8px); }
+.dead-13 { clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%); }
+.dead-14 { mask-image: linear-gradient(black, transparent); }
+.dead-15 { will-change: transform, opacity; }
+@keyframes fade { 0% { opacity: 0 } 50% { opacity: 1 } 100% { opacity: 0 } }
+`;
+
+const PERF_DEAD_JS = `
+// used: the page calls usedFn() on load
+function usedFn() {
+  document.title = "loaded";
+  return 42;
+}
+// dead bulk — never called
+function deadFn1(a, b) { return a + b * 2; }
+function deadFn2(s) { return s.split("").reverse().join(""); }
+function deadFn3(arr) { return arr.filter((x) => x > 0).map((x) => x * 2); }
+function deadFn4(o) { return Object.keys(o).sort(); }
+function deadFn5(n) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(i * i);
+  return out;
+}
+function deadFn6(s, sep) { return s.split(sep).join("|"); }
+function deadFn7(a, b) { return [...a, ...b].sort(); }
+usedFn();
+`;
+
+const PERF_AUDIT_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>perf-audit keystone</title>
+<link rel="stylesheet" href="/perf-dead.css">
+<script src="/perf-dead.js"></script>
+</head>
+<body>
+  <h1 data-testid="perf-title" class="used">perf audit fixture</h1>
+  <p>This page deliberately ships dead CSS + dead JS + a long task.</p>
+  <script>
+    // Long task: synchronous loop ~120ms to trip long-tasks.
+    (function longTask() {
+      const start = performance.now();
+      let acc = 0;
+      while (performance.now() - start < 120) {
+        for (let i = 0; i < 10000; i++) acc += Math.sqrt(i);
+      }
+      window._longTaskAcc = acc;
+    })();
+  </script>
+</body>
+</html>`;
+
+const LAYOUT_THRASH_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>layout-thrash keystone</title>
+<style>
+  .row { display: block; padding: 4px; border-bottom: 1px solid #ccc; }
+</style>
+</head>
+<body>
+  <h1 data-testid="thrash-title">Layout thrash fixture</h1>
+  <div id="container"></div>
+  <script>
+    // Build N rows + an rAF loop that forces synchronous layout by
+    // alternating writes/reads of offsetHeight.
+    const container = document.getElementById("container");
+    for (let i = 0; i < 30; i++) {
+      const d = document.createElement("div");
+      d.className = "row";
+      d.textContent = "row " + i;
+      container.appendChild(d);
+    }
+    let cycles = 0;
+    function thrashOnce() {
+      const rows = container.children;
+      for (let i = 0; i < rows.length; i++) {
+        // Write...
+        rows[i].style.padding = (4 + (cycles % 3)) + "px";
+        // ...then read — forces sync layout.
+        const _ = rows[i].offsetHeight;
+        rows[i].setAttribute("data-h", String(_));
+      }
+      cycles++;
+      window._thrashCycles = cycles;
+      // Keep cycling long enough that a downstream trace started AFTER
+      // navigation still catches forced-layout events inside its window.
+      if (cycles < 1000) requestAnimationFrame(thrashOnce);
+    }
+    requestAnimationFrame(thrashOnce);
+  </script>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -755,6 +872,27 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/canvas-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(CANVAS_PAGE);
+      return;
+    }
+    if (u.pathname === "/perf-audit-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(PERF_AUDIT_PAGE);
+      return;
+    }
+    if (u.pathname === "/perf-dead.css") {
+      // No Cache-Control header — exercises the cache-opportunities analyser.
+      res.writeHead(200, { "content-type": "text/css; charset=utf-8" });
+      res.end(PERF_DEAD_CSS);
+      return;
+    }
+    if (u.pathname === "/perf-dead.js") {
+      res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
+      res.end(PERF_DEAD_JS);
+      return;
+    }
+    if (u.pathname === "/layout-thrash-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(LAYOUT_THRASH_PAGE);
       return;
     }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };

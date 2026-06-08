@@ -23,6 +23,7 @@ import type { EmulationRegistry } from "../page/emulation.js";
 import type { ClockRegistry } from "../page/clock.js";
 import type { SeededRandomRegistry } from "../page/seed-random.js";
 import type { PerfTracingState } from "../page/perf.js";
+import type { CoverageTrackerState } from "../page/coverage.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { SessionMetrics } from "./metrics.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
@@ -94,6 +95,10 @@ export interface SessionEntry {
    *  trace lifecycle at a time per session; `perf_start` while a trace is
    *  already running cleanly restarts (see src/page/perf.ts). */
   perf: PerfTracingState;
+  /** per-session CDP precise-coverage tracker (capability split — `coverage_start`
+   *  is `action`, `coverage_stop` is `read`). Pairs JS Profiler + CSS rule
+   *  usage trackers into one lifecycle. Internally used by `perf_audit`. */
+  coverage: CoverageTrackerState;
   /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
