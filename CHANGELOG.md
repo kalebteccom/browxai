@@ -8,6 +8,23 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`click` auto-recovers via `force:true` when actionability check times out.**
+  The v0.5.1 `force:true` opt-in still required adopters to know about + opt
+  into the option. Adopter retest 2026-06-08 confirmed the busy-SPA click
+  was still timing out at the deadline even though the click event was
+  firing each time. The actionability check (visibility / stability /
+  receives-events / hit-test) thrashes forever on perpetually-busy SPAs
+  (rAF loops + WS keepalives + frequent re-renders) even though the element
+  IS clickable. Fix: when the standard click rejects with an
+  actionability-shaped error, automatically retry once with `force:true`
+  and surface a `warnings[]` entry naming the recovery. Budgeting: the
+  first attempt gets ~70% of the deadline, the recovery gets ~30% (floored
+  at 500ms each). Explicit `force:true` from the caller still skips the
+  strategy entirely. New `ElementProbe.warnings` field carries body-side
+  warnings through to the result envelope.
+
 ## v0.5.1 — 2026-06-08 — Adopter-report fixes
 
 ### Fixed

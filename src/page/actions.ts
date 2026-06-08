@@ -41,13 +41,42 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       };
     }
     const pre = await preProbe(resolved.loc);
-    // `force: true` skips Playwright's actionability checks (visibility,
-    // stability, receives-events, hit-test) — the click event fires
-    // unconditionally. Escape hatch for perpetually-busy SPAs where rAF
-    // loops + frequent re-renders make the stability check thrash forever
-    // even though the target is logically clickable. Use only on targets
-    // verified clickable by snapshot / find first.
-    await resolved.loc.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS, button: args.button, force: args.force });
+    // Click strategy: try the standard actionability path first with a
+    // SHORTER budget than the outer action deadline, so a busy-SPA
+    // stability-check thrash leaves headroom for an auto-recovery pass
+    // with `force: true`. The recovery surfaces a `forcedClick:true`
+    // warning so the caller knows the actionability check was bypassed.
+    // Explicit `force:true` from the caller skips the strategy entirely.
+    const fullTimeout = args.deadlineMs ?? DEFAULT_TIMEOUT_MS;
+    if (args.force) {
+      await resolved.loc.click({ timeout: fullTimeout, button: args.button, force: true });
+      return probe(resolved.loc, args.target, undefined, pre);
+    }
+    // Reserve ~30% of the deadline for the recovery click; the rest is
+    // the actionability budget. Floor at 500ms each so neither path is
+    // unreasonably short on tiny custom deadlines.
+    const recoveryMs = Math.max(500, Math.floor(fullTimeout * 0.3));
+    const actionabilityMs = Math.max(500, fullTimeout - recoveryMs);
+    try {
+      await resolved.loc.click({ timeout: actionabilityMs, button: args.button });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isActionabilityTimeout = /Timeout|exceeded|element is not stable|element is not visible|element is outside of the viewport|element is not enabled|intercepts pointer events|did not receive/i.test(msg);
+      if (!isActionabilityTimeout) throw e;
+      // Auto-recovery: the actionability check timed out. Try once with
+      // `force: true` — common on busy SPAs (perpetual rAF / WS keepalives /
+      // re-renders) where the stability check thrashes forever but the
+      // element IS clickable. Surface the recovery via an extra warning so
+      // the caller doesn't silently get a force-click they didn't opt into.
+      await resolved.loc.click({ timeout: recoveryMs, button: args.button, force: true });
+      const probed = await probe(resolved.loc, args.target, undefined, pre);
+      // Stamp the recovery warning on the probe — `runInActionWindow`
+      // splices probe.warnings[] onto the result's top-level warnings.
+      probed.warnings = [
+        `click: actionability check exceeded ${actionabilityMs}ms — recovered via \`force: true\` (skipped visibility / stability / receives-events checks). The page-side click event DID fire. Pass \`force: true\` explicitly to skip the actionability path entirely; this auto-recovery surfaces the busy-SPA pattern (perpetual rAF / WS keepalives) where Playwright's stability check thrashes forever.`,
+      ];
+      return probed;
+    }
     return probe(resolved.loc, args.target, undefined, pre);
   });
 }

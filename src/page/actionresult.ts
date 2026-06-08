@@ -48,6 +48,10 @@ export interface ElementProbe {
   stillAttached: boolean;
   focused?: boolean;
   checked?: boolean | "mixed";
+  /** Mid-action warnings the body wants surfaced on the ActionResult
+   *  (e.g. click auto-recovery via `force:true`). Merged into the result's
+   *  `warnings[]` by `runInActionWindow`. */
+  warnings?: string[];
   /** Post-action DOM value of the element (input.value / textarea.value /
    *  contenteditable text). Null for elements that don't carry a value.
    *  Compare against `valueRequested` to confirm a fill landed without an
@@ -420,7 +424,17 @@ export async function runInActionWindow(
       deadlineMs,
       descriptor.type,
     );
-    if (probe) elementProbe = probe;
+    if (probe) {
+      elementProbe = probe;
+      // Body-side mid-action warnings (e.g. click auto-recovery on
+      // actionability timeout) get spliced onto the result's warnings.
+      // The field is removed from the probe so it doesn't leak into the
+      // `element` block — warnings belong at the top level.
+      if (probe.warnings && probe.warnings.length > 0) {
+        warnings.push(...probe.warnings);
+        delete probe.warnings;
+      }
+    }
   } catch (e) {
     ok = false;
     error = e instanceof Error ? e.message : String(e);
