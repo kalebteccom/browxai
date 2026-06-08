@@ -8,6 +8,8 @@ surface" covers.
 
 ## Unreleased
 
+## v0.5.0 — 2026-05-30 — Automation completeness (Phase 7)
+
 ### Added
 
 - **Phase 7: Web Workers + Service Workers visibility (`workers_list` / `worker_message_send` / `worker_messages_read` / `sw_intercept_fetch` / `sw_unintercept_fetch`).**
