@@ -670,6 +670,44 @@ Output `path` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rej
 
 Gated by the off-by-default **`file-io`** capability (same posture as `upload_file` / `downloads_capture`): an archive write is a deliberate filesystem egress, not a routine action.
 
+### `element_export({ ref, format?, intoDir?, maxSizeMb?, session? })`
+
+Save the subtree under one ref as a self-contained snippet — outerHTML + page-wide stylesheets + every linked resource the subtree references. Sibling to `page_archive`, scoped to a single element instead of the whole document. The use case is "extract this component / card / table — markup, styles, images / fonts — to a directory I can grep, diff, or hand to another tool".
+
+Two formats:
+
+- `directory` (default) — writes `<intoDir>/element.html` plus a `<intoDir>/assets/` sidecar containing every fetched resource (images, fonts, scripts, stylesheets, CSS background images discovered via `getComputedStyle`). The HTML's `src`/`href` references are rewritten to relative `assets/<kind>/<file>` paths so the directory opens directly in any browser.
+- `single-file` — one self-contained `.html` file at `<intoDir>` with every linked resource inlined as a `data:` URI and the captured stylesheet text inlined in a `<style>` block. Same browser-engine soft-cap caveat as `page_archive` (~150 MB).
+
+The captured snippet is wrapped in a minimal standalone `<html><head><style>…</style></head><body>…snippet…</body></html>` document so it renders the way it did on the source page. CSS is collected page-wide via `document.styleSheets[].cssRules` — a stylesheet's rules may target the subtree from afar, so we keep them all. **Cross-origin stylesheets the page can't read** (browser security — the page lacks CORS access to `cssRules`) end up missing from the export; the count is surfaced in `warnings[]` so the adopter knows the snippet may render differently than the source page.
+
+Resource discovery walks **only the element subtree** (not the whole document) for `[src]` / `[href]` / `background-image: url(...)`. Same in-page `await fetch(url, { credentials: 'include' })` posture as `page_archive`: cookies / auth headers travel correctly, but page CSP `connect-src` applies — refused fetches are caught, dropped, and surfaced in `droppedCount` + `warnings[]`.
+
+`ref` must come from a prior `snapshot()` / `find()` — a stale or fabricated ref is a structured error, not a silent miss. `intoDir` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected). Omit it for a default `elements/<sessionId>-<ISO>-<ref>` (directory) or `elements/<sessionId>-<ISO>-<ref>.html` (single-file). `maxSizeMb` caps the total export (default 50, smaller than `page_archive`'s 200 — a snippet is meant to be a slice). → `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`.
+
+**Judgment call — iframe contents.** The same-document subtree walk picks up an `<iframe>` element's own `src` attribute (best-effort, treated as `other`), but never enters the iframe's contentDocument. Cross-origin iframes are unreachable for the same reason the page can't read cross-origin stylesheets; same-origin iframes could in principle be walked, but the discovered subtree's `outerHTML` already terminates at the iframe boundary — there's no faithful way to splice the inner document's HTML in without diverging from "this is what the element subtree actually is". Adopters who need an iframe interior should `navigate` into it as its own page and call `page_archive`.
+
+**Secrets-masking caveat (deliberate gap).** Same posture as `page_archive`. The export is intentionally **UNMASKED** — running the per-session egress masking layer over the bytes would corrupt the file (literal-substring substitution breaks inline JSON state blobs, CSS, binary image bytes, and produces a file that no longer opens correctly). The `warnings[]` array always carries the caveat as its first entry. Treat the export the same way you treat the output of `page_archive` / `dump_storage_state`: it may carry credentials.
+
+Caller must navigate + settle the page BEFORE calling `element_export`. The tool captures the element subtree once and does not inject its own wait. Gated by the off-by-default **`file-io`** capability.
+
+### `dom_export({ format?, includeShadow?, path?, session? })`
+
+Full-document DOM dump. The structural sibling of `element_export` for cases where the agent needs the whole tree (every element + every attribute), not just one subtree's renderable slice.
+
+Two formats:
+
+- `html` (default) — `document.documentElement.outerHTML` written verbatim to a workspace-rooted `.html` file. **Important**: the platform serializer does NOT include shadow-DOM content (open OR closed), even for elements that have one. Web Component interiors are invisible to `outerHTML`. The result envelope surfaces this in `warnings[]` whenever custom elements are detected.
+- `jsonl` — one JSON object per line, depth-first walk: `{ tag, role?, attrs, text?, ref?, depth }`. A grep-friendly serialization for cases where the agent needs to scan structure without parsing HTML. `attrs` is a flat attribute-name → value map. `text` is set only for nodes whose **direct** text content is non-empty (whitespace-trimmed) — direct, so a deeply-nested phrase isn't smeared across every ancestor. `ref` echoes a `data-browx-ref` attribute if the agent annotated the DOM; refs are NOT minted by this tool.
+
+**Shadow-DOM traversal.** `includeShadow:true` (the default, jsonl mode only) descends into every **open** shadow root (`Element.shadowRoot` when not null). Closed shadow roots are inaccessible by web-platform design — `shadowRoot` returns null and the tree behind them is genuinely unreachable from any tool. The `warnings[]` array surfaces the closed-shadow limitation when custom elements are present in the document, so the adopter doesn't wonder where a Web Component's interior went.
+
+`path` is resolved **inside `$BROWX_WORKSPACE` only** (path-traversal rejected — same posture as `pdf_save` / `page_archive`). Omit it for a default `dom-dumps/<sessionId>-<ISO>.html` or `dom-dumps/<sessionId>-<ISO>.jsonl`. → `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`.
+
+**Secrets-masking caveat (deliberate gap).** Same posture as `page_archive`. The dump is intentionally **UNMASKED** — running the per-session egress masking layer over the bytes would corrupt inline JSON state blobs and break the file. The `warnings[]` array always carries the caveat as its first entry.
+
+Caller must navigate + settle the page BEFORE calling. Gated by the off-by-default **`file-io`** capability.
+
 ### Download capture — `downloads_capture` / `download_get`
 
 The reverse direction of `upload_file`: intercept page-initiated downloads,

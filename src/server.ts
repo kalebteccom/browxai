@@ -110,6 +110,8 @@ import { DownloadsRegistry, attachDownloadCapture, readCapturedBytes } from "./p
 import { assetExport } from "./page/asset-export.js";
 import { pdfSave, assertPdfSupported } from "./page/pdf.js";
 import { pageArchive } from "./page/archive.js";
+import { elementExportFromRef } from "./page/element-export.js";
+import { domExport } from "./page/dom-export.js";
 import { ArtifactsRegistry } from "./session/artifacts.js";
 import { snapshotProfile, restoreProfile } from "./session/profile-snapshot.js";
 import {
@@ -3053,6 +3055,84 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           }),
           cfgActionTimeout(),
           "page_archive",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `element_export` — save the subtree under one ref as a self-contained
+  // HTML snippet plus its rendered CSS + linked resources. Sibling to
+  // `page_archive`, scoped to a single element instead of the whole
+  // document. Workspace-rooted output by construction; same UNMASKED
+  // posture as `page_archive` (rationale: secrets-masking is literal-
+  // substring substitution that would corrupt inline JSON / CSS /
+  // binary bytes).
+  register(
+    "element_export",
+    {
+      description:
+        "Save a specific element subtree as a self-contained snippet — outerHTML + page-wide stylesheets + every linked resource the subtree references. Two formats: `directory` (default) writes `<intoDir>/element.html` + `<intoDir>/assets/` sidecar with images / fonts / scripts / stylesheets / CSS background-images (rewriting internal refs to relative `assets/...` paths); `single-file` writes one self-contained HTML at `<intoDir>` with resources inlined as `data:` URIs (browsers struggle past ~150 MB — large subtrees should prefer `directory`). `ref` must come from a prior `snapshot()` / `find()`; ref-not-found is a structured error, not a silent miss. `intoDir` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `elements/<sessionId>-<ISO>-<ref>` (directory) or `elements/<sessionId>-<ISO>-<ref>.html` (single-file). `maxSizeMb` caps the total export (default 50, smaller than `page_archive`'s 200 — a snippet is meant to be a slice). Cross-origin stylesheets the page can't read are reported in `warnings[]` (the snippet may render differently than the source page). → `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. **Secrets-masking caveat**: the export is intentionally UNMASKED — running the egress masking layer would corrupt the file; treat the export as sensitive (same posture as `page_archive` / `dump_storage_state`). Capability `file-io`.",
+      inputSchema: {
+        ref: z.string().describe("Ref of the element subtree to export. Minted by a prior `snapshot()` / `find()`."),
+        format: z.enum(["directory", "single-file"]).optional().describe("`directory` (default) → element.html + assets/ sidecar; `single-file` → one HTML with data:-URI-inlined resources + inline CSS."),
+        intoDir: z.string().optional().describe("Workspace-rooted output target (directory for `directory` format; .html file for `single-file`). Default `elements/<sessionId>-<ISO>-<ref>[.html]`. Rejected if it escapes $BROWX_WORKSPACE."),
+        maxSizeMb: z.number().positive().max(10_000).optional().describe("Total export size cap (MB). Default 50. Resources past the budget are dropped + counted."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("element_export"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const r = await withDeadline(
+          elementExportFromRef(e.session.page(), e.refs, workspace.root, e.id, {
+            ref: args.ref, format: args.format, intoDir: args.intoDir, maxSizeMb: args.maxSizeMb,
+          }),
+          cfgActionTimeout(),
+          "element_export",
+        );
+        const json = JSON.stringify(r);
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };
+      } catch (err) {
+        const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) }, null, 2) }] };
+      }
+    },
+  );
+
+  // `dom_export` — full DOM dump, either as `document.documentElement.
+  // outerHTML` (the platform serialization, but blind to shadow content)
+  // or as a JSONL node-per-line tree that DOES descend open shadow roots.
+  // Closed shadow roots are a web-platform constraint — unreachable from
+  // any tool. Workspace-rooted output; same UNMASKED posture as
+  // `page_archive` / `element_export`.
+  register(
+    "dom_export",
+    {
+      description:
+        "Full DOM dump to a workspace-rooted file. Two formats: `html` (default) writes `document.documentElement.outerHTML` after the agent's prior stabilization — note the platform serializer does NOT include shadow-DOM content (open OR closed), even for elements that have one. `jsonl` writes one JSON object per line (`{tag, role?, attrs, text?, ref?, depth}`) via a depth-first walk that DOES descend open shadow roots when `includeShadow:true` (default). Closed shadow roots are inaccessible by web-platform design — the tree behind them is genuinely unreachable from this dump, surfaced in `warnings[]` when custom elements are present. `path` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`. → `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`. **Secrets-masking caveat**: the dump is intentionally UNMASKED — running the egress masking layer would corrupt inline JSON / CSS / binary bytes; treat the dump as sensitive (same posture as `page_archive` / `dump_storage_state`). Caller must navigate + settle the page BEFORE calling. Capability `file-io`.",
+      inputSchema: {
+        format: z.enum(["html", "jsonl"]).optional().describe("`html` (default) → documentElement.outerHTML (shadow content not serialised); `jsonl` → one JSON node per line, depth-first, descends open shadow roots when `includeShadow`."),
+        includeShadow: z.boolean().optional().describe("Walk open shadow roots (`jsonl` mode). Default `true`. Closed shadow roots are inaccessible regardless."),
+        path: z.string().optional().describe("Workspace-rooted output file. Default `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`. Rejected if it escapes $BROWX_WORKSPACE."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("dom_export"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const r = await withDeadline(
+          domExport(e.session.page(), workspace.root, e.id, {
+            format: args.format, includeShadow: args.includeShadow, path: args.path,
+          }),
+          cfgActionTimeout(),
+          "dom_export",
         );
         const json = JSON.stringify(r);
         return { content: [{ type: "text" as const, text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2) }] };

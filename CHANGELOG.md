@@ -10,6 +10,31 @@ surface" covers.
 
 ### Added
 
+- **`element_export({ ref, format?, intoDir?, maxSizeMb?, session? })`** —
+  save the subtree under one ref as a self-contained snippet (outerHTML +
+  page-wide stylesheets + linked resources). Two formats: `directory`
+  (default) writes `<intoDir>/element.html` + `<intoDir>/assets/` sidecar
+  with `[src]` / `[href]` / `background-image: url(...)` references
+  rewritten to relative `assets/<kind>/<file>` paths; `single-file` writes
+  one HTML with resources inlined as `data:` URIs and CSS inlined in a
+  `<style>` block. Sibling to `page_archive`, scoped to one element subtree
+  instead of the whole document. Cross-origin stylesheets the page can't
+  read are surfaced in `warnings[]` (the snippet may render differently
+  than the source page). `intoDir` resolves inside `$BROWX_WORKSPACE`
+  (escape rejected); ref-not-found is a structured error. Default
+  `maxSizeMb:50`. UNMASKED output — same secrets caveat as `page_archive`.
+  Capability `file-io`.
+- **`dom_export({ format?, includeShadow?, path?, session? })`** — full
+  DOM dump. `html` (default) writes `document.documentElement.outerHTML`
+  (note: the platform serializer does NOT include shadow-DOM content,
+  open OR closed); `jsonl` writes one JSON object per line
+  (`{tag, role?, attrs, text?, ref?, depth}`) via a depth-first walk that
+  descends into open shadow roots when `includeShadow:true` (default).
+  Closed shadow roots are inaccessible by web-platform design; surfaced
+  in `warnings[]` when custom elements are detected. `path` resolves
+  inside `$BROWX_WORKSPACE` (escape rejected); default
+  `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`. UNMASKED output — same
+  secrets caveat as `page_archive`. Capability `file-io`.
 - **`set_permission_policy({ mode, perPermission?, session? })`** — per-session
   permission policy mirroring `set_dialog_policy`. Governs page-side
   permission requests (`getUserMedia`, `navigator.geolocation.

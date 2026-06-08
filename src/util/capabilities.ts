@@ -239,6 +239,14 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // posture as `upload_file` / `downloads_capture`): an archive write is a
   // deliberate filesystem egress, not a routine action. See src/page/archive.ts.
   page_archive: "file-io",
+  // Element export — save one element subtree (ref-targeted) as a
+  // self-contained HTML snippet + CSS + linked resources. Same UNMASKED
+  // posture as `page_archive`. Under `file-io` (workspace-rooted egress).
+  element_export: "file-io",
+  // Full DOM dump — `documentElement.outerHTML` or one-JSON-line-per-node
+  // jsonl. Walks open shadow roots in jsonl mode; closed shadows are
+  // platform-inaccessible. Under `file-io` (workspace-rooted egress).
+  dom_export: "file-io",
   // Download capture — reverse of `upload_file`. `downloads_capture` toggles
   // per-session interception of Playwright `download` events; `download_get`
   // returns the captured bytes (or workspace-rooted path) for an id surfaced
