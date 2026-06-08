@@ -95,7 +95,30 @@ Defenses:
   (`BROWX_ATTACH_CDP` set, `--insecure` chrome, `eval_js` enabled) prints a stderr warning
   naming what's exposed before the first tool call goes out.
 
-### 4. Workspace pollution / no-trace contract violation
+### 4. Silent state mutation via unhandled dialogs and permission requests
+
+`alert` / `confirm` / `prompt` dialogs deadlock the page until a server-side
+handler resolves them; `getUserMedia` / `getCurrentPosition` /
+`Notification.requestPermission` / `clipboard.read|write` / sensor permission
+requests can silently grant or deny based on a prior `grant_permissions` call
+the current caller didn't know about. Both classes share the same risk shape:
+the page changes state under an unaware caller. Defenses:
+
+- **Per-session `dialog_policy` and `permission_policy`** — action-level state
+  on the session entry (not a separate capability), defaulting to `raise`:
+  the event is handled server-side so the page never deadlocks, AND the next
+  `ActionResult` returns `ok:false` with `failure:{source:"app", hint:"…"}`
+  so a dialog / permission request can't silently change app state. `allow` /
+  `deny` / `ask-human` (plus `accept-prompt-with:<text>` for dialogs) are
+  explicit opt-ins. Permission policy adds per-permission overrides
+  (`perPermission: { camera: "allow", notifications: "deny", … }`).
+- **Same posture class.** Both policies sit under capability `action` — no
+  new capability gate. The mutator tools (`set_dialog_policy`,
+  `set_permission_policy`) and the per-session state mirror each other
+  precisely. Read-side companion `permission_state({permissions[]})` exposes
+  the current CDP-reported state without mutating it (capability `read`).
+
+### 5. Workspace pollution / no-trace contract violation
 
 A bug that causes browxai to write into the consumer's cwd would compromise the no-trace
 contract. Defenses:

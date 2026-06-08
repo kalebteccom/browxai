@@ -23,6 +23,7 @@ import type { PerfTracingState } from "../page/perf.js";
 import type { WedgeTracker } from "./wedge.js";
 import type { SessionMetrics } from "./metrics.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
+import type { PermissionPolicy, PermissionPolicyState } from "./permission.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
@@ -83,6 +84,13 @@ export interface SessionEntry {
    *  navigation: the `context.on('page')` install re-attaches the handler on
    *  every new page (capability `action` — no separate capability). */
   dialog: DialogPolicyState;
+  /** per-session permission policy + per-context binding/init-script
+   *  bookkeeping. Sibling of `dialog`: governs camera/microphone/geolocation/
+   *  clipboard/notification/sensor permission requests fired from the page.
+   *  Default `raise` (deterministic anti-deadlock). Mutable at runtime via
+   *  `set_permission_policy`; persists across navigation (init-script is
+   *  re-injected on every new document). Capability `action`. */
+  permission: PermissionPolicyState;
   /** Per-primitive runtime device-emulation state (locale, timezone,
    *  geolocation, colour scheme, reduced motion, user-agent, permissions).
    *  Mutated by the 7 `set_*` / `grant_permissions` tools and re-applied
@@ -156,6 +164,10 @@ export interface OpenSpec {
   /** initial dialog policy for this session (default `{mode:"raise"}`).
    *  Mutable at runtime via `set_dialog_policy`; see src/session/dialog.ts. */
   dialogPolicy?: DialogPolicy;
+  /** initial permission policy for this session (default `{mode:"raise"}`).
+   *  Mutable at runtime via `set_permission_policy`; see
+   *  src/session/permission.ts. */
+  permissionPolicy?: PermissionPolicy;
   /** Seed the new context's storage state at creation (bulk layer).
    *  Either an inline blob (as returned by `dump_storage_state`) or a
    *  workspace-rooted JSON path. Mutually exclusive with `authState`.

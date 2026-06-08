@@ -142,6 +142,18 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // how subsequent actions respond to alert/confirm/prompt fires — a
   // session-state knob, not a capability of its own).
   set_dialog_policy: "action",
+  // per-session permission policy mutator. Sibling of `set_dialog_policy`:
+  // governs camera/microphone/geolocation/clipboard/notification/sensor
+  // permission requests fired from the page. Registers under `action` — no
+  // new capability gate. The posture matches `grant_permissions` (same kind
+  // of mutation) but the policy shape (allow/deny/raise/ask-human, per-
+  // permission overrides) is richer; `grant_permissions` remains the
+  // bulk-grant shortcut for `permission_policy({mode:"allow"})`.
+  set_permission_policy: "action",
+  // read-side companion to set_permission_policy: surfaces the current
+  // CDP-reported state per permission (granted/denied/prompt). Same
+  // posture as `console_read` / `network_read`.
+  permission_state: "read",
   mouse_down: "action",
   mouse_move: "action",
   mouse_up: "action",

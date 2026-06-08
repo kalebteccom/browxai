@@ -8,6 +8,41 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`set_permission_policy({ mode, perPermission?, session? })`** — per-session
+  permission policy mirroring `set_dialog_policy`. Governs page-side
+  permission requests (`getUserMedia`, `navigator.geolocation.
+  getCurrentPosition` / `watchPosition`, `Notification.requestPermission`,
+  `navigator.clipboard.read` / `write`, and the long-tail sensor permissions)
+  with four modes — `allow` / `deny` / `raise` (DEFAULT — deterministic
+  anti-deadlock) / `ask-human`. Per-permission overrides
+  (`perPermission: { camera: "allow", notifications: "deny", … }`) win over
+  the top-level `mode`. Persists across navigation: an init-script is
+  re-injected on every new document. Returns the resolved policy. Capability:
+  `action`. Sibling of `grant_permissions` — that tool remains as the
+  bulk-grant shortcut for the `mode:"allow"` case.
+- **`open_session({ permissionPolicy })`** — additive schema extension. Accepts
+  the string form (top-level mode) or the object form
+  (`{ mode, perPermission? }`). Default `raise`. Mutable at runtime with
+  `set_permission_policy`.
+- **`permission_state({ permissions[], origin?, session? })`** — read-only
+  companion. Returns `{ [permission]: "granted" | "denied" | "prompt" |
+  "unknown" }` per requested name via the W3C Permissions API. Defaults
+  `origin` to the current page's origin. Capability: `read`.
+- **`ActionResult.permissionRequests[]`** — page-side permission requests that
+  fired during the action window. Each entry carries
+  `{ permission, origin?, handledAs: "allowed" | "denied" | "raised" |
+  "asked-human" }`. Mirrors the `ActionResult.dialogs[]` precedent.
+  Independent of `ok`; `raise`-mode requests additionally flip `ok` to false
+  with a stable `unhandled permission request` hint pointing at
+  `set_permission_policy`.
+- Supported permission names (v1, 12 total): `camera`, `microphone`,
+  `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `midi`,
+  `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`,
+  `gyroscope`, `magnetometer`. USB / Bluetooth / HID are out of scope for v1
+  (slated for a future `device-emulation` capability).
+
 ## v0.4.0 — 2026-05-30 — image-to-path + page archive + asset export + session video
 
 Patch release on the path to v1.0. Four small additive primitives lead the new-feature roadmap (Phase 5+) shipping ahead of the public flip. v0.3.x stable surface is **unchanged** — every addition is net-additive. Default capability set unchanged; new disk-writing primitives all ride the existing off-by-default `file-io` capability (no new capability gates).

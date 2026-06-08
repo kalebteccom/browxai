@@ -18,6 +18,8 @@ import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { classifyFailure } from "../util/failure.js";
 import type { DialogPolicyState, DialogRecord } from "../session/dialog.js";
 import { UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
+import type { PermissionPolicyState, PermissionRecord } from "../session/permission.js";
+import { UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -188,6 +190,21 @@ export interface ActionResult {
     defaultValue?: string;
     handledAs: DialogRecord["handledAs"];
   }>;
+  /** Permission requests that the page made during this action window —
+   *  `getUserMedia`, `getCurrentPosition`/`watchPosition`, `Notification.
+   *  requestPermission`, `clipboard.read`/`write`, and the long-tail sensor
+   *  permissions. Each carries the canonical permission name, the page origin
+   *  at request time, and what the server's per-session `permissionPolicy`
+   *  did with it (`allowed`, `denied`, `raised`, or `asked-human` — see
+   *  `set_permission_policy`). Independent of `ok`: a policy of `allow`/
+   *  `deny`/`ask-human` resolves the request and the action proceeds;
+   *  `raise` mode rejects page-side AND flips `ok` to false with
+   *  `failure.source:"app"`. Empty/absent when no requests fired. */
+  permissionRequests?: Array<{
+    permission: PermissionRecord["permission"];
+    origin?: string;
+    handledAs: PermissionRecord["handledAs"];
+  }>;
   /** Files the page initiated as downloads during this action window —
    *  populated only when per-session capture has been turned on via
    *  `downloads_capture({on:true})` (capability `file-io`); absent otherwise.
@@ -245,6 +262,11 @@ export interface ActionContext {
    *  any fired under `raise` mode the action is marked failed with the
    *  documented hint. */
   dialog?: DialogPolicyState;
+  /** per-session permission policy state. When present, permission requests
+   *  that fired during the action window are sliced into
+   *  `ActionResult.permissionRequests[]`; if any fired under `raise` mode the
+   *  action is marked failed with the documented hint. */
+  permission?: PermissionPolicyState;
   /** per-session secrets registry (capability `secrets`). When non-null,
    *  the action-window NetworkTap masks egressing URLs / mutation
    *  responseShape keys against any registered real-values. The action's
@@ -377,6 +399,21 @@ export async function runInActionWindow(
     failure = { source: "app", hint: UNHANDLED_DIALOG_HINT };
   }
 
+  // permission-request capture — every page-side permission request that fired
+  // during the action window is sliced off the per-session buffer
+  // (PermissionPolicyState). Same shape as the dialog path: if the active
+  // policy was `raise` at request time, flip the action to ok:false with a
+  // stable hint (UNHANDLED_PERMISSION_HINT) — the request was rejected
+  // page-side so the page isn't deadlocked, but the app saw the deny branch
+  // and the caller almost certainly didn't want that.
+  const permissionSlice = ctx.permission ? ctx.permission.since(tBefore) : [];
+  const permissionRaised = ctx.permission ? ctx.permission.raisedSince(tBefore) : false;
+  if (permissionRaised && ok) {
+    ok = false;
+    error = error ?? UNHANDLED_PERMISSION_HINT;
+    failure = { source: "app", hint: UNHANDLED_PERMISSION_HINT };
+  }
+
   // --- shape ---
   const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
   const structure = diffRegions(preRegions, postRegions);
@@ -438,6 +475,17 @@ export async function runInActionWindow(
       })
     : undefined;
 
+  const permissionRequestsBlock = permissionSlice.length > 0
+    ? permissionSlice.map((r) => {
+        const out: { permission: PermissionRecord["permission"]; origin?: string; handledAs: PermissionRecord["handledAs"] } = {
+          permission: r.permission,
+          handledAs: r.handledAs,
+        };
+        if (r.origin !== undefined) out.origin = r.origin;
+        return out;
+      })
+    : undefined;
+
   // download-capture slice — downloads that fired during this action window.
   // Off-by-default registry: when capture wasn't toggled on, `since()` returns
   // an empty list and the block is omitted from the result (keeps results
@@ -463,6 +511,7 @@ export async function runInActionWindow(
   const tokensEstimate = estimateTokens(JSON.stringify({
     navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
+    ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
   }));
 
@@ -494,6 +543,7 @@ export async function runInActionWindow(
     snapshotDelta,
     network: networkBlock,
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
+    ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
     tokensEstimate,
     warnings,

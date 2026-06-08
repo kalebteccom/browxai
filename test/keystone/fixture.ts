@@ -59,6 +59,14 @@ const PAGE = `<!doctype html>
 
     <div data-testid="status-box" id="status-box" role="status">Idle</div>
 
+    <!-- permission_policy keystone: a click drives navigator.geolocation
+         which triggers the page-side wrapper installed by attachPermissionPolicy.
+         The result text is wired so the keystone assertion can distinguish
+         allow (lat/lng present) from deny (error). -->
+    <button data-testid="geo-btn" id="geoBtn" type="button"
+            onclick="askGeo()">Ask geolocation</button>
+    <output data-testid="geo-result" id="geoResult">unset</output>
+
     <table data-testid="record-grid">
       <thead><tr><th>Name</th><th>Type</th></tr></thead>
       <tbody>
@@ -78,6 +86,15 @@ const PAGE = `<!doctype html>
       document.getElementById('typeDisplay').textContent = label;
       document.getElementById('typeList').classList.add('hidden');
       document.getElementById('typeBtn').setAttribute('aria-expanded', 'false');
+    }
+    function askGeo() {
+      var out = document.getElementById('geoResult');
+      out.textContent = 'pending';
+      if (!navigator.geolocation) { out.textContent = 'no-geo-api'; return; }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) { out.textContent = 'allowed lat=' + pos.coords.latitude + ' lng=' + pos.coords.longitude; },
+        function (err) { out.textContent = 'denied code=' + err.code; }
+      );
     }
   </script>
 </body>

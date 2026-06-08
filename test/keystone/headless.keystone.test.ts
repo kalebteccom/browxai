@@ -377,6 +377,91 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
   );
 });
 
+// permission_policy keystone: the simplest non-camera path (geolocation).
+// Exercises the full stack — CDP `Browser.setPermission` baseline + in-page
+// init-script wrapper around `navigator.geolocation.getCurrentPosition` —
+// against a real Chromium. Asserts both directions (deny → error callback,
+// allow → success callback after `set_permission_policy({mode:"allow"})`),
+// captures `permissionRequests[]` on the click action's result, and confirms
+// `permission_state` reports the CDP-side state matches.
+describe("headless-CI keystone — permission_policy (geolocation, real Chromium)", () => {
+  it(
+    "default raise rejects, set_permission_policy({mode:\"allow\"}) lets it through, permissionRequests captured",
+    async () => {
+      const session = "ks-perm";
+      await callJson("open_session", { session, mode: "incognito" });
+      // Seed a deterministic geolocation reading so the allow branch has
+      // numbers to assert on. The permission is gated independently — the
+      // wrapper rejects regardless of whether coords are set.
+      await callJson("set_geolocation", { session, latitude: 40.7128, longitude: -74.006 });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // (1) DEFAULT raise — the click triggers getCurrentPosition which the
+      // wrapper rejects; the result text shows "denied" and the ActionResult
+      // surfaces permissionRequests[{permission:"geolocation",handledAs:"raised"}].
+      const clickRaised = await callJson<{
+        ok: boolean;
+        permissionRequests?: Array<{ permission: string; handledAs: string }>;
+      }>("click", { session, selector: '[data-testid="geo-btn"]' });
+      // The action probably completed as a Playwright click; raise mode flips
+      // ok:false via UNHANDLED_PERMISSION_HINT. Either way the request was
+      // recorded.
+      expect(Array.isArray(clickRaised.permissionRequests)).toBe(true);
+      const geoReq = clickRaised.permissionRequests!.find((r) => r.permission === "geolocation");
+      expect(geoReq, "geolocation request recorded under raise mode").toBeTruthy();
+      expect(geoReq!.handledAs).toBe("raised");
+      // The page's async getCurrentPosition needs a beat to write the result;
+      // poll the output until it transitions out of "pending".
+      let resultText = "";
+      for (let i = 0; i < 30 && !resultText.includes("denied"); i++) {
+        resultText = await callText("snapshot", { session });
+        if (resultText.includes("denied code=")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(resultText).toMatch(/denied code=1/);
+
+      // (2) Flip policy to allow + re-trigger. The CDP baseline re-applies
+      // (granted), the wrapper calls through, the page reports the seeded
+      // coords back.
+      const setPol = await callJson<{ ok: boolean; policy: { mode: string } }>(
+        "set_permission_policy",
+        { session, mode: "allow" },
+      );
+      expect(setPol.ok).toBe(true);
+      expect(setPol.policy.mode).toBe("allow");
+
+      const clickAllowed = await callJson<{
+        ok: boolean;
+        permissionRequests?: Array<{ permission: string; handledAs: string }>;
+      }>("click", { session, selector: '[data-testid="geo-btn"]' });
+      const allowReq = (clickAllowed.permissionRequests ?? []).find((r) => r.permission === "geolocation");
+      expect(allowReq, "geolocation request recorded under allow mode").toBeTruthy();
+      expect(allowReq!.handledAs).toBe("allowed");
+      let allowText = "";
+      for (let i = 0; i < 60 && !allowText.includes("allowed lat="); i++) {
+        allowText = await callText("snapshot", { session });
+        if (allowText.includes("allowed lat=")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(allowText).toMatch(/allowed lat=40\.7128 lng=-74\.006/);
+
+      // (3) permission_state — CDP read-side reports "granted" now that the
+      // baseline was re-applied under the allow mode.
+      const state = await callJson<{ ok: boolean; states: Record<string, string> }>(
+        "permission_state",
+        { session, permissions: ["geolocation", "camera"] },
+      );
+      expect(state.ok).toBe(true);
+      expect(state.states.geolocation).toBe("granted");
+      // camera was never set per-permission; falls back to top-level "allow".
+      expect(state.states.camera).toBe("granted");
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Documented, deliberate gap — NOT a silent skip. Under headless there is no
 // human at a screen, so the `__browx` on-page banner is not visually present
 // and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be

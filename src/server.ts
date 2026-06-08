@@ -49,6 +49,17 @@ import {
   parseDialogPolicyArg,
   type DialogPolicy,
 } from "./session/dialog.js";
+import {
+  PermissionPolicyState,
+  attachPermissionPolicy,
+  applyCdpBaseline as applyPermissionCdpBaseline,
+  parsePermissionPolicyArg,
+  readPermissionStates,
+  SUPPORTED_PERMISSIONS,
+  BYOB_PERMISSION_WARNING,
+  type PermissionPolicy,
+  type SupportedPermission,
+} from "./session/permission.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot } from "./page/compose.js";
@@ -549,6 +560,30 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // happens at the open_session tool layer.
       const dialogState = new DialogPolicyState(spec?.dialogPolicy ?? { mode: "raise" });
       attachDialogPolicy(sess.page().context(), dialogState);
+      // permission policy — install per-context binding + init-script wrappers,
+      // plus the CDP baseline (Browser.setPermission per supported name).
+      // Default `raise` (deterministic anti-deadlock); same posture as
+      // `dialogState`. The ask-human handler routes through the bridge —
+      // `__browx.confirm(true|false)` from page-side DevTools releases the
+      // wait, same mechanism as `await_human({kind:"confirm"})`. Best-effort:
+      // attach failures still leave the CDP baseline below in place.
+      const permissionState = new PermissionPolicyState(spec?.permissionPolicy ?? { mode: "raise" });
+      await attachPermissionPolicy(
+        sess.page().context(),
+        permissionState,
+        async (permission, origin) => {
+          log.info(`permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`);
+          try {
+            const sig = await br.awaitSignal("respond", 300_000);
+            const data = sig.data as { kind?: string; value?: unknown } | null;
+            if (data && data.kind === "confirm" && data.value === true) return "allow";
+            return "deny";
+          } catch {
+            return "deny";
+          }
+        },
+      );
+      await applyPermissionCdpBaseline(sess.page().context(), permissionState).catch(() => undefined);
       // Per-session download capture. Storage dir is workspace-rooted +
       // per-session — kept off the public profile dir so cleaning up captured
       // artefacts is a single rmdir without touching the profile. The
@@ -620,6 +655,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         wedge: new WedgeTracker(),
         metrics: new SessionMetrics(),
         dialog: dialogState,
+        permission: permissionState,
         deviceEmulation,
         har: harState,
         video: videoState,
@@ -729,6 +765,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     recorder: e.recorder,
     ws: e.ws,
     dialog: e.dialog,
+    permission: e.permission,
     // pass the secrets registry only when the capability is on; the
     // registry exists per-session regardless (kept on SessionEntry so
     // setters wired at creation can reference it), but the action layer
@@ -4214,6 +4251,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           .describe("explicit viewport; overrides a preset's viewport. Falls back to config `defaultViewport`."),
         dialogPolicy: z.string().optional()
           .describe("How the session handles `alert`/`confirm`/`prompt` dialogs. One of: \"accept\" (auto-OK), \"dismiss\" (auto-cancel), \"accept-prompt-with:<text>\" (prompts answered with `<text>`; alert/confirm accepted), \"raise\" (DEFAULT — dialog dismissed server-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a dialog never silently changes app state under an unaware caller). Mutate at runtime with `set_dialog_policy`."),
+        permissionPolicy: z.union([
+          z.string(),
+          z.object({
+            mode: z.enum(["allow", "deny", "raise", "ask-human"]),
+            perPermission: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional(),
+          }),
+        ]).optional()
+          .describe("How the session handles page-side permission requests (camera, microphone, geolocation, notifications, clipboard, sensors). String form sets the top-level mode (\"allow\"|\"deny\"|\"raise\"|\"ask-human\"); object form takes `{mode, perPermission?:{<name>:<mode>}}` for per-permission overrides. DEFAULT \"raise\" — request rejected page-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a permission request never silently changes app state under an unaware caller. Mutate at runtime with `set_permission_policy`."),
         storageState: z.union([
           z.string(),
           z.object({
@@ -4251,18 +4296,20 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         ),
       },
     },
-    async ({ session, mode, profile, device, viewport, dialogPolicy, storageState, authState, har, hars, recordVideo }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy, permissionPolicy, storageState, authState, har, hars, recordVideo }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
       let parsedDialogPolicy: DialogPolicy | undefined;
+      let parsedPermissionPolicy: PermissionPolicy | undefined;
       try {
         parsedDialogPolicy = dialogPolicy ? parseDialogPolicyArg(dialogPolicy) : undefined;
+        parsedPermissionPolicy = permissionPolicy ? parsePermissionPolicyArg(permissionPolicy as string | PermissionPolicy) : undefined;
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, permissionPolicy: parsedPermissionPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
         const harField = e.har.path
           ? { har: { path: e.har.path, mode: e.har.mode, content: e.har.content, nativeRecord: !!e.har.nativeRecord, finalizesOn: "close_session" as const } }
           : {};
@@ -4362,6 +4409,88 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const resolved = e.dialog.set(next);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session: e.id, policy: resolved, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "set_permission_policy",
+    {
+      description:
+        "Mutate the session's permission policy at runtime. Governs how page-side permission requests — `getUserMedia` (camera/microphone), `getCurrentPosition`/`watchPosition` (geolocation), `Notification.requestPermission`, `clipboard.read`/`write`, and the sensor permissions — are handled. Without a policy installed, requests either fire silently (Chromium auto-denies in headless) or — if a prior `grant_permissions` pre-granted — change app behavior under an unaware caller. Modes:\n" +
+        "  - \"allow\"     — pre-grant via CDP `Browser.setPermission`; in-page wrappers call through. The app sees a granted permission.\n" +
+        "  - \"deny\"      — pre-deny via CDP; in-page wrappers reject with `NotAllowedError`. The app sees a denied permission.\n" +
+        "  - \"raise\"     — DEFAULT. Pre-deny + in-page wrappers reject AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:\"app\", hint:\"unhandled permission request — set permissionPolicy\"}`. The page never deadlocks (the request is rejected), but a permission request can't silently change app state under a caller that didn't opt in.\n" +
+        "  - \"ask-human\" — server blocks on `__browx.confirm(true|false)` (the `await_human({kind:\"confirm\"})` mechanism), then resolves to allow/deny per the human's answer.\n" +
+        "Per-permission overrides (`perPermission: { camera: \"allow\", notifications: \"deny\", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({permissionPolicy})`; this tool replaces it. Returns the resolved policy. Fired requests surface on `ActionResult.permissionRequests[]`. Supported permission names (v1): " + SUPPORTED_PERMISSIONS.join(", ") + ". USB / Bluetooth / HID are out of scope for v1.\n" +
+        "Sibling to `grant_permissions` — that tool remains as the bulk-grant shortcut for the `mode:\"allow\"` case; this tool is the full policy surface.",
+      inputSchema: {
+        mode: z.enum(["allow", "deny", "raise", "ask-human"]).describe("Top-level policy mode — see tool description."),
+        perPermission: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional().describe(
+          "Per-permission overrides. Keys: one of the supported permission names (see tool description). Each value overrides the top-level `mode` for that permission. Unknown names are rejected.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("set_permission_policy"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const next: PermissionPolicy = {
+          mode: args.mode,
+          ...(args.perPermission ? { perPermission: args.perPermission as Partial<Record<SupportedPermission, "allow" | "deny" | "raise" | "ask-human">> } : {}),
+        };
+        const resolved = e.permission.set(next);
+        // Re-apply the CDP baseline so the new mapping is in effect for the
+        // very next page-side check (the wrapper script reads policy live; CDP
+        // baseline must also be refreshed so `navigator.permissions.query`
+        // / native code paths see the new state).
+        await applyPermissionCdpBaseline(e.session.page().context(), e.permission).catch(() => undefined);
+        const warnings: string[] = [];
+        if (e.mode === "attached") warnings.push(BYOB_PERMISSION_WARNING);
+        const tokensEstimate = estimateTokens(JSON.stringify(resolved));
+        const body: Record<string, unknown> = { ok: true, session: e.id, policy: resolved, tokensEstimate };
+        if (warnings.length) body.warnings = warnings;
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "permission_state",
+    {
+      description:
+        "Read the current CDP-reported permission state(s) for an origin via `Browser.getPermissionState`. Returns `{ [permission]: \"granted\" | \"denied\" | \"prompt\" | \"unknown\" }` per requested name. Defaults the `origin` to the current page's origin when omitted. Read-only — does not mutate state. Supported permission names (v1): " + SUPPORTED_PERMISSIONS.join(", ") + ". Sibling of `set_permission_policy`.",
+      inputSchema: {
+        permissions: z.array(z.string()).min(1).describe("Canonical permission names to query — see tool description for the supported set. Unknown names map to `\"unknown\"` in the result."),
+        origin: z.string().optional().describe("Origin to query (e.g. \"https://example.com\"). Omit to use the current page's origin."),
+        ...SESSION_ARG,
+      },
+    },
+    async ({ permissions, origin, session }) => {
+      const g = gateCheck("permission_state"); if (g) return g;
+      const e = await entryFor(session);
+      try {
+        const supported = (permissions as string[]).filter((p): p is SupportedPermission =>
+          (SUPPORTED_PERMISSIONS as readonly string[]).includes(p),
+        );
+        const states = await readPermissionStates(e.session.page().context(), e.session.page(), supported, origin);
+        const out: Record<string, string> = { ...states };
+        for (const p of permissions) {
+          if (!(p in out)) out[p] = "unknown";
+        }
+        const body = {
+          ok: true,
+          session: e.id,
+          origin: origin ?? (() => { try { return new URL(e.session.page().url()).origin; } catch { return null; } })(),
+          states: out,
+          tokensEstimate: estimateTokens(JSON.stringify(out)),
+        };
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
@@ -5112,6 +5241,26 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     const br = new BrowxBridge();
     await br.attach(sess.page().context());
     attachDialogPolicy(sess.page().context(), e.dialog);
+    // Re-attach permission policy on the rebuilt context. The state's
+    // wired-contexts WeakSet ensures the new context is treated as fresh
+    // (the old one was torn down), so the binding + init-script install
+    // afresh and the CDP baseline is re-applied.
+    await attachPermissionPolicy(
+      sess.page().context(),
+      e.permission,
+      async (permission, origin) => {
+        log.info(`permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`);
+        try {
+          const sig = await br.awaitSignal("respond", 300_000);
+          const data = sig.data as { kind?: string; value?: unknown } | null;
+          if (data && data.kind === "confirm" && data.value === true) return "allow";
+          return "deny";
+        } catch {
+          return "deny";
+        }
+      },
+    );
+    await applyPermissionCdpBaseline(sess.page().context(), e.permission).catch(() => undefined);
     await applyOverlayHide(
       sess.page().context(),
       configStore.resolve().hideOverlaySelectors,
