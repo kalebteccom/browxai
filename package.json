@@ -29,7 +29,7 @@
   "files": ["dist"],
   "scripts": {
     "prepublishOnly": "pnpm typecheck && pnpm test && pnpm build",
-    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js",
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js && pnpm --filter './packages/plugins/*' build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:keystone": "vitest run --config vitest.keystone.config.ts",
