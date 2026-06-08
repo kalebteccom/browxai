@@ -4,8 +4,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { sep as pathSep } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename as pathBasename, sep as pathSep } from "node:path";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
 import { openIncognitoSession } from "./session/incognito.js";
@@ -67,6 +67,16 @@ import {
   propagateSyncDecision as propagateNotificationSyncDecision,
   type NotificationPolicy,
 } from "./session/notification.js";
+import {
+  FsPickerPolicyState,
+  attachFsPickerPolicy,
+  parseFsPickerPolicyArg,
+  resolveWorkspaceFsPath,
+  SUPPORTED_FS_PICKER_APIS,
+  type FsPickerPolicy,
+  type FsPickerApi,
+  type FsPickerFile,
+} from "./session/fs-picker.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshot, composeSnapshotForFrame } from "./page/compose.js";
@@ -634,6 +644,35 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           }
         },
       );
+      // File System Access picker policy — install per-context binding +
+      // init-script stubs. Default `raise` (deterministic anti-deadlock:
+      // without a policy installed, modern web editors that call
+      // `showSaveFilePicker` etc. block every subsequent browser event on
+      // the OS file chooser that headless can't drive). The ask-human
+      // handler routes through the bridge — `__browx.respond(<files>)` from
+      // page-side DevTools releases the wait; falsy answer → deny. The
+      // server-side write target for `createWritable()` is workspace-rooted
+      // and the path is validated against `workspace.root` at
+      // `fs_picker_respond` time.
+      const fsPickerState = new FsPickerPolicyState(spec?.fsPickerPolicy ?? { mode: "raise" });
+      await attachFsPickerPolicy(
+        sess.page().context(),
+        fsPickerState,
+        workspace.root,
+        async (api, suggestedName) => {
+          log.info(`fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`);
+          try {
+            const sig = await br.awaitSignal("respond", 300_000);
+            const data = sig.data as { kind?: string; value?: unknown } | null;
+            if (data && data.kind === "fs_picker_respond" && Array.isArray((data.value as { files?: unknown })?.files)) {
+              return ((data.value as { files: FsPickerFile[] }).files);
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        },
+      ).catch(() => undefined);
       // Per-session download capture. Storage dir is workspace-rooted +
       // per-session — kept off the public profile dir so cleaning up captured
       // artefacts is a single rmdir without touching the profile. The
@@ -723,6 +762,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         dialog: dialogState,
         permission: permissionState,
         notification: notificationState,
+        fsPicker: fsPickerState,
         deviceEmulation,
         har: harState,
         video: videoState,
@@ -834,6 +874,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     dialog: e.dialog,
     permission: e.permission,
     notification: e.notification,
+    fsPicker: e.fsPicker,
     // pass the secrets registry only when the capability is on; the
     // registry exists per-session regardless (kept on SessionEntry so
     // setters wired at creation can reference it), but the action layer
@@ -5013,6 +5054,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           z.object({ mode: z.enum(["allow", "deny", "raise", "ask-human"]) }),
         ]).optional()
           .describe("How the session handles `new Notification(title, opts)` constructor calls. String form sets the mode; object form is `{mode}`. Modes mirror permissionPolicy. DEFAULT \"allow\" (browser default — constructor proceeds, OS displays per its settings) — but every call is still captured on `ActionResult.notifications[]` for observability. Distinct from `permissionPolicy.notifications` (which gates the W3C permission check); the two policies compose. Mutate at runtime with `set_notification_policy`."),
+        fsPickerPolicy: z.union([
+          z.string(),
+          z.object({
+            mode: z.enum(["allow", "deny", "raise", "ask-human"]),
+            perAPI: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional(),
+          }),
+        ]).optional()
+          .describe("How the session handles page-side File System Access picker calls (showOpenFilePicker, showSaveFilePicker, showDirectoryPicker). String form sets the top-level mode (\"allow\"|\"deny\"|\"raise\"|\"ask-human\"); object form takes `{mode, perAPI?:{<api>:<mode>}}` for per-API overrides. DEFAULT \"raise\" — picker rejected page-side so the page never deadlocks, but the next action returns ok:false with a structured failure so a picker call never silently changes app state under an unaware caller. Pair `allow` with `fs_picker_respond` to stage agent-supplied files. Mutate at runtime with `set_fs_picker_policy`."),
         storageState: z.union([
           z.string(),
           z.object({
@@ -5050,22 +5099,24 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         ),
       },
     },
-    async ({ session, mode, profile, device, viewport, dialogPolicy, permissionPolicy, notificationPolicy, storageState, authState, har, hars, recordVideo }) => {
+    async ({ session, mode, profile, device, viewport, dialogPolicy, permissionPolicy, notificationPolicy, fsPickerPolicy, storageState, authState, har, hars, recordVideo }) => {
       if (registry.has(session)) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: `session "${session}" already open; close_session first` }, null, 2) }] };
       }
       let parsedDialogPolicy: DialogPolicy | undefined;
       let parsedPermissionPolicy: PermissionPolicy | undefined;
       let parsedNotificationPolicy: NotificationPolicy | undefined;
+      let parsedFsPickerPolicy: FsPickerPolicy | undefined;
       try {
         parsedDialogPolicy = dialogPolicy ? parseDialogPolicyArg(dialogPolicy) : undefined;
         parsedPermissionPolicy = permissionPolicy ? parsePermissionPolicyArg(permissionPolicy as string | PermissionPolicy) : undefined;
         parsedNotificationPolicy = notificationPolicy ? parseNotificationPolicyArg(notificationPolicy as string | NotificationPolicy) : undefined;
+        parsedFsPickerPolicy = fsPickerPolicy ? parseFsPickerPolicyArg(fsPickerPolicy as string | FsPickerPolicy) : undefined;
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
       }
       try {
-        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, permissionPolicy: parsedPermissionPolicy, notificationPolicy: parsedNotificationPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
+        const e = await registry.get(session, { mode, profile, device, viewport, dialogPolicy: parsedDialogPolicy, permissionPolicy: parsedPermissionPolicy, notificationPolicy: parsedNotificationPolicy, fsPickerPolicy: parsedFsPickerPolicy, storageState, authState, har: har as HarStartConfig | undefined, hars, recordVideo: recordVideo as VideoStartConfig | undefined });
         const harField = e.har.path
           ? { har: { path: e.har.path, mode: e.har.mode, content: e.har.content, nativeRecord: !!e.har.nativeRecord, finalizesOn: "close_session" as const } }
           : {};
@@ -5209,6 +5260,112 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         const body: Record<string, unknown> = { ok: true, session: e.id, policy: resolved, tokensEstimate };
         if (warnings.length) body.warnings = warnings;
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "set_fs_picker_policy",
+    {
+      description:
+        "Mutate the session's File System Access picker policy at runtime. Governs how `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker` calls are handled. Without a policy installed, modern web editors deadlock on the picker dialog the headless session can't drive. Modes:\n" +
+        "  - \"allow\"     — page-side stubs return synthetic FileSystem*Handle objects built from agent-supplied files (call `fs_picker_respond` BEFORE the action that triggers the picker, OR in parallel — the queue is drained per-API on the next matching call). For `showSaveFilePicker`, the agent supplies a workspace-rooted `path` and `createWritable()` writes from the page persist there. For `showOpenFilePicker`, the agent supplies inline `contents` (base64) or a workspace-rooted `path` (server inlines the bytes); the page reads via `getFile()`.\n" +
+        "  - \"deny\"      — stubs throw `NotAllowedError`. The page sees the user-dismissed-picker branch.\n" +
+        "  - \"raise\"     — DEFAULT. Stubs throw `NotAllowedError` AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:\"app\", hint:\"unhandled File System Access picker — set fsPickerPolicy\"}`. The page never deadlocks (the picker rejects immediately), but a picker call can't silently change app state under a caller that didn't opt in.\n" +
+        "  - \"ask-human\" — server blocks on `__browx.respond({kind:\"fs_picker_respond\", value:{files:[…]}})` (the `await_human` mechanism), then resolves with the human-approved file list or denies.\n" +
+        "Per-API overrides (`perAPI: { showSaveFilePicker: \"allow\", showOpenFilePicker: \"deny\", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({fsPickerPolicy})`; this tool replaces it. Returns the resolved policy. Fired pickers surface on `ActionResult.fsPickerRequests[]`. Supported APIs (v1): " + SUPPORTED_FS_PICKER_APIS.join(", ") + ". Directory picker returns a minimal handle (`.name` set; iteration empty) — most editors will fall back to per-file pickers when iteration yields nothing.",
+      inputSchema: {
+        mode: z.enum(["allow", "deny", "raise", "ask-human"]).describe("Top-level policy mode — see tool description."),
+        perAPI: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional().describe(
+          "Per-API overrides. Keys: one of " + SUPPORTED_FS_PICKER_APIS.join(", ") + ". Each value overrides the top-level `mode` for that picker. Unknown keys are rejected.",
+        ),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("set_fs_picker_policy"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        const next: FsPickerPolicy = {
+          mode: args.mode,
+          ...(args.perAPI ? { perAPI: args.perAPI as Partial<Record<FsPickerApi, "allow" | "deny" | "raise" | "ask-human">> } : {}),
+        };
+        const resolved = e.fsPicker.set(next);
+        const tokensEstimate = estimateTokens(JSON.stringify(resolved));
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, session: e.id, policy: resolved, tokensEstimate }, null, 2) }] };
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
+      }
+    },
+  );
+
+  register(
+    "fs_picker_respond",
+    {
+      description:
+        "Stage agent-supplied files for the next File System Access picker call on this session — paired with `set_fs_picker_policy({mode:\"allow\"})` (or a `perAPI` override). The queue is per-API: a response staged for `showSaveFilePicker` won't satisfy a `showOpenFilePicker` call. Each file is either inline `{contents, name?, mimeType?}` (base64 — no filesystem read) or workspace-rooted `{path}` (resolved inside `$BROWX_WORKSPACE` only; path escape rejected). For `showSaveFilePicker`, the supplied `path` becomes the destination for `createWritable()`-driven writes from the page — `write()` / `truncate()` / `close()` from the page-side stream are persisted there. For `showOpenFilePicker`, the server reads `path` once at respond-time and inlines the bytes (the page reads via `getFile()`). Capability `file-io` — same posture as `upload_file`. Returns `{ok, session, queued:{api, fileCount}, tokensEstimate}`.",
+      inputSchema: {
+        api: z.enum(SUPPORTED_FS_PICKER_APIS).describe("The picker API this response is for. Must match the call the page will make next."),
+        files: z.array(z.object({
+          path: z.string().optional().describe("Workspace-rooted file path. Mutually exclusive with `contents`. For save-pickers: write destination. For open-pickers: source file bytes are inlined at respond-time. For directory-picker: basename becomes the handle's `.name`."),
+          contents: z.string().optional().describe("base64 file content. Mutually exclusive with `path`. Open-picker only — for save-pickers the writable stream needs a destination path, not source bytes."),
+          name: z.string().optional().describe("Filename presented to the page when `contents` is used. Default `\"browxai-virtual\"`. Ignored when `path` is used (basename of `path` is taken)."),
+          mimeType: z.string().optional().describe("MIME type for the synthetic `File` exposed to the page. Default `\"application/octet-stream\"`."),
+        })).describe("Files to hand back to the page. `showSaveFilePicker` consumes only the first entry; `showOpenFilePicker` consumes all (the page sees an Array<FileSystemFileHandle>); `showDirectoryPicker` consumes only the first entry and reads its basename as the directory `.name`."),
+        ...SESSION_ARG,
+      },
+    },
+    async (args) => {
+      const g = gateCheck("fs_picker_respond"); if (g) return g;
+      const e = await entryFor(args.session);
+      try {
+        for (const f of args.files as FsPickerFile[]) {
+          if (f.path !== undefined && f.contents !== undefined) {
+            throw new Error("fs_picker_respond: each file must pass exactly one of `path` or `contents`");
+          }
+          if (f.path === undefined && f.contents === undefined) {
+            throw new Error("fs_picker_respond: each file must pass `path` or `contents`");
+          }
+          if (f.path !== undefined) {
+            // Validate workspace-rooted; throws on escape. The actual file
+            // I/O for save-picker writes happens later when the page calls
+            // `createWritable()`; for open-picker the read happens at the
+            // binding layer when the page calls `getFile()` (we inline at
+            // respond-time below).
+            resolveWorkspaceFsPath(workspace.root, f.path);
+          }
+        }
+        // For open-pickers + showDirectoryPicker: when the agent supplied
+        // `{path}` (no inline contents), read the file once now and inline
+        // its bytes so the page-side `getFile()` resolves without another
+        // server round-trip. Save-pickers keep `path` as the WRITE target
+        // (no read).
+        const api = args.api as FsPickerApi;
+        const prepared: FsPickerFile[] = (args.files as FsPickerFile[]).map((f) => {
+          if (api === "showSaveFilePicker") return f;
+          if (f.path === undefined || f.contents !== undefined) return f;
+          try {
+            const resolved = resolveWorkspaceFsPath(workspace.root, f.path);
+            const bytes = readFileSync(resolved);
+            return {
+              ...f,
+              contents: bytes.toString("base64"),
+              name: f.name ?? pathBasename(resolved),
+            };
+          } catch (err) {
+            throw new Error(`fs_picker_respond: failed to read \`path\` ${JSON.stringify(f.path)} — ${err instanceof Error ? err.message : String(err)}`);
+          }
+        });
+        e.fsPicker.pushResponse(api, prepared);
+        const body = {
+          ok: true,
+          session: e.id,
+          queued: { api, fileCount: prepared.length },
+          tokensEstimate: estimateTokens(JSON.stringify({ api, fileCount: prepared.length })),
+        };
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2) }] };
@@ -6069,6 +6226,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         }
       },
     );
+    // Re-attach fs-picker policy on the rebuilt context. WeakSet inside the
+    // state treats the new context as fresh — binding + init script are
+    // re-installed, write-target handles for the previous context are
+    // garbage-collected with it.
+    await attachFsPickerPolicy(
+      sess.page().context(),
+      e.fsPicker,
+      workspace.root,
+      async (api, suggestedName) => {
+        log.info(`fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`);
+        try {
+          const sig = await br.awaitSignal("respond", 300_000);
+          const data = sig.data as { kind?: string; value?: unknown } | null;
+          if (data && data.kind === "fs_picker_respond" && Array.isArray((data.value as { files?: unknown })?.files)) {
+            return ((data.value as { files: FsPickerFile[] }).files);
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      },
+    ).catch(() => undefined);
     await applyOverlayHide(
       sess.page().context(),
       configStore.resolve().hideOverlaySelectors,

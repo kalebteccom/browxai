@@ -731,3 +731,8 @@ describe("headless-CI keystone — known headless gap (await_human / __browx ban
     // this into a real assertion.
   });
 });
+
+// fs_picker_policy keystone lives in fs-picker.keystone.test.ts — it
+// needs the off-by-default `file-io` capability (for fs_picker_respond),
+// so it spins up its own server with the right env, same pattern as the
+// page-archive keystone.

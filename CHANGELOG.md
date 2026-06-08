@@ -48,6 +48,17 @@ surface" covers.
     stable per-session `wsId` (`ws-1`, `ws-2`, …) the agent can discover
     via the page-side `__browxWs.list()` registry. Per-context by
     construction; lost on session close or BYOB rebuild.
+- **Phase 7: File System Access policy (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`).**
+  Modern web editors (VSCode for the web, Figma, anything with a "save to
+  disk" button) deadlock under a headless session — the picker dialog
+  blocks every subsequent browser event until the human clicks a real OS
+  file chooser that doesn't exist in headless. The same posture as the
+  dialog and permission policies now governs the three File System Access
+  entry points. Three additions, all back-compat:
+  - **`fs_picker_policy` argument on `open_session`** plus **`set_fs_picker_policy({mode, perAPI?, session?})`** runtime mutator. Modes: `allow` / `deny` / `raise` (DEFAULT — anti-deadlock) / `ask-human`. Per-API overrides win over the top-level `mode`. Persists across navigation; re-applied on every new document. Capability `action`.
+  - **`fs_picker_respond({api, files: [{path | contents, name?, mimeType?}], session?})`** — agent-side response queue, per-API. For `showSaveFilePicker`: the supplied workspace-rooted `path` is the destination for `createWritable()`-driven writes (page-side `write()`/`truncate()`/`close()` routed through a server binding that persists the bytes; back-pressure preserved). For `showOpenFilePicker`: inline `{contents}` or workspace-rooted `{path}` (server reads at respond-time and inlines bytes the page reads via `getFile()`). For `showDirectoryPicker`: a minimal handle whose `.name` is the basename and `entries()`/`values()`/`keys()` iterate empty (MVP scope — most editors fall back to per-file pickers). Capability `file-io`. Workspace-escape on `path` rejected at the tool layer.
+  - **`ActionResult.fsPickerRequests[]`** — every picker call that fired during the action window is sliced off the per-session buffer and surfaced as `[{api, suggestedName?, handledAs: "allowed"|"denied"|"raised"|"asked-human"}]`. Independent of `ok`; `raise` mode additionally flips `ok` to false with `failure:{source:"app", hint:"unhandled File System Access picker — set fsPickerPolicy …"}`.
+
 - **Phase 7: frame-scoped observation (iframes + cross-origin frames).**
   Iframes are everywhere on real pages; pre-Phase-7 `find` / `snapshot` saw
   only the top frame. Three additions, all back-compat:

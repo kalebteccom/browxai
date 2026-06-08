@@ -5,6 +5,7 @@ import { SessionMetrics } from "./metrics.js";
 import { DialogPolicyState } from "./dialog.js";
 import { PermissionPolicyState } from "./permission.js";
 import { NotificationPolicyState } from "./notification.js";
+import { FsPickerPolicyState } from "./fs-picker.js";
 import { newEmulationState } from "./emulation.js";
 import { newHarRecorderState } from "../page/har.js";
 import { newVideoRecorderState } from "../page/video.js";
@@ -53,6 +54,7 @@ function fakeEntry(id: string): SessionEntry {
     dialog: new DialogPolicyState(),
     permission: new PermissionPolicyState(),
     notification: new NotificationPolicyState(),
+    fsPicker: new FsPickerPolicyState(),
     deviceEmulation: newEmulationState(),
     har: newHarRecorderState(),
     video: newVideoRecorderState(),

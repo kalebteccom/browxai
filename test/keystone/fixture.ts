@@ -91,6 +91,15 @@ const PAGE = `<!doctype html>
     <button data-testid="notif-btn" id="notifBtn" type="button"
             onclick="showNotif()">Show notification</button>
     <output data-testid="notif-result" id="notifResult">unset</output>
+    <!-- fs_picker_policy keystone: a click drives showSaveFilePicker (the
+         common "save to disk" flow modern web editors use). The result
+         text reports the picker outcome — picker-error (deny/raise),
+         got-handle (allow), or wrote-N-bytes once the writable stream
+         closed. The agent stages a workspace-rooted destination via
+         fs_picker_respond before clicking. -->
+    <button data-testid="save-btn-fs" id="saveBtnFs" type="button"
+            onclick="askSavePicker()">Save via picker</button>
+    <output data-testid="fs-result" id="fsResult">unset</output>
 
     <!-- Touch keystone: a div that records touch events in a tagged
          output so the keystone can assert touchstart / touchend actually fire
@@ -199,6 +208,25 @@ const PAGE = `<!doctype html>
         out.textContent = 'constructed title=' + n.title;
       } catch (e) {
         out.textContent = 'threw name=' + e.name;
+      }
+    }
+    async function askSavePicker() {
+      var out = document.getElementById('fsResult');
+      out.textContent = 'pending';
+      if (typeof window.showSaveFilePicker !== 'function') {
+        out.textContent = 'no-fs-api';
+        return;
+      }
+      try {
+        var handle = await window.showSaveFilePicker({ suggestedName: 'keystone.txt' });
+        out.textContent = 'got-handle name=' + handle.name;
+        var writable = await handle.createWritable();
+        var payload = 'keystone-payload-' + Date.now();
+        await writable.write(payload);
+        await writable.close();
+        out.textContent = 'wrote name=' + handle.name + ' bytes=' + payload.length;
+      } catch (err) {
+        out.textContent = 'picker-error name=' + (err && err.name) + ' msg=' + (err && err.message);
       }
     }
     // Phase 7 — Shadow DOM keystone fixtures.

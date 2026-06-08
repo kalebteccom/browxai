@@ -22,6 +22,8 @@ import type { PermissionPolicyState, PermissionRecord } from "../session/permiss
 import { UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
 import type { NotificationPolicyState, NotificationRecord } from "../session/notification.js";
 import { UNHANDLED_NOTIFICATION_HINT } from "../session/notification.js";
+import type { FsPickerPolicyState, FsPickerRecord } from "../session/fs-picker.js";
+import { UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
@@ -232,6 +234,21 @@ export interface ActionResult {
     origin?: string;
     handledAs: NotificationRecord["handledAs"];
   }>;
+  /** File System Access picker calls (`showOpenFilePicker` /
+   *  `showSaveFilePicker` / `showDirectoryPicker`) the page made during
+   *  this action window. Each carries the API name, the page-supplied
+   *  `suggestedName` (save-picker only), and what the server's per-session
+   *  `fsPickerPolicy` did with it (`allowed`, `denied`, `raised`, or
+   *  `asked-human` — see `set_fs_picker_policy`). Independent of `ok`: a
+   *  policy of `allow`/`deny`/`ask-human` resolves the picker and the
+   *  action proceeds; `raise` mode rejects page-side AND flips `ok` to
+   *  false with `failure.source:"app"`. Empty/absent when no pickers
+   *  fired. */
+  fsPickerRequests?: Array<{
+    api: FsPickerRecord["api"];
+    suggestedName?: string;
+    handledAs: FsPickerRecord["handledAs"];
+  }>;
   /** Files the page initiated as downloads during this action window —
    *  populated only when per-session capture has been turned on via
    *  `downloads_capture({on:true})` (capability `file-io`); absent otherwise.
@@ -300,6 +317,12 @@ export interface ActionContext {
    *  under `raise` mode the action is marked failed with
    *  `UNHANDLED_NOTIFICATION_HINT`. */
   notification?: NotificationPolicyState;
+  /** per-session File System Access picker policy state. When present,
+   *  picker calls (`showOpenFilePicker` / `showSaveFilePicker` /
+   *  `showDirectoryPicker`) that fired during the action window are
+   *  sliced into `ActionResult.fsPickerRequests[]`; if any fired under
+   *  `raise` mode the action is marked failed with the documented hint. */
+  fsPicker?: FsPickerPolicyState;
   /** per-session secrets registry (capability `secrets`). When non-null,
    *  the action-window NetworkTap masks egressing URLs / mutation
    *  responseShape keys against any registered real-values. The action's
@@ -461,6 +484,22 @@ export async function runInActionWindow(
     failure = { source: "app", hint: UNHANDLED_NOTIFICATION_HINT };
   }
 
+  // fs-picker capture — every File System Access picker call that fired
+  // during the action window is sliced off the per-session buffer
+  // (FsPickerPolicyState). Same shape as the dialog / permission paths:
+  // if the active policy was `raise` at call time, flip the action to
+  // ok:false with a stable hint (UNHANDLED_FS_PICKER_HINT) — the picker
+  // was rejected page-side so the page isn't deadlocked, but the app saw
+  // the user-dismissed branch and the caller almost certainly didn't
+  // want that.
+  const fsPickerSlice = ctx.fsPicker ? ctx.fsPicker.since(tBefore) : [];
+  const fsPickerRaised = ctx.fsPicker ? ctx.fsPicker.raisedSince(tBefore) : false;
+  if (fsPickerRaised && ok) {
+    ok = false;
+    error = error ?? UNHANDLED_FS_PICKER_HINT;
+    failure = { source: "app", hint: UNHANDLED_FS_PICKER_HINT };
+  }
+
   // --- shape ---
   const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
   const structure = diffRegions(preRegions, postRegions);
@@ -548,6 +587,17 @@ export async function runInActionWindow(
       })
     : undefined;
 
+  const fsPickerRequestsBlock = fsPickerSlice.length > 0
+    ? fsPickerSlice.map((r) => {
+        const out: { api: FsPickerRecord["api"]; suggestedName?: string; handledAs: FsPickerRecord["handledAs"] } = {
+          api: r.api,
+          handledAs: r.handledAs,
+        };
+        if (r.suggestedName !== undefined) out.suggestedName = r.suggestedName;
+        return out;
+      })
+    : undefined;
+
   // download-capture slice — downloads that fired during this action window.
   // Off-by-default registry: when capture wasn't toggled on, `since()` returns
   // an empty list and the block is omitted from the result (keeps results
@@ -575,6 +625,7 @@ export async function runInActionWindow(
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
     ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
     ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
+    ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
   }));
 
@@ -608,6 +659,7 @@ export async function runInActionWindow(
     ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
     ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
     ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
+    ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
     ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
     tokensEstimate,
     warnings,

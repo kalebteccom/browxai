@@ -169,6 +169,21 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // calls (distinct from the permission check, which lives in
   // permission_policy). Registers under `action` — no new capability.
   set_notification_policy: "action",
+  // per-session File System Access picker policy mutator. Sibling of
+  // `set_dialog_policy` / `set_permission_policy`: governs
+  // `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`
+  // calls from the page. Registers under `action` — same posture as
+  // the other policy mutators (mid-session state knob, not a capability
+  // of its own).
+  set_fs_picker_policy: "action",
+  // companion to `set_fs_picker_policy` — stages agent-supplied files
+  // for the page-side stubs to return in `allow` mode. The save-picker
+  // path writes through to a workspace-rooted destination via the page
+  // stream; the open-picker path reads source bytes from a workspace-
+  // rooted path at respond-time. Under `file-io` — same posture as
+  // `upload_file` (workspace-rooted egress on writes; workspace-rooted
+  // ingress on reads).
+  fs_picker_respond: "file-io",
   mouse_down: "action",
   mouse_move: "action",
   mouse_up: "action",

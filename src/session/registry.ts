@@ -27,6 +27,7 @@ import type { SessionMetrics } from "./metrics.js";
 import type { DialogPolicy, DialogPolicyState } from "./dialog.js";
 import type { PermissionPolicy, PermissionPolicyState } from "./permission.js";
 import type { NotificationPolicy, NotificationPolicyState } from "./notification.js";
+import type { FsPickerPolicy, FsPickerPolicyState } from "./fs-picker.js";
 import type { EmulationState as DeviceEmulationState } from "./emulation.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import type { HarRecorderState, HarStartConfig } from "../page/har.js";
@@ -113,6 +114,16 @@ export interface SessionEntry {
    *  Mutable at runtime via `set_notification_policy`; persists across
    *  navigation. Capability `action`. */
   notification: NotificationPolicyState;
+  /** per-session File System Access picker policy + per-context binding /
+   *  init-script bookkeeping. Sibling of `dialog` / `permission`: governs
+   *  `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`
+   *  calls fired from the page. Default `raise` (deterministic anti-
+   *  deadlock — without a policy, headless sessions deadlock on the picker
+   *  dialog that has no driver). Mutable at runtime via
+   *  `set_fs_picker_policy`; persists across navigation (init-script is
+   *  re-injected on every new document). Capability `action` for the
+   *  policy mutators; `file-io` for `fs_picker_respond`. */
+  fsPicker: FsPickerPolicyState;
   /** Per-primitive runtime device-emulation state (locale, timezone,
    *  geolocation, colour scheme, reduced motion, user-agent, permissions).
    *  Mutated by the 7 `set_*` / `grant_permissions` tools and re-applied
@@ -196,6 +207,10 @@ export interface OpenSpec {
    *  Mutable at runtime via `set_notification_policy`; see
    *  src/session/notification.ts. */
   notificationPolicy?: NotificationPolicy;
+  /** initial File System Access picker policy for this session (default
+   *  `{mode:"raise"}`). Mutable at runtime via `set_fs_picker_policy`;
+   *  see src/session/fs-picker.ts. */
+  fsPickerPolicy?: FsPickerPolicy;
   /** Seed the new context's storage state at creation (bulk layer).
    *  Either an inline blob (as returned by `dump_storage_state`) or a
    *  workspace-rooted JSON path. Mutually exclusive with `authState`.
