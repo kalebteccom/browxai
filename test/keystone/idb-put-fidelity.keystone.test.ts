@@ -187,4 +187,59 @@ describe("idb_put fidelity keystone — values must round-trip as structured obj
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "surfaces a warnings[] entry when `value` arrives as a JSON-shaped STRING (MCP client double-encoding gotcha)",
+    async () => {
+      const session = "ks-idbput-warn";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+      await waitForSeed(session);
+
+      // Simulate the adopter's failure shape: client double-encoded the
+      // complex object as a JSON string before the wire. Handler should
+      // detect this and surface a structured warning while still storing
+      // the value verbatim (some apps legitimately want a JSON string).
+      const r = await callJson<{ ok: boolean; warnings?: string[] }>("idb_put", {
+        session,
+        dbName: "app",
+        storeName: "kv",
+        key: "ks-warn",
+        value: '{"hello":"world","n":42}',
+      });
+      expect(r.ok).toBe(true);
+      expect(r.warnings).toBeDefined();
+      expect(r.warnings!.some((w) => w.toLowerCase().includes("json-encoded string"))).toBe(true);
+
+      // Confirm the value WAS stored — verbatim, as a string — so apps
+      // that genuinely meant to store a JSON string aren't broken.
+      const raw = await rawIdbRead(session, "app", "kv", "ks-warn");
+      expect(raw.type).toBe("string");
+      expect(raw.value).toBe('{"hello":"world","n":42}');
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "does NOT surface the warning when `value` is a plain (non-JSON-shaped) string",
+    async () => {
+      const session = "ks-idbput-warn-neg";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+      await waitForSeed(session);
+
+      const r = await callJson<{ ok: boolean; warnings?: string[] }>("idb_put", {
+        session, dbName: "app", storeName: "kv", key: "plain", value: "hello world",
+      });
+      expect(r.ok).toBe(true);
+      // The warning should fire ONLY for {/[ -shaped strings that JSON-parse
+      // to an object/array. Plain strings stay quiet.
+      expect(r.warnings).toBeUndefined();
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });
