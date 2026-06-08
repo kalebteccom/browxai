@@ -8,6 +8,8 @@ surface" covers.
 
 ## Unreleased
 
+## v0.5.1 — 2026-06-08 — Adopter-report fixes
+
 ### Fixed
 
 - **`sessionWedged` false positive on perpetually-busy SPAs.**
