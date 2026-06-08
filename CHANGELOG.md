@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## v0.4.0 — 2026-05-30 — image-to-path + page archive + asset export + session video
+
+Patch release on the path to v1.0. Four small additive primitives lead the new-feature roadmap (Phase 5+) shipping ahead of the public flip. v0.3.x stable surface is **unchanged** — every addition is net-additive. Default capability set unchanged; new disk-writing primitives all ride the existing off-by-default `file-io` capability (no new capability gates).
+
 ### Added
 
 - **`screenshot({ path?, format?, fullPage? })`** — three optional params extend
