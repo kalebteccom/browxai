@@ -25,17 +25,15 @@ import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
 /**
  * The lattice plugin authors implement. Each top-level key is a
  * plugin namespace; each inner key is a tool name; each inner value is
- * the method signature.
- *
- * The constraint is intentionally minimal — anything more would
- * couple plugin schemas to host-side Zod shapes (which the SDK
- * deliberately keeps opaque, per `src/sdk/types.ts`).
+ * a function-returning-promise. Intentionally permissive — concrete
+ * plugin schemas are typed precisely while composed types
+ * (intersections of multiple plugin schemas) stay assignable.
  */
-export type PluginSchema = {
-  readonly [namespace: string]: {
-    readonly [tool: string]: (args?: BrowxaiArgs) => Promise<BrowxaiResult>;
-  };
-};
+export type PluginSchema = Record<string, Record<string, (...args: never[]) => Promise<BrowxaiResult>>>;
+
+// Suppress unused import (BrowxaiArgs kept for forward-compat consumers
+// who want to widen the function-arg type).
+export type _PluginSchemaArgs = BrowxaiArgs;
 
 /**
  * A {@link BrowxaiClient} typed against a composition of one or more
@@ -51,7 +49,12 @@ export type PluginSchema = {
  *   const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<Schema>;
  *   await client.plugins.figma.moveNode({nodeId: "n1", dx: 10, dy: 20});
  *   await client.plugins.example.echo({msg: "hi"});
+ *
+ * The type parameter is intentionally unconstrained — interface
+ * schemas (which lack TS's "string index signature") still compose
+ * cleanly. The runtime is shape-agnostic; the typing layer just
+ * widens the `plugins` namespace.
  */
-export type BrowxaiClientWithPlugins<P extends PluginSchema> = Omit<BrowxaiClient, "plugins"> & {
+export type BrowxaiClientWithPlugins<P> = Omit<BrowxaiClient, "plugins"> & {
   readonly plugins: P & BrowxaiClient["plugins"];
 };
