@@ -42,11 +42,18 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
     }
     const pre = await preProbe(resolved.loc);
     // Click strategy: try the standard actionability path first with a
-    // SHORTER budget than the outer action deadline, so a busy-SPA
-    // stability-check thrash leaves headroom for an auto-recovery pass
-    // with `force: true`. The recovery surfaces a `forcedClick:true`
-    // warning so the caller knows the actionability check was bypassed.
-    // Explicit `force:true` from the caller skips the strategy entirely.
+    // SHORTER budget than the outer action deadline, so the auto-recovery
+    // pass with `force: true` has headroom. The recovery surfaces a
+    // warning so the caller knows the click-only pre-dispatch path was
+    // bypassed. Explicit `force:true` from the caller skips the strategy
+    // entirely.
+    //
+    // RCA (adopter, 2026-06-08): the busy-SPA cost is Playwright's
+    // mousedown hit-target interceptor — the one pre-dispatch check
+    // `click` does that `hover` does not (~500ms hover vs ~4s click on
+    // the same provably-actionable static element). Visibility /
+    // stability / receives-events / bbox aren't the culprit. `force: true`
+    // skips the interceptor.
     const fullTimeout = args.deadlineMs ?? DEFAULT_TIMEOUT_MS;
     if (args.force) {
       await resolved.loc.click({ timeout: fullTimeout, button: args.button, force: true });
@@ -73,7 +80,7 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       // Stamp the recovery warning on the probe — `runInActionWindow`
       // splices probe.warnings[] onto the result's top-level warnings.
       probed.warnings = [
-        `click: actionability check exceeded ${actionabilityMs}ms — recovered via \`force: true\` (skipped visibility / stability / receives-events checks). The page-side click event DID fire. Pass \`force: true\` explicitly to skip the actionability path entirely; this auto-recovery surfaces the busy-SPA pattern (perpetual rAF / WS keepalives) where Playwright's stability check thrashes forever.`,
+        `click: actionability path exceeded ${actionabilityMs}ms — recovered via \`force: true\` (bypasses Playwright's mousedown hit-target interceptor, the click-specific pre-dispatch check that loops/retries on busy SPAs). The page-side click event DID fire (trusted). Pass \`force: true\` explicitly on known-clickable targets to skip the auto-recovery and dispatch immediately. RCA reference: \`hover\` on the same element takes ~500ms vs \`click\` ~4s — the cost is entirely the click-only interceptor, not stability/visibility/receives-events.`,
       ];
       return probed;
     }

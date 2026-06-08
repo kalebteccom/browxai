@@ -8,6 +8,8 @@ surface" covers.
 
 ## Unreleased
 
+## v0.6.0 — 2026-06-08 — Plugin runtime + overflow_detect + click auto-recovery
+
 ### Fixed
 
 - **`click` auto-recovers via `force:true` when actionability check times out.**
