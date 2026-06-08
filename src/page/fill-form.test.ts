@@ -80,6 +80,7 @@ function mkCtx(byRef: Map<string, ScriptedLocator>): ActionContext {
     },
     refByNameLookup: () => undefined,
     refByName: () => undefined,
+    frameOf: () => undefined,
   } as unknown as ActionContext["refs"];
 
   const page = {

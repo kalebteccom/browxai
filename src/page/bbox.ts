@@ -5,7 +5,7 @@
 // is empty. Same definition site-docs's runtime computes, so calibration-time
 // bbox == execution-time bbox for the same selector.
 
-import type { CDPSession, Page } from "playwright-core";
+import type { CDPSession, Frame, Page } from "playwright-core";
 
 export interface VisibleRect {
   x: number;
@@ -114,13 +114,13 @@ export async function visibleRect(cdp: CDPSession, backendDOMNodeId: number): Pr
  * (e.g. `{ timeoutMs: 1000 }`) raises it when the caller can absorb the wait.
  */
 export async function locatorBoundingBox(
-  page: Page,
+  root: Page | Frame,
   selector: string,
   opts: { timeoutMs?: number } = {},
 ): Promise<VisibleRect | null> {
   const timeoutMs = opts.timeoutMs ?? 500;
   try {
-    const box = await page.locator(selector).first().boundingBox({ timeout: timeoutMs });
+    const box = await root.locator(selector).first().boundingBox({ timeout: timeoutMs });
     if (!box || box.width <= 0 || box.height <= 0) return null;
     return { x: box.x, y: box.y, width: box.width, height: box.height };
   } catch {

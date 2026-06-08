@@ -32,6 +32,8 @@ import type {
   FillResult,
   FindArgs,
   FindResult,
+  FramesListArgs,
+  FramesListResult,
   GenerateLocatorArgs,
   GenerateLocatorResult,
   GoBackArgs,
@@ -192,6 +194,7 @@ export interface BrowxaiClient {
   // --- read ---
   snapshot(args?: SnapshotArgs): Promise<SnapshotResult>;
   find(args: FindArgs): Promise<FindResult>;
+  frames_list(args?: FramesListArgs): Promise<FramesListResult>;
   screenshot(args?: ScreenshotArgs): Promise<ScreenshotResult>;
   console_read(args?: ConsoleReadArgs): Promise<ConsoleReadResult>;
   network_read(args?: NetworkReadArgs): Promise<NetworkReadResult>;

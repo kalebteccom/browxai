@@ -97,6 +97,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     // read
     snapshot: guarded<M<"snapshot">>("snapshot"),
     find: guarded<M<"find">>("find"),
+    frames_list: guarded<M<"frames_list">>("frames_list"),
     screenshot: guarded<M<"screenshot">>("screenshot"),
     console_read: guarded<M<"console_read">>("console_read"),
     network_read: guarded<M<"network_read">>("network_read"),

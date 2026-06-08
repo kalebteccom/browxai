@@ -66,6 +66,9 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // read
   snapshot: "read",
   find: "read",
+  // Phase-7: frame discovery (lists frame tree with stable IDs). Pure-read;
+  // extends `read` so no new capability gate.
+  frames_list: "read",
   screenshot: "read",
   console_read: "read",
   network_read: "read",

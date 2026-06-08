@@ -96,7 +96,13 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
         `unknown ref "${target.ref}"; call snapshot() or find() first to populate refs, or pass a selector instead`,
       );
     }
-    return locatorFromInputs(page, inputs);
+    // Frame-aware resolution (Phase-7): refs minted inside a child frame
+    // carry a bound Frame handle; route through it so `frame.locator(...)`
+    // crosses the OOPIF / same-origin iframe boundary transparently. Main-
+    // frame refs (no binding) resolve against the page — byte-identical to
+    // pre-Phase-7 behaviour.
+    const frame = refs.frameOf(target.ref);
+    return locatorFromInputs(frame ?? page, inputs);
   }
   if (target.selector) {
     if (target.contextRef) {
@@ -106,7 +112,8 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
           `unknown contextRef "${target.contextRef}"; call snapshot() or find() first to populate refs`,
         );
       }
-      const ctxLoc = locatorFromInputs(page, ctxInputs);
+      const ctxFrame = refs.frameOf(target.contextRef);
+      const ctxLoc = locatorFromInputs(ctxFrame ?? page, ctxInputs);
       return parseSelectorHint(ctxLoc, target.selector);
     }
     return parseSelectorHint(page, target.selector);
@@ -114,33 +121,38 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
   throw new Error("locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors) or { coords }");
 }
 
-function locatorFromInputs(page: Page, inputs: RefLocatorInputs): Locator {
+/** Page or Frame both expose the locator-builder surface we need
+ *  (`locator`, `getByRole`); accept either so frame-scoped refs route through
+ *  their bound Frame transparently. */
+type LocatorRoot = Pick<Page, "locator" | "getByRole">;
+
+function locatorFromInputs(root: LocatorRoot, inputs: RefLocatorInputs): Locator {
   // Tier 1: testId — strongest signal, works for any provenance. CSS attribute
   // form rather than Playwright's `getByTestId` so non-standard test attributes
   // (`data-type`, `data-cy`, etc.) work without per-context plumbing.
   if (inputs.testId) {
     const attr = inputs.testIdAttr ?? "data-testid";
-    return page.locator(`[${attr}=${JSON.stringify(inputs.testId)}]`).first();
+    return root.locator(`[${attr}=${JSON.stringify(inputs.testId)}]`).first();
   }
   // Provenance-aware routing: refs discovered exclusively via the DOM walk
   // typically carry bare-tag roles (`td`, `div`, `generic`) whose role-locators
   // are ambiguous or don't actually resolve. Prefer the structural CSS path
   // captured at walk time.
   if (inputs.source === "dom" && inputs.cssPath) {
-    return page.locator(inputs.cssPath).first();
+    return root.locator(inputs.cssPath).first();
   }
   // Tier 2: role + name — strong when the a11y pass saw it.
   if (inputs.name) {
-    return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name }).first();
+    return root.getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name }).first();
   }
   // Fallback: structural path (covers `source: "both"` refs where the a11y
   // pass produced no name, plus the rare migration case of legacy refs that
   // never got a name).
   if (inputs.cssPath) {
-    return page.locator(inputs.cssPath).first();
+    return root.locator(inputs.cssPath).first();
   }
   // Last resort: role only. Often ambiguous; the agent saw stability=low.
-  return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0]).first();
+  return root.getByRole(inputs.role as Parameters<Page["getByRole"]>[0]).first();
 }
 
 /**

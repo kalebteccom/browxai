@@ -118,3 +118,44 @@ describe("named refs", () => {
     ]);
   });
 });
+
+describe("Phase-7: frameId in elementKey", () => {
+  it("two identical node signatures in distinct frames hash differently", async () => {
+    const { elementKey } = await import("./refs.js");
+    const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
+    const k2 = elementKey({ role: "button", name: "Save", path: "main/form/button", frameId: "f1" });
+    expect(k1).not.toBe(k2);
+  });
+
+  it("absent / empty frameId hashes byte-identical to legacy (main frame)", async () => {
+    const { elementKey } = await import("./refs.js");
+    const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
+    const k2 = elementKey({ role: "button", name: "Save", path: "main/form/button", frameId: "" });
+    expect(k1).toBe(k2);
+  });
+});
+
+describe("Phase-7: frame binding on RefRegistry", () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fakeFrame = (tag: string) => ({ __tag: tag } as any);
+
+  it("binds a Frame handle to a ref and returns it via frameOf()", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1");
+    const f = fakeFrame("f-a");
+    r.bindFrame(ref, f);
+    expect(r.frameOf(ref)).toBe(f);
+  });
+
+  it("frameOf() returns undefined for refs with no binding (main-frame default)", () => {
+    const r = new RefRegistry();
+    const ref = r.forKey("k1");
+    expect(r.frameOf(ref)).toBeUndefined();
+  });
+
+  it("bindFrame on an unknown ref is a silent no-op (defensive)", () => {
+    const r = new RefRegistry();
+    r.bindFrame("e999", fakeFrame("ghost"));
+    expect(r.frameOf("e999")).toBeUndefined();
+  });
+});

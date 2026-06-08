@@ -72,6 +72,9 @@ export interface SnapshotArgs extends SessionArg {
   scope?: string;
   maxNodes?: number;
   omit?: ReadonlyArray<string>;
+  /** Phase-7: stable frame ID (from `frames_list`) to scope the snapshot to
+   *  a child iframe. `f0` (or omitting this) targets the main frame. */
+  frame?: string;
 }
 /** The text content of `snapshot()` isn't structured JSON — it's a serialised
  *  a11y tree. The envelope's `data` field is undefined; callers read
@@ -84,7 +87,30 @@ export interface FindArgs extends SessionArg {
   confidenceFloor?: number;
   contextRef?: string;
   visibleOnly?: boolean;
+  /** Phase-7: stable frame ID (from `frames_list`) to scope the find to a
+   *  child iframe. `f0` (or omitting this) targets the main frame. Refs
+   *  minted are bound to the frame so subsequent actions land inside it. */
+  frame?: string;
 }
+
+/**
+ * Phase-7: frame discovery.
+ */
+export interface FramesListArgs extends SessionArg {}
+export interface FrameInfo {
+  frameId: string;
+  parentFrameId?: string;
+  url: string;
+  name: string;
+  isMainFrame: boolean;
+  origin: string;
+}
+export interface FramesListData {
+  ok: true;
+  frames: FrameInfo[];
+  tokensEstimate: number;
+}
+export type FramesListResult = BrowxaiResult<FramesListData>;
 export interface BBox {
   x: number;
   y: number;

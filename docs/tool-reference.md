@@ -207,6 +207,36 @@ Find candidate elements by natural-language description.
 
 **Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
+### `frames_list` *(Phase 7)*
+List every frame in the current page tree with a stable per-session ID (`fN`; `f0` is always the main frame). Pass the returned `frameId` back as `frame: <fN>` to `snapshot` / `find` to scope observation to a child iframe; refs minted in that frame are bound to it on the registry so subsequent actions (`click`, `fill`, etc.) land inside the iframe transparently — same-origin and cross-origin (OOPIF) iframes both work through Playwright's frame API.
+
+**Inputs:** `{ session? }`
+
+**Output:** JSON
+```jsonc
+{
+  "ok": true,
+  "frames": [
+    { "frameId": "f0", "url": "http://example.test/with-iframe", "name": "", "isMainFrame": true, "origin": "http://example.test" },
+    { "frameId": "f1", "parentFrameId": "f0", "url": "http://example.test/child", "name": "same", "isMainFrame": false, "origin": "http://example.test" },
+    { "frameId": "f2", "parentFrameId": "f0", "url": "about:srcdoc", "name": "data", "isMainFrame": false, "origin": "" }
+  ],
+  "tokensEstimate": 312
+}
+```
+
+**Frame ID stability:** within a session, the main frame is always `f0`. Child frames mint `f1`, `f2`, … in first-seen order; identical-fingerprint frames across repeat `frames_list` calls keep their ID. Intra-iframe navigation (the same `<iframe>` handle changing URL) preserves the ID. Refs minted while a child frame was attached survive across `frames_list` calls; if the iframe detaches, calls into the frame return a structured "unknown frame" error rather than throwing.
+
+**Frame-scoped `snapshot` / `find`:** both tools accept an optional `frame: <fN>`. When set:
+- `snapshot({frame})` returns a tree scoped to that frame. The CDP accessibility-tree path is not run for child frames (rooted at the top target, doesn't reach into OOPIFs); the snapshot is DOM-walk-sourced only. This is surfaced as a `warnings:` entry on the result so the agent isn't surprised by the `[from-dom]` markers.
+- `find({frame, query, …})` ranks candidates inside that frame and binds the returned `ref`s to it; passing the `ref` to `click` / `fill` / `hover` / etc. fires inside the iframe — no separate action surface needed.
+
+**Cross-origin caveats:**
+- Read works: Playwright's `frame.locator(…)` and `frame.evaluate(…)` span the OOPIF boundary.
+- Actions work: `frame.locator(…).click()` (etc.) cross the same boundary.
+- The CDP accessibility-tree skip on child frames means a heavily a11y-driven page in an iframe surfaces less context than the same page would as a top-level document — the DOM-walk pass still surfaces every `BROWX_TEST_ATTRIBUTES`-bearing element and every interactive control, which is what action targeting needs.
+- Frame-scoped `bbox` is computed via Playwright's locator `.boundingBox()` rather than the CDP `getBoxModel` path used for main-frame finds; behaviour is identical for visible elements.
+
 ### `screenshot`
 PNG or JPEG of the viewport, optionally cropped to an element, optionally full-page, optionally written to a workspace-rooted file instead of returned inline.
 

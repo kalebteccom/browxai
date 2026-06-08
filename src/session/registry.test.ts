@@ -19,6 +19,8 @@ function fakeEntry(id: string): SessionEntry {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     refs: { __tag: `refs-${id}` } as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    frames: {} as any,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console: {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     network: {} as any,

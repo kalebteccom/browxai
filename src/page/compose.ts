@@ -14,12 +14,13 @@
 //     empty" rather than "a11y is sparse on this codebase." This warning closes that
 //     ambiguity.
 
-import type { CDPSession } from "playwright-core";
+import type { CDPSession, Frame } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { runDomWalk, mergeDomWalkIntoTree } from "./dom-walk.js";
+import { runDomWalk, runDomWalkOnFrame, mergeDomWalkIntoTree } from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
 import { LOW_A11Y_THRESHOLD } from "../util/config.js";
+import { elementKey } from "./refs.js";
 
 const INTERACTIVE_ROLES = new Set([
   "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
@@ -74,6 +75,65 @@ export async function composeSnapshot(
     tree: a11y,
     stats: {
       a11yInteractive,
+      domWalkEntries: entries.length,
+      domWalkNew: merge.added,
+      domWalkCombined: merge.combined,
+    },
+    warnings,
+  };
+}
+
+/**
+ * Frame-scoped snapshot (Phase-7). Composes the snapshot for a child iframe.
+ *
+ * Cross-origin frames sit in their own renderer (OOPIF) — the top-level CDP
+ * session's `Accessibility.getFullAXTree` is rooted at the main target and
+ * doesn't reach into them. Same-origin child frames are in the same renderer
+ * but CDP's per-frame a11y query path is fragile across Playwright versions.
+ * Pragmatic choice: for ANY child frame we skip the CDP a11y pass and use the
+ * DOM-walk only via `frame.evaluate(...)`. The DOM walk is what carries find()
+ * on heavy SPAs anyway, and `frame.evaluate` is the portable, identical-
+ * behaviour-across-origin entry point Playwright exposes.
+ *
+ * Refs minted here are bound to `frame` on the registry so subsequent
+ * `locatorFor` calls route through `frame.locator(...)` rather than
+ * `page.locator(...)` — actions land inside the correct OOPIF transparently.
+ */
+export async function composeSnapshotForFrame(
+  frame: Frame,
+  refs: RefRegistry,
+  testAttributes: string[],
+  frameId: string,
+): Promise<ComposedSnapshot> {
+  // Synthetic root so the serialiser has a tree to walk; child-frame
+  // discovery is leaf-shaped (DOM-walk produces flat entries).
+  const rootKey = elementKey({
+    role: "WebArea",
+    name: undefined,
+    path: `__frame__/${frameId}`,
+    frameId,
+  });
+  const rootRef = refs.forKey(rootKey, { role: "WebArea", source: "dom", frameId });
+  refs.bindFrame(rootRef, frame);
+  const root: A11yNode = {
+    ref: rootRef,
+    role: "WebArea",
+    name: frame.url() || frame.name() || `frame:${frameId}`,
+    source: "dom",
+    children: [],
+  };
+
+  const entries = await runDomWalkOnFrame(frame, { testAttributes });
+  const merge = mergeDomWalkIntoTree(root, entries, refs, { frameId, frame });
+  annotateStructuralContext(root);
+
+  const warnings: string[] = [
+    `frame "${frameId}": snapshot is DOM-walk-sourced only — CDP accessibility-tree extraction is not run for child frames (OOPIF / cross-origin compatibility). [from-dom] markers reflect the source, not a deficiency.`,
+  ];
+  return {
+    tree: root,
+    stats: {
+      a11yInteractive: 0,
       domWalkEntries: entries.length,
       domWalkNew: merge.added,
       domWalkCombined: merge.combined,

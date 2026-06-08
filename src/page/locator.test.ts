@@ -114,6 +114,45 @@ describe("locatorFor — provenance routing", () => {
   });
 });
 
+describe("locatorFor — frame-scoped refs (Phase 7)", () => {
+  it("routes a frame-bound ref through the bound Frame, NOT the page", () => {
+    const { page, calls: pageCalls } = mockPage();
+    const { page: framePage, calls: frameCalls } = mockPage();
+    // Reuse the mockPage shape as a Frame surrogate — Page and Frame expose
+    // the same locator/getByRole methods we touch from locatorFromInputs.
+    const refs = new RefRegistry();
+    const ref = refs.forKey("kf1", { role: "div", testId: "save-btn", testIdAttr: "data-testid", source: "dom", frameId: "f1" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    refs.bindFrame(ref, framePage as any);
+    locatorFor(page, refs, { ref });
+    expect(pageCalls).toEqual([]);
+    expect(frameCalls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
+  });
+
+  it("main-frame ref (no binding) routes through the page — back-compat", () => {
+    const { page, calls } = mockPage();
+    const refs = new RefRegistry();
+    const ref = refs.forKey("kf1", { role: "div", testId: "save-btn", testIdAttr: "data-testid", source: "dom" });
+    locatorFor(page, refs, { ref });
+    expect(calls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
+  });
+
+  it("contextRef-scoped selector resolves inside the bound frame's nested locator", () => {
+    const { page, calls: pageCalls } = mockPage();
+    const { page: framePage, calls: frameCalls } = mockPage();
+    const refs = new RefRegistry();
+    const ctx = refs.forKey("kfctx", { role: "main", cssPath: "main", source: "dom", frameId: "f2" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    refs.bindFrame(ctx, framePage as any);
+    locatorFor(page, refs, { selector: '[data-testid="x"]', contextRef: ctx });
+    expect(pageCalls).toEqual([]);
+    // First call: the contextRef itself was resolved on the frame (cssPath via locator).
+    expect(frameCalls[0]).toEqual({ method: "locator", selector: "main" });
+    // Then the scoped selector was applied inside that nested locator.
+    expect(frameCalls.some((c) => c.scopedToCssPath === "main" && c.selector === '[data-testid="x"]')).toBe(true);
+  });
+});
+
 describe("locatorFor — scoped selectors via contextRef", () => {
   it("resolves selector inside contextRef's locator (nested locator semantics)", () => {
     const { page, calls } = mockPage();

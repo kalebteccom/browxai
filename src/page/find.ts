@@ -2,10 +2,10 @@
 // with structured evidence. First-consumer : selectorHint follows a
 // fixed preference order with a stability flag; bbox is the visible-rect.
 
-import type { CDPSession, Page } from "playwright-core";
+import type { CDPSession, Frame, Page } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { composeSnapshot } from "./compose.js";
+import { composeSnapshot, composeSnapshotForFrame } from "./compose.js";
 import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 import type { FeedbackMemory } from "./learning.js";
@@ -67,6 +67,15 @@ export interface FindOptions {
    *  `visibleOnly` returns an empty list + the same warning rather than a
    *  misleading hit. Default false (hidden candidates kept, ranked last). */
   visibleOnly?: boolean;
+  /** Phase-7: when set, scope ranking + ref-binding to this child Frame.
+   *  Refs minted are bound to the frame on the registry so subsequent
+   *  actions land inside the iframe. The bbox/actionable probes resolve
+   *  via the frame's own locator surface. Omitted = main frame (existing
+   *  behaviour, byte-identical). */
+  frame?: Frame;
+  /** Phase-7: stable frame ID of `frame`, used for ref namespacing in the
+   *  registry and for the snapshot warning. Required when `frame` is set. */
+  frameId?: string;
 }
 
 export interface FindResult {
@@ -128,8 +137,18 @@ export async function find(
 ): Promise<FindResult> {
   // Use the composed tree (a11y + DOM-walk fallback) so we can find candidates that
   // only exist on the DOM-walk side — the Phase-1.5 #7 win on heavy-SPA targets.
-  const { tree } = await composeSnapshot(cdp, refs, opts.testAttributes);
+  // Phase-7: when `frame` is set, scope to that frame's DOM-walk-only compose
+  // path and bind refs to the frame on the registry so subsequent actions land
+  // inside the iframe.
+  const composed = opts.frame && opts.frameId
+    ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId)
+    : await composeSnapshot(cdp, refs, opts.testAttributes);
+  const tree = composed.tree;
   if (!tree) return { candidates: [], warnings: [] };
+  // The locator-resolution root: page for main-frame finds, frame for
+  // frame-scoped finds. Probes (disambiguation, bbox fallback, actionable)
+  // use this root so they exercise the correct DOM tree.
+  const locatorRoot: Page | Frame = opts.frame ?? page;
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
@@ -173,16 +192,21 @@ export async function find(
     top.map(async ({ node, score }) => {
       const { hint: bareHint, tier, stability } = buildSelectorHint(node);
       // disambiguate when the bare hint matches multiple DOM nodes.
-      const hint = await disambiguateHint(page, bareHint);
-      let bbox = node.backendDOMNodeId !== undefined
+      const hint = await disambiguateHint(locatorRoot, bareHint);
+      // For frame-scoped finds, skip the CDP visible-rect path entirely
+      // (its backendDOMNodeIds are rooted at the top target and don't
+      // resolve into OOPIFs). Same-origin frames technically could be
+      // probed via CDP with the right node-id juggling but the
+      // locator-bounding-box path is portable and identical-behaviour.
+      let bbox = opts.frame === undefined && node.backendDOMNodeId !== undefined
         ? await visibleRect(cdp, node.backendDOMNodeId)
         : null;
       // attached/BYOB: the CDP rect path can spuriously null out a rendered
       // DOM-walk node → fall back to Playwright's locator box before we let a
       // bad signal classify a visible element off-screen (which `visibleOnly`
       // would then drop entirely).
-      if (bbox === null) bbox = await locatorBoundingBox(page, hint, { timeoutMs: PROBE_TIMEOUT_MS });
-      const actionable = await probeActionable(page, hint, bbox);
+      if (bbox === null) bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
+      const actionable = await probeActionable(locatorRoot, hint, bbox);
       return {
         ref: node.ref,
         role: node.role,
@@ -292,12 +316,12 @@ export function noVisibleCandidateWarning(
  * caller who transcribes the hint into a flow-file doesn't re-introduce the
  * hidden-duplicate `boundingBox` hang. Best-effort: any error returns the bare hint.
  */
-async function disambiguateHint(page: Page, hint: string): Promise<string> {
+async function disambiguateHint(root: Page | Frame, hint: string): Promise<string> {
   try {
-    const count = await page.locator(hint).count();
+    const count = await root.locator(hint).count();
     if (count <= 1) return hint;
     const visibleHint = `${hint}:visible`;
-    const visibleCount = await page.locator(visibleHint).count();
+    const visibleCount = await root.locator(visibleHint).count();
     if (visibleCount === 1) return visibleHint;
     if (visibleCount > 1) return `:nth-match(${visibleHint}, 1)`;
     return `:nth-match(${hint}, 1)`;
@@ -312,13 +336,13 @@ async function disambiguateHint(page: Page, hint: string): Promise<string> {
  * (don't manufacture false-negatives).
  */
 async function probeActionable(
-  page: Page,
+  root: Page | Frame,
   hint: string,
   bbox: VisibleRect | null,
 ): Promise<FindCandidate["actionable"]> {
   if (bbox === null) return "off-screen";
   try {
-    const loc = page.locator(hint).first();
+    const loc = root.locator(hint).first();
     // isEnabled auto-waits to the action-timeout default (30 s) when the
     // locator doesn't resolve; cap it. isVisible is documented as
     // non-waiting (the option is deprecated/ignored) so it costs ~0.

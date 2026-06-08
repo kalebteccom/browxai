@@ -13,7 +13,7 @@
 // the configured test attributes. Convert to A11yNode (leaf nodes — DOM walk
 // doesn't produce children; the a11y tree is the structural source).
 
-import type { CDPSession } from "playwright-core";
+import type { CDPSession, Frame } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
 import type { A11yNode } from "./a11y.js";
 
@@ -66,6 +66,32 @@ export async function runDomWalk(
       awaitPromise: false,
     })) as { result: { value?: DomWalkEntry[] } };
     return result.value ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Frame-scoped DOM walk (Phase-7). Same `PAGE_SCRIPT`, but evaluated inside
+ * a Playwright `Frame` via `frame.evaluate(...)` instead of the top-level
+ * CDP `Runtime.evaluate`. Works transparently for both same-origin and
+ * cross-origin (OOPIF) child frames — Playwright's frame API spans both.
+ */
+export async function runDomWalkOnFrame(
+  frame: Frame,
+  opts: DomWalkOptions = {},
+): Promise<DomWalkEntry[]> {
+  const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
+  const max = opts.maxEntries ?? DEFAULT_MAX;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const raw = await frame.evaluate(
+      ({ script, attrs, cap }: { script: string; attrs: string[]; cap: number }) =>
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+        (new Function("attrs", "cap", `return (${script})(attrs, cap)`))(attrs, cap),
+      { script: PAGE_SCRIPT, attrs: testAttrs, cap: max },
+    );
+    return (raw as DomWalkEntry[]) ?? [];
   } catch {
     return [];
   }
@@ -170,18 +196,31 @@ const PAGE_SCRIPT = `function(testAttrs, max) {
  * Returns the count of *new* nodes added (i.e. nodes whose stable key wasn't already
  * present in the registry) so the caller can emit a low-content warning.
  */
+export interface MergeOptions {
+  /** Phase-7: when set, refs minted here are namespaced to this frame
+   *  (via `elementKey`'s `frameId`) so two iframes with identical markup
+   *  don't collide on the same ref. */
+  frameId?: string;
+  /** Phase-7: when set, refs minted here are bound to this Frame on the
+   *  registry so action-time `locatorFor` routes through `frame.locator(...)`
+   *  instead of `page.locator(...)`. */
+  frame?: Frame;
+}
+
 export function mergeDomWalkIntoTree(
   root: A11yNode,
   entries: DomWalkEntry[],
   refs: RefRegistry,
+  opts: MergeOptions = {},
 ): { added: number; combined: number } {
   let added = 0;
   let combined = 0;
+  const { frameId, frame } = opts;
   for (const e of entries) {
     const name = e.name || undefined;
     const testId = e.testId || undefined;
     const testIdAttr = e.testIdAttr || undefined;
-    const key = elementKey({ role: e.role, name, path: e.structuralPath, testId });
+    const key = elementKey({ role: e.role, name, path: e.structuralPath, testId, frameId });
     const wasNew = !refs.hasKey(key);
     const ref = refs.forKey(key);
     refs.augmentLocator(ref, {
@@ -191,7 +230,9 @@ export function mergeDomWalkIntoTree(
       testIdAttr,
       cssPath: e.cssPath,
       source: wasNew ? "dom" : "both",
+      ...(frameId ? { frameId } : {}),
     });
+    if (frame) refs.bindFrame(ref, frame);
     const node: A11yNode = {
       ref,
       role: e.role,

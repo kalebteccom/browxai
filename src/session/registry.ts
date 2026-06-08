@@ -8,6 +8,7 @@
 
 import type { BrowserSession } from "./types.js";
 import type { RefRegistry } from "../page/refs.js";
+import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
 import type { NetworkBuffer, WsBuffer } from "../page/network.js";
 import type { BrowxBridge } from "../helper/bridge.js";
@@ -41,6 +42,10 @@ export interface SessionEntry {
   mode: SessionMode;
   session: BrowserSession;
   refs: RefRegistry;
+  /** Phase-7: per-session frame ID assignment. `frames_list` mints/looks up
+   *  stable `fN` IDs from this registry; snapshot/find/action consult it to
+   *  resolve a `frame` arg back to a Playwright `Frame` handle. */
+  frames: FrameRegistry;
   console: ConsoleBuffer;
   network: NetworkBuffer;
   /** session-wide WebSocket/SSE frame ring. */

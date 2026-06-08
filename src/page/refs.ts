@@ -7,6 +7,7 @@
 // the next `snapshot()`.
 
 import { createHash } from "node:crypto";
+import type { Frame } from "playwright-core";
 
 export interface KeyInputs {
   role: string;
@@ -15,10 +16,20 @@ export interface KeyInputs {
   path: string;
   /** Optional test-id-ish attribute value to disambiguate identical roles. */
   testId?: string;
+  /** Phase-7: stable frame ID this node lives in. Namespaces the key so two
+   *  iframes with the same internal markup don't collide on the same ref.
+   *  Absent / empty means the main frame, preserving the pre-Phase-7 hash. */
+  frameId?: string;
 }
 
 export function elementKey(inputs: KeyInputs): string {
-  const raw = [inputs.role, inputs.name ?? "", inputs.path, inputs.testId ?? ""].join("");
+  const raw = [
+    inputs.role,
+    inputs.name ?? "",
+    inputs.path,
+    inputs.testId ?? "",
+    inputs.frameId ?? "",
+  ].join("");
   // Short hash — collision-resistant within a single page session.
   return createHash("sha256").update(raw).digest("hex").slice(0, 16);
 }
@@ -44,6 +55,12 @@ export interface RefLocatorInputs {
    *  Used when role/name locators would be ambiguous. Only populated for refs
    *  whose `source` includes `dom`. */
   cssPath?: string;
+  /** Phase-7: stable frame ID the ref was minted in. Absent / `f0` means the
+   *  main frame (existing behaviour). Anything else: a child iframe — locator
+   *  resolution routes through `frame.locator(...)` instead of `page.locator(...)`
+   *  so subsequent actions land inside the correct frame. Same-origin and
+   *  cross-origin frames work transparently through Playwright's frame API. */
+  frameId?: string;
 }
 
 export class RefRegistry {
@@ -55,6 +72,12 @@ export class RefRegistry {
    *  snapshots (see elementKey()) so the name effectively pins an element
    *  identity for the whole session. */
   private refByName = new Map<string, string>();
+  /** Phase-7: Frame handle owning each child-frame ref. Main-frame refs
+   *  omit the entry — the page-level locator resolution handles them
+   *  unchanged. When a child-frame ref is acted on, `locatorFor` uses
+   *  this Frame handle (instead of `page.locator(...)`) so the action
+   *  lands inside the right OOPIF / same-origin iframe. */
+  private frameByRef = new Map<string, Frame>();
   private counter = 0;
 
   /** Resolve (or mint) the ref for a node's stable key. */
@@ -98,9 +121,22 @@ export class RefRegistry {
       testIdAttr: existing.testIdAttr ?? partial.testIdAttr,
       cssPath: existing.cssPath ?? partial.cssPath,
       source: combineSource(existing.source, partial.source),
+      frameId: existing.frameId ?? partial.frameId,
     };
     this.locatorByRef.set(ref, merged);
   }
+
+  // --- frame binding (Phase-7) ---
+  /** Bind a Playwright Frame handle to a ref. Call when minting a ref in a
+   *  child-frame snapshot/find so action-time `locatorFor` can route through
+   *  the frame instead of the page. Main-frame refs don't need to call this;
+   *  absence of a binding means "resolve through the page". */
+  bindFrame(ref: string, frame: Frame): void {
+    if (!this.keyByRef.has(ref)) return;
+    this.frameByRef.set(ref, frame);
+  }
+  /** Resolve a ref to its bound Frame, or undefined for main-frame refs. */
+  frameOf(ref: string): Frame | undefined { return this.frameByRef.get(ref); }
 
   // --- named refs ---
   /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */

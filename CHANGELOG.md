@@ -10,6 +10,29 @@ surface" covers.
 
 ### Added
 
+- **Phase 7: frame-scoped observation (iframes + cross-origin frames).**
+  Iframes are everywhere on real pages; pre-Phase-7 `find` / `snapshot` saw
+  only the top frame. Three additions, all back-compat:
+  - **`frames_list({ session? })`** — returns the page's full frame tree
+    with a stable per-session ID per frame (`fN`; `f0` is always the main
+    frame). Each entry carries `{frameId, parentFrameId?, url, name,
+    isMainFrame, origin}`. Capability `read`.
+  - **`snapshot` / `find` gain an optional `frame: <fN>`** argument. When
+    set, the tool scopes to that child iframe; refs minted there are bound
+    to the frame on the registry so subsequent `click` / `fill` / etc. fire
+    inside the iframe transparently. Same-origin and cross-origin (OOPIF)
+    both work through Playwright's frame API. Omitting `frame` (or passing
+    `f0`) is byte-identical to the pre-Phase-7 main-frame path.
+  - **Frame-scoped action targets**: `locatorFor` consults the registry's
+    new per-ref frame binding; refs minted in a child frame route through
+    `frame.locator(...)` rather than `page.locator(...)`. No new action
+    capability — extends the existing `action` surface.
+  - **Cross-origin caveat (documented)**: the CDP accessibility-tree path
+    used by main-frame snapshots is not run for child frames (rooted at the
+    top target, doesn't reach into OOPIFs). Frame-scoped snapshots are
+    DOM-walk-sourced only and surface a warning so the agent isn't
+    surprised by `[from-dom]` markers. Read + action still work for both
+    same-origin and cross-origin iframes.
 - **`element_export({ ref, format?, intoDir?, maxSizeMb?, session? })`** —
   save the subtree under one ref as a self-contained snippet (outerHTML +
   page-wide stylesheets + linked resources). Two formats: `directory`

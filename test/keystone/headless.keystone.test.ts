@@ -462,6 +462,87 @@ describe("headless-CI keystone — permission_policy (geolocation, real Chromium
   );
 });
 
+// Phase-7 frame-scoped observation — exercises frames_list, frame-scoped
+// snapshot, frame-scoped find, and a frame-scoped action that fires inside
+// the iframe (state mutation observable in a follow-up frame-scoped snapshot).
+describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
+  it(
+    "frames_list discovers iframes; snapshot/find/action scope to a child frame",
+    async () => {
+      const session = "ks-frames";
+      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      expect(opened.ok).toBe(true);
+
+      const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/with-iframe` });
+      expect(nav.ok).toBe(true);
+
+      // (1) frames_list — main + 2 iframes (same-origin /child + srcdoc).
+      // Wait a moment for iframes to attach + load.
+      let listing: { ok: boolean; frames: Array<{ frameId: string; url: string; name: string; isMainFrame: boolean }> } | undefined;
+      for (let i = 0; i < 40; i++) {
+        listing = await callJson("frames_list", { session });
+        if ((listing!.frames ?? []).length >= 3) break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(listing!.ok).toBe(true);
+      expect(listing!.frames.length).toBeGreaterThanOrEqual(3);
+      const main = listing!.frames.find((f) => f.isMainFrame)!;
+      expect(main.frameId).toBe("f0");
+      const sameOrigin = listing!.frames.find((f) => f.name === "same");
+      const srcDoc = listing!.frames.find((f) => f.name === "data");
+      expect(sameOrigin, "same-origin iframe present").toBeTruthy();
+      expect(srcDoc, "srcdoc iframe present").toBeTruthy();
+
+      // (2) Frame-scoped snapshot — child markup surfaces under the child frame.
+      const childSnap = await callText("snapshot", { session, frame: sameOrigin!.frameId });
+      expect(childSnap).toContain(`frame: ${sameOrigin!.frameId}`);
+      expect(childSnap).toContain('[data-testid="child-save"]');
+      expect(childSnap).toContain('[data-testid="child-input"]');
+      // The CDP-a11y skip is surfaced as a warning per design.
+      expect(childSnap.toLowerCase()).toContain("dom-walk-sourced");
+
+      // (3) Frame-scoped find — returns a ref bound to the same-origin frame.
+      const found = await callJson<{
+        candidates: Array<{ ref: string; selectorHint: string; stability: string; actionable: unknown }>;
+      }>("find", { session, query: "child save", frame: sameOrigin!.frameId, visibleOnly: true });
+      const childSaveCand = found.candidates.find((c) => c.selectorHint.includes("child-save"));
+      expect(childSaveCand, "child-save candidate present").toBeTruthy();
+      expect(childSaveCand!.stability).toBe("high");
+      expect(childSaveCand!.actionable).toBe(true);
+
+      // (4) Frame-scoped action — clicking the ref fires inside the iframe.
+      // State mutation in the iframe is observable in a follow-up frame-scoped snapshot.
+      const clicked = await callJson<{ ok: boolean }>("click", { session, ref: childSaveCand!.ref });
+      expect(clicked.ok).toBe(true);
+      let post = "";
+      for (let i = 0; i < 60; i++) {
+        post = await callText("snapshot", { session, frame: sameOrigin!.frameId });
+        if (post.includes("child-saved")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(post).toContain("child-saved");
+
+      // (5) Cross-origin-ish (srcdoc) frame — read works via the DOM-walk path.
+      const dataSnap = await callText("snapshot", { session, frame: srcDoc!.frameId });
+      expect(dataSnap).toContain('[data-testid="inside-data"]');
+
+      // (6) Main-frame snapshot still works AND is unaffected by the iframe scope.
+      const mainSnap = await callText("snapshot", { session });
+      expect(mainSnap).toContain('[data-testid="host-btn"]');
+      // child-* test ids belong to the iframe — they must NOT leak into the main-frame snapshot.
+      expect(mainSnap).not.toContain('[data-testid="child-save"]');
+
+      // (7) Unknown frameId → structured error, not a throw.
+      const bogus = await callJson<{ ok: boolean; error?: string }>("snapshot", { session, frame: "f99" });
+      expect(bogus.ok).toBe(false);
+      expect(bogus.error).toMatch(/unknown frame/);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // Documented, deliberate gap — NOT a silent skip. Under headless there is no
 // human at a screen, so the `__browx` on-page banner is not visually present
 // and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be

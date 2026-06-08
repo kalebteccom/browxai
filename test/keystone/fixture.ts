@@ -100,6 +100,40 @@ const PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Page hosting two iframes: one same-origin (served from this server's
+// /child route) and one cross-origin-ish (a `data:` URL — opaque origin,
+// hits the same OOPIF code path on Chromium). Exercises Phase-7
+// frame-scoped snapshot/find/action through the keystone.
+const IFRAME_HOST = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>iframe host</title></head>
+<body>
+  <main>
+    <h1 data-testid="host-title">Host</h1>
+    <button data-testid="host-btn">Top-level Save</button>
+    <iframe data-testid="same-origin-iframe" name="same" src="/child"></iframe>
+    <iframe data-testid="data-iframe" name="data"
+      srcdoc="<button data-testid='inside-data'>Inside Data</button>"></iframe>
+  </main>
+</body>
+</html>`;
+
+const CHILD_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>child</title></head>
+<body>
+  <button data-testid="child-save">Child Save</button>
+  <input data-testid="child-input" type="text" />
+  <output data-testid="child-state">child-idle</output>
+  <script>
+    var btn = document.querySelector('[data-testid="child-save"]');
+    btn.addEventListener('click', function() {
+      document.querySelector('[data-testid="child-state"]').textContent = 'child-saved';
+    });
+  </script>
+</body>
+</html>`;
+
 function echoPage(cookie: string): string {
   // Render the received Cookie header verbatim into a tagged element. No
   // template injection risk for the keystone's own controlled values; still
@@ -126,6 +160,16 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/echo") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(echoPage(req.headers.cookie ?? ""));
+      return;
+    }
+    if (u.pathname === "/with-iframe") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(IFRAME_HOST);
+      return;
+    }
+    if (u.pathname === "/child") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(CHILD_PAGE);
       return;
     }
     const headers: Record<string, string> = { "content-type": "text/html; charset=utf-8" };
