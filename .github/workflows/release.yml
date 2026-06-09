@@ -1,0 +1,179 @@
+name: release
+
+# OIDC trusted publishing per universal-baseline §B + npm-package-defense §3.
+#
+# Hard constraints (do NOT loosen without a decisions-log entry):
+#   - Tag-triggered only. Never `pull_request*`-reachable; OIDC + secrets
+#     must never be exposed to PR-derived code.
+#   - `permissions: {}` at workflow-level; per-job narrowing.
+#   - `id-token: write` lives in EXACTLY ONE job (`publish`), which does
+#     nothing but `npm publish` from the already-built artifact handed
+#     over by the `build` job.
+#   - `environment: release` gates the publish behind manual approval
+#     (configured in the GitHub Environment settings — see
+#     docs/ai-context/release-process/branch-protection.md).
+#   - No NPM_TOKEN. Trusted publishing on the npm side binds this exact
+#     repo + workflow filename + environment name (configured per package
+#     on npmjs.com).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20, 22]
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm exec playwright-core install --with-deps chromium
+      - run: pnpm test:keystone
+      - run: pnpm build
+      - name: Upload dist artifact
+        if: matrix.node-version == 20
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: dist
+          path: |
+            dist/
+            packages/plugins/*/dist/
+          retention-days: 1
+          if-no-files-found: error
+
+  # Reproducible-build gate — build on a second runner and diff the dist/
+  # tree. Any non-determinism in the build fails the release before publish.
+  # Today this is best-effort; if the matrix surfaces real flakes at v1.0,
+  # promote the gap to a SECURITY.md aspiration entry rather than loosen it.
+  reproducibility:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm build
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: artifact-dist/
+      - name: Diff freshly-built dist against build job artifact
+        run: |
+          set -euo pipefail
+          diff -r dist/ artifact-dist/dist/ || (echo "Reproducibility gate failed: dist/ differs from build job's artifact" && exit 1)
+          for plugin_dir in packages/plugins/*/dist; do
+            rel_path="${plugin_dir#packages/plugins/}"
+            artifact_path="artifact-dist/packages/plugins/${rel_path}"
+            if [ -d "$artifact_path" ]; then
+              diff -r "$plugin_dir" "$artifact_path" || (echo "Reproducibility gate failed: ${plugin_dir} differs" && exit 1)
+            fi
+          done
+
+  sbom:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm sbom
+      - name: Attach SBOM to GitHub Release
+        uses: softprops/action-gh-release@c95fe1489396fe8a9eb87c0abf8aa5b2ef267fda # v2.2.1
+        with:
+          files: sbom.cdx.json
+          fail_on_unmatched_files: true
+
+  publish:
+    needs: [build, reproducibility]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            package.json
+            THIRD_PARTY_NOTICES.md
+            LICENSE
+            README.md
+            CHANGELOG.md
+            .npmrc
+            .npmignore
+            scripts/
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
+        run: npm install -g npm@latest
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: ./
+      - name: Publish browxai with provenance
+        run: npm publish --provenance --access public
+
+  publish-plugins:
+    needs: [build, reproducibility]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+        with:
+          node-version: 20
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
+        run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: dist
+          path: ./
+      - name: Publish @kalebtec/browxai-plugin-* with provenance
+        run: pnpm -r --filter "./packages/plugins/*" publish --provenance --access public --no-git-checks

@@ -177,9 +177,9 @@ export async function injectStorageState(
   const currentOrigin = (() => { try { return new URL(page.url()).origin; } catch { return null; } })();
   for (const o of state.origins) {
     if (currentOrigin === o.origin) {
-      await page.evaluate(
-        `(() => { var es = ${JSON.stringify(o.localStorage)}; for (var i = 0; i < es.length; i++) window.localStorage.setItem(es[i].name, es[i].value); })()`,
-      );
+      await page.evaluate((entries: ReadonlyArray<{ name: string; value: string }>) => {
+        for (const e of entries) window.localStorage.setItem(e.name, e.value);
+      }, o.localStorage);
       originsApplied += 1;
     } else {
       originsSkipped.push(o.origin);

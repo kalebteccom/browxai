@@ -1,0 +1,36 @@
+version: 2
+
+# Per ci-and-bot-threats.md §2.1:
+#   - Weekly schedule (axios + Kong 2024 pattern: malicious dep ships, every
+#     instant-merging adopter eats it within 5 minutes).
+#   - Group dev-deps patches into a single PR.
+#   - Ignore semver-major across the board — every major bump is a human
+#     review (security regressions tend to ride along on major upgrades).
+#   - github-actions ecosystem included; auto-merge workflow refuses to
+#     merge these (they're code-execution changes).
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      dev-deps-patch:
+        dependency-type: development
+        update-types:
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major

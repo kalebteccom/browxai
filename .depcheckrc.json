@@ -1,0 +1,29 @@
+{
+  "ignorePatterns": [
+    "dist",
+    "node_modules",
+    "coverage",
+    "artifacts",
+    "docs/.vitepress/cache",
+    "docs/.vitepress/dist",
+    "packages/plugins/*/dist"
+  ],
+  "ignoreMatches": [
+    "@types/*",
+    "tsx",
+    "vitepress",
+    "vitest",
+    "@eslint/*",
+    "eslint",
+    "typescript-eslint",
+    "eslint-plugin-import-x",
+    "globals",
+    "prettier",
+    "lint-staged",
+    "@cyclonedx/cyclonedx-npm",
+    "license-checker-rseidelsohn",
+    "lockfile-lint",
+    "depcheck"
+  ],
+  "skipMissing": false
+}

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Commit-msg hook: enforces the browxai commit-message contract repo-wide,
+# not just inside Claude Code. Mirrors the policy implemented in
+# .claude/hooks/block-{long-commits,ai-attribution}.sh so anyone (human,
+# Codex, Cursor, agent-of-the-week) hitting `git commit` from inside the
+# tree gets the same gate.
+#
+# Rules:
+#   1. Subject line ≤ 72 chars.
+#   2. Single line — no body, no bullet points.
+#   3. No AI-attribution trailers (Co-authored-by: <AI>, Generated with,
+#      noreply@anthropic.com, etc).
+#   4. Conventional-commits prefix
+#      (feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(scope)?: ...
+#
+# Bypass (emergency only): git commit --no-verify
+
+set -euo pipefail
+
+MAX_SUBJECT=72
+MSG_FILE="${1:-}"
+if [[ -z "$MSG_FILE" || ! -f "$MSG_FILE" ]]; then
+  exit 0
+fi
+
+# Strip comment lines (git adds them automatically).
+MSG_BODY=$(grep -v '^#' "$MSG_FILE" || true)
+# Trim trailing blank lines.
+MSG_BODY=$(printf '%s' "$MSG_BODY" | awk 'NF { last = NR } { lines[NR] = $0 } END { for (i = 1; i <= last; i++) print lines[i] }')
+
+if [[ -z "$MSG_BODY" ]]; then
+  exit 0
+fi
+
+SUBJECT=$(printf '%s\n' "$MSG_BODY" | head -n 1)
+LINES=$(printf '%s\n' "$MSG_BODY" | grep -c '.' || true)
+
+ERRORS=()
+
+if (( ${#SUBJECT} > MAX_SUBJECT )); then
+  ERRORS+=("Subject line is ${#SUBJECT} chars (max ${MAX_SUBJECT}).")
+fi
+
+if (( LINES > 1 )); then
+  ERRORS+=("Message has ${LINES} non-empty lines — keep it to a single subject line.")
+fi
+
+if printf '%s' "$MSG_BODY" | grep -qiE '(co-authored-by:[[:space:]].*(claude|anthropic|gpt|copilot|cursor|codex|ai|llm)|generated with \[?claude|noreply@anthropic\.com)'; then
+  ERRORS+=("AI-attribution trailer detected — remove Co-authored-by / Generated-with credit lines.")
+fi
+
+if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: .+'; then
+  ERRORS+=("Subject does not match conventional-commits prefix (feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)[(scope)]: subject.")
+fi
+
+if (( ${#ERRORS[@]} > 0 )); then
+  echo "Commit message rejected:" >&2
+  for err in "${ERRORS[@]}"; do
+    echo "  - $err" >&2
+  done
+  echo "" >&2
+  echo "Bypass (emergency only): git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0

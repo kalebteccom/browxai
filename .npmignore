@@ -1,0 +1,74 @@
+# Fail-safe deny list. The primary contract is the `"files"` allowlist in
+# package.json — this file exists so a careless `"files": ["**"]` refactor
+# still can't ship secrets / tests / sourcemaps.
+#
+# Keep in sync with scripts/audit-package-contents.mjs.
+
+# Source tree, tests, fixtures
+src
+test
+tests
+__tests__
+__fixtures__
+*.test.*
+*.spec.*
+
+# Sourcemaps (leak verbatim source via sourcesContent)
+*.map
+
+# Workspace / build cruft
+node_modules
+coverage
+.nyc_output
+artifacts
+.tsbuildinfo
+*.tsbuildinfo
+
+# Dotfiles / IDE / OS
+.env
+.env.*
+.git
+.github
+.githooks
+.vscode
+.idea
+.claude
+.cursor
+.codex
+.agents
+.DS_Store
+.browxai
+.browx-profile
+.auth
+*.storageState.json
+
+# Tooling configs (not needed at runtime)
+.prettierrc*
+.prettierignore
+.editorconfig
+.npmrc
+.lockfile-lintrc*
+.depcheckrc*
+eslint.config.*
+prettier.config.*
+vitest.*.config.*
+tsconfig.json
+tsconfig.build.json
+tsconfig.*.json
+
+# Secrets-shaped filenames
+.netrc
+id_rsa*
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Repo docs (kept on GitHub, not in tarball)
+CHANGELOG.md
+CONTRIBUTING.md
+RELEASING.md
+docs
+
+# Workspace scripts
+scripts

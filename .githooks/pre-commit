@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Pre-commit hook: runs `lint-staged` so staged files get
+# prettier-formatted and eslint-fixed before the commit lands.
+#
+# Wire-up: `pnpm install` runs the `prepare` script which sets
+# `core.hooksPath` to `.githooks`. Manual install:
+#   git config core.hooksPath .githooks
+#
+# Bypass (emergency only): git commit --no-verify
+
+set -euo pipefail
+
+# Skip if pnpm isn't on PATH (offline contributor without devDeps).
+if ! command -v pnpm >/dev/null 2>&1; then
+  exit 0
+fi
+
+# lint-staged itself is a devDep; if not installed (no `pnpm install` yet),
+# skip rather than block.
+if ! pnpm exec --silent lint-staged --version >/dev/null 2>&1; then
+  exit 0
+fi
+
+pnpm exec lint-staged

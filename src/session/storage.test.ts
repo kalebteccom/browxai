@@ -116,11 +116,22 @@ function fakeContext(initialState: StorageStateBlob = emptyState()) {
 function fakePage(initialUrl: string, store: Record<string, Record<string, string>> = {}) {
   let url = initialUrl;
   const setUrl = (u: string) => { url = u; };
-  const evaluate = vi.fn(async (expr: unknown) => {
-    if (typeof expr !== "string") throw new Error("fakePage.evaluate: expected string expression");
+  const evaluate = vi.fn(async (expr: unknown, arg?: unknown) => {
     let origin: string;
     try { origin = new URL(url).origin; } catch { origin = "null"; }
     const bucket = (store[origin] ??= {});
+
+    // Function-literal form (preferred under the page-side ESLint rule):
+    // injectStorageState's merge-localStorage path passes a real function plus
+    // the entries array as the second arg. Apply them to the in-memory bucket
+    // — equivalent to what `window.localStorage.setItem(name, value)` would do
+    // inside the page context.
+    if (typeof expr === "function") {
+      const entries = (arg ?? []) as ReadonlyArray<{ name: string; value: string }>;
+      for (const e of entries) bucket[e.name] = e.value;
+      return undefined;
+    }
+    if (typeof expr !== "string") throw new Error("fakePage.evaluate: expected string or function expression");
 
     // Recognise the storage-helper expression shapes by string match.
     // The expressions are stable enough (we control the producer) that this

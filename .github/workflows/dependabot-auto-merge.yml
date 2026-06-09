@@ -1,0 +1,51 @@
+name: dependabot-auto-merge
+
+# Dev-deps patch only, 7-day cooldown via metadata.
+# Per ci-and-bot-threats.md §4.8 — every other Dependabot PR is human-reviewed.
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.type == 'Bot'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@dbb049abf0d677abbd7f7eee0375145b417fdd34 # v2.2.0
+      - name: Reject if not dev-deps patch
+        if: ${{ steps.meta.outputs.dependency-type != 'direct:development' || steps.meta.outputs.update-type != 'version-update:semver-patch' }}
+        run: |
+          echo "Not a dev-deps patch — human review required."
+          exit 0
+      - name: Enforce 7-day cooldown
+        if: ${{ steps.meta.outputs.dependency-type == 'direct:development' && steps.meta.outputs.update-type == 'version-update:semver-patch' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEP_NAME: ${{ steps.meta.outputs.dependency-name }}
+          NEW_VERSION: ${{ steps.meta.outputs.new-version }}
+        run: |
+          set -euo pipefail
+          published_at=$(npm view "${DEP_NAME}@${NEW_VERSION}" time."${NEW_VERSION}" 2>/dev/null || echo "")
+          if [ -z "${published_at}" ]; then
+            echo "Could not determine publish time for ${DEP_NAME}@${NEW_VERSION} — refusing auto-merge."
+            exit 1
+          fi
+          published_epoch=$(date -d "${published_at}" +%s)
+          now_epoch=$(date +%s)
+          age_days=$(( (now_epoch - published_epoch) / 86400 ))
+          echo "${DEP_NAME}@${NEW_VERSION} published ${age_days} days ago (need >= 7)."
+          if [ "${age_days}" -lt 7 ]; then
+            echo "Cooldown not met — refusing auto-merge."
+            exit 1
+          fi
+      - name: Auto-merge (squash)
+        if: ${{ steps.meta.outputs.dependency-type == 'direct:development' && steps.meta.outputs.update-type == 'version-update:semver-patch' }}
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
