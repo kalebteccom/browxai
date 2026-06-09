@@ -113,8 +113,9 @@ describe("summariseTarget — agent-facing error summaries", () => {
   });
   it("renders selector targets, scoped or unscoped", () => {
     expect(summariseTarget({ selector: ".x" } as ActionTarget)).toBe("selector=.x");
-    expect(summariseTarget({ selector: ".x", contextRef: "e2" } as ActionTarget))
-      .toBe("selector=.x (in e2)");
+    expect(summariseTarget({ selector: ".x", contextRef: "e2" } as ActionTarget)).toBe(
+      "selector=.x (in e2)",
+    );
   });
   it("renders coords targets (relevant for the submit slot)", () => {
     expect(summariseTarget({ coords: { x: 10, y: 20 } } as ActionTarget)).toBe("coords=10,20");
@@ -123,8 +124,9 @@ describe("summariseTarget — agent-facing error summaries", () => {
 
 describe("validateFillFormArgs — shape guards before touching the page", () => {
   it("rejects empty `fields`", () => {
-    expect(() => validateFillFormArgs({ fields: [] } as unknown as FillFormArgs))
-      .toThrow(/non-empty array/);
+    expect(() => validateFillFormArgs({ fields: [] } as unknown as FillFormArgs)).toThrow(
+      /non-empty array/,
+    );
   });
   it("rejects a field missing `target`", () => {
     expect(() =>

@@ -123,7 +123,9 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
         ok: boolean;
         fsPickerRequests?: Array<{ api: string; handledAs: string }>;
       }>("click", { session, selector: '[data-testid="save-btn-fs"]' });
-      const allowReq = (clickAllowed.fsPickerRequests ?? []).find((r) => r.api === "showSaveFilePicker");
+      const allowReq = (clickAllowed.fsPickerRequests ?? []).find(
+        (r) => r.api === "showSaveFilePicker",
+      );
       expect(allowReq, "save-picker request recorded under allow mode").toBeTruthy();
       expect(allowReq!.handledAs).toBe("allowed");
 
@@ -149,7 +151,9 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
         ok: boolean;
         fsPickerRequests?: Array<{ api: string; handledAs: string }>;
       }>("click", { session, selector: '[data-testid="save-btn-fs"]' });
-      const denyReq = (clickDenied.fsPickerRequests ?? []).find((r) => r.api === "showSaveFilePicker");
+      const denyReq = (clickDenied.fsPickerRequests ?? []).find(
+        (r) => r.api === "showSaveFilePicker",
+      );
       expect(denyReq, "save-picker request recorded under deny mode").toBeTruthy();
       expect(denyReq!.handledAs).toBe("denied");
       let denyText = "";
@@ -170,10 +174,11 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
     async () => {
       const session = "ks-fspicker-escape";
       await callJson("open_session", { session, mode: "incognito" });
-      const respond = await callJson<{ ok: boolean; error?: string }>(
-        "fs_picker_respond",
-        { session, api: "showSaveFilePicker", files: [{ path: "../escape.txt" }] },
-      );
+      const respond = await callJson<{ ok: boolean; error?: string }>("fs_picker_respond", {
+        session,
+        api: "showSaveFilePicker",
+        files: [{ path: "../escape.txt" }],
+      });
       expect(respond.ok).toBe(false);
       expect(respond.error).toMatch(/inside \$BROWX_WORKSPACE/);
       await callJson("close_session", { session });

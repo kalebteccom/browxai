@@ -2,12 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  pageArchive,
-  defaultArchivePath,
-  type ArchivePage,
-  type ArchiveArgs,
-} from "./archive.js";
+import { pageArchive, defaultArchivePath, type ArchivePage, type ArchiveArgs } from "./archive.js";
 
 /** In-memory page stand-in. The discovery script returns whatever HTML +
  *  resources are programmed; per-URL fetch results are mapped by URL. The
@@ -44,7 +39,8 @@ function fakePage(opts: {
   };
 }
 
-const TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=";
+const TINY_PNG_B64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=";
 
 let WS: string;
 beforeEach(() => {
@@ -76,12 +72,30 @@ describe("pageArchive — directory mode", () => {
     const page = fakePage({
       html,
       resources: [
-        { url: "https://example.test/site.css", kind: "stylesheet", rawRef: "https://example.test/site.css" },
-        { url: "https://example.test/hero.png", kind: "image", rawRef: "https://example.test/hero.png" },
+        {
+          url: "https://example.test/site.css",
+          kind: "stylesheet",
+          rawRef: "https://example.test/site.css",
+        },
+        {
+          url: "https://example.test/hero.png",
+          kind: "image",
+          rawRef: "https://example.test/hero.png",
+        },
       ],
       responses: {
-        "https://example.test/site.css": { ok: true, base64: Buffer.from("body{}").toString("base64"), contentType: "text/css", bytes: 6 },
-        "https://example.test/hero.png": { ok: true, base64: TINY_PNG_B64, contentType: "image/png", bytes: Buffer.from(TINY_PNG_B64, "base64").length },
+        "https://example.test/site.css": {
+          ok: true,
+          base64: Buffer.from("body{}").toString("base64"),
+          contentType: "text/css",
+          bytes: 6,
+        },
+        "https://example.test/hero.png": {
+          ok: true,
+          base64: TINY_PNG_B64,
+          contentType: "image/png",
+          bytes: Buffer.from(TINY_PNG_B64, "base64").length,
+        },
       },
     });
 
@@ -125,10 +139,19 @@ describe("pageArchive — single-file mode", () => {
     const page = fakePage({
       html,
       resources: [
-        { url: "https://example.test/hero.png", kind: "image", rawRef: "https://example.test/hero.png" },
+        {
+          url: "https://example.test/hero.png",
+          kind: "image",
+          rawRef: "https://example.test/hero.png",
+        },
       ],
       responses: {
-        "https://example.test/hero.png": { ok: true, base64: TINY_PNG_B64, contentType: "image/png", bytes: Buffer.from(TINY_PNG_B64, "base64").length },
+        "https://example.test/hero.png": {
+          ok: true,
+          base64: TINY_PNG_B64,
+          contentType: "image/png",
+          bytes: Buffer.from(TINY_PNG_B64, "base64").length,
+        },
       },
     });
 
@@ -147,9 +170,9 @@ describe("pageArchive — single-file mode", () => {
 describe("pageArchive — workspace escape rejection", () => {
   it("rejects a `path` that escapes the workspace", async () => {
     const page = fakePage({ html: "", resources: [], responses: {} });
-    await expect(
-      pageArchive(page, WS, "s1", { path: "../escape" }),
-    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
+    await expect(pageArchive(page, WS, "s1", { path: "../escape" })).rejects.toThrow(
+      /\$BROWX_WORKSPACE/,
+    );
   });
   it("rejects an absolute path outside the workspace", async () => {
     const page = fakePage({ html: "", resources: [], responses: {} });
@@ -177,7 +200,11 @@ describe("pageArchive — maxSize enforcement", () => {
     });
 
     // 1.5 KB cap, in MB: 0.0015
-    const r = await pageArchive(page, WS, "s1", { path: "small", format: "directory", maxSizeMb: 0.0015 });
+    const r = await pageArchive(page, WS, "s1", {
+      path: "small",
+      format: "directory",
+      maxSizeMb: 0.0015,
+    });
     expect(r.resourceCount).toBe(1);
     expect(r.droppedCount).toBe(1);
     expect(r.warnings.some((w) => w.includes("maxSizeMb"))).toBe(true);
@@ -185,12 +212,12 @@ describe("pageArchive — maxSize enforcement", () => {
 
   it("rejects a non-positive or absurd maxSizeMb up-front", async () => {
     const page = fakePage({ html: "", resources: [], responses: {} });
-    await expect(
-      pageArchive(page, WS, "s1", { path: "x", maxSizeMb: 0 }),
-    ).rejects.toThrow(/maxSizeMb/);
-    await expect(
-      pageArchive(page, WS, "s1", { path: "x", maxSizeMb: 100_000 }),
-    ).rejects.toThrow(/maxSizeMb/);
+    await expect(pageArchive(page, WS, "s1", { path: "x", maxSizeMb: 0 })).rejects.toThrow(
+      /maxSizeMb/,
+    );
+    await expect(pageArchive(page, WS, "s1", { path: "x", maxSizeMb: 100_000 })).rejects.toThrow(
+      /maxSizeMb/,
+    );
   });
 });
 
@@ -203,8 +230,17 @@ describe("pageArchive — fetch-failure tolerance", () => {
         { url: "https://blocked.test/b.png", kind: "image", rawRef: "https://blocked.test/b.png" },
       ],
       responses: {
-        "https://ok.test/a.png": { ok: true, base64: TINY_PNG_B64, contentType: "image/png", bytes: 70 },
-        "https://blocked.test/b.png": { ok: false, error: "Refused to connect because it violates the document's Content Security Policy connect-src directive" },
+        "https://ok.test/a.png": {
+          ok: true,
+          base64: TINY_PNG_B64,
+          contentType: "image/png",
+          bytes: 70,
+        },
+        "https://blocked.test/b.png": {
+          ok: false,
+          error:
+            "Refused to connect because it violates the document's Content Security Policy connect-src directive",
+        },
       },
     });
     const r = await pageArchive(page, WS, "s1", { path: "mixed", format: "directory" });
@@ -220,7 +256,9 @@ describe("pageArchive — fetch-failure tolerance", () => {
           return {
             html: `<html><body><img src="https://x.test/a.png"></body></html>`,
             baseUri: "https://x.test/",
-            resources: [{ url: "https://x.test/a.png", kind: "image", rawRef: "https://x.test/a.png" }],
+            resources: [
+              { url: "https://x.test/a.png", kind: "image", rawRef: "https://x.test/a.png" },
+            ],
           };
         }
         throw new Error("simulated page crash mid-fetch");

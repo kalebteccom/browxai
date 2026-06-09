@@ -33,10 +33,7 @@ describe("searchTreeForText — pure-tree match", () => {
 
   it("returns an empty list when nothing matches — the absence-check primitive", () => {
     seq = 0;
-    const tree = n("WebArea", undefined, [
-      n("text", "Engineering"),
-      n("text", "Design"),
-    ]);
+    const tree = n("WebArea", undefined, [n("text", "Engineering"), n("text", "Design")]);
     const hits = searchTreeForText(tree, "Support", true);
     expect(hits).toEqual([]);
   });
@@ -65,7 +62,11 @@ describe("searchTreeForText — pure-tree match", () => {
 
   it("respects the max cap", () => {
     seq = 0;
-    const tree = n("WebArea", undefined, Array.from({ length: 10 }, () => n("text", "needle")));
+    const tree = n(
+      "WebArea",
+      undefined,
+      Array.from({ length: 10 }, () => n("text", "needle")),
+    );
     const hits = searchTreeForText(tree, "needle", false, 3);
     expect(hits).toHaveLength(3);
   });

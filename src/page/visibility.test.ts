@@ -20,7 +20,7 @@ describe("setTabVisibility", () => {
   it("foreground restores visibility and re-focuses the driven tab", async () => {
     const page = driven();
     const ctx = { pages: () => [page], newPage: vi.fn() };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const r = await setTabVisibility(page as any, ctx as any, "foreground");
     expect(r).toMatchObject({ ok: true, state: "foreground", realBackgrounding: false });
     expect(page.evaluate).toHaveBeenCalledTimes(1); // SHOW
@@ -32,7 +32,7 @@ describe("setTabVisibility", () => {
     const page = driven();
     const sc = scratch();
     const ctx = { pages: () => [page], newPage: vi.fn(async () => sc) };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const r = await setTabVisibility(page as any, ctx as any, "background");
     expect(r).toMatchObject({ ok: true, state: "background", realBackgrounding: true });
     expect(sc.bringToFront).toHaveBeenCalledTimes(1); // scratch took front
@@ -44,7 +44,7 @@ describe("setTabVisibility", () => {
     const page = driven();
     const sc = scratch();
     const ctx = { pages: () => [page], newPage: vi.fn(async () => sc) };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const r = await setTabVisibility(page as any, ctx as any, "background", 5);
     expect(r).toMatchObject({
       ok: true,
@@ -65,7 +65,7 @@ describe("setTabVisibility", () => {
         throw new Error("no new page");
       }),
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const r = await setTabVisibility(page as any, ctx as any, "background");
     expect(r).toMatchObject({ ok: true, state: "background", realBackgrounding: false });
     expect(r.note).toMatch(/synthetic/);
@@ -75,7 +75,7 @@ describe("setTabVisibility", () => {
     const page = driven();
     const sc = scratch();
     const ctx = { pages: () => [page, sc], newPage: vi.fn() };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const r = await setTabVisibility(page as any, ctx as any, "background");
     expect(r.realBackgrounding).toBe(true);
     expect(ctx.newPage).not.toHaveBeenCalled();

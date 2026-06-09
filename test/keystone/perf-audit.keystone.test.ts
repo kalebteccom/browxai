@@ -67,10 +67,16 @@ afterAll(async () => {
 }, KEYSTONE_TIMEOUT);
 
 interface JsCovEntry {
-  url: string; totalBytes: number; usedBytes: number; usagePercent: number;
+  url: string;
+  totalBytes: number;
+  usedBytes: number;
+  usagePercent: number;
 }
 interface CssCovEntry {
-  url: string; totalBytes: number; usedBytes: number; usagePercent: number;
+  url: string;
+  totalBytes: number;
+  usedBytes: number;
+  usagePercent: number;
 }
 
 describe("perf module keystone — coverage_start/stop", () => {
@@ -115,7 +121,10 @@ describe("perf module keystone — perf_audit", () => {
       // Short window — the page already finished its long task on load.
       const r = await callJson<{
         ok: boolean;
-        summary: { score: number; topIssues: Array<{ category: string; severity: string; title: string }> };
+        summary: {
+          score: number;
+          topIssues: Array<{ category: string; severity: string; title: string }>;
+        };
         byCategory: Record<string, { issues: unknown[]; remediations: unknown[] }>;
         evidence: { tracePath: string; coveragePath?: string };
         warnings: string[];
@@ -128,9 +137,14 @@ describe("perf module keystone — perf_audit", () => {
       expect(r.evidence.tracePath).toContain(workspace);
       expect(r.evidence.tracePath).toContain("/perf/");
       // Summary-mode body must stay under 2000 tokens.
-      const bodyTokens = estimateTokens(JSON.stringify({
-        summary: r.summary, byCategory: r.byCategory, evidence: r.evidence, warnings: r.warnings,
-      }));
+      const bodyTokens = estimateTokens(
+        JSON.stringify({
+          summary: r.summary,
+          byCategory: r.byCategory,
+          evidence: r.evidence,
+          warnings: r.warnings,
+        }),
+      );
       expect(bodyTokens).toBeLessThanOrEqual(2000);
       await callJson("close_session", { session });
     },
@@ -174,15 +188,21 @@ describe("perf module keystone — memory_diff", () => {
       // workspace-path + parsing wiring.
       const beforePath = join(workspace, "before.heapsnapshot");
       const afterPath = join(workspace, "after.heapsnapshot");
-      writeFileSync(beforePath, makeFixtureSnapshot([
-        { type: "object", name: "Cache", count: 1, size: 2_000 },
-        { type: "object", name: "LeakyItem", count: 1, size: 1_000 },
-      ]));
-      writeFileSync(afterPath, makeFixtureSnapshot([
-        { type: "object", name: "Cache", count: 1, size: 10_000 },
-        { type: "object", name: "LeakyItem", count: 1, size: 5_000 },
-        { type: "object", name: "NewGrower", count: 1, size: 8_000 },
-      ]));
+      writeFileSync(
+        beforePath,
+        makeFixtureSnapshot([
+          { type: "object", name: "Cache", count: 1, size: 2_000 },
+          { type: "object", name: "LeakyItem", count: 1, size: 1_000 },
+        ]),
+      );
+      writeFileSync(
+        afterPath,
+        makeFixtureSnapshot([
+          { type: "object", name: "Cache", count: 1, size: 10_000 },
+          { type: "object", name: "LeakyItem", count: 1, size: 5_000 },
+          { type: "object", name: "NewGrower", count: 1, size: 8_000 },
+        ]),
+      );
       const r = await callJson<{
         ok: boolean;
         retainerGrowth: Array<{ node: string; deltaBytes: number; deltaPercent: number | "+inf" }>;
@@ -214,8 +234,18 @@ describe("perf module keystone — memory_diff", () => {
 // Locally-redefined heap-snapshot fixture builder for the memory_diff keystone
 // (mirrors the one in src/page/memory-diff.test.ts). Standalone so the test
 // can stay self-contained.
-function makeFixtureSnapshot(groups: Array<{ type: string; name: string; count: number; size: number }>): string {
-  const nodeFields = ["type", "name", "id", "self_size", "edge_count", "trace_node_id", "detachedness"];
+function makeFixtureSnapshot(
+  groups: Array<{ type: string; name: string; count: number; size: number }>,
+): string {
+  const nodeFields = [
+    "type",
+    "name",
+    "id",
+    "self_size",
+    "edge_count",
+    "trace_node_id",
+    "detachedness",
+  ];
   const edgeFields = ["type", "name_or_index", "to_node"];
   const nodeTypes = ["object", "closure", "hidden", "string"];
   const edgeTypes = ["context", "element"];

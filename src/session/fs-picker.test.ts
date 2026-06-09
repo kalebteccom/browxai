@@ -24,11 +24,13 @@ function fakePage(): Page {
   } as unknown as Page;
 }
 
-function fakeContext(opts: {
-  bindings?: Map<string, (source: unknown, payload: string) => unknown>;
-  initScripts?: string[];
-  pages?: Page[];
-} = {}): BrowserContext {
+function fakeContext(
+  opts: {
+    bindings?: Map<string, (source: unknown, payload: string) => unknown>;
+    initScripts?: string[];
+    pages?: Page[];
+  } = {},
+): BrowserContext {
   const bindings = opts.bindings ?? new Map();
   const initScripts = opts.initScripts ?? [];
   const pages = opts.pages ?? [fakePage()];
@@ -55,19 +57,28 @@ describe("parseFsPickerPolicyArg", () => {
     }
   });
   it("accepts object form with perAPI overrides", () => {
-    expect(parseFsPickerPolicyArg({ mode: "raise", perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny" } }))
-      .toEqual({ mode: "raise", perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny" } });
+    expect(
+      parseFsPickerPolicyArg({
+        mode: "raise",
+        perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny" },
+      }),
+    ).toEqual({
+      mode: "raise",
+      perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny" },
+    });
   });
   it("rejects unknown top-level modes", () => {
     expect(() => parseFsPickerPolicyArg("yes")).toThrow(/invalid/i);
   });
   it("rejects unknown per-API keys", () => {
-    expect(() => parseFsPickerPolicyArg({ mode: "raise", perAPI: { showFontPicker: "allow" } as never }))
-      .toThrow(/unknown API/);
+    expect(() =>
+      parseFsPickerPolicyArg({ mode: "raise", perAPI: { showFontPicker: "allow" } as never }),
+    ).toThrow(/unknown API/);
   });
   it("rejects unknown per-API modes", () => {
-    expect(() => parseFsPickerPolicyArg({ mode: "raise", perAPI: { showSaveFilePicker: "yes" as never } }))
-      .toThrow(/invalid mode/);
+    expect(() =>
+      parseFsPickerPolicyArg({ mode: "raise", perAPI: { showSaveFilePicker: "yes" as never } }),
+    ).toThrow(/invalid mode/);
   });
 });
 
@@ -104,7 +115,12 @@ describe("FsPickerPolicyState", () => {
     const s = new FsPickerPolicyState({ mode: "allow" }, 3);
     const t = Date.now();
     for (let i = 0; i < 5; i++) {
-      s.record({ api: "showSaveFilePicker", suggestedName: `f${i}`, handledAs: "allowed", ts: t + i });
+      s.record({
+        api: "showSaveFilePicker",
+        suggestedName: `f${i}`,
+        handledAs: "allowed",
+        ts: t + i,
+      });
     }
     const slice = s.since(0);
     expect(slice).toHaveLength(3);
@@ -192,10 +208,13 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     rmSync(ws, { recursive: true, force: true });
   });
 
-  it("deny → decision deny, records handledAs:\"denied\"", async () => {
+  it('deny → decision deny, records handledAs:"denied"', async () => {
     const { state, check } = await setupCheck({ mode: "deny" }, ws);
     const t = Date.now();
-    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker", suggestedName: "a.txt" }));
+    const raw = await check(
+      {},
+      JSON.stringify({ api: "showSaveFilePicker", suggestedName: "a.txt" }),
+    );
     expect(JSON.parse(String(raw))).toEqual({ decision: "deny" });
     const rec = state.since(t)[0];
     expect(rec?.api).toBe("showSaveFilePicker");
@@ -203,7 +222,7 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     expect(rec?.suggestedName).toBe("a.txt");
   });
 
-  it("raise → decision deny, records handledAs:\"raised\", flips raisedSince", async () => {
+  it('raise → decision deny, records handledAs:"raised", flips raisedSince', async () => {
     const { state, check } = await setupCheck({ mode: "raise" }, ws);
     const t = Date.now();
     const raw = await check({}, JSON.stringify({ api: "showOpenFilePicker" }));
@@ -215,8 +234,14 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
   it("allow + queued response → decision allow with files[]", async () => {
     const { state, check } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "out.txt" }]);
-    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker", suggestedName: "ignored" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ name: string; handleId: string }> };
+    const raw = await check(
+      {},
+      JSON.stringify({ api: "showSaveFilePicker", suggestedName: "ignored" }),
+    );
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ name: string; handleId: string }>;
+    };
     expect(parsed.decision).toBe("allow");
     expect(parsed.files).toHaveLength(1);
     expect(parsed.files[0]!.name).toBe("out.txt");
@@ -239,7 +264,10 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
       { contents: "QkJC", name: "b.txt" },
     ]);
     const raw = await check({}, JSON.stringify({ api: "showOpenFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ name: string; contents: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ name: string; contents: string }>;
+    };
     expect(parsed.decision).toBe("allow");
     expect(parsed.files).toHaveLength(2);
     expect(parsed.files.map((f) => f.name)).toEqual(["a.txt", "b.txt"]);
@@ -260,7 +288,10 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     const ask: FsPickerAskHandler = async () => [{ path: "approved.txt" }];
     const { state, check } = await setupCheck({ mode: "ask-human" }, ws, ask);
     const t = Date.now();
-    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker", suggestedName: "x.txt" }));
+    const raw = await check(
+      {},
+      JSON.stringify({ api: "showSaveFilePicker", suggestedName: "x.txt" }),
+    );
     const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ name: string }> };
     expect(parsed.decision).toBe("allow");
     expect(parsed.files[0]!.name).toBe("approved.txt");
@@ -274,29 +305,50 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
   });
 
   it("ask-human handler throws → safe-by-default deny", async () => {
-    const { check } = await setupCheck({ mode: "ask-human" }, ws, async () => { throw new Error("boom"); });
-    expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" }))))).toEqual({ decision: "deny" });
+    const { check } = await setupCheck({ mode: "ask-human" }, ws, async () => {
+      throw new Error("boom");
+    });
+    expect(
+      JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))),
+    ).toEqual({ decision: "deny" });
   });
 
   it("per-API override wins over top-level", async () => {
-    const { state, check } = await setupCheck({ mode: "allow", perAPI: { showSaveFilePicker: "deny" } }, ws);
+    const { state, check } = await setupCheck(
+      { mode: "allow", perAPI: { showSaveFilePicker: "deny" } },
+      ws,
+    );
     state.pushResponse("showOpenFilePicker", [{ contents: "QUE=" }]);
-    expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" }))))).toEqual({ decision: "deny" });
-    const allowRaw = JSON.parse(String(await check({}, JSON.stringify({ api: "showOpenFilePicker" })))) as { decision: string };
+    expect(
+      JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))),
+    ).toEqual({ decision: "deny" });
+    const allowRaw = JSON.parse(
+      String(await check({}, JSON.stringify({ api: "showOpenFilePicker" }))),
+    ) as { decision: string };
     expect(allowRaw.decision).toBe("allow");
   });
 
   it("unknown API name → safe-by-default deny", async () => {
     const { check } = await setupCheck({ mode: "allow" }, ws);
-    expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showFontPicker" }))))).toEqual({ decision: "deny" });
+    expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showFontPicker" }))))).toEqual({
+      decision: "deny",
+    });
   });
 
   it("runtime set() takes effect on the very next check", async () => {
     const { state, check } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "first.txt" }]);
-    expect((JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))) as { decision: string }).decision).toBe("allow");
+    expect(
+      (
+        JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))) as {
+          decision: string;
+        }
+      ).decision,
+    ).toBe("allow");
     state.set({ mode: "deny" });
-    expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" }))))).toEqual({ decision: "deny" });
+    expect(
+      JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))),
+    ).toEqual({ decision: "deny" });
   });
 
   it("each supported API can take each mode", async () => {
@@ -338,7 +390,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "out.txt" }]);
     const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string; name: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string; name: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
 
     // first write — truncates + writes
@@ -356,7 +411,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "empty.bin" }]);
     const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
     await write({}, JSON.stringify({ handleId, op: "close" }));
     const persisted = join(ws, "empty.bin");
@@ -368,7 +426,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "bin.dat" }]);
     const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
     // base64 "ABC" = QUJD
     await write({}, JSON.stringify({ handleId, op: "write", data: "b64:QUJD" }));
@@ -381,7 +442,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showOpenFilePicker", [{ contents: "QUE=", name: "a.txt" }]);
     const raw = await check({}, JSON.stringify({ api: "showOpenFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
     await write({}, JSON.stringify({ handleId, op: "write", data: "should-be-dropped" }));
     await write({}, JSON.stringify({ handleId, op: "close" }));
@@ -393,7 +457,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "closeme.txt" }]);
     const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
     await write({}, JSON.stringify({ handleId, op: "write", data: "first" }));
     await write({}, JSON.stringify({ handleId, op: "close" }));
@@ -412,7 +479,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "deep/nested/dir/out.txt" }]);
     const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const parsed = JSON.parse(String(raw)) as { decision: string; files: Array<{ handleId: string }> };
+    const parsed = JSON.parse(String(raw)) as {
+      decision: string;
+      files: Array<{ handleId: string }>;
+    };
     const handleId = parsed.files[0]!.handleId;
     await write({}, JSON.stringify({ handleId, op: "write", data: "x" }));
     await write({}, JSON.stringify({ handleId, op: "close" }));

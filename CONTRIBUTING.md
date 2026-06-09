@@ -29,7 +29,7 @@ interaction, the session model, or capabilities.
   subject, **≤72 chars**, no body, no AI-attribution trailers. Repo hooks
   enforce all three; don't bypass them.
 - **Design for the problem class.** When a consumer asks for a specific
-  feature, build the *generic primitive* for the underlying problem, not the
+  feature, build the _generic primitive_ for the underlying problem, not the
   literal ask. Keep dependency / framework / app names out of code, comments,
   tests, and public docs.
 - **No arbitrary-JS creep.** `eval_js` is the single arbitrary-JS loophole and
@@ -57,7 +57,7 @@ guarantee until they're promoted deliberately. Prefer that lane for new asks.
 
 1. Branch, make the change, add tests, keep `typecheck` / `test` / `build` green.
 2. Update `docs/tool-reference.md` for any surface change, and `CHANGELOG.md`.
-3. Open a PR using the template; describe the *why*.
+3. Open a PR using the template; describe the _why_.
 
 ## Reporting issues
 

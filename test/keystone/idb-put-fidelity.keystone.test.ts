@@ -64,22 +64,31 @@ afterAll(async () => {
 
 async function waitForSeed(session: string): Promise<void> {
   for (let i = 0; i < 60; i++) {
-    const r = await callJson<{ ok: boolean }>(
-      "verify_text",
-      { session, selector: '[data-testid="storage-seed-state"]', text: "ready", exact: true },
-    );
+    const r = await callJson<{ ok: boolean }>("verify_text", {
+      session,
+      selector: '[data-testid="storage-seed-state"]',
+      text: "ready",
+      exact: true,
+    });
     if (r.ok) return;
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error("idb-put keystone: storage seeding never reached 'ready'");
 }
 
-async function rawIdbRead(session: string, dbName: string, storeName: string, key: string): Promise<{ type: string; value: unknown }> {
-  const r = await callJson<{ ok: boolean; value?: { type: string; value: unknown }; error?: string }>(
-    "eval_js",
-    {
-      session,
-      expr: `(async () => {
+async function rawIdbRead(
+  session: string,
+  dbName: string,
+  storeName: string,
+  key: string,
+): Promise<{ type: string; value: unknown }> {
+  const r = await callJson<{
+    ok: boolean;
+    value?: { type: string; value: unknown };
+    error?: string;
+  }>("eval_js", {
+    session,
+    expr: `(async () => {
         const db = await new Promise((res, rej) => {
           const req = indexedDB.open(${JSON.stringify(dbName)});
           req.onsuccess = () => res(req.result);
@@ -95,8 +104,7 @@ async function rawIdbRead(session: string, dbName: string, storeName: string, ke
         db.close();
         return { type: typeof v, value: v };
       })()`,
-    },
-  );
+  });
   if (!r.ok || !r.value) throw new Error(`raw read failed: ${r.error ?? "unknown"}`);
   return r.value;
 }
@@ -143,14 +151,22 @@ describe("idb_put fidelity keystone — values must round-trip as structured obj
       await waitForSeed(session);
 
       await callJson("idb_put", {
-        session, dbName: "app", storeName: "kv", key: "num", value: 42,
+        session,
+        dbName: "app",
+        storeName: "kv",
+        key: "num",
+        value: 42,
       });
       const rNum = await rawIdbRead(session, "app", "kv", "num");
       expect(rNum.type).toBe("number");
       expect(rNum.value).toBe(42);
 
       await callJson("idb_put", {
-        session, dbName: "app", storeName: "kv", key: "str", value: "hello",
+        session,
+        dbName: "app",
+        storeName: "kv",
+        key: "str",
+        value: "hello",
       });
       const rStr = await rawIdbRead(session, "app", "kv", "str");
       // A real string stays a string — preserving the platform shape.
@@ -172,11 +188,17 @@ describe("idb_put fidelity keystone — values must round-trip as structured obj
 
       const payload = { tag: "shape", arr: ["a", "b"], deep: { k: 1 } };
       await callJson("idb_put", {
-        session, dbName: "app", storeName: "kv", key: "rt", value: payload,
+        session,
+        dbName: "app",
+        storeName: "kv",
+        key: "rt",
+        value: payload,
       });
 
       const got = await callJson<{
-        ok: boolean; found: boolean; value?: unknown;
+        ok: boolean;
+        found: boolean;
+        value?: unknown;
       }>("idb_get", { session, dbName: "app", storeName: "kv", key: "rt" });
       expect(got.ok).toBe(true);
       expect(got.found).toBe(true);
@@ -231,7 +253,11 @@ describe("idb_put fidelity keystone — values must round-trip as structured obj
       await waitForSeed(session);
 
       const r = await callJson<{ ok: boolean; warnings?: string[] }>("idb_put", {
-        session, dbName: "app", storeName: "kv", key: "plain", value: "hello world",
+        session,
+        dbName: "app",
+        storeName: "kv",
+        key: "plain",
+        value: "hello world",
       });
       expect(r.ok).toBe(true);
       // The warning should fire ONLY for {/[ -shaped strings that JSON-parse

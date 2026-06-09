@@ -76,19 +76,19 @@ export type SupportedPermission = (typeof SUPPORTED_PERMISSIONS)[number];
  *  names to the CDP descriptor names (most are 1:1; midi vs midi-sysex,
  *  notifications vs background-sync etc. all match CDP's permission enum). */
 const CDP_PERMISSION_NAME: Readonly<Record<SupportedPermission, string>> = {
-  "camera": "videoCapture",
-  "microphone": "audioCapture",
-  "geolocation": "geolocation",
-  "notifications": "notifications",
+  camera: "videoCapture",
+  microphone: "audioCapture",
+  geolocation: "geolocation",
+  notifications: "notifications",
   "clipboard-read": "clipboardReadWrite",
   "clipboard-write": "clipboardSanitizedWrite",
-  "midi": "midi",
+  midi: "midi",
   "midi-sysex": "midiSysex",
   "payment-handler": "paymentHandler",
   "background-sync": "backgroundSync",
-  "accelerometer": "sensors",
-  "gyroscope": "sensors",
-  "magnetometer": "sensors",
+  accelerometer: "sensors",
+  gyroscope: "sensors",
+  magnetometer: "sensors",
 };
 
 /** Public, runtime-mutable shape. Top-level `mode` is the default; the
@@ -114,7 +114,7 @@ export interface PermissionRecord {
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_PERMISSION_HINT =
   "unhandled permission request — set permissionPolicy (open_session/set_permission_policy) " +
-  "to \"allow\", \"deny\", or \"ask-human\" before driving an action that may trigger one. " +
+  'to "allow", "deny", or "ask-human" before driving an action that may trigger one. ' +
   "The request was rejected page-side (NotAllowedError) so the page is not deadlocked, but " +
   "the app effect is the deny branch.";
 
@@ -146,7 +146,10 @@ export class PermissionPolicyState {
 
   /** Resolved policy snapshot. */
   current(): PermissionPolicy {
-    return { mode: this.policy.mode, ...(this.policy.perPermission ? { perPermission: { ...this.policy.perPermission } } : {}) };
+    return {
+      mode: this.policy.mode,
+      ...(this.policy.perPermission ? { perPermission: { ...this.policy.perPermission } } : {}),
+    };
   }
 
   /** Effective mode for a single permission — per-permission map wins, else
@@ -194,7 +197,9 @@ export class PermissionPolicyState {
  *  caller gets a fast error instead of silent fallthrough). */
 function normalise(p: PermissionPolicy): PermissionPolicy {
   if (!isPolicyMode(p.mode)) {
-    throw new Error(`permissionPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`);
+    throw new Error(
+      `permissionPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    );
   }
   if (p.perPermission) {
     const cleaned: Partial<Record<SupportedPermission, PolicyMode>> = {};
@@ -206,7 +211,9 @@ function normalise(p: PermissionPolicy): PermissionPolicy {
       }
       if (mode === undefined) continue;
       if (!isPolicyMode(mode)) {
-        throw new Error(`permissionPolicy.perPermission["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`);
+        throw new Error(
+          `permissionPolicy.perPermission["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+        );
       }
       cleaned[name as SupportedPermission] = mode;
     }
@@ -246,11 +253,14 @@ export function cdpPermissionName(p: SupportedPermission): string {
  *  launching Chromium. */
 export function cdpSettingFor(mode: PolicyMode): "granted" | "denied" | "prompt" {
   switch (mode) {
-    case "allow": return "granted";
-    case "ask-human": return "prompt";
+    case "allow":
+      return "granted";
+    case "ask-human":
+      return "prompt";
     case "deny":
     case "raise":
-    default: return "denied";
+    default:
+      return "denied";
   }
 }
 
@@ -480,8 +490,10 @@ export async function attachPermissionPolicy(
         const o = JSON.parse(payload) as { permission?: string; origin?: string };
         const name = o.permission;
         const origin = o.origin;
-        const cdpName = name && SUPPORTED_PERMISSIONS.includes(name as SupportedPermission)
-          ? (name as SupportedPermission) : undefined;
+        const cdpName =
+          name && SUPPORTED_PERMISSIONS.includes(name as SupportedPermission)
+            ? (name as SupportedPermission)
+            : undefined;
         if (!cdpName) {
           // Unknown permission name — record under "geolocation" sentinel? No:
           // just allow through. Anything outside the v1 set is best-effort.
@@ -628,21 +640,23 @@ export async function readPermissionStates(
     }
   }
   void context; // signature-compat: takes context so a future cross-origin
-                // CDP path can adopt it without breaking callers.
+  // CDP path can adopt it without breaking callers.
   for (const n of names) {
     try {
-      const state = await page.evaluate(async (perm: string) => {
-        try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const navAny = (globalThis as any).navigator;
-          if (!navAny?.permissions?.query) return "unknown";
-          const res = await navAny.permissions.query({ name: perm });
-          return res?.state ?? "unknown";
-        } catch {
-          return "unknown";
-        }
-      }, n).catch(() => "unknown" as string);
-      out[n] = (state === "granted" || state === "denied" || state === "prompt") ? state : "unknown";
+      const state = await page
+        .evaluate(async (perm: string) => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const navAny = (globalThis as any).navigator;
+            if (!navAny?.permissions?.query) return "unknown";
+            const res = await navAny.permissions.query({ name: perm });
+            return res?.state ?? "unknown";
+          } catch {
+            return "unknown";
+          }
+        }, n)
+        .catch(() => "unknown" as string);
+      out[n] = state === "granted" || state === "denied" || state === "prompt" ? state : "unknown";
     } catch {
       out[n] = "unknown";
     }

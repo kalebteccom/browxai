@@ -11,9 +11,16 @@ import { locatorFor, type ActionTarget } from "./locator.js";
 import type { RefRegistry } from "./refs.js";
 
 export const ELEMENT_METRICS = [
-  "scrollTop", "scrollLeft", "scrollHeight", "scrollWidth",
-  "clientWidth", "clientHeight",
-  "bboxX", "bboxY", "bboxWidth", "bboxHeight",
+  "scrollTop",
+  "scrollLeft",
+  "scrollHeight",
+  "scrollWidth",
+  "clientWidth",
+  "clientHeight",
+  "bboxX",
+  "bboxY",
+  "bboxWidth",
+  "bboxHeight",
 ] as const;
 export type Metric = (typeof ELEMENT_METRICS)[number];
 
@@ -82,7 +89,15 @@ export interface SampleResult {
 /** Pure reduction of a collected series. Exported for unit tests. */
 export function summariseSeries(series: Array<{ tMs: number; value: number }>): SampleSummary {
   if (series.length === 0) {
-    return { count: 0, min: NaN, max: NaN, first: NaN, last: NaN, distinctCount: 0, firstChangeTMs: null };
+    return {
+      count: 0,
+      min: NaN,
+      max: NaN,
+      first: NaN,
+      last: NaN,
+      distinctCount: 0,
+      firstChangeTMs: null,
+    };
   }
   const first = series[0]!.value;
   let min = first;
@@ -106,7 +121,13 @@ export function summariseSeries(series: Array<{ tMs: number; value: number }>): 
   };
 }
 
-type SamplerParams = { metric: string; durationMs: number; everyFrame: boolean; intervalMs: number; maxSeries: number };
+type SamplerParams = {
+  metric: string;
+  durationMs: number;
+  everyFrame: boolean;
+  intervalMs: number;
+  maxSeries: number;
+};
 
 // Both samplers are self-contained (no closure / outer refs) so Playwright can
 // stringify and run them in-page. They differ only in arg shape:
@@ -122,13 +143,28 @@ function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number;
   const g = globalThis as any;
   const read = (): number => {
     switch (p.metric) {
-      case "scrollTop": return el.scrollTop;
-      case "scrollLeft": return el.scrollLeft;
-      case "scrollHeight": return el.scrollHeight;
-      case "scrollWidth": return el.scrollWidth;
-      case "clientWidth": return el.clientWidth;
-      case "clientHeight": return el.clientHeight;
-      default: { const r = el.getBoundingClientRect(); return p.metric === "bboxX" ? r.x : p.metric === "bboxY" ? r.y : p.metric === "bboxWidth" ? r.width : r.height; }
+      case "scrollTop":
+        return el.scrollTop;
+      case "scrollLeft":
+        return el.scrollLeft;
+      case "scrollHeight":
+        return el.scrollHeight;
+      case "scrollWidth":
+        return el.scrollWidth;
+      case "clientWidth":
+        return el.clientWidth;
+      case "clientHeight":
+        return el.clientHeight;
+      default: {
+        const r = el.getBoundingClientRect();
+        return p.metric === "bboxX"
+          ? r.x
+          : p.metric === "bboxY"
+            ? r.y
+            : p.metric === "bboxWidth"
+              ? r.width
+              : r.height;
+      }
     }
   };
   return new Promise((resolve) => {
@@ -136,9 +172,14 @@ function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number;
     const clock = () => (g.performance && g.performance.now ? g.performance.now() : Date.now());
     const t0 = clock();
     const tick = () => {
-      if (series.length < p.maxSeries) series.push({ tMs: Math.round(clock() - t0), value: read() });
-      if (clock() - t0 >= p.durationMs || series.length >= p.maxSeries) { resolve(series); return; }
-      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick); else g.setTimeout(tick, p.intervalMs);
+      if (series.length < p.maxSeries)
+        series.push({ tMs: Math.round(clock() - t0), value: read() });
+      if (clock() - t0 >= p.durationMs || series.length >= p.maxSeries) {
+        resolve(series);
+        return;
+      }
+      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick);
+      else g.setTimeout(tick, p.intervalMs);
     };
     tick();
   });
@@ -151,13 +192,20 @@ function windowSampler(p: SamplerParams): Promise<Array<{ tMs: number; value: nu
   const read = (): number => {
     const s = g.document.scrollingElement || g.document.documentElement;
     switch (p.metric) {
-      case "scrollTop": return g.scrollY ?? s.scrollTop ?? 0;
-      case "scrollLeft": return g.scrollX ?? s.scrollLeft ?? 0;
-      case "scrollHeight": return s.scrollHeight;
-      case "scrollWidth": return s.scrollWidth;
-      case "clientWidth": return s.clientWidth;
-      case "clientHeight": return s.clientHeight;
-      default: return NaN; // bbox* rejected before we get here
+      case "scrollTop":
+        return g.scrollY ?? s.scrollTop ?? 0;
+      case "scrollLeft":
+        return g.scrollX ?? s.scrollLeft ?? 0;
+      case "scrollHeight":
+        return s.scrollHeight;
+      case "scrollWidth":
+        return s.scrollWidth;
+      case "clientWidth":
+        return s.clientWidth;
+      case "clientHeight":
+        return s.clientHeight;
+      default:
+        return NaN; // bbox* rejected before we get here
     }
   };
   return new Promise((resolve) => {
@@ -165,9 +213,14 @@ function windowSampler(p: SamplerParams): Promise<Array<{ tMs: number; value: nu
     const clock = () => (g.performance && g.performance.now ? g.performance.now() : Date.now());
     const t0 = clock();
     const tick = () => {
-      if (series.length < p.maxSeries) series.push({ tMs: Math.round(clock() - t0), value: read() });
-      if (clock() - t0 >= p.durationMs || series.length >= p.maxSeries) { resolve(series); return; }
-      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick); else g.setTimeout(tick, p.intervalMs);
+      if (series.length < p.maxSeries)
+        series.push({ tMs: Math.round(clock() - t0), value: read() });
+      if (clock() - t0 >= p.durationMs || series.length >= p.maxSeries) {
+        resolve(series);
+        return;
+      }
+      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick);
+      else g.setTimeout(tick, p.intervalMs);
     };
     tick();
   });
@@ -184,7 +237,9 @@ export async function sampleMetric(
   const scope: "element" | "window" = args.target ? "element" : "window";
 
   if (!args.target && BBOX_METRICS.has(args.metric)) {
-    throw new Error(`sample: metric "${args.metric}" needs a target element (bbox* is meaningless for the window)`);
+    throw new Error(
+      `sample: metric "${args.metric}" needs a target element (bbox* is meaningless for the window)`,
+    );
   }
 
   const params = { metric: args.metric, durationMs, everyFrame, intervalMs, maxSeries: MAX_SERIES };

@@ -46,9 +46,7 @@ export function annotateStructuralContext(tree: A11yNode): void {
     if (!headerRow) continue;
     columnHeadersByRoot.set(
       root,
-      headerRow.children
-        .filter((c) => c.role === "columnheader")
-        .map((c) => (c.name ?? "").trim()),
+      headerRow.children.filter((c) => c.role === "columnheader").map((c) => (c.name ?? "").trim()),
     );
   }
 
@@ -59,9 +57,7 @@ export function annotateStructuralContext(tree: A11yNode): void {
     if (!row) continue;
 
     const collectionRoot = nearestCollectionRoot(row, parents);
-    const collection = collectionRoot
-      ? collectionRoot.role
-      : `${row.role}-list`;
+    const collection = collectionRoot ? collectionRoot.role : `${row.role}-list`;
 
     const rowText = collectVisibleText(row, 200);
     const rowKey = firstNonEmptyName(row);
@@ -70,7 +66,8 @@ export function annotateStructuralContext(tree: A11yNode): void {
     if (collectionRoot && columnHeadersByRoot.has(collectionRoot)) {
       const headers = columnHeadersByRoot.get(collectionRoot)!;
       // Find the index of the cell ancestor (or `node` itself) within `row`.
-      const cellAncestor = chain.find((a) => CELL_ROLES.has(a.role)) ?? (CELL_ROLES.has(node.role) ? node : undefined);
+      const cellAncestor =
+        chain.find((a) => CELL_ROLES.has(a.role)) ?? (CELL_ROLES.has(node.role) ? node : undefined);
       if (cellAncestor) {
         const idx = row.children.indexOf(cellAncestor);
         if (idx >= 0 && idx < headers.length) column = headers[idx] || undefined;
@@ -105,7 +102,10 @@ function isArticleInFeed(node: A11yNode, chain: A11yNode[]): boolean {
   return chain.some((a) => a.role === "feed");
 }
 
-function nearestCollectionRoot(row: A11yNode, parents: Map<A11yNode, A11yNode>): A11yNode | undefined {
+function nearestCollectionRoot(
+  row: A11yNode,
+  parents: Map<A11yNode, A11yNode>,
+): A11yNode | undefined {
   let cur: A11yNode | undefined = parents.get(row);
   while (cur) {
     if (COLLECTION_ROLES.has(cur.role)) return cur;

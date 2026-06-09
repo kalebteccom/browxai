@@ -53,37 +53,43 @@ export async function inspectElement(loc: Locator, extra: string[] = []): Promis
   try {
     if ((await loc.count()) === 0) return { found: false };
     const keys = [...DEFAULT_STYLE_KEYS, ...extra];
-    return await loc.evaluate((el: unknown, styleKeys: string[]): InspectResult => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e = el as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const g = globalThis as any;
-      const cs = g.getComputedStyle(e);
-      const styles: Record<string, string> = {};
-      for (const k of styleKeys) {
-        try { styles[k] = String(cs[k]); } catch { /* unknown prop — skip */ }
-      }
-      const r = e.getBoundingClientRect();
-      const box = { x: r.x, y: r.y, width: r.width, height: r.height };
-      const overflowing = {
-        x: e.scrollWidth > e.clientWidth + 1,
-        y: e.scrollHeight > e.clientHeight + 1,
-      };
-      const visible =
-        box.width > 0 &&
-        box.height > 0 &&
-        styles.display !== "none" &&
-        styles.visibility !== "hidden" &&
-        Number(styles.opacity || "1") > 0;
-      return {
-        found: true,
-        box,
-        styles,
-        overflowing,
-        visible,
-        childCount: e.childElementCount,
-      };
-    }, keys).catch(() => ({ found: false }));
+    return await loc
+      .evaluate((el: unknown, styleKeys: string[]): InspectResult => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = el as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const g = globalThis as any;
+        const cs = g.getComputedStyle(e);
+        const styles: Record<string, string> = {};
+        for (const k of styleKeys) {
+          try {
+            styles[k] = String(cs[k]);
+          } catch {
+            /* unknown prop — skip */
+          }
+        }
+        const r = e.getBoundingClientRect();
+        const box = { x: r.x, y: r.y, width: r.width, height: r.height };
+        const overflowing = {
+          x: e.scrollWidth > e.clientWidth + 1,
+          y: e.scrollHeight > e.clientHeight + 1,
+        };
+        const visible =
+          box.width > 0 &&
+          box.height > 0 &&
+          styles.display !== "none" &&
+          styles.visibility !== "hidden" &&
+          Number(styles.opacity || "1") > 0;
+        return {
+          found: true,
+          box,
+          styles,
+          overflowing,
+          visible,
+          childCount: e.childElementCount,
+        };
+      }, keys)
+      .catch(() => ({ found: false }));
   } catch {
     return { found: false };
   }

@@ -144,14 +144,15 @@ export class WsInteractiveRegistry {
     spec: WsInterceptSpec,
   ): Promise<{ key: string; active: string[] }> {
     await this.install(page);
-    const mode: WsInterceptMode = spec.response === "drop"
-      ? "drop"
-      : spec.response === "echo"
-        ? "echo"
-        : "replace";
+    const mode: WsInterceptMode =
+      spec.response === "drop" ? "drop" : spec.response === "echo" ? "echo" : "replace";
     const replacement = typeof spec.response === "object" ? spec.response.data : undefined;
     const key = spec.pattern;
-    this.interceptors.set(key, { pattern: key, mode, ...(replacement !== undefined ? { replacement } : {}) });
+    this.interceptors.set(key, {
+      pattern: key,
+      mode,
+      ...(replacement !== undefined ? { replacement } : {}),
+    });
     await page.evaluate(
       ({ pattern, mode, replacement }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

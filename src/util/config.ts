@@ -26,7 +26,10 @@ export interface BrowxConfig {
 export function resolveConfig(env: NodeJS.ProcessEnv = process.env): BrowxConfig {
   const raw = env.BROWX_TEST_ATTRIBUTES?.trim();
   const list = raw
-    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+    ? raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : DEFAULT_TEST_ATTRIBUTES;
   return { testAttributes: list };
 }

@@ -33,7 +33,10 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
   const handlers = server.handlers;
   let closed = false;
 
-  const dispatch = async (toolName: string, args: Record<string, unknown>): Promise<BrowxaiResult> => {
+  const dispatch = async (
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<BrowxaiResult> => {
     if (closed) throw new Error(`browxai-sdk: dispatch on a closed transport (tool=${toolName})`);
     const fn = handlers[toolName];
     if (!fn) {

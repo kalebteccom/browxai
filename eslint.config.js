@@ -38,7 +38,7 @@ const noTrackerIdsInComments = {
     schema: [],
     messages: {
       trackerId:
-        "Tracker IDs (W-/Round-/ask #/JIRA-/LINEAR-/GEN-/T-/R-style) do not belong in code comments — they are project-management artifacts that rot and mean nothing to a future reader. State the actual reason instead. (Matched: \"{{ match }}\")",
+        'Tracker IDs (W-/Round-/ask #/JIRA-/LINEAR-/GEN-/T-/R-style) do not belong in code comments — they are project-management artifacts that rot and mean nothing to a future reader. State the actual reason instead. (Matched: "{{ match }}")',
     },
   },
   create(context) {
@@ -211,6 +211,13 @@ export default tseslint.config(
       "@typescript-eslint/only-throw-error": "warn",
       "@typescript-eslint/unbound-method": "warn",
 
+      // Deferred to Phase 15 Stage 2+: enable after src/page/ and src/session/
+      // nullability narrowing lands. Autofixers strip load-bearing assertions
+      // (e.g. `as PreProbeData` after `.catch(() => ({}))`, non-null `!` on
+      // `frame!`/`targetFrame!` where control flow doesn't narrow for TS).
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
+      "@typescript-eslint/no-unnecessary-non-null-assertion": "off",
+
       // Ban undocumented ts-ignore / ts-expect-error.
       "@typescript-eslint/ban-ts-comment": [
         "error",
@@ -241,13 +248,7 @@ export default tseslint.config(
   },
   // Test files — relax async-safety + console hygiene.
   {
-    files: [
-      "**/*.test.ts",
-      "**/*.test.tsx",
-      "**/*.spec.ts",
-      "test/**/*.ts",
-      "src/**/*.test.ts",
-    ],
+    files: ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "test/**/*.ts", "src/**/*.test.ts"],
     rules: {
       "@typescript-eslint/no-floating-promises": "off",
       "@typescript-eslint/no-misused-promises": "off",

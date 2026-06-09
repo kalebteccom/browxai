@@ -6,7 +6,7 @@ The MCP server runs the compiled `dist/cli.js`. **Source changes are NOT live un
 
 1. Edit source.
 2. Believe the change is live because tests pass.
-3. The running daemon (Claude Code, Codex, Pi) still holds the *old* `dist/` import graph in memory.
+3. The running daemon (Claude Code, Codex, Pi) still holds the _old_ `dist/` import graph in memory.
 4. Spend an hour debugging a "bug" that's actually stale compiled code.
 
 ## The discipline

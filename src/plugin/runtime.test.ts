@@ -48,18 +48,12 @@ function makePlugin(workspaceRoot: string, opts: MakePluginOpts): void {
 
 function writeDecl(workspaceRoot: string, names: ReadonlyArray<string>): void {
   mkdirSync(workspaceRoot, { recursive: true });
-  writeFileSync(
-    join(workspaceRoot, "plugins.json"),
-    JSON.stringify({ plugins: names }, null, 2),
-  );
+  writeFileSync(join(workspaceRoot, "plugins.json"), JSON.stringify({ plugins: names }, null, 2));
 }
 
 interface HostState {
   /** Registered tool names; populated as `registerTool` is called. */
-  readonly tools: Map<
-    string,
-    { handler: PluginToolHandler; capability?: string; owner: string }
-  >;
+  readonly tools: Map<string, { handler: PluginToolHandler; capability?: string; owner: string }>;
   /** Core tool names — added before the runtime fires. */
   readonly coreTools: Set<string>;
 }
@@ -346,7 +340,10 @@ describe("startPluginRuntime — call graph enforcement", () => {
     expect(r.plugins[0]?.status).toBe("loaded");
     const handler = host.tools.get("a.peek");
     const result = await handler!.handler({});
-    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.ok).toBe(true);
     expect(parsed.core).toBe("snapshot");
   });
@@ -372,7 +369,10 @@ describe("startPluginRuntime — call graph enforcement", () => {
     expect(r.plugins[0]?.status).toBe("loaded");
     const handler = host.tools.get("a.peek");
     const result = await handler!.handler({});
-    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.ok).toBe(false);
     expect(parsed.code).toBe(PLUGIN_CALL_GRAPH_VIOLATION);
   });
@@ -401,7 +401,10 @@ describe("startPluginRuntime — call graph enforcement", () => {
     expect(r.plugins[0]?.status).toBe("loaded");
     const handler = host.tools.get("a.main");
     const result = await handler!.handler({});
-    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.helper).toBe(true);
   });
 });

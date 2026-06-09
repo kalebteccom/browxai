@@ -96,7 +96,11 @@ export class DownloadsRegistry {
       this.entries.delete(oldestKey);
       if (victim) {
         // unlink under the workspace-rooted storageDir (BROWX_WORKSPACE).
-        try { unlinkSync(victim.path); } catch { /* best-effort cleanup */ }
+        try {
+          unlinkSync(victim.path);
+        } catch {
+          /* best-effort cleanup */
+        }
       }
     }
     return entry;
@@ -178,13 +182,12 @@ export function mimeTypeFromName(name: string): string | undefined {
  *  capture is OFF the artifact is silently deleted; when ON it's persisted and
  *  the registry records it. Errors during capture never propagate — they
  *  surface as warnings on the session's log only. */
-export function attachDownloadCapture(
-  context: BrowserContext,
-  registry: DownloadsRegistry,
-): void {
+export function attachDownloadCapture(context: BrowserContext, registry: DownloadsRegistry): void {
   context.on("download", (download) => {
     void handleDownload(download, registry).catch((err) => {
-      log.warn("downloads: capture failed", { error: err instanceof Error ? err.message : String(err) });
+      log.warn("downloads: capture failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
     });
   });
 }
@@ -221,11 +224,17 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
   try {
     await download.saveAs(resolved);
   } catch (err) {
-    log.warn("downloads: saveAs failed", { error: err instanceof Error ? err.message : String(err) });
+    log.warn("downloads: saveAs failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return;
   }
   let sizeBytes = 0;
-  try { sizeBytes = statSync(resolved).size; } catch { /* best-effort */ }
+  try {
+    sizeBytes = statSync(resolved).size;
+  } catch {
+    /* best-effort */
+  }
   const rawDifferedFromSafe = raw !== safe;
   registry.record({
     suggestedFilename: safe,
@@ -239,16 +248,23 @@ async function handleDownload(download: Download, registry: DownloadsRegistry): 
 
 /** Read a captured download's bytes. Returns base64. Throws if the id is
  *  unknown or the file vanished. */
-export function readCapturedBytes(reg: DownloadsRegistry, id: string): { base64: string; bytes: number; path: string; mimeType?: string; suggestedFilename: string } {
+export function readCapturedBytes(
+  reg: DownloadsRegistry,
+  id: string,
+): { base64: string; bytes: number; path: string; mimeType?: string; suggestedFilename: string } {
   const entry = reg.get(id);
   if (!entry) {
-    throw new Error(`download_get: unknown id "${id}". Call downloads_capture({on:true}) before the action that triggers the download, then read the id from ActionResult.downloads[]`);
+    throw new Error(
+      `download_get: unknown id "${id}". Call downloads_capture({on:true}) before the action that triggers the download, then read the id from ActionResult.downloads[]`,
+    );
   }
   let buf: Buffer;
   try {
     buf = readFileSync(entry.path);
   } catch (err) {
-    throw new Error(`download_get: file vanished for id "${id}" at ${entry.path} (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(
+      `download_get: file vanished for id "${id}" at ${entry.path} (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   return {
     base64: buf.toString("base64"),

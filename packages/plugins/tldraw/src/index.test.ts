@@ -3,8 +3,13 @@
 import { describe, it, expect } from "vitest";
 import { handlers, register } from "./index.js";
 
-type CallToolFn = (name: string, args?: Record<string, unknown>) => Promise<{
-  content: ReadonlyArray<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+type CallToolFn = (
+  name: string,
+  args?: Record<string, unknown>,
+) => Promise<{
+  content: ReadonlyArray<
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  >;
 }>;
 
 function evalEnvelope(value: unknown) {
@@ -21,7 +26,9 @@ function makeApi(callTool: CallToolFn) {
   } as never;
 }
 
-function parseFirst(res: { content: ReadonlyArray<{ type: string; text?: string }> }): Record<string, unknown> {
+function parseFirst(res: {
+  content: ReadonlyArray<{ type: string; text?: string }>;
+}): Record<string, unknown> {
   const first = res.content[0];
   if (!first || first.type !== "text") throw new Error("expected text content");
   return JSON.parse(first.text!) as Record<string, unknown>;

@@ -19,18 +19,26 @@ interface FakeFrameInit {
 
 function buildTree(init: FakeFrameInit, parent: Frame | null = null): Frame {
   const childrenInit = init.children ?? [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   const f = {
     _url: init.url,
     _name: init.name ?? "",
     _parent: parent,
     _children: [] as Frame[],
-    url() { return (this as any)._url as string; },
-    name() { return (this as any)._name as string; },
-    parentFrame() { return (this as any)._parent as Frame | null; },
-    childFrames() { return (this as any)._children as Frame[]; },
+    url() {
+      return (this as any)._url as string;
+    },
+    name() {
+      return (this as any)._name as string;
+    },
+    parentFrame() {
+      return (this as any)._parent as Frame | null;
+    },
+    childFrames() {
+      return (this as any)._children as Frame[];
+    },
   } as unknown as Frame;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   (f as any)._children = childrenInit.map((c) => buildTree(c, f));
   return f;
 }
@@ -77,9 +85,11 @@ describe("FrameRegistry / listFrames", () => {
     const main = buildTree({
       url: "http://example.com/",
       children: [
-        { url: "http://a.test/", name: "frame-a", children: [
-          { url: "http://aa.test/", name: "frame-aa" },
-        ]},
+        {
+          url: "http://a.test/",
+          name: "frame-a",
+          children: [{ url: "http://aa.test/", name: "frame-aa" }],
+        },
         { url: "http://b.test/", name: "frame-b" },
       ],
     });
@@ -118,7 +128,7 @@ describe("FrameRegistry / listFrames", () => {
     const first = listFrames(page, reg);
     const aId = first[1]!.frameId;
     // simulate intra-iframe nav: same Frame handle, different URL
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (main.childFrames()[0]! as any)._url = "http://a.test/somewhere-else";
     const second = listFrames(page, reg);
     expect(second[1]!.frameId).toBe(aId);

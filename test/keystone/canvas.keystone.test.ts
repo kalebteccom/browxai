@@ -75,7 +75,10 @@ describe("canvas keystone — canvas_capture format:'png'", () => {
     "returns base64 PNG bytes with correct dimensions and PNG magic header",
     async () => {
       const session = "ks-canvas-png";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
       await callJson("navigate", { session, url: `${fixture.url}/canvas-page` });
 

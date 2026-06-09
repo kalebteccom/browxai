@@ -94,9 +94,7 @@ export class ArtifactsRegistry {
     // workspace-escape re-check in `pathFor`.
     if (!existsSync(this.storageDir)) mkdirSync(this.storageDir, { recursive: true });
     const buf =
-      encoding === "base64"
-        ? Buffer.from(content, "base64")
-        : Buffer.from(content, "utf8");
+      encoding === "base64" ? Buffer.from(content, "base64") : Buffer.from(content, "utf8");
     // workspace.sub-rooted by construction (see comment above).
     writeFileSync(dest, buf);
     this.enforceCaps();
@@ -106,7 +104,10 @@ export class ArtifactsRegistry {
 
   /** Read an artifact's bytes back. Throws if the name is unknown or the
    *  file vanished. */
-  get(name: string, encoding: ArtifactEncoding = "utf8"): { content: string; size: number; mtime: string; encoding: ArtifactEncoding } {
+  get(
+    name: string,
+    encoding: ArtifactEncoding = "utf8",
+  ): { content: string; size: number; mtime: string; encoding: ArtifactEncoding } {
     const dest = this.pathFor(name);
     if (!existsSync(dest)) {
       throw new Error(
@@ -157,7 +158,7 @@ export class ArtifactsRegistry {
   /** Evict oldest-write entries until both the entry-count and total-byte
    *  caps are satisfied. Called after every save. */
   private enforceCaps(): void {
-    let entries = this.statsByMtime();
+    const entries = this.statsByMtime();
     // entry-count cap
     while (entries.length > ARTIFACT_MAX_ENTRIES) {
       const victim = entries.shift();

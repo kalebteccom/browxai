@@ -153,7 +153,8 @@ export const handlers = {
     const r = await runEval(api, expr);
     if (!r.ok) return json({ ok: false, error: r.error, code: "eval-failed" });
     const v = r.value as { found: boolean; nodeId?: string };
-    if (!v.found) return json({ ok: false, error: `node not found: ${a.nodeId}`, code: "node-not-found" });
+    if (!v.found)
+      return json({ ok: false, error: `node not found: ${a.nodeId}`, code: "node-not-found" });
     return json({ ok: true, nodeId: v.nodeId });
   },
 
@@ -175,7 +176,8 @@ export const handlers = {
     const r = await runEval(api, expr);
     if (!r.ok) return json({ ok: false, error: r.error, code: "eval-failed" });
     const v = r.value as { found: boolean; nodeId?: string; x?: number; y?: number };
-    if (!v.found) return json({ ok: false, error: `node not found: ${a.nodeId}`, code: "node-not-found" });
+    if (!v.found)
+      return json({ ok: false, error: `node not found: ${a.nodeId}`, code: "node-not-found" });
     return json({ ok: true, nodeId: v.nodeId, x: v.x, y: v.y });
   },
 
@@ -198,9 +200,7 @@ export const handlers = {
         : undefined;
     if (
       fill &&
-      (typeof fill.r !== "number" ||
-        typeof fill.g !== "number" ||
-        typeof fill.b !== "number")
+      (typeof fill.r !== "number" || typeof fill.g !== "number" || typeof fill.b !== "number")
     ) {
       return json(badArg("fillColor"));
     }

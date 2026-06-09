@@ -12,7 +12,9 @@ describe("resolveDevice", () => {
     // Pick a preset that exists in the bundled registry.
     const name = Object.keys(devices).find((n) => /iPhone/.test(n))!;
     const cfg = resolveDevice({ device: name })!;
-    const preset = (devices as Record<string, { viewport?: unknown; isMobile?: boolean; userAgent?: string }>)[name]!;
+    const preset = (
+      devices as Record<string, { viewport?: unknown; isMobile?: boolean; userAgent?: string }>
+    )[name]!;
     expect(cfg.viewport).toEqual(preset.viewport);
     expect(cfg.isMobile).toBe(preset.isMobile);
     expect(cfg.userAgent).toBe(preset.userAgent);
@@ -27,7 +29,9 @@ describe("resolveDevice", () => {
   });
 
   it("viewport-only spec yields a config with just the viewport", () => {
-    expect(resolveDevice({ viewport: { width: 800, height: 600 } })).toEqual({ viewport: { width: 800, height: 600 } });
+    expect(resolveDevice({ viewport: { width: 800, height: 600 } })).toEqual({
+      viewport: { width: 800, height: 600 },
+    });
   });
 
   it("throws UnknownDeviceError for an unrecognised preset", () => {

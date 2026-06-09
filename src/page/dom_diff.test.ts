@@ -2,7 +2,11 @@ import { describe, it, expect } from "vitest";
 import { diffDomMaps, type DomMap } from "./dom_diff.js";
 
 const node = (over: Partial<DomMap[string]> = {}): DomMap[string] => ({
-  tag: "div", classes: "", style: "", attrs: {}, ...over,
+  tag: "div",
+  classes: "",
+  style: "",
+  attrs: {},
+  ...over,
 });
 
 describe("diffDomMaps", () => {
@@ -28,7 +32,8 @@ describe("diffDomMaps", () => {
     const before: DomMap = { "0": node({ style: "border:1px" }) };
     const after: DomMap = { "0": node({ style: "border:2px solid red" }) };
     expect(diffDomMaps(before, after).changed[0]!.styleDelta).toEqual({
-      before: "border:1px", after: "border:2px solid red",
+      before: "border:1px",
+      after: "border:2px solid red",
     });
   });
 
@@ -42,7 +47,9 @@ describe("diffDomMaps", () => {
 
   it("an unchanged map yields an empty diff", () => {
     const m: DomMap = { "0": node({ classes: "x", attrs: { "data-k": "v" } }) };
-    expect(diffDomMaps(m, { ...m })).toMatchObject({ counts: { changed: 0, added: 0, removed: 0 } });
+    expect(diffDomMaps(m, { ...m })).toMatchObject({
+      counts: { changed: 0, added: 0, removed: 0 },
+    });
   });
 
   it("a null scope (didn't resolve) returns a note, not a throw", () => {

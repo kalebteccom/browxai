@@ -32,7 +32,7 @@ let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;
 let workspace: string;
-let savedEnv: Record<string, string | undefined> = {};
+const savedEnv: Record<string, string | undefined> = {};
 const cwdBefore = process.cwd();
 
 // Parse a JSON-tool response; ActionResult / find / config tools all return
@@ -95,10 +95,10 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
       expect(opened.ok).toBe(true);
       expect(opened.mode).toBe("incognito");
 
-      const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>(
-        "navigate",
-        { session, url: `${fixture.url}/` },
-      );
+      const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
+        session,
+        url: `${fixture.url}/`,
+      });
       expect(nav.ok).toBe(true);
 
       // (1) snapshot — a11y + DOM-walk compose actually ran against a real page.
@@ -110,8 +110,12 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
       // (2) find — token-equality asserts on the stable target.
       const found = await callJson<{
         candidates: Array<{
-          selectorHint: string; stability: string; actionable: unknown;
-          selectorTier: number; bbox: unknown; clipped: boolean;
+          selectorHint: string;
+          stability: string;
+          actionable: unknown;
+          selectorTier: number;
+          bbox: unknown;
+          clipped: boolean;
         }>;
       }>("find", { session, query: "the Save button", visibleOnly: true });
       const saveCand = found.candidates.find((c) => c.selectorHint.includes("save-btn"));
@@ -124,7 +128,8 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
 
       // (3) fill — structured ActionResult with the post-write DOM value.
       const filled = await callJson<{
-        ok: boolean; element?: { stillAttached: boolean; value?: string | null };
+        ok: boolean;
+        element?: { stillAttached: boolean; value?: string | null };
       }>("fill", {
         session,
         selector: '[data-testid="task-input"]',
@@ -148,9 +153,9 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
         session,
         text: "Persisted Row One",
         exact: true,
-        // a bare <td>'s CDP visible-rect can be null even when rendered (the
-        // W-O2 class — out of scope for text_search); presence of the grid
-        // text is what this primitive verifies, not cell-level bbox.
+        // a bare <td>'s CDP visible-rect can be null even when rendered
+        // (out of scope for text_search); presence of the grid text is what
+        // this primitive verifies, not cell-level bbox.
         includeHidden: true,
       });
       expect(present.count).toBeGreaterThanOrEqual(1);
@@ -163,7 +168,9 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
 
       // (6) inspect — fixed-geometry box / computed state (round-9 surface).
       const box = await callJson<{
-        found: boolean; box: { width: number; height: number }; visible: boolean;
+        found: boolean;
+        box: { width: number; height: number };
+        visible: boolean;
       }>("inspect", { session, selector: '[data-testid="status-box"]' });
       expect(box.found).toBe(true);
       expect(box.visible).toBe(true);
@@ -176,7 +183,8 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
       // probe must use an arg-less IIFE). A regression here threw before
       // returning, so a non-empty `stack` is the guard.
       const probe = await callJson<{ ok: boolean; stack: unknown[] }>("point_probe", {
-        session, coords: { x: 40, y: 40 },
+        session,
+        coords: { x: 40, y: 40 },
       });
       expect(probe.ok).toBe(true);
       expect(Array.isArray(probe.stack)).toBe(true);
@@ -200,7 +208,9 @@ describe("headless-CI keystone — multi-field form fill (one dispatch, atomic r
       // The form's task-input starts blank; if atomic resolution leaked, that
       // input would carry "ALICE" after this call. We assert it's still blank.
       const rejected = await callJson<{
-        ok: boolean; error?: string; fieldResolution?: Array<{ ok: boolean; targetSummary: string }>;
+        ok: boolean;
+        error?: string;
+        fieldResolution?: Array<{ ok: boolean; targetSummary: string }>;
       }>("fill_form", {
         session,
         fields: [
@@ -215,7 +225,9 @@ describe("headless-CI keystone — multi-field form fill (one dispatch, atomic r
       // Atomic invariant: the resolvable input is still blank because the
       // call rejected before any fill landed.
       const blankCheck = await callJson<{ ok: boolean }>("verify_value", {
-        session, selector: '[data-testid="task-input"]', value: "",
+        session,
+        selector: '[data-testid="task-input"]',
+        value: "",
       });
       expect(blankCheck.ok).toBe(true);
 
@@ -240,7 +252,10 @@ describe("headless-CI keystone — multi-field form fill (one dispatch, atomic r
 
       // App-side proof the submit actually clicked through.
       const savedState = await callJson<{ ok: boolean }>("verify_text", {
-        session, selector: '[data-testid="saved-state"]', text: "Saved OK", exact: true,
+        session,
+        selector: '[data-testid="saved-state"]',
+        text: "Saved OK",
+        exact: true,
       });
       expect(savedState.ok).toBe(true);
 
@@ -332,7 +347,7 @@ describe("headless-CI keystone — incognito no-trace", () => {
 // wedge would clip this in default operation, so the *observed* pre-fix cost
 // against a fixture with multiple such fall-through nodes was ~5 s (the anti-
 // wedge ceiling) rather than candidates × 5 s; without the cap, pathological
-// pages could still bump up against the 60 s W-M1 deadline. Post-fix, find()
+// pages could still bump up against the 60 s keystone-suite deadline. Post-fix, find()
 // bounds each probe at `PROBE_TIMEOUT_MS` (500 ms) and runs the per-candidate
 // loop in parallel — bringing this case well under 1 s.
 //
@@ -386,7 +401,7 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
 // `permission_state` reports the CDP-side state matches.
 describe("headless-CI keystone — permission_policy (geolocation, real Chromium)", () => {
   it(
-    "default raise rejects, set_permission_policy({mode:\"allow\"}) lets it through, permissionRequests captured",
+    'default raise rejects, set_permission_policy({mode:"allow"}) lets it through, permissionRequests captured',
     async () => {
       const session = "ks-perm";
       await callJson("open_session", { session, mode: "incognito" });
@@ -434,7 +449,9 @@ describe("headless-CI keystone — permission_policy (geolocation, real Chromium
         ok: boolean;
         permissionRequests?: Array<{ permission: string; handledAs: string }>;
       }>("click", { session, selector: '[data-testid="geo-btn"]' });
-      const allowReq = (clickAllowed.permissionRequests ?? []).find((r) => r.permission === "geolocation");
+      const allowReq = (clickAllowed.permissionRequests ?? []).find(
+        (r) => r.permission === "geolocation",
+      );
       expect(allowReq, "geolocation request recorded under allow mode").toBeTruthy();
       expect(allowReq!.handledAs).toBe("allowed");
       let allowText = "";
@@ -478,7 +495,8 @@ describe("headless-CI keystone — notification_policy (Notification constructor
       // permissionPolicy:"allow" (no "raise" deadlock) so the page side has
       // permission to construct in the first place.
       await callJson("open_session", {
-        session, mode: "incognito",
+        session,
+        mode: "incognito",
         permissionPolicy: "allow",
         notificationPolicy: "allow",
       });
@@ -508,7 +526,8 @@ describe("headless-CI keystone — notification_policy (Notification constructor
 
       // (2) flip to deny — the constructor throws NotAllowedError.
       const setDeny = await callJson<{ ok: boolean; policy: { mode: string } }>(
-        "set_notification_policy", { session, mode: "deny" },
+        "set_notification_policy",
+        { session, mode: "deny" },
       );
       expect(setDeny.ok).toBe(true);
       expect(setDeny.policy.mode).toBe("deny");
@@ -533,7 +552,8 @@ describe("headless-CI keystone — notification_policy (Notification constructor
       // (3) flip to raise — the constructor throws + flips ok:false on the
       // next action with the documented hint.
       const setRaise = await callJson<{ ok: boolean; policy: { mode: string } }>(
-        "set_notification_policy", { session, mode: "raise" },
+        "set_notification_policy",
+        { session, mode: "raise" },
       );
       expect(setRaise.ok).toBe(true);
       expect(setRaise.policy.mode).toBe("raise");
@@ -563,15 +583,26 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
     "frames_list discovers iframes; snapshot/find/action scope to a child frame",
     async () => {
       const session = "ks-frames";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
 
-      const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/with-iframe` });
+      const nav = await callJson<{ ok: boolean }>("navigate", {
+        session,
+        url: `${fixture.url}/with-iframe`,
+      });
       expect(nav.ok).toBe(true);
 
       // (1) frames_list — main + 2 iframes (same-origin /child + srcdoc).
       // Wait a moment for iframes to attach + load.
-      let listing: { ok: boolean; frames: Array<{ frameId: string; url: string; name: string; isMainFrame: boolean }> } | undefined;
+      let listing:
+        | {
+            ok: boolean;
+            frames: Array<{ frameId: string; url: string; name: string; isMainFrame: boolean }>;
+          }
+        | undefined;
       for (let i = 0; i < 40; i++) {
         listing = await callJson("frames_list", { session });
         if ((listing!.frames ?? []).length >= 3) break;
@@ -596,7 +627,12 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
 
       // (3) Frame-scoped find — returns a ref bound to the same-origin frame.
       const found = await callJson<{
-        candidates: Array<{ ref: string; selectorHint: string; stability: string; actionable: unknown }>;
+        candidates: Array<{
+          ref: string;
+          selectorHint: string;
+          stability: string;
+          actionable: unknown;
+        }>;
       }>("find", { session, query: "child save", frame: sameOrigin!.frameId, visibleOnly: true });
       const childSaveCand = found.candidates.find((c) => c.selectorHint.includes("child-save"));
       expect(childSaveCand, "child-save candidate present").toBeTruthy();
@@ -605,7 +641,10 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
 
       // (4) Frame-scoped action — clicking the ref fires inside the iframe.
       // State mutation in the iframe is observable in a follow-up frame-scoped snapshot.
-      const clicked = await callJson<{ ok: boolean }>("click", { session, ref: childSaveCand!.ref });
+      const clicked = await callJson<{ ok: boolean }>("click", {
+        session,
+        ref: childSaveCand!.ref,
+      });
       expect(clicked.ok).toBe(true);
       let post = "";
       for (let i = 0; i < 60; i++) {
@@ -626,7 +665,10 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
       expect(mainSnap).not.toContain('[data-testid="child-save"]');
 
       // (7) Unknown frameId → structured error, not a throw.
-      const bogus = await callJson<{ ok: boolean; error?: string }>("snapshot", { session, frame: "f99" });
+      const bogus = await callJson<{ ok: boolean; error?: string }>("snapshot", {
+        session,
+        frame: "f99",
+      });
       expect(bogus.ok).toBe(false);
       expect(bogus.error).toMatch(/unknown frame/);
 
@@ -668,7 +710,11 @@ describe("headless-CI keystone — Shadow DOM deep piercing (Phase 7)", () => {
       // (2) `shadow_trees` with no ref — walks the whole document, must
       // discover BOTH the open and closed widget hosts via the CDP path.
       const trees = await callJson<{
-        trees: Array<{ hostTag: string; mode: "open" | "closed"; children: Array<{ tag: string; text?: string }> }>;
+        trees: Array<{
+          hostTag: string;
+          mode: "open" | "closed";
+          children: Array<{ tag: string; text?: string }>;
+        }>;
         closedShadowAvailable: boolean;
         warnings: string[];
         tokensEstimate: number;
@@ -699,10 +745,10 @@ describe("headless-CI keystone — Shadow DOM deep piercing (Phase 7)", () => {
 
       // (4) Back-compat — find() without `pierce` MUST NOT surface
       // closed-shadow candidates (the CDP pierce call wasn't made).
-      const foundDefault = await callJson<{ candidates: Array<{ testId?: string }> }>(
-        "find",
-        { session, query: "closed-widget-cta" },
-      );
+      const foundDefault = await callJson<{ candidates: Array<{ testId?: string }> }>("find", {
+        session,
+        query: "closed-widget-cta",
+      });
       const leaked = foundDefault.candidates.find((c) => c.testId === "closed-widget-cta");
       expect(leaked, "closed-shadow content must not leak into pierce-less find").toBeFalsy();
 

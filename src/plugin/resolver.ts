@@ -13,11 +13,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { ZodError } from "zod";
 import { log } from "../util/logging.js";
-import {
-  parseManifestField,
-  type ResolvedManifest,
-  type TrustTier,
-} from "./manifest.js";
+import { parseManifestField, type ResolvedManifest, type TrustTier } from "./manifest.js";
 
 /**
  * `plugins.json` declaration. Two equivalent shapes accepted for
@@ -138,10 +134,7 @@ export type ResolveResult =
  * comes from the manifest itself, defaulting to `community` (the safe
  * assumption for an externally-sourced plugin).
  */
-export function resolveDeclaredPlugin(
-  paths: PluginPaths,
-  decl: DeclaredPlugin,
-): ResolveResult {
+export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin): ResolveResult {
   const pkgRoot = join(paths.nodeModulesDir, decl.name);
   const pkgJsonPath = join(pkgRoot, "package.json");
   if (!existsSync(pkgJsonPath)) {

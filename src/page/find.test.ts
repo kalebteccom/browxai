@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { buildSelectorHint, scoreNode, noVisibleCandidateWarning, rankByVisibility, type FindCandidate } from "./find.js";
+import {
+  buildSelectorHint,
+  scoreNode,
+  noVisibleCandidateWarning,
+  rankByVisibility,
+  type FindCandidate,
+} from "./find.js";
 import type { A11yNode } from "./a11y.js";
 
 function cand(
@@ -9,12 +15,24 @@ function cand(
   role = "button",
 ): FindCandidate {
   return {
-    ref, role, stability: "high", selectorHint: `#${ref}`,
-    selectorTier: 1, bbox: null, clipped: actionable !== true, actionable, score,
+    ref,
+    role,
+    stability: "high",
+    selectorHint: `#${ref}`,
+    selectorTier: 1,
+    bbox: null,
+    clipped: actionable !== true,
+    actionable,
+    score,
   };
 }
 
-function n(role: string, name: string | undefined, testId?: string, extra: Partial<A11yNode> = {}): A11yNode {
+function n(
+  role: string,
+  name: string | undefined,
+  testId?: string,
+  extra: Partial<A11yNode> = {},
+): A11yNode {
   return { ref: "e1", role, name, testId, children: [], ...extra };
 }
 
@@ -62,7 +80,11 @@ describe("buildSelectorHint preference order", () => {
   });
 
   it("tier 1 honours testIdAttr — emits the matched attribute, not hardcoded data-testid", () => {
-    const h = buildSelectorHint({ role: "generic", testId: "feature-panel-language-input", testIdAttr: "data-type" });
+    const h = buildSelectorHint({
+      role: "generic",
+      testId: "feature-panel-language-input",
+      testIdAttr: "data-type",
+    });
     expect(h.tier).toBe(1);
     expect(h.stability).toBe("high");
     expect(h.hint).toBe('[data-type="feature-panel-language-input"]');
@@ -237,10 +259,7 @@ describe("rankByVisibility — container demotion (W-P1)", () => {
   it("leaves containers in place when NO actionable interactive candidate matched", () => {
     // "down-rank the container unless no actionable child matches" — if the
     // container is the best we have, don't bury it.
-    const cands = [
-      cand("regionA", 50, true, "region"),
-      cand("groupB", 40, true, "group"),
-    ];
+    const cands = [cand("regionA", 50, true, "region"), cand("groupB", 40, true, "group")];
     const { ranked } = rankByVisibility(cands, false);
     expect(ranked.map((c) => c.ref)).toEqual(["regionA", "groupB"]);
   });

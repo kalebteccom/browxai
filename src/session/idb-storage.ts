@@ -31,11 +31,15 @@ const IDB_API = "indexedDB";
 
 function idbOriginGuard(page: Page, tool: string): void {
   let url: string;
-  try { url = page.url(); } catch { url = ""; }
+  try {
+    url = page.url();
+  } catch {
+    url = "";
+  }
   if (!url || url === "about:blank") {
     throw new Error(
       `${tool}: IndexedDB is origin-scoped and the page is at "${url || "(unknown)"}". ` +
-      `Navigate the session to the target origin first.`,
+        `Navigate the session to the target origin first.`,
     );
   }
 }
@@ -49,7 +53,11 @@ function idbOriginGuard(page: Page, tool: string): void {
 export async function idbListDatabases(
   page: Page,
   tool: string,
-): Promise<{ databases: Array<{ name: string; version: number }>; origin: string; supported: boolean }> {
+): Promise<{
+  databases: Array<{ name: string; version: number }>;
+  origin: string;
+  supported: boolean;
+}> {
   idbOriginGuard(page, tool);
   const expr =
     `(async () => { ` +
@@ -58,7 +66,11 @@ export async function idbListDatabases(
     `var dbs = await ${IDB_API}.databases(); ` +
     `return { databases: dbs.map(function (d) { return { name: d.name || "", version: d.version || 0 }; }), ` +
     `         origin: location.origin, supported: true }; })()`;
-  return (await page.evaluate(expr)) as { databases: Array<{ name: string; version: number }>; origin: string; supported: boolean };
+  return (await page.evaluate(expr)) as {
+    databases: Array<{ name: string; version: number }>;
+    origin: string;
+    supported: boolean;
+  };
 }
 
 /** List the object-store names inside a database (read-only — does NOT
@@ -82,7 +94,12 @@ export async function idbListStores(
     `var version = db.version; ` +
     `db.close(); ` +
     `return { stores: names, dbName: ${JSON.stringify(args.dbName)}, version: version, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { stores: string[]; dbName: string; version: number; origin: string };
+  return (await page.evaluate(expr)) as {
+    stores: string[];
+    dbName: string;
+    version: number;
+    origin: string;
+  };
 }
 
 /** Get the value at a key. Returns `{found:false}` if absent. Non-JSON
@@ -176,7 +193,13 @@ export async function idbPut(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; dbName: string; storeName: string; key: unknown; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    dbName: string;
+    storeName: string;
+    key: unknown;
+    origin: string;
+  };
 }
 
 /** Delete the value at a key. Idempotent — returns the same shape
@@ -217,7 +240,13 @@ export async function idbDelete(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; dbName: string; storeName: string; key: unknown; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    dbName: string;
+    storeName: string;
+    key: unknown;
+    origin: string;
+  };
 }
 
 /** Clear every record from an object store (the store itself remains). */
@@ -255,5 +284,10 @@ export async function idbClear(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; dbName: string; storeName: string; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    dbName: string;
+    storeName: string;
+    origin: string;
+  };
 }

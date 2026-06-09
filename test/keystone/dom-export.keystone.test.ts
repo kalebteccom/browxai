@@ -66,7 +66,10 @@ describe("dom-export keystone — html mode against the fixture", () => {
     "writes a self-contained .html dump with non-zero nodeCount (regression gate for stringified-arrow PAGE_WALK_FN bug)",
     async () => {
       const session = "ks-dom-html";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
       const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/` });
       expect(nav.ok).toBe(true);
@@ -129,7 +132,9 @@ describe("dom-export keystone — jsonl mode against the fixture", () => {
       expect(existsSync(r.path)).toBe(true);
 
       // Every non-empty line parses, and the count matches.
-      const lines = readFileSync(r.path, "utf8").split("\n").filter((l) => l.length > 0);
+      const lines = readFileSync(r.path, "utf8")
+        .split("\n")
+        .filter((l) => l.length > 0);
       expect(lines.length).toBe(r.nodeCount);
       for (const line of lines.slice(0, 5)) {
         const obj = JSON.parse(line);

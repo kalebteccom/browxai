@@ -4,8 +4,8 @@ This investigation was scoped from a wrightxai Phase-0 tool-fit question:
 the wrightxai spec at `projects/webwright-on-browxai/spec.md` line 57 says
 wrightxai "never re-exposes …`screenshot_marks`", yet wrightxai's curated
 `BrowxaiToolName` union includes `screenshot_marks` in the agent-callable
-set. Builder C interpreted the spec line as forbidding *re-exposing*
-(wrightxai-level duplicate surface) NOT *calling* — same reading applied
+set. Builder C interpreted the spec line as forbidding _re-exposing_
+(wrightxai-level duplicate surface) NOT _calling_ — same reading applied
 to `extract` / `verify_*` / `plan` / `execute` which the loop also calls.
 The owner asked for a substantive read on whether `screenshot_marks` is
 the right fit for wrightxai's loop usage pattern.
@@ -15,10 +15,10 @@ the right fit for wrightxai's loop usage pattern.
 - **Signature**: `screenshot_marks({ candidates, label?, session? })`.
   `candidates` is 1..50 rows of `{ref}` (bare; bbox looked up against the
   current snapshot walk) or full `find()` candidate `{ref, role, name, testId,
-  bbox}` (fast-path, no extra walk). `label` ∈ `"index"` (default) / `"ref"`
+bbox}` (fast-path, no extra walk). `label` ∈ `"index"` (default) / `"ref"`
   / `"role"`.
 - **Returns**: `{ marks:[{index, ref, role?, name?, testId?, bbox, painted}],
-  mapping:{"1":"eN", …}, warnings }` + a base64 PNG of the viewport with a
+mapping:{"1":"eN", …}, warnings }` + a base64 PNG of the viewport with a
   numbered overlay painted at each candidate's bbox.
 - **Capability**: `read`. Also in the `batch` whitelist. Pure compose over
   `find()` / `snapshot()` — only browser side-effect is a transient in-page
@@ -35,7 +35,7 @@ End-to-end smoke (live, against `example.com` / `developer.mozilla.org` /
 `en.wikipedia.org/wiki/Main_Page`) confirms:
 
 - For every candidate passed in (bare or full), `mapping[String(index)] ===
-  candidate.ref`. The map is built by appending each entry in order;
+candidate.ref`. The map is built by appending each entry in order;
   there's no shuffle.
 - For full-candidate fast-path inputs, `marks[i].bbox === candidates[i].bbox`
   (object equality) — the bbox is passed through unmodified, so by
@@ -55,19 +55,19 @@ Artifacts captured (under `artifacts/`):
 
 Before fix (`tools/profile-*.json`, first run):
 
-| target | snapshot | find() | screenshot | screenshot_marks (bare) |
-| --- | ---: | ---: | ---: | ---: |
-| example.com | 6 ms | 4 ms | 13 ms | 60 038 ms |
-| en.wikipedia.org | 43 ms | 36 ms | 37 ms | 60 131 ms |
-| developer.mozilla.org | 15 ms | 30 028 ms | 34 ms | **deadline-timeout (90 s)** |
+| target                | snapshot |    find() | screenshot |     screenshot_marks (bare) |
+| --------------------- | -------: | --------: | ---------: | --------------------------: |
+| example.com           |     6 ms |      4 ms |      13 ms |                   60 038 ms |
+| en.wikipedia.org      |    43 ms |     36 ms |      37 ms |                   60 131 ms |
+| developer.mozilla.org |    15 ms | 30 028 ms |      34 ms | **deadline-timeout (90 s)** |
 
 After fix:
 
-| target | screenshot_marks (bare) |
-| ---: | ---: |
-| example.com | 2.0 s (2 refs × ≤ 1 s fallback cap + overhead) |
-| en.wikipedia.org | 2.1 s |
-| developer.mozilla.org | 3.1 s |
+|                target |                        screenshot_marks (bare) |
+| --------------------: | ---------------------------------------------: |
+|           example.com | 2.0 s (2 refs × ≤ 1 s fallback cap + overhead) |
+|      en.wikipedia.org |                                          2.1 s |
+| developer.mozilla.org |                                          3.1 s |
 
 Total investigation suite time: 458 s → 53 s.
 
@@ -91,7 +91,7 @@ not a standard ARIA role), AND `boundingBox()` **auto-waits**:
 
 > Playwright `locator.boundingBox()` returns the bounding box of the
 > element, with respect to the main frame's viewport. Method waits for
-> the element to be visible. *(default action timeout: 30 000 ms)*
+> the element to be visible. _(default action timeout: 30 000 ms)_
 
 So every unresolved bare-ref candidate burned 30 seconds of dead time
 before returning null. Two such candidates on `example.com` → 60 s; the
@@ -161,7 +161,7 @@ should standardise on the fast-path.
 ## Spec-line-57 ambiguity — drop-in replacement
 
 The current wording — "wrightxai never re-exposes …`screenshot_marks`"
-— invites the misreading that wrightxai also can't *call* it. Builder
+— invites the misreading that wrightxai also can't _call_ it. Builder
 C, Reviewer C, and the owner all flagged the same ambiguity. Suggested
 rewrite for wrightxai's `spec.md`:
 
@@ -176,9 +176,9 @@ rewrite for wrightxai's `spec.md`:
 
 Diff summary: replaces "never re-exposes X" with "never re-exposes a
 parallel implementation of X … wrightxai's loop calls them through the
-curated union". Removes the ambiguity by being explicit that *calling
-via the curated union is the intended path*, and *re-implementing /
-wrapping is what's forbidden*.
+curated union". Removes the ambiguity by being explicit that _calling
+via the curated union is the intended path_, and _re-implementing /
+wrapping is what's forbidden_.
 
 ## Files touched in this cycle
 

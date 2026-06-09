@@ -43,7 +43,9 @@ interface LockFile {
   readonly entries: Record<string, LockEntry>;
 }
 
-function readPluginsJson(paths: PluginPaths): { plugins: Record<string, { enabled?: boolean; trust?: string }> } {
+function readPluginsJson(paths: PluginPaths): {
+  plugins: Record<string, { enabled?: boolean; trust?: string }>;
+} {
   if (!existsSync(paths.declarationFile)) return { plugins: {} };
   try {
     const raw = JSON.parse(readFileSync(paths.declarationFile, "utf8")) as unknown;
@@ -150,11 +152,7 @@ async function runPnpm(paths: PluginPaths, args: ReadonlyArray<string>): Promise
   if (!existsSync(stub)) {
     writeFileSync(
       stub,
-      JSON.stringify(
-        { name: "browxai-plugins", version: "0.0.0", private: true },
-        null,
-        2,
-      ) + "\n",
+      JSON.stringify({ name: "browxai-plugins", version: "0.0.0", private: true }, null, 2) + "\n",
       "utf8",
     );
   }
@@ -240,7 +238,9 @@ function findActualPackageName(paths: PluginPaths, hint: string): string {
               try {
                 const parsed = JSON.parse(readFileSync(pj, "utf8")) as { name?: string };
                 if (parsed.name === hint || sub.name === hint) return full;
-              } catch {/* */}
+              } catch {
+                /* */
+              }
             }
           }
         }
@@ -250,7 +250,9 @@ function findActualPackageName(paths: PluginPaths, hint: string): string {
           try {
             const parsed = JSON.parse(readFileSync(pj, "utf8")) as { name?: string };
             if (parsed.name === hint) return entry.name;
-          } catch {/* */}
+          } catch {
+            /* */
+          }
         }
       }
     }
@@ -279,7 +281,9 @@ async function cmdInstall(spec: string): Promise<number> {
   const pinned = pinEntry(paths, name, spec);
   if (pinned) lock.entries[name] = pinned;
   writeLock(paths, lock);
-  process.stderr.write(`browxai plugin: installed ${name}@${pinned?.version ?? "?"} (trust=${trust})\n`);
+  process.stderr.write(
+    `browxai plugin: installed ${name}@${pinned?.version ?? "?"} (trust=${trust})\n`,
+  );
   process.stderr.write(`browxai plugin: ${RESTART_NOTICE}\n`);
   return 0;
 }
@@ -360,7 +364,10 @@ function cmdInfo(name: string): number {
     declared: entry,
     lock: lock.entries[name] ?? null,
     manifest: manifestSummary,
-    notes: manifestSummary === null ? "Not installed. Run `browxai plugin install` or `browxai plugin sync`." : null,
+    notes:
+      manifestSummary === null
+        ? "Not installed. Run `browxai plugin install` or `browxai plugin sync`."
+        : null,
   };
   process.stdout.write(JSON.stringify(info, null, 2) + "\n");
   return 0;

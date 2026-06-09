@@ -23,7 +23,7 @@ let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;
 let workspace: string;
-let savedEnv: Record<string, string | undefined> = {};
+const savedEnv: Record<string, string | undefined> = {};
 
 async function callJson<T = Record<string, unknown>>(
   name: string,
@@ -119,7 +119,10 @@ describe("touch keystone — primitives fire DOM handlers on the touch pipeline"
       const centre = await touchPadCentre(session);
 
       const r = await callJson<{
-        ok: boolean; steps: number; durationMs: number; tokensEstimate: number;
+        ok: boolean;
+        steps: number;
+        durationMs: number;
+        tokensEstimate: number;
       }>("gesture_swipe", {
         session,
         from: { x: centre.x - 50, y: centre.y },
@@ -147,7 +150,11 @@ describe("touch keystone — primitives fire DOM handlers on the touch pipeline"
       const centre = await touchPadCentre(session);
 
       const r = await callJson<{
-        ok: boolean; scale: number; steps: number; startOffset: number; endOffset: number;
+        ok: boolean;
+        scale: number;
+        steps: number;
+        startOffset: number;
+        endOffset: number;
         tokensEstimate: number;
       }>("gesture_pinch", {
         session,

@@ -47,16 +47,16 @@ const MAX_GROWTH_ROWS = 100;
 export function resolveHeapPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: paths must resolve inside $BROWX_WORKSPACE — got "${p}".`,
-    );
+    throw new Error(`${tool}: paths must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
   return resolved;
 }
 
 /** Pure aggregator — group nodes by `${type}:${name}` and sum self_size.
  *  Exported for unit tests against tiny in-memory snapshot JSON values. */
-export function aggregateNodeSizes(parsed: ReturnType<typeof parseHeapSnapshot>): Map<string, { type: string; name: string; size: number }> {
+export function aggregateNodeSizes(
+  parsed: ReturnType<typeof parseHeapSnapshot>,
+): Map<string, { type: string; name: string; size: number }> {
   const out = new Map<string, { type: string; name: string; size: number }>();
   const total = parsed.nodes.length / parsed.nodeFieldCount;
   for (let i = 0; i < total; i++) {
@@ -66,7 +66,7 @@ export function aggregateNodeSizes(parsed: ReturnType<typeof parseHeapSnapshot>)
     const selfSize = parsed.nodes[base + parsed.fieldIdx.nodeSelfSize] ?? 0;
     const type = parsed.nodeTypes[typeIdx] ?? "";
     const name = parsed.strings[nameIdx] ?? "";
-    const display = type && name ? `${type}:${name}` : (name || type || "<unknown>");
+    const display = type && name ? `${type}:${name}` : name || type || "<unknown>";
     const slot = out.get(display);
     if (slot) slot.size += selfSize;
     else out.set(display, { type, name, size: selfSize });
@@ -93,9 +93,8 @@ export function diffSizeMaps(
     const deltaBytes = sizeAfter - sizeBefore;
     if (Math.abs(deltaBytes) < NOISE_FILTER_BYTES) continue;
     const type = a?.type ?? b?.type ?? "";
-    const deltaPercent: number | "+inf" = sizeBefore === 0
-      ? "+inf"
-      : Math.round((deltaBytes / sizeBefore) * 10000) / 100;
+    const deltaPercent: number | "+inf" =
+      sizeBefore === 0 ? "+inf" : Math.round((deltaBytes / sizeBefore) * 10000) / 100;
     rows.push({
       node: k,
       type,

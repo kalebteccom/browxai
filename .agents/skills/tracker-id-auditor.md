@@ -29,7 +29,7 @@ Runs at PR time. Scans the diff for internal tracker IDs in code or comments —
 
 1. **Diff scan.** `git diff` against the merge base.
 2. **Pattern match.** Run the regex set against added lines (`+` lines), excluding the allowlisted contexts.
-3. **Report.** Each finding: file, line number, matched text, suggested rewrite (state the *why*, not the tracker ID).
+3. **Report.** Each finding: file, line number, matched text, suggested rewrite (state the _why_, not the tracker ID).
 4. **Block or warn.** A finding in source code or code comments → block. A finding in a docs file outside the allowlisted paths → warn.
 
 ## Success criteria

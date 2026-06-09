@@ -61,9 +61,7 @@ export class FrameRegistry {
     if (cached) return cached;
     let id = this.idByFingerprint.get(fingerprint);
     if (!id) {
-      id = fingerprint === MAIN_FRAME_FINGERPRINT
-        ? MAIN_FRAME_ID
-        : `f${++this.counter}`;
+      id = fingerprint === MAIN_FRAME_FINGERPRINT ? MAIN_FRAME_ID : `f${++this.counter}`;
       this.idByFingerprint.set(fingerprint, id);
     }
     this.frameByFingerprint.set(frame, id);
@@ -71,7 +69,9 @@ export class FrameRegistry {
   }
 
   /** Test/introspection only. */
-  size(): number { return this.idByFingerprint.size; }
+  size(): number {
+    return this.idByFingerprint.size;
+  }
 }
 
 /** Reserved fingerprint for the main frame. */
@@ -123,12 +123,9 @@ export function fingerprintOf(
   parentFrameId: string | undefined,
   siblingIndex: number,
 ): string {
-  const raw = [
-    parentFrameId ?? "",
-    String(siblingIndex),
-    frame.name(),
-    originOf(frame.url()),
-  ].join("|");
+  const raw = [parentFrameId ?? "", String(siblingIndex), frame.name(), originOf(frame.url())].join(
+    "|",
+  );
   return createHash("sha256").update(raw).digest("hex").slice(0, 12);
 }
 

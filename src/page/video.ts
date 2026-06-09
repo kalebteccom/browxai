@@ -93,7 +93,9 @@ export interface VideoRefusal {
  *  context-creation primitives on the consumer's Chrome, mirroring the
  *  `pdf_save` / `recordHar` posture. Managed `persistent` and `incognito`
  *  sessions are both supported (headed and headless). */
-export function assertVideoSupported(ctx: { mode: "persistent" | "incognito" | "attached" }): VideoRefusal | null {
+export function assertVideoSupported(ctx: {
+  mode: "persistent" | "incognito" | "attached";
+}): VideoRefusal | null {
   if (ctx.mode === "attached") {
     return {
       error:
@@ -101,8 +103,8 @@ export function assertVideoSupported(ctx: { mode: "persistent" | "incognito" | "
         "Playwright's `recordVideo` is a context-creation primitive and " +
         "we don't mutate the consumer's Chrome (not-owned).",
       hint:
-        "open a managed session (open_session({mode:\"persistent\"}) or " +
-        "{mode:\"incognito\"}) with {recordVideo:{...}} and drive that.",
+        'open a managed session (open_session({mode:"persistent"}) or ' +
+        '{mode:"incognito"}) with {recordVideo:{...}} and drive that.',
     };
   }
   return null;
@@ -176,7 +178,9 @@ export function buildRecordVideoOption(
 } {
   const targetPath = resolveVideoTargetPath(workspaceRoot, sessionId, cfg.path, "open_session");
   const stagingDir = resolveVideoStagingDir(workspaceRoot, sessionId);
-  const recordVideo: { dir: string; size?: { width: number; height: number } } = { dir: stagingDir };
+  const recordVideo: { dir: string; size?: { width: number; height: number } } = {
+    dir: stagingDir,
+  };
   if (cfg.size) recordVideo.size = cfg.size;
   return { targetPath, stagingDir, size: cfg.size, recordVideo };
 }
@@ -185,9 +189,12 @@ export function buildRecordVideoOption(
  *  want the recording stopped. The actual flush happens on `close_session`
  *  (Playwright finalizes the .webm only when the context closes). Mirrors
  *  the `stop_har` shape for the `nativeRecord:true` posture. */
-export function stopVideo(
-  state: VideoRecorderState,
-): { wasActive: boolean; targetPath?: string; pendingFinalize: boolean; finalized: boolean } {
+export function stopVideo(state: VideoRecorderState): {
+  wasActive: boolean;
+  targetPath?: string;
+  pendingFinalize: boolean;
+  finalized: boolean;
+} {
   if (!state.active) {
     return { wasActive: false, pendingFinalize: false, finalized: state.finalized };
   }
@@ -205,10 +212,7 @@ export function stopVideo(
  *  close and the video to be fully written before resolving. Best-effort:
  *  errors here MUST NOT block session teardown (mirrors the `perf` /
  *  `artifacts` cleanup posture in the registry teardown). */
-export async function finalizeVideoOnClose(
-  page: Page,
-  state: VideoRecorderState,
-): Promise<void> {
+export async function finalizeVideoOnClose(page: Page, state: VideoRecorderState): Promise<void> {
   if (!state.active || !state.targetPath) return;
   const video = page.video();
   if (!video) {
@@ -229,7 +233,13 @@ export function readVideoIfReady(
   path: string,
   format: "path" | "bytes" = "path",
   capBytes: number = VIDEO_INLINE_CAP_BYTES,
-): { exists: boolean; path: string; bytes?: number; inlineBase64?: string; tooLargeToInline?: boolean } {
+): {
+  exists: boolean;
+  path: string;
+  bytes?: number;
+  inlineBase64?: string;
+  tooLargeToInline?: boolean;
+} {
   if (!existsSync(path)) {
     return { exists: false, path };
   }

@@ -17,7 +17,11 @@ describe("fetchResponseBody", () => {
   });
 
   it("returns ok:false with a helpful message when the body was discarded", async () => {
-    const cdp = { send: vi.fn(async () => { throw new Error("No resource with given identifier found"); }) } as never;
+    const cdp = {
+      send: vi.fn(async () => {
+        throw new Error("No resource with given identifier found");
+      }),
+    } as never;
     const r = await fetchResponseBody(cdp, "gone");
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/short-lived/);
@@ -44,11 +48,23 @@ describe("WsBuffer — frame capture", () => {
     const ws = new WsBuffer(cdp);
     await ws.attach();
     fire("Network.webSocketCreated", { requestId: "r1", url: "wss://rt.example/socket" });
-    fire("Network.webSocketFrameReceived", { requestId: "r1", response: { opcode: 1, payloadData: '{"type":"broadcast"}' } });
-    fire("Network.webSocketFrameSent", { requestId: "r1", response: { opcode: 1, payloadData: "subscribe" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "r1",
+      response: { opcode: 1, payloadData: '{"type":"broadcast"}' },
+    });
+    fire("Network.webSocketFrameSent", {
+      requestId: "r1",
+      response: { opcode: 1, payloadData: "subscribe" },
+    });
     const { total, frames } = ws.recent();
     expect(total).toBe(2);
-    expect(frames[0]).toMatchObject({ url: "wss://rt.example/socket", dir: "recv", kind: "ws", opcode: 1, payload: '{"type":"broadcast"}' });
+    expect(frames[0]).toMatchObject({
+      url: "wss://rt.example/socket",
+      dir: "recv",
+      kind: "ws",
+      opcode: 1,
+      payload: '{"type":"broadcast"}',
+    });
     expect(frames[1]).toMatchObject({ dir: "sent", kind: "ws", payload: "subscribe" });
   });
 
@@ -56,10 +72,24 @@ describe("WsBuffer — frame capture", () => {
     const { cdp, fire } = fakeCdp();
     const ws = new WsBuffer(cdp);
     await ws.attach();
-    fire("Network.requestWillBeSent", { requestId: "sse1", request: { url: "https://api.example/stream" }, type: "EventSource" });
-    fire("Network.eventSourceMessageReceived", { requestId: "sse1", eventName: "ping", data: "{}" });
+    fire("Network.requestWillBeSent", {
+      requestId: "sse1",
+      request: { url: "https://api.example/stream" },
+      type: "EventSource",
+    });
+    fire("Network.eventSourceMessageReceived", {
+      requestId: "sse1",
+      eventName: "ping",
+      data: "{}",
+    });
     const { frames } = ws.recent();
-    expect(frames[0]).toMatchObject({ url: "https://api.example/stream", dir: "recv", kind: "sse", event: "ping", payload: "{}" });
+    expect(frames[0]).toMatchObject({
+      url: "https://api.example/stream",
+      dir: "recv",
+      kind: "sse",
+      event: "ping",
+      payload: "{}",
+    });
   });
 
   it("truncates payloads to maxPayload and flags truncated", async () => {
@@ -67,7 +97,10 @@ describe("WsBuffer — frame capture", () => {
     const ws = new WsBuffer(cdp, 500, 8);
     await ws.attach();
     fire("Network.webSocketCreated", { requestId: "r", url: "wss://x" });
-    fire("Network.webSocketFrameReceived", { requestId: "r", response: { opcode: 1, payloadData: "0123456789abcdef" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "r",
+      response: { opcode: 1, payloadData: "0123456789abcdef" },
+    });
     const f = ws.recent().frames[0]!;
     expect(f.payload).toBe("01234567");
     expect(f.truncated).toBe(true);
@@ -79,8 +112,14 @@ describe("WsBuffer — frame capture", () => {
     await ws.attach();
     fire("Network.webSocketCreated", { requestId: "a", url: "wss://chat.example/ws" });
     fire("Network.webSocketCreated", { requestId: "b", url: "wss://metrics.example/ws" });
-    fire("Network.webSocketFrameReceived", { requestId: "a", response: { opcode: 1, payloadData: "chat-msg" } });
-    fire("Network.webSocketFrameReceived", { requestId: "b", response: { opcode: 1, payloadData: "metric" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "a",
+      response: { opcode: 1, payloadData: "chat-msg" },
+    });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "b",
+      response: { opcode: 1, payloadData: "metric" },
+    });
     expect(ws.recent(50, "chat.example").frames.map((f) => f.payload)).toEqual(["chat-msg"]);
   });
 
@@ -90,7 +129,10 @@ describe("WsBuffer — frame capture", () => {
     await ws.attach();
     fire("Network.webSocketCreated", { requestId: "r", url: "wss://x" });
     for (let i = 0; i < 5; i++) {
-      fire("Network.webSocketFrameReceived", { requestId: "r", response: { opcode: 1, payloadData: `f${i}` } });
+      fire("Network.webSocketFrameReceived", {
+        requestId: "r",
+        response: { opcode: 1, payloadData: `f${i}` },
+      });
     }
     const { total, frames } = ws.recent();
     expect(total).toBe(3);
@@ -102,11 +144,17 @@ describe("WsBuffer — frame capture", () => {
     const ws = new WsBuffer(cdp);
     await ws.attach();
     fire("Network.webSocketCreated", { requestId: "r", url: "wss://x" });
-    fire("Network.webSocketFrameReceived", { requestId: "r", response: { opcode: 1, payloadData: "before" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "r",
+      response: { opcode: 1, payloadData: "before" },
+    });
     await new Promise((r) => setTimeout(r, 5));
     const mark = Date.now();
     await new Promise((r) => setTimeout(r, 5));
-    fire("Network.webSocketFrameReceived", { requestId: "r", response: { opcode: 1, payloadData: "after" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "r",
+      response: { opcode: 1, payloadData: "after" },
+    });
     const sliced = ws.since(mark);
     expect(sliced.map((f) => f.payload)).toEqual(["after"]);
   });
@@ -115,7 +163,10 @@ describe("WsBuffer — frame capture", () => {
     const { cdp, fire } = fakeCdp();
     const ws = new WsBuffer(cdp);
     await ws.attach();
-    fire("Network.webSocketFrameReceived", { requestId: "unknown", response: { opcode: 2, payloadData: "binary-ish" } });
+    fire("Network.webSocketFrameReceived", {
+      requestId: "unknown",
+      response: { opcode: 2, payloadData: "binary-ish" },
+    });
     expect(ws.recent().frames[0]).toMatchObject({ url: "", opcode: 2, payload: "binary-ish" });
   });
 });

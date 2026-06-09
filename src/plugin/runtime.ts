@@ -23,21 +23,14 @@ import { pathToFileURL } from "node:url";
 import type { z } from "zod";
 import { log } from "../util/logging.js";
 import type { Capability } from "../util/capabilities.js";
-import {
-  isApiVersionCompatible,
-  RUNTIME_API_VERSION,
-  satisfiesRange,
-} from "./manifest.js";
+import { isApiVersionCompatible, RUNTIME_API_VERSION, satisfiesRange } from "./manifest.js";
 import {
   pluginPaths,
   readDeclaration,
   resolveDeclaredPlugin,
   type ResolveResult,
 } from "./resolver.js";
-import {
-  buildDepGraph,
-  DepGraphCycleError,
-} from "./depgraph.js";
+import { buildDepGraph, DepGraphCycleError } from "./depgraph.js";
 import type {
   PluginApi,
   PluginRecord,
@@ -124,9 +117,7 @@ export interface RuntimeStartResult {
  * load-time exception) downgrade the affected plugin to a non-loaded
  * status and continue.
  */
-export async function startPluginRuntime(
-  opts: RuntimeStartOptions,
-): Promise<RuntimeStartResult> {
+export async function startPluginRuntime(opts: RuntimeStartOptions): Promise<RuntimeStartResult> {
   const paths = pluginPaths(opts.workspaceRoot);
   const fromFile = readDeclaration(paths).filter((d) => d.enabled);
   // Union with any plugins declared via the config store. The config
@@ -157,10 +148,7 @@ export async function startPluginRuntime(
   // apiVersion + dep targets. Anything that fails is downgraded to a
   // load-error record we'll surface at the end.
   const earlyDisabled: PluginRecord[] = [];
-  const validResolved = new Map<
-    string,
-    Extract<ResolveResult, { kind: "resolved" }>["manifest"]
-  >();
+  const validResolved = new Map<string, Extract<ResolveResult, { kind: "resolved" }>["manifest"]>();
   const declaredAt = new Date().toISOString();
 
   for (const [name, res] of resolved) {

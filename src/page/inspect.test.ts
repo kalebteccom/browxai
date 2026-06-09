@@ -27,13 +27,24 @@ describe("inspectElement", () => {
   it("degrades to { found:false } if the page evaluate throws", async () => {
     const loc = {
       count: async () => 1,
-      evaluate: async () => { throw new Error("detached"); },
+      evaluate: async () => {
+        throw new Error("detached");
+      },
     } as never;
     expect(await inspectElement(loc)).toEqual({ found: false });
   });
 
   it("default style whitelist covers the control-state / layout keys", () => {
-    for (const k of ["cursor", "display", "visibility", "overflow", "overflowX", "overflowY", "position", "pointerEvents"]) {
+    for (const k of [
+      "cursor",
+      "display",
+      "visibility",
+      "overflow",
+      "overflowX",
+      "overflowY",
+      "position",
+      "pointerEvents",
+    ]) {
       expect(DEFAULT_STYLE_KEYS).toContain(k);
     }
   });

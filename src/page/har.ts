@@ -139,12 +139,17 @@ export async function startHar(
   workspaceRoot: string,
   sessionId: string,
   cfg: HarStartConfig = {},
-): Promise<{ path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit"; replacedPrior: boolean }> {
+): Promise<{
+  path: string;
+  mode: "full" | "minimal";
+  content: "embed" | "attach" | "omit";
+  replacedPrior: boolean;
+}> {
   if (state.nativeRecord) {
     throw new Error(
       "start_har: HAR recording was already wired at session creation via " +
-      "`open_session({har})`. Close the session and re-open without the `har` " +
-      "field if you need start/stop granularity.",
+        "`open_session({har})`. Close the session and re-open without the `har` " +
+        "field if you need start/stop granularity.",
     );
   }
   const replacedPrior = state.active;
@@ -199,7 +204,10 @@ export async function stopHar(
 /** Best-effort read of a finalized HAR. Used by callers that want the file
  *  inlined when small. Returns `undefined` when the file doesn't yet exist
  *  (HAR not finalized) or is over the inline cap. */
-export function readHarIfSmall(path: string, capBytes: number = HAR_INLINE_CAP_BYTES): string | undefined {
+export function readHarIfSmall(
+  path: string,
+  capBytes: number = HAR_INLINE_CAP_BYTES,
+): string | undefined {
   if (!existsSync(path)) return undefined;
   const st = statSync(path);
   if (st.size > capBytes) return undefined;
@@ -226,11 +234,26 @@ export function buildRecordHarOption(
   workspaceRoot: string,
   sessionId: string,
   cfg: HarStartConfig,
-): { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit"; recordHar: { path: string; mode?: "full" | "minimal"; content?: "embed" | "attach" | "omit"; urlFilter?: string | RegExp } } {
+): {
+  path: string;
+  mode: "full" | "minimal";
+  content: "embed" | "attach" | "omit";
+  recordHar: {
+    path: string;
+    mode?: "full" | "minimal";
+    content?: "embed" | "attach" | "omit";
+    urlFilter?: string | RegExp;
+  };
+} {
   const path = resolveHarPath(workspaceRoot, sessionId, cfg.path, "open_session");
   const mode = cfg.mode ?? "full";
   const content = cfg.content ?? "embed";
-  const recordHar: { path: string; mode?: "full" | "minimal"; content?: "embed" | "attach" | "omit"; urlFilter?: string | RegExp } = {
+  const recordHar: {
+    path: string;
+    mode?: "full" | "minimal";
+    content?: "embed" | "attach" | "omit";
+    urlFilter?: string | RegExp;
+  } = {
     path,
     mode,
     content,

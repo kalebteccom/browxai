@@ -4,8 +4,8 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 
 ## Status
 
-| # | Title | Status |
-|---|---|---|
+| #                                  | Title              | Status                                        |
+| ---------------------------------- | ------------------ | --------------------------------------------- |
 | [0001](0001-extract-ergonomics.md) | Extract ergonomics | Tracked — see CHANGELOG for landed proposals. |
 
 ## Adding an RFC

@@ -2,19 +2,25 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  aggregateNodeSizes,
-  diffSizeMaps,
-  diffHeapSnapshots,
-} from "./memory-diff.js";
+import { aggregateNodeSizes, diffSizeMaps, diffHeapSnapshots } from "./memory-diff.js";
 import { parseHeapSnapshot } from "./heap.js";
 
 /** Synthesise a tiny but spec-valid V8 heap snapshot. `groups` is a list of
  *  {type, name, count, size} tuples — for each, `count` nodes of `size`
  *  bytes named `name`/typed `type` are emitted. No edges (we don't need
  *  them — memory_diff only sums self_size by group). */
-function makeFixture(groups: Array<{ type: string; name: string; count: number; size: number }>): string {
-  const nodeFields = ["type", "name", "id", "self_size", "edge_count", "trace_node_id", "detachedness"];
+function makeFixture(
+  groups: Array<{ type: string; name: string; count: number; size: number }>,
+): string {
+  const nodeFields = [
+    "type",
+    "name",
+    "id",
+    "self_size",
+    "edge_count",
+    "trace_node_id",
+    "detachedness",
+  ];
   const edgeFields = ["type", "name_or_index", "to_node"];
   // Type index map. "object"=0, "closure"=1, "hidden"=2, "string"=3.
   const nodeTypes = ["object", "closure", "hidden", "string"];
@@ -56,10 +62,12 @@ function makeFixture(groups: Array<{ type: string; name: string; count: number; 
 
 describe("aggregateNodeSizes", () => {
   it("groups by type:name and sums self_size", () => {
-    const parsed = parseHeapSnapshot(makeFixture([
-      { type: "object", name: "Cache", count: 3, size: 100 },
-      { type: "object", name: "LeakyItem", count: 5, size: 200 },
-    ]));
+    const parsed = parseHeapSnapshot(
+      makeFixture([
+        { type: "object", name: "Cache", count: 3, size: 100 },
+        { type: "object", name: "LeakyItem", count: 5, size: 200 },
+      ]),
+    );
     const m = aggregateNodeSizes(parsed);
     expect(m.get("object:Cache")?.size).toBe(300);
     expect(m.get("object:LeakyItem")?.size).toBe(1000);
@@ -112,13 +120,14 @@ describe("diffHeapSnapshots — file IO + workspace escape rejection", () => {
     try {
       const before = join(wsRoot, "before.heapsnapshot");
       const after = join(wsRoot, "after.heapsnapshot");
-      writeFileSync(before, makeFixture([
-        { type: "object", name: "Cache", count: 1, size: 1000 },
-      ]));
-      writeFileSync(after, makeFixture([
-        { type: "object", name: "Cache", count: 1, size: 5000 },
-        { type: "object", name: "NewLeak", count: 1, size: 3000 },
-      ]));
+      writeFileSync(before, makeFixture([{ type: "object", name: "Cache", count: 1, size: 1000 }]));
+      writeFileSync(
+        after,
+        makeFixture([
+          { type: "object", name: "Cache", count: 1, size: 5000 },
+          { type: "object", name: "NewLeak", count: 1, size: 3000 },
+        ]),
+      );
       const r = diffHeapSnapshots(wsRoot, "before.heapsnapshot", "after.heapsnapshot");
       const cache = r.retainerGrowth.find((g) => g.node === "object:Cache")!;
       expect(cache.deltaBytes).toBe(4000);
@@ -144,9 +153,9 @@ describe("diffHeapSnapshots — file IO + workspace escape rejection", () => {
   it("rejects missing file with structured error", () => {
     const wsRoot = mkdtempSync(join(tmpdir(), "browx-memdiff-"));
     try {
-      expect(() => diffHeapSnapshots(wsRoot, "nope-before.heapsnapshot", "nope-after.heapsnapshot")).toThrow(
-        /beforePath not found/,
-      );
+      expect(() =>
+        diffHeapSnapshots(wsRoot, "nope-before.heapsnapshot", "nope-after.heapsnapshot"),
+      ).toThrow(/beforePath not found/);
     } finally {
       rmSync(wsRoot, { recursive: true, force: true });
     }

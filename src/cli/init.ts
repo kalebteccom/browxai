@@ -78,7 +78,9 @@ export async function runInit(args: string[]): Promise<number> {
     }
     const mcpPath = join(workspace, ".mcp.json");
     if (existsSync(mcpPath)) {
-      process.stdout.write(`  ⚠  ${mcpPath} exists — printing snippet below; merge manually so no existing entries are clobbered\n`);
+      process.stdout.write(
+        `  ⚠  ${mcpPath} exists — printing snippet below; merge manually so no existing entries are clobbered\n`,
+      );
     } else {
       writeFileSync(mcpPath, mcpJsonText + "\n", "utf8");
       process.stdout.write(`  ✓ wrote ${mcpPath} (workspace-scope MCP config)\n`);
@@ -87,7 +89,9 @@ export async function runInit(args: string[]): Promise<number> {
 
   process.stdout.write(`\ntest-attributes order: ${testAttrs}\n`);
   if (sniffNote) process.stdout.write(`  ${sniffNote}\n`);
-  process.stdout.write(`\n.mcp.json snippet (workspace-scope; pair with \`claude mcp add-json -s user\` for user-scope):\n\n${mcpJsonText}\n\n`);
+  process.stdout.write(
+    `\n.mcp.json snippet (workspace-scope; pair with \`claude mcp add-json -s user\` for user-scope):\n\n${mcpJsonText}\n\n`,
+  );
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) (BYOB) \`browxai chrome start\` to launch the attachable Chrome\n` +
@@ -103,8 +107,14 @@ function parseArgs(args: string[]): InitOpts | null {
   let noWrite = false;
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!;
-    if (a === "--test-attrs") { testAttrs = args[++i]; continue; }
-    if (a === "--no-write") { noWrite = true; continue; }
+    if (a === "--test-attrs") {
+      testAttrs = args[++i];
+      continue;
+    }
+    if (a === "--no-write") {
+      noWrite = true;
+      continue;
+    }
     positional.push(a);
   }
   if (positional.length !== 1) return null;
@@ -146,14 +156,19 @@ function sniffTestAttributes(workspace: string): { attrs: string[]; note: string
           const m = text.match(re);
           if (m) counts.set(a, (counts.get(a) ?? 0) + m.length);
         }
-      } catch { /* unreadable file — skip */ }
+      } catch {
+        /* unreadable file — skip */
+      }
       return true;
     });
     if (scanned >= 200) break;
   }
   const totalHits = [...counts.values()].reduce((a, b) => a + b, 0);
   if (totalHits === 0) {
-    return { attrs: KNOWN.slice(0, 5), note: "(scanned but found 0 conventional attrs; default order)" };
+    return {
+      attrs: KNOWN.slice(0, 5),
+      note: "(scanned but found 0 conventional attrs; default order)",
+    };
   }
   const sorted = [...counts.entries()]
     .sort(([a, av], [b, bv]) => bv - av || KNOWN.indexOf(a) - KNOWN.indexOf(b))
@@ -161,20 +176,33 @@ function sniffTestAttributes(workspace: string): { attrs: string[]; note: string
     .map(([k]) => k);
   // Always keep `data-testid` as a fallback so consumers with mixed conventions don't lose it.
   if (!sorted.includes("data-testid")) sorted.push("data-testid");
-  const summary = [...counts.entries()].filter(([, v]) => v > 0).map(([k, v]) => `${k}×${v}`).join(", ");
+  const summary = [...counts.entries()]
+    .filter(([, v]) => v > 0)
+    .map(([k, v]) => `${k}×${v}`)
+    .join(", ");
   return { attrs: sorted, note: `(sniffed ${scanned} source file(s); hits: ${summary})` };
 }
 
 function walk(dir: string, maxDepth: number, visit: (file: string) => boolean): void {
   if (maxDepth < 0) return;
   let entries: string[];
-  try { entries = readdirSync(dir); } catch { return; }
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return;
+  }
   for (const e of entries) {
     if (e === "node_modules" || e === ".git" || e === "dist" || e.startsWith(".")) continue;
     const full = join(dir, e);
     let st;
-    try { st = statSync(full); } catch { continue; }
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
     if (st.isDirectory()) walk(full, maxDepth - 1, visit);
-    else if (st.isFile()) { if (!visit(full)) return; }
+    else if (st.isFile()) {
+      if (!visit(full)) return;
+    }
   }
 }

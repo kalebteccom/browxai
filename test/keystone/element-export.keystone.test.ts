@@ -42,7 +42,11 @@ async function callJson<T = Record<string, unknown>>(
   return JSON.parse(text) as T;
 }
 
-async function findRefByTestId(session: string, query: string, testIdHint: string): Promise<string> {
+async function findRefByTestId(
+  session: string,
+  query: string,
+  testIdHint: string,
+): Promise<string> {
   const r = await callJson<{
     candidates: Array<{ ref: string; selectorHint: string }>;
   }>("find", { session, query });
@@ -85,7 +89,10 @@ describe("element-export keystone — directory mode against the fixture", () =>
     "writes element.html + assets/ sidecar on a real page (regression gate for the SUBTREE_DISCOVERY_FN stringified-arrow bug)",
     async () => {
       const session = "ks-elexp-dir";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
       const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/` });
       expect(nav.ok).toBe(true);

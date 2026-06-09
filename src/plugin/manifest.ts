@@ -44,7 +44,9 @@ export type TrustTier = (typeof TRUST_TIERS)[number];
  */
 export const dependsOnEntrySchema = z.object({
   plugin: z.string().min(1, "dependsOn[].plugin: must be a non-empty npm package name"),
-  version: z.string().min(1, "dependsOn[].version: must be a non-empty semver range, e.g. '^1.0.0'"),
+  version: z
+    .string()
+    .min(1, "dependsOn[].version: must be a non-empty semver range, e.g. '^1.0.0'"),
 });
 export type DependsOnEntry = z.infer<typeof dependsOnEntrySchema>;
 

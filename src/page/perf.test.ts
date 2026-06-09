@@ -68,7 +68,12 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     await state.start(cdp as never);
     // emit two batches then completion
     void state.stop(cdp as never).then(() => undefined);
-    await cdp._emit("Tracing.dataCollected", { value: [{ name: "A", ts: 1000 }, { name: "B", ts: 2000 }] });
+    await cdp._emit("Tracing.dataCollected", {
+      value: [
+        { name: "A", ts: 1000 },
+        { name: "B", ts: 2000 },
+      ],
+    });
     await cdp._emit("Tracing.dataCollected", { value: [{ name: "C", ts: 3000 }] });
     await cdp._emit("Tracing.tracingComplete", {});
     // The stop promise above is already resolved by tracingComplete; restart
@@ -104,13 +109,13 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     await state.start(cdp as never);
     // Stub: simulate the tracingComplete that the inner restart-driven stop
     // is waiting for. We hook it via a side-channel: trigger one tick later.
-    queueMicrotask(() => { void cdp._emit("Tracing.tracingComplete", {}); });
+    queueMicrotask(() => {
+      void cdp._emit("Tracing.tracingComplete", {});
+    });
     const r = await state.start(cdp as never, { categories: ["loading"] });
     expect(r.restarted).toBe(true);
     // The send sequence: Tracing.start, Tracing.end (clean), Tracing.start
-    expect(calls.map((c) => c.method)).toEqual([
-      "Tracing.start", "Tracing.end", "Tracing.start",
-    ]);
+    expect(calls.map((c) => c.method)).toEqual(["Tracing.start", "Tracing.end", "Tracing.start"]);
     expect(state.isRunning()).toBe(true);
   });
 
@@ -120,7 +125,9 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     await state.closeIfRunning(cdp as never); // no-op
     expect(state.isRunning()).toBe(false);
     await state.start(cdp as never);
-    queueMicrotask(() => { void cdp._emit("Tracing.tracingComplete", {}); });
+    queueMicrotask(() => {
+      void cdp._emit("Tracing.tracingComplete", {});
+    });
     await state.closeIfRunning(cdp as never);
     expect(state.isRunning()).toBe(false);
   });
@@ -173,12 +180,27 @@ describe("extractInsights", () => {
   it("pairs render-blocking ResourceSendRequest with ResourceFinish for duration", () => {
     const events: TraceEvent[] = [
       {
-        name: "ResourceSendRequest", ts: us(100),
-        args: { data: { requestId: "r1", url: "https://x/app.css", renderBlocking: "blocking", resourceType: "Stylesheet" } },
+        name: "ResourceSendRequest",
+        ts: us(100),
+        args: {
+          data: {
+            requestId: "r1",
+            url: "https://x/app.css",
+            renderBlocking: "blocking",
+            resourceType: "Stylesheet",
+          },
+        },
       },
       {
-        name: "ResourceSendRequest", ts: us(150),
-        args: { data: { requestId: "r2", url: "https://x/img.png", renderBlocking: "non_blocking_dynamic" } },
+        name: "ResourceSendRequest",
+        ts: us(150),
+        args: {
+          data: {
+            requestId: "r2",
+            url: "https://x/img.png",
+            renderBlocking: "non_blocking_dynamic",
+          },
+        },
       },
       { name: "ResourceFinish", ts: us(550), args: { data: { requestId: "r1" } } },
       { name: "ResourceFinish", ts: us(600), args: { data: { requestId: "r2" } } },
@@ -191,7 +213,11 @@ describe("extractInsights", () => {
 
   it("collects LCP candidates", () => {
     const events: TraceEvent[] = [
-      { name: "largestContentfulPaint::Candidate", ts: us(800), args: { data: { size: 1024, url: "https://x/hero.jpg" } } },
+      {
+        name: "largestContentfulPaint::Candidate",
+        ts: us(800),
+        args: { data: { size: 1024, url: "https://x/hero.jpg" } },
+      },
       { name: "largestContentfulPaint::Candidate", ts: us(1200), args: { data: { size: 4096 } } },
     ];
     const r = extractInsights(events);
@@ -244,10 +270,15 @@ describe("trace file IO", () => {
   it("writes a chrome-tracing-shaped JSON file and reads it back", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-perf-"));
     try {
-      const events: TraceEvent[] = [{ name: "A", ts: 100 }, { name: "B", ts: 200 }];
+      const events: TraceEvent[] = [
+        { name: "A", ts: 100 },
+        { name: "B", ts: 200 },
+      ];
       const target = "perf-traces/test.json";
       const { resolved, bytes } = writeTraceFile(
-        root, target, events,
+        root,
+        target,
+        events,
         { categories: ["loading"], sessionId: "s1", durationMs: 1234 },
         "perf_stop",
       );
@@ -263,8 +294,12 @@ describe("trace file IO", () => {
   });
 
   it("rejects paths that escape the workspace root", () => {
-    expect(() => resolvePerfTracePath("/tmp/ws", "../etc/passwd", "perf_stop")).toThrow(/inside \$BROWX_WORKSPACE/);
-    expect(() => resolvePerfTracePath("/tmp/ws", "/etc/passwd", "perf_stop")).toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => resolvePerfTracePath("/tmp/ws", "../etc/passwd", "perf_stop")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
+    expect(() => resolvePerfTracePath("/tmp/ws", "/etc/passwd", "perf_stop")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 
   it("defaultTracePath roots under <workspace>/perf-traces/ and sanitises session id", () => {
@@ -281,7 +316,13 @@ describe("trace file IO", () => {
       const events: TraceEvent[] = [{ name: "X" }];
       const target = "perf-traces/legacy.json";
       // Write a bare array (some legacy tooling does this).
-      writeTraceFile(root, target, events, { categories: [], sessionId: "s", durationMs: 0 }, "perf_stop");
+      writeTraceFile(
+        root,
+        target,
+        events,
+        { categories: [], sessionId: "s", durationMs: 0 },
+        "perf_stop",
+      );
       // Now manually replace with a bare-array file to test the reader's tolerance.
       const path = `${root}/perf-traces/legacy.json`;
       // Use only fs APIs here (test scaffolding — not the no-trace src/ path).

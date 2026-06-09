@@ -32,14 +32,14 @@ export async function openStdioChildTransport(opts: StdioChildOptions = {}): Pro
     // Surface child stderr to the parent so a misconfiguration is visible.
     stderr: "inherit",
   });
-  const client = new Client(
-    { name: `${NAME}-sdk`, version: VERSION },
-    { capabilities: {} },
-  );
+  const client = new Client({ name: `${NAME}-sdk`, version: VERSION }, { capabilities: {} });
   await client.connect(transport);
   let closed = false;
 
-  const dispatch = async (toolName: string, args: Record<string, unknown>): Promise<BrowxaiResult> => {
+  const dispatch = async (
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<BrowxaiResult> => {
     if (closed) throw new Error(`browxai-sdk: dispatch on a closed transport (tool=${toolName})`);
     const res = await client.callTool({ name: toolName, arguments: args });
     const content = (res.content as BrowxaiContentItem[]) ?? [];

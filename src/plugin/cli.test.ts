@@ -128,7 +128,9 @@ describe("runPlugin list", () => {
       join(decl, "plugins-lock.json"),
       JSON.stringify({
         lockfileVersion: 1,
-        entries: { "plugin-a": { name: "plugin-a", version: "1.2.3", source: "npm", contentSha256: "abc" } },
+        entries: {
+          "plugin-a": { name: "plugin-a", version: "1.2.3", source: "npm", contentSha256: "abc" },
+        },
       }),
     );
     const code = await runPlugin(["list"]);

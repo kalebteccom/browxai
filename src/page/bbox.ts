@@ -74,7 +74,10 @@ const VISIBLE_RECT_FN = `function () {
  * element is fully clipped (offscreen, inside a collapsed overflow container,
  * detached). The caller surfaces null as `bbox: null, clipped: true`.
  */
-export async function visibleRect(cdp: CDPSession, backendDOMNodeId: number): Promise<VisibleRect | null> {
+export async function visibleRect(
+  cdp: CDPSession,
+  backendDOMNodeId: number,
+): Promise<VisibleRect | null> {
   try {
     const { object } = (await cdp.send("DOM.resolveNode", { backendNodeId: backendDOMNodeId })) as {
       object: { objectId?: string };

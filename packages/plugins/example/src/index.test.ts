@@ -6,7 +6,9 @@
 import { describe, it, expect } from "vitest";
 import { handlers, register } from "./index.js";
 
-function parseFirst(res: { content: ReadonlyArray<{ type: string; text?: string }> }): Record<string, unknown> {
+function parseFirst(res: {
+  content: ReadonlyArray<{ type: string; text?: string }>;
+}): Record<string, unknown> {
   const first = res.content[0];
   if (!first || first.type !== "text") throw new Error("expected text content");
   return JSON.parse(first.text!) as Record<string, unknown>;

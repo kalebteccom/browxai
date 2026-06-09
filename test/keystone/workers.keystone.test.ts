@@ -87,7 +87,10 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
     "page opens a Web Worker, list sees it, send drives onmessage, read drains the ring",
     async () => {
       const session = "ks-workers";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
 
       await callJson("navigate", { session, url: `${fixture.url}/workers-page` });
@@ -105,7 +108,11 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
 
       // workers_list — should report the live Web Worker with a ww-N id.
       const listed = await pollUntil(
-        () => callJson<{ ok: boolean; workers: Array<{ workerId: string; type: string; url: string }> }>("workers_list", { session }),
+        () =>
+          callJson<{
+            ok: boolean;
+            workers: Array<{ workerId: string; type: string; url: string }>;
+          }>("workers_list", { session }),
         (r) => r.workers.some((w) => w.type === "web"),
       );
       expect(listed.ok).toBe(true);
@@ -119,16 +126,20 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
       // is independent — the wrapper's addEventListener fires for every
       // message-from-worker.)
       const initial = await pollUntil(
-        () => callJson<{ ok: boolean; messages: Array<{ workerId: string; data: string }> }>(
-          "worker_messages_read",
-          { session, workerId },
-        ),
+        () =>
+          callJson<{ ok: boolean; messages: Array<{ workerId: string; data: string }> }>(
+            "worker_messages_read",
+            { session, workerId },
+          ),
         (r) => r.messages.some((m) => m.data === "worker-ready"),
       );
       expect(initial.ok).toBe(true);
       expect(initial.messages.some((m) => m.data === "worker-ready")).toBe(true);
       // Drain semantics: a re-read returns no "worker-ready" again.
-      const drained = await callJson<{ messages: Array<{ data: string }> }>("worker_messages_read", { session, workerId });
+      const drained = await callJson<{ messages: Array<{ data: string }> }>(
+        "worker_messages_read",
+        { session, workerId },
+      );
       expect(drained.messages.find((m) => m.data === "worker-ready")).toBeUndefined();
 
       // worker_message_send — the worker echoes "echo:<payload>". The page's
@@ -153,7 +164,11 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
 
       // Ring also has it.
       const echo = await pollUntil(
-        () => callJson<{ messages: Array<{ data: string }> }>("worker_messages_read", { session, workerId }),
+        () =>
+          callJson<{ messages: Array<{ data: string }> }>("worker_messages_read", {
+            session,
+            workerId,
+          }),
         (r) => r.messages.some((m) => m.data === "echo:from-agent"),
       );
       expect(echo.messages.some((m) => m.data === "echo:from-agent")).toBe(true);
@@ -170,24 +185,33 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
       // Web Worker path we just exercised. A full SW round-trip is deferred
       // (it would need an explicit registration + activation in the fixture).
       const session = "ks-workers-sw";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
 
       await callJson("navigate", { session, url: `${fixture.url}/workers-page` });
 
-      const added = await callJson<{ ok: boolean; key: string; active: string[] }>("sw_intercept_fetch", {
-        session,
-        pattern: "https://api.example/**",
-        response: { status: 200, body: "{}", contentType: "application/json" },
-      });
+      const added = await callJson<{ ok: boolean; key: string; active: string[] }>(
+        "sw_intercept_fetch",
+        {
+          session,
+          pattern: "https://api.example/**",
+          response: { status: 200, body: "{}", contentType: "application/json" },
+        },
+      );
       expect(added.ok).toBe(true);
       expect(added.key).toBe("https://api.example/**");
       expect(added.active).toContain("https://api.example/**");
 
-      const cleared = await callJson<{ ok: boolean; removed: string[]; active: string[] }>("sw_unintercept_fetch", {
-        session,
-        pattern: "https://api.example/**",
-      });
+      const cleared = await callJson<{ ok: boolean; removed: string[]; active: string[] }>(
+        "sw_unintercept_fetch",
+        {
+          session,
+          pattern: "https://api.example/**",
+        },
+      );
       expect(cleared.ok).toBe(true);
       expect(cleared.removed).toContain("https://api.example/**");
       expect(cleared.active).not.toContain("https://api.example/**");

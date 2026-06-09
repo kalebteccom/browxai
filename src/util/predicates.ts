@@ -60,7 +60,9 @@ export interface CompositePredicate {
 
 export type Predicate = LeafPredicate | CompositePredicate;
 
-export interface PredicatePass { ok: true }
+export interface PredicatePass {
+  ok: true;
+}
 export interface PredicateFail {
   ok: false;
   /** Stable kind label of the failing leaf (or the failing combinator). */
@@ -112,11 +114,7 @@ export function allowedKeyRoots(): readonly string[] {
  *  Not exploitable today — no leaf kind acts on a returned function/prototype
  *  in a way that exfiltrates it — but a one-line denylist costs nothing and
  *  keeps the engine inert under future changes. */
-const DENIED_KEY_SEGMENTS: ReadonlySet<string> = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
+const DENIED_KEY_SEGMENTS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
 
 /**
  * Resolve a dotted accessor key against `data`. Supports the special trailing
@@ -196,7 +194,12 @@ function evalOr(p: CompositePredicate, data: unknown): PredicateResult {
 
 function evalNot(p: CompositePredicate, data: unknown): PredicateResult {
   if (!Array.isArray(p.predicates) || p.predicates.length !== 1) {
-    return { ok: false, kind: "not", expected: "not(child) with exactly one child", actual: `${p.predicates?.length ?? 0} children` };
+    return {
+      ok: false,
+      kind: "not",
+      expected: "not(child) with exactly one child",
+      actual: `${p.predicates?.length ?? 0} children`,
+    };
   }
   const r = evaluatePredicate(p.predicates[0]!, data);
   if (r.ok) {
@@ -248,18 +251,37 @@ function evalLeaf(p: LeafPredicate, data: unknown): PredicateResult {
       return fail(p, actual, `lte ${jsonish(p.value)}`);
     case "between":
       if (typeof p.lo !== "number" || typeof p.hi !== "number") {
-        return { ok: false, kind: p.kind, key: p.key, expected: "between with numeric lo + hi", actual: `lo=${jsonish(p.lo)}, hi=${jsonish(p.hi)}` };
+        return {
+          ok: false,
+          kind: p.kind,
+          key: p.key,
+          expected: "between with numeric lo + hi",
+          actual: `lo=${jsonish(p.lo)}, hi=${jsonish(p.hi)}`,
+        };
       }
       if (typeof actual === "number" && actual >= p.lo && actual <= p.hi) return { ok: true };
       return fail(p, actual, `between ${p.lo} and ${p.hi} (inclusive)`);
     case "matches": {
       if (typeof p.value !== "string") {
-        return { ok: false, kind: p.kind, key: p.key, expected: "matches with a regex string", actual: `value=${jsonish(p.value)}` };
+        return {
+          ok: false,
+          kind: p.kind,
+          key: p.key,
+          expected: "matches with a regex string",
+          actual: `value=${jsonish(p.value)}`,
+        };
       }
       let re: RegExp;
-      try { re = new RegExp(p.value); }
-      catch (e) {
-        return { ok: false, kind: p.kind, key: p.key, expected: `matches /${p.value}/`, actual: `invalid regex: ${e instanceof Error ? e.message : String(e)}` };
+      try {
+        re = new RegExp(p.value);
+      } catch (e) {
+        return {
+          ok: false,
+          kind: p.kind,
+          key: p.key,
+          expected: `matches /${p.value}/`,
+          actual: `invalid regex: ${e instanceof Error ? e.message : String(e)}`,
+        };
       }
       if (typeof actual === "string" && re.test(actual)) return { ok: true };
       return fail(p, actual, `matches /${p.value}/`);
@@ -297,7 +319,11 @@ function numCompare(a: unknown, b: unknown, cmp: (x: number, y: number) => boole
 }
 
 function jsonish(v: unknown): string {
-  try { return JSON.stringify(v); } catch { return String(v); }
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
 }
 
 /**
@@ -326,8 +352,17 @@ export function validatePredicate(p: unknown, path = "predicate"): string | null
     return null;
   }
   const leafKinds: ReadonlySet<string> = new Set([
-    "equals", "notEquals", "contains", "notContains",
-    "gt", "lt", "gte", "lte", "between", "matches", "exists",
+    "equals",
+    "notEquals",
+    "contains",
+    "notContains",
+    "gt",
+    "lt",
+    "gte",
+    "lte",
+    "between",
+    "matches",
+    "exists",
   ]);
   if (!leafKinds.has(kind)) {
     return `${path}: unknown kind "${kind}" (valid: ${[...leafKinds, "and", "or", "not"].join(", ")})`;

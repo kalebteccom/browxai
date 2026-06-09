@@ -41,7 +41,7 @@ describe("sanitiseAssetFilename", () => {
     const long = "a".repeat(500) + ".png";
     expect(sanitiseAssetFilename(long).length).toBeLessThanOrEqual(200);
   });
-  it("falls back to \"asset\" on empty / all-stripped input", () => {
+  it('falls back to "asset" on empty / all-stripped input', () => {
     expect(sanitiseAssetFilename("")).toBe("asset");
     expect(sanitiseAssetFilename("/")).toBe("asset");
     expect(sanitiseAssetFilename("...")).toBe("asset");
@@ -111,11 +111,17 @@ describe("matchesFilter", () => {
   };
   it("defaults status to 2xx", () => {
     expect(matchesFilter(baseEntry, { urlPattern: null, status: null })).toBe(true);
-    expect(matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: null })).toBe(false);
-    expect(matchesFilter({ ...baseEntry, status: 301 }, { urlPattern: null, status: null })).toBe(false);
+    expect(matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: null })).toBe(
+      false,
+    );
+    expect(matchesFilter({ ...baseEntry, status: 301 }, { urlPattern: null, status: null })).toBe(
+      false,
+    );
   });
   it("honours an explicit status allow-list", () => {
-    expect(matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: new Set([404]) })).toBe(true);
+    expect(
+      matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: new Set([404]) }),
+    ).toBe(true);
   });
   it("rejects entries without status", () => {
     const noStatus: NetworkEntry = { ...baseEntry };
@@ -123,8 +129,12 @@ describe("matchesFilter", () => {
     expect(matchesFilter(noStatus, { urlPattern: null, status: null })).toBe(false);
   });
   it("matches mime substrings case-insensitively", () => {
-    expect(matchesFilter(baseEntry, { mime: ["IMAGE/"], urlPattern: null, status: null })).toBe(true);
-    expect(matchesFilter(baseEntry, { mime: ["video/"], urlPattern: null, status: null })).toBe(false);
+    expect(matchesFilter(baseEntry, { mime: ["IMAGE/"], urlPattern: null, status: null })).toBe(
+      true,
+    );
+    expect(matchesFilter(baseEntry, { mime: ["video/"], urlPattern: null, status: null })).toBe(
+      false,
+    );
   });
   it("rejects when mime filter set but entry has no mime", () => {
     const noMime: NetworkEntry = { ...baseEntry };
@@ -136,14 +146,20 @@ describe("matchesFilter", () => {
     expect(matchesFilter(baseEntry, { urlPattern: p, status: null })).toBe(true);
   });
   it("enforces minBytes / maxBytes only when bytes known", () => {
-    expect(matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 2000 })).toBe(false);
+    expect(matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 2000 })).toBe(
+      false,
+    );
     expect(matchesFilter(baseEntry, { urlPattern: null, status: null, maxBytes: 500 })).toBe(false);
-    expect(matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 100, maxBytes: 2000 })).toBe(true);
+    expect(
+      matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 100, maxBytes: 2000 }),
+    ).toBe(true);
     const noBytes: NetworkEntry = { ...baseEntry };
     delete noBytes.bytes;
     // unknown bytes admitted at the filter step — the caller still enforces
     // the post-fetch total-byte budget.
-    expect(matchesFilter(noBytes, { urlPattern: null, status: null, minBytes: 1_000_000 })).toBe(true);
+    expect(matchesFilter(noBytes, { urlPattern: null, status: null, minBytes: 1_000_000 })).toBe(
+      true,
+    );
   });
 });
 
@@ -214,7 +230,9 @@ function stubCdpNoBody(): CDPSession {
 /** Stub Page whose `evaluate` returns the same canned payload for every
  *  URL — we don't actually run a browser in unit tests. */
 function stubPageWith(
-  per: (url: string) => { ok: true; base64: string; mimeType?: string } | { ok: false; error: string },
+  per: (
+    url: string,
+  ) => { ok: true; base64: string; mimeType?: string } | { ok: false; error: string },
 ): Page {
   return {
     evaluate: vi.fn(async (_fn: unknown, url: string) => per(url)),
@@ -226,13 +244,49 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a/logo.png", type: "Image", status: 200, mimeType: "image/png", bytes: 100, requestId: "r1" },
-        { method: "GET", url: "https://x.com/a/hero.jpg", type: "Image", status: 200, mimeType: "image/jpeg", bytes: 200, requestId: "r2" },
-        { method: "GET", url: "https://x.com/a/style.css", type: "Stylesheet", status: 200, mimeType: "text/css", bytes: 300, requestId: "r3" },
-        { method: "GET", url: "https://x.com/a/oops.png", type: "Image", status: 404, mimeType: "image/png", bytes: 50, requestId: "r4" },
+        {
+          method: "GET",
+          url: "https://x.com/a/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 100,
+          requestId: "r1",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/a/hero.jpg",
+          type: "Image",
+          status: 200,
+          mimeType: "image/jpeg",
+          bytes: 200,
+          requestId: "r2",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/a/style.css",
+          type: "Stylesheet",
+          status: 200,
+          mimeType: "text/css",
+          bytes: 300,
+          requestId: "r3",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/a/oops.png",
+          type: "Image",
+          status: 404,
+          mimeType: "image/png",
+          bytes: 50,
+          requestId: "r4",
+        },
       ]);
       const cdp = stubCdpNoBody();
-      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("PNGDATA").toString("base64"), mimeType: "image/png" }));
+      const page = stubPageWith(() => ({
+        ok: true,
+        base64: Buffer.from("PNGDATA").toString("base64"),
+        mimeType: "image/png",
+      }));
       const args: AssetExportArgs = { filter: { mime: ["image/"] } };
       const r = await assetExport(cdp, page, buf, root, "sess", args);
       expect(r.ok).toBe(true);
@@ -256,9 +310,33 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a/logo.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r1" },
-        { method: "GET", url: "https://x.com/b/logo.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r2" },
-        { method: "GET", url: "https://x.com/c/logo.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r3" },
+        {
+          method: "GET",
+          url: "https://x.com/a/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r1",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/b/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r2",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/c/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r3",
+        },
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
@@ -275,8 +353,24 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://ok.com/a.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r1" },
-        { method: "GET", url: "https://bad.com/b.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r2" },
+        {
+          method: "GET",
+          url: "https://ok.com/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r1",
+        },
+        {
+          method: "GET",
+          url: "https://bad.com/b.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r2",
+        },
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith((url) =>
@@ -298,9 +392,33 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r1" },
-        { method: "GET", url: "https://x.com/b.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r2" },
-        { method: "GET", url: "https://x.com/c.png", type: "Image", status: 200, mimeType: "image/png", bytes: 10, requestId: "r3" },
+        {
+          method: "GET",
+          url: "https://x.com/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r1",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/b.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r2",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/c.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 10,
+          requestId: "r3",
+        },
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
@@ -317,13 +435,40 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a.png", type: "Image", status: 200, mimeType: "image/png", bytes: 5, requestId: "r1" },
-        { method: "GET", url: "https://x.com/b.png", type: "Image", status: 200, mimeType: "image/png", bytes: 5, requestId: "r2" },
-        { method: "GET", url: "https://x.com/c.png", type: "Image", status: 200, mimeType: "image/png", bytes: 5, requestId: "r3" },
+        {
+          method: "GET",
+          url: "https://x.com/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 5,
+          requestId: "r1",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/b.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 5,
+          requestId: "r2",
+        },
+        {
+          method: "GET",
+          url: "https://x.com/c.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 5,
+          requestId: "r3",
+        },
       ]);
       const cdp = stubCdpNoBody();
       // Each body is 6 bytes. maxBytes=10 → first persisted, second exceeds → stop.
-      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("ABCDEF").toString("base64") }));
+      const page = stubPageWith(() => ({
+        ok: true,
+        base64: Buffer.from("ABCDEF").toString("base64"),
+      }));
       const r = await assetExport(cdp, page, buf, root, "sess", { filter: {}, maxBytes: 10 });
       expect(r.persistedCount).toBe(1);
       expect(r.warnings.some((w) => w.includes("maxBytes"))).toBe(true);
@@ -336,7 +481,15 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a.png", type: "Image", status: 200, mimeType: "image/png", bytes: 5, requestId: "r1" },
+        {
+          method: "GET",
+          url: "https://x.com/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 5,
+          requestId: "r1",
+        },
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
@@ -356,10 +509,21 @@ describe("assetExport integration", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
       const buf = bufferWith([
-        { method: "GET", url: "https://x.com/a.png", type: "Image", status: 200, mimeType: "image/png", bytes: 5, requestId: "r1" },
+        {
+          method: "GET",
+          url: "https://x.com/a.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 5,
+          requestId: "r1",
+        },
       ]);
       const cdp = {
-        send: vi.fn(async () => ({ body: Buffer.from("HELLO").toString("base64"), base64Encoded: true })),
+        send: vi.fn(async () => ({
+          body: Buffer.from("HELLO").toString("base64"),
+          base64Encoded: true,
+        })),
         on: vi.fn(),
         off: vi.fn(),
       } as unknown as CDPSession;

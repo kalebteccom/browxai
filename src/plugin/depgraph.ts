@@ -117,7 +117,7 @@ function findCycles(
     if (lowlink.get(v) === indexOf.get(v)) {
       const component: string[] = [];
       // pop until we pop v
-      // eslint-disable-next-line no-constant-condition
+
       while (true) {
         const w = stack.pop()!;
         onStack.delete(w);

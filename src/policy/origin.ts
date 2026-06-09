@@ -29,7 +29,11 @@ export function resolveOriginPolicy(env: NodeJS.ProcessEnv = process.env): Origi
 
 function parseList(raw: string): OriginPattern[] {
   if (!raw) return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean).map(parsePattern);
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map(parsePattern);
 }
 
 function parsePattern(raw: string): OriginPattern {
@@ -38,7 +42,9 @@ function parsePattern(raw: string): OriginPattern {
   try {
     url = new URL(raw);
   } catch {
-    throw new Error(`origin policy: invalid URL "${raw}". Expected e.g. "https://app.example.com".`);
+    throw new Error(
+      `origin policy: invalid URL "${raw}". Expected e.g. "https://app.example.com".`,
+    );
   }
   const protocol = url.protocol;
   const hostPattern = url.hostname;
@@ -51,7 +57,9 @@ function parsePattern(raw: string): OriginPattern {
     if (port && candidate.port && candidate.port !== port) return false;
     if (isWild) {
       // Match exact suffix domain or sub-domain (not the bare suffix itself).
-      return candidate.hostname.endsWith(wildSuffix) && candidate.hostname.length > wildSuffix.length;
+      return (
+        candidate.hostname.endsWith(wildSuffix) && candidate.hostname.length > wildSuffix.length
+      );
     }
     return candidate.hostname === hostPattern;
   };
@@ -68,7 +76,11 @@ export function isOriginAllowed(url: string | URL, policy: OriginPolicy): boolea
 }
 
 function safeUrl(s: string): URL | null {
-  try { return new URL(s); } catch { return null; }
+  try {
+    return new URL(s);
+  } catch {
+    return null;
+  }
 }
 
 /** Pretty-print for startup log. */

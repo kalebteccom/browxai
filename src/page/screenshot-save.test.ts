@@ -8,7 +8,10 @@ import { screenshotSave } from "./screenshot-save.js";
  *  arbitrary buffer suffices. Test the disk-write contract, not the encoder. */
 function fakePng(size = 64): Buffer {
   const b = Buffer.alloc(size);
-  b[0] = 0x89; b[1] = 0x50; b[2] = 0x4e; b[3] = 0x47;
+  b[0] = 0x89;
+  b[1] = 0x50;
+  b[2] = 0x4e;
+  b[3] = 0x47;
   return b;
 }
 
@@ -45,7 +48,9 @@ describe("screenshotSave", () => {
 
   it("creates the parent directory if missing", () => {
     const r = screenshotSave(fakePng(), WS, {
-      path: "nested/deeply/out.png", format: "png", fullPage: false,
+      path: "nested/deeply/out.png",
+      format: "png",
+      fullPage: false,
     });
     expect(existsSync(r.path)).toBe(true);
     expect(r.path).toBe(join(WS, "nested/deeply/out.png"));
@@ -54,7 +59,9 @@ describe("screenshotSave", () => {
   it("rejects a path that escapes the workspace via `..`", () => {
     expect(() =>
       screenshotSave(fakePng(), WS, {
-        path: "../../etc/escape.png", format: "png", fullPage: false,
+        path: "../../etc/escape.png",
+        format: "png",
+        fullPage: false,
       }),
     ).toThrow(/\$BROWX_WORKSPACE/);
   });
@@ -62,7 +69,9 @@ describe("screenshotSave", () => {
   it("rejects an absolute path outside the workspace", () => {
     expect(() =>
       screenshotSave(fakePng(), WS, {
-        path: "/tmp/elsewhere.png", format: "png", fullPage: false,
+        path: "/tmp/elsewhere.png",
+        format: "png",
+        fullPage: false,
       }),
     ).toThrow(/\$BROWX_WORKSPACE/);
   });

@@ -23,16 +23,18 @@ function fakePage(): Page {
   } as unknown as Page;
 }
 
-function fakeContext(opts: {
-  cdp?: CDPSession;
-  bindings?: Map<string, (source: unknown, payload: string) => unknown>;
-  initScripts?: string[];
-  pages?: Page[];
-  grantCalls?: Array<{ permissions: string[]; opts?: unknown }>;
-  clearCalls?: { count: number };
-  grantThrows?: boolean;
-  clearThrows?: boolean;
-} = {}): BrowserContext {
+function fakeContext(
+  opts: {
+    cdp?: CDPSession;
+    bindings?: Map<string, (source: unknown, payload: string) => unknown>;
+    initScripts?: string[];
+    pages?: Page[];
+    grantCalls?: Array<{ permissions: string[]; opts?: unknown }>;
+    clearCalls?: { count: number };
+    grantThrows?: boolean;
+    clearThrows?: boolean;
+  } = {},
+): BrowserContext {
   const bindings = opts.bindings ?? new Map();
   const initScripts = opts.initScripts ?? [];
   const pages = opts.pages ?? [fakePage()];
@@ -56,11 +58,18 @@ function fakeContext(opts: {
   } as unknown as BrowserContext;
 }
 
-function fakeCdp(opts: { setPermission?: (params: unknown) => unknown; getPermissionState?: (params: unknown) => unknown } = {}): CDPSession {
+function fakeCdp(
+  opts: {
+    setPermission?: (params: unknown) => unknown;
+    getPermissionState?: (params: unknown) => unknown;
+  } = {},
+): CDPSession {
   return {
     send: vi.fn(async (method: string, params?: unknown) => {
-      if (method === "Browser.setPermission" && opts.setPermission) return opts.setPermission(params);
-      if (method === "Browser.getPermissionState" && opts.getPermissionState) return opts.getPermissionState(params);
+      if (method === "Browser.setPermission" && opts.setPermission)
+        return opts.setPermission(params);
+      if (method === "Browser.getPermissionState" && opts.getPermissionState)
+        return opts.getPermissionState(params);
       return undefined;
     }),
     detach: vi.fn(async () => undefined),
@@ -79,19 +88,25 @@ describe("parsePermissionPolicyArg", () => {
     }
   });
   it("accepts object form with perPermission overrides", () => {
-    expect(parsePermissionPolicyArg({ mode: "raise", perPermission: { camera: "allow", notifications: "deny" } }))
-      .toEqual({ mode: "raise", perPermission: { camera: "allow", notifications: "deny" } });
+    expect(
+      parsePermissionPolicyArg({
+        mode: "raise",
+        perPermission: { camera: "allow", notifications: "deny" },
+      }),
+    ).toEqual({ mode: "raise", perPermission: { camera: "allow", notifications: "deny" } });
   });
   it("rejects unknown top-level modes", () => {
     expect(() => parsePermissionPolicyArg("yes")).toThrow(/invalid/i);
   });
   it("rejects unknown per-permission keys", () => {
-    expect(() => parsePermissionPolicyArg({ mode: "raise", perPermission: { usb: "allow" } as never }))
-      .toThrow(/unknown permission "usb"/);
+    expect(() =>
+      parsePermissionPolicyArg({ mode: "raise", perPermission: { usb: "allow" } as never }),
+    ).toThrow(/unknown permission "usb"/);
   });
   it("rejects unknown per-permission modes", () => {
-    expect(() => parsePermissionPolicyArg({ mode: "raise", perPermission: { camera: "yes" as never } }))
-      .toThrow(/invalid mode/);
+    expect(() =>
+      parsePermissionPolicyArg({ mode: "raise", perPermission: { camera: "yes" as never } }),
+    ).toThrow(/invalid mode/);
   });
 });
 
@@ -177,7 +192,10 @@ describe("CDP mapping", () => {
 // ---- exposeBinding handler per-mode behaviour ----------------------------
 
 describe("attachPermissionPolicy — binding handler per mode", () => {
-  async function setupCheck(policy: ConstructorParameters<typeof PermissionPolicyState>[0], ask?: PermissionAskHandler) {
+  async function setupCheck(
+    policy: ConstructorParameters<typeof PermissionPolicyState>[0],
+    ask?: PermissionAskHandler,
+  ) {
     const state = new PermissionPolicyState(policy);
     const bindings = new Map<string, (source: unknown, payload: string) => unknown>();
     const initScripts: string[] = [];
@@ -188,10 +206,13 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
     return { state, check, initScripts };
   }
 
-  it("allow → returns allow, records handledAs:\"allowed\"", async () => {
+  it('allow → returns allow, records handledAs:"allowed"', async () => {
     const { state, check } = await setupCheck({ mode: "allow" });
     const t = Date.now();
-    const decision = await check({}, JSON.stringify({ permission: "camera", origin: "https://app" }));
+    const decision = await check(
+      {},
+      JSON.stringify({ permission: "camera", origin: "https://app" }),
+    );
     expect(decision).toBe("allow");
     const rec = state.since(t)[0];
     expect(rec?.permission).toBe("camera");
@@ -199,14 +220,14 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
     expect(rec?.origin).toBe("https://app");
   });
 
-  it("deny → returns deny, records handledAs:\"denied\"", async () => {
+  it('deny → returns deny, records handledAs:"denied"', async () => {
     const { state, check } = await setupCheck({ mode: "deny" });
     const t = Date.now();
     expect(await check({}, JSON.stringify({ permission: "microphone" }))).toBe("deny");
     expect(state.since(t)[0]?.handledAs).toBe("denied");
   });
 
-  it("raise → returns deny, records handledAs:\"raised\", flips raisedSince()", async () => {
+  it('raise → returns deny, records handledAs:"raised", flips raisedSince()', async () => {
     const { state, check } = await setupCheck({ mode: "raise" });
     const t = Date.now();
     expect(await check({}, JSON.stringify({ permission: "geolocation" }))).toBe("deny");
@@ -222,7 +243,9 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
     };
     const { state, check } = await setupCheck({ mode: "ask-human" }, ask);
     const t = Date.now();
-    expect(await check({}, JSON.stringify({ permission: "notifications", origin: "https://n" }))).toBe("allow");
+    expect(
+      await check({}, JSON.stringify({ permission: "notifications", origin: "https://n" })),
+    ).toBe("allow");
     expect(askResults).toEqual([{ p: "notifications", o: "https://n" }]);
     expect(state.since(t)[0]?.handledAs).toBe("asked-human");
   });
@@ -233,7 +256,9 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
   });
 
   it("ask-human → handler throws → safe-by-default deny", async () => {
-    const { check } = await setupCheck({ mode: "ask-human" }, async () => { throw new Error("boom"); });
+    const { check } = await setupCheck({ mode: "ask-human" }, async () => {
+      throw new Error("boom");
+    });
     expect(await check({}, JSON.stringify({ permission: "camera" }))).toBe("deny");
   });
 
@@ -264,7 +289,9 @@ describe("attachPermissionPolicy — binding handler per mode", () => {
         const decision = await check({}, JSON.stringify({ permission: perm }));
         expect(decision, `${perm} under ${mode}`).toBe(mode === "allow" ? "allow" : "deny");
         const rec = state.since(t).at(-1);
-        expect(rec?.handledAs).toBe(mode === "allow" ? "allowed" : (mode === "deny" ? "denied" : "raised"));
+        expect(rec?.handledAs).toBe(
+          mode === "allow" ? "allowed" : mode === "deny" ? "denied" : "raised",
+        );
       }
       const { check, state } = await setupCheck({ mode: "ask-human" }, async () => "allow");
       const t = Date.now();

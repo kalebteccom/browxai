@@ -13,26 +13,26 @@ This subtree is the **agent-facing** companion to the public `docs/` site. It is
 
 ## Information architecture
 
-| Subdir | Purpose |
-|---|---|
-| `agent-process/` | Cross-cutting discipline: commits, dist-rebuild, docs-impact, code-quality (the f3-inspired big one). |
-| `architecture/` | Substrate-level architecture references: repo map deep dive, capability posture map, documentation contracts. |
-| `tool-registration/` | How an MCP tool gets registered, gated, returned, and tested. |
-| `page-side-functions/` | The real-function-literal discipline + the dom_export / element_export trap lesson. |
-| `recorder-and-replay/` | Action-trace IR, no-trace contract, replayability. |
-| `plugin-runtime/` | Phase-8 plugin runtime: lifecycle, namespacing, dependsOn, capability composition. |
-| `secrets-and-egress/` | network-body capability, secrets masking chokepoint, egress order of composition. |
-| `testing/` | Unit / plugin-integration / keystone layering; the QA patterns playbook. |
-| `release-process/` | Semver clock, retired-registry deprecation pattern, branch protection. |
-| `adopter-reports/` | Time-ordered field reports that drove surface changes. |
-| `investigations/` | One-off investigations triggered by adopter or substrate friction. |
+| Subdir                 | Purpose                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `agent-process/`       | Cross-cutting discipline: commits, dist-rebuild, docs-impact, code-quality (the f3-inspired big one).         |
+| `architecture/`        | Substrate-level architecture references: repo map deep dive, capability posture map, documentation contracts. |
+| `tool-registration/`   | How an MCP tool gets registered, gated, returned, and tested.                                                 |
+| `page-side-functions/` | The real-function-literal discipline + the dom_export / element_export trap lesson.                           |
+| `recorder-and-replay/` | Action-trace IR, no-trace contract, replayability.                                                            |
+| `plugin-runtime/`      | Phase-8 plugin runtime: lifecycle, namespacing, dependsOn, capability composition.                            |
+| `secrets-and-egress/`  | network-body capability, secrets masking chokepoint, egress order of composition.                             |
+| `testing/`             | Unit / plugin-integration / keystone layering; the QA patterns playbook.                                      |
+| `release-process/`     | Semver clock, retired-registry deprecation pattern, branch protection.                                        |
+| `adopter-reports/`     | Time-ordered field reports that drove surface changes.                                                        |
+| `investigations/`      | One-off investigations triggered by adopter or substrate friction.                                            |
 
 ## How this differs from the public `docs/` site
 
-| | `docs/` (public) | `docs/ai-context/` (agent-facing) |
-|---|---|---|
-| Audience | adopters integrating browxai | agents and contributors working *on* browxai |
-| Promise | public API contract (tool names, ActionResult shape, capability defaults) | working discipline + design rationale + captured lessons |
-| Published | yes, via VitePress to GitHub Pages | no, repo-only |
-| Versioned with | semver-frozen surface | code |
-| Read when | integrating, debugging adopter-side | making changes here |
+|                | `docs/` (public)                                                          | `docs/ai-context/` (agent-facing)                        |
+| -------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Audience       | adopters integrating browxai                                              | agents and contributors working _on_ browxai             |
+| Promise        | public API contract (tool names, ActionResult shape, capability defaults) | working discipline + design rationale + captured lessons |
+| Published      | yes, via VitePress to GitHub Pages                                        | no, repo-only                                            |
+| Versioned with | semver-frozen surface                                                     | code                                                     |
+| Read when      | integrating, debugging adopter-side                                       | making changes here                                      |

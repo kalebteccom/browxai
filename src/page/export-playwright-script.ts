@@ -88,9 +88,9 @@ export function lowerTraceToSpec(
       fragile += 1;
       body.push(
         "    // TODO: fragile selector — review before relying on this in CI " +
-        "(recorded stability: " +
-        (step.stability ?? "unknown") +
-        ").",
+          "(recorded stability: " +
+          (step.stability ?? "unknown") +
+          ").",
       );
     }
     for (const line of lowered.lines) {
@@ -128,7 +128,10 @@ export function lowerStep(step: RecordedStep): LoweredStep {
       // src/page/actions.ts); lower back to `selectOption([...])`. A single
       // value still goes through the array form — Playwright accepts both
       // and the array form is unambiguous.
-      const values = (a.value ?? "").split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+      const values = (a.value ?? "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter((v) => v.length > 0);
       const literal = "[" + values.map(jsString).join(", ") + "]";
       return targeted(step, (loc) => [`await ${loc}.selectOption(${literal});`]);
     }
@@ -165,7 +168,9 @@ export function lowerStep(step: RecordedStep): LoweredStep {
       ];
       const loc = locatorExprFor(step);
       lines.push(`await ${loc}.click();`);
-      lines.push(`await page.getByRole("option", { name: ${jsString(optionText)} }).first().click();`);
+      lines.push(
+        `await page.getByRole("option", { name: ${jsString(optionText)} }).first().click();`,
+      );
       // chooseOption is "handled" — we emitted a runnable sequence — but
       // the comment makes the review-needed status visible in-source.
       return { lines, fragile: isFragile(step), handled: true };
@@ -176,7 +181,7 @@ export function lowerStep(step: RecordedStep): LoweredStep {
       return {
         lines: [
           `// TODO: unhandled action type "${a.type}" — no Playwright lowering wired. ` +
-          `Original descriptor: ${JSON.stringify(a)}.`,
+            `Original descriptor: ${JSON.stringify(a)}.`,
         ],
         fragile: false,
         handled: false,
@@ -184,10 +189,7 @@ export function lowerStep(step: RecordedStep): LoweredStep {
   }
 }
 
-function targeted(
-  step: RecordedStep,
-  build: (locatorExpr: string) => string[],
-): LoweredStep {
+function targeted(step: RecordedStep, build: (locatorExpr: string) => string[]): LoweredStep {
   if (!step.selectorHint) {
     // The recorder only stores a step without a selectorHint for
     // navigation-class actions, which are handled above. If we land here
@@ -196,7 +198,7 @@ function targeted(
     return {
       lines: [
         `// TODO: target action "${step.action.type}" has no recorded selectorHint — ` +
-        `cannot lower to a Playwright locator; replace this line manually.`,
+          `cannot lower to a Playwright locator; replace this line manually.`,
       ],
       fragile: true,
       handled: false,
@@ -237,7 +239,9 @@ export function locatorExprFromHint(hint: string): string {
 
   // Role + name form — `role=button[name="Submit"]`. Lower to `getByRole`
   // with the unescaped name; same parse used by `parseSelectorHint`.
-  const roleNameMatch = s.match(/^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/);
+  const roleNameMatch = s.match(
+    /^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/,
+  );
   if (roleNameMatch) {
     const role = roleNameMatch[1]!;
     const rawName = roleNameMatch[3] ?? roleNameMatch[4] ?? "";
@@ -295,7 +299,7 @@ function renderSpec(flowName: string, bodyLines: string[]): string {
 // line at the top, the expected test shell. Catches the "I emitted a line
 // without closing the call" class of bug the cycle invariant calls out.
 export function parseCheck(source: string): { ok: true } | { ok: false; reason: string } {
-  if (!source.startsWith("import { test, expect } from \"@playwright/test\";")) {
+  if (!source.startsWith('import { test, expect } from "@playwright/test";')) {
     return { ok: false, reason: "missing @playwright/test import header" };
   }
   if (!/\ntest\(/.test(source)) {
@@ -304,7 +308,7 @@ export function parseCheck(source: string): { ok: true } | { ok: false; reason: 
   // matched-delimiter pass — strings + line-comments are skipped to avoid
   // false positives on, e.g., a `{` inside a string literal.
   let i = 0;
-  let depth = { paren: 0, brace: 0, bracket: 0 };
+  const depth = { paren: 0, brace: 0, bracket: 0 };
   while (i < source.length) {
     const c = source[i]!;
     // line comment

@@ -119,7 +119,13 @@ export function compileUrlPattern(src: string | undefined): RegExp | null {
  *  can pin every branch without spinning a NetworkBuffer. */
 export function matchesFilter(
   entry: NetworkEntry,
-  filter: { mime?: string[]; urlPattern: RegExp | null; minBytes?: number; maxBytes?: number; status: ReadonlySet<number> | null },
+  filter: {
+    mime?: string[];
+    urlPattern: RegExp | null;
+    minBytes?: number;
+    maxBytes?: number;
+    status: ReadonlySet<number> | null;
+  },
 ): boolean {
   // Status: defaults to "2xx" when caller didn't supply an allow-list.
   if (filter.status) {
@@ -140,8 +146,18 @@ export function matchesFilter(
   // Byte bounds: only enforced when bytes have landed. A still-in-flight
   // entry without a finished size is admitted at the filter step; the
   // body-fetch step counts its actual bytes against the total cap.
-  if (typeof filter.minBytes === "number" && typeof entry.bytes === "number" && entry.bytes < filter.minBytes) return false;
-  if (typeof filter.maxBytes === "number" && typeof entry.bytes === "number" && entry.bytes > filter.maxBytes) return false;
+  if (
+    typeof filter.minBytes === "number" &&
+    typeof entry.bytes === "number" &&
+    entry.bytes < filter.minBytes
+  )
+    return false;
+  if (
+    typeof filter.maxBytes === "number" &&
+    typeof entry.bytes === "number" &&
+    entry.bytes > filter.maxBytes
+  )
+    return false;
   return true;
 }
 
@@ -233,7 +249,7 @@ export function resolveAssetExportDir(
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
       `asset_export: \`intoDir\` must resolve inside $BROWX_WORKSPACE — got "${rel}". ` +
-      `Use a workspace-relative path.`,
+        `Use a workspace-relative path.`,
     );
   }
   return resolved;
@@ -341,7 +357,15 @@ export async function assetExport(
   let runningBytes = 0;
 
   for (const entry of all) {
-    if (!matchesFilter(entry, { mime: filter.mime, urlPattern, minBytes: filter.minBytes, maxBytes: filter.maxBytes, status: statusSet })) {
+    if (
+      !matchesFilter(entry, {
+        mime: filter.mime,
+        urlPattern,
+        minBytes: filter.minBytes,
+        maxBytes: filter.maxBytes,
+        status: statusSet,
+      })
+    ) {
       continue;
     }
     matchedCount += 1;
@@ -397,11 +421,17 @@ export async function assetExport(
       writeFileSync(resolved, fetched.bytes);
     } catch (err) {
       droppedCount += 1;
-      warnings.push(`write failed for ${entry.url}: ${err instanceof Error ? err.message : String(err)}`);
+      warnings.push(
+        `write failed for ${entry.url}: ${err instanceof Error ? err.message : String(err)}`,
+      );
       continue;
     }
     let sizeBytes = fetched.bytes.length;
-    try { sizeBytes = statSync(resolved).size; } catch { /* best-effort */ }
+    try {
+      sizeBytes = statSync(resolved).size;
+    } catch {
+      /* best-effort */
+    }
     runningBytes += sizeBytes;
     const m: ManifestEntry = {
       url: entry.url,
@@ -425,7 +455,9 @@ export async function assetExport(
     log.warn("asset_export: writing _manifest.json failed", {
       error: err instanceof Error ? err.message : String(err),
     });
-    warnings.push(`writing _manifest.json failed: ${err instanceof Error ? err.message : String(err)}`);
+    warnings.push(
+      `writing _manifest.json failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return {

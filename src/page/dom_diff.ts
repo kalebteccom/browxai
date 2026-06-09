@@ -89,7 +89,9 @@ export function diffDomMaps(before: DomMap | null, after: DomMap | null): DomDif
   const removed: DomDiff["removed"] = [];
   if (!before || !after) {
     return {
-      changed, added, removed,
+      changed,
+      added,
+      removed,
       counts: { changed: 0, added: 0, removed: 0 },
       note: "scope did not resolve before and/or after the action — pass a `scope` selector that exists across the transition",
     };
@@ -103,7 +105,8 @@ export function diffDomMaps(before: DomMap | null, after: DomMap | null): DomDif
     const change: DomChange = { path, tag: a.tag, ...(a.testId ? { testId: a.testId } : {}) };
     let dirty = false;
     if (b.classes !== a.classes) {
-      const bt = tokens(b.classes), at = tokens(a.classes);
+      const bt = tokens(b.classes),
+        at = tokens(a.classes);
       change.classDelta = {
         added: [...at].filter((t) => !bt.has(t)),
         removed: [...bt].filter((t) => !at.has(t)),
@@ -129,7 +132,9 @@ export function diffDomMaps(before: DomMap | null, after: DomMap | null): DomDif
     if (!before[path]) added.push({ path, tag: a.tag, ...(a.testId ? { testId: a.testId } : {}) });
   }
   return {
-    changed, added, removed,
+    changed,
+    added,
+    removed,
     counts: { changed: changed.length, added: added.length, removed: removed.length },
   };
 }

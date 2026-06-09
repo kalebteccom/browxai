@@ -13,7 +13,7 @@ project. There is no hosted offering and none is planned.
 
 - The roadmap (in the `agent-browser-bridge` portfolio repo) defines committed
   direction.
-- The decisions log records the *why* behind each commitment.
+- The decisions log records the _why_ behind each commitment.
 - Owner direction settles open questions.
 - Material spec changes require a roadmap entry before merge.
 

@@ -16,7 +16,10 @@ function fakeMouse() {
   return {
     log,
     mouse: {
-      move: vi.fn(async (x: number, y: number, o?: { steps?: number }) => void log.push(`move(${x},${y}${o?.steps ? `,s${o.steps}` : ""})`)),
+      move: vi.fn(
+        async (x: number, y: number, o?: { steps?: number }) =>
+          void log.push(`move(${x},${y}${o?.steps ? `,s${o.steps}` : ""})`),
+      ),
       down: vi.fn(async () => void log.push("down")),
       up: vi.fn(async () => void log.push("up")),
       dblclick: vi.fn(async (x: number, y: number) => void log.push(`dbl(${x},${y})`)),
@@ -27,14 +30,18 @@ function fakeMouse() {
 function pageWithBox(m: ReturnType<typeof fakeMouse>) {
   return {
     mouse: m.mouse,
-    locator: () => ({ first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }) }),
+    locator: () => ({
+      first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }),
+    }),
   } as never;
 }
 // page that also answers point_probe's evaluate with a canned hit stack
 function pageWithProbe(m: ReturnType<typeof fakeMouse>, cursors: string[]) {
   return {
     mouse: m.mouse,
-    locator: () => ({ first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }) }),
+    locator: () => ({
+      first: () => ({ boundingBox: async () => ({ x: 0, y: 0, width: 100, height: 60 }) }),
+    }),
     evaluate: vi.fn(async () => ({
       stack: cursors.map((cursor, i) => ({ tag: "div", cursor, classes: `layer-${i}` })),
       scrollContainer: null,
@@ -46,7 +53,9 @@ const refs = {} as never;
 
 describe("targetPoint", () => {
   it("returns coords verbatim for a coords target", async () => {
-    const p = await targetPoint(pageWithBox(fakeMouse()), refs, { coords: { x: 7, y: 9 } } as never);
+    const p = await targetPoint(pageWithBox(fakeMouse()), refs, {
+      coords: { x: 7, y: 9 },
+    } as never);
     expect(p).toEqual({ x: 7, y: 9 });
   });
   it("returns the box centre for a ref/selector target", async () => {
@@ -151,7 +160,9 @@ describe("mouseWheel", () => {
   it("rejects when both deltas are zero / unspecified", async () => {
     const { cdp, calls } = fakeCdp();
     await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 } })).rejects.toThrow(/non-zero/);
-    await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 }, deltaX: 0, deltaY: 0 })).rejects.toThrow(/non-zero/);
+    await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 }, deltaX: 0, deltaY: 0 })).rejects.toThrow(
+      /non-zero/,
+    );
     expect(calls).toEqual([]);
   });
 });
@@ -239,7 +250,12 @@ describe("touchAction", () => {
 describe("gesturePinch", () => {
   it("pinch-in (scale<1): two fingers start ±startOffset and converge", async () => {
     const { cdp, calls } = fakeCdp();
-    const r = await gesturePinch(cdp, { coords: { x: 100, y: 100 }, scale: 0.5, steps: 4, startOffset: 40 });
+    const r = await gesturePinch(cdp, {
+      coords: { x: 100, y: 100 },
+      scale: 0.5,
+      steps: 4,
+      startOffset: 40,
+    });
     expect(r.ok).toBe(true);
     expect(r.startOffset).toBe(40);
     expect(r.endOffset).toBe(20);
@@ -267,7 +283,12 @@ describe("gesturePinch", () => {
 
   it("pinch-out (scale>1): fingers diverge from startOffset to startOffset × scale", async () => {
     const { cdp, calls } = fakeCdp();
-    const r = await gesturePinch(cdp, { coords: { x: 50, y: 50 }, scale: 2, steps: 2, startOffset: 30 });
+    const r = await gesturePinch(cdp, {
+      coords: { x: 50, y: 50 },
+      scale: 2,
+      steps: 2,
+      startOffset: 30,
+    });
     expect(r.endOffset).toBe(60);
     // last move: offset 60 → points at (-10, 50) and (110, 50)
     expect(calls.at(-2)?.params).toMatchObject({
@@ -281,8 +302,12 @@ describe("gesturePinch", () => {
 
   it("rejects non-positive scale", async () => {
     const { cdp } = fakeCdp();
-    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: 0 })).rejects.toThrow(/positive/);
-    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: -1 })).rejects.toThrow(/positive/);
+    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: 0 })).rejects.toThrow(
+      /positive/,
+    );
+    await expect(gesturePinch(cdp, { coords: { x: 0, y: 0 }, scale: -1 })).rejects.toThrow(
+      /positive/,
+    );
   });
 
   it("clamps steps into [1,100]", async () => {

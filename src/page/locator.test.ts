@@ -52,7 +52,12 @@ describe("locatorFor — provenance routing", () => {
   it("routes testId refs to the attribute-CSS form for any source", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
-    const ref = refs.forKey("k1", { role: "div", testId: "save-btn", testIdAttr: "data-testid", source: "dom" });
+    const ref = refs.forKey("k1", {
+      role: "div",
+      testId: "save-btn",
+      testIdAttr: "data-testid",
+      source: "dom",
+    });
     locatorFor(page, refs, { ref });
     expect(calls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
   });
@@ -63,9 +68,15 @@ describe("locatorFor — provenance routing", () => {
     // match anything on most pages.
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
-    const ref = refs.forKey("k1", { role: "td", cssPath: "table > tbody > tr:nth-child(4) > td:nth-child(3)", source: "dom" });
+    const ref = refs.forKey("k1", {
+      role: "td",
+      cssPath: "table > tbody > tr:nth-child(4) > td:nth-child(3)",
+      source: "dom",
+    });
     locatorFor(page, refs, { ref });
-    expect(calls).toEqual([{ method: "locator", selector: "table > tbody > tr:nth-child(4) > td:nth-child(3)" }]);
+    expect(calls).toEqual([
+      { method: "locator", selector: "table > tbody > tr:nth-child(4) > td:nth-child(3)" },
+    ]);
   });
 
   it("a11y refs with role+name use getByRole({ name })", () => {
@@ -92,7 +103,11 @@ describe("locatorFor — provenance routing", () => {
   it("'both' refs without a name fall back to cssPath before role-only", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
-    const ref = refs.forKey("k1", { role: "generic", cssPath: "main > div:nth-child(5)", source: "both" });
+    const ref = refs.forKey("k1", {
+      role: "generic",
+      cssPath: "main > div:nth-child(5)",
+      source: "both",
+    });
     locatorFor(page, refs, { ref });
     expect(calls).toEqual([{ method: "locator", selector: "main > div:nth-child(5)" }]);
   });
@@ -108,7 +123,12 @@ describe("locatorFor — provenance routing", () => {
   it("escapes testId values that contain quotes", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
-    const ref = refs.forKey("k1", { role: "div", testId: 'with "quotes"', testIdAttr: "data-testid", source: "dom" });
+    const ref = refs.forKey("k1", {
+      role: "div",
+      testId: 'with "quotes"',
+      testIdAttr: "data-testid",
+      source: "dom",
+    });
     locatorFor(page, refs, { ref });
     expect(calls[0]?.selector).toBe('[data-testid="with \\"quotes\\""]');
   });
@@ -121,8 +141,14 @@ describe("locatorFor — frame-scoped refs (Phase 7)", () => {
     // Reuse the mockPage shape as a Frame surrogate — Page and Frame expose
     // the same locator/getByRole methods we touch from locatorFromInputs.
     const refs = new RefRegistry();
-    const ref = refs.forKey("kf1", { role: "div", testId: "save-btn", testIdAttr: "data-testid", source: "dom", frameId: "f1" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ref = refs.forKey("kf1", {
+      role: "div",
+      testId: "save-btn",
+      testIdAttr: "data-testid",
+      source: "dom",
+      frameId: "f1",
+    });
+
     refs.bindFrame(ref, framePage as any);
     locatorFor(page, refs, { ref });
     expect(pageCalls).toEqual([]);
@@ -132,7 +158,12 @@ describe("locatorFor — frame-scoped refs (Phase 7)", () => {
   it("main-frame ref (no binding) routes through the page — back-compat", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
-    const ref = refs.forKey("kf1", { role: "div", testId: "save-btn", testIdAttr: "data-testid", source: "dom" });
+    const ref = refs.forKey("kf1", {
+      role: "div",
+      testId: "save-btn",
+      testIdAttr: "data-testid",
+      source: "dom",
+    });
     locatorFor(page, refs, { ref });
     expect(calls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
   });
@@ -141,15 +172,22 @@ describe("locatorFor — frame-scoped refs (Phase 7)", () => {
     const { page, calls: pageCalls } = mockPage();
     const { page: framePage, calls: frameCalls } = mockPage();
     const refs = new RefRegistry();
-    const ctx = refs.forKey("kfctx", { role: "main", cssPath: "main", source: "dom", frameId: "f2" });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = refs.forKey("kfctx", {
+      role: "main",
+      cssPath: "main",
+      source: "dom",
+      frameId: "f2",
+    });
+
     refs.bindFrame(ctx, framePage as any);
     locatorFor(page, refs, { selector: '[data-testid="x"]', contextRef: ctx });
     expect(pageCalls).toEqual([]);
     // First call: the contextRef itself was resolved on the frame (cssPath via locator).
     expect(frameCalls[0]).toEqual({ method: "locator", selector: "main" });
     // Then the scoped selector was applied inside that nested locator.
-    expect(frameCalls.some((c) => c.scopedToCssPath === "main" && c.selector === '[data-testid="x"]')).toBe(true);
+    expect(
+      frameCalls.some((c) => c.scopedToCssPath === "main" && c.selector === '[data-testid="x"]'),
+    ).toBe(true);
   });
 });
 
@@ -185,7 +223,11 @@ describe("locatorFor — scoped selectors via contextRef", () => {
       contextRef: cardRef,
     });
     // First call: context ref via getByRole({name}).
-    expect(calls[0]).toEqual({ method: "getByRole", role: "article", options: { name: "Order #42" } });
+    expect(calls[0]).toEqual({
+      method: "getByRole",
+      role: "article",
+      options: { name: "Order #42" },
+    });
     // Second call: scoped getByRole on the context.
     expect(calls[1]).toEqual({
       method: "getByRole",
@@ -198,8 +240,9 @@ describe("locatorFor — scoped selectors via contextRef", () => {
   it("throws when contextRef is unknown", () => {
     const { page } = mockPage();
     const refs = new RefRegistry();
-    expect(() => locatorFor(page, refs, { selector: ".x", contextRef: "e999" }))
-      .toThrow(/unknown contextRef/);
+    expect(() => locatorFor(page, refs, { selector: ".x", contextRef: "e999" })).toThrow(
+      /unknown contextRef/,
+    );
   });
 });
 
@@ -227,8 +270,9 @@ describe("resolveTarget — coords escape hatch", () => {
   it("locatorFor throws if called with a coords target — callers must switch on kind", () => {
     const { page } = mockPage();
     const refs = new RefRegistry();
-    expect(() => locatorFor(page, refs, { coords: { x: 0, y: 0 } }))
-      .toThrow(/coords target has no Locator/);
+    expect(() => locatorFor(page, refs, { coords: { x: 0, y: 0 } })).toThrow(
+      /coords target has no Locator/,
+    );
   });
 });
 
@@ -240,7 +284,6 @@ function countingPage(counts: Record<string, number>) {
   return {
     locator: (selector: string) => ({ first: () => node(selector) }),
     getByRole: (role: string) => ({ first: () => node(`role:${role}`) }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 const selOf = (loc: unknown) => (loc as { __sel: string }).__sel;
@@ -248,18 +291,25 @@ const selOf = (loc: unknown) => (loc as { __sel: string }).__sel;
 describe("resolveTargetChecked — ambiguity-aware acting path", () => {
   it("coords pass straight through, no count() probing", async () => {
     const refs = new RefRegistry();
-    const { resolved, warning } = await resolveTargetChecked(
-      countingPage({}), refs, { coords: { x: 1, y: 2 } },
-    );
+    const { resolved, warning } = await resolveTargetChecked(countingPage({}), refs, {
+      coords: { x: 1, y: 2 },
+    });
     expect(resolved.kind).toBe("coords");
     expect(warning).toBeUndefined();
   });
 
   it("a ref with no cssPath is left on the primary locator (nothing to re-resolve to)", async () => {
     const refs = new RefRegistry();
-    const ref = refs.forKey("k", { role: "button", testId: "go", testIdAttr: "data-testid", source: "a11y" });
+    const ref = refs.forKey("k", {
+      role: "button",
+      testId: "go",
+      testIdAttr: "data-testid",
+      source: "a11y",
+    });
     const { resolved, warning } = await resolveTargetChecked(
-      countingPage({ '[data-testid="go"]': 9 }), refs, { ref },
+      countingPage({ '[data-testid="go"]': 9 }),
+      refs,
+      { ref },
     );
     expect(warning).toBeUndefined();
     expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="go"]');
@@ -268,11 +318,16 @@ describe("resolveTargetChecked — ambiguity-aware acting path", () => {
   it("unique primary → primary used, no warning", async () => {
     const refs = new RefRegistry();
     const ref = refs.forKey("k", {
-      role: "button", testId: "edit", testIdAttr: "data-testid",
-      cssPath: "main > div:nth-child(3) > button", source: "both",
+      role: "button",
+      testId: "edit",
+      testIdAttr: "data-testid",
+      cssPath: "main > div:nth-child(3) > button",
+      source: "both",
     });
     const { resolved, warning } = await resolveTargetChecked(
-      countingPage({ '[data-testid="edit"]': 1 }), refs, { ref },
+      countingPage({ '[data-testid="edit"]': 1 }),
+      refs,
+      { ref },
     );
     expect(warning).toBeUndefined();
     expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="edit"]');
@@ -281,15 +336,19 @@ describe("resolveTargetChecked — ambiguity-aware acting path", () => {
   it("ambiguous primary + resolvable concrete → re-resolve to the concrete element, warn", async () => {
     const refs = new RefRegistry();
     const ref = refs.forKey("k", {
-      role: "button", testId: "edit", testIdAttr: "data-testid",
-      cssPath: "main > div:nth-child(7) > button.edit", source: "both",
+      role: "button",
+      testId: "edit",
+      testIdAttr: "data-testid",
+      cssPath: "main > div:nth-child(7) > button.edit",
+      source: "both",
     });
     const { resolved, warning } = await resolveTargetChecked(
       countingPage({
         '[data-testid="edit"]': 6,
         "main > div:nth-child(7) > button.edit": 1,
       }),
-      refs, { ref },
+      refs,
+      { ref },
     );
     expect(selOf((resolved as { loc: unknown }).loc)).toBe("main > div:nth-child(7) > button.edit");
     expect(warning).toMatch(/ambiguous/);
@@ -299,11 +358,16 @@ describe("resolveTargetChecked — ambiguity-aware acting path", () => {
   it("ambiguous primary + concrete no longer resolves → keep primary, warn to verify", async () => {
     const refs = new RefRegistry();
     const ref = refs.forKey("k", {
-      role: "button", testId: "edit", testIdAttr: "data-testid",
-      cssPath: "stale > path", source: "both",
+      role: "button",
+      testId: "edit",
+      testIdAttr: "data-testid",
+      cssPath: "stale > path",
+      source: "both",
     });
     const { resolved, warning } = await resolveTargetChecked(
-      countingPage({ '[data-testid="edit"]': 4, "stale > path": 0 }), refs, { ref },
+      countingPage({ '[data-testid="edit"]': 4, "stale > path": 0 }),
+      refs,
+      { ref },
     );
     expect(selOf((resolved as { loc: unknown }).loc)).toBe('[data-testid="edit"]');
     expect(warning).toMatch(/no longer resolves/);

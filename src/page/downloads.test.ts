@@ -73,8 +73,18 @@ describe("DownloadsRegistry", () => {
 
   it("records entries with monotonic ids and tracks since(ts)", () => {
     const reg = new DownloadsRegistry("/tmp/x");
-    const a = reg.record({ suggestedFilename: "a.pdf", sizeBytes: 1, path: "/tmp/x/a", capturedAt: 100 });
-    const b = reg.record({ suggestedFilename: "b.csv", sizeBytes: 2, path: "/tmp/x/b", capturedAt: 200 });
+    const a = reg.record({
+      suggestedFilename: "a.pdf",
+      sizeBytes: 1,
+      path: "/tmp/x/a",
+      capturedAt: 100,
+    });
+    const b = reg.record({
+      suggestedFilename: "b.csv",
+      sizeBytes: 2,
+      path: "/tmp/x/b",
+      capturedAt: 200,
+    });
     expect(a.id).toBe("d1");
     expect(b.id).toBe("d2");
     expect(reg.get("d1")?.suggestedFilename).toBe("a.pdf");
@@ -90,7 +100,13 @@ describe("readCapturedBytes", () => {
       const reg = new DownloadsRegistry(dir);
       const p = join(dir, "x.txt");
       writeFileSync(p, "hello");
-      reg.record({ suggestedFilename: "x.txt", mimeType: "text/plain", sizeBytes: 5, path: p, capturedAt: Date.now() });
+      reg.record({
+        suggestedFilename: "x.txt",
+        mimeType: "text/plain",
+        sizeBytes: 5,
+        path: p,
+        capturedAt: Date.now(),
+      });
       const r = readCapturedBytes(reg, "d1");
       expect(r.bytes).toBe(5);
       expect(Buffer.from(r.base64, "base64").toString()).toBe("hello");
@@ -137,7 +153,9 @@ describe("attachDownloadCapture", () => {
         saveCalls.push(path);
         writeFileSync(path, "DATA");
       }),
-      cancel: vi.fn(async () => { cancelled++; }),
+      cancel: vi.fn(async () => {
+        cancelled++;
+      }),
     };
     return { context, download, listener: () => listener, saveCalls, cancelled: () => cancelled };
   }
@@ -147,7 +165,7 @@ describe("attachDownloadCapture", () => {
     try {
       const reg = new DownloadsRegistry(dir);
       const f = fakeContextAndDownload("note.pdf");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       attachDownloadCapture(f.context as any, reg);
       const cb = f.listener();
       expect(cb).toBeDefined();
@@ -168,7 +186,7 @@ describe("attachDownloadCapture", () => {
       const reg = new DownloadsRegistry(dir);
       reg.captureOn = true;
       const f = fakeContextAndDownload("report.pdf");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       attachDownloadCapture(f.context as any, reg);
       f.listener()!(f.download);
       await new Promise((r) => setTimeout(r, 10));
@@ -191,7 +209,7 @@ describe("attachDownloadCapture", () => {
       const reg = new DownloadsRegistry(dir);
       reg.captureOn = true;
       const f = fakeContextAndDownload("../../../etc/passwd");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       attachDownloadCapture(f.context as any, reg);
       f.listener()!(f.download);
       await new Promise((r) => setTimeout(r, 10));

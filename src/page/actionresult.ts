@@ -11,7 +11,13 @@ import type { CDPSession, Page } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { findByRef, serialise } from "./snapshot.js";
-import { NetworkTap, type NetworkEntry, type NetworkSummary, type MutationEntry, type WsFrame } from "./network.js";
+import {
+  NetworkTap,
+  type NetworkEntry,
+  type NetworkSummary,
+  type MutationEntry,
+  type WsFrame,
+} from "./network.js";
 import { ConsoleBuffer } from "./console.js";
 import { truncateToBudget, estimateTokens } from "../util/tokens.js";
 import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
@@ -419,11 +425,7 @@ export async function runInActionWindow(
     // race the action body against the hard anti-wedge deadline. A
     // wedged page op (evaluate/CDP that ignores timeouts) becomes a clean
     // ok:false ActionResult within the deadline instead of an infinite stall.
-    const probe = await withDeadline(
-      Promise.resolve().then(body),
-      deadlineMs,
-      descriptor.type,
-    );
+    const probe = await withDeadline(Promise.resolve().then(body), deadlineMs, descriptor.type);
     if (probe) {
       elementProbe = probe;
       // Body-side mid-action warnings (e.g. click auto-recovery on
@@ -443,7 +445,11 @@ export async function runInActionWindow(
 
   // --- settle ---
   await sleep(settleMs);
-  try { await ctx.page.waitForLoadState("networkidle", { timeout: 1500 }); } catch { /* noisy SPAs never idle */ }
+  try {
+    await ctx.page.waitForLoadState("networkidle", { timeout: 1500 });
+  } catch {
+    /* noisy SPAs never idle */
+  }
 
   // --- post-state ---
   ctx.cdp.off("Page.frameNavigated" as never, onFrameNav as never);
@@ -538,13 +544,17 @@ export async function runInActionWindow(
   // reported routinely setting `mode: "none"` for this reason. Promote to `none`
   // automatically; explicit non-default modes are still honoured.
   const navigationChanged = urlBefore !== urlAfter;
-  const structureChanged = (postTree && preTree) &&
+  const structureChanged =
+    postTree &&
+    preTree &&
     (diffRegions(preRegions, postRegions).appeared.length > 0 ||
-     diffRegions(preRegions, postRegions).removed.length > 0);
+      diffRegions(preRegions, postRegions).removed.length > 0);
   let effectiveMode = mode;
   if (mode === "scoped_snapshot" && !navigationChanged && !structureChanged) {
     effectiveMode = "none";
-    warnings.push("snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:\"full\" if you need the post-action tree anyway");
+    warnings.push(
+      'snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:"full" if you need the post-action tree anyway',
+    );
   }
   // when scoped_snapshot mode is honoured and there are scope-able
   // refs (action's ref + appeared regions), serialise *just those subtrees* instead
@@ -555,93 +565,141 @@ export async function runInActionWindow(
   const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings, scopeRefs);
   // Phase-2: egress-off-allowlist count, for the security model's
   // network-egress-visibility surface (docs/threat-model.md §"What browxai defends against" #2).
-  const egressOffAllowlist = ctx.originPolicy && ctx.originPolicy.allowed.length > 0
-    ? (await import("../policy/confirm.js")).countEgressOffAllowlist(network.requests, ctx.originPolicy)
-    : 0;
+  const egressOffAllowlist =
+    ctx.originPolicy && ctx.originPolicy.allowed.length > 0
+      ? (await import("../policy/confirm.js")).countEgressOffAllowlist(
+          network.requests,
+          ctx.originPolicy,
+        )
+      : 0;
   const mutationsBlock = network.mutations.length > 0 ? { mutations: network.mutations } : {};
   // WS/SSE frames that arrived during this action window.
   const wsSlice = ctx.ws ? ctx.ws.since(tBefore) : [];
   const wsBlock = wsSlice.length > 0 ? { wsFrames: wsSlice } : {};
-  const networkBlock = network.summary.total > 0
-    ? (network.requests.length <= requestCap
-        ? { summary: network.summary, requests: network.requests, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock, ...wsBlock }
-        : (warnings.push(`network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`), { summary: network.summary, ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}), ...mutationsBlock, ...wsBlock }))
-    : { summary: network.summary, ...mutationsBlock, ...wsBlock };
+  const networkBlock =
+    network.summary.total > 0
+      ? network.requests.length <= requestCap
+        ? {
+            summary: network.summary,
+            requests: network.requests,
+            ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}),
+            ...mutationsBlock,
+            ...wsBlock,
+          }
+        : (warnings.push(
+            `network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`,
+          ),
+          {
+            summary: network.summary,
+            ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}),
+            ...mutationsBlock,
+            ...wsBlock,
+          })
+      : { summary: network.summary, ...mutationsBlock, ...wsBlock };
 
-  const dialogsBlock = dialogSlice.length > 0
-    ? dialogSlice.map((d) => {
-        const { ts: _ts, ...pub } = d;
-        return pub;
-      })
-    : undefined;
+  const dialogsBlock =
+    dialogSlice.length > 0
+      ? dialogSlice.map((d) => {
+          const { ts: _ts, ...pub } = d;
+          return pub;
+        })
+      : undefined;
 
-  const permissionRequestsBlock = permissionSlice.length > 0
-    ? permissionSlice.map((r) => {
-        const out: { permission: PermissionRecord["permission"]; origin?: string; handledAs: PermissionRecord["handledAs"] } = {
-          permission: r.permission,
-          handledAs: r.handledAs,
-        };
-        if (r.origin !== undefined) out.origin = r.origin;
-        return out;
-      })
-    : undefined;
+  const permissionRequestsBlock =
+    permissionSlice.length > 0
+      ? permissionSlice.map((r) => {
+          const out: {
+            permission: PermissionRecord["permission"];
+            origin?: string;
+            handledAs: PermissionRecord["handledAs"];
+          } = {
+            permission: r.permission,
+            handledAs: r.handledAs,
+          };
+          if (r.origin !== undefined) out.origin = r.origin;
+          return out;
+        })
+      : undefined;
 
-  const notificationsBlock = notificationSlice.length > 0
-    ? notificationSlice.map((n) => {
-        const out: {
-          title: string; body?: string; icon?: string; tag?: string;
-          timestamp: number; origin?: string;
-          handledAs: NotificationRecord["handledAs"];
-        } = { title: n.title, timestamp: n.timestamp, handledAs: n.handledAs };
-        if (n.body !== undefined) out.body = n.body;
-        if (n.icon !== undefined) out.icon = n.icon;
-        if (n.tag !== undefined) out.tag = n.tag;
-        if (n.origin !== undefined) out.origin = n.origin;
-        return out;
-      })
-    : undefined;
+  const notificationsBlock =
+    notificationSlice.length > 0
+      ? notificationSlice.map((n) => {
+          const out: {
+            title: string;
+            body?: string;
+            icon?: string;
+            tag?: string;
+            timestamp: number;
+            origin?: string;
+            handledAs: NotificationRecord["handledAs"];
+          } = { title: n.title, timestamp: n.timestamp, handledAs: n.handledAs };
+          if (n.body !== undefined) out.body = n.body;
+          if (n.icon !== undefined) out.icon = n.icon;
+          if (n.tag !== undefined) out.tag = n.tag;
+          if (n.origin !== undefined) out.origin = n.origin;
+          return out;
+        })
+      : undefined;
 
-  const fsPickerRequestsBlock = fsPickerSlice.length > 0
-    ? fsPickerSlice.map((r) => {
-        const out: { api: FsPickerRecord["api"]; suggestedName?: string; handledAs: FsPickerRecord["handledAs"] } = {
-          api: r.api,
-          handledAs: r.handledAs,
-        };
-        if (r.suggestedName !== undefined) out.suggestedName = r.suggestedName;
-        return out;
-      })
-    : undefined;
+  const fsPickerRequestsBlock =
+    fsPickerSlice.length > 0
+      ? fsPickerSlice.map((r) => {
+          const out: {
+            api: FsPickerRecord["api"];
+            suggestedName?: string;
+            handledAs: FsPickerRecord["handledAs"];
+          } = {
+            api: r.api,
+            handledAs: r.handledAs,
+          };
+          if (r.suggestedName !== undefined) out.suggestedName = r.suggestedName;
+          return out;
+        })
+      : undefined;
 
   // download-capture slice — downloads that fired during this action window.
   // Off-by-default registry: when capture wasn't toggled on, `since()` returns
   // an empty list and the block is omitted from the result (keeps results
   // unchanged for sessions that don't opt in).
   const downloadsSlice = ctx.downloads ? ctx.downloads.since(tBefore) : [];
-  const downloadsBlock = downloadsSlice.length > 0
-    ? downloadsSlice.map((d) => {
-        const out: {
-          id: string; suggestedFilename: string; rawSuggestedFilename?: string;
-          mimeType?: string; sizeBytes: number; path: string;
-        } = {
-          id: d.id,
-          suggestedFilename: d.suggestedFilename,
-          sizeBytes: d.sizeBytes,
-          path: d.path,
-        };
-        if (d.rawSuggestedFilename !== undefined) out.rawSuggestedFilename = d.rawSuggestedFilename;
-        if (d.mimeType !== undefined) out.mimeType = d.mimeType;
-        return out;
-      })
-    : undefined;
+  const downloadsBlock =
+    downloadsSlice.length > 0
+      ? downloadsSlice.map((d) => {
+          const out: {
+            id: string;
+            suggestedFilename: string;
+            rawSuggestedFilename?: string;
+            mimeType?: string;
+            sizeBytes: number;
+            path: string;
+          } = {
+            id: d.id,
+            suggestedFilename: d.suggestedFilename,
+            sizeBytes: d.sizeBytes,
+            path: d.path,
+          };
+          if (d.rawSuggestedFilename !== undefined)
+            out.rawSuggestedFilename = d.rawSuggestedFilename;
+          if (d.mimeType !== undefined) out.mimeType = d.mimeType;
+          return out;
+        })
+      : undefined;
 
-  const tokensEstimate = estimateTokens(JSON.stringify({
-    navigation, structure, console: consoleSlice, pageErrors, snapshotDelta, network: networkBlock,
-    ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
-    ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
-    ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
-    ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
-    ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
-  }));
+  const tokensEstimate = estimateTokens(
+    JSON.stringify({
+      navigation,
+      structure,
+      console: consoleSlice,
+      pageErrors,
+      snapshotDelta,
+      network: networkBlock,
+      ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
+      ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
+      ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
+      ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
+      ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
+    }),
+  );
 
   // append to recording when (a) action succeeded, (b) recording
   // is active, and (c) the action is *replayable as a flow-file step*. Coord-mode
@@ -654,9 +712,15 @@ export async function runInActionWindow(
     const isElementAction = !NON_TARGETED_ACTIONS.has(descriptor.type);
     const hasReplayableTarget = !!(descriptor.ref || descriptor.selector || opts.recordingHint);
     if (!isElementAction || hasReplayableTarget) {
-      try { ctx.recorder.record(descriptor, urlAfter, opts.recordingHint); } catch { /* swallow */ }
+      try {
+        ctx.recorder.record(descriptor, urlAfter, opts.recordingHint);
+      } catch {
+        /* swallow */
+      }
     } else {
-      warnings.push("recorder: skipped untargeted action (coords-mode click/hover) — flow files replay deterministically by ref/selector; record the equivalent ref-based action if you want this step in the draft");
+      warnings.push(
+        "recorder: skipped untargeted action (coords-mode click/hover) — flow files replay deterministically by ref/selector; record the equivalent ref-based action if you want this step in the draft",
+      );
     }
   }
 
@@ -682,13 +746,24 @@ export async function runInActionWindow(
   };
 }
 
-function topLevelRegions(tree: A11yNode): Map<string, { role: string; name?: string; ref: string }> {
+function topLevelRegions(
+  tree: A11yNode,
+): Map<string, { role: string; name?: string; ref: string }> {
   // "Top-level regions" = nodes whose role indicates a page-level appearance
   // (dialog, alert, alertdialog, status, banner, etc.) anywhere in the tree.
   const out = new Map<string, { role: string; name?: string; ref: string }>();
   const interesting = new Set([
-    "dialog", "alertdialog", "alert", "status", "banner", "complementary",
-    "tablist", "menu", "menubar", "tooltip", "toolbar",
+    "dialog",
+    "alertdialog",
+    "alert",
+    "status",
+    "banner",
+    "complementary",
+    "tablist",
+    "menu",
+    "menubar",
+    "tooltip",
+    "toolbar",
   ]);
   for (const { node } of walk(tree)) {
     if (interesting.has(node.role)) {
@@ -701,7 +776,11 @@ function topLevelRegions(tree: A11yNode): Map<string, { role: string; name?: str
 function diffRegions(
   pre: Map<string, { role: string; name?: string; ref: string }>,
   post: Map<string, { role: string; name?: string; ref: string }>,
-): { appeared: Array<{ role: string; name?: string; ref: string }>; removed: Array<{ role: string; name?: string; ref: string }>; newTabs: Array<{ url: string; title: string }> } {
+): {
+  appeared: Array<{ role: string; name?: string; ref: string }>;
+  removed: Array<{ role: string; name?: string; ref: string }>;
+  newTabs: Array<{ url: string; title: string }>;
+} {
   const appeared: Array<{ role: string; name?: string; ref: string }> = [];
   const removed: Array<{ role: string; name?: string; ref: string }> = [];
   for (const [ref, r] of post) if (!pre.has(ref)) appeared.push(r);
@@ -718,10 +797,17 @@ function describeNavigation(
   try {
     const a = new URL(from);
     const b = new URL(to);
-    if (a.origin === b.origin && a.pathname === b.pathname && a.search === b.search && a.hash !== b.hash) {
+    if (
+      a.origin === b.origin &&
+      a.pathname === b.pathname &&
+      a.search === b.search &&
+      a.hash !== b.hash
+    ) {
       return { changed: true, from, to, kind: "hash" };
     }
-  } catch {/* invalid URL — fall through */}
+  } catch {
+    /* invalid URL — fall through */
+  }
   return { changed: true, from, to, kind: frameNavigated ? "full_load" : "spa" };
 }
 
@@ -744,7 +830,9 @@ function buildSnapshotDelta(
     // Phase-1.5 partial: emit appeared/removed-as-subtrees instead of a unified diff.
     // Closer in spirit to Vercel agent-browser's diff than the previous fallback,
     // without needing the line-stable cross-snapshot diff plumbing.
-    warnings.push("mode=tree_diff: emitting appeared-region subtrees only (full unified diff not yet implemented; pass mode:\"full\" for the post-action tree)");
+    warnings.push(
+      'mode=tree_diff: emitting appeared-region subtrees only (full unified diff not yet implemented; pass mode:"full" for the post-action tree)',
+    );
     renderMode = "scoped_snapshot";
   }
 
@@ -761,10 +849,17 @@ function buildSnapshotDelta(
       return { mode: renderMode, scope: "(scope refs not present in post-tree)", truncated: false };
     }
     const text = subtrees
-      .map((n, i) => (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") + serialise(n))
+      .map(
+        (n, i) =>
+          (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") +
+          serialise(n),
+      )
       .join("\n");
     const { text: trimmed, truncated } = truncateToBudget(text, maxTokens);
-    if (truncated) warnings.push(`snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`);
+    if (truncated)
+      warnings.push(
+        `snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`,
+      );
     return {
       mode: renderMode,
       scope: `scoped to ${subtrees.length} subtree(s) [${scopeRefs.join(", ")}]`,
@@ -779,7 +874,10 @@ function buildSnapshotDelta(
   scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
   const full = serialise(tree);
   const { text, truncated } = truncateToBudget(full, maxTokens);
-  if (truncated) warnings.push(`snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`);
+  if (truncated)
+    warnings.push(
+      `snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`,
+    );
   return { mode: renderMode, scope, tree: text, truncated };
 }
 
@@ -818,10 +916,15 @@ function summariseConsoleErrors(
       `console.errors truncated (showing ${ERROR_MAX_TOTAL_ENTRIES} of ${errors.length}); call console_read for the full ring buffer`,
     );
   }
-  const result: { errors: string[]; warnings: number; truncated_chars?: number } = { errors: out, warnings: 0 };
+  const result: { errors: string[]; warnings: number; truncated_chars?: number } = {
+    errors: out,
+    warnings: 0,
+  };
   if (trimmed > 0) {
     result.truncated_chars = trimmed;
-    warnings.push(`console.errors stack-traces summarised (${trimmed} chars trimmed); call console_read for the full text`);
+    warnings.push(
+      `console.errors stack-traces summarised (${trimmed} chars trimmed); call console_read for the full text`,
+    );
   }
   return result;
 }

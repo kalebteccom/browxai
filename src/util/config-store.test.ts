@@ -5,8 +5,12 @@ import { join } from "node:path";
 import { ConfigStore, envLayer, resolvedToEnv, BUILTIN_DEFAULTS } from "./config-store.js";
 
 let dir: string;
-beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "browx-cfg-")); });
-afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), "browx-cfg-"));
+});
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
 
 describe("ConfigStore precedence", () => {
   it("returns built-in defaults with no env and no file", () => {
@@ -24,25 +28,34 @@ describe("ConfigStore precedence", () => {
   });
 
   it("user layer overrides env; project overrides user; session overrides project", () => {
-    writeFileSync(join(dir, "config.json"), JSON.stringify({
-      user: { capabilities: ["read", "navigation"] },
-      project: { capabilities: ["read", "navigation", "action"] },
-    }));
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        user: { capabilities: ["read", "navigation"] },
+        project: { capabilities: ["read", "navigation", "action"] },
+      }),
+    );
     const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read" });
     expect(s.resolve().capabilities).toEqual(["read", "navigation", "action"]); // project wins
-    expect(s.resolve({ capabilities: ["read", "navigation", "action", "human", "eval"] }).capabilities)
-      .toEqual(["read", "navigation", "action", "human", "eval"]); // session wins
+    expect(
+      s.resolve({ capabilities: ["read", "navigation", "action", "human", "eval"] }).capabilities,
+    ).toEqual(["read", "navigation", "action", "human", "eval"]); // session wins
   });
 
   it("arrays replace (not merge) across layers", () => {
     const s = new ConfigStore(dir, { BROWX_ALLOWED_ORIGINS: "https://a.com,https://b.com" });
-    expect(s.resolve({ allowedOrigins: ["https://c.com"] }).allowedOrigins).toEqual(["https://c.com"]);
+    expect(s.resolve({ allowedOrigins: ["https://c.com"] }).allowedOrigins).toEqual([
+      "https://c.com",
+    ]);
   });
 
   it("unstable.* shallow-merges across layers instead of replacing", () => {
-    writeFileSync(join(dir, "config.json"), JSON.stringify({
-      user: { unstable: { flagA: true, flagB: 1 } },
-    }));
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        user: { unstable: { flagA: true, flagB: 1 } },
+      }),
+    );
     const s = new ConfigStore(dir, {});
     const r = s.resolve({ unstable: { flagB: 2, flagC: "x" } });
     expect(r.unstable).toEqual({ flagA: true, flagB: 2, flagC: "x" });
@@ -82,10 +95,13 @@ describe("ConfigStore precedence", () => {
   });
 
   it("ignores unknown sections in config.json", () => {
-    writeFileSync(join(dir, "config.json"), JSON.stringify({
-      user: { headless: true },
-      bogus: { capabilities: ["nope"] },
-    }));
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        user: { headless: true },
+        bogus: { capabilities: ["nope"] },
+      }),
+    );
     const s = new ConfigStore(dir, {});
     expect(s.resolve().headless).toBe(true);
     expect(s.resolve().capabilities).toEqual(BUILTIN_DEFAULTS.capabilities);
@@ -102,8 +118,9 @@ describe("ConfigStore precedence", () => {
 
 describe("envLayer", () => {
   it("parses comma lists and the boolean headless flag", () => {
-    expect(envLayer({ BROWX_TEST_ATTRIBUTES: "data-testid, data-x ", BROWX_HEADLESS: "1" }))
-      .toEqual({ testAttributes: ["data-testid", "data-x"], headless: true });
+    expect(
+      envLayer({ BROWX_TEST_ATTRIBUTES: "data-testid, data-x ", BROWX_HEADLESS: "1" }),
+    ).toEqual({ testAttributes: ["data-testid", "data-x"], headless: true });
   });
   it("omits keys with no env present (so defaults survive)", () => {
     expect(envLayer({})).toEqual({});

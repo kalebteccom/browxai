@@ -83,7 +83,9 @@ function normalizeNetwork(input: NetworkEmulationInput): NetworkEmulationState {
   };
   if (input.packetLoss !== undefined) {
     if (!Number.isFinite(input.packetLoss) || input.packetLoss < 0 || input.packetLoss > 1) {
-      throw new Error(`network_emulate: packetLoss must be between 0 and 1 (got ${input.packetLoss})`);
+      throw new Error(
+        `network_emulate: packetLoss must be between 0 and 1 (got ${input.packetLoss})`,
+      );
     }
     state.packetLoss = input.packetLoss;
   }
@@ -100,8 +102,13 @@ function normalizeCpu(input: CpuEmulationInput): CpuEmulationState {
 }
 
 function isNetworkReset(s: NetworkEmulationState): boolean {
-  return !s.offline && s.latencyMs === 0 && s.downloadBps === 0 && s.uploadBps === 0
-    && (s.packetLoss === undefined || s.packetLoss === 0);
+  return (
+    !s.offline &&
+    s.latencyMs === 0 &&
+    s.downloadBps === 0 &&
+    s.uploadBps === 0 &&
+    (s.packetLoss === undefined || s.packetLoss === 0)
+  );
 }
 
 function isCpuReset(s: CpuEmulationState): boolean {
@@ -155,8 +162,12 @@ export class EmulationRegistry {
   }
 
   /** Test introspection: the currently-cached state, or undefined if not set. */
-  currentNetwork(): NetworkEmulationState | undefined { return this.network; }
-  currentCpu(): CpuEmulationState | undefined { return this.cpu; }
+  currentNetwork(): NetworkEmulationState | undefined {
+    return this.network;
+  }
+  currentCpu(): CpuEmulationState | undefined {
+    return this.cpu;
+  }
 
   /** Defensive re-apply: CDP overrides are *usually* per-target and survive
    *  navigation, but cross-process renderer swaps + incognito teardowns can
@@ -170,7 +181,10 @@ export class EmulationRegistry {
       try {
         // re-acquire the CDP session via the page's context — the original
         // session ref may be stale after a renderer swap.
-        const cdp = await page.context().newCDPSession(page).catch(() => null);
+        const cdp = await page
+          .context()
+          .newCDPSession(page)
+          .catch(() => null);
         if (!cdp) return;
         if (this.network && !isNetworkReset(this.network)) {
           await this.sendNetwork(cdp, this.network).catch(() => undefined);

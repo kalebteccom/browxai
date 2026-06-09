@@ -19,16 +19,26 @@ import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.j
 // by the inner op too (not just the outer race in runInActionWindow).
 const DEFAULT_TIMEOUT_MS = 5_000;
 
-export interface ClickArgs extends ActionWindowOptions { target: ActionTarget; button?: "left" | "right" | "middle"; force?: boolean; }
+export interface ClickArgs extends ActionWindowOptions {
+  target: ActionTarget;
+  button?: "left" | "right" | "middle";
+  force?: boolean;
+}
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "click", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
-  const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
+  const opts = warning
+    ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] }
+    : args;
   return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
       const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
       const focusBefore = await captureFocusedRef(ctx.page);
-      await ctx.page.mouse.click(resolved.x, resolved.y, args.button ? { button: args.button } : undefined);
+      await ctx.page.mouse.click(
+        resolved.x,
+        resolved.y,
+        args.button ? { button: args.button } : undefined,
+      );
       const hitAfter = await captureHit(ctx.page, resolved.x, resolved.y);
       const focusAfter = await captureFocusedRef(ctx.page);
       return {
@@ -68,7 +78,10 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
       await resolved.loc.click({ timeout: actionabilityMs, button: args.button });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      const isActionabilityTimeout = /Timeout|exceeded|element is not stable|element is not visible|element is outside of the viewport|element is not enabled|intercepts pointer events|did not receive/i.test(msg);
+      const isActionabilityTimeout =
+        /Timeout|exceeded|element is not stable|element is not visible|element is outside of the viewport|element is not enabled|intercepts pointer events|did not receive/i.test(
+          msg,
+        );
       if (!isActionabilityTimeout) throw e;
       // Auto-recovery: the actionability check timed out. Try once with
       // `force: true` — common on busy SPAs (perpetual rAF / WS keepalives /
@@ -88,7 +101,10 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
   });
 }
 
-export interface FillArgs extends ActionWindowOptions { target: ActionTarget; value: string; }
+export interface FillArgs extends ActionWindowOptions {
+  target: ActionTarget;
+  value: string;
+}
 export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionResult> {
   // Secrets materialisation: a `<NAME>`-shaped `value` is swapped for the
   // registered real string AT dispatch. The descriptor records the alias
@@ -98,7 +114,11 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   const mat = materialiseValue(ctx, args.value);
   if (!mat.ok) return failedFill(args, mat.error!);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
-  const descriptor: DispatchedAction = { type: "fill", value: descriptorValue, ...refOrSelector(args.target) };
+  const descriptor: DispatchedAction = {
+    type: "fill",
+    value: descriptorValue,
+    ...refOrSelector(args.target),
+  };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
@@ -113,15 +133,23 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   });
 }
 
-export interface NavigateArgs extends ActionWindowOptions { url: string; }
+export interface NavigateArgs extends ActionWindowOptions {
+  url: string;
+}
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "navigate", url: args.url };
   return runInActionWindow(ctx, descriptor, args, async () => {
-    await ctx.page.goto(args.url, { waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+    await ctx.page.goto(args.url, {
+      waitUntil: "domcontentloaded",
+      timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+    });
   });
 }
 
-export interface PressArgs extends ActionWindowOptions { target?: ActionTarget; key: string; }
+export interface PressArgs extends ActionWindowOptions {
+  target?: ActionTarget;
+  key: string;
+}
 export async function press(ctx: ActionContext, args: PressArgs): Promise<ActionResult> {
   // Secrets materialisation on `key` — mirrors `fill`. The realistic case is
   // a one-shot OTP/passphrase that the agent needs to "press" into a focused
@@ -131,7 +159,11 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   const mat = materialiseValue(ctx, args.key);
   if (!mat.ok) return failedPress(args, mat.error!);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
-  const descriptor: DispatchedAction = { type: "press", value: descriptorValue, ...(args.target ? refOrSelector(args.target) : {}) };
+  const descriptor: DispatchedAction = {
+    type: "press",
+    value: descriptorValue,
+    ...(args.target ? refOrSelector(args.target) : {}),
+  };
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target) {
       const loc = locatorFor(ctx.page, ctx.refs, args.target);
@@ -145,11 +177,15 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   });
 }
 
-export interface HoverArgs extends ActionWindowOptions { target: ActionTarget; }
+export interface HoverArgs extends ActionWindowOptions {
+  target: ActionTarget;
+}
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "hover", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
-  const opts = warning ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] } : args;
+  const opts = warning
+    ? { ...args, extraWarnings: [...(args.extraWarnings ?? []), warning] }
+    : args;
   return runInActionWindow(ctx, descriptor, opts, async () => {
     if (resolved.kind === "coords") {
       const hitBefore = await captureHit(ctx.page, resolved.x, resolved.y);
@@ -163,9 +199,16 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
   });
 }
 
-export interface SelectArgs extends ActionWindowOptions { target: ActionTarget; values: string[]; }
+export interface SelectArgs extends ActionWindowOptions {
+  target: ActionTarget;
+  values: string[];
+}
 export async function select(ctx: ActionContext, args: SelectArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = { type: "select", value: args.values.join(", "), ...refOrSelector(args.target) };
+  const descriptor: DispatchedAction = {
+    type: "select",
+    value: args.values.join(", "),
+    ...refOrSelector(args.target),
+  };
   return runInActionWindow(ctx, descriptor, args, async () => {
     const loc = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(loc);
@@ -196,8 +239,7 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
       // engine, contradicting the documented "substring" contract (a short
       // token inside a longer string timed out). Visible-only; throws on
       // timeout (caught by the action window → ok:false).
-      await ctx.page.getByText(wanted).first()
-        .waitFor({ state: "visible", timeout });
+      await ctx.page.getByText(wanted).first().waitFor({ state: "visible", timeout });
       return { stillAttached: true };
     });
   }
@@ -251,7 +293,9 @@ export function scrollMode(args: ScrollArgs): ScrollMode {
     return wantsInto ? { kind: "into-view" } : { kind: "container" };
   }
   if (args.to === undefined && args.by === undefined) {
-    throw new Error("scroll: no-op — pass `to` (top|bottom|left|right) or `by` {x,y}, or a `target` to scroll into view");
+    throw new Error(
+      "scroll: no-op — pass `to` (top|bottom|left|right) or `by` {x,y}, or a `target` to scroll into view",
+    );
   }
   return { kind: "window" };
 }
@@ -296,7 +340,6 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     }
     // window
     await ctx.page.evaluate(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = globalThis as any;
@@ -317,54 +360,68 @@ type ScrollGeometry = NonNullable<ElementProbe["scroll"]>;
 
 /** Post-scroll geometry of the document/window scroller. */
 async function windowScrollGeometry(page: Page): Promise<ScrollGeometry | undefined> {
-  return page.evaluate((): ScrollGeometry | undefined => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = globalThis as any;
-    const d = w.document;
-    const s = d?.scrollingElement || d?.documentElement;
-    if (!s) return undefined;
-    const x = w.scrollX ?? s.scrollLeft ?? 0;
-    const y = w.scrollY ?? s.scrollTop ?? 0;
-    return {
-      x, y,
-      scrollWidth: s.scrollWidth,
-      scrollHeight: s.scrollHeight,
-      clientWidth: s.clientWidth,
-      clientHeight: s.clientHeight,
-      atTop: y <= 1,
-      atBottom: y + s.clientHeight >= s.scrollHeight - 1,
-    };
-  }).catch(() => undefined);
+  return page
+    .evaluate((): ScrollGeometry | undefined => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const w = globalThis as any;
+      const d = w.document;
+      const s = d?.scrollingElement || d?.documentElement;
+      if (!s) return undefined;
+      const x = w.scrollX ?? s.scrollLeft ?? 0;
+      const y = w.scrollY ?? s.scrollTop ?? 0;
+      return {
+        x,
+        y,
+        scrollWidth: s.scrollWidth,
+        scrollHeight: s.scrollHeight,
+        clientWidth: s.clientWidth,
+        clientHeight: s.clientHeight,
+        atTop: y <= 1,
+        atBottom: y + s.clientHeight >= s.scrollHeight - 1,
+      };
+    })
+    .catch(() => undefined);
 }
 
 /** Post-scroll geometry of a scroll-container element. */
 async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometry | undefined> {
-  return loc.evaluate((el: unknown): ScrollGeometry | undefined => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const e = el as any;
-    if (!e) return undefined;
-    const y = e.scrollTop ?? 0;
-    return {
-      x: e.scrollLeft ?? 0,
-      y,
-      scrollWidth: e.scrollWidth,
-      scrollHeight: e.scrollHeight,
-      clientWidth: e.clientWidth,
-      clientHeight: e.clientHeight,
-      atTop: y <= 1,
-      atBottom: y + e.clientHeight >= e.scrollHeight - 1,
-    };
-  }).catch(() => undefined);
+  return loc
+    .evaluate((el: unknown): ScrollGeometry | undefined => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const e = el as any;
+      if (!e) return undefined;
+      const y = e.scrollTop ?? 0;
+      return {
+        x: e.scrollLeft ?? 0,
+        y,
+        scrollWidth: e.scrollWidth,
+        scrollHeight: e.scrollHeight,
+        clientWidth: e.clientWidth,
+        clientHeight: e.clientHeight,
+        atTop: y <= 1,
+        atBottom: y + e.clientHeight >= e.scrollHeight - 1,
+      };
+    })
+    .catch(() => undefined);
 }
 
-export interface SetViewportArgs extends ActionWindowOptions { width: number; height: number; }
+export interface SetViewportArgs extends ActionWindowOptions {
+  width: number;
+  height: number;
+}
 /** mid-session viewport resize. `page.setViewportSize` re-lays-out and
  *  often triggers responsive re-render / lazy-load — wrapped in the action
  *  window so `structure` / `network` / `snapshotDelta` show what changed.
  *  Device emulation (isMobile/touch/UA/DPR) is creation-time only; this only
  *  changes the size. */
-export async function setViewport(ctx: ActionContext, args: SetViewportArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = { type: "setViewport", value: `${args.width}x${args.height}` };
+export async function setViewport(
+  ctx: ActionContext,
+  args: SetViewportArgs,
+): Promise<ActionResult> {
+  const descriptor: DispatchedAction = {
+    type: "setViewport",
+    value: `${args.width}x${args.height}`,
+  };
   return runInActionWindow(ctx, descriptor, args, async () => {
     await ctx.page.setViewportSize({ width: args.width, height: args.height });
     return { stillAttached: true };
@@ -390,11 +447,20 @@ export interface ChooseOptionArgs extends ActionWindowOptions {
  * (type-and-press-Enter) — that's a different primitive and prone to picking
  * the wrong option in dense lists.
  */
-export async function chooseOption(ctx: ActionContext, args: ChooseOptionArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = { type: "chooseOption", value: args.option, ...targetDescriptor(args.target) };
+export async function chooseOption(
+  ctx: ActionContext,
+  args: ChooseOptionArgs,
+): Promise<ActionResult> {
+  const descriptor: DispatchedAction = {
+    type: "chooseOption",
+    value: args.option,
+    ...targetDescriptor(args.target),
+  };
   return runInActionWindow(ctx, descriptor, args, async () => {
     if (args.target.coords) {
-      throw new Error("choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords");
+      throw new Error(
+        "choose_option requires a ref/selector/named target (the combobox/menu trigger), not coords",
+      );
     }
     const trigger = locatorFor(ctx.page, ctx.refs, args.target);
     const pre = await preProbe(trigger);
@@ -438,14 +504,23 @@ async function resolveOption(page: Page, text: string, exact: boolean): Promise<
 export interface GoBackArgs extends ActionWindowOptions {}
 export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goBack" }, args, async () => {
-    await ctx.page.goBack({ waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+    await ctx.page.goBack({
+      waitUntil: "domcontentloaded",
+      timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+    });
   });
 }
 
 export interface GoForwardArgs extends ActionWindowOptions {}
-export async function goForward(ctx: ActionContext, args: GoForwardArgs = {}): Promise<ActionResult> {
+export async function goForward(
+  ctx: ActionContext,
+  args: GoForwardArgs = {},
+): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goForward" }, args, async () => {
-    await ctx.page.goForward({ waitUntil: "domcontentloaded", timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+    await ctx.page.goForward({
+      waitUntil: "domcontentloaded",
+      timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+    });
   });
 }
 
@@ -468,7 +543,10 @@ export function materialiseValue(
  *  rejection (no Playwright op ever runs). Mirrors the action-window error
  *  envelope so the agent sees a consistent shape. */
 function failedFill(args: FillArgs, message: string): ActionResult {
-  return secretsFailure({ type: "fill", value: args.value, ...refOrSelector(args.target) }, message);
+  return secretsFailure(
+    { type: "fill", value: args.value, ...refOrSelector(args.target) },
+    message,
+  );
 }
 function failedPress(args: PressArgs, message: string): ActionResult {
   return secretsFailure(
@@ -500,10 +578,12 @@ export function maskProbe(probed: ElementProbe | void, ctx: ActionContext): Elem
   if (!probed || !ctx.secrets) return probed;
   const out: ElementProbe = { ...probed };
   if (typeof out.value === "string") out.value = ctx.secrets.applyMaskInText(out.value);
-  if (typeof out.displayText === "string") out.displayText = ctx.secrets.applyMaskInText(out.displayText);
+  if (typeof out.displayText === "string")
+    out.displayText = ctx.secrets.applyMaskInText(out.displayText);
   if (out.ownerControl) {
     const oc = { ...out.ownerControl };
-    if (oc.displayTextBefore) oc.displayTextBefore = ctx.secrets.applyMaskInText(oc.displayTextBefore);
+    if (oc.displayTextBefore)
+      oc.displayTextBefore = ctx.secrets.applyMaskInText(oc.displayTextBefore);
     if (oc.displayTextAfter) oc.displayTextAfter = ctx.secrets.applyMaskInText(oc.displayTextAfter);
     if (oc.label) oc.label = ctx.secrets.applyMaskInText(oc.label);
     out.ownerControl = oc;
@@ -563,7 +643,12 @@ export async function preProbe(loc: Locator): Promise<PreProbeData> {
  *
  * Exported for unit tests.
  */
-export async function probe(loc: Locator, target: ActionTarget, valueRequested?: string, pre?: PreProbeData): Promise<ElementProbe> {
+export async function probe(
+  loc: Locator,
+  target: ActionTarget,
+  valueRequested?: string,
+  pre?: PreProbeData,
+): Promise<ElementProbe> {
   const ref = target.ref;
   // Post-action probe runs MULTIPLE `loc.evaluate()` calls — each defaults to
   // Playwright's 30s timeout. On busy SPAs where re-renders re-attach the
@@ -577,19 +662,25 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     const count = await loc.count();
     if (count === 0) return { ref, stillAttached: false };
     const focused = await loc
-      .evaluate((el: { ownerDocument?: { activeElement?: unknown } }) => el === el.ownerDocument?.activeElement, undefined, { timeout: PROBE_EVAL_MS })
+      .evaluate(
+        (el: { ownerDocument?: { activeElement?: unknown } }) =>
+          el === el.ownerDocument?.activeElement,
+        undefined,
+        { timeout: PROBE_EVAL_MS },
+      )
       .catch(() => false);
     const inputValue = await loc.inputValue({ timeout: PROBE_EVAL_MS }).catch(() => undefined);
-    const value = inputValue !== undefined
-      ? inputValue
-      : await loc
-          .evaluate(
-            (el: { isContentEditable?: boolean; textContent?: string | null }) =>
-              el.isContentEditable ? (el.textContent ?? "") : null,
-            undefined,
-            { timeout: PROBE_EVAL_MS },
-          )
-          .catch(() => null);
+    const value =
+      inputValue !== undefined
+        ? inputValue
+        : await loc
+            .evaluate(
+              (el: { isContentEditable?: boolean; textContent?: string | null }) =>
+                el.isContentEditable ? (el.textContent ?? "") : null,
+              undefined,
+              { timeout: PROBE_EVAL_MS },
+            )
+            .catch(() => null);
     const checked = await loc
       .evaluate(
         (el: { tagName?: string; type?: string; checked?: boolean; indeterminate?: boolean }) => {
@@ -613,9 +704,22 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
       .evaluate(
         (el: unknown) => {
           const DOC_BODY_TAG = "BODY";
-          const isElement = (n: unknown): n is { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string } =>
-            !!n && typeof n === "object";
-          type ElLike = { parentElement: unknown; tagName?: string; getAttribute?: (k: string) => string | null; dataset?: Record<string, string | undefined>; innerText?: string };
+          const isElement = (
+            n: unknown,
+          ): n is {
+            parentElement: unknown;
+            tagName?: string;
+            getAttribute?: (k: string) => string | null;
+            dataset?: Record<string, string | undefined>;
+            innerText?: string;
+          } => !!n && typeof n === "object";
+          type ElLike = {
+            parentElement: unknown;
+            tagName?: string;
+            getAttribute?: (k: string) => string | null;
+            dataset?: Record<string, string | undefined>;
+            innerText?: string;
+          };
           let cur: ElLike | null = isElement(el) ? el : null;
           for (let i = 0; i < 4 && cur; i++) {
             const next = cur.parentElement;
@@ -649,7 +753,9 @@ export async function probe(loc: Locator, target: ActionTarget, valueRequested?:
     // post-action owner/container state. Always read; compose deltas
     // against `pre` when supplied. Same in-page script as preProbe, so the
     // pre/post values are directly comparable.
-    const post = await loc.evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS }).catch(() => ({} as PreProbeData));
+    const post = await loc
+      .evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS })
+      .catch(() => ({}) as PreProbeData);
     if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
       const before = pre.ownerText;
       const after = post.ownerText;
@@ -718,12 +824,15 @@ const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
     if (!out.container) {
       const tag = cur.tagName ? (cur.tagName as string).toLowerCase() : "";
       if ((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag)) {
-        const kind = (role && ROW_ROLES.has(role)) ? role : tag;
+        const kind = role && ROW_ROLES.has(role) ? role : tag;
         const rowText = ((cur.innerText || "") as string).trim().replace(/\s+/g, " ");
         const capped = rowText.length > 200 ? rowText.slice(0, 199) + "…" : rowText;
         // rowKey = first non-empty text node within the container.
         let rowKey: string | undefined;
-        const firstText = (cur.innerText || "").trim().split("\n").find((s: string) => s.trim().length > 0);
+        const firstText = (cur.innerText || "")
+          .trim()
+          .split("\n")
+          .find((s: string) => s.trim().length > 0);
         if (firstText) {
           const t = firstText.trim();
           rowKey = t.length > 80 ? t.slice(0, 79) + "…" : t;
@@ -745,48 +854,56 @@ const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
  *  with role/text/ancestor context. Returns null when nothing's there.
  *  Uses `any` for the in-page DOM side — TS's DOM lib isn't loaded here. */
 async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | null> {
-  return page.evaluate(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ x, y }: { x: number; y: number }): HitPoint | null => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc: any = (globalThis as any).document;
-      if (!doc) return null;
-      const el = doc.elementFromPoint(x, y);
-      if (!el) return null;
-      const tag: string = (el.tagName || "").toLowerCase();
-      const role: string | undefined = el.getAttribute ? el.getAttribute("role") || undefined : undefined;
-      const text = ((el.textContent || "") as string).trim().replace(/\s+/g, " ").slice(0, 120);
-      const parent = el.parentElement;
-      const ancestorText = parent
-        ? ((parent.innerText || "") as string).trim().replace(/\s+/g, " ").slice(0, 200)
-        : undefined;
-      const out: HitPoint = { tag };
-      if (role) out.role = role;
-      if (text) out.text = text;
-      if (ancestorText) out.ancestorText = ancestorText;
-      return out;
-    },
-    { x, y },
-  ).catch(() => null);
+  return page
+    .evaluate(
+      ({ x, y }: { x: number; y: number }): HitPoint | null => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc: any = (globalThis as any).document;
+        if (!doc) return null;
+        const el = doc.elementFromPoint(x, y);
+        if (!el) return null;
+        const tag: string = (el.tagName || "").toLowerCase();
+        const role: string | undefined = el.getAttribute
+          ? el.getAttribute("role") || undefined
+          : undefined;
+        const text = ((el.textContent || "") as string).trim().replace(/\s+/g, " ").slice(0, 120);
+        const parent = el.parentElement;
+        const ancestorText = parent
+          ? ((parent.innerText || "") as string).trim().replace(/\s+/g, " ").slice(0, 200)
+          : undefined;
+        const out: HitPoint = { tag };
+        if (role) out.role = role;
+        if (text) out.text = text;
+        if (ancestorText) out.ancestorText = ancestorText;
+        return out;
+      },
+      { x, y },
+    )
+    .catch(() => null);
 }
 
 /** Best-effort identity for the active element so we can report whether focus
  *  shifted during a coord action. Returns a stable-ish key (tag + id + role +
  *  testid + first text). */
 async function captureFocusedRef(page: Page): Promise<string | null> {
-  return page.evaluate((): string | null => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const doc: any = (globalThis as any).document;
-    if (!doc) return null;
-    const a = doc.activeElement;
-    if (!a) return null;
-    const id: string = a.id || "";
-    const role: string = a.getAttribute ? (a.getAttribute("role") || "") : "";
-    const testid: string = a.getAttribute
-      ? (a.getAttribute("data-testid") || a.getAttribute("data-test") || a.getAttribute("data-cy") || "")
-      : "";
-    const tag: string = (a.tagName || "").toLowerCase();
-    const txt = ((a.textContent || "") as string).trim().slice(0, 60);
-    return `${tag}#${id}@${role}[${testid}]:${txt}`;
-  }).catch(() => null);
+  return page
+    .evaluate((): string | null => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const doc: any = (globalThis as any).document;
+      if (!doc) return null;
+      const a = doc.activeElement;
+      if (!a) return null;
+      const id: string = a.id || "";
+      const role: string = a.getAttribute ? a.getAttribute("role") || "" : "";
+      const testid: string = a.getAttribute
+        ? a.getAttribute("data-testid") ||
+          a.getAttribute("data-test") ||
+          a.getAttribute("data-cy") ||
+          ""
+        : "";
+      const tag: string = (a.tagName || "").toLowerCase();
+      const txt = ((a.textContent || "") as string).trim().slice(0, 60);
+      return `${tag}#${id}@${role}[${testid}]:${txt}`;
+    })
+    .catch(() => null);
 }

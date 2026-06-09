@@ -31,7 +31,15 @@
 // the gap is documented; no extra work here.
 
 import { resolve, sep, join } from "node:path";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync, rmSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  readdirSync,
+  statSync,
+  rmSync,
+} from "node:fs";
 import type { BrowserContext, Page } from "playwright-core";
 
 /** Playwright's `storageState()` return shape (re-stated locally so callers
@@ -77,7 +85,7 @@ export function assertSafeName(kind: string, name: string): void {
   if (!name || !SAFE_NAME.test(name) || name === "." || name === "..") {
     throw new Error(
       `${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' ` +
-      `(no path separators, no "..")`,
+        `(no path separators, no "..")`,
     );
   }
 }
@@ -90,7 +98,7 @@ export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: str
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
       `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}". ` +
-      `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
+        `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
     );
   }
   return resolved;
@@ -119,15 +127,23 @@ export async function dumpStorageState(
 }
 
 /** Read + validate a state blob from a workspace-rooted file path. */
-export function readStorageStateFile(workspaceRoot: string, p: string, tool: string): StorageStateBlob {
+export function readStorageStateFile(
+  workspaceRoot: string,
+  p: string,
+  tool: string,
+): StorageStateBlob {
   const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
   if (!existsSync(resolved)) {
     throw new Error(`${tool}: storage-state file not found at "${resolved}"`);
   }
   const raw = readFileSync(resolved, "utf8");
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch (err) {
-    throw new Error(`${tool}: storage-state file "${resolved}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `${tool}: storage-state file "${resolved}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   validateStorageStateShape(parsed, tool);
   return parsed as StorageStateBlob;
@@ -135,7 +151,9 @@ export function readStorageStateFile(workspaceRoot: string, p: string, tool: str
 
 function validateStorageStateShape(value: unknown, tool: string): void {
   if (!value || typeof value !== "object") {
-    throw new Error(`${tool}: storage-state must be an object with \`cookies\` and \`origins\` arrays`);
+    throw new Error(
+      `${tool}: storage-state must be an object with \`cookies\` and \`origins\` arrays`,
+    );
   }
   const v = value as Record<string, unknown>;
   if (!Array.isArray(v.cookies)) {
@@ -158,7 +176,12 @@ export async function injectStorageState(
   page: Page,
   state: StorageStateBlob,
   opts: { mode?: "replace" | "merge" } = {},
-): Promise<{ mode: "replace" | "merge"; cookiesApplied: number; originsApplied: number; originsSkipped: string[] }> {
+): Promise<{
+  mode: "replace" | "merge";
+  cookiesApplied: number;
+  originsApplied: number;
+  originsSkipped: string[];
+}> {
   const mode = opts.mode ?? "replace";
   if (mode === "replace") {
     // setStorageState clears existing cookies + localStorage + IndexedDB first.
@@ -174,7 +197,13 @@ export async function injectStorageState(
   if (state.cookies.length) await context.addCookies(state.cookies);
   let originsApplied = 0;
   const originsSkipped: string[] = [];
-  const currentOrigin = (() => { try { return new URL(page.url()).origin; } catch { return null; } })();
+  const currentOrigin = (() => {
+    try {
+      return new URL(page.url()).origin;
+    } catch {
+      return null;
+    }
+  })();
   for (const o of state.origins) {
     if (currentOrigin === o.origin) {
       await page.evaluate((entries: ReadonlyArray<{ name: string; value: string }>) => {
@@ -196,7 +225,9 @@ export async function cookiesGet(
 ): Promise<StorageStateBlob["cookies"][number] | null> {
   if (!args.name) throw new Error("cookies_get: `name` is required");
   const list = await context.cookies(args.url ? [args.url] : undefined);
-  return (list.find((c) => c.name === args.name) ?? null) as StorageStateBlob["cookies"][number] | null;
+  return (list.find((c) => c.name === args.name) ?? null) as
+    | StorageStateBlob["cookies"][number]
+    | null;
 }
 
 export async function cookiesList(
@@ -216,7 +247,7 @@ export async function cookiesSet(
   if (!args.url && !(args.domain && args.path)) {
     throw new Error(
       "cookies_set: pass either `url` (recommended) OR both `domain` and `path` — " +
-      "Playwright's addCookies requires one of those two forms",
+        "Playwright's addCookies requires one of those two forms",
     );
   }
   await context.addCookies([args]);
@@ -262,11 +293,15 @@ export type WebStorageKind = "localStorage" | "sessionStorage";
  *  hint. */
 function webStorageGuard(page: Page, kind: WebStorageKind, tool: string): void {
   let url: string;
-  try { url = page.url(); } catch { url = ""; }
+  try {
+    url = page.url();
+  } catch {
+    url = "";
+  }
   if (!url || url === "about:blank") {
     throw new Error(
       `${tool}: ${kind} is origin-scoped and the page is at "${url || "(unknown)"}". ` +
-      `Navigate the session to the target origin first.`,
+        `Navigate the session to the target origin first.`,
     );
   }
 }
@@ -316,7 +351,10 @@ export async function webStorageList(
     `for (var i = 0; i < s.length; i++) { var k = s.key(i); if (k === null) continue; ` +
     `out.push({ key: k, value: s.getItem(k) || "" }); } ` +
     `return { entries: out, origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as { entries: Array<{ key: string; value: string }>; origin: string };
+  return (await page.evaluate(expr)) as {
+    entries: Array<{ key: string; value: string }>;
+    origin: string;
+  };
 }
 
 export async function webStorageDelete(
@@ -361,7 +399,14 @@ export async function authSave(
   context: BrowserContext,
   workspaceRoot: string,
   name: string,
-): Promise<{ ok: true; name: string; path: string; bytes: number; cookies: number; origins: number }> {
+): Promise<{
+  ok: true;
+  name: string;
+  path: string;
+  bytes: number;
+  cookies: number;
+  origins: number;
+}> {
   // `dest` + `dir` below are rooted at `workspaceRoot` ($BROWX_WORKSPACE) by
   // construction — `authStatePath` validates the name through `assertSafeName`
   // (no separators / no traversal) before joining under workspaceRoot.
@@ -388,12 +433,18 @@ export async function authSave(
 export function authLoad(workspaceRoot: string, name: string): StorageStateBlob {
   const path = authStatePath(workspaceRoot, name);
   if (!existsSync(path)) {
-    throw new Error(`auth_load: no named state "${name}" — call auth_save({ name }) first (looked for ${path})`);
+    throw new Error(
+      `auth_load: no named state "${name}" — call auth_save({ name }) first (looked for ${path})`,
+    );
   }
   const raw = readFileSync(path, "utf8");
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); } catch (err) {
-    throw new Error(`auth_load: named state "${name}" is corrupt JSON (${err instanceof Error ? err.message : String(err)})`);
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(
+      `auth_load: named state "${name}" is corrupt JSON (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   validateStorageStateShape(parsed, "auth_load");
   return parsed as StorageStateBlob;
@@ -401,7 +452,9 @@ export function authLoad(workspaceRoot: string, name: string): StorageStateBlob 
 
 /** Enumerate every named state in the workspace. Read-only; returns
  *  `{name, path, bytes, modifiedAt}` per slot. */
-export function authList(workspaceRoot: string): Array<{ name: string; path: string; bytes: number; modifiedAt: string }> {
+export function authList(
+  workspaceRoot: string,
+): Array<{ name: string; path: string; bytes: number; modifiedAt: string }> {
   const dir = join(workspaceRoot, AUTH_STATES_DIR);
   if (!existsSync(dir)) return [];
   const out: Array<{ name: string; path: string; bytes: number; modifiedAt: string }> = [];
@@ -413,13 +466,18 @@ export function authList(workspaceRoot: string): Array<{ name: string; path: str
     try {
       const st = statSync(path);
       out.push({ name, path, bytes: st.size, modifiedAt: new Date(st.mtimeMs).toISOString() });
-    } catch { /* skip unreadable */ }
+    } catch {
+      /* skip unreadable */
+    }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** Delete a named state. Returns whether the slot existed. */
-export function authDelete(workspaceRoot: string, name: string): { ok: true; existed: boolean; path: string } {
+export function authDelete(
+  workspaceRoot: string,
+  name: string,
+): { ok: true; existed: boolean; path: string } {
   const path = authStatePath(workspaceRoot, name);
   const existed = existsSync(path);
   if (existed) rmSync(path, { force: true });

@@ -5,17 +5,18 @@ describe("Recorder", () => {
   it("captures action types, urls, and selectorHints into a YAML draft", () => {
     const r = new Recorder();
     r.start("login-and-search");
-    r.record({ type: "navigate", url: "https://app.example.com/login" }, "https://app.example.com/login");
     r.record(
-      { type: "fill", ref: "e42", value: "alice" },
+      { type: "navigate", url: "https://app.example.com/login" },
       "https://app.example.com/login",
-      { selectorHint: '[data-testid="username"]', stability: "high" },
     );
-    r.record(
-      { type: "click", ref: "e43" },
-      "https://app.example.com/",
-      { selectorHint: 'role=button[name="Submit"]', stability: "medium" },
-    );
+    r.record({ type: "fill", ref: "e42", value: "alice" }, "https://app.example.com/login", {
+      selectorHint: '[data-testid="username"]',
+      stability: "high",
+    });
+    r.record({ type: "click", ref: "e43" }, "https://app.example.com/", {
+      selectorHint: 'role=button[name="Submit"]',
+      stability: "medium",
+    });
     const { yaml, stepCount, name } = r.end();
     expect(name).toBe("login-and-search");
     expect(stepCount).toBe(3);
@@ -34,7 +35,9 @@ describe("Recorder", () => {
     const r = new Recorder();
     r.start("smoke");
     r.record({ type: "navigate", url: "https://a.example.com" }, "https://a.example.com");
-    r.record({ type: "click", ref: "e1" }, "https://a.example.com", { selectorHint: '[data-testid="x"]' });
+    r.record({ type: "click", ref: "e1" }, "https://a.example.com", {
+      selectorHint: '[data-testid="x"]',
+    });
     expect(r.annotate({ copy: "this clicks", arrow: "top" })).toEqual({ ok: true });
     const { yaml } = r.end();
     expect(yaml).toContain("annotation:");
@@ -55,7 +58,10 @@ describe("Recorder", () => {
   it("flags medium/low stability with a review comment", () => {
     const r = new Recorder();
     r.start("smoke");
-    r.record({ type: "click", ref: "e1" }, "u", { selectorHint: 'role=button[name="X"]', stability: "medium" });
+    r.record({ type: "click", ref: "e1" }, "u", {
+      selectorHint: 'role=button[name="X"]',
+      stability: "medium",
+    });
     r.record({ type: "click", ref: "e2" }, "u", { selectorHint: "role=button", stability: "low" });
     const { yaml } = r.end();
     expect(yaml).toMatch(/stability: medium — review/);

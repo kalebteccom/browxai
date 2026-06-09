@@ -90,8 +90,19 @@ const READ_SELECTION = `(() => {
   return s ? s.toString() : '';
 })()`;
 
-interface ElSumm { tag: string; id?: string; testId?: string; role?: string; name?: string }
-interface KbEvent { type: string; key: string; defaultPrevented: boolean; target: ElSumm | null }
+interface ElSumm {
+  tag: string;
+  id?: string;
+  testId?: string;
+  role?: string;
+  name?: string;
+}
+interface KbEvent {
+  type: string;
+  key: string;
+  defaultPrevented: boolean;
+  target: ElSumm | null;
+}
 
 export interface ShortcutArgs {
   keys: string | string[];
@@ -146,7 +157,13 @@ export async function runShortcut(
         // immediately before the paste keystroke, so the app pastes this
         // session's content regardless of concurrent sessions.
         const w = await osClipboardWrite(buf.text);
-        clip = { op: "paste", chars: buf.text.length, fromSessionBuffer: true, osSync: w.ok, osTool: w.tool };
+        clip = {
+          op: "paste",
+          chars: buf.text.length,
+          fromSessionBuffer: true,
+          osSync: w.ok,
+          osTool: w.tool,
+        };
       }
     }
     await page.keyboard.press(chord).catch(() => undefined);
@@ -161,13 +178,18 @@ export async function runShortcut(
     clip = { op, capturedChars: sel.length, osSync: w.ok, osTool: w.tool };
   }
 
-  const trace = (await page
-    .evaluate(READ_TRACE)
-    .catch(() => ({ events: [], active: null }))) as { events: KbEvent[]; active: ElSumm | null };
+  const trace = (await page.evaluate(READ_TRACE).catch(() => ({ events: [], active: null }))) as {
+    events: KbEvent[];
+    active: ElSumm | null;
+  };
   await page.evaluate(CLEANUP_TRACE).catch(() => undefined);
 
   const handled = trace.events.some(
-    (e) => e.type === "copy" || e.type === "cut" || e.type === "paste" || (e.type === "keydown" && e.defaultPrevented),
+    (e) =>
+      e.type === "copy" ||
+      e.type === "cut" ||
+      e.type === "paste" ||
+      (e.type === "keydown" && e.defaultPrevented),
   );
 
   return {

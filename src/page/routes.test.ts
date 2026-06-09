@@ -29,7 +29,11 @@ describe("RouteRegistry.add", () => {
     expect(reg.list()).toEqual(["* **/api/x"]);
     const route = fakeRoute("GET");
     await registered[0]!.handler(route);
-    expect(route.fulfill).toHaveBeenCalledWith({ status: 201, contentType: "application/json", body: "{}" });
+    expect(route.fulfill).toHaveBeenCalledWith({
+      status: 201,
+      contentType: "application/json",
+      body: "{}",
+    });
   });
 
   it("falls through when the method doesn't match", async () => {
@@ -49,13 +53,19 @@ describe("RouteRegistry.addQueue", () => {
     const reg = new RouteRegistry();
     const r = await reg.addQueue(page as never, {
       urlPattern: "**/api/q",
-      responses: [{ status: 200, body: "first" }, { status: 200, body: "second" }],
+      responses: [
+        { status: 200, body: "first" },
+        { status: 200, body: "second" },
+      ],
     });
     expect(r.queued).toBe(2);
     const h = registered[0]!.handler;
-    const r1 = fakeRoute(); await h(r1);
-    const r2 = fakeRoute(); await h(r2);
-    const r3 = fakeRoute(); await h(r3);
+    const r1 = fakeRoute();
+    await h(r1);
+    const r2 = fakeRoute();
+    await h(r2);
+    const r3 = fakeRoute();
+    await h(r3);
     expect(r1.fulfill).toHaveBeenCalledWith(expect.objectContaining({ body: "first" }));
     expect(r2.fulfill).toHaveBeenCalledWith(expect.objectContaining({ body: "second" }));
     expect(r3.fallback).toHaveBeenCalled(); // queue exhausted

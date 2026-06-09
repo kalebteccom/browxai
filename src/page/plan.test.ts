@@ -137,7 +137,13 @@ describe("validateVerbArgs — per-verb args contract", () => {
 
 describe("evidenceFromCandidate — projection from find() candidate", () => {
   it("captures the picked candidate's signals + top alternatives", () => {
-    const picked = cand({ ref: "e7", score: 42, selectorHint: "#save", selectorTier: 4, stability: "low" });
+    const picked = cand({
+      ref: "e7",
+      score: 42,
+      selectorHint: "#save",
+      selectorTier: 4,
+      stability: "low",
+    });
     const alts = [cand({ ref: "e8", score: 20 }), cand({ ref: "e9", score: 10 })];
     const ev = evidenceFromCandidate("save button", picked, alts, ["low confidence"]);
     expect(ev.query).toBe("save button");
@@ -180,12 +186,24 @@ describe("buildDescriptor — assembled descriptor shape", () => {
 describe("estimateDescriptorTokens", () => {
   it("returns a positive integer roughly tracking descriptor size", () => {
     const small = buildDescriptor({
-      picked: cand(), alternatives: [], query: "x", verb: "click", verbArgs: {}, warnings: [], ttlMs: 1_000,
+      picked: cand(),
+      alternatives: [],
+      query: "x",
+      verb: "click",
+      verbArgs: {},
+      warnings: [],
+      ttlMs: 1_000,
     });
     const big = buildDescriptor({
       picked: cand({ name: "x".repeat(500) }),
-      alternatives: Array.from({ length: 4 }, (_, i) => cand({ ref: `e${i + 2}`, name: "y".repeat(200) })),
-      query: "x", verb: "click", verbArgs: {}, warnings: [], ttlMs: 1_000,
+      alternatives: Array.from({ length: 4 }, (_, i) =>
+        cand({ ref: `e${i + 2}`, name: "y".repeat(200) }),
+      ),
+      query: "x",
+      verb: "click",
+      verbArgs: {},
+      warnings: [],
+      ttlMs: 1_000,
     });
     expect(estimateDescriptorTokens(small)).toBeGreaterThan(0);
     expect(estimateDescriptorTokens(big)).toBeGreaterThan(estimateDescriptorTokens(small));
@@ -195,8 +213,21 @@ describe("estimateDescriptorTokens", () => {
 describe("validateDescriptor — shape guard at execute() entry", () => {
   it("accepts a well-formed descriptor", () => {
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "click", args: {},
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "button", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "click",
+      args: {},
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "button",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 1000,
     };
     const r = validateDescriptor(d);
@@ -205,7 +236,9 @@ describe("validateDescriptor — shape guard at execute() entry", () => {
   it("rejects non-objects, missing fields, and unknown verbs", () => {
     expect(validateDescriptor(null).ok).toBe(false);
     expect(validateDescriptor("nope").ok).toBe(false);
-    expect(validateDescriptor({ id: "a", ref: "e1", verb: "fly", args: {}, expiresAt: 0 }).ok).toBe(false);
+    expect(validateDescriptor({ id: "a", ref: "e1", verb: "fly", args: {}, expiresAt: 0 }).ok).toBe(
+      false,
+    );
     expect(validateDescriptor({ id: "a", verb: "click", args: {}, expiresAt: 0 }).ok).toBe(false);
     expect(validateDescriptor({ id: "a", ref: "e1", verb: "click", expiresAt: 0 }).ok).toBe(false);
   });
@@ -216,8 +249,21 @@ describe("execute() — refusal modes (no dispatch happens)", () => {
     const refs = new RefRegistry();
     refs.forKey("k1", { role: "button", name: "Save" });
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "click", args: {},
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "button", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "click",
+      args: {},
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "button",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: 1_000,
     };
     const r = await execute(fakeCtx(refs), d, { now: 2_000 });
@@ -229,8 +275,21 @@ describe("execute() — refusal modes (no dispatch happens)", () => {
   it("refuses a ref-gone descriptor with reason 'ref-gone' and never calls actions.*", async () => {
     const refs = new RefRegistry(); // empty — ref doesn't exist
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "click", args: {},
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "button", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "click",
+      args: {},
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "button",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 60_000,
     };
     const r = await execute(fakeCtx(refs), d);
@@ -250,8 +309,21 @@ describe("execute() — refusal modes (no dispatch happens)", () => {
     const refs = new RefRegistry();
     refs.forKey("k1", { role: "textbox", name: "Email" });
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "fill", args: {}, // value missing
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "textbox", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "fill",
+      args: {}, // value missing
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "textbox",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 60_000,
     };
     const r = await execute(fakeCtx(refs), d);
@@ -268,8 +340,21 @@ describe("execute() — dispatch routing per verb", () => {
     const refs = new RefRegistry();
     refs.forKey("k1", { role: "button", name: "Save" });
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "click", args: { button: "right" },
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "button", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "click",
+      args: { button: "right" },
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "button",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 60_000,
     };
     const r = await execute(fakeCtx(refs), d);
@@ -284,8 +369,21 @@ describe("execute() — dispatch routing per verb", () => {
     const refs = new RefRegistry();
     refs.forKey("k1", { role: "textbox", name: "Email" });
     const d: ActionDescriptor = {
-      id: "abc", ref: "e1", verb: "fill", args: { value: "rowin@example.com" },
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "textbox", score: 1, actionable: true, warnings: [], alternatives: [] },
+      id: "abc",
+      ref: "e1",
+      verb: "fill",
+      args: { value: "rowin@example.com" },
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "textbox",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 60_000,
     };
     const r = await execute(fakeCtx(refs), d);
@@ -300,9 +398,26 @@ describe("execute() — dispatch routing per verb", () => {
     refs.forKey("k1");
     refs.forKey("k2");
     refs.forKey("k3");
-    const base = (verb: ActionDescriptor["verb"], ref: string, args: ActionDescriptor["args"]): ActionDescriptor => ({
-      id: "abc", ref, verb, args,
-      evidence: { query: "q", selectorHint: "#x", selectorTier: 1, stability: "high", role: "x", score: 1, actionable: true, warnings: [], alternatives: [] },
+    const base = (
+      verb: ActionDescriptor["verb"],
+      ref: string,
+      args: ActionDescriptor["args"],
+    ): ActionDescriptor => ({
+      id: "abc",
+      ref,
+      verb,
+      args,
+      evidence: {
+        query: "q",
+        selectorHint: "#x",
+        selectorTier: 1,
+        stability: "high",
+        role: "x",
+        score: 1,
+        actionable: true,
+        warnings: [],
+        alternatives: [],
+      },
       expiresAt: Date.now() + 60_000,
     });
     await execute(fakeCtx(refs), base("press", "e1", { key: "Enter" }));
@@ -347,7 +462,9 @@ describe("plan() — descriptor production from a find() candidate", () => {
     const refs = new RefRegistry();
     vi.mocked(find).mockResolvedValueOnce({ candidates: [], warnings: ["nothing matched"] });
     const r = await plan({} as never, {} as never, refs, {
-      query: "nonexistent thing", verb: "click", testAttributes: [],
+      query: "nonexistent thing",
+      verb: "click",
+      testAttributes: [],
     });
     expect(r.ok).toBe(false);
     if (!r.ok) {
@@ -359,7 +476,9 @@ describe("plan() — descriptor production from a find() candidate", () => {
   it("rejects bad verbArgs up front — fill without value never calls find()", async () => {
     const refs = new RefRegistry();
     const r = await plan({} as never, {} as never, refs, {
-      query: "email input", verb: "fill", testAttributes: [], // missing verbArgs.value
+      query: "email input",
+      verb: "fill",
+      testAttributes: [], // missing verbArgs.value
     });
     expect(r.ok).toBe(false);
     expect(vi.mocked(find)).not.toHaveBeenCalled();
@@ -373,7 +492,10 @@ describe("plan() — descriptor production from a find() candidate", () => {
       warnings: ["no candidate scored confidently above 50 (top score: 3)"],
     });
     const r = await plan({} as never, {} as never, refs, {
-      query: "the thing", verb: "click", testAttributes: [], confidenceFloor: 50,
+      query: "the thing",
+      verb: "click",
+      testAttributes: [],
+      confidenceFloor: 50,
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
@@ -394,7 +516,9 @@ describe("plan() — descriptor production from a find() candidate", () => {
       warnings: [],
     });
     const planned = await plan({} as never, {} as never, refs, {
-      query: "play", verb: "click", testAttributes: [],
+      query: "play",
+      verb: "click",
+      testAttributes: [],
     });
     expect(planned.ok).toBe(true);
     if (!planned.ok) return;

@@ -5,8 +5,12 @@ import { join, resolve } from "node:path";
 import { resolveWorkspace } from "./workspace.js";
 
 let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "browx-test-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+beforeEach(() => {
+  tmp = mkdtempSync(join(tmpdir(), "browx-test-"));
+});
+afterEach(() => {
+  rmSync(tmp, { recursive: true, force: true });
+});
 
 describe("resolveWorkspace (no-trace contract)", () => {
   it("uses BROWX_WORKSPACE env (absolute) and creates it if missing", () => {

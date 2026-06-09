@@ -419,9 +419,7 @@ function harvestSubtree(
   // Predicate set mirrors PAGE_SCRIPT in dom-walk.ts: anything with role,
   // any of the standard interactive tags, or any configured test
   // attribute.
-  const interactiveTags = new Set([
-    "button", "a", "input", "select", "textarea",
-  ]);
+  const interactiveTags = new Set(["button", "a", "input", "select", "textarea"]);
   const stack: CdpDomNode[] = [...(root.children ?? [])];
   while (stack.length && out.length < max) {
     const n = stack.pop()!;

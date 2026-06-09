@@ -737,7 +737,9 @@ export interface Fixture {
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 function wsHandshake(key: string): string {
-  const accept = createHash("sha1").update(key + WS_GUID).digest("base64");
+  const accept = createHash("sha1")
+    .update(key + WS_GUID)
+    .digest("base64");
   return [
     "HTTP/1.1 101 Switching Protocols",
     "Upgrade: websocket",
@@ -801,7 +803,10 @@ function buildTextFrame(payload: string): Buffer {
   return Buffer.concat([header, data]);
 }
 
-function handleUpgrade(req: { headers: Record<string, string | string[] | undefined> }, socket: Duplex): void {
+function handleUpgrade(
+  req: { headers: Record<string, string | string[] | undefined> },
+  socket: Duplex,
+): void {
   const key = req.headers["sec-websocket-key"];
   if (typeof key !== "string") {
     socket.end();
@@ -914,8 +919,6 @@ export async function startFixture(): Promise<Fixture> {
   return {
     url: `http://127.0.0.1:${port}`,
     close: () =>
-      new Promise<void>((resolve, reject) =>
-        server.close((e) => (e ? reject(e) : resolve())),
-      ),
+      new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve()))),
   };
 }

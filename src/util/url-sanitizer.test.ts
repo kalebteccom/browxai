@@ -20,9 +20,9 @@ describe("sanitizeUrl — credential/identity redaction", () => {
     expect(sanitizeUrl("https://api.example.com/users/12345/profile")).toBe(
       "https://api.example.com/users/:id/profile",
     );
-    expect(
-      sanitizeUrl("https://cdn.example.com/s/eyJhbGciOiJI1NiJ9aGVsbG8x/clip.m3u8"),
-    ).toBe("https://cdn.example.com/s/:id/clip.m3u8");
+    expect(sanitizeUrl("https://cdn.example.com/s/eyJhbGciOiJI1NiJ9aGVsbG8x/clip.m3u8")).toBe(
+      "https://cdn.example.com/s/:id/clip.m3u8",
+    );
   });
 
   it("preserves ws/wss scheme + host + path, drops the credentialled query", () => {

@@ -26,11 +26,21 @@ interface LocatorCallSpy {
   boundingBox: ReturnType<typeof vi.fn>;
 }
 
-interface RefRegistryShape { locatorOf: (ref: string) => unknown; frameOf: (ref: string) => unknown }
+interface RefRegistryShape {
+  locatorOf: (ref: string) => unknown;
+  frameOf: (ref: string) => unknown;
+}
 
-function fakePage(opts: { withRef?: boolean; boundingBox?: { x: number; y: number; width: number; height: number } | null } = {}) {
+function fakePage(
+  opts: {
+    withRef?: boolean;
+    boundingBox?: { x: number; y: number; width: number; height: number } | null;
+  } = {},
+) {
   const hasBoxOverride = "boundingBox" in opts;
-  const boundingBox = vi.fn(async () => hasBoxOverride ? opts.boundingBox : { x: 100, y: 50, width: 200, height: 80 });
+  const boundingBox = vi.fn(async () =>
+    hasBoxOverride ? opts.boundingBox : { x: 100, y: 50, width: 200, height: 80 },
+  );
   const locEvaluate = vi.fn(async (_fn: unknown, _arg: unknown) => ({
     eventsFired: ["dragenter", "dragover", "drop"],
     dropDispatched: true,
@@ -140,14 +150,25 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
     const { page, refs, locEvaluate, boundingBox } = fakePage();
     const r = await dropFiles(page as never, refs as never, WS, {
       target: { selector: "#zone" },
-      files: [{ contents: Buffer.from("hello").toString("base64"), name: "hi.txt", mimeType: "text/plain" }],
+      files: [
+        {
+          contents: Buffer.from("hello").toString("base64"),
+          name: "hi.txt",
+          mimeType: "text/plain",
+        },
+      ],
     });
 
     expect(r.ok).toBe(true);
     expect(r.target).toBe("selector #zone");
     expect(r.fileCount).toBe(1);
     expect(r.totalBytes).toBe(5);
-    expect(r.files[0]).toEqual({ name: "hi.txt", mode: "contents", bytes: 5, mimeType: "text/plain" });
+    expect(r.files[0]).toEqual({
+      name: "hi.txt",
+      mode: "contents",
+      bytes: 5,
+      mimeType: "text/plain",
+    });
     expect(r.eventsFired).toEqual(["dragenter", "dragover", "drop"]);
     expect(r.dropDispatched).toBe(true);
 
@@ -157,7 +178,7 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
     const a = arg as { payload: DropPayload; src: string };
     expect(a.payload.byCoords).toBe(false);
     expect(a.payload.clientX).toBe(200); // 100 + 200/2
-    expect(a.payload.clientY).toBe(90);  // 50 + 80/2
+    expect(a.payload.clientY).toBe(90); // 50 + 80/2
     expect(a.payload.files.length).toBe(1);
     expect(a.payload.files[0]!.base64).toBe(Buffer.from("hello").toString("base64"));
     expect(a.src).toContain("dropFilesInPage");
@@ -170,7 +191,12 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
       target: { selector: "#zone" },
       files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
     });
-    expect(r.files[0]).toEqual({ name: "doc.pdf", mode: "path", bytes: 4, mimeType: "application/pdf" });
+    expect(r.files[0]).toEqual({
+      name: "doc.pdf",
+      mode: "path",
+      bytes: 4,
+      mimeType: "application/pdf",
+    });
     const [, arg] = locEvaluate.mock.calls[0]!;
     const a = arg as { payload: DropPayload };
     // base64("\x25\x50\x44\x46") = "JVBERg==" (PDF magic)
@@ -232,13 +258,25 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
 // The full Chromium round-trip lives in the keystone.
 
 describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
-  interface CapturedEvent { type: string; clientX: number; clientY: number; bubbles: boolean; cancelable: boolean; fileCount: number; fileNames: string[] }
+  interface CapturedEvent {
+    type: string;
+    clientX: number;
+    clientY: number;
+    bubbles: boolean;
+    cancelable: boolean;
+    fileCount: number;
+    fileNames: string[];
+  }
 
-  function fakeWindow(): { window: Record<string, unknown>; document: Record<string, unknown>; capturedTarget: { events: CapturedEvent[] } } {
+  function fakeWindow(): {
+    window: Record<string, unknown>;
+    document: Record<string, unknown>;
+    capturedTarget: { events: CapturedEvent[] };
+  } {
     const events: CapturedEvent[] = [];
     const target = {
       tagName: "DIV",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       dispatchEvent(ev: any) {
         events.push({
           type: ev.type,
@@ -257,15 +295,21 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
     // Minimal File / DataTransfer / DragEvent shims that mirror Chromium's
     // public surface enough for the script to populate them.
     class FakeFile {
-      name: string; type: string; bytes: Uint8Array;
+      name: string;
+      type: string;
+      bytes: Uint8Array;
       constructor(parts: Uint8Array[], name: string, opts?: { type?: string }) {
-        this.name = name; this.type = opts?.type ?? ""; this.bytes = parts[0] ?? new Uint8Array(0);
+        this.name = name;
+        this.type = opts?.type ?? "";
+        this.bytes = parts[0] ?? new Uint8Array(0);
       }
     }
     class FakeDataTransfer {
       files: FakeFile[] = [];
       items = {
-        add: (file: FakeFile) => { this.files.push(file); },
+        add: (file: FakeFile) => {
+          this.files.push(file);
+        },
       };
       types: string[] = [];
     }
@@ -288,7 +332,6 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
       }
     }
     const document = {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       elementFromPoint: (_x: number, _y: number): any => target,
     };
     const window = {
@@ -297,7 +340,16 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
       File: FakeFile,
       DataTransfer: FakeDataTransfer,
       DragEvent: FakeDragEvent,
-      Event: class FakeEvent { type: string; bubbles: boolean; cancelable: boolean; constructor(type: string, init: Record<string, unknown> = {}) { this.type = type; this.bubbles = (init.bubbles as boolean) ?? false; this.cancelable = (init.cancelable as boolean) ?? false; } },
+      Event: class FakeEvent {
+        type: string;
+        bubbles: boolean;
+        cancelable: boolean;
+        constructor(type: string, init: Record<string, unknown> = {}) {
+          this.type = type;
+          this.bubbles = (init.bubbles as boolean) ?? false;
+          this.cancelable = (init.cancelable as boolean) ?? false;
+        }
+      },
       document,
     };
     return { window, document, capturedTarget: { events } };
@@ -305,12 +357,18 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
 
   it("fires dragenter → dragover → drop with the populated DataTransfer (ref/selector mode)", () => {
     const { window, capturedTarget } = fakeWindow();
-    const savedGlobals = { window: (globalThis as Record<string, unknown>).window, document: (globalThis as Record<string, unknown>).document };
+    const savedGlobals = {
+      window: (globalThis as Record<string, unknown>).window,
+      document: (globalThis as Record<string, unknown>).document,
+    };
     try {
       (globalThis as Record<string, unknown>).window = window;
       (globalThis as Record<string, unknown>).document = window.document;
       // `el` is the target — bypass elementFromPoint.
-      const el = (window.document as Record<string, unknown>).elementFromPoint as (x: number, y: number) => unknown;
+      const el = (window.document as Record<string, unknown>).elementFromPoint as (
+        x: number,
+        y: number,
+      ) => unknown;
       const target = el(0, 0);
       const result = dropFilesPageScript({
         el: target,
@@ -319,8 +377,16 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
           clientY: 40,
           byCoords: false,
           files: [
-            { base64: Buffer.from("hi").toString("base64"), name: "hi.txt", mimeType: "text/plain" },
-            { base64: Buffer.from("two").toString("base64"), name: "two.bin", mimeType: "application/octet-stream" },
+            {
+              base64: Buffer.from("hi").toString("base64"),
+              name: "hi.txt",
+              mimeType: "text/plain",
+            },
+            {
+              base64: Buffer.from("two").toString("base64"),
+              name: "two.bin",
+              mimeType: "application/octet-stream",
+            },
           ],
         },
       });
@@ -345,14 +411,19 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
 
   it("byCoords:true → re-resolves target via elementFromPoint", () => {
     const { window, capturedTarget } = fakeWindow();
-    const savedGlobals = { window: (globalThis as Record<string, unknown>).window, document: (globalThis as Record<string, unknown>).document };
+    const savedGlobals = {
+      window: (globalThis as Record<string, unknown>).window,
+      document: (globalThis as Record<string, unknown>).document,
+    };
     try {
       (globalThis as Record<string, unknown>).window = window;
       (globalThis as Record<string, unknown>).document = window.document;
       const result = dropFilesPageScript({
         el: null,
         payload: {
-          clientX: 10, clientY: 20, byCoords: true,
+          clientX: 10,
+          clientY: 20,
+          byCoords: true,
           files: [{ base64: "AAAA", name: "a.bin", mimeType: "application/octet-stream" }],
         },
       });

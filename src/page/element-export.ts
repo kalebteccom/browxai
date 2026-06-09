@@ -35,9 +35,8 @@
 // / binary bytes. The `warnings[]` array always carries the caveat as its
 // first entry.
 
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath, dirname, join, sep, extname } from "node:path";
 import { mkdirSync, writeFileSync, statSync, readdirSync } from "node:fs";
-import { dirname, join, sep, extname } from "node:path";
 import type { Locator, Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 import { locatorFor } from "./locator.js";
@@ -130,14 +129,18 @@ interface SubtreeDiscovery {
  *  globals); no TS-only constructs survive serialization. */
 const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
   function abs(u: string): string | null {
-    try { return new URL(u, document.baseURI).href; } catch (_) { return null; }
+    try {
+      return new URL(u, document.baseURI).href;
+    } catch (_) {
+      return null;
+    }
   }
   function bgUrls(node: Element): string[] {
     const out: string[] = [];
     try {
       const cs = getComputedStyle(node);
       const bg = cs && cs.backgroundImage;
-      if (bg && bg !== 'none') {
+      if (bg && bg !== "none") {
         const re = /url\((['"]?)([^'")]+)\1\)/g;
         let m: RegExpExecArray | null;
         while ((m = re.exec(bg)) !== null) out.push(m[2]!);
@@ -152,54 +155,54 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
     const a = abs(raw);
     if (!a) return;
     if (!/^https?:|^ftp:|^file:/i.test(a)) return;
-    const key = a + '|' + kind;
+    const key = a + "|" + kind;
     if (seen[key]) return;
     seen[key] = true;
     resources.push({ url: a, kind, rawRef: raw });
   }
   function scan(root: Element): void {
-    const nodes: Element[] = [root, ...Array.from(root.querySelectorAll('*'))];
+    const nodes: Element[] = [root, ...Array.from(root.querySelectorAll("*"))];
     for (let i = 0; i < nodes.length && i < 5000; i++) {
       const n = nodes[i]!;
       if (n.nodeType !== 1) continue;
-      const tag = (n.tagName || '').toLowerCase();
-      const s = n.getAttribute('src');
+      const tag = (n.tagName || "").toLowerCase();
+      const s = n.getAttribute("src");
       if (s) {
-        let k: DiscoveredResource["kind"] = 'other';
-        if (tag === 'img' || tag === 'source') k = 'image';
-        else if (tag === 'script') k = 'script';
-        else if (tag === 'video' || tag === 'audio' || tag === 'track') k = 'media';
-        else if (tag === 'iframe') k = 'other';
+        let k: DiscoveredResource["kind"] = "other";
+        if (tag === "img" || tag === "source") k = "image";
+        else if (tag === "script") k = "script";
+        else if (tag === "video" || tag === "audio" || tag === "track") k = "media";
+        else if (tag === "iframe") k = "other";
         push(s, k);
       }
-      const href = n.getAttribute('href');
-      if (href && (tag === 'link' || tag === 'a' || tag === 'use' || tag === 'image')) {
-        const rel = (n.getAttribute('rel') || '').toLowerCase();
-        let hk: DiscoveredResource["kind"] = 'other';
-        if (tag === 'link') {
-          if (rel.indexOf('stylesheet') !== -1) hk = 'stylesheet';
-          else if (rel.indexOf('icon') !== -1) hk = 'image';
+      const href = n.getAttribute("href");
+      if (href && (tag === "link" || tag === "a" || tag === "use" || tag === "image")) {
+        const rel = (n.getAttribute("rel") || "").toLowerCase();
+        let hk: DiscoveredResource["kind"] = "other";
+        if (tag === "link") {
+          if (rel.indexOf("stylesheet") !== -1) hk = "stylesheet";
+          else if (rel.indexOf("icon") !== -1) hk = "image";
           else {
-            const asAttr = (n.getAttribute('as') || '').toLowerCase();
-            if (asAttr === 'font') hk = 'font';
-            else if (asAttr === 'script') hk = 'script';
-            else if (asAttr === 'image') hk = 'image';
-            else if (asAttr === 'style') hk = 'stylesheet';
+            const asAttr = (n.getAttribute("as") || "").toLowerCase();
+            if (asAttr === "font") hk = "font";
+            else if (asAttr === "script") hk = "script";
+            else if (asAttr === "image") hk = "image";
+            else if (asAttr === "style") hk = "stylesheet";
           }
           push(href, hk);
-        } else if (tag === 'image' || tag === 'use') {
-          push(href, 'image');
+        } else if (tag === "image" || tag === "use") {
+          push(href, "image");
         }
       }
-      const ss = n.getAttribute('srcset');
+      const ss = n.getAttribute("srcset");
       if (ss) {
-        const first = ss.split(',')[0]!.trim().split(/\s+/)[0];
-        if (first) push(first, 'image');
+        const first = ss.split(",")[0]!.trim().split(/\s+/)[0];
+        if (first) push(first, "image");
       }
-      const poster = n.getAttribute('poster');
-      if (poster) push(poster, 'image');
+      const poster = n.getAttribute("poster");
+      if (poster) push(poster, "image");
       const bgs = bgUrls(n);
-      for (const b of bgs) push(b, 'image');
+      for (const b of bgs) push(b, "image");
     }
   }
   scan(el);
@@ -210,10 +213,13 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
     for (let si = 0; si < sheets.length; si++) {
       try {
         const rules = sheets[si]!.cssRules;
-        if (!rules) { unreadable++; continue; }
-        let part = '';
+        if (!rules) {
+          unreadable++;
+          continue;
+        }
+        let part = "";
         for (let ri = 0; ri < rules.length; ri++) {
-          part += rules[ri]!.cssText + '\n';
+          part += rules[ri]!.cssText + "\n";
         }
         cssParts.push(part);
       } catch (_) {
@@ -222,8 +228,8 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
     }
   } catch (_) {}
   return {
-    html: el.outerHTML || '',
-    css: cssParts.join('\n'),
+    html: el.outerHTML || "",
+    css: cssParts.join("\n"),
     unreadableStylesheets: unreadable,
     resources,
   };
@@ -316,41 +322,62 @@ function guessExtFromContentType(ct: string): string {
 
 function guessExtFromKind(kind: DiscoveredResource["kind"]): string {
   switch (kind) {
-    case "image": return ".bin";
-    case "font": return ".font";
-    case "script": return ".js";
-    case "stylesheet": return ".css";
-    case "media": return ".media";
-    default: return ".bin";
+    case "image":
+      return ".bin";
+    case "font":
+      return ".font";
+    case "script":
+      return ".js";
+    case "stylesheet":
+      return ".css";
+    case "media":
+      return ".media";
+    default:
+      return ".bin";
   }
 }
 
 function subdirForKind(kind: DiscoveredResource["kind"]): string {
   switch (kind) {
-    case "image": return "images";
-    case "font": return "fonts";
-    case "script": return "scripts";
-    case "stylesheet": return "styles";
-    case "media": return "media";
-    default: return "other";
+    case "image":
+      return "images";
+    case "font":
+      return "fonts";
+    case "script":
+      return "scripts";
+    case "stylesheet":
+      return "styles";
+    case "media":
+      return "media";
+    default:
+      return "other";
   }
 }
 
 function mimeFromKind(kind: DiscoveredResource["kind"]): string {
   switch (kind) {
-    case "image": return "image/png";
-    case "font": return "font/woff2";
-    case "script": return "application/javascript";
-    case "stylesheet": return "text/css";
-    case "media": return "video/mp4";
-    default: return "application/octet-stream";
+    case "image":
+      return "image/png";
+    case "font":
+      return "font/woff2";
+    case "script":
+      return "application/javascript";
+    case "stylesheet":
+      return "text/css";
+    case "media":
+      return "video/mp4";
+    default:
+      return "application/octet-stream";
   }
 }
 
 /** Rewrite raw HTML — replace every recorded `rawRef` with the relative
  *  asset path the file has been written to. Same logic as
  *  `archive.ts::rewriteHtml`. */
-function rewriteHtml(html: string, replacements: Array<{ rawRef: string; replacement: string }>): string {
+function rewriteHtml(
+  html: string,
+  replacements: Array<{ rawRef: string; replacement: string }>,
+): string {
   const sorted = [...replacements].sort((a, b) => b.rawRef.length - a.rawRef.length);
   let out = html;
   for (const { rawRef, replacement } of sorted) {
@@ -372,7 +399,11 @@ function directorySize(dir: string): number {
       const p = d + sep + entry.name;
       if (entry.isDirectory()) walk(p);
       else if (entry.isFile()) {
-        try { total += statSync(p).size; } catch { /* best-effort */ }
+        try {
+          total += statSync(p).size;
+        } catch {
+          /* best-effort */
+        }
       }
     }
   };
@@ -422,7 +453,11 @@ ${elementHtml}
 }
 
 function escapeAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -441,9 +476,7 @@ export async function elementExport(
   const format: ElementExportFormat = args.format ?? "directory";
   const maxSizeMb = args.maxSizeMb ?? DEFAULT_MAX_SIZE_MB;
   if (!(maxSizeMb > 0) || maxSizeMb > 10_000) {
-    throw new Error(
-      `element_export: maxSizeMb must be in (0, 10000] — got ${maxSizeMb}.`,
-    );
+    throw new Error(`element_export: maxSizeMb must be in (0, 10000] — got ${maxSizeMb}.`);
   }
   const maxBytes = Math.floor(maxSizeMb * 1024 * 1024);
 
@@ -475,7 +508,7 @@ export async function elementExport(
   if (discovered.unreadableStylesheets > 0) {
     warnings.push(
       `${discovered.unreadableStylesheets} stylesheet(s) were cross-origin without CORS and could not be read into the export. ` +
-      "Rules from those sheets that targeted the subtree won't appear in the captured CSS — the snippet may render differently than the source page.",
+        "Rules from those sheets that targeted the subtree won't appear in the captured CSS — the snippet may render differently than the source page.",
     );
   }
 
@@ -505,7 +538,11 @@ export async function elementExport(
     for (const f of settled) {
       if (!f.r.ok) {
         const err = (f.r.error ?? "").toLowerCase();
-        if (err.includes("connect-src") || err.includes("refused to connect") || err.includes("content security policy")) {
+        if (
+          err.includes("connect-src") ||
+          err.includes("refused to connect") ||
+          err.includes("content security policy")
+        ) {
           cspBlocked++;
         }
         fetched.push(f);
@@ -514,7 +551,13 @@ export async function elementExport(
       const bytes = f.r.bytes ?? 0;
       if (bytes > PER_RESOURCE_HARD_MB * 1024 * 1024) {
         perResourceOversize++;
-        fetched.push({ res: f.res, r: { ok: false, error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)` } });
+        fetched.push({
+          res: f.res,
+          r: {
+            ok: false,
+            error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)`,
+          },
+        });
         continue;
       }
       if (runningBytes + bytes > maxBytes) {
@@ -538,7 +581,7 @@ export async function elementExport(
   if (cspBlocked > 0) {
     warnings.push(
       `${cspBlocked} resource(s) blocked by the page's Content-Security-Policy ` +
-      "(typically `connect-src`). Counted in droppedCount.",
+        "(typically `connect-src`). Counted in droppedCount.",
     );
   }
   if (perResourceOversize > 0) {
@@ -549,7 +592,7 @@ export async function elementExport(
   if (budgetExhausted) {
     warnings.push(
       `Export size cap (maxSizeMb=${maxSizeMb}) reached — remaining resources were dropped. ` +
-      "Raise `maxSizeMb` to capture more.",
+        "Raise `maxSizeMb` to capture more.",
     );
   }
 
@@ -558,9 +601,9 @@ export async function elementExport(
   let droppedCount = 0;
   let sizeBytes = 0;
   const baseUri = ""; // populated below from page.evaluate if needed; the
-                     // discovery script doesn't return baseURI, and embedding
-                     // an arbitrary base would change relative-link resolution
-                     // for any unmodified ref — leave empty.
+  // discovery script doesn't return baseURI, and embedding
+  // an arbitrary base would change relative-link resolution
+  // for any unmodified ref — leave empty.
 
   if (format === "directory") {
     // workspace-rooted (resolveWorkspacePath above rejects any escape from
@@ -573,7 +616,10 @@ export async function elementExport(
 
     const replacements: Array<{ rawRef: string; replacement: string }> = [];
     for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) { droppedCount++; continue; }
+      if (!f.r.ok || !f.r.base64) {
+        droppedCount++;
+        continue;
+      }
       const subdir = subdirForKind(f.res.kind);
       // workspace-rooted: dir = join(assetsRoot, ...), assetsRoot ⊆ BROWX_WORKSPACE.
       const dir = join(assetsRoot, subdir);
@@ -600,7 +646,10 @@ export async function elementExport(
     mkdirSync(dirname(resolved), { recursive: true });
     const replacements: Array<{ rawRef: string; replacement: string }> = [];
     for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) { droppedCount++; continue; }
+      if (!f.r.ok || !f.r.base64) {
+        droppedCount++;
+        continue;
+      }
       const mime = (f.r.contentType ?? "").split(";")[0]!.trim() || mimeFromKind(f.res.kind);
       const dataUri = `data:${mime};base64,${f.r.base64}`;
       replacements.push({ rawRef: f.res.rawRef, replacement: dataUri });
@@ -614,7 +663,7 @@ export async function elementExport(
     if (sizeBytes > SINGLE_FILE_SOFT_WARN_MB * 1024 * 1024) {
       warnings.push(
         `single-file export is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. ` +
-        `Browsers commonly struggle past ~${SINGLE_FILE_SOFT_WARN_MB} MB — use \`format:"directory"\` for large subtrees.`,
+          `Browsers commonly struggle past ~${SINGLE_FILE_SOFT_WARN_MB} MB — use \`format:"directory"\` for large subtrees.`,
       );
     }
   }
@@ -645,8 +694,7 @@ export async function elementExportFromRef(
   const locator: Locator = locatorFor(page, refs, { ref: args.ref });
   const adapter: ElementExportLocator = {
     count: () => locator.count(),
-    evaluate: <T,>(fn: (element: Element) => T | Promise<T>): Promise<T> =>
-      locator.evaluate(fn),
+    evaluate: <T>(fn: (element: Element) => T | Promise<T>): Promise<T> => locator.evaluate(fn),
   };
   const pageAdapter: ElementExportPage = { evaluate: (expr) => page.evaluate(expr) };
   return elementExport(pageAdapter, adapter, workspaceRoot, sessionId, args);

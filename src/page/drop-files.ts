@@ -104,7 +104,8 @@ function prepareFiles(workspaceRoot: string, files: DropFileInput[]): PreparedFi
   const prepared: PreparedFile[] = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i]!;
-    const hasPath = typeof (f as DropFileInputPath).path === "string" && (f as DropFileInputPath).path.length > 0;
+    const hasPath =
+      typeof (f as DropFileInputPath).path === "string" && (f as DropFileInputPath).path.length > 0;
     const hasContents = typeof (f as DropFileInputContents).contents === "string";
     if (hasPath && hasContents) {
       throw new Error(`drop_files: files[${i}]: pass exactly one of \`path\` or \`contents\``);
@@ -121,7 +122,9 @@ function prepareFiles(workspaceRoot: string, files: DropFileInput[]): PreparedFi
         );
       }
       let buf: Buffer;
-      try { buf = readFileSync(resolved); } catch (err) {
+      try {
+        buf = readFileSync(resolved);
+      } catch (err) {
         throw new Error(`drop_files: files[${i}].path: ${(err as Error).message}`);
       }
       prepared.push({
@@ -184,8 +187,11 @@ export interface DropEvalResult {
  * it directly without going through Playwright). Not part of the public
  * MCP surface.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const dropFilesPageScript = function dropFilesInPage(args: { el: any; payload: DropPayload }): DropEvalResult {
+
+export const dropFilesPageScript = function dropFilesInPage(args: {
+  el: any;
+  payload: DropPayload;
+}): DropEvalResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const g: any = globalThis as any;
   const W = g.window ?? g;
@@ -200,7 +206,12 @@ export const dropFilesPageScript = function dropFilesInPage(args: { el: any; pay
   if (args.payload.byCoords || !target) {
     target = D.elementFromPoint(args.payload.clientX, args.payload.clientY);
   }
-  if (!target) return { eventsFired: [], dropDispatched: false, error: "no target element at the requested point" };
+  if (!target)
+    return {
+      eventsFired: [],
+      dropDispatched: false,
+      error: "no target element at the requested point",
+    };
 
   // 2. Materialise File objects from base64 payloads. `atob` is universal,
   //    Uint8Array → File is the canonical drop-zone construction.
@@ -245,7 +256,9 @@ export const dropFilesPageScript = function dropFilesInPage(args: { el: any; pay
         const fakeList: any = arr;
         fakeList.item = (idx: number) => arr[idx] ?? null;
         Object.defineProperty(dt, "files", { value: fakeList, configurable: true });
-      } catch {/* swallow — items.add path covers Chromium */}
+      } catch {
+        /* swallow — items.add path covers Chromium */
+      }
     }
   }
 
@@ -274,8 +287,11 @@ export const dropFilesPageScript = function dropFilesInPage(args: { el: any; pay
       ev = new Ev(kind, { bubbles: true, cancelable: true, composed: true });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const e: any = ev;
-      try { Object.defineProperty(e, "dataTransfer", { value: dt, configurable: true }); }
-      catch {/* best-effort */}
+      try {
+        Object.defineProperty(e, "dataTransfer", { value: dt, configurable: true });
+      } catch {
+        /* best-effort */
+      }
       e.clientX = args.payload.clientX;
       e.clientY = args.payload.clientY;
     }
@@ -286,7 +302,9 @@ export const dropFilesPageScript = function dropFilesInPage(args: { el: any; pay
       if (ev.dataTransfer !== dt) {
         Object.defineProperty(ev, "dataTransfer", { value: dt, configurable: true });
       }
-    } catch {/* best-effort */}
+    } catch {
+      /* best-effort */
+    }
     target.dispatchEvent(ev);
     eventsFired.push(kind);
   };
@@ -300,7 +318,7 @@ export const dropFilesPageScript = function dropFilesInPage(args: { el: any; pay
   fireOne("dragover");
   fireOne("drop");
 
-  const tag = (target.tagName ? String(target.tagName).toLowerCase() : "?");
+  const tag = target.tagName ? String(target.tagName).toLowerCase() : "?";
   return {
     eventsFired,
     dropDispatched: eventsFired.indexOf("drop") >= 0,
@@ -333,7 +351,9 @@ export async function dropFiles(
   } else {
     const box = await resolved.loc.boundingBox().catch(() => null);
     if (!box || box.width <= 0 || box.height <= 0) {
-      throw new Error("drop_files: target element has no rendered box — scroll into view or wait for it to mount");
+      throw new Error(
+        "drop_files: target element has no rendered box — scroll into view or wait for it to mount",
+      );
     }
     clientX = box.x + box.width / 2;
     clientY = box.y + box.height / 2;
@@ -356,25 +376,32 @@ export async function dropFiles(
   // Dispatch. For ref/selector targets we route through the Locator so
   // the page-side script receives the element directly as `el`. For coords
   // we run on `page` and the script re-resolves via `elementFromPoint`.
-  const result: DropEvalResult = resolved.kind === "coords"
-    ? await page.evaluate(
-        (a: { payload: DropPayload; src: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-implied-eval
-          const fn = (new Function("return (" + a.src + ");")() as (x: { el: unknown; payload: DropPayload }) => DropEvalResult);
-          return fn({ el: null, payload: a.payload });
-        },
-        { payload, src: scriptSource },
-      )
-    : await resolved.loc.evaluate(
-        // Locator.evaluate signature: (element, arg).
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (el: any, a: { payload: DropPayload; src: string }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-implied-eval
-          const fn = (new Function("return (" + a.src + ");")() as (x: { el: unknown; payload: DropPayload }) => DropEvalResult);
-          return fn({ el, payload: a.payload });
-        },
-        { payload, src: scriptSource },
-      );
+  const result: DropEvalResult =
+    resolved.kind === "coords"
+      ? await page.evaluate(
+          (a: { payload: DropPayload; src: string }) => {
+            // eslint-disable-next-line @typescript-eslint/no-implied-eval
+            const fn = new Function("return (" + a.src + ");")() as (x: {
+              el: unknown;
+              payload: DropPayload;
+            }) => DropEvalResult;
+            return fn({ el: null, payload: a.payload });
+          },
+          { payload, src: scriptSource },
+        )
+      : await resolved.loc.evaluate(
+          // Locator.evaluate signature: (element, arg).
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (el: any, a: { payload: DropPayload; src: string }) => {
+            // eslint-disable-next-line @typescript-eslint/no-implied-eval
+            const fn = new Function("return (" + a.src + ");")() as (x: {
+              el: unknown;
+              payload: DropPayload;
+            }) => DropEvalResult;
+            return fn({ el, payload: a.payload });
+          },
+          { payload, src: scriptSource },
+        );
 
   if (result.error) {
     throw new Error(`drop_files: in-page dispatch failed — ${result.error}`);
@@ -384,7 +411,12 @@ export async function dropFiles(
   return {
     ok: true,
     target: targetSummary(args.target),
-    files: prepared.map((p) => ({ name: p.name, mode: p.mode, bytes: p.bytes, mimeType: p.mimeType })),
+    files: prepared.map((p) => ({
+      name: p.name,
+      mode: p.mode,
+      bytes: p.bytes,
+      mimeType: p.mimeType,
+    })),
     totalBytes,
     fileCount: prepared.length,
     eventsFired: result.eventsFired,
