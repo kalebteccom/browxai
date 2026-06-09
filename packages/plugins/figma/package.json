@@ -2,6 +2,7 @@
   "name": "@kalebtec/browxai-plugin-figma",
   "version": "0.1.0",
   "description": "Figma canvas-app adapter plugin for browxai — surfaces a small first-party tool surface (selection, viewport, node mutate, rectangle create) over the `figma.*` page-side global.",
+  "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",

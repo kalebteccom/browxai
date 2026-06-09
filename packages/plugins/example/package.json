@@ -2,6 +2,7 @@
   "name": "@kalebtec/browxai-plugin-example",
   "version": "0.1.0",
   "description": "Reference browxai plugin — exercises every registry feature (tool registration, capability declaration, dependency declaration). Canonical source for plugin authors.",
+  "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
