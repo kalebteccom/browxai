@@ -9,6 +9,10 @@ export default defineConfig({
   base: "/browxai/",
   cleanUrls: true,
   lastUpdated: true,
+  // Internal docs live in-repo for agent context but must not ship to the
+  // published site. ai-context/** is AI-context working material; rfcs/**
+  // is design discussion.
+  srcExclude: ["ai-context/**", "rfcs/**"],
   // The reference pages are repo markdown that also link to source paths —
   // don't fail the build on those.
   ignoreDeadLinks: true,

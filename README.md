@@ -86,7 +86,7 @@ Full per-tool reference, the security model, and the stability policy are in the
 
 ## Stability
 
-browxai is **v0.1.0** and follows semver. The public tool surface (tool names,
+browxai is **v0.7.0** and follows semver. The public tool surface (tool names,
 documented input/output shapes, the `ActionResult` shape, the default
 capability set) is frozen; anything behind an off-by-default capability is
 explicitly experimental and not covered by the stability guarantee. See the
@@ -103,7 +103,14 @@ pnpm test:keystone       # headless end-to-end keystone (real Chromium)
 pnpm docs:dev            # the documentation site, locally
 ```
 
-Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+## Project docs
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow + DCO.
+- [AGENTS.md](AGENTS.md) — operating rules for AI-harness contributors.
+- [SECURITY.md](SECURITY.md) — vulnerability reporting + disclosure policy.
+- [MAINTAINERS.md](MAINTAINERS.md) — maintainer roster + responsibilities.
+- [RELEASING.md](RELEASING.md) — release ritual + OIDC publish flow.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant adoption.
 
 ## License
 

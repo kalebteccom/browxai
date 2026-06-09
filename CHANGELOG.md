@@ -8,6 +8,31 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **Phase 14a — tooling baseline + OIDC release pipeline.** ESLint flat
+  config, Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
+  `.npmrc`, repo `.githooks/` (commit-msg + pre-commit), Dependabot config
+  with allowlisted auto-merge, `quality.yml` CI workflow (typecheck, lint,
+  format-check, depcheck, lockfile-lint), and an OIDC-trusted-publisher
+  `release.yml` workflow plus a package-contents audit script.
+- **Phase 14b — public-flip governance docs.** Top-level `CODE_OF_CONDUCT.md`,
+  `CONTRIBUTING.md`, `MAINTAINERS.md`, `RELEASING.md`, `SECURITY.md`,
+  `THIRD_PARTY_NOTICES.md`; per-plugin MIT `LICENSE` files; supporting
+  governance docs (`plugin-governance.md`, `public-flip-checklist.md`,
+  `security-best-practices-for-adopters.md`).
+- **Phase 14c — AGENTS.md + ai-context + multi-harness pointers.** Root
+  `AGENTS.md` operating rules; cross-harness `.agents/skills/` source of
+  truth with eight expert-agent definitions mirrored into `.claude/agents/`
+  and `.codex/agents/`; `docs/ai-context/` tree covering architecture,
+  agent-process, page-side-functions, plugin-runtime, recorder-and-replay,
+  release-process, investigations, and adopter reports.
+
+### Changed
+
+- VitePress publish surface excludes `ai-context/**` and `rfcs/**` —
+  internal docs stay in-repo without leaking into the published site.
+
 ## v0.7.0 — 2026-06-08 — Canvas substrate + canvas plugins + perf optimization module
 
 Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; v1.0 launches with the public flip per the standing roadmap.

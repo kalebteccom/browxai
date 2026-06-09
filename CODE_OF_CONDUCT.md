@@ -1,9 +1,3 @@
-+++
-version = "2.1"
-aliases = ["/version/2/1"]
-reportingPlaceholder = "security@kalebtec.com (subject: [browxai-coc])"
-+++
-
 # Contributor Covenant Code of Conduct
 
 ## Our Pledge
