@@ -2,7 +2,13 @@ import { describe, it, expect } from "vitest";
 import { findByRef, serialise } from "./snapshot.js";
 import type { A11yNode } from "./a11y.js";
 
-function node(role: string, name: string | undefined, ref: string, children: A11yNode[] = [], extra: Partial<A11yNode> = {}): A11yNode {
+function node(
+  role: string,
+  name: string | undefined,
+  ref: string,
+  children: A11yNode[] = [],
+  extra: Partial<A11yNode> = {},
+): A11yNode {
   return { ref, role, name, children, ...extra };
 }
 
@@ -16,7 +22,7 @@ describe("serialise", () => {
     ]);
     const out = serialise(tree);
     expect(out).toContain('WebArea "Example" [ref=e1]');
-    expect(out).toContain('main [ref=e2]');
+    expect(out).toContain("main [ref=e2]");
     expect(out).toContain('button "Save" [ref=e3] [focused]');
     expect(out).toContain('button "Cancel" [ref=e4] [disabled]');
   });
@@ -27,18 +33,21 @@ describe("serialise", () => {
   });
 
   it("emits the actual matched attribute (e.g. data-type) when known", () => {
-    const tree: A11yNode = node("generic", undefined, "e2", [], { testId: "stats-pane", testIdAttr: "data-type" });
+    const tree: A11yNode = node("generic", undefined, "e2", [], {
+      testId: "stats-pane",
+      testIdAttr: "data-type",
+    });
     expect(serialise(tree)).toContain('[data-type="stats-pane"]');
   });
 
   it("marks DOM-walk-only nodes with [from-dom]", () => {
     const tree: A11yNode = node("button", "Save", "e1", [], { source: "dom" });
-    expect(serialise(tree)).toContain('[from-dom]');
+    expect(serialise(tree)).toContain("[from-dom]");
   });
 
-  it('marks combined-source nodes with [from-both]', () => {
+  it("marks combined-source nodes with [from-both]", () => {
     const tree: A11yNode = node("button", "Cancel", "e1", [], { source: "both" });
-    expect(serialise(tree)).toContain('[from-both]');
+    expect(serialise(tree)).toContain("[from-both]");
   });
 
   it("drops generic/presentation nodes with no name and no testid", () => {
@@ -70,8 +79,12 @@ describe("serialise", () => {
 
 describe("serialise — (scoped / maxNodes / omit)", () => {
   it("respects maxNodes with an elided-count marker", () => {
-    const tree: A11yNode = node("WebArea", undefined, "e1",
-      Array.from({ length: 10 }, (_, i) => node("button", `b${i}`, `e${i + 10}`)));
+    const tree: A11yNode = node(
+      "WebArea",
+      undefined,
+      "e1",
+      Array.from({ length: 10 }, (_, i) => node("button", `b${i}`, `e${i + 10}`)),
+    );
     const out = serialise(tree, { maxNodes: 3 });
     const lines = out.split("\n");
     expect(lines.length).toBeLessThanOrEqual(5); // 3 nodes + truncation marker (some leeway for pruning)

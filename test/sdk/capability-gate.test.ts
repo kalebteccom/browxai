@@ -8,12 +8,18 @@ import { buildClient, NOT_EXPOSED_ERROR } from "../../src/sdk/client.js";
 import type { BrowxaiClient } from "../../src/sdk/types.js";
 import type { SdkTransport } from "../../src/sdk/transport.js";
 
-function mockTransport(): { transport: SdkTransport; calls: Array<{ name: string; args: unknown }> } {
+function mockTransport(): {
+  transport: SdkTransport;
+  calls: Array<{ name: string; args: unknown }>;
+} {
   const calls: Array<{ name: string; args: unknown }> = [];
   const transport: SdkTransport = {
     dispatch: async (name, args) => {
       calls.push({ name, args });
-      return { content: [{ type: "text", text: JSON.stringify({ ok: true, name }) }], data: { ok: true, name } };
+      return {
+        content: [{ type: "text", text: JSON.stringify({ ok: true, name }) }],
+        data: { ok: true, name },
+      };
     },
     close: async () => undefined,
   };
@@ -77,7 +83,6 @@ describe("SDK capability gate — default posture (no posture-broadening caps)",
     });
     let captured: unknown = null;
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await (client as any).callTool("eval_js", { code: "1+1" });
     } catch (err) {
       captured = err;
@@ -124,7 +129,9 @@ describe("SDK session-default behaviour", () => {
       session: "wright-1",
     });
     await client.navigate({ url: "https://example.com" });
-    expect(calls).toEqual([{ name: "navigate", args: { url: "https://example.com", session: "wright-1" } }]);
+    expect(calls).toEqual([
+      { name: "navigate", args: { url: "https://example.com", session: "wright-1" } },
+    ]);
   });
 
   it("does NOT override an explicit args.session", async () => {

@@ -8,7 +8,9 @@ function jsonHandler(body: object): ToolHandler {
 }
 
 function throwingHandler(msg: string): ToolHandler {
-  return async () => { throw new Error(msg); };
+  return async () => {
+    throw new Error(msg);
+  };
 }
 
 describe("runBatch — sequential dispatch", () => {
@@ -36,7 +38,7 @@ describe("runBatch — sequential dispatch", () => {
   it("stops at the first failure by default (stopOnError defaults true)", async () => {
     const calls = [
       { tool: "click", args: {} },
-      { tool: "fill", args: {} },     // will fail
+      { tool: "fill", args: {} }, // will fail
       { tool: "wait_for", args: {} }, // should NOT run
     ];
     const handlers = {
@@ -53,7 +55,7 @@ describe("runBatch — sequential dispatch", () => {
   it("continues past failures when stopOnError=false; failedAt records first failure", async () => {
     const calls = [
       { tool: "click", args: {} },
-      { tool: "fill", args: {} },     // fails
+      { tool: "fill", args: {} }, // fails
       { tool: "wait_for", args: {} }, // still runs
     ];
     const handlers = {
@@ -70,7 +72,7 @@ describe("runBatch — sequential dispatch", () => {
   it("rejects non-whitelisted tools with a clear error and stops", async () => {
     const calls = [
       { tool: "click", args: {} },
-      { tool: "batch", args: {} },  // nesting blocked
+      { tool: "batch", args: {} }, // nesting blocked
       { tool: "wait_for", args: {} },
     ];
     const handlers = {
@@ -80,7 +82,7 @@ describe("runBatch — sequential dispatch", () => {
     const report = await runBatch(calls, { allowed: ALLOWED, handlers });
     expect(report.failedAt).toBe(1);
     expect(report.results[1]?.ok).toBe(false);
-    expect(report.results[1]?.error).toContain('not allowed inside batch');
+    expect(report.results[1]?.error).toContain("not allowed inside batch");
     expect(report.results[2]).toBeUndefined();
   });
 
@@ -101,17 +103,20 @@ describe("runBatch — sequential dispatch", () => {
   });
 
   it("parses inner JSON body; ok defaults to true when handler omits it", async () => {
-    const report = await runBatch(
-      [{ tool: "click" }],
-      { allowed: ALLOWED, handlers: { click: jsonHandler({ message: "no ok field here" }) } },
-    );
+    const report = await runBatch([{ tool: "click" }], {
+      allowed: ALLOWED,
+      handlers: { click: jsonHandler({ message: "no ok field here" }) },
+    });
     expect(report.results[0]?.ok).toBe(true);
     expect(report.results[0]?.result).toEqual({ message: "no ok field here" });
   });
 
   it("falls back to raw text when the handler's first content item isn't JSON", async () => {
     const handler: ToolHandler = async () => ({ content: [{ type: "text", text: "plain reply" }] });
-    const report = await runBatch([{ tool: "click" }], { allowed: ALLOWED, handlers: { click: handler } });
+    const report = await runBatch([{ tool: "click" }], {
+      allowed: ALLOWED,
+      handlers: { click: handler },
+    });
     expect(report.results[0]?.ok).toBe(true);
     expect(report.results[0]?.result).toBe("plain reply");
   });
@@ -119,18 +124,18 @@ describe("runBatch — sequential dispatch", () => {
 
 describe("runBatch — labels + expect", () => {
   it("echoes the call's label on the result entry", async () => {
-    const report = await runBatch(
-      [{ tool: "click", label: "set type", args: {} }],
-      { allowed: ALLOWED, handlers: { click: jsonHandler({ ok: true }) } },
-    );
+    const report = await runBatch([{ tool: "click", label: "set type", args: {} }], {
+      allowed: ALLOWED,
+      handlers: { click: jsonHandler({ ok: true }) },
+    });
     expect(report.results[0]?.label).toBe("set type");
   });
 
   it("omits label on entries where the call didn't supply one", async () => {
-    const report = await runBatch(
-      [{ tool: "click" }],
-      { allowed: ALLOWED, handlers: { click: jsonHandler({ ok: true }) } },
-    );
+    const report = await runBatch([{ tool: "click" }], {
+      allowed: ALLOWED,
+      handlers: { click: jsonHandler({ ok: true }) },
+    });
     expect(report.results[0]?.label).toBeUndefined();
   });
 
@@ -141,7 +146,7 @@ describe("runBatch — labels + expect", () => {
       { allowed: ALLOWED, handlers: { fill: handler } },
     );
     expect(report.results[0]?.ok).toBe(false);
-    expect(report.results[0]?.error).toContain('expect failed');
+    expect(report.results[0]?.error).toContain("expect failed");
     expect(report.results[0]?.error).toContain('"expected"');
   });
 
@@ -181,27 +186,33 @@ describe("evaluateExpect — predicate evaluation", () => {
         container: { rowText: "row contents include hit" },
       },
     };
-    expect(evaluateExpect({
-      valueEquals: "x",
-      displayTextIncludes: "hello",
-      controlDisplayTextIncludes: "Engineering",
-      containerTextIncludes: "hit",
-      controlChanged: true,
-    }, body)).toBeNull();
+    expect(
+      evaluateExpect(
+        {
+          valueEquals: "x",
+          displayTextIncludes: "hello",
+          controlDisplayTextIncludes: "Engineering",
+          containerTextIncludes: "hit",
+          controlChanged: true,
+        },
+        body,
+      ),
+    ).toBeNull();
   });
 
   it("returns a descriptive error when valueEquals fails", () => {
-    expect(evaluateExpect({ valueEquals: "expected" }, { element: { value: "other" } }))
-      .toMatch(/element.value/);
+    expect(evaluateExpect({ valueEquals: "expected" }, { element: { value: "other" } })).toMatch(
+      /element.value/,
+    );
   });
 
   it("handles missing element gracefully", () => {
-    expect(evaluateExpect({ valueEquals: "x" }, { something: "else" }))
-      .toMatch(/element.value/);
+    expect(evaluateExpect({ valueEquals: "x" }, { something: "else" })).toMatch(/element.value/);
   });
 
   it("ownerControl.changed predicate reads from element.ownerControl", () => {
-    expect(evaluateExpect({ controlChanged: true }, { element: { ownerControl: { changed: false } } }))
-      .toMatch(/ownerControl.changed/);
+    expect(
+      evaluateExpect({ controlChanged: true }, { element: { ownerControl: { changed: false } } }),
+    ).toMatch(/ownerControl.changed/);
   });
 });

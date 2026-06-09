@@ -13,12 +13,12 @@ Security fixes are issued against the **latest minor** and (for
 critical-only issues) the **previous minor**. Older minors are
 end-of-life and receive no patches; upgrade.
 
-| Version range | Support level |
-| --- | --- |
-| `1.(latest).x` | Patches for any qualifying vulnerability. |
-| `1.(latest-1).x` | Critical only. |
-| `1.(latest-2).x` and older | No support. Upgrade. |
-| `0.x` | No support. Pre-public-flip. Upgrade to `1.x`. |
+| Version range              | Support level                                  |
+| -------------------------- | ---------------------------------------------- |
+| `1.(latest).x`             | Patches for any qualifying vulnerability.      |
+| `1.(latest-1).x`           | Critical only.                                 |
+| `1.(latest-2).x` and older | No support. Upgrade.                           |
+| `0.x`                      | No support. Pre-public-flip. Upgrade to `1.x`. |
 
 "Critical" means: remote code execution, secrets exfiltration, capability
 gate bypass, or workspace escape. Everything else is "qualifying."

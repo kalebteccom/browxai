@@ -7,12 +7,21 @@
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveCapabilities, resolveConfirmHooks, DEFAULT_CAPABILITIES } from "../util/capabilities.js";
+import {
+  resolveCapabilities,
+  resolveConfirmHooks,
+  DEFAULT_CAPABILITIES,
+} from "../util/capabilities.js";
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
 
-interface Check { name: string; ok: boolean; detail: string; fix?: string; }
+interface Check {
+  name: string;
+  ok: boolean;
+  detail: string;
+  fix?: string;
+}
 
 export async function runDoctor(): Promise<number> {
   const checks: Check[] = [];
@@ -39,10 +48,20 @@ export async function runDoctor(): Promise<number> {
     if (existsSync(probe)) {
       checks.push({ name: "workspace", ok: true, detail: `${ws.root} (writable)` });
     } else {
-      checks.push({ name: "workspace", ok: false, detail: `${ws.root} couldn't create subdir`, fix: "check permissions; set BROWX_WORKSPACE to a writable dir" });
+      checks.push({
+        name: "workspace",
+        ok: false,
+        detail: `${ws.root} couldn't create subdir`,
+        fix: "check permissions; set BROWX_WORKSPACE to a writable dir",
+      });
     }
   } catch (e) {
-    checks.push({ name: "workspace", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "set BROWX_WORKSPACE to an absolute path you own" });
+    checks.push({
+      name: "workspace",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "set BROWX_WORKSPACE to an absolute path you own",
+    });
   }
 
   // 3. BROWX_TEST_ATTRIBUTES configured (default or explicit).
@@ -52,7 +71,9 @@ export async function runDoctor(): Promise<number> {
     name: "test-attrs",
     ok: true,
     detail: `${config.testAttributes.join(",")}${explicit ? " (BROWX_TEST_ATTRIBUTES set)" : " (default)"}`,
-    fix: explicit ? undefined : "set BROWX_TEST_ATTRIBUTES if your codebase uses non-default conventions (e.g. add `data-type`)",
+    fix: explicit
+      ? undefined
+      : "set BROWX_TEST_ATTRIBUTES if your codebase uses non-default conventions (e.g. add `data-type`)",
   });
 
   // 4. BROWX_ATTACH_CDP — if set, can we reach it?
@@ -62,8 +83,12 @@ export async function runDoctor(): Promise<number> {
     checks.push({
       name: "cdp-attach",
       ok: reachable.ok,
-      detail: reachable.ok ? `${cdpEnv} reachable — ${reachable.version}` : `${cdpEnv} unreachable (${reachable.error})`,
-      fix: reachable.ok ? undefined : "start a Chrome at this port — `browxai chrome start` or `chrome --remote-debugging-port=9222 …`",
+      detail: reachable.ok
+        ? `${cdpEnv} reachable — ${reachable.version}`
+        : `${cdpEnv} unreachable (${reachable.error})`,
+      fix: reachable.ok
+        ? undefined
+        : "start a Chrome at this port — `browxai chrome start` or `chrome --remote-debugging-port=9222 …`",
     });
   } else {
     // Not configured. Probe the default port anyway — adopters with a Chrome
@@ -94,10 +119,20 @@ export async function runDoctor(): Promise<number> {
       name: "capabilities",
       ok: true,
       detail,
-      fix: dangerous.length ? `${dangerous.join(",")} on — page text remains untrusted; review docs/threat-model.md` : (explicit ? undefined : "see docs/threat-model.md for the full set; default is " + DEFAULT_CAPABILITIES.join(",")),
+      fix: dangerous.length
+        ? `${dangerous.join(",")} on — page text remains untrusted; review docs/threat-model.md`
+        : explicit
+          ? undefined
+          : "see docs/threat-model.md for the full set; default is " +
+            DEFAULT_CAPABILITIES.join(","),
     });
   } catch (e) {
-    checks.push({ name: "capabilities", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "fix BROWX_CAPABILITIES (comma-separated, see docs/threat-model.md)" });
+    checks.push({
+      name: "capabilities",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "fix BROWX_CAPABILITIES (comma-separated, see docs/threat-model.md)",
+    });
   }
 
   // 6. Confirm-required hooks.
@@ -109,7 +144,12 @@ export async function runDoctor(): Promise<number> {
       detail: hooks.size > 0 ? `[${[...hooks].join(", ")}]` : "(none)",
     });
   } catch (e) {
-    checks.push({ name: "confirm-hooks", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "fix BROWX_CONFIRM_REQUIRED — see docs/threat-model.md" });
+    checks.push({
+      name: "confirm-hooks",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "fix BROWX_CONFIRM_REQUIRED — see docs/threat-model.md",
+    });
   }
 
   // 7. Origin policy.
@@ -120,10 +160,17 @@ export async function runDoctor(): Promise<number> {
       name: "origins",
       ok: true,
       detail: describePolicy(policy),
-      fix: noAllowlist ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate." : undefined,
+      fix: noAllowlist
+        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate."
+        : undefined,
     });
   } catch (e) {
-    checks.push({ name: "origins", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)" });
+    checks.push({
+      name: "origins",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)",
+    });
   }
 
   // 8. Chromium installed (managed-mode dependency).
@@ -134,10 +181,20 @@ export async function runDoctor(): Promise<number> {
     if (path && existsSync(path)) {
       checks.push({ name: "chromium", ok: true, detail: `${path}` });
     } else {
-      checks.push({ name: "chromium", ok: false, detail: "playwright-core has no Chromium binary cached", fix: "run `pnpm install-browser`" });
+      checks.push({
+        name: "chromium",
+        ok: false,
+        detail: "playwright-core has no Chromium binary cached",
+        fix: "run `pnpm install-browser`",
+      });
     }
   } catch (e) {
-    checks.push({ name: "chromium", ok: false, detail: e instanceof Error ? e.message : String(e), fix: "run `pnpm install` and `pnpm install-browser`" });
+    checks.push({
+      name: "chromium",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "run `pnpm install` and `pnpm install-browser`",
+    });
   }
 
   // Print + exit.
@@ -152,7 +209,9 @@ export async function runDoctor(): Promise<number> {
   return allOk ? 0 : 1;
 }
 
-async function probeCdp(endpoint: string): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
+async function probeCdp(
+  endpoint: string,
+): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
   try {
     const url = new URL(endpoint);
     const probeUrl = `${url.origin}/json/version`;

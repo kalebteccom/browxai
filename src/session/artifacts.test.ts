@@ -8,11 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, mkdirSync, utimesSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  ArtifactsRegistry,
-  ARTIFACT_MAX_ENTRIES,
-  ARTIFACT_MAX_BYTES,
-} from "./artifacts.js";
+import { ArtifactsRegistry, ARTIFACT_MAX_ENTRIES, ARTIFACT_MAX_BYTES } from "./artifacts.js";
 
 let storage: string;
 
@@ -177,7 +173,10 @@ describe("ArtifactsRegistry — capacity caps", () => {
     utimesSync(p2, epoch1 + 1, epoch1 + 1);
     // third save pushes us over — first should be evicted.
     r.save("third", "x".repeat(chunk));
-    const names = r.list().map((e) => e.name).sort();
+    const names = r
+      .list()
+      .map((e) => e.name)
+      .sort();
     expect(names).toContain("third");
     expect(names).toContain("second");
     expect(names).not.toContain("first");

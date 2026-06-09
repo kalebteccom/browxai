@@ -21,7 +21,7 @@ Writes keystone tests that exercise tools against real headless Chromium. The re
 1. **Pick a fixture page.** Use the existing fixture infrastructure under `test/` (or add a new fixture HTML file).
 2. **Drive the tool against real Chromium.** Use the `browxai` SDK with the relevant capabilities granted. Headless mode is the default.
 3. **Assert on the ActionResult shape.** Real values, not mocked. If the tool returns a DOM-derived structure, assert against actual page state.
-4. **Add the capability-denial test.** Drive the tool with the capability *not* granted; assert the structured `capability-denied` error envelope.
+4. **Add the capability-denial test.** Drive the tool with the capability _not_ granted; assert the structured `capability-denied` error envelope.
 5. **Verify the false-positive check.** Change an expected value to a wrong value; the test must fail. Revert.
 
 ## Success criteria

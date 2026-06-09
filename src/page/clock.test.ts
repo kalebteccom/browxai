@@ -48,13 +48,15 @@ describe("ClockRegistry — freeze", () => {
     expect(mode).toBe("freeze");
     expect(appliedAtIso).toBe("2030-01-15T12:00:00.000Z");
     expect(state).toEqual({ nowMs: Date.parse("2030-01-15T12:00:00.000Z"), paused: true });
-    expect(calls).toEqual([{
-      method: "Emulation.setVirtualTimePolicy",
-      params: {
-        policy: "pauseIfNetworkFetchesPending",
-        initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
+    expect(calls).toEqual([
+      {
+        method: "Emulation.setVirtualTimePolicy",
+        params: {
+          policy: "pauseIfNetworkFetchesPending",
+          initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
+        },
       },
-    }]);
+    ]);
   });
 
   it("freezes at wall-clock now when atIso omitted", async () => {
@@ -72,16 +74,18 @@ describe("ClockRegistry — freeze", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, { mode: "freeze", byMs: 1000 }))
-      .rejects.toThrow(/byMs is only valid with mode:"advance"/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "freeze", byMs: 1000 }),
+    ).rejects.toThrow(/byMs is only valid with mode:"advance"/);
   });
 
   it("rejects invalid atIso", async () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "not-a-date" }))
-      .rejects.toThrow(/atIso is not a valid ISO-8601 timestamp/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "not-a-date" }),
+    ).rejects.toThrow(/atIso is not a valid ISO-8601 timestamp/);
   });
 });
 
@@ -109,16 +113,17 @@ describe("ClockRegistry — advance", () => {
       "pauseIfNetworkFetchesPending",
     ]);
     expect(calls[1]!.params.budget).toBe(60_000);
-    expect(calls[2]!.params.initialVirtualTime).toBe(
-      Date.parse("2030-01-15T12:01:00.000Z") / 1000,
-    );
+    expect(calls[2]!.params.initialVirtualTime).toBe(Date.parse("2030-01-15T12:01:00.000Z") / 1000);
   });
 
   it("advances to an absolute atIso", async () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "2030-01-15T12:00:00.000Z" });
+    await reg.apply(cdp as never, page as never, {
+      mode: "freeze",
+      atIso: "2030-01-15T12:00:00.000Z",
+    });
     const { appliedAtIso, state } = await reg.apply(cdp as never, page as never, {
       mode: "advance",
       atIso: "2030-01-15T12:00:30.000Z",
@@ -131,29 +136,37 @@ describe("ClockRegistry — advance", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance" }))
-      .rejects.toThrow(/advance requires either atIso or byMs/);
+    await expect(reg.apply(cdp as never, page as never, { mode: "advance" })).rejects.toThrow(
+      /advance requires either atIso or byMs/,
+    );
   });
 
   it("rejects when both atIso and byMs given", async () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, {
-      mode: "advance", atIso: "2030-01-01T00:00:00Z", byMs: 1000,
-    })).rejects.toThrow(/exactly one of atIso or byMs/);
+    await expect(
+      reg.apply(cdp as never, page as never, {
+        mode: "advance",
+        atIso: "2030-01-01T00:00:00Z",
+        byMs: 1000,
+      }),
+    ).rejects.toThrow(/exactly one of atIso or byMs/);
   });
 
   it("rejects byMs <= 0 or non-finite", async () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance", byMs: 0 }))
-      .rejects.toThrow(/positive finite/);
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance", byMs: -1 }))
-      .rejects.toThrow(/positive finite/);
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance", byMs: Number.NaN }))
-      .rejects.toThrow(/positive finite/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "advance", byMs: 0 }),
+    ).rejects.toThrow(/positive finite/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "advance", byMs: -1 }),
+    ).rejects.toThrow(/positive finite/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "advance", byMs: Number.NaN }),
+    ).rejects.toThrow(/positive finite/);
   });
 
   it("rejects byMs exceeding the 1-year ceiling", async () => {
@@ -161,8 +174,9 @@ describe("ClockRegistry — advance", () => {
     const page = fakePage();
     const reg = new ClockRegistry();
     const twoYears = 2 * 365 * 24 * 60 * 60 * 1000;
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance", byMs: twoYears }))
-      .rejects.toThrow(/exceeds max/);
+    await expect(
+      reg.apply(cdp as never, page as never, { mode: "advance", byMs: twoYears }),
+    ).rejects.toThrow(/exceeds max/);
   });
 });
 
@@ -173,12 +187,16 @@ describe("ClockRegistry — release", () => {
     const reg = new ClockRegistry();
     await reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "2030-01-01T00:00:00Z" });
     calls.length = 0;
-    const { state, mode, appliedAtIso } = await reg.apply(cdp as never, page as never, { mode: "release" });
+    const { state, mode, appliedAtIso } = await reg.apply(cdp as never, page as never, {
+      mode: "release",
+    });
     expect(mode).toBe("release");
     expect(state).toBeUndefined();
     expect(appliedAtIso).toBeNull();
     expect(reg.current()).toBeUndefined();
-    expect(calls).toEqual([{ method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } }]);
+    expect(calls).toEqual([
+      { method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } },
+    ]);
   });
 
   it("release on a never-set clock is harmless (no cached state)", async () => {
@@ -205,21 +223,25 @@ describe("ClockRegistry — re-apply on navigation", () => {
 
     // Sub-frame nav: ignored
     await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
-      "framenavigated", frame(false),
+      "framenavigated",
+      frame(false),
     );
     expect(calls2).toHaveLength(0);
 
     // Main-frame nav: pause re-issued onto the fresh CDP session
     await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
-      "framenavigated", frame(true),
+      "framenavigated",
+      frame(true),
     );
-    expect(calls2).toEqual([{
-      method: "Emulation.setVirtualTimePolicy",
-      params: {
-        policy: "pauseIfNetworkFetchesPending",
-        initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
+    expect(calls2).toEqual([
+      {
+        method: "Emulation.setVirtualTimePolicy",
+        params: {
+          policy: "pauseIfNetworkFetchesPending",
+          initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
+        },
       },
-    }]);
+    ]);
   });
 
   it("does not re-apply after release", async () => {
@@ -227,10 +249,14 @@ describe("ClockRegistry — re-apply on navigation", () => {
     const { cdp: cdp2, calls: calls2 } = fakeCdp();
     const page = fakePage(cdp2);
     const reg = new ClockRegistry();
-    await reg.apply(cdp1 as never, page as never, { mode: "freeze", atIso: "2030-01-15T12:00:00.000Z" });
+    await reg.apply(cdp1 as never, page as never, {
+      mode: "freeze",
+      atIso: "2030-01-15T12:00:00.000Z",
+    });
     await reg.apply(cdp1 as never, page as never, { mode: "release" });
     await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
-      "framenavigated", frame(true),
+      "framenavigated",
+      frame(true),
     );
     expect(calls2).toHaveLength(0);
   });
@@ -239,11 +265,15 @@ describe("ClockRegistry — re-apply on navigation", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "2030-01-15T12:00:00.000Z" });
+    await reg.apply(cdp as never, page as never, {
+      mode: "freeze",
+      atIso: "2030-01-15T12:00:00.000Z",
+    });
     await reg.apply(cdp as never, page as never, { mode: "advance", byMs: 1000 });
     await reg.apply(cdp as never, page as never, { mode: "release" });
-    expect((page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"))
-      .toHaveLength(1);
+    expect(
+      (page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"),
+    ).toHaveLength(1);
   });
 });
 
@@ -252,7 +282,10 @@ describe("ClockRegistry — state persistence + reset", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "2030-01-15T12:00:00.000Z" });
+    await reg.apply(cdp as never, page as never, {
+      mode: "freeze",
+      atIso: "2030-01-15T12:00:00.000Z",
+    });
     await reg.apply(cdp as never, page as never, { mode: "advance", byMs: 5_000 });
     await reg.apply(cdp as never, page as never, { mode: "advance", byMs: 7_000 });
     expect(reg.current()!.nowMs).toBe(Date.parse("2030-01-15T12:00:12.000Z"));
@@ -262,10 +295,15 @@ describe("ClockRegistry — state persistence + reset", () => {
     const { cdp, calls } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "2030-01-15T12:00:00.000Z" });
+    await reg.apply(cdp as never, page as never, {
+      mode: "freeze",
+      atIso: "2030-01-15T12:00:00.000Z",
+    });
     calls.length = 0;
     await reg.resetAll(cdp as never);
-    expect(calls).toEqual([{ method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } }]);
+    expect(calls).toEqual([
+      { method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } },
+    ]);
     expect(reg.current()).toBeUndefined();
   });
 

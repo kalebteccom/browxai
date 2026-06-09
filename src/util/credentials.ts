@@ -52,7 +52,11 @@ import type { SecretRegistry } from "./secrets.js";
 export type ProviderName = "oathtool" | "1password" | "bitwarden" | "lastpass" | "none";
 
 export const ALL_PROVIDERS: readonly ProviderName[] = [
-  "oathtool", "1password", "bitwarden", "lastpass", "none",
+  "oathtool",
+  "1password",
+  "bitwarden",
+  "lastpass",
+  "none",
 ];
 
 /**
@@ -136,16 +140,25 @@ export async function runArgv(
       let stdout = "";
       let stderr = "";
       const timer = setTimeout(() => {
-        try { cp.kill("SIGKILL"); } catch { /* best-effort */ }
+        try {
+          cp.kill("SIGKILL");
+        } catch {
+          /* best-effort */
+        }
         finish({
           ok: false,
-          stdout, stderr,
+          stdout,
+          stderr,
           code: null,
           spawnError: `timed out after ${timeoutMs}ms`,
         });
       }, timeoutMs);
-      cp.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf8"); });
-      cp.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf8"); });
+      cp.stdout.on("data", (d: Buffer) => {
+        stdout += d.toString("utf8");
+      });
+      cp.stderr.on("data", (d: Buffer) => {
+        stderr += d.toString("utf8");
+      });
       cp.on("error", (e) => {
         clearTimeout(timer);
         finish({ ok: false, stdout, stderr, code: null, spawnError: e.message });
@@ -158,7 +171,10 @@ export async function runArgv(
       else cp.stdin.end();
     } catch (e) {
       finish({
-        ok: false, stdout: "", stderr: "", code: null,
+        ok: false,
+        stdout: "",
+        stderr: "",
+        code: null,
         spawnError: e instanceof Error ? e.message : String(e),
       });
     }
@@ -238,7 +254,7 @@ class OathtoolProvider implements CredentialProvider {
         provider: "oathtool",
         error: `oathtool: no seed registered for account "${account}"`,
         hint:
-          "register the seed via BROWX_OATHTOOL_SEEDS=\"<account>=<BASE32SECRET>,…\" or " +
+          'register the seed via BROWX_OATHTOOL_SEEDS="<account>=<BASE32SECRET>,…" or ' +
           "BROWX_OATHTOOL_SEEDS_FILE=<path-to-json>, then restart the server",
       };
     }
@@ -311,14 +327,16 @@ class OnePasswordProvider implements CredentialProvider {
     const r = await runArgv([this.binary, "item", "get", account, "--otp"], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: `1password CLI "${this.binary}" not found on PATH`,
         hint: "install the 1Password CLI from https://developer.1password.com/docs/cli/get-started/",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: `op item get --otp failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure you've run `op signin` and the item name is correct",
       };
@@ -326,7 +344,8 @@ class OnePasswordProvider implements CredentialProvider {
     const code = r.stdout.trim();
     if (!/^\d{6,8}$/.test(code)) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: "1password returned unexpected output (not a 6-8 digit code)",
         hint: "verify the item has a one-time-password field configured",
       };
@@ -336,19 +355,30 @@ class OnePasswordProvider implements CredentialProvider {
   async getCredential(account: string): Promise<CredentialResult> {
     // `op item get <name> --fields label=username,label=password --format json`
     const r = await runArgv(
-      [this.binary, "item", "get", account, "--fields", "label=username,label=password", "--format", "json"],
+      [
+        this.binary,
+        "item",
+        "get",
+        account,
+        "--fields",
+        "label=username,label=password",
+        "--format",
+        "json",
+      ],
       { timeoutMs: 5000 },
     );
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: `1password CLI "${this.binary}" not found on PATH`,
         hint: "install the 1Password CLI from https://developer.1password.com/docs/cli/get-started/",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: `op item get failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure you've run `op signin` and the item name is correct",
       };
@@ -356,12 +386,18 @@ class OnePasswordProvider implements CredentialProvider {
     const parsed = parseFieldsJson(r.stdout);
     if (!parsed.username || !parsed.password) {
       return {
-        ok: false, provider: "1password",
+        ok: false,
+        provider: "1password",
         error: "1password item missing username or password field",
         hint: "verify the item has both a `username` and `password` field labelled accordingly",
       };
     }
-    return { ok: true, provider: "1password", username: parsed.username, _password: parsed.password } as ProviderCredentialInternal;
+    return {
+      ok: true,
+      provider: "1password",
+      username: parsed.username,
+      _password: parsed.password,
+    } as ProviderCredentialInternal;
   }
 }
 
@@ -376,14 +412,16 @@ class BitwardenProvider implements CredentialProvider {
     const r = await runArgv([this.binary, "get", "totp", account], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: `bitwarden CLI "${this.binary}" not found on PATH`,
         hint: "install the Bitwarden CLI: https://bitwarden.com/help/cli/",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: `bw get totp failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure $BW_SESSION is set (`bw unlock`) and the item exists",
       };
@@ -391,7 +429,8 @@ class BitwardenProvider implements CredentialProvider {
     const code = r.stdout.trim();
     if (!/^\d{6,8}$/.test(code)) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: "bitwarden returned unexpected output (not a 6-8 digit code)",
         hint: "verify the item has a TOTP field configured",
       };
@@ -402,14 +441,16 @@ class BitwardenProvider implements CredentialProvider {
     const r = await runArgv([this.binary, "get", "item", account], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: `bitwarden CLI "${this.binary}" not found on PATH`,
         hint: "install the Bitwarden CLI: https://bitwarden.com/help/cli/",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: `bw get item failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure $BW_SESSION is set (`bw unlock`) and the item exists",
       };
@@ -420,15 +461,22 @@ class BitwardenProvider implements CredentialProvider {
       const password = item.login?.password;
       if (!username || !password) {
         return {
-          ok: false, provider: "bitwarden",
+          ok: false,
+          provider: "bitwarden",
           error: "bitwarden item missing username or password",
           hint: "verify the item has both fields populated",
         };
       }
-      return { ok: true, provider: "bitwarden", username, _password: password } as ProviderCredentialInternal;
+      return {
+        ok: true,
+        provider: "bitwarden",
+        username,
+        _password: password,
+      } as ProviderCredentialInternal;
     } catch (e) {
       return {
-        ok: false, provider: "bitwarden",
+        ok: false,
+        provider: "bitwarden",
         error: "could not parse bw output as JSON",
         hint: e instanceof Error ? e.message : String(e),
       };
@@ -447,14 +495,16 @@ class LastpassProvider implements CredentialProvider {
     const r = await runArgv([this.binary, "show", "--field=otp", account], { timeoutMs: 5000 });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: `lastpass CLI "${this.binary}" not found on PATH`,
         hint: "install lpass (macOS: `brew install lastpass-cli`)",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: `lpass show --field=otp failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure you've run `lpass login` and the item has an otp field",
       };
@@ -462,7 +512,8 @@ class LastpassProvider implements CredentialProvider {
     const code = r.stdout.trim();
     if (!/^\d{6,8}$/.test(code)) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: "lastpass returned unexpected output (not a 6-8 digit code)",
         hint: "verify the item has a TOTP field configured",
       };
@@ -470,35 +521,45 @@ class LastpassProvider implements CredentialProvider {
     return { ok: true, code, provider: "lastpass" };
   }
   async getCredential(account: string): Promise<CredentialResult> {
-    const r = await runArgv(
-      [this.binary, "show", "--username", "--password", account],
-      { timeoutMs: 5000 },
-    );
+    const r = await runArgv([this.binary, "show", "--username", "--password", account], {
+      timeoutMs: 5000,
+    });
     if (r.spawnError && /ENOENT/.test(r.spawnError)) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: `lastpass CLI "${this.binary}" not found on PATH`,
         hint: "install lpass (macOS: `brew install lastpass-cli`)",
       };
     }
     if (!r.ok) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: `lpass show failed (exit ${r.code ?? "?"})`,
         hint: r.stderr.trim() || "ensure you've run `lpass login` and the item exists",
       };
     }
     // lpass emits the requested fields one per line in the order requested.
-    const lines = r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = r.stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const [username, password] = lines;
     if (!username || !password) {
       return {
-        ok: false, provider: "lastpass",
+        ok: false,
+        provider: "lastpass",
         error: "lastpass returned no username/password",
         hint: "verify the item has both fields populated",
       };
     }
-    return { ok: true, provider: "lastpass", username, _password: password } as ProviderCredentialInternal;
+    return {
+      ok: true,
+      provider: "lastpass",
+      username,
+      _password: password,
+    } as ProviderCredentialInternal;
   }
 }
 
@@ -557,9 +618,10 @@ export interface CredentialsConfig {
  * provider object is constructed eagerly; if its CLI is missing, that
  * surfaces per-call, never at startup (so the server still boots).
  */
-export function resolveCredentialsProvider(
-  env: NodeJS.ProcessEnv = process.env,
-): { provider: CredentialProvider; config: CredentialsConfig } {
+export function resolveCredentialsProvider(env: NodeJS.ProcessEnv = process.env): {
+  provider: CredentialProvider;
+  config: CredentialsConfig;
+} {
   const raw = env.BROWX_CREDENTIALS_PROVIDER?.trim().toLowerCase();
   const warnings: string[] = [];
   const name: ProviderName = (() => {
@@ -567,7 +629,7 @@ export function resolveCredentialsProvider(
     if (ALL_PROVIDERS.includes(raw as ProviderName)) return raw as ProviderName;
     warnings.push(
       `BROWX_CREDENTIALS_PROVIDER: unknown provider "${raw}" — falling back to "oathtool". ` +
-      `Valid: ${ALL_PROVIDERS.join(", ")}.`,
+        `Valid: ${ALL_PROVIDERS.join(", ")}.`,
     );
     return "oathtool";
   })();
@@ -672,7 +734,6 @@ export function applyCredentialToRegistry(
 }
 
 function stripInternal(r: ProviderCredentialInternal): CredentialResult {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { _password, ...rest } = r;
   return rest;
 }

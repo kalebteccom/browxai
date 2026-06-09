@@ -154,7 +154,9 @@ describe("applyCredentialToRegistry — W-V12 integration", () => {
     // Password is NOT in the returned object
     expect(JSON.stringify(result)).not.toContain("hunter2");
     // Registry now masks the password value
-    expect(registry.applyMaskInText("logged in with hunter2!")).toBe("logged in with <PASSWORD_ACME_CORP>");
+    expect(registry.applyMaskInText("logged in with hunter2!")).toBe(
+      "logged in with <PASSWORD_ACME_CORP>",
+    );
     // And the registry can materialise the alias back to the real value at
     // dispatch (W-V12 fill/press substitution path).
     const m = registry.materialize("<PASSWORD_ACME_CORP>", "https://app.example.com");
@@ -207,15 +209,20 @@ describe("applyCredentialToRegistry — W-V12 integration", () => {
 describe("makeFakeProvider", () => {
   it("provides a test seam for both endpoints", async () => {
     const fake = makeFakeProvider({
-      getTotp: async (account) => ({ ok: true, code: "123456", provider: "oathtool", _account: account } as never),
-      getCredential: async (account) => ({
-        ok: true, provider: "1password", username: `user_${account}`, _password: "pw",
-      } as ProviderCredentialInternal),
+      getTotp: async (account) =>
+        ({ ok: true, code: "123456", provider: "oathtool", _account: account }) as never,
+      getCredential: async (account) =>
+        ({
+          ok: true,
+          provider: "1password",
+          username: `user_${account}`,
+          _password: "pw",
+        }) as ProviderCredentialInternal,
     });
     const t = await fake.getTotp("acme");
     expect(t.ok).toBe(true);
     expect(t.code).toBe("123456");
-    const c = await fake.getCredential("acme") as ProviderCredentialInternal;
+    const c = (await fake.getCredential("acme")) as ProviderCredentialInternal;
     expect(c.ok).toBe(true);
     expect(c.username).toBe("user_acme");
   });

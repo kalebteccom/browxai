@@ -54,9 +54,12 @@ export class BrowxBridge {
         if (this.detached) return; // quiet drop after detach.
         try {
           const o = JSON.parse(payload) as { kind: string; name: string; data: unknown };
-          if (o.kind === "signal") this.onSignal({ name: o.name, data: o.data, ts: Date.now(), url: source.page?.url() });
+          if (o.kind === "signal")
+            this.onSignal({ name: o.name, data: o.data, ts: Date.now(), url: source.page?.url() });
         } catch (e) {
-          log.warn("browx-bridge: bad payload", { error: e instanceof Error ? e.message : String(e) });
+          log.warn("browx-bridge: bad payload", {
+            error: e instanceof Error ? e.message : String(e),
+          });
         }
       });
       this.bindingOk = true;
@@ -102,13 +105,17 @@ export class BrowxBridge {
         for (const page of ctx.pages()) {
           page.evaluate(setOptOut).catch(() => undefined);
         }
-      } catch { /* context already torn down */ }
+      } catch {
+        /* context already torn down */
+      }
     }
     this.contexts = [];
   }
 
   /** test introspection — true once detach() has fired. */
-  isDetached(): boolean { return this.detached; }
+  isDetached(): boolean {
+    return this.detached;
+  }
 
   /**
    * Wait for the next signal matching `name` (or any signal if `name` is omitted).
@@ -164,7 +171,16 @@ export class BrowxBridge {
       try {
         const raw = await page.evaluate(() => {
           // Runs in page context; cast through unknown to keep ts happy server-side.
-          const doc = (globalThis as unknown as { document?: { documentElement: { getAttribute: (n: string) => string | null; removeAttribute: (n: string) => void } } }).document;
+          const doc = (
+            globalThis as unknown as {
+              document?: {
+                documentElement: {
+                  getAttribute: (n: string) => string | null;
+                  removeAttribute: (n: string) => void;
+                };
+              };
+            }
+          ).document;
           if (!doc) return null;
           const v = doc.documentElement.getAttribute("data-browx-signal");
           if (v) doc.documentElement.removeAttribute("data-browx-signal");
@@ -173,7 +189,8 @@ export class BrowxBridge {
         if (raw && raw !== lastSeen) {
           lastSeen = raw;
           const o = JSON.parse(raw) as { kind: string; name: string; data: unknown; ts: number };
-          if (o.kind === "signal") this.onSignal({ name: o.name, data: o.data, ts: o.ts, url: page.url() });
+          if (o.kind === "signal")
+            this.onSignal({ name: o.name, data: o.data, ts: o.ts, url: page.url() });
         }
       } catch {
         // Page may have closed / navigated mid-poll.
@@ -183,10 +200,15 @@ export class BrowxBridge {
     this.pollers.set(page, t);
     page.on("close", () => {
       const it = this.pollers.get(page);
-      if (it) { clearInterval(it); this.pollers.delete(page); }
+      if (it) {
+        clearInterval(it);
+        this.pollers.delete(page);
+      }
     });
   }
 
   /** True if the CDP binding installed cleanly. (Polling fallback runs either way.) */
-  bindingHealthy(): boolean { return this.bindingOk; }
+  bindingHealthy(): boolean {
+    return this.bindingOk;
+  }
 }

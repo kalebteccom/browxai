@@ -72,7 +72,13 @@ export interface AuditContext {
   memoryDiff?: MemoryDiffResult;
   /** Network response metadata, when available, for cache-opportunities
    *  + oversize-images + font-loading categories. */
-  responses?: Array<{ url: string; status: number; mimeType?: string; encodedDataLength?: number; cacheControl?: string }>;
+  responses?: Array<{
+    url: string;
+    status: number;
+    mimeType?: string;
+    encodedDataLength?: number;
+    cacheControl?: string;
+  }>;
 }
 
 export type AuditCategoryAnalyser = (ctx: AuditContext) => CategoryResult;
@@ -117,13 +123,20 @@ export function analyseRenderBlocking(ctx: AuditContext): CategoryResult {
     const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
     const priority = typeof data.priority === "string" ? data.priority : "";
     if (!url) continue;
-    if (blocking === "blocking" || blocking === "in_body_parser_blocking" || priority === "VeryHigh") {
+    if (
+      blocking === "blocking" ||
+      blocking === "in_body_parser_blocking" ||
+      priority === "VeryHigh"
+    ) {
       blockers.push({ url, priority: priority || blocking });
     }
   }
   const issues: AuditIssue[] = blockers.map((b) => ({
     category: "render-blocking" as const,
-    severity: b.priority === "VeryHigh" || b.priority === "blocking" ? "high" as const : "medium" as const,
+    severity:
+      b.priority === "VeryHigh" || b.priority === "blocking"
+        ? ("high" as const)
+        : ("medium" as const),
     title: `Render-blocking resource: ${b.url}`,
     details: { url: b.url, priority: b.priority },
   }));
@@ -151,7 +164,12 @@ export function analyseUnusedCode(ctx: AuditContext): CategoryResult {
       category: "unused-code",
       severity: wasted > 100_000 ? "high" : wasted > 20_000 ? "medium" : "low",
       title: `Unused JS in ${js.url}: ${Math.round(wasted / 1024)}KB dead (${js.usagePercent}% used)`,
-      details: { url: js.url, totalBytes: js.totalBytes, usedBytes: js.usedBytes, usagePercent: js.usagePercent },
+      details: {
+        url: js.url,
+        totalBytes: js.totalBytes,
+        usedBytes: js.usedBytes,
+        usagePercent: js.usagePercent,
+      },
     });
     remediations.push({
       category: "unused-code",
@@ -167,7 +185,12 @@ export function analyseUnusedCode(ctx: AuditContext): CategoryResult {
       category: "unused-code",
       severity: wasted > 50_000 ? "high" : wasted > 10_000 ? "medium" : "low",
       title: `Unused CSS in ${css.url}: ${Math.round(wasted / 1024)}KB dead (${css.usagePercent}% used)`,
-      details: { url: css.url, totalBytes: css.totalBytes, usedBytes: css.usedBytes, usagePercent: css.usagePercent },
+      details: {
+        url: css.url,
+        totalBytes: css.totalBytes,
+        usedBytes: css.usedBytes,
+        usagePercent: css.usagePercent,
+      },
     });
     remediations.push({
       category: "unused-code",
@@ -198,7 +221,8 @@ export function analyseOversizeImages(ctx: AuditContext): CategoryResult {
     });
     remediations.push({
       category: "oversize-images",
-      action: "Compress + resize to displayed dimensions; switch to AVIF/WebP; add srcset for responsive sizing.",
+      action:
+        "Compress + resize to displayed dimensions; switch to AVIF/WebP; add srcset for responsive sizing.",
       target: r.url,
     });
   }
@@ -207,7 +231,8 @@ export function analyseOversizeImages(ctx: AuditContext): CategoryResult {
     const args = (e.args ?? {}) as Record<string, unknown>;
     const data = (args.data ?? {}) as Record<string, unknown>;
     const url = typeof data.url === "string" ? data.url : "";
-    const bytes = typeof data.encodedDataLength === "number" ? (data.encodedDataLength as number) : 0;
+    const bytes =
+      typeof data.encodedDataLength === "number" ? (data.encodedDataLength as number) : 0;
     if (!url || bytes < 500_000) continue;
     // Best-effort mime guess by extension.
     const ext = url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
@@ -249,14 +274,17 @@ export function analyseLayoutThrashing(ctx: AuditContext): CategoryResult {
     });
     remediations.push({
       category: "layout-thrashing",
-      action: "Batch DOM reads + writes; avoid alternating offsetWidth/offsetHeight measurements with style writes.",
+      action:
+        "Batch DOM reads + writes; avoid alternating offsetWidth/offsetHeight measurements with style writes.",
     });
   }
   return { issues, remediations };
 }
 
 function hasForcedFlag(e: TraceEvent): boolean {
-  const args = e.args as { beginData?: Record<string, unknown>; data?: Record<string, unknown> } | undefined;
+  const args = e.args as
+    | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
+    | undefined;
   if (!args) return false;
   const data = (args.data ?? args.beginData ?? {}) as Record<string, unknown>;
   return Array.isArray(data.stackTrace) && (data.stackTrace as unknown[]).length > 0;
@@ -273,14 +301,25 @@ export function analyseLongTasks(ctx: AuditContext): CategoryResult {
   tasks.sort((a, b) => b.durationMs - a.durationMs);
   const issues: AuditIssue[] = tasks.map((t) => ({
     category: "long-tasks" as const,
-    severity: t.durationMs > 200 ? "high" as const : t.durationMs > 100 ? "medium" as const : "low" as const,
+    severity:
+      t.durationMs > 200
+        ? ("high" as const)
+        : t.durationMs > 100
+          ? ("medium" as const)
+          : ("low" as const),
     title: `Long task: ${Math.round(t.durationMs)}ms blocking main thread`,
     details: { durationMs: t.durationMs },
   }));
-  const remediations: AuditRemediation[] = tasks.length > 0 ? [{
-    category: "long-tasks",
-    action: "Yield to the event loop with scheduler.postTask() or requestIdleCallback; move heavy work to a Web Worker.",
-  }] : [];
+  const remediations: AuditRemediation[] =
+    tasks.length > 0
+      ? [
+          {
+            category: "long-tasks",
+            action:
+              "Yield to the event loop with scheduler.postTask() or requestIdleCallback; move heavy work to a Web Worker.",
+          },
+        ]
+      : [];
   return { issues, remediations };
 }
 
@@ -297,11 +336,17 @@ export function analyseLeakSuspects(ctx: AuditContext): CategoryResult {
       category: "leak-suspects",
       severity: row.deltaBytes > 1_000_000 ? "high" : row.deltaBytes > 100_000 ? "medium" : "low",
       title: `Retainer growth: ${row.node} +${Math.round(row.deltaBytes / 1024)}KB (${row.deltaPercent}%)`,
-      details: { node: row.node, type: row.type, deltaBytes: row.deltaBytes, deltaPercent: row.deltaPercent },
+      details: {
+        node: row.node,
+        type: row.type,
+        deltaBytes: row.deltaBytes,
+        deltaPercent: row.deltaPercent,
+      },
     });
     remediations.push({
       category: "leak-suspects",
-      action: "Check listeners + cached references on this type; pair with heap_retainers({snapshotPath, query:{name}}) for the retention path.",
+      action:
+        "Check listeners + cached references on this type; pair with heap_retainers({snapshotPath, query:{name}}) for the retention path.",
       target: row.node,
     });
   }
@@ -316,7 +361,20 @@ export function analyseCacheOpportunities(ctx: AuditContext): CategoryResult {
   for (const r of ctx.responses ?? []) {
     if (r.status !== 200) continue;
     const ext = r.url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
-    const isStatic = ["js", "css", "png", "jpg", "jpeg", "gif", "webp", "avif", "svg", "woff", "woff2", "ttf"].includes(ext);
+    const isStatic = [
+      "js",
+      "css",
+      "png",
+      "jpg",
+      "jpeg",
+      "gif",
+      "webp",
+      "avif",
+      "svg",
+      "woff",
+      "woff2",
+      "ttf",
+    ].includes(ext);
     if (!isStatic) continue;
     if (r.cacheControl && /max-age=\d+/i.test(r.cacheControl)) continue;
     if (seen.has(r.url)) continue;
@@ -329,7 +387,8 @@ export function analyseCacheOpportunities(ctx: AuditContext): CategoryResult {
     });
     remediations.push({
       category: "cache-opportunities",
-      action: "Add Cache-Control: public, max-age=31536000, immutable on content-hashed static assets.",
+      action:
+        "Add Cache-Control: public, max-age=31536000, immutable on content-hashed static assets.",
       target: r.url,
     });
   }
@@ -359,13 +418,14 @@ export function analyseFontLoading(ctx: AuditContext): CategoryResult {
   }
   const issues: AuditIssue[] = fontLoads.map((f) => ({
     category: "font-loading" as const,
-    severity: f.offsetMs > 1000 ? "high" as const : "medium" as const,
+    severity: f.offsetMs > 1000 ? ("high" as const) : ("medium" as const),
     title: `Font loaded ${Math.round(f.offsetMs)}ms after document start: ${f.url}`,
     details: { url: f.url, offsetMs: f.offsetMs },
   }));
   const remediations: AuditRemediation[] = fontLoads.map((f) => ({
     category: "font-loading" as const,
-    action: "<link rel=preload as=font crossorigin> in <head>, or self-host with font-display: swap.",
+    action:
+      "<link rel=preload as=font crossorigin> in <head>, or self-host with font-display: swap.",
     target: f.url,
   }));
   return { issues, remediations };
@@ -412,12 +472,13 @@ export function composeReport(
     if (!analyser) continue;
     try {
       const result = analyser(ctx);
-      byCategory[cat] = format === "summary"
-        ? capCategory(result, MAX_PER_CATEGORY_SUMMARY)
-        : result;
+      byCategory[cat] =
+        format === "summary" ? capCategory(result, MAX_PER_CATEGORY_SUMMARY) : result;
       for (const i of result.issues) allIssues.push(i);
     } catch (err) {
-      warnings.push(`Category ${cat} analyser threw: ${err instanceof Error ? err.message : String(err)}`);
+      warnings.push(
+        `Category ${cat} analyser threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
       byCategory[cat] = { issues: [], remediations: [] };
     }
   }
@@ -438,7 +499,9 @@ export function composeReport(
 
 function capCategory(r: CategoryResult, n: number): CategoryResult {
   // Cap by severity-weighted ordering — high first, then medium, then low.
-  const sortedIssues = [...r.issues].sort((a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity]);
+  const sortedIssues = [...r.issues].sort(
+    (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity],
+  );
   const keptIssues = sortedIssues.slice(0, n);
   const keptIssueTitles = new Set(keptIssues.map((i) => i.title));
   // Remediations don't have severity directly — keep the first N or the
@@ -451,7 +514,9 @@ function capCategory(r: CategoryResult, n: number): CategoryResult {
   return { issues: keptIssues, remediations: keptRems };
 }
 
-function pickTopIssues(all: AuditIssue[]): Array<{ category: AuditCategory; severity: IssueSeverity; title: string }> {
+function pickTopIssues(
+  all: AuditIssue[],
+): Array<{ category: AuditCategory; severity: IssueSeverity; title: string }> {
   const sorted = [...all].sort((a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity]);
   const top = sorted.slice(0, 10);
   return top.map((i) => ({ category: i.category, severity: i.severity, title: i.title }));

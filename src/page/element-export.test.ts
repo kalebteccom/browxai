@@ -36,7 +36,12 @@ function fakeLocator(opts: {
   };
 }
 
-function fakePage(responses: Record<string, { ok: boolean; base64?: string; contentType?: string; bytes?: number; error?: string }>): ElementExportPage {
+function fakePage(
+  responses: Record<
+    string,
+    { ok: boolean; base64?: string; contentType?: string; bytes?: number; error?: string }
+  >,
+): ElementExportPage {
   return {
     async evaluate(expr: string): Promise<unknown> {
       for (const url of Object.keys(responses)) {
@@ -49,7 +54,8 @@ function fakePage(responses: Record<string, { ok: boolean; base64?: string; cont
   };
 }
 
-const TINY_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=";
+const TINY_PNG_B64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgAAIAAAUAAarVyFEAAAAASUVORK5CYII=";
 
 let WS: string;
 beforeEach(() => {
@@ -85,14 +91,27 @@ describe("elementExport — directory mode", () => {
       html,
       css,
       resources: [
-        { url: "https://example.test/hero.png", kind: "image", rawRef: "https://example.test/hero.png" },
+        {
+          url: "https://example.test/hero.png",
+          kind: "image",
+          rawRef: "https://example.test/hero.png",
+        },
       ],
     });
     const page = fakePage({
-      "https://example.test/hero.png": { ok: true, base64: TINY_PNG_B64, contentType: "image/png", bytes: Buffer.from(TINY_PNG_B64, "base64").length },
+      "https://example.test/hero.png": {
+        ok: true,
+        base64: TINY_PNG_B64,
+        contentType: "image/png",
+        bytes: Buffer.from(TINY_PNG_B64, "base64").length,
+      },
     });
 
-    const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "el-1", format: "directory" });
+    const r = await elementExport(page, locator, WS, "s1", {
+      ref: "e1",
+      intoDir: "el-1",
+      format: "directory",
+    });
     expect(r.ok).toBe(true);
     expect(r.format).toBe("directory");
     expect(r.ref).toBe("e1");
@@ -131,14 +150,27 @@ describe("elementExport — single-file mode", () => {
       html,
       css: "",
       resources: [
-        { url: "https://example.test/hero.png", kind: "image", rawRef: "https://example.test/hero.png" },
+        {
+          url: "https://example.test/hero.png",
+          kind: "image",
+          rawRef: "https://example.test/hero.png",
+        },
       ],
     });
     const page = fakePage({
-      "https://example.test/hero.png": { ok: true, base64: TINY_PNG_B64, contentType: "image/png", bytes: Buffer.from(TINY_PNG_B64, "base64").length },
+      "https://example.test/hero.png": {
+        ok: true,
+        base64: TINY_PNG_B64,
+        contentType: "image/png",
+        bytes: Buffer.from(TINY_PNG_B64, "base64").length,
+      },
     });
 
-    const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "el.html", format: "single-file" });
+    const r = await elementExport(page, locator, WS, "s1", {
+      ref: "e1",
+      intoDir: "el.html",
+      format: "single-file",
+    });
     expect(r.ok).toBe(true);
     expect(r.format).toBe("single-file");
     expect(r.resourceCount).toBe(1);
@@ -163,7 +195,11 @@ describe("elementExport — workspace escape rejection", () => {
     const locator = fakeLocator({ html: "", css: "", resources: [] });
     const page = fakePage({});
     await expect(
-      elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "/tmp/escape.html", format: "single-file" }),
+      elementExport(page, locator, WS, "s1", {
+        ref: "e1",
+        intoDir: "/tmp/escape.html",
+        format: "single-file",
+      }),
     ).rejects.toThrow(/\$BROWX_WORKSPACE/);
   });
 });
@@ -179,8 +215,12 @@ describe("elementExport — ref-not-found", () => {
 
   it("surfaces a count() failure as a structured error", async () => {
     const locator: ElementExportLocator = {
-      async count() { throw new Error("locator dead"); },
-      async evaluate<T>(): Promise<T> { return {} as T; },
+      async count() {
+        throw new Error("locator dead");
+      },
+      async evaluate<T>(): Promise<T> {
+        return {} as T;
+      },
     };
     const page = fakePage({});
     await expect(
@@ -206,7 +246,12 @@ describe("elementExport — maxSize enforcement", () => {
       "https://a.test/2.png": { ok: true, base64: b64, contentType: "image/png", bytes: 1024 },
     });
 
-    const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "small", format: "directory", maxSizeMb: 0.0015 });
+    const r = await elementExport(page, locator, WS, "s1", {
+      ref: "e1",
+      intoDir: "small",
+      format: "directory",
+      maxSizeMb: 0.0015,
+    });
     expect(r.resourceCount).toBe(1);
     expect(r.droppedCount).toBe(1);
     expect(r.warnings.some((w) => w.includes("maxSizeMb"))).toBe(true);
@@ -230,12 +275,19 @@ describe("elementExport — secrets-masking caveat always present", () => {
     const page = fakePage({});
     const args: ElementExportArgs = { ref: "e1", intoDir: "warn", format: "directory" };
     const r = await elementExport(page, locator, WS, "s1", args);
-    const has = r.warnings.some((w) => w.includes("UNMASKED") || w.toLowerCase().includes("unmasked"));
+    const has = r.warnings.some(
+      (w) => w.includes("UNMASKED") || w.toLowerCase().includes("unmasked"),
+    );
     expect(has).toBe(true);
   });
 
   it("surfaces the cross-origin stylesheet gap as a warning when detected", async () => {
-    const locator = fakeLocator({ html: "<div/>", css: "", resources: [], unreadableStylesheets: 2 });
+    const locator = fakeLocator({
+      html: "<div/>",
+      css: "",
+      resources: [],
+      unreadableStylesheets: 2,
+    });
     const page = fakePage({});
     const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "warn" });
     expect(r.warnings.some((w) => w.toLowerCase().includes("cross-origin"))).toBe(true);
@@ -246,7 +298,11 @@ describe("elementExport — empty subtree", () => {
   it("writes the export with zero resources without error", async () => {
     const locator = fakeLocator({ html: `<div>hello</div>`, css: "", resources: [] });
     const page = fakePage({});
-    const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "empty", format: "directory" });
+    const r = await elementExport(page, locator, WS, "s1", {
+      ref: "e1",
+      intoDir: "empty",
+      format: "directory",
+    });
     expect(r.resourceCount).toBe(0);
     expect(r.droppedCount).toBe(0);
     const idx = readFileSync(join(r.path, "element.html"), "utf8");

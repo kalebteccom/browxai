@@ -172,7 +172,7 @@ export function resolveDiagnosticsPath(
   if (resolved !== diagRoot && !resolved.startsWith(diagRoot + pathSep)) {
     throw new Error(
       `diagnostics: sessionId "${sessionId}" must not escape the diagnostics ` +
-      `subdir — got resolved path "${resolved}"`,
+        `subdir — got resolved path "${resolved}"`,
     );
   }
   return resolved;
@@ -202,7 +202,11 @@ export function resolveRetentionDays(env: NodeJS.ProcessEnv = process.env): numb
 /** Remove session directories whose newest JSONL file is older than the
  *  retention window. `0` disables the sweep entirely. Best-effort: a
  *  permission error on one session doesn't block the rest. */
-export function sweepRetention(workspaceRoot: string, retentionDays: number, now: number = Date.now()): {
+export function sweepRetention(
+  workspaceRoot: string,
+  retentionDays: number,
+  now: number = Date.now(),
+): {
   removed: string[];
   kept: string[];
 } {
@@ -220,7 +224,11 @@ export function sweepRetention(workspaceRoot: string, retentionDays: number, now
   for (const id of entries) {
     const sessionDir = join(root, id);
     let st;
-    try { st = statSync(sessionDir); } catch { continue; }
+    try {
+      st = statSync(sessionDir);
+    } catch {
+      continue;
+    }
     if (!st.isDirectory()) continue;
     // Newest mtime across the session's JSONL files. If none, treat as
     // ancient — the directory predates any retained run.
@@ -231,10 +239,16 @@ export function sweepRetention(workspaceRoot: string, retentionDays: number, now
         const fst = statSync(full);
         if (fst.mtimeMs > newest) newest = fst.mtimeMs;
       }
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     if (newest === 0 || newest < cutoff) {
-      try { rmSync(sessionDir, { recursive: true, force: true }); removed.push(id); }
-      catch { /* best-effort */ }
+      try {
+        rmSync(sessionDir, { recursive: true, force: true });
+        removed.push(id);
+      } catch {
+        /* best-effort */
+      }
     } else {
       kept.push(id);
     }
@@ -255,8 +269,12 @@ export function removeSessionDiagnostics(workspaceRoot: string, sessionId: strin
   const diagRoot = root;
   if (dir !== diagRoot && !dir.startsWith(diagRoot + pathSep)) return false;
   if (!existsSync(dir)) return false;
-  try { rmSync(dir, { recursive: true, force: true }); return true; }
-  catch { return false; }
+  try {
+    rmSync(dir, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -338,31 +356,52 @@ export class DiagnosticsRecorder {
     const root = join(this.workspaceRoot, DIAG_DIR);
     if (!existsSync(root)) return out;
     let sessionDirs: string[] = [];
-    try { sessionDirs = readdirSync(root).sort(); } catch { return out; }
+    try {
+      sessionDirs = readdirSync(root).sort();
+    } catch {
+      return out;
+    }
     for (const id of sessionDirs) {
       const sd = join(root, id);
       let st;
-      try { st = statSync(sd); } catch { continue; }
+      try {
+        st = statSync(sd);
+      } catch {
+        continue;
+      }
       if (!st.isDirectory()) continue;
       let files: string[] = [];
-      try { files = readdirSync(sd); } catch { continue; }
+      try {
+        files = readdirSync(sd);
+      } catch {
+        continue;
+      }
       // Order files by mtime, oldest first.
       const withMtime: Array<{ file: string; mtime: number }> = [];
       for (const f of files) {
-        try { withMtime.push({ file: f, mtime: statSync(join(sd, f)).mtimeMs }); }
-        catch { /* skip */ }
+        try {
+          withMtime.push({ file: f, mtime: statSync(join(sd, f)).mtimeMs });
+        } catch {
+          /* skip */
+        }
       }
       withMtime.sort((a, b) => a.mtime - b.mtime);
       for (const { file } of withMtime) {
         const full = join(sd, file);
         let raw = "";
-        try { raw = readFileSync(full, "utf8"); } catch { continue; }
+        try {
+          raw = readFileSync(full, "utf8");
+        } catch {
+          continue;
+        }
         for (const line of raw.split("\n")) {
           if (!line) continue;
           try {
             const obj = JSON.parse(line) as DiagnosticsRecord;
             out.push(obj);
-          } catch { /* skip malformed */ }
+          } catch {
+            /* skip malformed */
+          }
         }
       }
     }
@@ -370,7 +409,9 @@ export class DiagnosticsRecorder {
   }
 
   /** Snapshot the cumulative capability-denials counter. */
-  denialsCount(): number { return this.denials; }
+  denialsCount(): number {
+    return this.denials;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -442,7 +483,11 @@ export function classifyEvalExpr(exprHead: string): EvalTaxonomy {
     return "storage-access";
   }
   // computed-style + layout-box measures
-  if (/getComputedStyle|getBoundingClientRect|offsetWidth|offsetHeight|clientWidth|clientHeight|scrollWidth|scrollHeight/.test(s)) {
+  if (
+    /getComputedStyle|getBoundingClientRect|offsetWidth|offsetHeight|clientWidth|clientHeight|scrollWidth|scrollHeight/.test(
+      s,
+    )
+  ) {
     return "computed-style";
   }
   // callback-trigger — .click() / .focus() / .blur() / .dispatchEvent( / .submit()
@@ -450,7 +495,11 @@ export function classifyEvalExpr(exprHead: string): EvalTaxonomy {
     return "callback-trigger";
   }
   // feature-detect — typeof window./navigator. / 'X' in window/navigator
-  if (/typeof\s+window\.|typeof\s+navigator\.|['"][^'"]+['"]\s+in\s+(window|navigator)|window\.[A-Za-z_]+\s*!==\s*undefined/.test(s)) {
+  if (
+    /typeof\s+window\.|typeof\s+navigator\.|['"][^'"]+['"]\s+in\s+(window|navigator)|window\.[A-Za-z_]+\s*!==\s*undefined/.test(
+      s,
+    )
+  ) {
     return "feature-detect";
   }
   return "custom";
@@ -461,10 +510,12 @@ export function classifyEvalExpr(exprHead: string): EvalTaxonomy {
 // ---------------------------------------------------------------------------
 
 export function failureKindOf(parsed: { ok: false; [k: string]: unknown }): string {
-  if (Object.prototype.hasOwnProperty.call(parsed, "requiredCapability")) return "capability-denied";
+  if (Object.prototype.hasOwnProperty.call(parsed, "requiredCapability"))
+    return "capability-denied";
   const err = typeof parsed.error === "string" ? parsed.error : "";
   if (/anti-wedge timeout/i.test(err)) return "timeout";
-  if (/not found|no element matches|ref not found|locator did not resolve/i.test(err)) return "target-not-found";
+  if (/not found|no element matches|ref not found|locator did not resolve/i.test(err))
+    return "target-not-found";
   if (/must |invalid |unknown |expected /i.test(err)) return "bad-arg";
   return "internal";
 }
@@ -503,9 +554,10 @@ export function buildEvalJsCapture(
   firstJsonObj: Record<string, unknown> | null,
 ): CallRecord["evalJs"] | undefined {
   if (toolName !== "eval_js" && toolName !== "poll_eval") return undefined;
-  const expr = (args && typeof args === "object")
-    ? (args as Record<string, unknown>).expr ?? (args as Record<string, unknown>).expression
-    : undefined;
+  const expr =
+    args && typeof args === "object"
+      ? ((args as Record<string, unknown>).expr ?? (args as Record<string, unknown>).expression)
+      : undefined;
   if (typeof expr !== "string") return undefined;
   const exprHead = expr.slice(0, EVAL_HEAD_LEN);
   const exprSha = createHash("sha256").update(expr, "utf8").digest("hex");
@@ -515,8 +567,11 @@ export function buildEvalJsCapture(
   if (firstJsonObj) {
     const v = firstJsonObj.value;
     returnType = v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
-    try { returnSizeBytes = Buffer.byteLength(JSON.stringify(v ?? null), "utf8"); }
-    catch { returnSizeBytes = 0; }
+    try {
+      returnSizeBytes = Buffer.byteLength(JSON.stringify(v ?? null), "utf8");
+    } catch {
+      returnSizeBytes = 0;
+    }
   }
   return { exprSha, exprHead, returnType, returnSizeBytes, taxonomy };
 }
@@ -529,22 +584,39 @@ export function buildEvalJsCapture(
 function percentile(values: number[], pct: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((pct / 100) * (sorted.length - 1))));
+  const idx = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.floor((pct / 100) * (sorted.length - 1))),
+  );
   return sorted[idx] ?? 0;
 }
 
 export interface ReportSummary {
-  perTool: Record<string, { count: number; failureCount: number; p50Duration: number; p95Duration: number }>;
-  topEvalJsPatterns: Array<{ exprSha: string; exprHead: string; count: number; taxonomy: EvalTaxonomy }>;
+  perTool: Record<
+    string,
+    { count: number; failureCount: number; p50Duration: number; p95Duration: number }
+  >;
+  topEvalJsPatterns: Array<{
+    exprSha: string;
+    exprHead: string;
+    count: number;
+    taxonomy: EvalTaxonomy;
+  }>;
   capabilityDenials: Record<string, number>;
   notesByCategory: Record<string, number>;
   missingPrimitiveHypotheses: Array<{ taxonomy: EvalTaxonomy; sampleHead: string; count: number }>;
 }
 
-export function buildReportSummary(records: DiagnosticsRecord[], opts: { since?: string; session?: string } = {}): ReportSummary {
+export function buildReportSummary(
+  records: DiagnosticsRecord[],
+  opts: { since?: string; session?: string } = {},
+): ReportSummary {
   const sinceMs = opts.since ? Date.parse(opts.since) : undefined;
   const perTool = new Map<string, { count: number; failureCount: number; durations: number[] }>();
-  const evalByPattern = new Map<string, { count: number; exprHead: string; taxonomy: EvalTaxonomy }>();
+  const evalByPattern = new Map<
+    string,
+    { count: number; exprHead: string; taxonomy: EvalTaxonomy }
+  >();
   const capabilityDenials: Record<string, number> = {};
   const notesByCategory: Record<string, number> = {};
   const evalTaxonomyCounts = new Map<EvalTaxonomy, { count: number; sampleHead: string }>();
@@ -570,10 +642,17 @@ export function buildReportSummary(records: DiagnosticsRecord[], opts: { since?:
       capabilityDenials[r.tool] = (capabilityDenials[r.tool] ?? 0) + 1;
     }
     if (r.evalJs) {
-      const e = evalByPattern.get(r.evalJs.exprSha) ?? { count: 0, exprHead: r.evalJs.exprHead, taxonomy: r.evalJs.taxonomy };
+      const e = evalByPattern.get(r.evalJs.exprSha) ?? {
+        count: 0,
+        exprHead: r.evalJs.exprHead,
+        taxonomy: r.evalJs.taxonomy,
+      };
       e.count += 1;
       evalByPattern.set(r.evalJs.exprSha, e);
-      const t = evalTaxonomyCounts.get(r.evalJs.taxonomy) ?? { count: 0, sampleHead: r.evalJs.exprHead };
+      const t = evalTaxonomyCounts.get(r.evalJs.taxonomy) ?? {
+        count: 0,
+        sampleHead: r.evalJs.exprHead,
+      };
       t.count += 1;
       evalTaxonomyCounts.set(r.evalJs.taxonomy, t);
     }
@@ -591,7 +670,12 @@ export function buildReportSummary(records: DiagnosticsRecord[], opts: { since?:
 
   const topEvalJsPatterns: ReportSummary["topEvalJsPatterns"] = [];
   for (const [exprSha, info] of evalByPattern) {
-    topEvalJsPatterns.push({ exprSha, exprHead: info.exprHead, count: info.count, taxonomy: info.taxonomy });
+    topEvalJsPatterns.push({
+      exprSha,
+      exprHead: info.exprHead,
+      count: info.count,
+      taxonomy: info.taxonomy,
+    });
   }
   topEvalJsPatterns.sort((a, b) => b.count - a.count);
   topEvalJsPatterns.splice(10); // top 10

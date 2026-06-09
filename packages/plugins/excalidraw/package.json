@@ -26,7 +26,10 @@
     "browxaiVersion": "^0.6.0",
     "namespace": "excalidraw",
     "register": "dist/index.js",
-    "capabilities": ["eval", "canvas"],
+    "capabilities": [
+      "eval",
+      "canvas"
+    ],
     "trust": "kalebtec",
     "dependsOn": []
   },

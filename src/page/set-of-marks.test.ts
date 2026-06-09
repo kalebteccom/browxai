@@ -68,7 +68,14 @@ describe("resolveCandidates (full-find-candidate fast path)", () => {
       ],
     );
     expect(entries).toEqual([
-      { index: 1, ref: "e1", role: "button", name: "Save", bbox: { x: 10, y: 20, width: 80, height: 24 }, painted: true },
+      {
+        index: 1,
+        ref: "e1",
+        role: "button",
+        name: "Save",
+        bbox: { x: 10, y: 20, width: 80, height: 24 },
+        painted: true,
+      },
       { index: 2, ref: "e2", role: "link", name: "Cancel", bbox: null, painted: false },
     ]);
     expect(warnings).toEqual([]);
@@ -83,7 +90,12 @@ describe("screenshotMarks (composition)", () => {
     const refs = new RefRegistry();
     const res = await screenshotMarks(page as never, {} as never, refs, {
       candidates: [
-        { ref: "e7", role: "button", name: "Save", bbox: { x: 100, y: 100, width: 60, height: 24 } },
+        {
+          ref: "e7",
+          role: "button",
+          name: "Save",
+          bbox: { x: 100, y: 100, width: 60, height: 24 },
+        },
         { ref: "e11", role: "link", name: "Cancel", bbox: null }, // clipped → not painted
         { ref: "e22", role: "tab", name: "Files", bbox: { x: 5, y: 5, width: 40, height: 20 } },
       ],
@@ -152,7 +164,9 @@ describe("screenshotMarks (composition)", () => {
     expect(page.evaluate).not.toHaveBeenCalled();
     // Bare screenshot still taken so the caller gets a viewport reference.
     expect(page.screenshot).toHaveBeenCalledTimes(1);
-    expect(res.marks).toEqual([{ index: 1, ref: "e3", role: "button", bbox: null, painted: false }]);
+    expect(res.marks).toEqual([
+      { index: 1, ref: "e3", role: "button", bbox: null, painted: false },
+    ]);
     expect(res.warnings.some((w) => /1 of 1/.test(w))).toBe(true);
   });
 

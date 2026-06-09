@@ -6,12 +6,12 @@ Read this before writing or reviewing tests, fixtures, mocks, or capability-gate
 
 Follow the Testing Trophy. For browxai, the trophy's biggest layer is **keystone**, because page-side regressions only surface against real Chromium. Unit tests support — they catch input-validation / output-shaping / capability-routing regressions. Plugin-integration tests cover the workspace plugin contract.
 
-| Layer | What it catches | What it can't |
-|---|---|---|
-| Static (TypeScript, ESLint, Prettier) | Type errors, lint violations, stringified-arrow-to-evaluate (ESLint rule). | Behavior. |
-| Unit | Input validation, output shaping, capability-gate routing, error paths. | Page-side function correctness. |
-| Plugin-integration | Plugin manifest contract, `register(api)` flow, namespace exposure. | Real-page behavior. |
-| Keystone | Real-Chromium DOM + navigation + ActionResult + capability-denial envelopes. | (Authoritative — the floor under which a tool ships.) |
+| Layer                                 | What it catches                                                              | What it can't                                         |
+| ------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Static (TypeScript, ESLint, Prettier) | Type errors, lint violations, stringified-arrow-to-evaluate (ESLint rule).   | Behavior.                                             |
+| Unit                                  | Input validation, output shaping, capability-gate routing, error paths.      | Page-side function correctness.                       |
+| Plugin-integration                    | Plugin manifest contract, `register(api)` flow, namespace exposure.          | Real-page behavior.                                   |
+| Keystone                              | Real-Chromium DOM + navigation + ActionResult + capability-denial envelopes. | (Authoritative — the floor under which a tool ships.) |
 
 Core principle: "The more your tests resemble the way browxai is used, the more confidence they can give you." The way browxai is used is: an agent drives a real Chromium. Keystone is closest to that.
 
@@ -61,13 +61,17 @@ expect(mockInterceptHandler).toHaveBeenCalledWith({ url: "...", body: "..." });
 
 // Preferred — capture in mock, assert on captured value
 let captured: InterceptedRequest[] = [];
-const interceptHandler = vi.fn((req) => { captured.push(req); });
+const interceptHandler = vi.fn((req) => {
+  captured.push(req);
+});
 // ... drive the tool ...
 expect(captured.length).toBe(1);
 expect(captured[0]).toMatchObject({ url: expectedUrl, method: "POST" });
 
 // Better — assert observable end state directly
-expect(actionResult.network).toContainEqual(expect.objectContaining({ url: expectedUrl, status: 200 }));
+expect(actionResult.network).toContainEqual(
+  expect.objectContaining({ url: expectedUrl, status: 200 }),
+);
 ```
 
 Treat any new test that asserts on `.mock.calls` as guilty until proven innocent.
@@ -78,8 +82,8 @@ For negative cases ("should NOT raise `sessionWedged`", "should NOT include resp
 
 ```ts
 // If the spec says "no body without network-body capability":
-expect(actionResult.network?.[0]?.body).toBeUndefined();  // correct direction
-expect(actionResult.network?.[0]?.body).toBeDefined();    // wrong direction — masks the bug
+expect(actionResult.network?.[0]?.body).toBeUndefined(); // correct direction
+expect(actionResult.network?.[0]?.body).toBeDefined(); // wrong direction — masks the bug
 ```
 
 ## Don't import production constants into assertions
@@ -130,7 +134,9 @@ export function buildBrowxaiForKeystone(overrides: Partial<BrowxaiOptions> = {})
   });
 }
 
-const browxai = await buildBrowxaiForKeystone({ capabilities: ["read", "navigation", "action", "human", "eval"] });
+const browxai = await buildBrowxaiForKeystone({
+  capabilities: ["read", "navigation", "action", "human", "eval"],
+});
 ```
 
 Avoid: factories with `if/else` on a `kind` parameter; >2 levels of `describe` nesting; shared `beforeEach` state that obscures what each test needs.

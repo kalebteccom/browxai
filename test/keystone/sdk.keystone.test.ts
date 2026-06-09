@@ -69,7 +69,9 @@ describe("SDK keystone — typed surface drives real Chromium end-to-end", () =>
       expect(snap).toContain('[data-testid="save-btn"]');
 
       const findRes = await client.find({ session, query: "the Save button", visibleOnly: true });
-      const found = findRes.data as { candidates: Array<{ selectorHint: string; stability: string; actionable: unknown }> };
+      const found = findRes.data as {
+        candidates: Array<{ selectorHint: string; stability: string; actionable: unknown }>;
+      };
       const saveCand = found.candidates.find((c) => c.selectorHint.includes("save-btn"));
       expect(saveCand?.stability).toBe("high");
       expect(saveCand?.actionable).toBe(true);

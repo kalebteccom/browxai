@@ -33,11 +33,15 @@ const CACHE_API = "caches";
  *  not a global store. Navigate first. */
 function cacheOriginGuard(page: Page, tool: string): void {
   let url: string;
-  try { url = page.url(); } catch { url = ""; }
+  try {
+    url = page.url();
+  } catch {
+    url = "";
+  }
   if (!url || url === "about:blank") {
     throw new Error(
       `${tool}: Cache API is origin-scoped and the page is at "${url || "(unknown)"}". ` +
-      `Navigate the session to the target origin first.`,
+        `Navigate the session to the target origin first.`,
     );
   }
 }
@@ -45,8 +49,21 @@ function cacheOriginGuard(page: Page, tool: string): void {
 /** Result envelope for a cache-entry body — text-like content lands as a
  *  string, anything binary-ish as base64 + the byte count. */
 export type CacheEntryBody =
-  | { kind: "text"; text: string; contentType: string | null; status: number; headers: Record<string, string> }
-  | { kind: "binary"; contentBase64: string; byteLength: number; contentType: string | null; status: number; headers: Record<string, string> };
+  | {
+      kind: "text";
+      text: string;
+      contentType: string | null;
+      status: number;
+      headers: Record<string, string>;
+    }
+  | {
+      kind: "binary";
+      contentBase64: string;
+      byteLength: number;
+      contentType: string | null;
+      status: number;
+      headers: Record<string, string>;
+    };
 
 // ---- reads -----------------------------------------------------------------
 
@@ -85,7 +102,11 @@ export async function cachesList(
     `  out.push({ url: r.url, method: r.method }); ` +
     `} ` +
     `return { entries: out, origin: location.origin, cacheName: ${JSON.stringify(args.cacheName)} }; })()`;
-  return (await page.evaluate(expr)) as { entries: Array<{ url: string; method: string }>; origin: string; cacheName: string };
+  return (await page.evaluate(expr)) as {
+    entries: Array<{ url: string; method: string }>;
+    origin: string;
+    cacheName: string;
+  };
 }
 
 /** Return the response body of a single entry. Text-like content types
@@ -94,7 +115,10 @@ export async function cachesGet(
   page: Page,
   args: { cacheName: string; url: string },
   tool: string,
-): Promise<{ found: false; cacheName: string; url: string; origin: string } | (CacheEntryBody & { found: true; cacheName: string; url: string; origin: string })> {
+): Promise<
+  | { found: false; cacheName: string; url: string; origin: string }
+  | (CacheEntryBody & { found: true; cacheName: string; url: string; origin: string })
+> {
   if (!args.cacheName) throw new Error(`${tool}: \`cacheName\` is required`);
   if (!args.url) throw new Error(`${tool}: \`url\` is required`);
   cacheOriginGuard(page, tool);
@@ -139,7 +163,9 @@ export async function cachesPut(
   if (!args.url) throw new Error(`${tool}: \`url\` is required`);
   if (!args.response) throw new Error(`${tool}: \`response\` is required`);
   if (args.response.body !== undefined && args.response.contentBase64 !== undefined) {
-    throw new Error(`${tool}: pass exactly one of \`response.body\` (string) or \`response.contentBase64\` — not both`);
+    throw new Error(
+      `${tool}: pass exactly one of \`response.body\` (string) or \`response.contentBase64\` — not both`,
+    );
   }
   cacheOriginGuard(page, tool);
   const bodyArg = JSON.stringify({
@@ -162,7 +188,12 @@ export async function cachesPut(
     `var res = new Response(body, { status: spec.status, headers: spec.headers }); ` +
     `await c.put(${JSON.stringify(args.url)}, res); ` +
     `return { ok: true, cacheName: ${JSON.stringify(args.cacheName)}, url: ${JSON.stringify(args.url)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; cacheName: string; url: string; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    cacheName: string;
+    url: string;
+    origin: string;
+  };
 }
 
 /** Delete one entry. Returns `existed:true` if the entry was present. */
@@ -179,7 +210,13 @@ export async function cachesDelete(
     `var c = await ${CACHE_API}.open(${JSON.stringify(args.cacheName)}); ` +
     `var existed = await c.delete(${JSON.stringify(args.url)}); ` +
     `return { ok: true, existed: existed, cacheName: ${JSON.stringify(args.cacheName)}, url: ${JSON.stringify(args.url)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; existed: boolean; cacheName: string; url: string; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    existed: boolean;
+    cacheName: string;
+    url: string;
+    origin: string;
+  };
 }
 
 /** Clear every entry from a cache (the cache storage itself remains). */
@@ -196,7 +233,12 @@ export async function cachesClear(
     `var reqs = await c.keys(); ` +
     `for (var i = 0; i < reqs.length; i++) await c.delete(reqs[i]); ` +
     `return { ok: true, cleared: reqs.length, cacheName: ${JSON.stringify(args.cacheName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; cleared: number; cacheName: string; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    cleared: number;
+    cacheName: string;
+    origin: string;
+  };
 }
 
 /** Delete a cache storage entirely. Returns `existed:true` if the storage
@@ -212,5 +254,10 @@ export async function cachesDeleteStorage(
     `(async () => { ` +
     `var existed = await ${CACHE_API}.delete(${JSON.stringify(args.cacheName)}); ` +
     `return { ok: true, existed: existed, cacheName: ${JSON.stringify(args.cacheName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; existed: boolean; cacheName: string; origin: string };
+  return (await page.evaluate(expr)) as {
+    ok: true;
+    existed: boolean;
+    cacheName: string;
+    origin: string;
+  };
 }

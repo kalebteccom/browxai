@@ -20,7 +20,7 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
     insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
     log.warn(
       "⚠  session.managed: disableWebSecurity is ON — launching with --disable-web-security. " +
-      "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+        "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
     );
   }
   // Optional Chromium extension launch flags. Empty/unset → no flags.
@@ -74,9 +74,9 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   if (opts.storageState) {
     log.warn(
       "session.managed: applying storageState to a persistent profile — " +
-      "this CLEARS existing cookies/localStorage/IndexedDB on the profile " +
-      `at "${profileDir}" before seeding. Use incognito mode for a fresh ` +
-      "context without touching a persistent profile.",
+        "this CLEARS existing cookies/localStorage/IndexedDB on the profile " +
+        `at "${profileDir}" before seeding. Use incognito mode for a fresh ` +
+        "context without touching a persistent profile.",
     );
     await context.setStorageState(opts.storageState);
   }

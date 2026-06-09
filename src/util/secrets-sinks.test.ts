@@ -37,9 +37,12 @@ describe("sink: console_read", () => {
     const fakePage = {
       on: (evt: string, fn: never) => listeners.set(evt, fn as never),
     };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     buf.attach(fakePage as any);
-    listeners.get("console")!({ type: () => "log", text: () => "auth header carried tok-xyz inline" });
+    listeners.get("console")!({
+      type: () => "log",
+      text: () => "auth header carried tok-xyz inline",
+    });
     const out = buf.recent();
     expect(out[0]!.text).toBe("auth header carried <TOKEN> inline");
   });
@@ -50,14 +53,14 @@ describe("sink: console_read", () => {
     secrets.register({ name: "TOKEN", value: "tok-xyz" });
     buf.setSecrets(secrets);
     const listeners = new Map<string, (m: { type: () => string; text: () => string }) => void>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     buf.attach({ on: (evt: string, fn: never) => listeners.set(evt, fn as never) } as any);
     listeners.get("console")!({
       type: () => "error",
-      text: () => 'fetch https://api.example.com/x?token=tok-xyz failed for tok-xyz',
+      text: () => "fetch https://api.example.com/x?token=tok-xyz failed for tok-xyz",
     });
     // URL sanitiser strips ?…; secrets layer rewrites the bare token literal.
-    expect(buf.recent()[0]!.text).toBe('fetch https://api.example.com/x?… failed for <TOKEN>');
+    expect(buf.recent()[0]!.text).toBe("fetch https://api.example.com/x?… failed for <TOKEN>");
   });
 });
 
@@ -103,11 +106,11 @@ describe("sink: ws_read (WsBuffer)", () => {
     });
     fire("Network.webSocketFrameReceived", {
       requestId: "r1",
-      response: { opcode: 1, payloadData: 'echo hunter2 back' },
+      response: { opcode: 1, payloadData: "echo hunter2 back" },
     });
     const { frames } = ws.recent();
     expect(frames[0]!.payload).toBe('{"auth":"<PASSWORD>"}');
-    expect(frames[1]!.payload).toBe('echo <PASSWORD> back');
+    expect(frames[1]!.payload).toBe("echo <PASSWORD> back");
   });
 
   it("masks registered values in SSE event data", async () => {
@@ -134,7 +137,10 @@ describe("sink: ws_read (WsBuffer)", () => {
 describe("sink: network_body (fetchResponseBody)", () => {
   it("masks registered values in the response body", async () => {
     const cdp = {
-      send: vi.fn(async () => ({ body: '{"sessionToken":"raw-tok-xyz","kind":"jwt"}', base64Encoded: false })),
+      send: vi.fn(async () => ({
+        body: '{"sessionToken":"raw-tok-xyz","kind":"jwt"}',
+        base64Encoded: false,
+      })),
     } as never;
     const secrets = new SecretRegistry();
     secrets.register({ name: "TOKEN", value: "raw-tok-xyz" });
@@ -144,7 +150,9 @@ describe("sink: network_body (fetchResponseBody)", () => {
   });
 
   it("passes base64 bodies through unchanged (documented caveat)", async () => {
-    const cdp = { send: vi.fn(async () => ({ body: "aHVudGVyMg==", base64Encoded: true })) } as never;
+    const cdp = {
+      send: vi.fn(async () => ({ body: "aHVudGVyMg==", base64Encoded: true })),
+    } as never;
     const secrets = new SecretRegistry();
     secrets.register({ name: "PWD", value: "hunter2" });
     const r = await fetchResponseBody(cdp, "req-1", undefined, secrets);
@@ -221,9 +229,9 @@ describe("sink: snapshot — a11y tree text masking", () => {
     const r = new SecretRegistry();
     r.register({ name: "PASSWORD", value: "hunter2" });
     const rawBody =
-      "- textbox \"Password\" [ref=e3]\n" +
-      "  - text \"hunter2\" [ref=e4]\n" +
-      "- button \"Reveal: hunter2\" [ref=e5]";
+      '- textbox "Password" [ref=e3]\n' +
+      '  - text "hunter2" [ref=e4]\n' +
+      '- button "Reveal: hunter2" [ref=e5]';
     const masked = r.applyMaskInText(rawBody);
     expect(masked).not.toContain("hunter2");
     expect(masked).toContain("<PASSWORD>");
@@ -267,7 +275,12 @@ describe("sink: text_search — matches masking", () => {
       query: "987654",
       count: 1,
       matches: [
-        { ref: "e7", role: "text", text: "Your code is 987654", context: { rowText: "code: 987654" } },
+        {
+          ref: "e7",
+          role: "text",
+          text: "Your code is 987654",
+          context: { rowText: "code: 987654" },
+        },
       ],
     };
     const masked = r.applyMaskDeep(searchResult);
@@ -330,8 +343,12 @@ describe("sink: act_and_diff — diff output masking (HIGH)", () => {
     const masked = r.applyMaskDeep(diff);
     expect(JSON.stringify(masked)).not.toContain("hunter2");
     expect(masked.changed[0]!.classDelta.added[0]).toBe("copied-<PASSWORD>");
-    expect(masked.changed[0]!.styleDelta.changed["background-image"]).toBe("url(/avatars/<PASSWORD>.png)");
-    expect(masked.changed[0]!.attrDelta.changed["aria-label"]!.to).toBe("Copied <PASSWORD> to clipboard");
+    expect(masked.changed[0]!.styleDelta.changed["background-image"]).toBe(
+      "url(/avatars/<PASSWORD>.png)",
+    );
+    expect(masked.changed[0]!.attrDelta.changed["aria-label"]!.to).toBe(
+      "Copied <PASSWORD> to clipboard",
+    );
     expect(masked.changed[0]!.attrDelta.changed["data-tooltip"]!.to).toBe("Value: <PASSWORD>");
   });
 });
@@ -367,8 +384,20 @@ describe("sink: watch — NetworkTap secrets threading + regions[].name masking 
       durationMs: 2000,
       samples: 8,
       regions: [
-        { role: "status", name: "Code 987654 sent", ref: "e1", appearedAtMs: 120, disappearedAtMs: 1800 },
-        { role: "alert", name: "Use 987654 within 5 minutes", ref: "e2", appearedAtMs: 200, disappearedAtMs: null },
+        {
+          role: "status",
+          name: "Code 987654 sent",
+          ref: "e1",
+          appearedAtMs: 120,
+          disappearedAtMs: 1800,
+        },
+        {
+          role: "alert",
+          name: "Use 987654 within 5 minutes",
+          ref: "e2",
+          appearedAtMs: 200,
+          disappearedAtMs: null,
+        },
       ],
       console: { errors: [], warnings: 0, pageErrors: [] },
       network: { summary: { total: 1, errors: 0, slow: 0 }, requests: [] },
@@ -458,7 +487,9 @@ describe("literal-protection: <SECRET_NAME> as plain text", () => {
     // egress masking of OTHER text mentioning `<PWD>` is unchanged.
     const r = new SecretRegistry();
     r.register({ name: "PASSWORD", value: "<PWD>" });
-    expect(r.applyMaskInText("the literal <PWD> appears here")).toBe("the literal <PASSWORD> appears here");
+    expect(r.applyMaskInText("the literal <PWD> appears here")).toBe(
+      "the literal <PASSWORD> appears here",
+    );
     // and the agent passing `<PASSWORD>` still resolves to the stored value
     const m = r.materialize("<PASSWORD>", "u");
     expect(m.value).toBe("<PWD>");

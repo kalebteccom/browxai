@@ -29,11 +29,13 @@ function fakePage(): Page {
   } as unknown as Page;
 }
 
-function fakeContext(opts: {
-  bindings?: Map<string, (source: unknown, payload: string) => unknown>;
-  initScripts?: string[];
-  pages?: Page[];
-} = {}): BrowserContext {
+function fakeContext(
+  opts: {
+    bindings?: Map<string, (source: unknown, payload: string) => unknown>;
+    initScripts?: string[];
+    pages?: Page[];
+  } = {},
+): BrowserContext {
   const bindings = opts.bindings ?? new Map();
   const initScripts = opts.initScripts ?? [];
   const pages = opts.pages ?? [fakePage()];
@@ -84,16 +86,20 @@ describe("DeviceEmulationState", () => {
     expect(d.productId).toBe(0x0000);
     expect(d.manufacturerName).toBe("browxai virtual");
     expect(d.serialNumber).toBe("BROWX-VIRTUAL");
-    expect(d.deviceClass).toBe(0xFF);
+    expect(d.deviceClass).toBe(0xff);
     expect(d.services).toEqual([]);
     expect(d.collections).toEqual([]);
   });
 
   it("set() preserves agent-supplied fields verbatim when present", () => {
     const s = new DeviceEmulationState(true);
-    const cat = s.set("bluetooth", [{
-      name: "x", id: "00:11:22", services: ["heart_rate"],
-    }]);
+    const cat = s.set("bluetooth", [
+      {
+        name: "x",
+        id: "00:11:22",
+        services: ["heart_rate"],
+      },
+    ]);
     expect(cat.devices[0]!.name).toBe("x");
     expect(cat.devices[0]!.id).toBe("00:11:22");
     expect(cat.devices[0]!.services).toEqual(["heart_rate"]);
@@ -101,7 +107,7 @@ describe("DeviceEmulationState", () => {
 
   it("set() rejects non-array devices", () => {
     const s = new DeviceEmulationState(true);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     expect(() => s.set("bluetooth", "not-an-array" as any)).toThrow(/must be an array/);
   });
 
@@ -174,7 +180,10 @@ describe("attachDeviceEmulation", () => {
     s.set("bluetooth", [{ name: "x" }]);
     await attachDeviceEmulation(c, s);
     const handler = bindings.get("__browx_device_check")!;
-    const raw = await handler(null, JSON.stringify({ api: "bluetooth", filters: { acceptAllDevices: true } }));
+    const raw = await handler(
+      null,
+      JSON.stringify({ api: "bluetooth", filters: { acceptAllDevices: true } }),
+    );
     const r = JSON.parse(raw as string) as { decision: string; devices: Array<{ name: string }> };
     expect(r.decision).toBe("resolved");
     expect(r.devices).toHaveLength(1);

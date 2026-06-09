@@ -79,7 +79,9 @@ describe("timezone (CDP-only mid-session)", () => {
   it("apply sends Emulation.setTimezoneOverride", async () => {
     const cdp = fakeCdp();
     await applyTimezoneCdp(asCdp(cdp), "America/New_York");
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", { timezoneId: "America/New_York" });
+    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", {
+      timezoneId: "America/New_York",
+    });
   });
 
   it("clear sends the override with empty timezoneId", async () => {
@@ -93,7 +95,11 @@ describe("geolocation (Playwright context mutator)", () => {
   it("apply calls context.setGeolocation with coords + default accuracy", async () => {
     const ctx = fakeContext();
     await applyGeolocation(asContext(ctx), { latitude: 40.7, longitude: -74 });
-    expect(ctx.setGeolocation).toHaveBeenCalledWith({ latitude: 40.7, longitude: -74, accuracy: 0 });
+    expect(ctx.setGeolocation).toHaveBeenCalledWith({
+      latitude: 40.7,
+      longitude: -74,
+      accuracy: 0,
+    });
   });
 
   it("apply preserves explicit accuracy", async () => {
@@ -141,7 +147,9 @@ describe("user agent (CDP-only mid-session)", () => {
   it("apply sends Network.setUserAgentOverride", async () => {
     const cdp = fakeCdp();
     await applyUserAgentCdp(asCdp(cdp), "MyBot/1.0");
-    expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", { userAgent: "MyBot/1.0" });
+    expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", {
+      userAgent: "MyBot/1.0",
+    });
   });
 
   it("clear sends override with empty UA", async () => {
@@ -155,8 +163,15 @@ describe("permissions", () => {
   it("applyPermissions records by origin and calls Playwright grant", async () => {
     const ctx = fakeContext();
     const state = newEmulationState();
-    await applyPermissions(asContext(ctx), state, ["geolocation", "clipboard-read"], "https://example.com");
-    expect(ctx.grantPermissions).toHaveBeenCalledWith(["geolocation", "clipboard-read"], { origin: "https://example.com" });
+    await applyPermissions(
+      asContext(ctx),
+      state,
+      ["geolocation", "clipboard-read"],
+      "https://example.com",
+    );
+    expect(ctx.grantPermissions).toHaveBeenCalledWith(["geolocation", "clipboard-read"], {
+      origin: "https://example.com",
+    });
     expect(state.permissions.get("https://example.com")).toEqual(["geolocation", "clipboard-read"]);
   });
 
@@ -220,13 +235,21 @@ describe("reapplyAll — persistence across new pages / reconnect", () => {
     };
     await reapplyAll(asContext(ctx), asPage(page), asCdp(cdp), state);
     expect(cdp.send).toHaveBeenCalledWith("Emulation.setLocaleOverride", { locale: "de-DE" });
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", { timezoneId: "Europe/Berlin" });
+    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", {
+      timezoneId: "Europe/Berlin",
+    });
     expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", { userAgent: "Bot/2.0" });
-    expect(ctx.setGeolocation).toHaveBeenCalledWith({ latitude: 52.5, longitude: 13.4, accuracy: 0 });
+    expect(ctx.setGeolocation).toHaveBeenCalledWith({
+      latitude: 52.5,
+      longitude: 13.4,
+      accuracy: 0,
+    });
     expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "dark" });
     expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "reduce" });
     expect(ctx.grantPermissions).toHaveBeenCalledWith(["geolocation"], undefined);
-    expect(ctx.grantPermissions).toHaveBeenCalledWith(["clipboard-read"], { origin: "https://example.com" });
+    expect(ctx.grantPermissions).toHaveBeenCalledWith(["clipboard-read"], {
+      origin: "https://example.com",
+    });
   });
 
   it("skips unset knobs (no CDP / Playwright calls for them)", async () => {
@@ -249,7 +272,9 @@ describe("reapplyAll — persistence across new pages / reconnect", () => {
     const ctx = fakeContext();
     const page = fakePage();
     const cdp = fakeCdp();
-    cdp.send.mockImplementationOnce(async () => { throw new Error("CDP locale failed"); });
+    cdp.send.mockImplementationOnce(async () => {
+      throw new Error("CDP locale failed");
+    });
     const state: EmulationState = {
       locale: "fr-FR",
       colorScheme: "dark",

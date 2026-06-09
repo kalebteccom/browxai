@@ -127,7 +127,9 @@ describe("submitToProvider", () => {
       }
       pollN++;
       if (pollN < 2) {
-        return new Response(JSON.stringify({ status: 0, request: "CAPCHA_NOT_READY" }), { status: 200 });
+        return new Response(JSON.stringify({ status: 0, request: "CAPCHA_NOT_READY" }), {
+          status: 200,
+        });
       }
       return new Response(JSON.stringify({ status: 1, request: "TOKEN-XYZ" }), { status: 200 });
     });
@@ -152,8 +154,11 @@ describe("submitToProvider", () => {
   });
 
   it("returns a structured failure when the provider rejects the submission", async () => {
-    const fakeFetch = vi.fn(async () =>
-      new Response(JSON.stringify({ status: 0, request: "ERROR_KEY_DOES_NOT_EXIST" }), { status: 200 }),
+    const fakeFetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ status: 0, request: "ERROR_KEY_DOES_NOT_EXIST" }), {
+          status: 200,
+        }),
     );
     const r = await submitToProvider(
       { type: "image", pageUrl: "https://app.example/x", imageBase64: "AAA=" },
@@ -174,7 +179,9 @@ describe("submitToProvider", () => {
       if (url.endsWith("/in.php")) {
         return new Response(JSON.stringify({ status: 1, request: "tid-1" }), { status: 200 });
       }
-      return new Response(JSON.stringify({ status: 0, request: "CAPCHA_NOT_READY" }), { status: 200 });
+      return new Response(JSON.stringify({ status: 0, request: "CAPCHA_NOT_READY" }), {
+        status: 200,
+      });
     });
     const r = await submitToProvider(
       { type: "hcaptcha", pageUrl: "https://app.example", siteKey: "sk" },

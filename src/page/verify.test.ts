@@ -74,7 +74,11 @@ describe("verifyVisible", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs);
     const page = mockPage({
-      "role:button[name=Save]": { count: 1, isVisible: false, notVisibleReason: "hidden (display:none)" },
+      "role:button[name=Save]": {
+        count: 1,
+        isVisible: false,
+        notVisibleReason: "hidden (display:none)",
+      },
     });
     const r = await verifyVisible(page, refs, { ref });
     expect(r.ok).toBe(false);
@@ -121,7 +125,9 @@ describe("verifyText", () => {
   it("ok when innerText contains substring (default case-insensitive)", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Banner");
-    const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: "  Saved successfully  " } });
+    const page = mockPage({
+      "role:button[name=Banner]": { count: 1, innerText: "  Saved successfully  " },
+    });
     const r = await verifyText(page, refs, { ref }, "saved", false);
     expect(r.ok).toBe(true);
   });
@@ -151,7 +157,9 @@ describe("verifyValue", () => {
   it("ok when DOM-side value matches", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Email");
-    const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue: "you@example.com" } });
+    const page = mockPage({
+      "role:button[name=Email]": { count: 1, evaluatedValue: "you@example.com" },
+    });
     const r = await verifyValue(page, refs, { ref }, "you@example.com");
     expect(r.ok).toBe(true);
   });
@@ -182,7 +190,9 @@ describe("verifyAttribute", () => {
   it("ok when attribute equals the expected value", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
-    const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "true" } } });
+    const page = mockPage({
+      "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "true" } },
+    });
     const r = await verifyAttribute(page, refs, { ref }, "aria-pressed", "true");
     expect(r.ok).toBe(true);
   });
@@ -190,7 +200,9 @@ describe("verifyAttribute", () => {
   it("fails source:'app' on attribute mismatch", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
-    const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "false" } } });
+    const page = mockPage({
+      "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "false" } },
+    });
     const r = await verifyAttribute(page, refs, { ref }, "aria-pressed", "true");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failure?.actual).toBe("false");
@@ -199,7 +211,9 @@ describe("verifyAttribute", () => {
   it("omitting `value` asserts presence — passes when attribute is present", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
-    const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes: { "data-state": "open" } } });
+    const page = mockPage({
+      "role:button[name=Toggle]": { count: 1, attributes: { "data-state": "open" } },
+    });
     const r = await verifyAttribute(page, refs, { ref }, "data-state", undefined);
     expect(r.ok).toBe(true);
   });
@@ -386,7 +400,11 @@ describe("shared-vocabulary regression: batch.expect and verify_predicate share 
       name: "controlDisplayTextIncludes hits",
       body: { element: { ownerControl: { displayTextAfter: "Engineering" } } },
       expect: { controlDisplayTextIncludes: "Engineer" },
-      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: "Engineer" },
+      predicate: {
+        kind: "contains",
+        key: "element.ownerControl.displayTextAfter",
+        value: "Engineer",
+      },
     },
     {
       name: "controlDisplayTextIncludes — missing ownerControl",

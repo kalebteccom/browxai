@@ -31,7 +31,10 @@ function fakePage(): { page: Page; fireDialog: (d: Dialog) => Promise<void> } {
   };
 }
 
-function fakeContext(initialPages: Page[] = []): { ctx: BrowserContext; firePageEvent: (p: Page) => void } {
+function fakeContext(initialPages: Page[] = []): {
+  ctx: BrowserContext;
+  firePageEvent: (p: Page) => void;
+} {
   let pageHandler: ((p: Page) => void) | null = null;
   const ctx = {
     pages: () => initialPages,
@@ -41,7 +44,9 @@ function fakeContext(initialPages: Page[] = []): { ctx: BrowserContext; firePage
   } as unknown as BrowserContext;
   return {
     ctx,
-    firePageEvent: (p) => { if (pageHandler) pageHandler(p); },
+    firePageEvent: (p) => {
+      if (pageHandler) pageHandler(p);
+    },
   };
 }
 
@@ -92,7 +97,7 @@ describe("parseDialogPolicyArg", () => {
 });
 
 describe("DialogPolicyState — per-policy handling", () => {
-  it("`accept` mode accepts every dialog and records handledAs=\"accepted\"", async () => {
+  it('`accept` mode accepts every dialog and records handledAs="accepted"', async () => {
     const state = new DialogPolicyState({ mode: "accept" });
     const { page, fireDialog } = fakePage();
     installDialogHandler(page, state);
@@ -108,7 +113,7 @@ describe("DialogPolicyState — per-policy handling", () => {
     expect(slice[0]?.message).toBe("go?");
   });
 
-  it("`dismiss` mode dismisses every dialog and records handledAs=\"dismissed\"", async () => {
+  it('`dismiss` mode dismisses every dialog and records handledAs="dismissed"', async () => {
     const state = new DialogPolicyState({ mode: "dismiss" });
     const { page, fireDialog } = fakePage();
     installDialogHandler(page, state);
@@ -175,7 +180,7 @@ describe("DialogPolicyState — runtime mutation via .set()", () => {
 
   it("set() to accept-prompt-with requires text — throws otherwise", () => {
     const state = new DialogPolicyState();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     expect(() => state.set({ mode: "accept-prompt-with" } as any)).toThrow(/text/i);
   });
 });
@@ -222,7 +227,10 @@ describe("attachDialogPolicy — persistence across navigation/new pages", () =>
 
 describe("DialogPolicyState — anti-deadlock guarantee", () => {
   it("EVERY policy mode acts on the dialog (accept OR dismiss) — never leaves it pending", async () => {
-    const modes: Array<{ p: ConstructorParameters<typeof DialogPolicyState>[0]; cb: "accept" | "dismiss" }> = [
+    const modes: Array<{
+      p: ConstructorParameters<typeof DialogPolicyState>[0];
+      cb: "accept" | "dismiss";
+    }> = [
       { p: { mode: "accept" }, cb: "accept" },
       { p: { mode: "dismiss" }, cb: "dismiss" },
       { p: { mode: "accept-prompt-with", text: "x" }, cb: "accept" },
@@ -248,7 +256,9 @@ describe("DialogPolicyState — anti-deadlock guarantee", () => {
       type: () => "alert",
       message: () => "x",
       defaultValue: () => "",
-      accept: vi.fn(async () => { throw new Error("boom"); }),
+      accept: vi.fn(async () => {
+        throw new Error("boom");
+      }),
       dismiss: vi.fn(async () => undefined),
     } as unknown as Dialog;
     // No throw out of fireDialog.

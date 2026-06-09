@@ -135,7 +135,7 @@ export interface FsPickerRecord {
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_FS_PICKER_HINT =
   "unhandled File System Access picker — set fsPickerPolicy (open_session/set_fs_picker_policy) " +
-  "to \"allow\", \"deny\", or \"ask-human\" before driving an action that may trigger one. " +
+  'to "allow", "deny", or "ask-human" before driving an action that may trigger one. ' +
   "The picker was rejected page-side (NotAllowedError) so the page is not deadlocked, but " +
   "the app effect is the user-dismissed branch. In `allow` mode, supply the file(s) with " +
   "`fs_picker_respond` before (or in parallel with) the action that triggers the picker.";
@@ -233,7 +233,9 @@ export class FsPickerPolicyState {
  *  gets a fast error instead of silent fallthrough). */
 function normalise(p: FsPickerPolicy): FsPickerPolicy {
   if (!isFsPickerMode(p.mode)) {
-    throw new Error(`fsPickerPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`);
+    throw new Error(
+      `fsPickerPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    );
   }
   if (p.perAPI) {
     const cleaned: Partial<Record<FsPickerApi, FsPickerMode>> = {};
@@ -245,7 +247,9 @@ function normalise(p: FsPickerPolicy): FsPickerPolicy {
       }
       if (mode === undefined) continue;
       if (!isFsPickerMode(mode)) {
-        throw new Error(`fsPickerPolicy.perAPI["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`);
+        throw new Error(
+          `fsPickerPolicy.perAPI["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+        );
       }
       cleaned[name as FsPickerApi] = mode;
     }
@@ -260,9 +264,7 @@ function isFsPickerMode(m: unknown): m is FsPickerMode {
 
 /** Parse the spec's compact string form for the top-level mode, or accept
  *  the object form. Idempotent. */
-export function parseFsPickerPolicyArg(
-  v: string | FsPickerPolicy | undefined,
-): FsPickerPolicy {
+export function parseFsPickerPolicyArg(v: string | FsPickerPolicy | undefined): FsPickerPolicy {
   if (!v) return { mode: "raise" };
   if (typeof v === "object") return normalise(v);
   if (isFsPickerMode(v)) return { mode: v };
@@ -551,11 +553,21 @@ export async function attachFsPickerPolicy(
         const suggestedName = o.suggestedName;
         const mode = state.modeFor(api);
         const ts = Date.now();
-        const baseRec: Omit<FsPickerRecord, "handledAs"> = { api, ts, ...(suggestedName ? { suggestedName } : {}) };
+        const baseRec: Omit<FsPickerRecord, "handledAs"> = {
+          api,
+          ts,
+          ...(suggestedName ? { suggestedName } : {}),
+        };
         switch (mode) {
           case "allow": {
             const files = state.dequeueResponse(api) ?? [];
-            const prepared = prepareAllowResponse(api, files, workspaceRoot, handles, () => `h${++handleCounter}`);
+            const prepared = prepareAllowResponse(
+              api,
+              files,
+              workspaceRoot,
+              handles,
+              () => `h${++handleCounter}`,
+            );
             state.record({ ...baseRec, handledAs: "allowed" } as FsPickerRecord);
             return JSON.stringify({ decision: "allow", files: prepared });
           }
@@ -567,7 +579,13 @@ export async function attachFsPickerPolicy(
             const askResult = await askHandler(api, suggestedName).catch(() => null);
             state.record({ ...baseRec, handledAs: "asked-human" } as FsPickerRecord);
             if (!askResult) return JSON.stringify({ decision: "deny" });
-            const prepared = prepareAllowResponse(api, askResult, workspaceRoot, handles, () => `h${++handleCounter}`);
+            const prepared = prepareAllowResponse(
+              api,
+              askResult,
+              workspaceRoot,
+              handles,
+              () => `h${++handleCounter}`,
+            );
             return JSON.stringify({ decision: "allow", files: prepared });
           }
           case "raise":
@@ -598,7 +616,9 @@ export async function attachFsPickerPolicy(
           // handle. Drop on the floor with a one-time warning so the page
           // doesn't see an error mid-flight.
           if (op === "write") {
-            log.warn("session.fs-picker: write to a read-only virtual handle dropped — open-picker responses don't carry a writable destination; use showSaveFilePicker for writes");
+            log.warn(
+              "session.fs-picker: write to a read-only virtual handle dropped — open-picker responses don't carry a writable destination; use showSaveFilePicker for writes",
+            );
           }
           if (op === "close" || op === "abort") target.closed = true;
           return undefined;
@@ -705,7 +725,8 @@ function prepareAllowResponse(
   if (api === "showDirectoryPicker") {
     const entry = files[0];
     const handleId = nextId();
-    const path = entry?.path !== undefined ? resolveWorkspaceFsPath(workspaceRoot, entry.path) : null;
+    const path =
+      entry?.path !== undefined ? resolveWorkspaceFsPath(workspaceRoot, entry.path) : null;
     const name = path ? basename(path) : (entry?.name ?? "browxai-virtual");
     handles.set(handleId, {
       api,
@@ -723,9 +744,7 @@ function prepareAllowResponse(
   // promise resolves with a usable shape instead of an empty array
   // (the spec says showSaveFilePicker returns a single handle; an empty
   // result would force a downstream NPE on most page code).
-  const effective = slice.length > 0
-    ? slice
-    : [{ name: "browxai-virtual" }];
+  const effective = slice.length > 0 ? slice : [{ name: "browxai-virtual" }];
   return effective.map((f) => {
     const handleId = nextId();
     let path: string | null = null;

@@ -33,9 +33,7 @@ export default defineConfig({
         ],
       },
     ],
-    socialLinks: [
-      { icon: "github", link: "https://github.com/kalebteccom/browxai" },
-    ],
+    socialLinks: [{ icon: "github", link: "https://github.com/kalebteccom/browxai" }],
     search: { provider: "local" },
     editLink: {
       pattern: "https://github.com/kalebteccom/browxai/edit/main/docs/:path",

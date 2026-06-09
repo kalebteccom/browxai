@@ -14,7 +14,7 @@ browxai is an MCP-native, model-agnostic, agentic-first browser-control server o
 - **Preserve user work.** Never run `git reset`, `git checkout <path>`, `git clean`, or `git revert` without explicit user request. If a working tree looks broken, surface it — don't sweep it.
 - **Search with `rg`.** Prefer `rg` / `rg --files` over `grep` / `find` for searching.
 - **Code is the source of truth.** Before naming an API, import, schema field, config key, or generated type — read the file. Plan snippets, memory, and old review notes can be stale. Hallucinated APIs are a recurring failure mode.
-- **No internal tracker IDs in source or comments.** Ticket / plan / round / PR refs (`W-X#`, `Round-N`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write *why* the code is the way it is, not *which ticket asked for it*. Exception: load-bearing identifier schemes tied to enforcing tests (e.g. `INV-N`-style invariant tags). browxai has none today; the rule shape is documented for future-proofing.
+- **No internal tracker IDs in source or comments.** Ticket / plan / round / PR refs (`W-X#`, `Round-N`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Exception: load-bearing identifier schemes tied to enforcing tests (e.g. `INV-N`-style invariant tags). browxai has none today; the rule shape is documented for future-proofing.
 
 ## Repo map
 
@@ -39,24 +39,24 @@ browxai is an MCP-native, model-agnostic, agentic-first browser-control server o
 
 Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted.
 
-| State | Capability | Notes |
-|---|---|---|
-| ON by default | `read` | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot |
-| ON by default | `navigation` | navigate, go_back, go_forward, reload |
-| ON by default | `action` | click, fill, select, drag, scroll, hover, press, wait_for |
-| ON by default | `human` | confirmation hooks, await_human |
-| OFF + loud-warn | `eval` | `eval_js`, `poll_eval` — arbitrary JS in page context |
-| OFF + loud-warn | `network-body` | full response bodies + interception (W-V12 lane) |
-| OFF + loud-warn | `byob-attach` | attach to user's existing Chrome (no managed profile) |
-| OFF + loud-warn | `clipboard` | OS clipboard read/write |
-| OFF + loud-warn | `file-io` | `upload_file`, downloads to workspace |
-| OFF + loud-warn | `secrets` | `register_secret`, secret materialization at egress |
-| OFF + loud-warn | `extensions` | install/inspect Chrome extensions |
-| OFF + loud-warn | `stealth` | anti-fingerprint posture tweaks |
-| OFF + loud-warn | `captcha` | captcha solver glue |
-| OFF + loud-warn | `device-emulation` | viewport / UA / geolocation overrides beyond defaults |
-| OFF + loud-warn | `diagnostics` | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff |
-| OFF + loud-warn | `canvas` | canvas-app eval routing (figma / tldraw / excalidraw plugins) |
+| State           | Capability         | Notes                                                                                        |
+| --------------- | ------------------ | -------------------------------------------------------------------------------------------- |
+| ON by default   | `read`             | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot |
+| ON by default   | `navigation`       | navigate, go_back, go_forward, reload                                                        |
+| ON by default   | `action`           | click, fill, select, drag, scroll, hover, press, wait_for                                    |
+| ON by default   | `human`            | confirmation hooks, await_human                                                              |
+| OFF + loud-warn | `eval`             | `eval_js`, `poll_eval` — arbitrary JS in page context                                        |
+| OFF + loud-warn | `network-body`     | full response bodies + interception (W-V12 lane)                                             |
+| OFF + loud-warn | `byob-attach`      | attach to user's existing Chrome (no managed profile)                                        |
+| OFF + loud-warn | `clipboard`        | OS clipboard read/write                                                                      |
+| OFF + loud-warn | `file-io`          | `upload_file`, downloads to workspace                                                        |
+| OFF + loud-warn | `secrets`          | `register_secret`, secret materialization at egress                                          |
+| OFF + loud-warn | `extensions`       | install/inspect Chrome extensions                                                            |
+| OFF + loud-warn | `stealth`          | anti-fingerprint posture tweaks                                                              |
+| OFF + loud-warn | `captcha`          | captcha solver glue                                                                          |
+| OFF + loud-warn | `device-emulation` | viewport / UA / geolocation overrides beyond defaults                                        |
+| OFF + loud-warn | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                             |
+| OFF + loud-warn | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 
@@ -81,7 +81,7 @@ See [`docs/ai-context/agent-process/dist-rebuild-discipline.md`](docs/ai-context
 
 Server-owned, fixed in-page functions only — agent-supplied JS is gated behind `eval_js` capability and never the default path. A page-side function MUST be a **real TypeScript function literal** with `/// <reference lib="dom" />` at the file head, NOT a stringified arrow expression.
 
-The dom_export / element_export bug class is the root-cause lesson: a stringified arrow expression evaluates to a function *value*, CDP cannot serialize functions across the boundary, and the return becomes `undefined`. Keystone tests against real Chromium are the regression gate. Unit tests with a mocked `locator.evaluate` silently pass when the page-side code is broken.
+The dom*export / element_export bug class is the root-cause lesson: a stringified arrow expression evaluates to a function \_value*, CDP cannot serialize functions across the boundary, and the return becomes `undefined`. Keystone tests against real Chromium are the regression gate. Unit tests with a mocked `locator.evaluate` silently pass when the page-side code is broken.
 
 Do not loosen the keystone gate. See [`docs/ai-context/page-side-functions/dom-export-trap.md`](docs/ai-context/page-side-functions/dom-export-trap.md).
 

@@ -111,9 +111,10 @@ export async function pointProbe(
   point: { x: number; y: number },
   opts: { crop?: boolean } = {},
 ): Promise<PointProbeResult> {
-  const probed = (await page.evaluate(
-    buildProbeScript(point.x, point.y, MAX_STACK),
-  )) as Pick<PointProbeResult, "stack" | "scrollContainer" | "clickableAncestor">;
+  const probed = (await page.evaluate(buildProbeScript(point.x, point.y, MAX_STACK))) as Pick<
+    PointProbeResult,
+    "stack" | "scrollContainer" | "clickableAncestor"
+  >;
 
   const result: PointProbeResult = {
     ok: true,
@@ -127,7 +128,12 @@ export async function pointProbe(
     try {
       const half = 40;
       const buf = await page.screenshot({
-        clip: { x: Math.max(0, point.x - half), y: Math.max(0, point.y - half), width: half * 2, height: half * 2 },
+        clip: {
+          x: Math.max(0, point.x - half),
+          y: Math.max(0, point.y - half),
+          width: half * 2,
+          height: half * 2,
+        },
         type: "png",
       });
       result.cropBase64 = Buffer.from(buf).toString("base64");

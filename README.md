@@ -27,8 +27,8 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
 ```jsonc
 {
   "mcpServers": {
-    "browxai": { "command": "browxai" }
-  }
+    "browxai": { "command": "browxai" },
+  },
 }
 ```
 
@@ -41,9 +41,13 @@ capability gates, same egress hygiene — different transport.
 ```ts
 import { createBrowxai } from "browxai";
 
-const browxai = await createBrowxai();           // in-process, single-script
+const browxai = await createBrowxai(); // in-process, single-script
 await browxai.navigate({ url: "https://example.com" });
-const { data } = await browxai.extract({ schema: { /* … */ } });
+const { data } = await browxai.extract({
+  schema: {
+    /* … */
+  },
+});
 await browxai.close();
 ```
 

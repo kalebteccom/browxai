@@ -8,7 +8,10 @@ import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
 import { pointProbe, type PointProbeResult } from "./point_probe.js";
 
-export interface Point { x: number; y: number }
+export interface Point {
+  x: number;
+  y: number;
+}
 
 /** Resolve an action target to a viewport point — the element's box centre
  *  for ref/selector, or the literal coords. */
@@ -21,7 +24,12 @@ export async function targetPoint(page: Page, refs: RefRegistry, t: ActionTarget
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
-export interface DragResult { ok: boolean; from: Point; to: Point; steps: number }
+export interface DragResult {
+  ok: boolean;
+  from: Point;
+  to: Point;
+  steps: number;
+}
 
 export interface DragPreflight {
   ok: boolean;
@@ -61,7 +69,10 @@ export async function drag(
   return { ok: true, from, to, steps };
 }
 
-export interface DoubleClickResult { ok: boolean; point: Point }
+export interface DoubleClickResult {
+  ok: boolean;
+  point: Point;
+}
 
 export async function doubleClick(
   page: Page,
@@ -158,9 +169,7 @@ export async function touchAction(
   if (action !== "end" && !args.coords) {
     throw new Error(`touch_${action} requires coords`);
   }
-  const touchPoints = args.coords
-    ? [{ x: args.coords.x, y: args.coords.y, id: identifier }]
-    : [];
+  const touchPoints = args.coords ? [{ x: args.coords.x, y: args.coords.y, id: identifier }] : [];
   await cdp.send("Input.dispatchTouchEvent", {
     type: TOUCH_CDP_TYPE[action],
     touchPoints,

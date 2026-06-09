@@ -26,7 +26,8 @@ function locator(spec: MockSpec) {
       return spec.inputValue;
     },
     evaluate: async () => {
-      if (evals.length === 0) throw new Error("test mock: evaluate called more times than scripted");
+      if (evals.length === 0)
+        throw new Error("test mock: evaluate called more times than scripted");
       return evals.shift();
     },
   } as never;
@@ -38,9 +39,9 @@ describe("probe() — post-action element observability", () => {
     const loc = locator({
       inputValue: "(555) 123",
       evaluateReturns: [
-        true,       // focused
-        undefined,  // checked (not a checkbox)
-        null,       // displayText (no labelled wrapper)
+        true, // focused
+        undefined, // checked (not a checkbox)
+        null, // displayText (no labelled wrapper)
       ],
     });
     const r = await probe(loc, { ref: "e7" }, "5551234567");
@@ -70,10 +71,10 @@ describe("probe() — post-action element observability", () => {
     const loc = locator({
       inputValue: undefined, // throws
       evaluateReturns: [
-        false,           // focused
-        "drafted text",  // contenteditable textContent
-        undefined,       // checked
-        null,            // displayText
+        false, // focused
+        "drafted text", // contenteditable textContent
+        undefined, // checked
+        null, // displayText
       ],
     });
     const r = await probe(loc, { ref: "e4" });
@@ -87,8 +88,8 @@ describe("probe() — post-action element observability", () => {
     const loc = locator({
       inputValue: "",
       evaluateReturns: [
-        true,              // focused (search input still focused)
-        undefined,         // checked
+        true, // focused (search input still focused)
+        undefined, // checked
         "Selected option", // displayText from labelled wrapper
       ],
     });
@@ -116,7 +117,7 @@ describe("probe() — post-action element observability", () => {
     expect(r.checked).toBe(true);
   });
 
-  it("surfaces checked:\"mixed\" for an indeterminate checkbox", async () => {
+  it('surfaces checked:"mixed" for an indeterminate checkbox', async () => {
     const loc = locator({
       inputValue: "on",
       evaluateReturns: [false, "mixed", null],
@@ -140,10 +141,10 @@ describe("probe() — ownerControl + container deltas", () => {
     const loc = locator({
       inputValue: "",
       evaluateReturns: [
-        false,                                              // focused
-        undefined,                                          // checked
-        "Engineering",                                      // displayText
-        { ownerText: "Engineering", ownerLabel: "Type" } as PreProbeData,  // post ancestor probe
+        false, // focused
+        undefined, // checked
+        "Engineering", // displayText
+        { ownerText: "Engineering", ownerLabel: "Type" } as PreProbeData, // post ancestor probe
       ],
     });
     const pre: PreProbeData = { ownerText: "Enter Tag" };
@@ -186,7 +187,13 @@ describe("probe() — ownerControl + container deltas", () => {
         false,
         undefined,
         null,
-        { container: { kind: "row", rowKey: "Wed, May 13", rowText: "Wed, May 13 Engineering Reviewed PR" } } as PreProbeData,
+        {
+          container: {
+            kind: "row",
+            rowKey: "Wed, May 13",
+            rowText: "Wed, May 13 Engineering Reviewed PR",
+          },
+        } as PreProbeData,
       ],
     });
     const r = await probe(loc, { ref: "e4" });
@@ -230,7 +237,12 @@ describe("preProbe()", () => {
   it("returns the scripted ancestor probe result", async () => {
     const loc = locator({
       // preProbe only calls count() + evaluate(probeAncestors).
-      evaluateReturns: [{ ownerText: "Enter Tag", container: { kind: "row", rowText: "Wed, May 13" } } as PreProbeData],
+      evaluateReturns: [
+        {
+          ownerText: "Enter Tag",
+          container: { kind: "row", rowText: "Wed, May 13" },
+        } as PreProbeData,
+      ],
     });
     const r = await preProbe(loc);
     expect(r.ownerText).toBe("Enter Tag");
@@ -268,19 +280,30 @@ describe("scrollMode — scroll primitive dispatch", () => {
   });
 
   it("intoView:true forces into-view even with to/by", () => {
-    expect(scrollMode({ target: { ref: "e1" }, to: "bottom", intoView: true }).kind).toBe("into-view");
+    expect(scrollMode({ target: { ref: "e1" }, to: "bottom", intoView: true }).kind).toBe(
+      "into-view",
+    );
   });
 
   it("coords target → wheel-at regardless of to/by", () => {
     expect(scrollMode({ target: { coords: { x: 10, y: 20 } } }).kind).toBe("wheel-at");
-    expect(scrollMode({ target: { coords: { x: 10, y: 20 } }, by: { y: 300 } }).kind).toBe("wheel-at");
+    expect(scrollMode({ target: { coords: { x: 10, y: 20 } }, by: { y: 300 } }).kind).toBe(
+      "wheel-at",
+    );
   });
 });
 
 describe("waitFor — text predicate", () => {
   it("throws a clear error when neither target nor text is given", async () => {
     // Reaches the validation before touching page/cdp — minimal ctx is fine.
-    const ctx = { page: {}, cdp: {}, refs: {}, console: {}, pages: () => [], testAttributes: [] } as never;
+    const ctx = {
+      page: {},
+      cdp: {},
+      refs: {},
+      console: {},
+      pages: () => [],
+      testAttributes: [],
+    } as never;
     await expect(waitFor(ctx, {})).rejects.toThrow(/pass a `target`.*or `text`/);
   });
 });

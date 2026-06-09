@@ -25,12 +25,13 @@ export function matchesResponse(resp: ResponseLike, match: NetworkMatch): boolea
   if (match.urlPattern === undefined && match.method === undefined && match.status === undefined) {
     return false;
   }
-  if (match.urlPattern !== undefined &&
-      !resp.url.toLowerCase().includes(match.urlPattern.toLowerCase())) {
+  if (
+    match.urlPattern !== undefined &&
+    !resp.url.toLowerCase().includes(match.urlPattern.toLowerCase())
+  ) {
     return false;
   }
-  if (match.method !== undefined &&
-      resp.method.toUpperCase() !== match.method.toUpperCase()) {
+  if (match.method !== undefined && resp.method.toUpperCase() !== match.method.toUpperCase()) {
     return false;
   }
   if (match.status !== undefined && resp.status !== match.status) {

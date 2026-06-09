@@ -9,13 +9,25 @@ describe("aggregateLayoutThrash", () => {
         name: "Layout",
         ts: 1000,
         dur: 2000,
-        args: { data: { stackTrace: [{ functionName: "thrash", url: "app.js", lineNumber: 10, columnNumber: 5 }] } },
+        args: {
+          data: {
+            stackTrace: [
+              { functionName: "thrash", url: "app.js", lineNumber: 10, columnNumber: 5 },
+            ],
+          },
+        },
       },
       {
         name: "Layout",
         ts: 4000,
         dur: 3000,
-        args: { data: { stackTrace: [{ functionName: "thrash", url: "app.js", lineNumber: 10, columnNumber: 5 }] } },
+        args: {
+          data: {
+            stackTrace: [
+              { functionName: "thrash", url: "app.js", lineNumber: 10, columnNumber: 5 },
+            ],
+          },
+        },
       },
       {
         name: "LayoutShift",
@@ -27,7 +39,11 @@ describe("aggregateLayoutThrash", () => {
         name: "ForcedSyncLayout",
         ts: 6000,
         dur: 500,
-        args: { data: { stackTrace: [{ functionName: "other", url: "lib.js", lineNumber: 1, columnNumber: 1 }] } },
+        args: {
+          data: {
+            stackTrace: [{ functionName: "other", url: "lib.js", lineNumber: 1, columnNumber: 1 }],
+          },
+        },
       },
     ];
     const r = aggregateLayoutThrash(events);
@@ -42,9 +58,7 @@ describe("aggregateLayoutThrash", () => {
   });
 
   it("uses <anonymous> when no stack present", () => {
-    const r = aggregateLayoutThrash([
-      { name: "ForcedSyncLayout", ts: 100, dur: 200, args: {} },
-    ]);
+    const r = aggregateLayoutThrash([{ name: "ForcedSyncLayout", ts: 100, dur: 200, args: {} }]);
     expect(r.forcedLayoutsCount).toBe(1);
     expect(r.eventsByOrigin[0]!.originatingStack).toBe("<anonymous>");
   });
@@ -63,12 +77,16 @@ describe("aggregateLayoutThrash", () => {
     const events: TraceEvent[] = [];
     for (let i = 0; i < 5; i++) {
       events.push({
-        name: "ForcedSyncLayout", ts: i * 100, dur: 10,
+        name: "ForcedSyncLayout",
+        ts: i * 100,
+        dur: 10,
         args: { data: { stackTrace: [{ functionName: "loud" }] } },
       });
     }
     events.push({
-      name: "ForcedSyncLayout", ts: 1000, dur: 10,
+      name: "ForcedSyncLayout",
+      ts: 1000,
+      dur: 10,
       args: { data: { stackTrace: [{ functionName: "quiet" }] } },
     });
     const r = aggregateLayoutThrash(events);

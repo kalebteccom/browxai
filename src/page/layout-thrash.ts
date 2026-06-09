@@ -57,9 +57,7 @@ const MAX_ORIGINS = 50;
 function resolveLayoutThrashPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`,
-    );
+    throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
   return resolved;
 }
@@ -89,7 +87,9 @@ export async function runLayoutThrashTrace(
       for (const ev of e.value) events.push(ev);
     }
   };
-  const onComplete = () => { if (complete) complete(); };
+  const onComplete = () => {
+    if (complete) complete();
+  };
   cdp.on("Tracing.dataCollected", onData);
   cdp.on("Tracing.tracingComplete", onComplete);
 
@@ -102,15 +102,22 @@ export async function runLayoutThrashTrace(
       },
     });
     await new Promise<void>((res) => setTimeout(res, durationMs));
-    const completionPromise = new Promise<void>((res) => { complete = res; });
+    const completionPromise = new Promise<void>((res) => {
+      complete = res;
+    });
     await cdp.send("Tracing.end").catch(() => undefined);
-    await Promise.race([
-      completionPromise,
-      new Promise<void>((res) => setTimeout(res, 30_000)),
-    ]);
+    await Promise.race([completionPromise, new Promise<void>((res) => setTimeout(res, 30_000))]);
   } finally {
-    try { cdp.off("Tracing.dataCollected", onData); } catch { /* best-effort */ }
-    try { cdp.off("Tracing.tracingComplete", onComplete); } catch { /* best-effort */ }
+    try {
+      cdp.off("Tracing.dataCollected", onData);
+    } catch {
+      /* best-effort */
+    }
+    try {
+      cdp.off("Tracing.tracingComplete", onComplete);
+    } catch {
+      /* best-effort */
+    }
   }
 
   // Write the raw trace events file (workspace-rooted) so the agent can
@@ -121,18 +128,22 @@ export async function runLayoutThrashTrace(
   // ws.sub-style: ensure parent exists under workspace.root.
   if (parent && !existsSync(parent)) mkdirSync(parent, { recursive: true });
   // ws.root-rooted path — see resolveLayoutThrashPath above for the guard.
-  writeFileSync(resolved, JSON.stringify({
-    traceEvents: events,
-    metadata: {
-      source: "browxai",
-      sessionId,
-      categories: LAYOUT_THRASH_CATEGORIES,
-      durationMs,
-      eventCount: events.length,
-      capturedAt: new Date().toISOString(),
-      kind: "layout-thrash",
-    },
-  }), "utf8");
+  writeFileSync(
+    resolved,
+    JSON.stringify({
+      traceEvents: events,
+      metadata: {
+        source: "browxai",
+        sessionId,
+        categories: LAYOUT_THRASH_CATEGORIES,
+        durationMs,
+        eventCount: events.length,
+        capturedAt: new Date().toISOString(),
+        kind: "layout-thrash",
+      },
+    }),
+    "utf8",
+  );
 
   const agg = aggregateLayoutThrash(events);
   return {
@@ -167,7 +178,8 @@ export function aggregateLayoutThrash(events: TraceEvent[]): {
     const isForced = name === "Layout" && hasForcedFlag(e);
     const isForcedAlt = name === "ForcedSyncLayout";
     const isShift = name === "LayoutShift";
-    const isRecalc = name === "UpdateLayoutTree" || name === "Recalc Style" || name === "RecalculateStyles";
+    const isRecalc =
+      name === "UpdateLayoutTree" || name === "Recalc Style" || name === "RecalculateStyles";
     if (isShift) layoutShiftsCount++;
     if (isForced || isForcedAlt) forcedLayoutsCount++;
     if (!isShift && !isForced && !isForcedAlt && !isRecalc) continue;
@@ -210,7 +222,9 @@ function hasForcedFlag(e: TraceEvent): boolean {
   // window. Treat any Layout event with begin/end data as a forced layout
   // for the count. The aggregation by originating stack handles
   // distinguishing per-origin contribution.
-  const args = e.args as { beginData?: Record<string, unknown>; data?: Record<string, unknown> } | undefined;
+  const args = e.args as
+    | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
+    | undefined;
   if (!args) return false;
   if (args.beginData && typeof args.beginData === "object") return true;
   const data = (args.data ?? {}) as Record<string, unknown>;
@@ -221,14 +235,17 @@ function hasForcedFlag(e: TraceEvent): boolean {
 /** Get the topmost stack frame as a stable origin string. Returns
  *  `"<anonymous>"` when no stack is available. */
 function extractOriginStack(e: TraceEvent): string {
-  const args = e.args as { data?: Record<string, unknown>; beginData?: Record<string, unknown> } | undefined;
+  const args = e.args as
+    | { data?: Record<string, unknown>; beginData?: Record<string, unknown> }
+    | undefined;
   if (!args) return "<anonymous>";
   const data = (args.data ?? args.beginData ?? {}) as Record<string, unknown>;
   const stack = data.stackTrace as Array<Record<string, unknown>> | undefined;
   if (!Array.isArray(stack) || stack.length === 0) return "<anonymous>";
   const top = stack[0] as Record<string, unknown> | undefined;
   if (!top) return "<anonymous>";
-  const fn = typeof top.functionName === "string" && top.functionName ? top.functionName : "<anonymous>";
+  const fn =
+    typeof top.functionName === "string" && top.functionName ? top.functionName : "<anonymous>";
   const url = typeof top.url === "string" ? top.url : "";
   const line = typeof top.lineNumber === "number" ? top.lineNumber : 0;
   const col = typeof top.columnNumber === "number" ? top.columnNumber : 0;

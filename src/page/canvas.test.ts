@@ -243,10 +243,18 @@ describe("runGestureChain (executes against a stubbed mouse)", () => {
     return {
       page: {
         mouse: {
-          down: async () => { log.push("down"); },
-          up: async () => { log.push("up"); },
-          move: async (x, y) => { log.push(`move:${x},${y}`); },
-          wheel: async (dx, dy) => { log.push(`wheel:${dx},${dy}`); },
+          down: async () => {
+            log.push("down");
+          },
+          up: async () => {
+            log.push("up");
+          },
+          move: async (x, y) => {
+            log.push(`move:${x},${y}`);
+          },
+          wheel: async (dx, dy) => {
+            log.push(`wheel:${dx},${dy}`);
+          },
         },
       },
       log,
@@ -372,7 +380,7 @@ describe("canvasWorldToScreen / canvasScreenToWorld (modes)", () => {
     const page = {
       evaluate: async <T, _Arg>() => {
         called = true;
-        return ({} as unknown) as T;
+        return {} as unknown as T;
       },
     } as CanvasDiscoverPage;
     const r = await canvasWorldToScreen(page, {

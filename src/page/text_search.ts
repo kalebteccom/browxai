@@ -64,9 +64,8 @@ export async function textSearch(
   const matches: TextSearchMatch[] = [];
   for (const node of candidates) {
     if (matches.length >= max) break;
-    const bbox = node.backendDOMNodeId !== undefined
-      ? await visibleRect(cdp, node.backendDOMNodeId)
-      : null;
+    const bbox =
+      node.backendDOMNodeId !== undefined ? await visibleRect(cdp, node.backendDOMNodeId) : null;
     const visible = bbox !== null;
     if (!visible && !includeHidden) continue;
     const match: TextSearchMatch = {

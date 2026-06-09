@@ -132,13 +132,15 @@ const MAX_TTL_MS = 30 * 60_000;
 export function validateVerbArgs(verb: PlanVerb, args: PlanVerbArgs | undefined): string | null {
   const a = args ?? {};
   if (verb === "fill") {
-    if (typeof a.value !== "string") return "plan: verb \"fill\" requires verbArgs.value (string)";
+    if (typeof a.value !== "string") return 'plan: verb "fill" requires verbArgs.value (string)';
   }
   if (verb === "press") {
-    if (typeof a.key !== "string" || a.key.length === 0) return "plan: verb \"press\" requires verbArgs.key (non-empty string)";
+    if (typeof a.key !== "string" || a.key.length === 0)
+      return 'plan: verb "press" requires verbArgs.key (non-empty string)';
   }
   if (verb === "select") {
-    if (!Array.isArray(a.values) || a.values.length === 0) return "plan: verb \"select\" requires verbArgs.values (non-empty string[])";
+    if (!Array.isArray(a.values) || a.values.length === 0)
+      return 'plan: verb "select" requires verbArgs.values (non-empty string[])';
   }
   if (verb === "click") {
     if (a.button !== undefined && !["left", "right", "middle"].includes(a.button)) {
@@ -290,7 +292,12 @@ export async function plan(
  *  was never attempted. */
 export type ExecuteOutcome =
   | { ok: true; result: ActionResult; tokensEstimate: number }
-  | { ok: false; error: string; reason: "expired" | "ref-gone" | "invalid"; tokensEstimate: number };
+  | {
+      ok: false;
+      error: string;
+      reason: "expired" | "ref-gone" | "invalid";
+      tokensEstimate: number;
+    };
 
 /** Reasons we may refuse to dispatch a descriptor without ever running it. */
 export type ExecuteRefusal = Exclude<ExecuteOutcome, { ok: true }>;
@@ -311,16 +318,23 @@ export interface ExecuteOptions {
 
 /** Static descriptor validation (shape only — does not touch the page).
  *  Pure; exported for tests. */
-export function validateDescriptor(d: unknown): { ok: true; descriptor: ActionDescriptor } | { ok: false; error: string } {
-  if (!d || typeof d !== "object") return { ok: false, error: "execute: descriptor must be an object" };
+export function validateDescriptor(
+  d: unknown,
+): { ok: true; descriptor: ActionDescriptor } | { ok: false; error: string } {
+  if (!d || typeof d !== "object")
+    return { ok: false, error: "execute: descriptor must be an object" };
   const obj = d as Record<string, unknown>;
-  if (typeof obj.id !== "string") return { ok: false, error: "execute: descriptor.id missing or not a string" };
-  if (typeof obj.ref !== "string") return { ok: false, error: "execute: descriptor.ref missing or not a string" };
+  if (typeof obj.id !== "string")
+    return { ok: false, error: "execute: descriptor.id missing or not a string" };
+  if (typeof obj.ref !== "string")
+    return { ok: false, error: "execute: descriptor.ref missing or not a string" };
   if (typeof obj.verb !== "string" || !(PLAN_VERBS as readonly string[]).includes(obj.verb)) {
     return { ok: false, error: `execute: descriptor.verb must be one of ${PLAN_VERBS.join("/")}` };
   }
-  if (typeof obj.expiresAt !== "number") return { ok: false, error: "execute: descriptor.expiresAt missing or not a number" };
-  if (typeof obj.args !== "object" || obj.args === null) return { ok: false, error: "execute: descriptor.args must be an object" };
+  if (typeof obj.expiresAt !== "number")
+    return { ok: false, error: "execute: descriptor.expiresAt missing or not a number" };
+  if (typeof obj.args !== "object" || obj.args === null)
+    return { ok: false, error: "execute: descriptor.args must be an object" };
   // evidence is informational — present-but-malformed should not block
   // dispatch, but it must be at least an object so callers can rely on
   // `descriptor.evidence.selectorHint` being readable when present.

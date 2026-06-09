@@ -18,7 +18,9 @@ const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 
 function checkName(kind: string, name: string): void {
   if (!SAFE_NAME.test(name)) {
-    throw new Error(`${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' (no path separators)`);
+    throw new Error(
+      `${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' (no path separators)`,
+    );
   }
 }
 
@@ -52,7 +54,9 @@ export function snapshotProfile(
   const src = profileDir(workspaceRoot, profile);
   const dest = snapshotDir(workspaceRoot, snapshot);
   if (!existsSync(src)) {
-    throw new Error(`profile_snapshot: no profile directory at "${src}" — open a persistent session with this profile first`);
+    throw new Error(
+      `profile_snapshot: no profile directory at "${src}" — open a persistent session with this profile first`,
+    );
   }
   cpSync(src, dest, { recursive: true, force: true });
   return { ok: true, action: "snapshot", profile: profile ?? "default", snapshot };
@@ -67,7 +71,9 @@ export function restoreProfile(
   const src = snapshotDir(workspaceRoot, snapshot);
   const dest = profileDir(workspaceRoot, profile);
   if (!existsSync(src)) {
-    throw new Error(`profile_restore: no snapshot "${snapshot}" — take one with profile_snapshot first`);
+    throw new Error(
+      `profile_restore: no snapshot "${snapshot}" — take one with profile_snapshot first`,
+    );
   }
   cpSync(src, dest, { recursive: true, force: true });
   return { ok: true, action: "restore", profile: profile ?? "default", snapshot };

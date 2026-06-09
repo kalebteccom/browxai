@@ -90,7 +90,9 @@ export interface ExtensionMutationResult {
 export function resolveExtensionPath(workspaceRoot: string, p: string, tool: string): string {
   const raw = (p ?? "").trim();
   if (!raw) {
-    throw new Error(`${tool}: \`path\` is required (workspace-rooted directory containing manifest.json)`);
+    throw new Error(
+      `${tool}: \`path\` is required (workspace-rooted directory containing manifest.json)`,
+    );
   }
   // Resolve under the workspace root. An absolute path outside the workspace
   // is detected by the post-resolve prefix check below — `resolve()` on an
@@ -100,7 +102,7 @@ export function resolveExtensionPath(workspaceRoot: string, p: string, tool: str
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(
       `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}" (resolved to "${resolved}"). ` +
-      `Stage the unpacked extension directory under the workspace.`,
+        `Stage the unpacked extension directory under the workspace.`,
     );
   }
   if (!existsSync(resolved)) {
@@ -110,13 +112,19 @@ export function resolveExtensionPath(workspaceRoot: string, p: string, tool: str
   try {
     st = statSync(resolved);
   } catch (err) {
-    throw new Error(`${tool}: cannot stat "${resolved}" (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(
+      `${tool}: cannot stat "${resolved}" (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   if (!st.isDirectory()) {
-    throw new Error(`${tool}: "${resolved}" is not a directory. Unpacked extensions are directories containing manifest.json (a .crx file must be unpacked first).`);
+    throw new Error(
+      `${tool}: "${resolved}" is not a directory. Unpacked extensions are directories containing manifest.json (a .crx file must be unpacked first).`,
+    );
   }
   if (!existsSync(join(resolved, "manifest.json"))) {
-    throw new Error(`${tool}: no manifest.json found in "${resolved}". Pass the unpacked extension directory, not a parent.`);
+    throw new Error(
+      `${tool}: no manifest.json found in "${resolved}". Pass the unpacked extension directory, not a parent.`,
+    );
   }
   return resolved;
 }
@@ -134,13 +142,17 @@ export function readManifest(extPath: string, tool: string): ParsedManifest {
   try {
     raw = readFileSync(manifestPath, "utf8");
   } catch (err) {
-    throw new Error(`${tool}: cannot read manifest.json at "${manifestPath}" (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(
+      `${tool}: cannot read manifest.json at "${manifestPath}" (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`${tool}: manifest.json at "${manifestPath}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(
+      `${tool}: manifest.json at "${manifestPath}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${tool}: manifest.json at "${manifestPath}" must be a JSON object`);
@@ -165,7 +177,7 @@ export function readManifest(extPath: string, tool: string): ParsedManifest {
 export function extensionIdFromPath(absPath: string): string {
   // Avoid importing crypto at the module top; lazy-require keeps the module
   // tree-shakeable and the helpers cheap to import in tests.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { createHash } = require("node:crypto") as typeof import("node:crypto");
   const digest = createHash("sha256").update(absPath).digest();
   const ALPHABET = "abcdefghijklmnop"; // matches Chrome's encoding alphabet
@@ -184,10 +196,7 @@ export function buildLaunchArgs(loaded: ReadonlyArray<LoadedExtension>): string[
   const paths = loaded.filter((e) => e.enabled).map((e) => e.path);
   if (paths.length === 0) return [];
   const joined = paths.join(",");
-  return [
-    `--disable-extensions-except=${joined}`,
-    `--load-extension=${joined}`,
-  ];
+  return [`--disable-extensions-except=${joined}`, `--load-extension=${joined}`];
 }
 
 /** Sentinel returned by the refuse predicates so the tool layer surfaces a
@@ -253,11 +262,15 @@ export function applyInstall(
   tool: string,
 ): { id: string; loaded: LoadedExtension[] } {
   if (reg.loaded.some((e) => e.path === install.path)) {
-    throw new Error(`${tool}: extension at "${install.path}" is already loaded; call extensions_reload to re-parse its manifest`);
+    throw new Error(
+      `${tool}: extension at "${install.path}" is already loaded; call extensions_reload to re-parse its manifest`,
+    );
   }
   const id = extensionIdFromPath(install.path);
   if (reg.loaded.some((e) => e.id === id)) {
-    throw new Error(`${tool}: extension id collision for "${install.path}" (id "${id}") — this should not happen; report it.`);
+    throw new Error(
+      `${tool}: extension id collision for "${install.path}" (id "${id}") — this should not happen; report it.`,
+    );
   }
   const next: LoadedExtension = {
     id,
@@ -280,7 +293,9 @@ export function applyUninstall(
 ): { loaded: LoadedExtension[]; removed: LoadedExtension } {
   const idx = reg.loaded.findIndex((e) => e.id === id);
   if (idx < 0) {
-    throw new Error(`${tool}: no extension with id "${id}" is loaded in this session (call extensions_list to see ids)`);
+    throw new Error(
+      `${tool}: no extension with id "${id}" is loaded in this session (call extensions_list to see ids)`,
+    );
   }
   const removed = reg.loaded[idx]!;
   return { loaded: reg.loaded.filter((_, i) => i !== idx), removed };

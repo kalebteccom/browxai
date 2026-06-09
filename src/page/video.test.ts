@@ -23,8 +23,12 @@ import {
 } from "./video.js";
 
 let ws: string;
-beforeEach(() => { ws = mkdtempSync(join(tmpdir(), "browx-video-")); });
-afterEach(() => { rmSync(ws, { recursive: true, force: true }); });
+beforeEach(() => {
+  ws = mkdtempSync(join(tmpdir(), "browx-video-"));
+});
+afterEach(() => {
+  rmSync(ws, { recursive: true, force: true });
+});
 
 describe("defaultVideoFilename", () => {
   it("uses ISO timestamp with colon/dot stripped + safe session id", () => {
@@ -54,10 +58,12 @@ describe("resolveVideoTargetPath (workspace-rooted)", () => {
   });
 
   it("rejects path traversal outside the workspace", () => {
-    expect(() => resolveVideoTargetPath(ws, "s", "../escape.webm", "open_session"))
-      .toThrow(/inside \$BROWX_WORKSPACE/);
-    expect(() => resolveVideoTargetPath(ws, "s", "/etc/leak.webm", "open_session"))
-      .toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => resolveVideoTargetPath(ws, "s", "../escape.webm", "open_session")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
+    expect(() => resolveVideoTargetPath(ws, "s", "/etc/leak.webm", "open_session")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 });
 
@@ -79,7 +85,7 @@ describe("buildRecordVideoOption (open_session({recordVideo}))", () => {
     const r = buildRecordVideoOption(ws, "agent-a", {});
     expect(r.targetPath.startsWith(join(ws, "videos") + "/")).toBe(true);
     expect(r.targetPath.endsWith(".webm")).toBe(true);
-    expect(r.stagingDir.startsWith(join(ws, "videos/.staging/") )).toBe(true);
+    expect(r.stagingDir.startsWith(join(ws, "videos/.staging/"))).toBe(true);
     expect(r.recordVideo.dir).toBe(r.stagingDir);
     expect(r.recordVideo.size).toBeUndefined();
   });
@@ -95,8 +101,9 @@ describe("buildRecordVideoOption (open_session({recordVideo}))", () => {
   });
 
   it("rejects a target path that escapes the workspace", () => {
-    expect(() => buildRecordVideoOption(ws, "s", { path: "../escape.webm" }))
-      .toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => buildRecordVideoOption(ws, "s", { path: "../escape.webm" })).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 });
 
@@ -139,7 +146,9 @@ describe("stopVideo state machine", () => {
 });
 
 /** Minimal fake `Page.video()` — records every `saveAs` call. */
-function fakePageWithVideo(opts: { savePath?: string; throwsOnSaveAs?: boolean; nullVideo?: boolean } = {}) {
+function fakePageWithVideo(
+  opts: { savePath?: string; throwsOnSaveAs?: boolean; nullVideo?: boolean } = {},
+) {
   const saveAsCalls: string[] = [];
   const video = opts.nullVideo
     ? null
@@ -205,7 +214,7 @@ describe("readVideoIfReady (get-before-stop + inline-vs-path)", () => {
     expect(r.inlineBase64).toBeUndefined();
   });
 
-  it("returns path + size when format=\"path\"", () => {
+  it('returns path + size when format="path"', () => {
     const p = join(ws, "ready.webm");
     writeFileSync(p, "abcdef");
     const r = readVideoIfReady(p, "path");
@@ -214,7 +223,7 @@ describe("readVideoIfReady (get-before-stop + inline-vs-path)", () => {
     expect(r.inlineBase64).toBeUndefined();
   });
 
-  it("inlines as base64 when format=\"bytes\" and under the cap", () => {
+  it('inlines as base64 when format="bytes" and under the cap', () => {
     const p = join(ws, "small.webm");
     writeFileSync(p, "abcd");
     const r = readVideoIfReady(p, "bytes");
@@ -223,7 +232,7 @@ describe("readVideoIfReady (get-before-stop + inline-vs-path)", () => {
     expect(r.tooLargeToInline).toBeUndefined();
   });
 
-  it("returns tooLargeToInline:true when format=\"bytes\" and over the cap", () => {
+  it('returns tooLargeToInline:true when format="bytes" and over the cap', () => {
     const p = join(ws, "big.webm");
     const big = Buffer.alloc(VIDEO_INLINE_CAP_BYTES + 64, "x");
     writeFileSync(p, big);

@@ -20,7 +20,12 @@ export function patterniseSegment(seg: string): string {
   if (/^[0-9a-f]{12,}$/i.test(seg)) return ":id";
   // Opaque token / JWT-ish: long, only token-safe chars, and mixes a letter
   // with a digit (route words like "documentation" never match — no digit).
-  if (seg.length >= 20 && /^[A-Za-z0-9._~-]+$/.test(seg) && /[A-Za-z]/.test(seg) && /\d/.test(seg)) {
+  if (
+    seg.length >= 20 &&
+    /^[A-Za-z0-9._~-]+$/.test(seg) &&
+    /[A-Za-z]/.test(seg) &&
+    /\d/.test(seg)
+  ) {
     return ":id";
   }
   return seg;

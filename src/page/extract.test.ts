@@ -33,15 +33,20 @@ function n(
 }
 
 /** Placeholder Page — never reached by the pure-tree tests; throws on use. */
-const noPage = new Proxy({}, {
-  get(_t, prop: string) {
-    throw new Error(`pure-tree test must not touch page.${String(prop)}`);
+const noPage = new Proxy(
+  {},
+  {
+    get(_t, prop: string) {
+      throw new Error(`pure-tree test must not touch page.${String(prop)}`);
+    },
   },
-}) as unknown as Page;
+) as unknown as Page;
 
 describe("validateSchema", () => {
   it("accepts a well-formed object schema", () => {
-    expect(validateSchema({ type: "object", properties: { x: { type: "string" } } }, "")).toBeNull();
+    expect(
+      validateSchema({ type: "object", properties: { x: { type: "string" } } }, ""),
+    ).toBeNull();
   });
 
   it("rejects an object schema without properties", () => {
@@ -109,9 +114,7 @@ describe("scanTreeForBestMatch", () => {
 
   it("matches against testId", () => {
     seq = 0;
-    const tree = n("WebArea", undefined, [
-      n("text", "label", [], { testId: "price-input" }),
-    ]);
+    const tree = n("WebArea", undefined, [n("text", "label", [], { testId: "price-input" })]);
     const hit = scanTreeForBestMatch(tree, "price-input");
     expect(hit?.testId).toBe("price-input");
   });
@@ -142,9 +145,7 @@ describe("resolveAgainstTree — implicit property-name = query rule", () => {
     seq = 0;
     // The implicit rule looks for a node whose name/testId matches the
     // property. Build a tree where each property's name is its node-name.
-    const real = n("WebArea", undefined, [
-      n("label", "title", [n("text", "The Headline")]),
-    ]);
+    const real = n("WebArea", undefined, [n("label", "title", [n("text", "The Headline")])]);
     // The leaf result is the matched node's own visible name. For richer
     // "title → child text" behaviour, adopters use the explicit selector hint.
     const out = await resolveAgainstTree({
@@ -227,10 +228,7 @@ describe("resolveAgainstTree — implicit property-name = query rule", () => {
 describe("resolveAgainstTree — nested schemas", () => {
   it("resolves a nested object whose inner properties' implicit queries match", async () => {
     seq = 0;
-    const tree = n("WebArea", undefined, [
-      n("text", "title"),
-      n("text", "subtitle"),
-    ]);
+    const tree = n("WebArea", undefined, [n("text", "title"), n("text", "subtitle")]);
     const out = await resolveAgainstTree({
       schema: {
         type: "object",
@@ -327,7 +325,7 @@ describe("extract() — top-level failure shapes", () => {
   const cdp = noPage as unknown as Parameters<typeof extract>[1];
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
-  it("retired `mode:\"llm-assisted\"` is tolerated — warn + fall through to deterministic (v0.3.2)", async () => {
+  it('retired `mode:"llm-assisted"` is tolerated — warn + fall through to deterministic (v0.3.2)', async () => {
     // Regression for R-1: wrightxai's bench agent saw `mode` in the SDK type,
     // tried `"llm-assisted"` as a fallback, and wasted LLM turns on the old
     // `kind:"llm-assisted-not-implemented"` rejection. As of v0.3.2 the arg
@@ -353,7 +351,9 @@ describe("extract() — top-level failure shapes", () => {
     __resetLlmAssistedWarnedForTests();
     const originalWarn = console.warn;
     const warnCalls: unknown[][] = [];
-    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
     try {
       // (a) Does NOT throw — the call resolves to a structured failure.
       const resLegacy = await extract(noPage, cdp, refs, { ...commonOpts, mode: "llm-assisted" });
@@ -862,7 +862,9 @@ describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (
     __resetExplicitNlQueryWarnedForTests();
     const originalWarn = console.warn;
     const warnCalls: unknown[][] = [];
-    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
     try {
       // (a) Does NOT throw — the call resolves normally.
       const out = await resolveAgainstTree({
@@ -929,7 +931,9 @@ describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (
     __resetExplicitNlQueryWarnedForTests();
     const originalWarn = console.warn;
     const warnCalls: unknown[][] = [];
-    console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
     try {
       const out = await resolveAgainstTree({
         schema: {

@@ -42,7 +42,9 @@ const ATTACH_WARNING = [
   "================================================================",
 ].join("\n");
 
-export async function openByobSession(opts: SessionOptions & { attachCdp: string }): Promise<BrowserSession> {
+export async function openByobSession(
+  opts: SessionOptions & { attachCdp: string },
+): Promise<BrowserSession> {
   const url = assertLoopback(opts.attachCdp);
   log.warn(ATTACH_WARNING);
   log.info("session.byob: attaching", { endpoint: url.toString(), owner: "external" });
@@ -64,9 +66,9 @@ export async function openByobSession(opts: SessionOptions & { attachCdp: string
   //   3. If layout viewport is zero OR the window dims read as zero, install a
   //      1280x800 default via Emulation.setDeviceMetricsOverride.
   try {
-    const layout = await cdp.send("Page.getLayoutMetrics").catch(() => null) as
-      | { layoutViewport?: { clientWidth: number; clientHeight: number } }
-      | null;
+    const layout = (await cdp.send("Page.getLayoutMetrics").catch(() => null)) as {
+      layoutViewport?: { clientWidth: number; clientHeight: number };
+    } | null;
     const lw = layout?.layoutViewport?.clientWidth ?? 0;
     const lh = layout?.layoutViewport?.clientHeight ?? 0;
     const { result } = (await cdp.send("Runtime.evaluate", {
@@ -77,13 +79,18 @@ export async function openByobSession(opts: SessionOptions & { attachCdp: string
     const goodLayout = lw > 0 && lh > 0;
     const goodWindow = v.w > 0 && v.h > 0;
     if (!goodLayout && !goodWindow) {
-      log.info("session.byob: attached page has zero viewport on both layout + window probes; setting 1280x800 default", { layout: { lw, lh }, window: v });
-      await cdp.send("Emulation.setDeviceMetricsOverride", {
-        width: 1280,
-        height: 800,
-        deviceScaleFactor: 0,
-        mobile: false,
-      }).catch(() => undefined);
+      log.info(
+        "session.byob: attached page has zero viewport on both layout + window probes; setting 1280x800 default",
+        { layout: { lw, lh }, window: v },
+      );
+      await cdp
+        .send("Emulation.setDeviceMetricsOverride", {
+          width: 1280,
+          height: 800,
+          deviceScaleFactor: 0,
+          mobile: false,
+        })
+        .catch(() => undefined);
     } else {
       log.info("session.byob: attached page viewport ok", { layout: { lw, lh }, window: v });
     }

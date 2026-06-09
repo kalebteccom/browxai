@@ -8,7 +8,16 @@
 //   6. workspace-escape rejection: sessionId of `../escape` is refused
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, utimesSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  utimesSync,
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -79,7 +88,11 @@ describe("DiagnosticsRecorder gate-OFF", () => {
 
 describe("DiagnosticsRecorder gate-ON", () => {
   it("writes a JSONL line under <workspace>/diagnostics/<sessionId>/<iso>.jsonl", () => {
-    const rec = new DiagnosticsRecorder({ enabled: true, workspaceRoot: workspace, serverStartIso: "2026-06-08T00-00-00-000Z" });
+    const rec = new DiagnosticsRecorder({
+      enabled: true,
+      workspaceRoot: workspace,
+      serverStartIso: "2026-06-08T00-00-00-000Z",
+    });
     rec.write({
       kind: "call",
       ts: "2026-06-08T00:00:01.000Z",
@@ -109,7 +122,11 @@ describe("DiagnosticsRecorder gate-ON", () => {
   });
 
   it("readAll() returns appended records in order", () => {
-    const rec = new DiagnosticsRecorder({ enabled: true, workspaceRoot: workspace, serverStartIso: "2026-06-08T00-00-00-000Z" });
+    const rec = new DiagnosticsRecorder({
+      enabled: true,
+      workspaceRoot: workspace,
+      serverStartIso: "2026-06-08T00-00-00-000Z",
+    });
     for (let i = 0; i < 3; i++) {
       rec.write({
         kind: "call",
@@ -124,7 +141,11 @@ describe("DiagnosticsRecorder gate-ON", () => {
     }
     const all = rec.readAll();
     expect(all).toHaveLength(3);
-    expect(all.map((r) => r.kind === "call" ? r.tool : r.kind)).toEqual(["snapshot", "find", "snapshot"]);
+    expect(all.map((r) => (r.kind === "call" ? r.tool : r.kind))).toEqual([
+      "snapshot",
+      "find",
+      "snapshot",
+    ]);
   });
 });
 
@@ -147,7 +168,11 @@ describe("secrets-masking composability", () => {
   });
 
   it("end-to-end: enabled recorder + secret mask → JSONL does not carry raw value", () => {
-    const rec = new DiagnosticsRecorder({ enabled: true, workspaceRoot: workspace, serverStartIso: "2026-06-08T00-00-00-000Z" });
+    const rec = new DiagnosticsRecorder({
+      enabled: true,
+      workspaceRoot: workspace,
+      serverStartIso: "2026-06-08T00-00-00-000Z",
+    });
     const secrets = new SecretRegistry();
     secrets.register({ name: "OTP", value: "012345-real-otp" });
     const args = { key: "012345-real-otp" };
@@ -258,7 +283,11 @@ describe("buildEvalJsCapture", () => {
   });
 
   it("returns the SHA + head + taxonomy for eval_js calls", () => {
-    const cap = buildEvalJsCapture("eval_js", { expr: "document.querySelector('#foo')" }, { ok: true, value: "<div>" });
+    const cap = buildEvalJsCapture(
+      "eval_js",
+      { expr: "document.querySelector('#foo')" },
+      { ok: true, value: "<div>" },
+    );
     expect(cap).toBeDefined();
     expect(cap!.taxonomy).toBe("dom-query");
     expect(cap!.exprSha).toMatch(/^[0-9a-f]{64}$/);
@@ -303,7 +332,11 @@ describe("retention sweep", () => {
 
 describe("workspace-escape rejection", () => {
   it("a sessionId of `../escape` does NOT write outside the diagnostics subdir", () => {
-    const rec = new DiagnosticsRecorder({ enabled: true, workspaceRoot: workspace, serverStartIso: "2026-06-08T00-00-00-000Z" });
+    const rec = new DiagnosticsRecorder({
+      enabled: true,
+      workspaceRoot: workspace,
+      serverStartIso: "2026-06-08T00-00-00-000Z",
+    });
     // Snapshot the workspace contents BEFORE the call. We allow the
     // call to fall through silently (the contract is: the call still
     // runs, only the recording is skipped — see diagnostics.ts module
@@ -336,13 +369,21 @@ describe("resolveRetentionDays", () => {
   });
 
   it("honours BROWX_DIAGNOSTICS_RETENTION_DAYS", () => {
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" } as NodeJS.ProcessEnv)).toBe(7);
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" } as NodeJS.ProcessEnv)).toBe(0);
+    expect(
+      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" } as NodeJS.ProcessEnv),
+    ).toBe(7);
+    expect(
+      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" } as NodeJS.ProcessEnv),
+    ).toBe(0);
   });
 
   it("falls back to default on garbage input (no throw)", () => {
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "garbage" } as NodeJS.ProcessEnv)).toBe(30);
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "-3" } as NodeJS.ProcessEnv)).toBe(30);
+    expect(
+      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "garbage" } as NodeJS.ProcessEnv),
+    ).toBe(30);
+    expect(
+      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "-3" } as NodeJS.ProcessEnv),
+    ).toBe(30);
   });
 });
 
@@ -358,7 +399,10 @@ describe("buildReportSummary", () => {
         tool: "snapshot",
         sessionId: "default",
         argsRedacted: {},
-        resultMeta: i === 0 ? { ok: false, sizeBytes: 10, warningsCount: 0, failureKind: "target-not-found" } : { ok: true, sizeBytes: 10, warningsCount: 0 },
+        resultMeta:
+          i === 0
+            ? { ok: false, sizeBytes: 10, warningsCount: 0, failureKind: "target-not-found" }
+            : { ok: true, sizeBytes: 10, warningsCount: 0 },
         durationMs: 10 + i * 5,
         capabilityDenials: 0,
       });
@@ -374,12 +418,32 @@ describe("buildReportSummary", () => {
         resultMeta: { ok: true, sizeBytes: 5, warningsCount: 0 },
         durationMs: 1,
         capabilityDenials: 0,
-        evalJs: { exprSha: "a".repeat(64), exprHead: "document.querySelector('#x')", returnType: "string", returnSizeBytes: 3, taxonomy: "dom-query" },
+        evalJs: {
+          exprSha: "a".repeat(64),
+          exprHead: "document.querySelector('#x')",
+          returnType: "string",
+          returnSizeBytes: 3,
+          taxonomy: "dom-query",
+        },
       });
     }
     // 2 notes
-    records.push({ kind: "note", ts: now, sessionId: "default", insight: "miss", category: "missing-primitive", severity: "warn" });
-    records.push({ kind: "note", ts: now, sessionId: "default", insight: "wa", category: "workaround", severity: "info" });
+    records.push({
+      kind: "note",
+      ts: now,
+      sessionId: "default",
+      insight: "miss",
+      category: "missing-primitive",
+      severity: "warn",
+    });
+    records.push({
+      kind: "note",
+      ts: now,
+      sessionId: "default",
+      insight: "wa",
+      category: "workaround",
+      severity: "info",
+    });
 
     const summary = buildReportSummary(records);
     expect(summary.perTool.snapshot?.count).toBe(3);
@@ -394,8 +458,26 @@ describe("buildReportSummary", () => {
 
   it("`since` filters records strictly", () => {
     const records: import("./diagnostics.js").DiagnosticsRecord[] = [
-      { kind: "call", ts: "2026-06-01T00:00:00.000Z", tool: "snapshot", sessionId: "default", argsRedacted: {}, resultMeta: { ok: true, sizeBytes: 0, warningsCount: 0 }, durationMs: 0, capabilityDenials: 0 },
-      { kind: "call", ts: "2026-06-10T00:00:00.000Z", tool: "find", sessionId: "default", argsRedacted: {}, resultMeta: { ok: true, sizeBytes: 0, warningsCount: 0 }, durationMs: 0, capabilityDenials: 0 },
+      {
+        kind: "call",
+        ts: "2026-06-01T00:00:00.000Z",
+        tool: "snapshot",
+        sessionId: "default",
+        argsRedacted: {},
+        resultMeta: { ok: true, sizeBytes: 0, warningsCount: 0 },
+        durationMs: 0,
+        capabilityDenials: 0,
+      },
+      {
+        kind: "call",
+        ts: "2026-06-10T00:00:00.000Z",
+        tool: "find",
+        sessionId: "default",
+        argsRedacted: {},
+        resultMeta: { ok: true, sizeBytes: 0, warningsCount: 0 },
+        durationMs: 0,
+        capabilityDenials: 0,
+      },
     ];
     const summary = buildReportSummary(records, { since: "2026-06-05T00:00:00.000Z" });
     expect(summary.perTool.snapshot).toBeUndefined();

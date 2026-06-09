@@ -1,7 +1,7 @@
 # browxai — plugin authoring guide (v1)
 
 This guide is for plugin authors. If you're an operator looking to
-*install* a plugin, see [`docs/plugins.md`](./plugins.md). If you're
+_install_ a plugin, see [`docs/plugins.md`](./plugins.md). If you're
 looking to extend browxai's core surface (not write a plugin), the
 contribution path is `src/page/` / `src/session/` — plugins are for
 self-contained surfaces an outside team owns.

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ApprovalStore, confirmNavigation, confirmByobAction, type ConfirmContext } from "./confirm.js";
+import {
+  ApprovalStore,
+  confirmNavigation,
+  confirmByobAction,
+  type ConfirmContext,
+} from "./confirm.js";
 import type { OriginPolicy } from "./origin.js";
 
 const NO_POLICY: OriginPolicy = { allowed: [], blocked: [] };
@@ -15,8 +20,12 @@ function ctx(over: Partial<ConfirmContext> = {}): ConfirmContext {
 }
 
 describe("ApprovalStore — session pre-approvals", () => {
-  beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => { vi.useRealTimers(); });
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
   it("grants a scope and consumes it within the TTL", () => {
     vi.setSystemTime(new Date("2026-05-15T10:00:00Z"));
@@ -100,10 +109,15 @@ describe("confirmNavigation with pre-approval", () => {
     const approvals = new ApprovalStore();
     approvals.grant("navigate_off_allowlist", 60);
     const policy: OriginPolicy = {
-      allowed: [{ raw: "https://safe.example.com", test: (u) => u.origin === "https://safe.example.com" }],
+      allowed: [
+        { raw: "https://safe.example.com", test: (u) => u.origin === "https://safe.example.com" },
+      ],
       blocked: [],
     };
-    const decision = await confirmNavigation("https://other.example.com/x", ctx({ policy, approvals, isByob: false }));
+    const decision = await confirmNavigation(
+      "https://other.example.com/x",
+      ctx({ policy, approvals, isByob: false }),
+    );
     expect(decision.ok).toBe(true);
     expect(decision.reason).toContain("pre-approved");
   });
@@ -111,10 +125,15 @@ describe("confirmNavigation with pre-approval", () => {
   it("on-allowlist navigation is always approved (pre-approval not consulted)", async () => {
     const approvals = new ApprovalStore();
     const policy: OriginPolicy = {
-      allowed: [{ raw: "https://safe.example.com", test: (u) => u.origin === "https://safe.example.com" }],
+      allowed: [
+        { raw: "https://safe.example.com", test: (u) => u.origin === "https://safe.example.com" },
+      ],
       blocked: [],
     };
-    const decision = await confirmNavigation("https://safe.example.com/x", ctx({ policy, approvals, isByob: false }));
+    const decision = await confirmNavigation(
+      "https://safe.example.com/x",
+      ctx({ policy, approvals, isByob: false }),
+    );
     expect(decision.ok).toBe(true);
     expect(decision.reason).toBe("on-allowlist");
   });

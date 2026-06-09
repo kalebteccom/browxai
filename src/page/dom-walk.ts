@@ -109,11 +109,24 @@ export async function runDomWalkOnFrame(
   const max = opts.maxEntries ?? DEFAULT_MAX;
   const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = await frame.evaluate(
-      ({ script, attrs, cap, openShadow }: { script: string; attrs: string[]; cap: number; openShadow: boolean }) =>
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-        (new Function("attrs", "cap", "openShadow", `return (${script})(attrs, cap, openShadow)`))(attrs, cap, openShadow),
+      ({
+        script,
+        attrs,
+        cap,
+        openShadow,
+      }: {
+        script: string;
+        attrs: string[];
+        cap: number;
+        openShadow: boolean;
+      }) =>
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval
+        new Function("attrs", "cap", "openShadow", `return (${script})(attrs, cap, openShadow)`)(
+          attrs,
+          cap,
+          openShadow,
+        ),
       { script: PAGE_SCRIPT, attrs: testAttrs, cap: max, openShadow: walkOpen },
     );
     return (raw as DomWalkEntry[]) ?? [];

@@ -31,20 +31,20 @@ If you're not sure whether a change resets the clock, assume it does and discuss
 
 ## Decision matrix
 
-| Change | Semver impact | Clock reset |
-|---|---|---|
-| New tool (default-on capability) | minor | yes |
-| New tool (off-by-default capability) | minor | no |
-| New optional input field | minor / patch | no |
-| New required input field | major (pre-1.0: minor) | yes |
-| Renamed tool / removed tool | major (pre-1.0: minor + RETIRED_*) | yes |
-| Capability rename | major (use RETIRED_* pattern) | yes |
-| Behavior fix (matches docs) | patch | no |
-| Behavior change (diverges from docs) | minor | yes |
+| Change                               | Semver impact                        | Clock reset |
+| ------------------------------------ | ------------------------------------ | ----------- |
+| New tool (default-on capability)     | minor                                | yes         |
+| New tool (off-by-default capability) | minor                                | no          |
+| New optional input field             | minor / patch                        | no          |
+| New required input field             | major (pre-1.0: minor)               | yes         |
+| Renamed tool / removed tool          | major (pre-1.0: minor + RETIRED\_\*) | yes         |
+| Capability rename                    | major (use RETIRED\_\* pattern)      | yes         |
+| Behavior fix (matches docs)          | patch                                | no          |
+| Behavior change (diverges from docs) | minor                                | yes         |
 
 ## Pre-1.0 minor bumps
 
-Every minor bump pre-1.0 may include surface changes. The clock guards against *frequent* surface changes — not against any change. The "~1 week" target is for the API surface to be quiet enough that adopters can integrate without a moving target.
+Every minor bump pre-1.0 may include surface changes. The clock guards against _frequent_ surface changes — not against any change. The "~1 week" target is for the API surface to be quiet enough that adopters can integrate without a moving target.
 
 ## Related
 

@@ -30,14 +30,16 @@ export class FeedbackMemory {
   private entries: FeedbackEntry[] = [];
   private readonly cap: number;
 
-  constructor(cap = 100) { this.cap = cap; }
+  constructor(cap = 100) {
+    this.cap = cap;
+  }
 
   record(query: string, winner: WinnerIdentity): void {
     const tokens = tokenise(query);
     if (tokens.size === 0) return;
     // De-dupe: drop any prior entry with identical token set + winner identity.
-    this.entries = this.entries.filter((e) =>
-      !(setsEqual(e.tokens, tokens) && identityEqual(e.winner, winner)),
+    this.entries = this.entries.filter(
+      (e) => !(setsEqual(e.tokens, tokens) && identityEqual(e.winner, winner)),
     );
     this.entries.push({ tokens, winner, ts: Date.now() });
     if (this.entries.length > this.cap) this.entries.shift();
@@ -61,13 +63,18 @@ export class FeedbackMemory {
     return bonus;
   }
 
-  size(): number { return this.entries.length; }
-  clear(): void { this.entries = []; }
+  size(): number {
+    return this.entries.length;
+  }
+  clear(): void {
+    this.entries = [];
+  }
 }
 
 function tokenise(query: string): Set<string> {
   return new Set(
-    query.toLowerCase()
+    query
+      .toLowerCase()
       .split(/[^a-z0-9]+/)
       .filter((t) => t.length >= 2),
   );
@@ -86,6 +93,9 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 
 function identityEqual(a: WinnerIdentity, b: WinnerIdentity): boolean {
   // testId is the strongest disambiguator; if both sides have one, only that matters.
-  if (a.testId && b.testId) return a.testId === b.testId && (a.testIdAttr ?? "data-testid") === (b.testIdAttr ?? "data-testid");
+  if (a.testId && b.testId)
+    return (
+      a.testId === b.testId && (a.testIdAttr ?? "data-testid") === (b.testIdAttr ?? "data-testid")
+    );
   return a.role === b.role && (a.name ?? "") === (b.name ?? "");
 }

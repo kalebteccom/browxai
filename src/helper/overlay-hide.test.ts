@@ -32,14 +32,14 @@ describe("applyOverlayHide", () => {
 
   it("no-ops on an empty selector list (feature off)", async () => {
     const ctx = fakeContext();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await applyOverlayHide(ctx as any, []);
     expect(ctx.addInitScript).not.toHaveBeenCalled();
   });
 
   it("registers the init script and re-applies to already-open pages", async () => {
     const ctx = fakeContext();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await applyOverlayHide(ctx as any, ["#hmr"]);
     expect(ctx.addInitScript).toHaveBeenCalledTimes(1);
     expect(ctx._pages[0]!.evaluate).toHaveBeenCalledTimes(1);

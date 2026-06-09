@@ -21,8 +21,12 @@ describe("matchesResponse", () => {
   });
 
   it("ANDs all provided fields", () => {
-    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 201 })).toBe(true);
-    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 500 })).toBe(false);
+    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 201 })).toBe(
+      true,
+    );
+    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 500 })).toBe(
+      false,
+    );
   });
 
   it("an empty match matches nothing (refuses to wait for anything)", () => {

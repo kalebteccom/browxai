@@ -16,18 +16,30 @@
     "browser-control"
   ],
   "homepage": "https://kalebteccom.github.io/browxai/",
-  "repository": { "type": "git", "url": "git+https://github.com/kalebteccom/browxai.git" },
-  "bugs": { "url": "https://github.com/kalebteccom/browxai/issues" },
-  "engines": { "node": ">=20" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalebteccom/browxai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kalebteccom/browxai/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "packageManager": "pnpm@9.0.0",
-  "bin": { "browxai": "dist/cli.js" },
+  "bin": {
+    "browxai": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist", "THIRD_PARTY_NOTICES.md"],
+  "files": [
+    "dist",
+    "THIRD_PARTY_NOTICES.md"
+  ],
   "publishConfig": {
     "access": "public",
     "provenance": true
@@ -54,8 +66,13 @@
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom.cdx.json"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,mjs,cjs}": ["prettier --write", "eslint --fix"],
-    "*.{json,md,yml,yaml}": ["prettier --write"]
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

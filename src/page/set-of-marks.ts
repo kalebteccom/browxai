@@ -84,7 +84,9 @@ export interface SetOfMarksResult {
 
 /** Type guard: does this candidate already carry a bbox (i.e. is it the
  *  full `FindCandidate`-shaped object)? */
-function hasBbox(c: MarkCandidate): c is Pick<FindCandidate, "ref" | "role" | "name" | "testId" | "bbox"> {
+function hasBbox(
+  c: MarkCandidate,
+): c is Pick<FindCandidate, "ref" | "role" | "name" | "testId" | "bbox"> {
   return Object.prototype.hasOwnProperty.call(c, "bbox");
 }
 
@@ -129,7 +131,7 @@ export async function resolveCandidates(
     } catch (err) {
       warnings.push(
         `set-of-marks: bbox lookup for bare ref candidates failed (${err instanceof Error ? err.message : String(err)}); ` +
-        `they will be reported without bboxes. Pass the full find() candidate to avoid the lookup.`,
+          `they will be reported without bboxes. Pass the full find() candidate to avoid the lookup.`,
       );
     }
   }
@@ -154,7 +156,7 @@ export async function resolveCandidates(
     if (!looked) {
       warnings.push(
         `set-of-marks: ref "${c.ref}" was not surfaced by the current snapshot walk — ` +
-        `no bbox to paint. Pass the full find() candidate (with bbox) or call snapshot/find first.`,
+          `no bbox to paint. Pass the full find() candidate (with bbox) or call snapshot/find first.`,
       );
       entries.push({ index, ref: c.ref, bbox: null, painted: false });
       continue;
@@ -166,9 +168,10 @@ export async function resolveCandidates(
     // synthetic a11y refs (e.g. the document root `RootWebArea`) have no
     // matching DOM, and Playwright's `boundingBox()` auto-waits 30 s before
     // returning null on a non-matching selector. Cap the fallback at 1 s.
-    let bbox: VisibleRect | null = looked.backendDOMNodeId !== undefined
-      ? await visibleRect(cdp, looked.backendDOMNodeId)
-      : null;
+    let bbox: VisibleRect | null =
+      looked.backendDOMNodeId !== undefined
+        ? await visibleRect(cdp, looked.backendDOMNodeId)
+        : null;
     if (bbox === null) {
       const { hint } = buildSelectorHint(looked);
       bbox = await locatorBoundingBox(page, hint, { timeoutMs: 1000 });
@@ -297,7 +300,13 @@ export async function screenshotMarks(
 ): Promise<SetOfMarksResult> {
   const testAttributes = opts.testAttributes ?? [];
   const label: LabelMode = opts.label ?? "index";
-  const { entries, warnings } = await resolveCandidates(page, cdp, refs, testAttributes, opts.candidates);
+  const { entries, warnings } = await resolveCandidates(
+    page,
+    cdp,
+    refs,
+    testAttributes,
+    opts.candidates,
+  );
 
   // Only paint entries that have a bbox to paint.
   const paintedBoxes = entries
@@ -320,8 +329,13 @@ export async function screenshotMarks(
     imageBase64 = Buffer.from(buf).toString("base64");
   } finally {
     if (overlayId) {
-      try { await page.evaluate(buildRemoveScript(overlayId)); }
-      catch { warnings.push(`set-of-marks: overlay removal failed; a stray <div id="${overlayId}"> may persist until the next navigation.`); }
+      try {
+        await page.evaluate(buildRemoveScript(overlayId));
+      } catch {
+        warnings.push(
+          `set-of-marks: overlay removal failed; a stray <div id="${overlayId}"> may persist until the next navigation.`,
+        );
+      }
     }
   }
 
@@ -331,7 +345,7 @@ export async function screenshotMarks(
   if (skipped > 0) {
     warnings.push(
       `set-of-marks: ${skipped} of ${entries.length} candidate(s) had no bbox (clipped / off-screen / unresolved) and were not painted on the image. ` +
-      `Their entries remain in \`marks\` with \`painted:false\` so the index↔ref mapping is still complete.`,
+        `Their entries remain in \`marks\` with \`painted:false\` so the index↔ref mapping is still complete.`,
     );
   }
 

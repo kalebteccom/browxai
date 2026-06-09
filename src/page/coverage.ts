@@ -104,7 +104,9 @@ export class CoverageTrackerState {
   /** CSS.styleSheetAdded event handler — kept for cleanup. */
   private onStyleSheetAdded: ((e: { header: CdpStyleSheetHeader }) => void) | null = null;
 
-  isRunning(): boolean { return this.running; }
+  isRunning(): boolean {
+    return this.running;
+  }
 
   /** Start both Profiler + CSS coverage on `cdp`. Returns `{restarted}` —
    *  if an instance was already running, it is cleanly stopped (results
@@ -152,11 +154,15 @@ export class CoverageTrackerState {
     let jsRaw: { result?: CdpScriptCoverage[] } = {};
     let cssRaw: { ruleUsage?: CdpRuleUsage[] } = {};
     try {
-      jsRaw = await cdp.send("Profiler.takePreciseCoverage") as { result?: CdpScriptCoverage[] };
-    } catch { jsRaw = { result: [] }; }
+      jsRaw = (await cdp.send("Profiler.takePreciseCoverage")) as { result?: CdpScriptCoverage[] };
+    } catch {
+      jsRaw = { result: [] };
+    }
     try {
-      cssRaw = await cdp.send("CSS.stopRuleUsageTracking") as { ruleUsage?: CdpRuleUsage[] };
-    } catch { cssRaw = { ruleUsage: [] }; }
+      cssRaw = (await cdp.send("CSS.stopRuleUsageTracking")) as { ruleUsage?: CdpRuleUsage[] };
+    } catch {
+      cssRaw = { ruleUsage: [] };
+    }
     await this.stopInternal(cdp);
     return {
       jsCoverage: parseJsCoverage(jsRaw.result ?? []),
@@ -174,9 +180,15 @@ export class CoverageTrackerState {
   private async stopInternal(cdp: CDPSession): Promise<void> {
     try {
       await cdp.send("Profiler.stopPreciseCoverage").catch(() => undefined);
-    } catch { /* best-effort */ }
+    } catch {
+      /* best-effort */
+    }
     if (this.onStyleSheetAdded) {
-      try { cdp.off("CSS.styleSheetAdded", this.onStyleSheetAdded); } catch { /* best-effort */ }
+      try {
+        cdp.off("CSS.styleSheetAdded", this.onStyleSheetAdded);
+      } catch {
+        /* best-effort */
+      }
       this.onStyleSheetAdded = null;
     }
     this.running = false;
@@ -236,11 +248,13 @@ export function parseJsCoverage(scripts: CdpScriptCoverage[]): JsCoverageEntry[]
     // sibling functions, but defensive collapse is cheap + safer).
     deadRanges.sort((a, b) => a[0] - b[0]);
     const mergedDead: Array<[number, number]> = [];
-    let dStart = -1, dEnd = -1;
+    let dStart = -1,
+      dEnd = -1;
     for (const [s2, e2] of deadRanges) {
       if (s2 > dEnd) {
         if (dEnd > dStart) mergedDead.push([dStart, dEnd]);
-        dStart = s2; dEnd = e2;
+        dStart = s2;
+        dEnd = e2;
       } else if (e2 > dEnd) {
         dEnd = e2;
       }
@@ -288,12 +302,18 @@ export function parseCssCoverage(
   headers: Map<string, CdpStyleSheetHeader>,
 ): CssCoverageEntry[] {
   // Group by styleSheetId. Each entry: url + total span + used+dead ranges.
-  const byId = new Map<string, { used: Array<[number, number]>; dead: Array<[number, number]>; maxEnd: number }>();
+  const byId = new Map<
+    string,
+    { used: Array<[number, number]>; dead: Array<[number, number]>; maxEnd: number }
+  >();
   for (const r of ruleUsage) {
     const id = r.styleSheetId;
     if (!id) continue;
     let g = byId.get(id);
-    if (!g) { g = { used: [], dead: [], maxEnd: 0 }; byId.set(id, g); }
+    if (!g) {
+      g = { used: [], dead: [], maxEnd: 0 };
+      byId.set(id, g);
+    }
     if (r.endOffset > g.maxEnd) g.maxEnd = r.endOffset;
     if (r.used) g.used.push([r.startOffset, r.endOffset]);
     else g.dead.push([r.startOffset, r.endOffset]);
@@ -317,7 +337,9 @@ export function parseCssCoverage(
       usagePercent,
     };
     if (g.dead.length > 0) {
-      entry.deadRules = g.dead.slice(0, MAX_DEAD_RANGES_PER_SCRIPT).map(([s, e]) => ({ start: s, end: e }));
+      entry.deadRules = g.dead
+        .slice(0, MAX_DEAD_RANGES_PER_SCRIPT)
+        .map(([s, e]) => ({ start: s, end: e }));
     }
     out.push(entry);
   }

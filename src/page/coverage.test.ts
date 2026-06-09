@@ -9,10 +9,13 @@ describe("parseJsCoverage", () => {
       {
         url: "https://example/a.js",
         functions: [
-          { isBlockCoverage: true, ranges: [
-            { startOffset: 0, endOffset: 100, count: 1 },
-            { startOffset: 50, endOffset: 80, count: 0 },
-          ] },
+          {
+            isBlockCoverage: true,
+            ranges: [
+              { startOffset: 0, endOffset: 100, count: 1 },
+              { startOffset: 50, endOffset: 80, count: 0 },
+            ],
+          },
         ],
       },
     ]);
@@ -46,9 +49,7 @@ describe("parseJsCoverage", () => {
   });
 
   it("treats totalBytes:0 as usagePercent:100", () => {
-    const r = parseJsCoverage([
-      { url: "https://example/empty.js", functions: [] },
-    ]);
+    const r = parseJsCoverage([{ url: "https://example/empty.js", functions: [] }]);
     expect(r[0]!.usagePercent).toBe(100);
   });
 
@@ -65,12 +66,15 @@ describe("parseCssCoverage", () => {
     const headers = new Map([
       ["s1", { styleSheetId: "s1", sourceURL: "https://example/a.css", length: 200 }],
     ]);
-    const r = parseCssCoverage([
-      { styleSheetId: "s1", startOffset: 0, endOffset: 50, used: true },
-      { styleSheetId: "s1", startOffset: 50, endOffset: 100, used: false },
-      { styleSheetId: "s1", startOffset: 100, endOffset: 150, used: true },
-      { styleSheetId: "s1", startOffset: 150, endOffset: 200, used: false },
-    ], headers);
+    const r = parseCssCoverage(
+      [
+        { styleSheetId: "s1", startOffset: 0, endOffset: 50, used: true },
+        { styleSheetId: "s1", startOffset: 50, endOffset: 100, used: false },
+        { styleSheetId: "s1", startOffset: 100, endOffset: 150, used: true },
+        { styleSheetId: "s1", startOffset: 150, endOffset: 200, used: false },
+      ],
+      headers,
+    );
     expect(r).toHaveLength(1);
     const e = r[0]!;
     expect(e.url).toBe("https://example/a.css");
@@ -86,9 +90,10 @@ describe("parseCssCoverage", () => {
   });
 
   it("falls back to inline:<id> when no header URL", () => {
-    const r = parseCssCoverage([
-      { styleSheetId: "s2", startOffset: 0, endOffset: 30, used: true },
-    ], new Map());
+    const r = parseCssCoverage(
+      [{ styleSheetId: "s2", startOffset: 0, endOffset: 30, used: true }],
+      new Map(),
+    );
     expect(r[0]!.url).toBe("inline:s2");
     expect(r[0]!.totalBytes).toBe(30);
   });

@@ -72,7 +72,15 @@ export async function uploadFile(
     const mimeType = args.mimeType ?? "application/octet-stream";
     const buffer = Buffer.from(args.content, "base64");
     await loc.setInputFiles({ name, mimeType, buffer });
-    return { ok: true, mode: "content", name, bytes: buffer.length, mimeType, target, fileCount: 1 };
+    return {
+      ok: true,
+      mode: "content",
+      name,
+      bytes: buffer.length,
+      mimeType,
+      target,
+      fileCount: 1,
+    };
   }
 
   const resolved = resolve(workspaceRoot, args.path!);
@@ -83,6 +91,10 @@ export async function uploadFile(
   }
   await loc.setInputFiles(resolved);
   let bytes = 0;
-  try { bytes = statSync(resolved).size; } catch { /* best-effort size */ }
+  try {
+    bytes = statSync(resolved).size;
+  } catch {
+    /* best-effort size */
+  }
   return { ok: true, mode: "path", name: args.path!, bytes, target, fileCount: 1 };
 }

@@ -16,9 +16,8 @@
 // own `read` gate. Default (no `path`) behaviour is unchanged — no capability
 // change, no disk write.
 
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath, dirname } from "node:path";
 import { statSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
 import { resolveWorkspacePath } from "../session/storage.js";
 
 /** Image format the bytes were encoded as. Matches the existing tool surface
@@ -72,7 +71,11 @@ export function screenshotSave(
   writeFileSync(resolved, buf);
 
   let bytes = 0;
-  try { bytes = statSync(resolved).size; } catch { /* best-effort */ }
+  try {
+    bytes = statSync(resolved).size;
+  } catch {
+    /* best-effort */
+  }
   // Belt-and-braces: re-run resolve to surface the absolute path (the input
   // may have been a workspace-relative path).
   const absolute = resolvePath(resolved);

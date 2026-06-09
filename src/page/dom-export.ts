@@ -31,9 +31,8 @@
 //   running egress masking over it would corrupt inline JSON state blobs.
 //   The `warnings[]` array always carries the caveat as its first entry.
 
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath, dirname } from "node:path";
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
-import { dirname } from "node:path";
 import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 
@@ -92,16 +91,21 @@ const PAGE_WALK_FN = (args: { mode: DomExportFormat; includeShadow: boolean }): 
   const includeShadow = args.includeShadow;
   let hasCustomElements = false;
   try {
-    const all = document.querySelectorAll('*');
+    const all = document.querySelectorAll("*");
     for (let i = 0; i < all.length && i < 500; i++) {
-      if (all[i]!.tagName && all[i]!.tagName.indexOf('-') !== -1) { hasCustomElements = true; break; }
+      if (all[i]!.tagName && all[i]!.tagName.indexOf("-") !== -1) {
+        hasCustomElements = true;
+        break;
+      }
     }
   } catch (_) {}
 
-  if (mode === 'html') {
-    const html = document.documentElement ? document.documentElement.outerHTML : '';
+  if (mode === "html") {
+    const html = document.documentElement ? document.documentElement.outerHTML : "";
     let count = 0;
-    try { count = document.querySelectorAll('*').length; } catch (_) {}
+    try {
+      count = document.querySelectorAll("*").length;
+    } catch (_) {}
     return { html, nodeCount: count, shadowRootCount: 0, hasCustomElements };
   }
   const nodes: Array<Record<string, unknown>> = [];
@@ -116,25 +120,25 @@ const PAGE_WALK_FN = (args: { mode: DomExportFormat; includeShadow: boolean }): 
     return a;
   }
   function directText(el: Element): string {
-    let t = '';
+    let t = "";
     const kids = el.childNodes;
     for (let i = 0; i < kids.length; i++) {
-      if (kids[i]!.nodeType === 3) t += kids[i]!.nodeValue || '';
+      if (kids[i]!.nodeType === 3) t += kids[i]!.nodeValue || "";
     }
-    return t.replace(/\s+/g, ' ').trim();
+    return t.replace(/\s+/g, " ").trim();
   }
   function visit(node: Element, depth: number): void {
     if (!node || node.nodeType !== 1) return;
     const entry: Record<string, unknown> = {
-      tag: (node.tagName || '').toLowerCase(),
+      tag: (node.tagName || "").toLowerCase(),
       attrs: attrsOf(node),
       depth,
     };
-    const role = node.getAttribute('role');
+    const role = node.getAttribute("role");
     if (role) entry.role = role;
     const txt = directText(node);
     if (txt) entry.text = txt;
-    const refAttr = node.getAttribute('data-browx-ref') || '';
+    const refAttr = node.getAttribute("data-browx-ref") || "";
     if (refAttr) entry.ref = refAttr;
     nodes.push(entry);
 
@@ -197,7 +201,7 @@ export async function domExport(
 
   let sizeBytes = 0;
   let nodeCount = walked.nodeCount;
-  let shadowRootCount = walked.shadowRootCount;
+  const shadowRootCount = walked.shadowRootCount;
 
   if (format === "html") {
     const html = walked.html ?? "";
@@ -211,7 +215,7 @@ export async function domExport(
     if (walked.hasCustomElements || includeShadow) {
       warnings.push(
         "html mode: `documentElement.outerHTML` does NOT include shadow-DOM content (open OR closed) — " +
-        "the platform serializer omits shadow trees. For shadow content, use `format:\"jsonl\"` with `includeShadow:true` (default).",
+          'the platform serializer omits shadow trees. For shadow content, use `format:"jsonl"` with `includeShadow:true` (default).',
       );
     }
   } else {
@@ -230,7 +234,7 @@ export async function domExport(
   if (walked.hasCustomElements) {
     warnings.push(
       "Document uses custom elements. Closed shadow roots are inaccessible by web-platform design — " +
-      "any tree behind a closed root is genuinely unreachable from this dump.",
+        "any tree behind a closed root is genuinely unreachable from this dump.",
     );
   }
 

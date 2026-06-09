@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RefRegistry, type RefLocatorInputs } from "./refs.js";
-import {
-  generateLocator,
-  generatePlaywrightLocator,
-} from "./generate-locator.js";
+import { generateLocator, generatePlaywrightLocator } from "./generate-locator.js";
 
 describe("generatePlaywrightLocator — tier mapping", () => {
   it("tier 1: default data-testid lowers to getByTestId, stability high", () => {
@@ -71,9 +68,7 @@ describe("generatePlaywrightLocator — tier mapping", () => {
       name: "Save",
       source: "a11y",
     });
-    expect(out.playwright).toBe(
-      "page.getByRole('button', { name: 'Save' })",
-    );
+    expect(out.playwright).toBe("page.getByRole('button', { name: 'Save' })");
     expect(out.stability).toBe("high");
     expect(out.components).toEqual([
       { kind: "role", value: "button", name: "Save" },
@@ -106,9 +101,7 @@ describe("generatePlaywrightLocator — tier mapping", () => {
       name: "O'Brien",
       source: "a11y",
     });
-    expect(out.playwright).toBe(
-      `page.getByRole('button', { name: 'O\\'Brien' })`,
-    );
+    expect(out.playwright).toBe(`page.getByRole('button', { name: 'O\\'Brien' })`);
   });
 
   it("escapes backslashes inside testId values", () => {
@@ -145,9 +138,7 @@ describe("generateLocator — registry lookup", () => {
     const out = generateLocator(ref, (r) => refs.locatorOf(r));
     expect(out.ok).toBe(true);
     if (out.ok) {
-      expect(out.playwright).toBe(
-        "page.getByRole('button', { name: 'Save' })",
-      );
+      expect(out.playwright).toBe("page.getByRole('button', { name: 'Save' })");
       expect(out.stability).toBe("high");
     }
   });

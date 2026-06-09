@@ -101,7 +101,7 @@ export interface NotificationRecord {
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_NOTIFICATION_HINT =
   "unhandled notification — set notificationPolicy (open_session/set_notification_policy) " +
-  "to \"allow\", \"deny\", or \"ask-human\" before driving an action that may construct " +
+  'to "allow", "deny", or "ask-human" before driving an action that may construct ' +
   "a Notification. The constructor was rejected page-side (NotAllowedError) so the page " +
   "is not deadlocked, but the app effect is the deny branch.";
 
@@ -159,7 +159,9 @@ export class NotificationPolicyState {
 
 function normalise(p: NotificationPolicy): NotificationPolicy {
   if (!isPolicyMode(p.mode)) {
-    throw new Error(`notificationPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`);
+    throw new Error(
+      `notificationPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+    );
   }
   return { mode: p.mode };
 }
@@ -185,9 +187,13 @@ export function parseNotificationPolicyArg(
  *  (when the policy is `ask-human`); the page-side wrapper script consults it
  *  before deciding whether to call through. Returns the decision the wrapper
  *  should enact: `"allow"` calls through, `"deny"` throws NotAllowedError. */
-export type NotificationAskHandler = (
-  payload: { title: string; body?: string; icon?: string; tag?: string; origin?: string },
-) => Promise<"allow" | "deny">;
+export type NotificationAskHandler = (payload: {
+  title: string;
+  body?: string;
+  icon?: string;
+  tag?: string;
+  origin?: string;
+}) => Promise<"allow" | "deny">;
 
 /** Init script that wraps the page-side `Notification` constructor. Stringified
  *  so it can be passed to `addInitScript` and `page.evaluate`. Browser-only JS
@@ -365,7 +371,13 @@ export async function attachNotificationPolicy(
   try {
     await context.exposeBinding("__browx_notification_check", async (_source, payload: string) => {
       try {
-        const o = JSON.parse(payload) as { title?: string; body?: string; icon?: string; tag?: string; origin?: string };
+        const o = JSON.parse(payload) as {
+          title?: string;
+          body?: string;
+          icon?: string;
+          tag?: string;
+          origin?: string;
+        };
         const title = String(o.title ?? "");
         const origin = o.origin;
         const mode = state.current().mode;
@@ -409,9 +421,12 @@ export async function attachNotificationPolicy(
       }
     });
   } catch (err) {
-    log.warn("session.notification: exposeBinding install failed; constructor falls back to call-through", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.warn(
+      "session.notification: exposeBinding install failed; constructor falls back to call-through",
+      {
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
   }
 
   // Init-script — Playwright re-runs it on every new document. Idempotent
@@ -439,11 +454,14 @@ export async function attachNotificationPolicy(
  *  answers). `deny` and `raise` throw at construction time. */
 export function syncDecisionFor(mode: NotificationPolicyMode): "allow" | "deny" | "raise" {
   switch (mode) {
-    case "deny": return "deny";
-    case "raise": return "raise";
+    case "deny":
+      return "deny";
+    case "raise":
+      return "raise";
     case "allow":
     case "ask-human":
-    default: return "allow";
+    default:
+      return "allow";
   }
 }
 
@@ -485,4 +503,3 @@ export function readNotifications(
 ): { policy: NotificationPolicy; records: NotificationRecord[] } {
   return { policy: state.current(), records: state.since(since) };
 }
-

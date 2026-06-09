@@ -29,7 +29,10 @@ import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
  * plugin schemas are typed precisely while composed types
  * (intersections of multiple plugin schemas) stay assignable.
  */
-export type PluginSchema = Record<string, Record<string, (...args: never[]) => Promise<BrowxaiResult>>>;
+export type PluginSchema = Record<
+  string,
+  Record<string, (...args: never[]) => Promise<BrowxaiResult>>
+>;
 
 // Suppress unused import (BrowxaiArgs kept for forward-compat consumers
 // who want to widen the function-arg type).

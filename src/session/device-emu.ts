@@ -191,7 +191,9 @@ export class DeviceEmulationState {
    *  serve). */
   set(api: DeviceApi, devices: SyntheticDevice[]): DeviceCatalog {
     if (!Array.isArray(devices)) {
-      throw new Error(`emulate_${api}: \`devices\` must be an array (pass [] to clear the catalog)`);
+      throw new Error(
+        `emulate_${api}: \`devices\` must be an array (pass [] to clear the catalog)`,
+      );
     }
     // Normalise each entry: every field is optional on the agent side, but
     // the page-side script needs deterministic defaults to compose a
@@ -240,7 +242,7 @@ function normaliseDevice(api: DeviceApi, d: SyntheticDevice, index: number): Syn
     productId: d.productId ?? 0x0000,
     manufacturerName: d.manufacturerName ?? "browxai virtual",
     serialNumber: d.serialNumber ?? "BROWX-VIRTUAL",
-    deviceClass: d.deviceClass ?? 0xFF,
+    deviceClass: d.deviceClass ?? 0xff,
     deviceSubclass: d.deviceSubclass ?? 0x00,
     deviceProtocol: d.deviceProtocol ?? 0x00,
     services: d.services ?? [],
@@ -586,11 +588,8 @@ export async function attachDeviceEmulation(
         const cat = state.catalog(api);
         const devices = cat.devices;
         const handledAs: DeviceRequestRecord["handledAs"] =
-          devices.length > 0 ? "resolved" : (api === "hid" ? "empty" : "rejected");
-        const returned =
-          api === "hid"
-            ? devices.length
-            : (devices.length > 0 ? 1 : 0);
+          devices.length > 0 ? "resolved" : api === "hid" ? "empty" : "rejected";
+        const returned = api === "hid" ? devices.length : devices.length > 0 ? 1 : 0;
         state.record({
           api,
           handledAs,
@@ -613,9 +612,12 @@ export async function attachDeviceEmulation(
       }
     });
   } catch (err) {
-    log.warn("session.device-emu: exposeBinding install failed; page-side wrapper falls back to refused", {
-      error: err instanceof Error ? err.message : String(err),
-    });
+    log.warn(
+      "session.device-emu: exposeBinding install failed; page-side wrapper falls back to refused",
+      {
+        error: err instanceof Error ? err.message : String(err),
+      },
+    );
   }
 
   try {

@@ -15,9 +15,9 @@ describe("patterniseUrl — url redaction", () => {
   });
 
   it("replaces UUID path segments with :id", () => {
-    expect(patterniseUrl("https://api.example.com/orders/550e8400-e29b-41d4-a716-446655440000")).toBe(
-      "https://api.example.com/orders/:id",
-    );
+    expect(
+      patterniseUrl("https://api.example.com/orders/550e8400-e29b-41d4-a716-446655440000"),
+    ).toBe("https://api.example.com/orders/:id");
   });
 
   it("replaces long hex path segments with :id (object id shapes)", () => {
@@ -39,7 +39,11 @@ describe("patterniseUrl — url redaction", () => {
 
 describe("extractTopLevelKeys — response shape redaction", () => {
   it("returns top-level keys of a plain JSON object", () => {
-    expect(extractTopLevelKeys({ id: 1, name: "x", nested: { a: 1 } })).toEqual(["id", "name", "nested"]);
+    expect(extractTopLevelKeys({ id: 1, name: "x", nested: { a: 1 } })).toEqual([
+      "id",
+      "name",
+      "nested",
+    ]);
   });
 
   it("does not descend into nested objects", () => {
@@ -48,7 +52,10 @@ describe("extractTopLevelKeys — response shape redaction", () => {
   });
 
   it("marks array shape via the [].key prefix when an array of objects", () => {
-    const result = extractTopLevelKeys([{ id: 1, label: "a" }, { id: 2, label: "b" }]);
+    const result = extractTopLevelKeys([
+      { id: 1, label: "a" },
+      { id: 2, label: "b" },
+    ]);
     expect(result).toEqual(["[].id", "[].label"]);
   });
 

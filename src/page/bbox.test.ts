@@ -6,15 +6,17 @@ import { locatorBoundingBox } from "./bbox.js";
 function pageWith(boundingBox: () => Promise<unknown>) {
   return {
     locator: vi.fn(() => ({ first: () => ({ boundingBox }) })),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
 describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () => {
   it("returns the rect when the locator has a real rendered box", async () => {
     const page = pageWith(async () => ({ x: 12, y: 34, width: 100, height: 20 }));
-    expect(await locatorBoundingBox(page, "[data-testid=\"x\"]")).toEqual({
-      x: 12, y: 34, width: 100, height: 20,
+    expect(await locatorBoundingBox(page, '[data-testid="x"]')).toEqual({
+      x: 12,
+      y: 34,
+      width: 100,
+      height: 20,
     });
   });
 
@@ -29,7 +31,9 @@ describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () =
   });
 
   it("swallows locator errors and returns null (best-effort)", async () => {
-    const page = pageWith(async () => { throw new Error("strict mode violation"); });
+    const page = pageWith(async () => {
+      throw new Error("strict mode violation");
+    });
     expect(await locatorBoundingBox(page, ".dupe")).toBeNull();
   });
 
@@ -40,15 +44,15 @@ describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () =
     // fallback path passes timeoutMs=1000 so the failure is fast.
     const bb = vi.fn(async () => null);
     const page = { locator: () => ({ first: () => ({ boundingBox: bb }) }) };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await locatorBoundingBox(page as any, "role=RootWebArea[name=\"x\"]", { timeoutMs: 1000 });
+
+    await locatorBoundingBox(page as any, 'role=RootWebArea[name="x"]', { timeoutMs: 1000 });
     expect(bb).toHaveBeenCalledWith({ timeout: 1000 });
     // Default (no opts) → 500 ms cap (the v0.2.1 perf-fix default).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await locatorBoundingBox(page as any, "#x");
     expect(bb).toHaveBeenLastCalledWith({ timeout: 500 });
     // timeoutMs: 0 → forwarded literally (Playwright treats 0 as "no timeout").
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await locatorBoundingBox(page as any, "#x", { timeoutMs: 0 });
     expect(bb).toHaveBeenLastCalledWith({ timeout: 0 });
   });

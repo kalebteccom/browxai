@@ -11,18 +11,21 @@ export const MIN_ACTION_TIMEOUT_MS = 1;
 export const MAX_ACTION_TIMEOUT_MS = 3_600_000; // 1h hard ceiling
 
 export class DeadlineError extends Error {
-  constructor(public readonly label: string, public readonly ms: number) {
+  constructor(
+    public readonly label: string,
+    public readonly ms: number,
+  ) {
     super(
       `anti-wedge timeout: "${label}" did not complete within ${ms}ms. ` +
-      `This is a RECOVERABLE signal, not a fatal error — the tool returned ` +
-      `instead of stalling. Decide which case applies: (a) a transient ` +
-      `hiccup — retry the call ONCE; (b) repeated timeouts on this session ` +
-      `(snapshot / navigate / screenshot all timing out) — the session is ` +
-      `WEDGED: discard it with \`close_session\`, then \`open_session\` a ` +
-      `fresh one; retrying or re-navigating in place will NOT recover it; ` +
-      `(c) one genuinely slow call — raise \`timeoutMs\` for THAT call only. ` +
-      `Raising \`timeoutMs\` never fixes a wedged session, and values near ` +
-      `the 1h ceiling are essentially always a mistake.`,
+        `This is a RECOVERABLE signal, not a fatal error — the tool returned ` +
+        `instead of stalling. Decide which case applies: (a) a transient ` +
+        `hiccup — retry the call ONCE; (b) repeated timeouts on this session ` +
+        `(snapshot / navigate / screenshot all timing out) — the session is ` +
+        `WEDGED: discard it with \`close_session\`, then \`open_session\` a ` +
+        `fresh one; retrying or re-navigating in place will NOT recover it; ` +
+        `(c) one genuinely slow call — raise \`timeoutMs\` for THAT call only. ` +
+        `Raising \`timeoutMs\` never fixes a wedged session, and values near ` +
+        `the 1h ceiling are essentially always a mistake.`,
     );
     this.name = "DeadlineError";
   }
@@ -33,7 +36,10 @@ export class DeadlineError extends Error {
  * an optional warning when the request was out of range (so the tool can
  * surface "you asked for an insane timeout; clamped").
  */
-export function clampTimeout(requested: number | undefined, fallback: number): {
+export function clampTimeout(
+  requested: number | undefined,
+  fallback: number,
+): {
   ms: number;
   warning?: string;
 } {

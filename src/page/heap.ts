@@ -60,9 +60,7 @@ export async function takeHeapSnapshot(cdp: CDPSession): Promise<string> {
 export function resolveHeapSnapshotPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`,
-    );
+    throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
   return resolved;
 }
@@ -216,9 +214,11 @@ export function parseHeapSnapshot(snapshotJson: string): ParsedSnapshot {
   const nodeTypesRaw = Array.isArray(meta.node_types) ? (meta.node_types as unknown[]) : [];
   const edgeTypesRaw = Array.isArray(meta.edge_types) ? (meta.edge_types as unknown[]) : [];
   const nodeTypes = Array.isArray(nodeTypesRaw[0])
-    ? (nodeTypesRaw[0] as unknown[]).map(String) : [];
+    ? (nodeTypesRaw[0] as unknown[]).map(String)
+    : [];
   const edgeTypes = Array.isArray(edgeTypesRaw[0])
-    ? (edgeTypesRaw[0] as unknown[]).map(String) : [];
+    ? (edgeTypesRaw[0] as unknown[]).map(String)
+    : [];
 
   const nodes = Array.isArray(r.nodes) ? (r.nodes as number[]) : null;
   const edges = Array.isArray(r.edges) ? (r.edges as number[]) : null;
@@ -243,8 +243,13 @@ export function parseHeapSnapshot(snapshotJson: string): ParsedSnapshot {
     }
   }
   return {
-    nodeFields, nodeTypes, edgeFields, edgeTypes,
-    nodes, edges, strings,
+    nodeFields,
+    nodeTypes,
+    edgeFields,
+    edgeTypes,
+    nodes,
+    edges,
+    strings,
     nodeFieldCount: nodeFields.length,
     edgeFieldCount: edgeFields.length,
     fieldIdx,
@@ -333,7 +338,10 @@ export function queryRetainers(p: ParsedSnapshot, q: HeapRetainersQuery): HeapRe
   }
 
   const summary: HeapSnapshotSummary = {
-    nodeCount, edgeCount, stringCount: p.strings.length, totalSelfSize,
+    nodeCount,
+    edgeCount,
+    stringCount: p.strings.length,
+    totalSelfSize,
   };
 
   if (matchSet.size === 0) {

@@ -20,7 +20,11 @@ async function call<T>(name: string, args: Record<string, unknown>): Promise<T> 
   if (!fn) throw new Error(`no handler "${name}"`);
   const res = await fn(args);
   const text = (res.content[0] as { text: string }).text;
-  try { return JSON.parse(text) as T; } catch { return text as unknown as T; }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
 }
 
 beforeAll(async () => {
@@ -32,7 +36,9 @@ beforeAll(async () => {
   await call("set_config", { scope: "project", patch: { actionTimeoutMs: 90_000 } });
 }, 60_000);
 
-afterAll(async () => { if (!SKIP) await server?.shutdown().catch(() => undefined); }, 60_000);
+afterAll(async () => {
+  if (!SKIP) await server?.shutdown().catch(() => undefined);
+}, 60_000);
 
 describe.skipIf(SKIP)("screenshot_marks trace", () => {
   it("example.com — direct call instrumentation", async () => {
@@ -46,8 +52,10 @@ describe.skipIf(SKIP)("screenshot_marks trace", () => {
     // tracing instead. We monkey-patch screenshotMarks by re-implementing the
     // resolve loop with timing.
     const snap = await call<string>("snapshot", { session });
-    const refs = Array.from(new Set(Array.from(snap.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!)));
-    // eslint-disable-next-line no-console
+    const refs = Array.from(
+      new Set(Array.from(snap.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!)),
+    );
+
     console.log("refs", refs);
 
     // We can't easily reach the Page/CDPSession from a registered handler at
@@ -60,7 +68,7 @@ describe.skipIf(SKIP)("screenshot_marks trace", () => {
         candidates: [{ ref: refs[0]! }],
         label: "index",
       });
-      // eslint-disable-next-line no-console
+
       console.log(`iter${i} bare-ref ${Date.now() - t}ms keys=`, Object.keys(r));
     }
     for (let i = 0; i < 2; i++) {
@@ -70,7 +78,7 @@ describe.skipIf(SKIP)("screenshot_marks trace", () => {
         candidates: [{ ref: refs[0]!, bbox: { x: 50, y: 50, width: 100, height: 50 } }],
         label: "index",
       });
-      // eslint-disable-next-line no-console
+
       console.log(`iter${i} fast-path ${Date.now() - t}ms keys=`, Object.keys(r));
     }
 

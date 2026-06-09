@@ -17,7 +17,12 @@ import type { RefLocatorInputs, RefRegistry } from "./refs.js";
 export type ActionTarget =
   | { ref: string; selector?: undefined; contextRef?: undefined; coords?: undefined }
   | { selector: string; ref?: undefined; contextRef?: string; coords?: undefined }
-  | { coords: { x: number; y: number }; ref?: undefined; selector?: undefined; contextRef?: undefined };
+  | {
+      coords: { x: number; y: number };
+      ref?: undefined;
+      selector?: undefined;
+      contextRef?: undefined;
+    };
 
 export type ResolvedTarget =
   | { kind: "locator"; loc: Locator }
@@ -87,7 +92,9 @@ export async function resolveTargetChecked(
 
 export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
   if (target.coords) {
-    throw new Error("locatorFor: coords target has no Locator — use resolveTarget() and switch on kind");
+    throw new Error(
+      "locatorFor: coords target has no Locator — use resolveTarget() and switch on kind",
+    );
   }
   if (target.ref) {
     const inputs = refs.locatorOf(target.ref);
@@ -118,7 +125,9 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
     }
     return parseSelectorHint(page, target.selector);
   }
-  throw new Error("locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors) or { coords }");
+  throw new Error(
+    "locatorFor: requires { ref } or { selector } (with optional { contextRef } for scoped selectors) or { coords }",
+  );
 }
 
 /** Page or Frame both expose the locator-builder surface we need
@@ -143,7 +152,9 @@ function locatorFromInputs(root: LocatorRoot, inputs: RefLocatorInputs): Locator
   }
   // Tier 2: role + name — strong when the a11y pass saw it.
   if (inputs.name) {
-    return root.getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name }).first();
+    return root
+      .getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name })
+      .first();
   }
   // Fallback: structural path (covers `source: "both"` refs where the a11y
   // pass produced no name, plus the rare migration case of legacy refs that
@@ -180,7 +191,9 @@ function parseSelectorHint(root: SelectorRoot, sel: string): Locator {
   if (attrMatch) {
     return root.locator(s).first();
   }
-  const roleWithNameMatch = s.match(/^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/);
+  const roleWithNameMatch = s.match(
+    /^role=([a-zA-Z][a-zA-Z0-9-]*)\[name=("((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\]$/,
+  );
   if (roleWithNameMatch) {
     const role = roleWithNameMatch[1]!;
     const raw = roleWithNameMatch[3] ?? roleWithNameMatch[4] ?? "";

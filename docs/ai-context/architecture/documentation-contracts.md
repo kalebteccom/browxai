@@ -17,7 +17,7 @@ VitePress-published to GitHub Pages. Source of truth for what browxai promises t
 
 ## `docs/ai-context/` — agent-facing routing layer
 
-Not published. Read by agents (and contributors) working *on* browxai.
+Not published. Read by agents (and contributors) working _on_ browxai.
 
 - **Discipline.** `agent-process/commit-discipline.md`, `code-quality.md`, `docs-impact.md`, `dist-rebuild-discipline.md`.
 - **Architecture rationale.** `architecture/repo-map.md`, `capability-posture-map.md`, this file.

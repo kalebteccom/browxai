@@ -90,7 +90,14 @@ function buildInitScript(seed: number): string {
 
 function normalize(input: SeedRandomInput): SeedRandomState {
   const s = input.seed;
-  if (s === undefined || s === null || !Number.isFinite(s) || !Number.isInteger(s) || s < 0 || s > MAX_SEED) {
+  if (
+    s === undefined ||
+    s === null ||
+    !Number.isFinite(s) ||
+    !Number.isInteger(s) ||
+    s < 0 ||
+    s > MAX_SEED
+  ) {
     throw new Error(
       `seed_random: seed must be a non-negative integer in [0, ${MAX_SEED}] (got ${JSON.stringify(s)})`,
     );
@@ -125,9 +132,7 @@ export class SeededRandomRegistry {
     // Re-seed the CURRENT page's main realm immediately so a caller doesn't
     // have to navigate to see the override take effect. This is best-effort —
     // a closed page or detached frame raises, swallowed.
-    await page
-      .evaluate(buildInitScript(state.seed))
-      .catch(() => undefined);
+    await page.evaluate(buildInitScript(state.seed)).catch(() => undefined);
 
     this.state = state;
     this.installReattach(page);
@@ -135,7 +140,9 @@ export class SeededRandomRegistry {
   }
 
   /** Test introspection. */
-  current(): SeedRandomState | undefined { return this.state; }
+  current(): SeedRandomState | undefined {
+    return this.state;
+  }
 
   /** Defensive re-apply: `addInitScript` is per-document, but a renderer swap
    *  or main-frame nav still benefits from a re-push for symmetry with

@@ -15,7 +15,15 @@ import type { ActionContext } from "./actionresult.js";
 
 /** Roles that signal a page-level transient/notification surface. */
 const WATCHED_ROLES = new Set([
-  "dialog", "alertdialog", "alert", "status", "banner", "tooltip", "log", "marquee", "timer",
+  "dialog",
+  "alertdialog",
+  "alert",
+  "status",
+  "banner",
+  "tooltip",
+  "log",
+  "marquee",
+  "timer",
 ]);
 
 export interface WatchedRegion {
@@ -100,7 +108,10 @@ export async function watchWindow(
   }));
   // attach refs back (Map key is the ref)
   let i = 0;
-  for (const ref of seen.keys()) { regions[i]!.ref = ref; i++; }
+  for (const ref of seen.keys()) {
+    regions[i]!.ref = ref;
+    i++;
+  }
 
   return {
     durationMs,

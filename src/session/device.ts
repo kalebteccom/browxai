@@ -33,16 +33,26 @@ export function resolveDevice(spec: DeviceSpec | undefined): DeviceConfig | unde
   if (!spec || (!spec.device && !spec.viewport)) return undefined;
   let cfg: DeviceConfig = {};
   if (spec.device) {
-    const preset = (devices as Record<string, {
-      viewport?: { width: number; height: number };
-      deviceScaleFactor?: number;
-      isMobile?: boolean;
-      hasTouch?: boolean;
-      userAgent?: string;
-    }>)[spec.device];
+    const preset = (
+      devices as Record<
+        string,
+        {
+          viewport?: { width: number; height: number };
+          deviceScaleFactor?: number;
+          isMobile?: boolean;
+          hasTouch?: boolean;
+          userAgent?: string;
+        }
+      >
+    )[spec.device];
     if (!preset) {
-      const sample = Object.keys(devices).filter((n) => /iPhone 1[34]|Pixel 7|Desktop Chrome/.test(n)).slice(0, 4);
-      throw new UnknownDeviceError(spec.device, sample.length ? sample : Object.keys(devices).slice(0, 4));
+      const sample = Object.keys(devices)
+        .filter((n) => /iPhone 1[34]|Pixel 7|Desktop Chrome/.test(n))
+        .slice(0, 4);
+      throw new UnknownDeviceError(
+        spec.device,
+        sample.length ? sample : Object.keys(devices).slice(0, 4),
+      );
     }
     cfg = {
       viewport: preset.viewport,

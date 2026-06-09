@@ -20,11 +20,13 @@ function fakePage(): Page {
   } as unknown as Page;
 }
 
-function fakeContext(opts: {
-  bindings?: Map<string, (source: unknown, payload: string) => unknown>;
-  initScripts?: string[];
-  pages?: Page[];
-} = {}): BrowserContext {
+function fakeContext(
+  opts: {
+    bindings?: Map<string, (source: unknown, payload: string) => unknown>;
+    initScripts?: string[];
+    pages?: Page[];
+  } = {},
+): BrowserContext {
   const bindings = opts.bindings ?? new Map();
   const initScripts = opts.initScripts ?? [];
   const pages = opts.pages ?? [fakePage()];
@@ -126,7 +128,10 @@ describe("UNHANDLED_NOTIFICATION_HINT", () => {
 // ---- exposeBinding handler per-mode behaviour ----------------------------
 
 describe("attachNotificationPolicy — binding handler per mode", () => {
-  async function setupCheck(policy: ConstructorParameters<typeof NotificationPolicyState>[0], ask?: NotificationAskHandler) {
+  async function setupCheck(
+    policy: ConstructorParameters<typeof NotificationPolicyState>[0],
+    ask?: NotificationAskHandler,
+  ) {
     const state = new NotificationPolicyState(policy);
     const bindings = new Map<string, (source: unknown, payload: string) => unknown>();
     const initScripts: string[] = [];
@@ -137,10 +142,13 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
     return { state, check, initScripts };
   }
 
-  it("allow → returns allow, records handledAs:\"allowed\"", async () => {
+  it('allow → returns allow, records handledAs:"allowed"', async () => {
     const { state, check } = await setupCheck({ mode: "allow" });
     const t = Date.now();
-    const decision = await check({}, JSON.stringify({ title: "T", body: "B", icon: "i.png", tag: "tag1", origin: "https://app" }));
+    const decision = await check(
+      {},
+      JSON.stringify({ title: "T", body: "B", icon: "i.png", tag: "tag1", origin: "https://app" }),
+    );
     expect(decision).toBe("allow");
     const rec = state.since(t)[0];
     expect(rec?.title).toBe("T");
@@ -151,14 +159,14 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
     expect(rec?.handledAs).toBe("allowed");
   });
 
-  it("deny → returns deny, records handledAs:\"denied\"", async () => {
+  it('deny → returns deny, records handledAs:"denied"', async () => {
     const { state, check } = await setupCheck({ mode: "deny" });
     const t = Date.now();
     expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
     expect(state.since(t)[0]?.handledAs).toBe("denied");
   });
 
-  it("raise → returns deny, records handledAs:\"raised\", flips raisedSince()", async () => {
+  it('raise → returns deny, records handledAs:"raised", flips raisedSince()', async () => {
     const { state, check } = await setupCheck({ mode: "raise" });
     const t = Date.now();
     expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
@@ -187,7 +195,9 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
   });
 
   it("ask-human → handler throws → safe-by-default deny", async () => {
-    const { check } = await setupCheck({ mode: "ask-human" }, async () => { throw new Error("boom"); });
+    const { check } = await setupCheck({ mode: "ask-human" }, async () => {
+      throw new Error("boom");
+    });
     expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
   });
 

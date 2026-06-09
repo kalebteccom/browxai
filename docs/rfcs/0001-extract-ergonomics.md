@@ -23,7 +23,7 @@ These four changes ship as v0.2.2 patch — no API break, all 912 existing unit 
 
 **Why it's deferred:** this changes the success/failure outcome for an existing input shape. An adopter test asserting `{type:"integer"}` → `ok:false` (we have one, `extract.test.ts:340`) would flip. The "is this contract-preserving?" reading hinges on whether `integer` was ever a "valid" input — formally it wasn't (the type was rejected), but flipping a rejection to acceptance is the dictionary definition of a contract loosening.
 
-**Risk profile:** the *leaf coercer* already handles integer-shaped values cleanly (`coerceLeaf("330", "number")` → `330`, a JS number; consumers can `Math.trunc()` if they want enforced ints). The coercion would be transparent to callers who emitted `integer` expecting "a number." But anyone relying on the rejection (to catch their own bug) would silently start succeeding.
+**Risk profile:** the _leaf coercer_ already handles integer-shaped values cleanly (`coerceLeaf("330", "number")` → `330`, a JS number; consumers can `Math.trunc()` if they want enforced ints). The coercion would be transparent to callers who emitted `integer` expecting "a number." But anyone relying on the rejection (to catch their own bug) would silently start succeeding.
 
 **Recommendation:** SHIP if the owner is willing to call this a "schema-dialect relaxation" rather than a break. Document it under "additive: now accepts `integer` as an alias for `number`" in the changelog. Suggest also accepting `int`, `float`, `double`, `long` by the same logic (they all lower to `number`).
 
@@ -63,6 +63,6 @@ The wrightxai trial-1 burned ~15 115 output tokens across turns 5/6/7 — schema
 
 ## Open question for the owner
 
-The shipped changes are pure-diagnostic — they don't break the contract but they *add* entries to `evidence.partialMisses` in cases where it would previously be empty (specifically: schemas with unknown `x-browx-source` keys that currently silently succeed). If an adopter has a regression test asserting `evidence.partialMisses === []` on such a schema, it would now fail.
+The shipped changes are pure-diagnostic — they don't break the contract but they _add_ entries to `evidence.partialMisses` in cases where it would previously be empty (specifically: schemas with unknown `x-browx-source` keys that currently silently succeed). If an adopter has a regression test asserting `evidence.partialMisses === []` on such a schema, it would now fail.
 
 **This is plausibly a contract change in the strict sense** — the evidence-shape grew on a previously-clean output. Calling it out explicitly so the owner can decide whether to (a) ship as v0.2.2 patch with a changelog flag, or (b) tag as v0.3.0 minor. Recommended: (a) — the schemas in question were already broken (silently-wrong leaves), the new diagnostic just makes the brokenness visible.

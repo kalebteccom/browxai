@@ -106,21 +106,25 @@ export class PerfTracingState {
   private startedAt = 0;
 
   /** True iff a trace is currently being collected. */
-  isRunning(): boolean { return this.running; }
+  isRunning(): boolean {
+    return this.running;
+  }
 
   /** Start tracing on `cdp`. If a trace is already running, stops it cleanly
    *  first (events discarded) — guarantees the caller never gets stuck in a
    *  "tracing already started" CDP error from a stale start. */
-  async start(cdp: CDPSession, opts: { categories?: string[] } = {}): Promise<{ categories: string[]; restarted: boolean }> {
+  async start(
+    cdp: CDPSession,
+    opts: { categories?: string[] } = {},
+  ): Promise<{ categories: string[]; restarted: boolean }> {
     let restarted = false;
     if (this.running) {
       restarted = true;
       // Clean restart: stop the in-flight trace; throw away its events.
       await this.stopInternal(cdp).catch(() => undefined);
     }
-    const categories = opts.categories && opts.categories.length > 0
-      ? opts.categories
-      : DEFAULT_TRACE_CATEGORIES;
+    const categories =
+      opts.categories && opts.categories.length > 0 ? opts.categories : DEFAULT_TRACE_CATEGORIES;
     this.events = [];
     this.categories = [...categories];
     this.startedAt = Date.now();
@@ -156,7 +160,12 @@ export class PerfTracingState {
 
   /** Stop tracing and return the buffered events. Safe to call when no trace
    *  is running — returns `notRunning:true` with an empty event list. */
-  async stop(cdp: CDPSession): Promise<{ notRunning?: true; events: TraceEvent[]; categories: string[]; durationMs: number }> {
+  async stop(cdp: CDPSession): Promise<{
+    notRunning?: true;
+    events: TraceEvent[];
+    categories: string[];
+    durationMs: number;
+  }> {
     if (!this.running) {
       return { notRunning: true, events: [], categories: [...this.categories], durationMs: 0 };
     }
@@ -178,7 +187,9 @@ export class PerfTracingState {
    *  detach listeners. Guarantees `running=false` even on errors so the
    *  next start always works. */
   private async stopInternal(cdp: CDPSession): Promise<void> {
-    this.completePromise = new Promise((res) => { this.completeResolve = res; });
+    this.completePromise = new Promise((res) => {
+      this.completeResolve = res;
+    });
     try {
       await cdp.send("Tracing.end").catch(() => undefined);
       // Bounded wait: the `tracingComplete` flush is normally near-instant
@@ -189,7 +200,11 @@ export class PerfTracingState {
       ]);
     } finally {
       for (const off of this.listeners) {
-        try { off(); } catch { /* listener removal is best-effort */ }
+        try {
+          off();
+        } catch {
+          /* listener removal is best-effort */
+        }
       }
       this.listeners = [];
       this.completePromise = null;
@@ -206,9 +221,7 @@ export class PerfTracingState {
 export function resolvePerfTracePath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`,
-    );
+    throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
   return resolved;
 }
@@ -254,7 +267,11 @@ export function writeTraceFile(
 }
 
 /** Read a trace file and return the event array. */
-export function readTraceFile(workspaceRoot: string, filePath: string, tool: string): { events: TraceEvent[]; metadata?: Record<string, unknown> } {
+export function readTraceFile(
+  workspaceRoot: string,
+  filePath: string,
+  tool: string,
+): { events: TraceEvent[]; metadata?: Record<string, unknown> } {
   const resolved = resolvePerfTracePath(workspaceRoot, filePath, tool);
   if (!existsSync(resolved)) {
     throw new Error(`${tool}: trace file not found at "${resolved}" — call perf_stop first`);
@@ -264,16 +281,24 @@ export function readTraceFile(workspaceRoot: string, filePath: string, tool: str
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`${tool}: trace file "${resolved}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(
+      `${tool}: trace file "${resolved}" is not valid JSON (${err instanceof Error ? err.message : String(err)})`,
+    );
   }
   if (Array.isArray(parsed)) {
     return { events: parsed as TraceEvent[] };
   }
-  if (parsed && typeof parsed === "object" && Array.isArray((parsed as { traceEvents?: unknown }).traceEvents)) {
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    Array.isArray((parsed as { traceEvents?: unknown }).traceEvents)
+  ) {
     const obj = parsed as { traceEvents: TraceEvent[]; metadata?: Record<string, unknown> };
     return { events: obj.traceEvents, metadata: obj.metadata };
   }
-  throw new Error(`${tool}: trace file "${resolved}" doesn't look like a chrome trace (missing traceEvents array)`);
+  throw new Error(
+    `${tool}: trace file "${resolved}" doesn't look like a chrome trace (missing traceEvents array)`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +329,10 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
   // ---- render-blocking resources: signalled by ResourceSendRequest events
   //      with `args.data.renderBlocking` ∈ {blocking, in_body_parser_blocking}
   //      plus a corresponding ResourceFinish event for duration.
-  const sendStartByRequestId = new Map<string, { url: string; type?: string; tsMs: number; blocking: string }>();
+  const sendStartByRequestId = new Map<
+    string,
+    { url: string; type?: string; tsMs: number; blocking: string }
+  >();
   const renderBlocking: PerfInsights["renderBlocking"] = [];
   // ---- LCP candidates
   const lcpCandidates: PerfInsights["lcpCandidates"] = [];
@@ -334,8 +362,12 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
     }
 
     if (name === "LayoutShift") {
-      const score = typeof data.score === "number" ? data.score
-        : typeof (data.weighted_score_delta as unknown) === "number" ? (data.weighted_score_delta as number) : 0;
+      const score =
+        typeof data.score === "number"
+          ? data.score
+          : typeof (data.weighted_score_delta as unknown) === "number"
+            ? (data.weighted_score_delta as number)
+            : 0;
       const entry: PerfInsights["layoutShifts"][number] = { startMs: ts, score };
       if (data.had_recent_input === true) entry.hadRecentInput = true;
       layoutShifts.push(entry);
@@ -345,12 +377,20 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
       const requestId = typeof data.requestId === "string" ? data.requestId : undefined;
       const url = typeof data.url === "string" ? data.url : "";
       const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
-      if (requestId && url && (blocking === "blocking" || blocking === "in_body_parser_blocking" || blocking === "non_blocking_dynamic")) {
+      if (
+        requestId &&
+        url &&
+        (blocking === "blocking" ||
+          blocking === "in_body_parser_blocking" ||
+          blocking === "non_blocking_dynamic")
+      ) {
         // We only treat the actively render-blocking ones as such. Track all
         // candidates so we can stitch durations on `ResourceFinish`.
         if (blocking === "blocking" || blocking === "in_body_parser_blocking") {
           sendStartByRequestId.set(requestId, {
-            url, tsMs: ts, blocking,
+            url,
+            tsMs: ts,
+            blocking,
             type: typeof data.resourceType === "string" ? (data.resourceType as string) : undefined,
           });
         }
@@ -395,7 +435,8 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
   // LCP candidates are best read newest-first (final candidate = effective LCP),
   // but agents tend to want chronological order — keep input order.
 
-  const cap = <T,>(arr: T[]): T[] => arr.length > MAX_LIST_ENTRIES ? arr.slice(0, MAX_LIST_ENTRIES) : arr;
+  const cap = <T>(arr: T[]): T[] =>
+    arr.length > MAX_LIST_ENTRIES ? arr.slice(0, MAX_LIST_ENTRIES) : arr;
 
   const totals = {
     events: events.length,
@@ -417,10 +458,14 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
   // raw monotonic ts numbers are not interpretable; offsets are.
   if (navigationStartMs !== undefined) {
     insights.navigation = { navigationStartMs };
-    if (firstPaintMs !== undefined) insights.navigation.firstPaintMs = firstPaintMs - navigationStartMs;
-    if (firstContentfulPaintMs !== undefined) insights.navigation.firstContentfulPaintMs = firstContentfulPaintMs - navigationStartMs;
-    if (domContentLoadedMs !== undefined) insights.navigation.domContentLoadedMs = domContentLoadedMs - navigationStartMs;
-    if (loadEventMs !== undefined) insights.navigation.loadEventMs = loadEventMs - navigationStartMs;
+    if (firstPaintMs !== undefined)
+      insights.navigation.firstPaintMs = firstPaintMs - navigationStartMs;
+    if (firstContentfulPaintMs !== undefined)
+      insights.navigation.firstContentfulPaintMs = firstContentfulPaintMs - navigationStartMs;
+    if (domContentLoadedMs !== undefined)
+      insights.navigation.domContentLoadedMs = domContentLoadedMs - navigationStartMs;
+    if (loadEventMs !== undefined)
+      insights.navigation.loadEventMs = loadEventMs - navigationStartMs;
   }
 
   if (warnings.length) insights.warnings = warnings;

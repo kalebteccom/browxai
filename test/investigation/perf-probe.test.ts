@@ -17,7 +17,11 @@ async function call<T>(name: string, args: Record<string, unknown>): Promise<T> 
   if (!fn) throw new Error(`no handler "${name}"`);
   const res = await fn(args);
   const text = (res.content[0] as { text: string }).text;
-  try { return JSON.parse(text) as T; } catch { return text as unknown as T; }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as unknown as T;
+  }
 }
 
 beforeAll(async () => {
@@ -44,8 +48,10 @@ describe.skipIf(SKIP)("screenshot_marks perf probe", () => {
     const t0 = Date.now();
     const snap = await call<string>("snapshot", { session });
     const tSnap = Date.now() - t0;
-    const refs = Array.from(new Set(Array.from(snap.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!)));
-    // eslint-disable-next-line no-console
+    const refs = Array.from(
+      new Set(Array.from(snap.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!)),
+    );
+
     console.log(`tSnap=${tSnap}ms refs=`, refs);
 
     // Plain screenshot (warm path).
@@ -78,7 +84,9 @@ describe.skipIf(SKIP)("screenshot_marks perf probe", () => {
     const t4 = Date.now();
     const m3 = await call<Record<string, unknown>>("screenshot_marks", {
       session,
-      candidates: refs.slice(0, 2).map((r) => ({ ref: r, bbox: { x: 100, y: 100, width: 80, height: 30 } })),
+      candidates: refs
+        .slice(0, 2)
+        .map((r) => ({ ref: r, bbox: { x: 100, y: 100, width: 80, height: 30 } })),
       label: "index",
     });
     const tM3 = Date.now() - t4;

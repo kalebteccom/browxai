@@ -9,7 +9,10 @@ export function estimateTokens(text: string): number {
 }
 
 /** Truncate `text` (line-wise) so its estimated token count is ≤ `maxTokens`. */
-export function truncateToBudget(text: string, maxTokens: number): { text: string; truncated: boolean } {
+export function truncateToBudget(
+  text: string,
+  maxTokens: number,
+): { text: string; truncated: boolean } {
   if (estimateTokens(text) <= maxTokens) return { text, truncated: false };
   const lines = text.split("\n");
   // Keep dropping last lines until we fit; add a final "... [N more lines]" marker.

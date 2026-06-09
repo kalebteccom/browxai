@@ -17,42 +17,42 @@ function fakeEntry(id: string): SessionEntry {
   return {
     id,
     mode: "persistent",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     session: { close: vi.fn(async () => undefined) } as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     refs: { __tag: `refs-${id}` } as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     frames: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     console: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     network: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     ws: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     bridge: { detach: vi.fn(async () => undefined) } as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     recorder: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     feedback: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     clipboard: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     routes: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     wsInteractive: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     workers: { dispose: () => undefined } as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     regions: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     emulation: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     clock: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     seededRandom: {} as any,
     perf: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     coverage: {} as any,
     wedge: new WedgeTracker(),
     metrics: new SessionMetrics(),
@@ -64,12 +64,12 @@ function fakeEntry(id: string): SessionEntry {
     webDeviceEmulation: new WebDeviceEmulationState(false),
     har: newHarRecorderState(),
     video: newVideoRecorderState(),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     secrets: {} as any,
     extensions: { loaded: [] },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     downloads: {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     artifacts: {} as any,
     openedAt: Date.now(),
     lastActivityAt: Date.now(),
@@ -97,7 +97,10 @@ describe("SessionRegistry", () => {
   });
 
   it("distinct ids get isolated entries (own refs)", async () => {
-    const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+    const reg = new SessionRegistry(
+      async (id) => fakeEntry(id),
+      async () => undefined,
+    );
     const a = await reg.get("agent-a");
     const b = await reg.get("agent-b");
     expect(a).not.toBe(b);
@@ -109,7 +112,10 @@ describe("SessionRegistry", () => {
   it("concurrent first-calls for the same id share one factory invocation", async () => {
     let resolve!: (e: SessionEntry) => void;
     const factory = vi.fn(
-      () => new Promise<SessionEntry>((r) => { resolve = r; }),
+      () =>
+        new Promise<SessionEntry>((r) => {
+          resolve = r;
+        }),
     );
     const reg = new SessionRegistry(factory, async () => undefined);
     const p1 = reg.get("x");
@@ -167,8 +173,12 @@ describe("SessionRegistry", () => {
   });
 
   it("closeMatching({ all:true }) tears everything down", async () => {
-    const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
-    await reg.get("x"); await reg.get("y");
+    const reg = new SessionRegistry(
+      async (id) => fakeEntry(id),
+      async () => undefined,
+    );
+    await reg.get("x");
+    await reg.get("y");
     expect((await reg.closeMatching({ all: true })).sort()).toEqual(["x", "y"]);
     expect(reg.list()).toHaveLength(0);
   });
@@ -177,7 +187,10 @@ describe("SessionRegistry", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
-      const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+      const reg = new SessionRegistry(
+        async (id) => fakeEntry(id),
+        async () => undefined,
+      );
       await reg.get("stale");
       await reg.get("fresh");
       vi.setSystemTime(new Date("2026-05-19T10:05:00Z")); // +5min
@@ -194,9 +207,12 @@ describe("SessionRegistry", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
-      const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
-      await reg.get("a-1");        // matches prefix, will be idle
-      await reg.get("b-1");        // idle but wrong prefix
+      const reg = new SessionRegistry(
+        async (id) => fakeEntry(id),
+        async () => undefined,
+      );
+      await reg.get("a-1"); // matches prefix, will be idle
+      await reg.get("b-1"); // idle but wrong prefix
       vi.setSystemTime(new Date("2026-05-19T10:10:00Z"));
       const closed = await reg.closeMatching({ prefix: "a-", idleMs: 60_000 });
       expect(closed).toEqual(["a-1"]);
@@ -207,11 +223,19 @@ describe("SessionRegistry", () => {
   });
 
   it("peek() never creates; list() reflects live entries", async () => {
-    const reg = new SessionRegistry(async (id) => fakeEntry(id), async () => undefined);
+    const reg = new SessionRegistry(
+      async (id) => fakeEntry(id),
+      async () => undefined,
+    );
     expect(reg.peek("nope")).toBeUndefined();
     await reg.get("one");
     await reg.get("two");
-    expect(reg.list().map((e) => e.id).sort()).toEqual(["one", "two"]);
+    expect(
+      reg
+        .list()
+        .map((e) => e.id)
+        .sort(),
+    ).toEqual(["one", "two"]);
     expect(reg.peek("one")?.id).toBe("one");
   });
 
@@ -228,9 +252,9 @@ describe("SessionRegistry", () => {
   it("close(default) allows lazy re-creation on the next get()", async () => {
     const factory = vi.fn(async (id: string) => fakeEntry(id));
     const reg = new SessionRegistry(factory, async () => undefined);
-    await reg.get();                 // create default
+    await reg.get(); // create default
     await reg.close(DEFAULT_SESSION_ID);
-    await reg.get();                 // re-create
+    await reg.get(); // re-create
     expect(factory).toHaveBeenCalledTimes(2);
   });
 });

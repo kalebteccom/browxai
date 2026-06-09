@@ -62,8 +62,8 @@ export class SecretRegistry {
     if (!/^[A-Z][A-Z0-9_]*$/.test(entry.name)) {
       throw new Error(
         `register_secret: name "${entry.name}" must match /^[A-Z][A-Z0-9_]*$/ ` +
-        `(uppercase identifier, e.g. PASSWORD / OTP / SESSION_TOKEN) — the ` +
-        `\`<NAME>\` mask format is the stable contract for agents to recognise.`,
+          `(uppercase identifier, e.g. PASSWORD / OTP / SESSION_TOKEN) — the ` +
+          `\`<NAME>\` mask format is the stable contract for agents to recognise.`,
       );
     }
     if (typeof entry.value !== "string" || entry.value.length === 0) {
@@ -72,7 +72,7 @@ export class SecretRegistry {
     if (!this.byName.has(entry.name) && this.byName.size >= this.cap) {
       throw new Error(
         `register_secret: capacity ${this.cap} reached — remove an existing ` +
-        `secret (close_session or restart) before registering more`,
+          `secret (close_session or restart) before registering more`,
       );
     }
     this.byName.set(entry.name, { ...entry });
@@ -84,11 +84,11 @@ export class SecretRegistry {
       // layer is engaged for the lifetime of the session.
       log.warn(
         "browxai: secrets capability is ENABLED — a sensitive value was registered. " +
-        "All egress sinks (ActionResult.network, network_read, network_body, " +
-        "ws_read, console_read, snapshot, find) now strip occurrences of the " +
-        "registered value and substitute `<NAME>` aliases. `fill`/`press` " +
-        "materialise `<NAME>` to the real value at dispatch time. The " +
-        "`screenshot` tool is a partial sink — see docs/tool-reference.md.",
+          "All egress sinks (ActionResult.network, network_read, network_body, " +
+          "ws_read, console_read, snapshot, find) now strip occurrences of the " +
+          "registered value and substitute `<NAME>` aliases. `fill`/`press` " +
+          "materialise `<NAME>` to the real value at dispatch time. The " +
+          "`screenshot` tool is a partial sink — see docs/tool-reference.md.",
       );
       this.warnedOnce = true;
     }

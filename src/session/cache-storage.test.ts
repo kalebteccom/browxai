@@ -106,7 +106,15 @@ function fakePage(initialUrl: string): FakePageHandle {
   // referencing `caches`, `btoa`, `atob`, `Response`, and `location`. We
   // evaluate them in a Function scope with those bindings supplied.
   async function evaluate(expr: string): Promise<unknown> {
-    const location = { origin: (() => { try { return new URL(url).origin; } catch { return "null"; } })() };
+    const location = {
+      origin: (() => {
+        try {
+          return new URL(url).origin;
+        } catch {
+          return "null";
+        }
+      })(),
+    };
 
     function Response(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
       let bytes: Uint8Array;
@@ -127,16 +135,15 @@ function fakePage(initialUrl: string): FakePageHandle {
       return Buffer.from(b64, "base64").toString("binary");
     }
 
-    const fn = new Function(
-      "caches", "Response", "btoa", "atob", "location",
-      `return ${expr}`,
-    );
+    const fn = new Function("caches", "Response", "btoa", "atob", "location", `return ${expr}`);
     return await fn(stub.api, Response, btoa, atob, location);
   }
 
   return {
     page: { url: () => url, evaluate },
-    setUrl: (u: string) => { url = u; },
+    setUrl: (u: string) => {
+      url = u;
+    },
     stub,
   };
 }
@@ -147,15 +154,17 @@ describe("Cache API CRUD", () => {
   describe("origin guard", () => {
     it("rejects when navigated to about:blank", async () => {
       const { page } = fakePage("about:blank");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(cachesListStorages(page as any, "caches_list_storages"))
-        .rejects.toThrow(/Navigate the session/);
+
+      await expect(cachesListStorages(page as any, "caches_list_storages")).rejects.toThrow(
+        /Navigate the session/,
+      );
     });
     it("rejects when url is unknown", async () => {
       const { page } = fakePage("");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(cachesList(page as any, { cacheName: "x" }, "caches_list"))
-        .rejects.toThrow(/Navigate the session/);
+
+      await expect(cachesList(page as any, { cacheName: "x" }, "caches_list")).rejects.toThrow(
+        /Navigate the session/,
+      );
     });
   });
 
@@ -164,7 +173,7 @@ describe("Cache API CRUD", () => {
       const { page, stub } = fakePage("https://example.com/");
       stub.api.open("v1");
       stub.api.open("v2");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const r = await cachesListStorages(page as any, "caches_list_storages");
       expect(r.names.sort()).toEqual(["v1", "v2"]);
       expect(r.origin).toBe("https://example.com");
@@ -174,16 +183,25 @@ describe("Cache API CRUD", () => {
   describe("cachesPut + cachesGet", () => {
     it("round-trips a text body with default 200 status", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, {
-        cacheName: "v1",
-        url: "https://example.com/a.json",
-        response: { body: '{"k":1}', headers: { "Content-Type": "application/json" } },
-      }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const got = await cachesGet(page as any, {
-        cacheName: "v1", url: "https://example.com/a.json",
-      }, "caches_get");
+
+      await cachesPut(
+        page as any,
+        {
+          cacheName: "v1",
+          url: "https://example.com/a.json",
+          response: { body: '{"k":1}', headers: { "Content-Type": "application/json" } },
+        },
+        "caches_put",
+      );
+
+      const got = await cachesGet(
+        page as any,
+        {
+          cacheName: "v1",
+          url: "https://example.com/a.json",
+        },
+        "caches_get",
+      );
       expect(got.found).toBe(true);
       if (got.found && got.kind === "text") {
         expect(got.text).toBe('{"k":1}');
@@ -196,20 +214,29 @@ describe("Cache API CRUD", () => {
 
     it("round-trips a binary body as base64 + byteLength", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, {
-        cacheName: "v1",
-        url: "https://example.com/img.png",
-        response: {
-          contentBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"),
-          headers: { "Content-Type": "image/png" },
-          status: 201,
+
+      await cachesPut(
+        page as any,
+        {
+          cacheName: "v1",
+          url: "https://example.com/img.png",
+          response: {
+            contentBase64: Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64"),
+            headers: { "Content-Type": "image/png" },
+            status: 201,
+          },
         },
-      }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const got = await cachesGet(page as any, {
-        cacheName: "v1", url: "https://example.com/img.png",
-      }, "caches_get");
+        "caches_put",
+      );
+
+      const got = await cachesGet(
+        page as any,
+        {
+          cacheName: "v1",
+          url: "https://example.com/img.png",
+        },
+        "caches_get",
+      );
       expect(got.found).toBe(true);
       if (got.found && got.kind === "binary") {
         expect(got.byteLength).toBe(4);
@@ -222,21 +249,32 @@ describe("Cache API CRUD", () => {
 
     it("returns found:false for a missing entry", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const got = await cachesGet(page as any, {
-        cacheName: "v1", url: "https://example.com/missing",
-      }, "caches_get");
+
+      const got = await cachesGet(
+        page as any,
+        {
+          cacheName: "v1",
+          url: "https://example.com/missing",
+        },
+        "caches_get",
+      );
       expect(got.found).toBe(false);
     });
 
     it("rejects body + contentBase64 together", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(cachesPut(page as any, {
-        cacheName: "v1",
-        url: "https://example.com/x",
-        response: { body: "a", contentBase64: "YQ==" },
-      }, "caches_put")).rejects.toThrow(/exactly one of/);
+
+      await expect(
+        cachesPut(
+          page as any,
+          {
+            cacheName: "v1",
+            url: "https://example.com/x",
+            response: { body: "a", contentBase64: "YQ==" },
+          },
+          "caches_put",
+        ),
+      ).rejects.toThrow(/exactly one of/);
     });
   });
 
@@ -244,23 +282,43 @@ describe("Cache API CRUD", () => {
     it("returns all entries with no pattern", async () => {
       const { page } = fakePage("https://example.com/");
       const u = (p: string) => `https://example.com/${p}`;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: u("a"), response: { body: "1" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: u("b"), response: { body: "2" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: u("a"), response: { body: "1" } },
+        "caches_put",
+      );
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: u("b"), response: { body: "2" } },
+        "caches_put",
+      );
+
       const r = await cachesList(page as any, { cacheName: "v1" }, "caches_list");
       expect(r.entries).toHaveLength(2);
       expect(r.entries.map((e) => e.url).sort()).toEqual([u("a"), u("b")]);
     });
     it("filters by url substring", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: "https://example.com/api/a", response: { body: "1" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: "https://example.com/static/b", response: { body: "2" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const r = await cachesList(page as any, { cacheName: "v1", urlPattern: "/api/" }, "caches_list");
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: "https://example.com/api/a", response: { body: "1" } },
+        "caches_put",
+      );
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: "https://example.com/static/b", response: { body: "2" } },
+        "caches_put",
+      );
+
+      const r = await cachesList(
+        page as any,
+        { cacheName: "v1", urlPattern: "/api/" },
+        "caches_list",
+      );
       expect(r.entries).toHaveLength(1);
       expect(r.entries[0]!.url).toContain("/api/");
     });
@@ -269,22 +327,38 @@ describe("Cache API CRUD", () => {
   describe("cachesDelete + cachesClear + cachesDeleteStorage", () => {
     it("delete reports existed:true on hit, false on miss", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: "u", response: { body: "x" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: "u", response: { body: "x" } },
+        "caches_put",
+      );
+
       const first = await cachesDelete(page as any, { cacheName: "v1", url: "u" }, "caches_delete");
       expect(first.existed).toBe(true);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const second = await cachesDelete(page as any, { cacheName: "v1", url: "u" }, "caches_delete");
+
+      const second = await cachesDelete(
+        page as any,
+        { cacheName: "v1", url: "u" },
+        "caches_delete",
+      );
       expect(second.existed).toBe(false);
     });
     it("clear wipes all entries but keeps the cache storage", async () => {
       const { page, stub } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: "u1", response: { body: "1" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await cachesPut(page as any, { cacheName: "v1", url: "u2", response: { body: "2" } }, "caches_put");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: "u1", response: { body: "1" } },
+        "caches_put",
+      );
+
+      await cachesPut(
+        page as any,
+        { cacheName: "v1", url: "u2", response: { body: "2" } },
+        "caches_put",
+      );
+
       const r = await cachesClear(page as any, { cacheName: "v1" }, "caches_clear");
       expect(r.cleared).toBe(2);
       expect(stub.store.has("v1")).toBe(true);
@@ -293,12 +367,20 @@ describe("Cache API CRUD", () => {
     it("delete_storage drops the whole cache; idempotent", async () => {
       const { page, stub } = fakePage("https://example.com/");
       stub.api.open("v1");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const first = await cachesDeleteStorage(page as any, { cacheName: "v1" }, "caches_delete_storage");
+
+      const first = await cachesDeleteStorage(
+        page as any,
+        { cacheName: "v1" },
+        "caches_delete_storage",
+      );
       expect(first.existed).toBe(true);
       expect(stub.store.has("v1")).toBe(false);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const second = await cachesDeleteStorage(page as any, { cacheName: "v1" }, "caches_delete_storage");
+
+      const second = await cachesDeleteStorage(
+        page as any,
+        { cacheName: "v1" },
+        "caches_delete_storage",
+      );
       expect(second.existed).toBe(false);
     });
   });
@@ -306,15 +388,17 @@ describe("Cache API CRUD", () => {
   describe("input validation", () => {
     it("rejects missing cacheName", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(cachesList(page as any, { cacheName: "" }, "caches_list"))
-        .rejects.toThrow(/cacheName/);
+
+      await expect(cachesList(page as any, { cacheName: "" }, "caches_list")).rejects.toThrow(
+        /cacheName/,
+      );
     });
     it("rejects missing url on get", async () => {
       const { page } = fakePage("https://example.com/");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await expect(cachesGet(page as any, { cacheName: "v1", url: "" }, "caches_get"))
-        .rejects.toThrow(/url/);
+
+      await expect(
+        cachesGet(page as any, { cacheName: "v1", url: "" }, "caches_get"),
+      ).rejects.toThrow(/url/);
     });
   });
 });
