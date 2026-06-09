@@ -97,14 +97,18 @@ const PAGE_WALK_FN = (args: { mode: DomExportFormat; includeShadow: boolean }): 
         break;
       }
     }
-  } catch (_) {}
+  } catch {
+    // best-effort: querySelectorAll can throw on hostile/torn-down documents
+  }
 
   if (mode === "html") {
     const html = document.documentElement ? document.documentElement.outerHTML : "";
     let count = 0;
     try {
       count = document.querySelectorAll("*").length;
-    } catch (_) {}
+    } catch {
+      // best-effort: leave count=0 if querySelectorAll throws
+    }
     return { html, nodeCount: count, shadowRootCount: 0, hasCustomElements };
   }
   const nodes: Array<Record<string, unknown>> = [];

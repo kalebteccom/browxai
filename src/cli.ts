@@ -33,14 +33,19 @@ async function main(): Promise<void> {
   switch (subcommand) {
     case "doctor":
       process.exit(await runDoctor());
+      break;
     case "chrome":
       process.exit(await runChrome(rest));
+      break;
     case "init":
       process.exit(await runInit(rest));
+      break;
     case "serve":
       process.exit(await runServe(rest));
+      break;
     case "plugin":
       process.exit(await runPlugin(rest));
+      break;
     case undefined:
       break; // fall through to MCP server
     default:

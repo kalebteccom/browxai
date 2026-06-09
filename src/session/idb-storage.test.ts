@@ -231,6 +231,10 @@ function fakePage(initialUrl: string): FakePageHandle {
       },
     };
 
+    // Test scaffolding: page.evaluate() in production sends a string of source to
+    // the page context; here we mirror that by compiling it with the bindings the
+    // helper expressions reference. Genuine eval-shaped behaviour by design.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function("indexedDB", "location", `return ${expr}`);
     return await fn(indexedDB, location);
   }

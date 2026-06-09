@@ -824,7 +824,6 @@ function buildSnapshotDelta(
   if (!tree) {
     return { mode, scope: "(no tree)", truncated: false };
   }
-  let scope: string;
   let renderMode: SnapshotMode = mode;
   if (mode === "tree_diff") {
     // Phase-1.5 partial: emit appeared/removed-as-subtrees instead of a unified diff.
@@ -871,7 +870,7 @@ function buildSnapshotDelta(
   // Fall-through: full tree. Honours explicit mode:"full" and the rare case where
   // scoped_snapshot was asked-for but we have no scope refs (no action ref, no
   // appeared regions — uncommon).
-  scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
+  const scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
   const full = serialise(tree);
   const { text, truncated } = truncateToBudget(full, maxTokens);
   if (truncated)
