@@ -111,10 +111,9 @@ export async function pointProbe(
   point: { x: number; y: number },
   opts: { crop?: boolean } = {},
 ): Promise<PointProbeResult> {
-  const probed = (await page.evaluate(buildProbeScript(point.x, point.y, MAX_STACK))) as Pick<
-    PointProbeResult,
-    "stack" | "scrollContainer" | "clickableAncestor"
-  >;
+  const probed = await page.evaluate<
+    Pick<PointProbeResult, "stack" | "scrollContainer" | "clickableAncestor">
+  >(buildProbeScript(point.x, point.y, MAX_STACK));
 
   const result: PointProbeResult = {
     ok: true,

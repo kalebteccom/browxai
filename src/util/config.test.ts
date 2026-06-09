@@ -3,7 +3,7 @@ import { resolveConfig } from "./config.js";
 
 describe("resolveConfig (BROWX_TEST_ATTRIBUTES)", () => {
   it("falls back to the standard set when unset", () => {
-    const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: undefined } as NodeJS.ProcessEnv);
+    const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: undefined });
     expect(c.testAttributes).toEqual(["data-testid", "data-test", "data-cy", "data-qa"]);
   });
 

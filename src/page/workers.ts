@@ -359,7 +359,7 @@ export class WorkersRegistry {
           .send("Fetch.continueRequest", {
             requestId: e.requestId,
             ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-          } as unknown as { requestId: string })
+          })
           .catch(() => undefined);
         return;
       }
@@ -376,7 +376,7 @@ export class WorkersRegistry {
           responseHeaders: headers,
           body,
           ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-        } as unknown as { requestId: string; responseCode: number })
+        })
         .catch(() => undefined);
     };
     cdp.on("Fetch.requestPaused", onPaused as (e: unknown) => void);
@@ -435,7 +435,7 @@ export class WorkersRegistry {
   ): Promise<{ ok: boolean; workerId: string; error?: string }> {
     if (args.workerId.startsWith("ww-")) {
       await this.installPageWrapper(page);
-      const r = (await page.evaluate(
+      const r = await page.evaluate(
         ({ id, msg }) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const w = (globalThis as any).__browxWorkers as BrowxWorkersApi | undefined;
@@ -443,7 +443,7 @@ export class WorkersRegistry {
           return w.post(id, msg);
         },
         { id: args.workerId, msg: args.message },
-      )) as { ok: boolean; error?: string };
+      );
       return { ...r, workerId: args.workerId };
     }
     if (args.workerId.startsWith("sw-")) {
@@ -473,9 +473,7 @@ export class WorkersRegistry {
         returnByValue: true,
       };
       try {
-        await cdp.send("Runtime.evaluate", { ...sendOpts, sessionId } as unknown as {
-          expression: string;
-        });
+        await cdp.send("Runtime.evaluate", { ...sendOpts, sessionId });
         return { ok: true, workerId: args.workerId };
       } catch (err) {
         return {

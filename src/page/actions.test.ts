@@ -144,7 +144,7 @@ describe("probe() — ownerControl + container deltas", () => {
         false, // focused
         undefined, // checked
         "Engineering", // displayText
-        { ownerText: "Engineering", ownerLabel: "Type" } as PreProbeData, // post ancestor probe
+        { ownerText: "Engineering", ownerLabel: "Type" }, // post ancestor probe
       ],
     });
     const pre: PreProbeData = { ownerText: "Enter Tag" };
@@ -159,12 +159,7 @@ describe("probe() — ownerControl + container deltas", () => {
   it("composes ownerControl with changed=false when displayText matches pre", async () => {
     const loc = locator({
       inputValue: "",
-      evaluateReturns: [
-        false,
-        undefined,
-        "Engineering",
-        { ownerText: "Engineering" } as PreProbeData,
-      ],
+      evaluateReturns: [false, undefined, "Engineering", { ownerText: "Engineering" }],
     });
     const pre: PreProbeData = { ownerText: "Engineering" };
     const r = await probe(loc, { ref: "e2" }, undefined, pre);
@@ -174,7 +169,7 @@ describe("probe() — ownerControl + container deltas", () => {
   it("omits ownerControl when neither pre nor post has owner text", async () => {
     const loc = locator({
       inputValue: "free text",
-      evaluateReturns: [false, undefined, null, {} as PreProbeData],
+      evaluateReturns: [false, undefined, null, {}],
     });
     const r = await probe(loc, { ref: "e3" });
     expect(r.ownerControl).toBeUndefined();
@@ -193,7 +188,7 @@ describe("probe() — ownerControl + container deltas", () => {
             rowKey: "Wed, May 13",
             rowText: "Wed, May 13 Engineering Reviewed PR",
           },
-        } as PreProbeData,
+        },
       ],
     });
     const r = await probe(loc, { ref: "e4" });
@@ -209,7 +204,7 @@ describe("probe() — ownerControl + container deltas", () => {
         false,
         undefined,
         null,
-        { container: { kind: "row", rowText: "row text after save" } } as PreProbeData,
+        { container: { kind: "row", rowText: "row text after save" } },
       ],
     });
     const pre: PreProbeData = { container: { kind: "row", rowText: "row text before save" } };
@@ -224,7 +219,7 @@ describe("probe() — ownerControl + container deltas", () => {
         false,
         undefined,
         null,
-        { container: { kind: "row", rowText: "unchanged" } } as PreProbeData,
+        { container: { kind: "row", rowText: "unchanged" } },
       ],
     });
     const pre: PreProbeData = { container: { kind: "row", rowText: "unchanged" } };
@@ -241,7 +236,7 @@ describe("preProbe()", () => {
         {
           ownerText: "Enter Tag",
           container: { kind: "row", rowText: "Wed, May 13" },
-        } as PreProbeData,
+        },
       ],
     });
     const r = await preProbe(loc);

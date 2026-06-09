@@ -189,7 +189,7 @@ describe("@kalebtec/browxai-plugin-excalidraw register()", () => {
       callTool: async () => ({ content: [] }),
       log: { info: () => undefined, warn: () => undefined, error: () => undefined },
     };
-    register(fakeApi as never);
+    register(fakeApi);
     expect(registered.sort()).toEqual([
       "excalidraw.add_element",
       "excalidraw.delete_element",

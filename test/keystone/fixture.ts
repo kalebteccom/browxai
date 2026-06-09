@@ -778,7 +778,7 @@ function parseFrame(buf: Buffer): { opcode: number; payload: string; consumed: n
   }
   if (buf.length < off + len) return null;
   const data = buf.subarray(off, off + len);
-  const unmasked = mask ? Buffer.from(data.map((b, i) => b ^ mask![i % 4]!)) : Buffer.from(data);
+  const unmasked = mask ? Buffer.from(data.map((b, i) => b ^ mask[i % 4]!)) : Buffer.from(data);
   return { opcode, payload: unmasked.toString("utf-8"), consumed: off + len };
 }
 
@@ -911,7 +911,7 @@ export async function startFixture(): Promise<Fixture> {
 
   server.on("upgrade", (req, socket) => {
     const u = new URL(req.url ?? "/", "http://localhost");
-    if (u.pathname === "/ws") handleUpgrade(req as never, socket);
+    if (u.pathname === "/ws") handleUpgrade(req, socket);
     else socket.end();
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

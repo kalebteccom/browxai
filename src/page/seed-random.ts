@@ -123,11 +123,11 @@ export class SeededRandomRegistry {
   ): Promise<{ state: SeedRandomState }> {
     const state = normalize(input);
 
-    if (!this.contextInstalled.has(context as unknown as object)) {
+    if (!this.contextInstalled.has(context)) {
       // First time: register the init script on the context so every new
       // document (including the current one's NEXT navigation) sees it.
       await context.addInitScript({ content: buildInitScript(state.seed) });
-      this.contextInstalled.add(context as unknown as object);
+      this.contextInstalled.add(context);
     }
     // Re-seed the CURRENT page's main realm immediately so a caller doesn't
     // have to navigate to see the override take effect. This is best-effort —
@@ -149,8 +149,8 @@ export class SeededRandomRegistry {
    *  src/page/emulation.ts + src/page/clock.ts. We push the cached seed back
    *  into the main frame on every main-frame `framenavigated`. */
   private installReattach(page: Page): void {
-    if (this.reattachInstalled.has(page as unknown as object)) return;
-    this.reattachInstalled.add(page as unknown as object);
+    if (this.reattachInstalled.has(page)) return;
+    this.reattachInstalled.add(page);
     const onNav = async (frame: { parentFrame: () => unknown | null }): Promise<void> => {
       if (frame.parentFrame()) return; // main frame only
       if (!this.state) return;

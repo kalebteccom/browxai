@@ -77,7 +77,7 @@ export async function cachesListStorages(
     `(async () => { if (typeof ${CACHE_API} === "undefined") return { names: [], origin: location.origin }; ` +
     `var n = await ${CACHE_API}.keys(); ` +
     `return { names: n, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as { names: string[]; origin: string };
+  return await page.evaluate(expr);
 }
 
 /** List the entries in a single cache. Optional `urlPattern` is a
@@ -102,11 +102,7 @@ export async function cachesList(
     `  out.push({ url: r.url, method: r.method }); ` +
     `} ` +
     `return { entries: out, origin: location.origin, cacheName: ${JSON.stringify(args.cacheName)} }; })()`;
-  return (await page.evaluate(expr)) as {
-    entries: Array<{ url: string; method: string }>;
-    origin: string;
-    cacheName: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Return the response body of a single entry. Text-like content types
@@ -188,12 +184,7 @@ export async function cachesPut(
     `var res = new Response(body, { status: spec.status, headers: spec.headers }); ` +
     `await c.put(${JSON.stringify(args.url)}, res); ` +
     `return { ok: true, cacheName: ${JSON.stringify(args.cacheName)}, url: ${JSON.stringify(args.url)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    cacheName: string;
-    url: string;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Delete one entry. Returns `existed:true` if the entry was present. */
@@ -210,13 +201,7 @@ export async function cachesDelete(
     `var c = await ${CACHE_API}.open(${JSON.stringify(args.cacheName)}); ` +
     `var existed = await c.delete(${JSON.stringify(args.url)}); ` +
     `return { ok: true, existed: existed, cacheName: ${JSON.stringify(args.cacheName)}, url: ${JSON.stringify(args.url)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    existed: boolean;
-    cacheName: string;
-    url: string;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Clear every entry from a cache (the cache storage itself remains). */
@@ -233,12 +218,7 @@ export async function cachesClear(
     `var reqs = await c.keys(); ` +
     `for (var i = 0; i < reqs.length; i++) await c.delete(reqs[i]); ` +
     `return { ok: true, cleared: reqs.length, cacheName: ${JSON.stringify(args.cacheName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    cleared: number;
-    cacheName: string;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Delete a cache storage entirely. Returns `existed:true` if the storage
@@ -254,10 +234,5 @@ export async function cachesDeleteStorage(
     `(async () => { ` +
     `var existed = await ${CACHE_API}.delete(${JSON.stringify(args.cacheName)}); ` +
     `return { ok: true, existed: existed, cacheName: ${JSON.stringify(args.cacheName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    existed: boolean;
-    cacheName: string;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }

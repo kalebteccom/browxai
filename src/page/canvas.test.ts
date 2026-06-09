@@ -372,7 +372,7 @@ describe("canvasWorldToScreen / canvasScreenToWorld (modes)", () => {
   function pageDiscovering(payload: unknown): CanvasDiscoverPage {
     return {
       evaluate: async <T, _Arg>() => payload as T,
-    } as CanvasDiscoverPage;
+    };
   }
 
   it("explicit mode never hits the page", async () => {

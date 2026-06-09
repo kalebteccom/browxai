@@ -55,11 +55,11 @@ describe("targetPoint", () => {
   it("returns coords verbatim for a coords target", async () => {
     const p = await targetPoint(pageWithBox(fakeMouse()), refs, {
       coords: { x: 7, y: 9 },
-    } as never);
+    });
     expect(p).toEqual({ x: 7, y: 9 });
   });
   it("returns the box centre for a ref/selector target", async () => {
-    const p = await targetPoint(pageWithBox(fakeMouse()), refs, { selector: "#x" } as never);
+    const p = await targetPoint(pageWithBox(fakeMouse()), refs, { selector: "#x" });
     expect(p).toEqual({ x: 50, y: 30 });
   });
 });
@@ -68,8 +68,8 @@ describe("drag", () => {
   it("presses at from, moves to to over steps, releases — in order", async () => {
     const m = fakeMouse();
     const r = await drag(pageWithBox(m), refs, {
-      from: { coords: { x: 10, y: 10 } } as never,
-      to: { coords: { x: 200, y: 80 } } as never,
+      from: { coords: { x: 10, y: 10 } },
+      to: { coords: { x: 200, y: 80 } },
       steps: 5,
     });
     expect(r).toEqual({ ok: true, from: { x: 10, y: 10 }, to: { x: 200, y: 80 }, steps: 5 });
@@ -78,8 +78,8 @@ describe("drag", () => {
   it("clamps steps into [1,100]", async () => {
     const m = fakeMouse();
     const r = await drag(pageWithBox(m), refs, {
-      from: { coords: { x: 0, y: 0 } } as never,
-      to: { coords: { x: 1, y: 1 } } as never,
+      from: { coords: { x: 0, y: 0 } },
+      to: { coords: { x: 1, y: 1 } },
       steps: 9999,
     });
     expect("steps" in r && r.steps).toBe(100);
@@ -90,8 +90,8 @@ describe("drag — preflight", () => {
   it("preflight probes `from` and does NOT move the mouse", async () => {
     const m = fakeMouse();
     const r = (await drag(pageWithProbe(m, ["default", "pointer"]), refs, {
-      from: { coords: { x: 30, y: 40 } } as never,
-      to: { coords: { x: 0, y: 0 } } as never,
+      from: { coords: { x: 30, y: 40 } },
+      to: { coords: { x: 0, y: 0 } },
       preflight: true,
     })) as DragPreflight;
     expect(r.preflight.point).toEqual({ x: 30, y: 40 });
@@ -102,8 +102,8 @@ describe("drag — preflight", () => {
   it("flags resizeRisk when a press-point layer has a resize cursor", async () => {
     const m = fakeMouse();
     const r = (await drag(pageWithProbe(m, ["ew-resize", "default"]), refs, {
-      from: { coords: { x: 5, y: 5 } } as never,
-      to: { coords: { x: 0, y: 0 } } as never,
+      from: { coords: { x: 5, y: 5 } },
+      to: { coords: { x: 0, y: 0 } },
       preflight: true,
     })) as DragPreflight;
     expect(r.preflight.resizeRisk).toBe(true);
@@ -114,7 +114,7 @@ describe("drag — preflight", () => {
 describe("doubleClick", () => {
   it("dblclicks at the resolved point", async () => {
     const m = fakeMouse();
-    const r = await doubleClick(pageWithBox(m), refs, { coords: { x: 42, y: 24 } } as never);
+    const r = await doubleClick(pageWithBox(m), refs, { coords: { x: 42, y: 24 } });
     expect(r).toEqual({ ok: true, point: { x: 42, y: 24 } });
     expect(m.log).toEqual(["dbl(42,24)"]);
   });

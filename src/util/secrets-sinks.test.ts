@@ -35,7 +35,7 @@ describe("sink: console_read", () => {
     // event via attach() and a fake Page emitter.
     const listeners = new Map<string, (m: { type: () => string; text: () => string }) => void>();
     const fakePage = {
-      on: (evt: string, fn: never) => listeners.set(evt, fn as never),
+      on: (evt: string, fn: never) => listeners.set(evt, fn),
     };
 
     buf.attach(fakePage as any);
@@ -54,7 +54,7 @@ describe("sink: console_read", () => {
     buf.setSecrets(secrets);
     const listeners = new Map<string, (m: { type: () => string; text: () => string }) => void>();
 
-    buf.attach({ on: (evt: string, fn: never) => listeners.set(evt, fn as never) } as any);
+    buf.attach({ on: (evt: string, fn: never) => listeners.set(evt, fn) } as any);
     listeners.get("console")!({
       type: () => "error",
       text: () => "fetch https://api.example.com/x?token=tok-xyz failed for tok-xyz",
@@ -346,10 +346,10 @@ describe("sink: act_and_diff — diff output masking (HIGH)", () => {
     expect(masked.changed[0]!.styleDelta.changed["background-image"]).toBe(
       "url(/avatars/<PASSWORD>.png)",
     );
-    expect(masked.changed[0]!.attrDelta.changed["aria-label"]!.to).toBe(
+    expect(masked.changed[0]!.attrDelta.changed["aria-label"].to).toBe(
       "Copied <PASSWORD> to clipboard",
     );
-    expect(masked.changed[0]!.attrDelta.changed["data-tooltip"]!.to).toBe("Value: <PASSWORD>");
+    expect(masked.changed[0]!.attrDelta.changed["data-tooltip"].to).toBe("Value: <PASSWORD>");
   });
 });
 

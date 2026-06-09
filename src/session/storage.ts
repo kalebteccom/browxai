@@ -113,7 +113,7 @@ export async function dumpStorageState(
   workspaceRoot: string,
   opts: { path?: string } = {},
 ): Promise<{ state: StorageStateBlob; path?: string; bytes?: number }> {
-  const state = (await context.storageState()) as StorageStateBlob;
+  const state = await context.storageState();
   if (opts.path === undefined) return { state };
   // `resolved` is workspace-rooted by construction — `resolveWorkspacePath`
   // (above) rejects any path outside `workspace.root` / $BROWX_WORKSPACE.
@@ -225,9 +225,7 @@ export async function cookiesGet(
 ): Promise<StorageStateBlob["cookies"][number] | null> {
   if (!args.name) throw new Error("cookies_get: `name` is required");
   const list = await context.cookies(args.url ? [args.url] : undefined);
-  return (list.find((c) => c.name === args.name) ?? null) as
-    | StorageStateBlob["cookies"][number]
-    | null;
+  return list.find((c) => c.name === args.name) ?? null;
 }
 
 export async function cookiesList(
@@ -235,7 +233,7 @@ export async function cookiesList(
   args: { urls?: string[] } = {},
 ): Promise<StorageStateBlob["cookies"]> {
   const list = await context.cookies(args.urls);
-  return list as StorageStateBlob["cookies"];
+  return list;
 }
 
 export async function cookiesSet(
@@ -321,7 +319,7 @@ export async function webStorageGet(
   const expr =
     `(() => { var s = window.${kind}; ` +
     `return { value: s.getItem(${JSON.stringify(args.key)}), origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as { value: string | null; origin: string };
+  return await page.evaluate(expr);
 }
 
 export async function webStorageSet(
@@ -337,7 +335,7 @@ export async function webStorageSet(
     `(() => { var s = window.${kind}; ` +
     `s.setItem(${JSON.stringify(args.key)}, ${JSON.stringify(args.value)}); ` +
     `return { ok: true, origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; origin: string };
+  return await page.evaluate(expr);
 }
 
 export async function webStorageList(
@@ -351,10 +349,7 @@ export async function webStorageList(
     `for (var i = 0; i < s.length; i++) { var k = s.key(i); if (k === null) continue; ` +
     `out.push({ key: k, value: s.getItem(k) || "" }); } ` +
     `return { entries: out, origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    entries: Array<{ key: string; value: string }>;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 export async function webStorageDelete(
@@ -368,7 +363,7 @@ export async function webStorageDelete(
   const expr =
     `(() => { var s = window.${kind}; s.removeItem(${JSON.stringify(args.key)}); ` +
     `return { ok: true, origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; origin: string };
+  return await page.evaluate(expr);
 }
 
 export async function webStorageClear(
@@ -380,7 +375,7 @@ export async function webStorageClear(
   const expr =
     `(() => { var s = window.${kind}; s.clear(); ` +
     `return { ok: true, origin: window.location.origin }; })()`;
-  return (await page.evaluate(expr)) as { ok: true; origin: string };
+  return await page.evaluate(expr);
 }
 
 // ---- layer 3: named auth-states -------------------------------------------
@@ -414,7 +409,7 @@ export async function authSave(
   const dir = join(workspaceRoot, AUTH_STATES_DIR);
   // workspace.root-rooted by construction (see comment above).
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const state = (await context.storageState()) as StorageStateBlob;
+  const state = await context.storageState();
   const json = JSON.stringify(state, null, 2);
   // workspace.root-rooted by construction (see comment above).
   writeFileSync(dest, json, "utf8");

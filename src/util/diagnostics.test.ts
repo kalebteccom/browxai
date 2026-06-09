@@ -369,21 +369,13 @@ describe("resolveRetentionDays", () => {
   });
 
   it("honours BROWX_DIAGNOSTICS_RETENTION_DAYS", () => {
-    expect(
-      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" } as NodeJS.ProcessEnv),
-    ).toBe(7);
-    expect(
-      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" } as NodeJS.ProcessEnv),
-    ).toBe(0);
+    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" })).toBe(7);
+    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" })).toBe(0);
   });
 
   it("falls back to default on garbage input (no throw)", () => {
-    expect(
-      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "garbage" } as NodeJS.ProcessEnv),
-    ).toBe(30);
-    expect(
-      resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "-3" } as NodeJS.ProcessEnv),
-    ).toBe(30);
+    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "garbage" })).toBe(30);
+    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "-3" })).toBe(30);
   });
 });
 

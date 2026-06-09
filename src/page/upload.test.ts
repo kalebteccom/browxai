@@ -16,7 +16,7 @@ describe("uploadFile", () => {
   it("content mode → setInputFiles with {name, mimeType, buffer}", async () => {
     const { page, setInputFiles } = fakePage();
     const r = await uploadFile(page as never, refs, WS, {
-      target: { selector: "#file" } as never,
+      target: { selector: "#file" },
       name: "data.csv",
       mimeType: "text/csv",
       content: Buffer.from("a,b,c").toString("base64"),
@@ -43,7 +43,7 @@ describe("uploadFile", () => {
   it("path mode inside the workspace → setInputFiles with the resolved path", async () => {
     const { page, setInputFiles } = fakePage();
     const r = await uploadFile(page as never, refs, WS, {
-      target: { selector: "#file" } as never,
+      target: { selector: "#file" },
       path: "uploads/clip.mp4",
     });
     expect(r).toMatchObject({
@@ -61,7 +61,7 @@ describe("uploadFile", () => {
     const { page } = fakePage();
     await expect(
       uploadFile(page as never, refs, WS, {
-        target: { selector: "#f" } as never,
+        target: { selector: "#f" },
         path: "../../etc/passwd",
       }),
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
@@ -71,7 +71,7 @@ describe("uploadFile", () => {
     const { page } = fakePage();
     await expect(
       uploadFile(page as never, refs, WS, {
-        target: { selector: "#f" } as never,
+        target: { selector: "#f" },
         path: "/etc/hosts",
       }),
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
@@ -81,7 +81,7 @@ describe("uploadFile", () => {
     const { page } = fakePage();
     await expect(
       uploadFile(page as never, refs, WS, {
-        target: { selector: "#f" } as never,
+        target: { selector: "#f" },
         content: "AA==",
         path: "x",
       }),
@@ -91,7 +91,7 @@ describe("uploadFile", () => {
   it("rejects passing neither", async () => {
     const { page } = fakePage();
     await expect(
-      uploadFile(page as never, refs, WS, { target: { selector: "#f" } as never }),
+      uploadFile(page as never, refs, WS, { target: { selector: "#f" } }),
     ).rejects.toThrow(/requires/);
   });
 });

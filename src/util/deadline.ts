@@ -68,5 +68,5 @@ export function withDeadline<T>(p: Promise<T>, ms: number, label: string): Promi
   });
   return Promise.race([p, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
-  }) as Promise<T>;
+  });
 }

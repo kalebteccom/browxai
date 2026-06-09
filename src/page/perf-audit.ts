@@ -117,7 +117,7 @@ export function analyseRenderBlocking(ctx: AuditContext): CategoryResult {
     if (e.name !== "ResourceSendRequest") continue;
     const ts = typeof e.ts === "number" ? e.ts : 0;
     if (ts >= firstPaintTs) continue;
-    const args = (e.args ?? {}) as Record<string, unknown>;
+    const args = e.args ?? {};
     const data = (args.data ?? {}) as Record<string, unknown>;
     const url = typeof data.url === "string" ? data.url : "";
     const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
@@ -228,11 +228,10 @@ export function analyseOversizeImages(ctx: AuditContext): CategoryResult {
   }
   for (const e of ctx.trace) {
     if (e.name !== "ResourceFinish") continue;
-    const args = (e.args ?? {}) as Record<string, unknown>;
+    const args = e.args ?? {};
     const data = (args.data ?? {}) as Record<string, unknown>;
     const url = typeof data.url === "string" ? data.url : "";
-    const bytes =
-      typeof data.encodedDataLength === "number" ? (data.encodedDataLength as number) : 0;
+    const bytes = typeof data.encodedDataLength === "number" ? data.encodedDataLength : 0;
     if (!url || bytes < 500_000) continue;
     // Best-effort mime guess by extension.
     const ext = url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
@@ -286,7 +285,7 @@ function hasForcedFlag(e: TraceEvent): boolean {
     | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
     | undefined;
   if (!args) return false;
-  const data = (args.data ?? args.beginData ?? {}) as Record<string, unknown>;
+  const data = args.data ?? args.beginData ?? {};
   return Array.isArray(data.stackTrace) && (data.stackTrace as unknown[]).length > 0;
 }
 
@@ -407,7 +406,7 @@ export function analyseFontLoading(ctx: AuditContext): CategoryResult {
   const fontLoads: Array<{ url: string; offsetMs: number }> = [];
   for (const e of ctx.trace) {
     if (e.name !== "ResourceFinish") continue;
-    const args = (e.args ?? {}) as Record<string, unknown>;
+    const args = e.args ?? {};
     const data = (args.data ?? {}) as Record<string, unknown>;
     const url = typeof data.url === "string" ? data.url : "";
     const ext = url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";

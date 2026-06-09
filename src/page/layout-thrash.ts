@@ -227,7 +227,7 @@ function hasForcedFlag(e: TraceEvent): boolean {
     | undefined;
   if (!args) return false;
   if (args.beginData && typeof args.beginData === "object") return true;
-  const data = (args.data ?? {}) as Record<string, unknown>;
+  const data = args.data ?? {};
   if (Array.isArray(data.stackTrace) && (data.stackTrace as unknown[]).length > 0) return true;
   return false;
 }
@@ -239,10 +239,10 @@ function extractOriginStack(e: TraceEvent): string {
     | { data?: Record<string, unknown>; beginData?: Record<string, unknown> }
     | undefined;
   if (!args) return "<anonymous>";
-  const data = (args.data ?? args.beginData ?? {}) as Record<string, unknown>;
+  const data = args.data ?? args.beginData ?? {};
   const stack = data.stackTrace as Array<Record<string, unknown>> | undefined;
   if (!Array.isArray(stack) || stack.length === 0) return "<anonymous>";
-  const top = stack[0] as Record<string, unknown> | undefined;
+  const top = stack[0];
   if (!top) return "<anonymous>";
   const fn =
     typeof top.functionName === "string" && top.functionName ? top.functionName : "<anonymous>";
