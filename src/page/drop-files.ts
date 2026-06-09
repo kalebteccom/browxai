@@ -189,6 +189,10 @@ export interface DropEvalResult {
  */
 
 export const dropFilesPageScript = function dropFilesInPage(args: {
+  // `el` is a DOM Element resolved by page.$eval / page.evaluateHandle on the
+  // browser side; the precise Element subtype isn't representable from Node
+  // typings without dragging in DOM lib globals here, so `any` is intentional.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   el: any;
   payload: DropPayload;
 }): DropEvalResult {

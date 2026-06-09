@@ -234,7 +234,7 @@ export class FsPickerPolicyState {
 function normalise(p: FsPickerPolicy): FsPickerPolicy {
   if (!isFsPickerMode(p.mode)) {
     throw new Error(
-      `fsPickerPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `fsPickerPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
     );
   }
   if (p.perAPI) {
@@ -248,7 +248,7 @@ function normalise(p: FsPickerPolicy): FsPickerPolicy {
       if (mode === undefined) continue;
       if (!isFsPickerMode(mode)) {
         throw new Error(
-          `fsPickerPolicy.perAPI["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+          `fsPickerPolicy.perAPI["${name}"]: invalid mode "${String(mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
         );
       }
       cleaned[name as FsPickerApi] = mode;
@@ -602,7 +602,7 @@ export async function attachFsPickerPolicy(
       }
     });
 
-    await context.exposeBinding("__browx_fs_picker_write", async (_source, payload: string) => {
+    await context.exposeBinding("__browx_fs_picker_write", (_source, payload: string) => {
       try {
         const o = JSON.parse(payload) as { handleId?: string; op?: string; data?: string | null };
         const id = o.handleId;

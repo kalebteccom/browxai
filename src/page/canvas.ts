@@ -695,7 +695,7 @@ export function validateGestureChain(steps: GestureChainStep[]): {
         ok: false,
         steps: [],
         warnings,
-        error: `gesture_chain: step[${i}] unknown kind "${s.kind}"`,
+        error: `gesture_chain: step[${i}] unknown kind "${String(s.kind)}"`,
         code: "bad-step",
       };
     }

@@ -167,7 +167,7 @@ export class ClockRegistry {
   private installReattach(page: Page): void {
     if (this.reattachInstalled.has(page)) return;
     this.reattachInstalled.add(page);
-    const onNav = async (frame: { parentFrame: () => unknown | null }): Promise<void> => {
+    const onNav = async (frame: { parentFrame: () => unknown }): Promise<void> => {
       if (frame.parentFrame()) return; // main frame only
       try {
         const cdp = await page

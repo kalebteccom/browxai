@@ -86,7 +86,7 @@ export class BrowxBridge {
    *  instead of the now-detached `__browx_send` exposeBinding glue —
    *  silencing the "Function `__browx_send` is not exposed" console errors
    *  that the shared-CDP verification run flagged. */
-  async detach(): Promise<void> {
+  detach(): Promise<void> {
     this.detached = true;
     for (const t of this.pollers.values()) clearInterval(t);
     this.pollers.clear();
@@ -110,6 +110,7 @@ export class BrowxBridge {
       }
     }
     this.contexts = [];
+    return Promise.resolve();
   }
 
   /** test introspection — true once detach() has fired. */

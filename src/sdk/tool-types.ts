@@ -96,7 +96,7 @@ export interface FindArgs extends SessionArg {
 /**
  * Phase-7: frame discovery.
  */
-export interface FramesListArgs extends SessionArg {}
+export type FramesListArgs = SessionArg;
 export interface FrameInfo {
   frameId: string;
   parentFrameId?: string;

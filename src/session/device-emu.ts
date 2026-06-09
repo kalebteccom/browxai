@@ -562,7 +562,7 @@ export async function attachDeviceEmulation(
   state.markContext(context);
 
   try {
-    await context.exposeBinding("__browx_device_check", async (_source, payload: string) => {
+    await context.exposeBinding("__browx_device_check", (_source, payload: string) => {
       try {
         const o = JSON.parse(payload) as { api?: string; filters?: unknown };
         const api = o.api as DeviceApi;
