@@ -381,7 +381,9 @@ const PAGE_DETECT_FN = (args: {
                 widestSel = s.selector;
               }
             }
-          } catch (_) {}
+          } catch {
+            // best-effort widest-descendant scan; leave widestSel undefined on failure
+          }
           findings.push({
             selector: "html",
             selectorTruncated: false,
@@ -399,7 +401,9 @@ const PAGE_DETECT_FN = (args: {
           });
         }
       }
-    } catch (_) {}
+    } catch {
+      // best-effort viewport-overflow probe; skip section on hostile docs
+    }
   }
 
   // 2. Element walk for layout / clipped / text-ellipsis.

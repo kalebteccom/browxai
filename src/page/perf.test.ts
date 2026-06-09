@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -326,8 +326,7 @@ describe("trace file IO", () => {
       // Now manually replace with a bare-array file to test the reader's tolerance.
       const path = `${root}/perf-traces/legacy.json`;
       // Use only fs APIs here (test scaffolding — not the no-trace src/ path).
-      const fs = require("node:fs") as typeof import("node:fs");
-      fs.writeFileSync(path, JSON.stringify(events));
+      writeFileSync(path, JSON.stringify(events));
       const back = readTraceFile(root, target, "perf_insights");
       expect(back.events.map((e) => e.name)).toEqual(["X"]);
     } finally {

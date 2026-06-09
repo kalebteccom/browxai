@@ -55,7 +55,7 @@ describe("defaultPdfPath", () => {
     const p = defaultPdfPath("../bad/id");
     // No path separators leak through; the leading segment is still `pdfs/`.
     expect(p.startsWith("pdfs/")).toBe(true);
-    expect(p.slice("pdfs/".length)).not.toMatch(/[\/\\]/);
+    expect(p.slice("pdfs/".length)).not.toMatch(/[/\\]/);
   });
 });
 
