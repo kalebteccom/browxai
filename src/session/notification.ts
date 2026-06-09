@@ -160,7 +160,7 @@ export class NotificationPolicyState {
 function normalise(p: NotificationPolicy): NotificationPolicy {
   if (!isPolicyMode(p.mode)) {
     throw new Error(
-      `notificationPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `notificationPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
     );
   }
   return { mode: p.mode };

@@ -206,21 +206,21 @@ export function aliasFromAccount(account: string, prefix = "PASSWORD"): string {
 
 class NoneProvider implements CredentialProvider {
   readonly name = "none" as const;
-  async getTotp(_account: string): Promise<TotpResult> {
-    return {
+  getTotp(_account: string): Promise<TotpResult> {
+    return Promise.resolve({
       ok: false,
       provider: "none",
       error: "credentials provider is `none` — no vault backend is configured",
       hint: "set BROWX_CREDENTIALS_PROVIDER to one of: oathtool, 1password, bitwarden, lastpass",
-    };
+    });
   }
-  async getCredential(_account: string): Promise<CredentialResult> {
-    return {
+  getCredential(_account: string): Promise<CredentialResult> {
+    return Promise.resolve({
       ok: false,
       provider: "none",
       error: "credentials provider is `none` — no vault backend is configured",
       hint: "set BROWX_CREDENTIALS_PROVIDER to one of: oathtool, 1password, bitwarden, lastpass",
-    };
+    });
   }
 }
 
@@ -289,13 +289,13 @@ class OathtoolProvider implements CredentialProvider {
     }
     return { ok: true, code, provider: "oathtool" };
   }
-  async getCredential(_account: string): Promise<CredentialResult> {
-    return {
+  getCredential(_account: string): Promise<CredentialResult> {
+    return Promise.resolve({
       ok: false,
       provider: "oathtool",
       error: "oathtool is a TOTP-only backend; it does not store username/password",
       hint: "pair with another provider for credential lookup (1password, bitwarden, lastpass)",
-    };
+    });
   }
 }
 

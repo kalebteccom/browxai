@@ -198,7 +198,7 @@ export class PermissionPolicyState {
 function normalise(p: PermissionPolicy): PermissionPolicy {
   if (!isPolicyMode(p.mode)) {
     throw new Error(
-      `permissionPolicy: invalid mode "${p.mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+      `permissionPolicy: invalid mode "${String(p.mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
     );
   }
   if (p.perPermission) {
@@ -212,7 +212,7 @@ function normalise(p: PermissionPolicy): PermissionPolicy {
       if (mode === undefined) continue;
       if (!isPolicyMode(mode)) {
         throw new Error(
-          `permissionPolicy.perPermission["${name}"]: invalid mode "${mode}" — expected "allow" | "deny" | "raise" | "ask-human"`,
+          `permissionPolicy.perPermission["${name}"]: invalid mode "${String(mode)}" — expected "allow" | "deny" | "raise" | "ask-human"`,
         );
       }
       cleaned[name as SupportedPermission] = mode;
@@ -525,7 +525,7 @@ export async function attachPermissionPolicy(
         return "allow";
       }
     });
-    await context.exposeBinding("__browx_permission_observe", async (_source, _payload: string) => {
+    await context.exposeBinding("__browx_permission_observe", (_source, _payload: string) => {
       // Read-side breadcrumb only — no decision, no record (the page calling
       // permissions.query() is too noisy to record per-call).
       return undefined;

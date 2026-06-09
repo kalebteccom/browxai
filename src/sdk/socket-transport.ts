@@ -34,14 +34,15 @@ export class SocketTransport implements Transport {
     this._socket = socket;
   }
 
-  public async start(): Promise<void> {
+  public start(): Promise<void> {
     if (this._started) {
-      throw new Error("SocketTransport already started");
+      return Promise.reject(new Error("SocketTransport already started"));
     }
     this._started = true;
     this._socket.on("data", this._onData);
     this._socket.on("error", this._onError);
     this._socket.on("close", this._onClose);
+    return Promise.resolve();
   }
 
   public async send(message: JSONRPCMessage): Promise<void> {

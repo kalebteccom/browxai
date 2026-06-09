@@ -2801,7 +2801,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             const disposers: Array<() => void> = [];
             const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
             if (trigger === "navigation") {
-              const onNav = (frame: { parentFrame: () => unknown | null }) => {
+              const onNav = (frame: { parentFrame: () => unknown }) => {
                 // main frame only — subframe navigations are noise here
                 if (frame.parentFrame() === null) onFire();
               };

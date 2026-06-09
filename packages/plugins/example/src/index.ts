@@ -48,30 +48,34 @@ const json = (obj: unknown): ToolResponse => ({
  * unit-test suite can exercise them WITHOUT spinning up the full
  * runtime — the test file imports these directly.
  */
+// Arrow-property form (not method-syntax) so call sites can pass
+// `handlers.echo` as a value without tripping `unbound-method`. Bodies
+// are sync — they return `Promise.resolve(...)` to honour the
+// `Promise<ToolResponse>` handler contract without an empty `async`.
 export const handlers = {
   /** `example.echo({ msg })` → `{ ok: true, result: msg }`. The
    *  classic round-trip primitive — used by the keystone to assert
    *  end-to-end MCP dispatch through the plugin runtime. */
-  async echo(args: unknown): Promise<ToolResponse> {
+  echo: (args: unknown): Promise<ToolResponse> => {
     const a = (args ?? {}) as { msg?: unknown };
     const msg = typeof a.msg === "string" ? a.msg : "";
-    return json({ ok: true, result: msg });
+    return Promise.resolve(json({ ok: true, result: msg }));
   },
 
   /** `example.add({ a, b })` → `{ ok: true, sum: a + b }`. Trivial
    *  math primitive — demonstrates the handler's typed-arg pattern. */
-  async add(args: unknown): Promise<ToolResponse> {
+  add: (args: unknown): Promise<ToolResponse> => {
     const a = (args ?? {}) as { a?: unknown; b?: unknown };
     const left = typeof a.a === "number" ? a.a : 0;
     const right = typeof a.b === "number" ? a.b : 0;
-    return json({ ok: true, sum: left + right });
+    return Promise.resolve(json({ ok: true, sum: left + right }));
   },
 
   /** `example.now()` → `{ ok: true, iso, epochMs }`. Argless tool
    *  shape; demonstrates that an empty input schema is fine. */
-  async now(): Promise<ToolResponse> {
+  now: (): Promise<ToolResponse> => {
     const ms = Date.now();
-    return json({ ok: true, iso: new Date(ms).toISOString(), epochMs: ms });
+    return Promise.resolve(json({ ok: true, iso: new Date(ms).toISOString(), epochMs: ms }));
   },
 };
 
