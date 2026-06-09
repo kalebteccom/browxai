@@ -75,7 +75,7 @@ describe("pdfSave", () => {
     expect(r.bytes).toBe(2048);
     expect(r.path).toBe(join(WS, "out.pdf"));
     expect(pdf).toHaveBeenCalledOnce();
-    const arg = pdf.mock.calls[0]![0]!;
+    const arg = pdf.mock.calls[0]![0];
     expect(arg.format).toBe("Letter");
     expect(arg.scale).toBe(0.75);
     expect(arg.printBackground).toBe(true);
@@ -88,7 +88,7 @@ describe("pdfSave", () => {
     expect(r.format).toBe("A4");
     expect(r.scale).toBe(1);
     expect(r.printBackground).toBe(false);
-    const arg = pdf.mock.calls[0]![0]!;
+    const arg = pdf.mock.calls[0]![0];
     expect(arg.format).toBe("A4");
     expect(arg.scale).toBe(1);
     expect(arg.printBackground).toBe(false);

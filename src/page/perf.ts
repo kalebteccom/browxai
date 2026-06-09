@@ -349,7 +349,7 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
     if (!name) continue;
     const ts = usToMs(e.ts);
     const dur = usToMs(e.dur);
-    const args = (e.args ?? {}) as Record<string, unknown>;
+    const args = e.args ?? {};
     const data = (args.data ?? {}) as Record<string, unknown>;
 
     // Long tasks land as `RunTask` (or `RunMicrotasks`) on the renderer main
@@ -365,8 +365,8 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
       const score =
         typeof data.score === "number"
           ? data.score
-          : typeof (data.weighted_score_delta as unknown) === "number"
-            ? (data.weighted_score_delta as number)
+          : typeof data.weighted_score_delta === "number"
+            ? data.weighted_score_delta
             : 0;
       const entry: PerfInsights["layoutShifts"][number] = { startMs: ts, score };
       if (data.had_recent_input === true) entry.hadRecentInput = true;
@@ -391,7 +391,7 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
             url,
             tsMs: ts,
             blocking,
-            type: typeof data.resourceType === "string" ? (data.resourceType as string) : undefined,
+            type: typeof data.resourceType === "string" ? data.resourceType : undefined,
           });
         }
       }
@@ -407,10 +407,10 @@ export function extractInsights(events: TraceEvent[]): PerfInsights {
 
     if (name === "largestContentfulPaint::Candidate") {
       const entry: PerfInsights["lcpCandidates"][number] = { startMs: ts };
-      if (typeof data.size === "number") entry.size = data.size as number;
+      if (typeof data.size === "number") entry.size = data.size;
       if (typeof data.DOMNodeId === "number") entry.nodeName = `#${String(data.DOMNodeId)}`;
-      if (typeof data.nodeName === "string") entry.nodeName = data.nodeName as string;
-      if (typeof data.url === "string") entry.url = data.url as string;
+      if (typeof data.nodeName === "string") entry.nodeName = data.nodeName;
+      if (typeof data.url === "string") entry.url = data.url;
       lcpCandidates.push(entry);
     }
 

@@ -217,12 +217,12 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
   //    Uint8Array → File is the canonical drop-zone construction.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fileObjs: any[] = [];
+
+  const atob: (s: string) => string = W.atob ? W.atob.bind(W) : g.atob;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const atob: (s: string) => string = W.atob ? W.atob.bind(W) : (g as any).atob;
+  const U8: any = W.Uint8Array ?? g.Uint8Array;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const U8: any = W.Uint8Array ?? (g as any).Uint8Array;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const FileCtor: any = W.File ?? (g as any).File;
+  const FileCtor: any = W.File ?? g.File;
   for (let i = 0; i < args.payload.files.length; i++) {
     const f = args.payload.files[i]!;
     const bin = atob(f.base64);
@@ -237,7 +237,7 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
   //    implicitly registers the "Files" type, which apps gate on (React-
   //    DnD's NativeTypes.FILE, e.g.).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const DTCtor: any = W.DataTransfer ?? (g as any).DataTransfer;
+  const DTCtor: any = W.DataTransfer ?? g.DataTransfer;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dt: any = new DTCtor();
   for (const file of fileObjs) {
@@ -264,9 +264,9 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
 
   const eventsFired: string[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const DragEv: any = W.DragEvent ?? (g as any).DragEvent;
+  const DragEv: any = W.DragEvent ?? g.DragEvent;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Ev: any = W.Event ?? (g as any).Event;
+  const Ev: any = W.Event ?? g.Event;
   const fireOne = (kind: "dragenter" | "dragover" | "drop"): void => {
     // DragEvent is preferred (carries `dataTransfer` natively); some
     // older browsers (jsdom in tests) don't expose it as a constructor.

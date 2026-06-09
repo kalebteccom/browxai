@@ -127,7 +127,7 @@ export class WsInteractiveRegistry {
   ): Promise<{ ok: boolean; wsId: string; url?: string; bytes?: number; error?: string }> {
     await this.install(page);
     const { wsId, message } = args;
-    const r = (await page.evaluate(
+    const r = await page.evaluate(
       ({ id, msg }) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const w = (globalThis as any).__browxWs as BrowxWsApi | undefined;
@@ -135,7 +135,7 @@ export class WsInteractiveRegistry {
         return w.send(id, msg);
       },
       { id: wsId, msg: message },
-    )) as { ok: boolean; url?: string; bytes?: number; error?: string };
+    );
     return { ...r, wsId };
   }
 

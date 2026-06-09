@@ -257,7 +257,7 @@ describe("extractInsights", () => {
     const events: TraceEvent[] = [
       { name: "RunTask" }, // no dur — falls under threshold
       { name: "", ts: us(10), dur: us(60) }, // empty name
-      { args: { data: { score: 1 } } } as TraceEvent, // no name
+      { args: { data: { score: 1 } } }, // no name
       null as unknown as TraceEvent,
     ];
     const r = extractInsights(events);

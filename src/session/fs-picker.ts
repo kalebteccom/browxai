@@ -568,16 +568,16 @@ export async function attachFsPickerPolicy(
               handles,
               () => `h${++handleCounter}`,
             );
-            state.record({ ...baseRec, handledAs: "allowed" } as FsPickerRecord);
+            state.record({ ...baseRec, handledAs: "allowed" });
             return JSON.stringify({ decision: "allow", files: prepared });
           }
           case "deny": {
-            state.record({ ...baseRec, handledAs: "denied" } as FsPickerRecord);
+            state.record({ ...baseRec, handledAs: "denied" });
             return JSON.stringify({ decision: "deny" });
           }
           case "ask-human": {
             const askResult = await askHandler(api, suggestedName).catch(() => null);
-            state.record({ ...baseRec, handledAs: "asked-human" } as FsPickerRecord);
+            state.record({ ...baseRec, handledAs: "asked-human" });
             if (!askResult) return JSON.stringify({ decision: "deny" });
             const prepared = prepareAllowResponse(
               api,
@@ -590,7 +590,7 @@ export async function attachFsPickerPolicy(
           }
           case "raise":
           default: {
-            state.record({ ...baseRec, handledAs: "raised" } as FsPickerRecord);
+            state.record({ ...baseRec, handledAs: "raised" });
             return JSON.stringify({ decision: "deny" });
           }
         }

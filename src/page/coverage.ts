@@ -154,12 +154,12 @@ export class CoverageTrackerState {
     let jsRaw: { result?: CdpScriptCoverage[] } = {};
     let cssRaw: { ruleUsage?: CdpRuleUsage[] } = {};
     try {
-      jsRaw = (await cdp.send("Profiler.takePreciseCoverage")) as { result?: CdpScriptCoverage[] };
+      jsRaw = await cdp.send("Profiler.takePreciseCoverage");
     } catch {
       jsRaw = { result: [] };
     }
     try {
-      cssRaw = (await cdp.send("CSS.stopRuleUsageTracking")) as { ruleUsage?: CdpRuleUsage[] };
+      cssRaw = await cdp.send("CSS.stopRuleUsageTracking");
     } catch {
       cssRaw = { ruleUsage: [] };
     }

@@ -655,7 +655,7 @@ export async function readPermissionStates(
             return "unknown";
           }
         }, n)
-        .catch(() => "unknown" as string);
+        .catch(() => "unknown");
       out[n] = state === "granted" || state === "denied" || state === "prompt" ? state : "unknown";
     } catch {
       out[n] = "unknown";

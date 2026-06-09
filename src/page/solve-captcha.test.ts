@@ -8,16 +8,16 @@ import {
 
 describe("resolveCaptchaProvider", () => {
   it("returns unconfigured when no env vars are set", () => {
-    const r = resolveCaptchaProvider({} as NodeJS.ProcessEnv);
+    const r = resolveCaptchaProvider({});
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("unconfigured");
   });
 
   it("returns partial when only one of provider/key is set", () => {
-    const a = resolveCaptchaProvider({ BROWX_CAPTCHA_PROVIDER: "2captcha" } as NodeJS.ProcessEnv);
+    const a = resolveCaptchaProvider({ BROWX_CAPTCHA_PROVIDER: "2captcha" });
     expect(a.ok).toBe(false);
     if (!a.ok) expect(a.reason).toBe("partial");
-    const b = resolveCaptchaProvider({ BROWX_CAPTCHA_API_KEY: "abc" } as NodeJS.ProcessEnv);
+    const b = resolveCaptchaProvider({ BROWX_CAPTCHA_API_KEY: "abc" });
     expect(b.ok).toBe(false);
     if (!b.ok) expect(b.reason).toBe("partial");
   });
@@ -26,7 +26,7 @@ describe("resolveCaptchaProvider", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "deathbycaptcha",
       BROWX_CAPTCHA_API_KEY: "k",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.reason).toBe("partial");
@@ -39,7 +39,7 @@ describe("resolveCaptchaProvider", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "2captcha",
       BROWX_CAPTCHA_API_KEY: "k",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.config.provider).toBe("2captcha");
@@ -53,7 +53,7 @@ describe("resolveCaptchaProvider", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "capmonster",
       BROWX_CAPTCHA_API_KEY: "k",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.config.apiBase).toBe("https://api.capmonster.cloud");
@@ -65,7 +65,7 @@ describe("resolveCaptchaProvider", () => {
       BROWX_CAPTCHA_PROVIDER: "2captcha",
       BROWX_CAPTCHA_API_KEY: "k",
       BROWX_CAPTCHA_API_BASE: "https://example.test/captcha/",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(true);
     if (r.ok) {
       // trailing slash trimmed
@@ -78,7 +78,7 @@ describe("resolveCaptchaProvider", () => {
       BROWX_CAPTCHA_PROVIDER: "2captcha",
       BROWX_CAPTCHA_API_KEY: "k",
       BROWX_CAPTCHA_TIMEOUT_MS: "0",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(false);
   });
 
@@ -86,7 +86,7 @@ describe("resolveCaptchaProvider", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "2Captcha",
       BROWX_CAPTCHA_API_KEY: "k",
-    } as NodeJS.ProcessEnv);
+    });
     expect(r.ok).toBe(true);
   });
 });
@@ -163,7 +163,7 @@ describe("submitToProvider", () => {
     const r = await submitToProvider(
       { type: "image", pageUrl: "https://app.example/x", imageBase64: "AAA=" },
       config,
-      fakeFetch as unknown as typeof fetch,
+      fakeFetch,
       () => 0,
     );
     expect(r.ok).toBe(false);
@@ -202,7 +202,7 @@ describe("submitToProvider", () => {
     const r = await submitToProvider(
       { type: "recaptcha2", pageUrl: "https://app.example" },
       config,
-      fakeFetch as unknown as typeof fetch,
+      fakeFetch,
       () => 0,
     );
     expect(r.ok).toBe(false);
@@ -214,7 +214,7 @@ describe("submitToProvider", () => {
     const r = await submitToProvider(
       { type: "image", pageUrl: "https://app.example" },
       config,
-      fakeFetch as unknown as typeof fetch,
+      fakeFetch,
       () => 0,
     );
     expect(r.ok).toBe(false);
@@ -228,7 +228,7 @@ describe("submitToProvider", () => {
     const r = await submitToProvider(
       { type: "recaptcha2", pageUrl: "https://app.example", siteKey: "sk" },
       config,
-      fakeFetch as unknown as typeof fetch,
+      fakeFetch,
       () => 0,
     );
     expect(JSON.stringify(r)).not.toContain("secret-key");

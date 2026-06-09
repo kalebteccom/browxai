@@ -46,7 +46,7 @@ function makeIdbStub() {
         storeNames,
         objectStoreNames: Object.assign(storeNames, {
           contains: (n: string) => stores.has(n),
-        }) as never as StubDb["objectStoreNames"],
+        }),
         close: () => undefined,
       };
       dbs.set(name, db);
@@ -223,7 +223,7 @@ function fakePage(initialUrl: string): FakePageHandle {
       open: (name: string) => {
         const req = idb.open(name);
         // attach `.transaction` to the resolved db lazily
-        const db = req.result as StubDb;
+        const db = req.result;
         Object.assign(db, {
           transaction: (storeName: string, _mode: string) => idb._makeTransaction(db, storeName),
         });
@@ -401,15 +401,11 @@ describe("IndexedDB CRUD", () => {
       const { page } = fakePage("https://example.com/");
 
       await expect(
-        idbGet(page as any, { dbName: "a", storeName: "s", key: null as never }, "idb_get"),
+        idbGet(page as any, { dbName: "a", storeName: "s", key: null }, "idb_get"),
       ).rejects.toThrow(/key/);
 
       await expect(
-        idbPut(
-          page as any,
-          { dbName: "a", storeName: "s", key: "k", value: undefined as never },
-          "idb_put",
-        ),
+        idbPut(page as any, { dbName: "a", storeName: "s", key: "k", value: undefined }, "idb_put"),
       ).rejects.toThrow(/value/);
     });
   });

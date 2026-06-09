@@ -211,9 +211,9 @@ async function enrichTestIds(
     // Only enrich roles the agent's likely to act on (interactive / structural).
     if (!INTERACTIVE_ROLES.has(node.role) && !STRUCTURAL_ROLES.has(node.role)) continue;
     try {
-      const { attributes } = (await cdp.send("DOM.getAttributes", {
+      const { attributes } = await cdp.send("DOM.getAttributes", {
         nodeId: node.backendDOMNodeId,
-      })) as { attributes: string[] };
+      });
       // attributes is a flat ["name", "value", "name", "value", ...] array.
       const attrMap = new Map<string, string>();
       for (let i = 0; i < attributes.length; i += 2) {

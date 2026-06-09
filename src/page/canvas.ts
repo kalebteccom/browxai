@@ -260,7 +260,7 @@ export const PAGE_CAPTURE_FN = (args: {
   try {
     gl = canvas.getContext("webgl2", {
       preserveDrawingBuffer: true,
-    }) as WebGL2RenderingContext | null;
+    });
   } catch (_) {
     gl = null;
   }
@@ -268,7 +268,7 @@ export const PAGE_CAPTURE_FN = (args: {
     try {
       gl = canvas.getContext("webgl", {
         preserveDrawingBuffer: true,
-      }) as WebGLRenderingContext | null;
+      });
     } catch (_) {
       gl = null;
     }

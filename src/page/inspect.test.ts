@@ -18,7 +18,7 @@ describe("inspectElement", () => {
     }));
     const loc = { count: async () => 1, evaluate } as never;
     const r = await inspectElement(loc, ["borderBottomWidth"]);
-    const passedKeys = evaluate.mock.calls[0]![1] as string[];
+    const passedKeys = evaluate.mock.calls[0]![1];
     expect(passedKeys).toEqual([...DEFAULT_STYLE_KEYS, "borderBottomWidth"]);
     expect(r.found).toBe(true);
     expect(r.childCount).toBe(3);

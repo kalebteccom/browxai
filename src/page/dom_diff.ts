@@ -59,7 +59,7 @@ function buildSnapScript(scopeSelector: string | null): string {
 }
 
 export async function captureDomMap(page: Page, scopeSelector?: string): Promise<DomMap | null> {
-  return (await page.evaluate(buildSnapScript(scopeSelector ?? null))) as DomMap | null;
+  return await page.evaluate(buildSnapScript(scopeSelector ?? null));
 }
 
 export interface DomChange {

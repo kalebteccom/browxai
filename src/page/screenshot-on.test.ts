@@ -61,10 +61,6 @@ function makeSource(): TriggerSource & {
     fire() {
       if (onFireCb) onFireCb();
     },
-  } as TriggerSource & {
-    fire: (t?: Trigger) => void;
-    subscribedTo: Trigger | null;
-    disposed: boolean;
   };
 }
 

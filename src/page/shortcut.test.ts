@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // Stub only the OS-clipboard side-effect; keep ClipboardBuffer real.
 vi.mock("./clipboard.js", async (orig) => {
-  const actual = (await orig()) as typeof import("./clipboard.js");
+  const actual = await orig<typeof import("./clipboard.js")>();
   return { ...actual, osClipboardWrite: vi.fn(async () => ({ ok: true, tool: "mock" })) };
 });
 

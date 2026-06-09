@@ -165,8 +165,8 @@ export class ClockRegistry {
   }
 
   private installReattach(page: Page): void {
-    if (this.reattachInstalled.has(page as unknown as object)) return;
-    this.reattachInstalled.add(page as unknown as object);
+    if (this.reattachInstalled.has(page)) return;
+    this.reattachInstalled.add(page);
     const onNav = async (frame: { parentFrame: () => unknown | null }): Promise<void> => {
       if (frame.parentFrame()) return; // main frame only
       try {
