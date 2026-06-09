@@ -1,7 +1,7 @@
 // Per-sink masking matrix. One describe block per egress sink — when a sink
 // regresses, the test name names exactly which one. Mirrors browser-use's
 // "every output path goes through the masker" baseline, applied at browxai's
-// W-O1 sanitiser boundary.
+// URL-sanitiser boundary.
 
 import { describe, it, expect, vi } from "vitest";
 import { SecretRegistry } from "./secrets.js";

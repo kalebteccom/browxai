@@ -73,12 +73,6 @@ async function callJson<T>(name: string, args: Record<string, unknown>): Promise
   }
 }
 
-async function callRaw(name: string, args: Record<string, unknown>): Promise<unknown> {
-  const fn = handlers[name];
-  if (!fn) throw new Error(`no handler "${name}"`);
-  return fn(args);
-}
-
 async function callMarks(args: Record<string, unknown>): Promise<{
   json: MarksResult;
   imageBase64: string;

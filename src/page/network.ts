@@ -7,10 +7,11 @@ import type { CDPSession } from "playwright-core";
 import { sanitizeUrl, sanitizeUrlsInText, patternisePath } from "../util/url-sanitizer.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
-/** Apply the W-O1 URL sanitiser then the per-session secrets-masking layer.
- *  Order matters: secrets-masking is literal substring; the URL sanitiser
- *  may already have stripped a credentialled query, but a real-value that
- *  landed in the path is still caught by the literal scan after. */
+/** Apply the URL sanitiser (strips credentials / secret-shaped query
+ *  params) then the per-session secrets-masking layer. Order matters:
+ *  secrets-masking is literal substring; the URL sanitiser may already
+ *  have stripped a credentialled query, but a real-value that landed in
+ *  the path is still caught by the literal scan after. */
 function maskedUrl(url: string, secrets: SecretRegistry | null): string {
   const u = sanitizeUrl(url);
   return secrets ? secrets.applyMaskInText(u) : u;
@@ -88,7 +89,7 @@ export class NetworkTap {
 
   /** Optional per-session secrets registry. When non-null, every URL +
    *  response-shape key that leaves through `close()` is run through the
-   *  egress masking layer in addition to the W-O1 URL sanitiser. */
+   *  egress masking layer in addition to the URL sanitiser. */
   constructor(
     private cdp: CDPSession,
     private secrets: SecretRegistry | null = null,

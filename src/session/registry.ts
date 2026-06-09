@@ -99,7 +99,7 @@ export interface SessionEntry {
    *  is `action`, `coverage_stop` is `read`). Pairs JS Profiler + CSS rule
    *  usage trackers into one lifecycle. Internally used by `perf_audit`. */
   coverage: CoverageTrackerState;
-  /** W-T1 — per-session consecutive anti-wedge-timeout counter; drives the
+  /** Per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
   /** Per-session cumulative tool-call metrics (counts, latency,

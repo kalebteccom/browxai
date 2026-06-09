@@ -1,4 +1,4 @@
-// Per-session sensitive-data masking. Pairs with the W-O1 URL sanitiser at the
+// Per-session sensitive-data masking. Pairs with the URL sanitiser at the
 // same egress boundary — both layers apply.
 //
 // Why it exists: browxai transcripts are shareable (adoption reports, GitHub
@@ -17,7 +17,7 @@
 //     the real value and rewrites occurrences back to `<PASSWORD>` before
 //     leaving the server.
 //
-// Sanitiser composition: the W-O1 URL sanitiser is regex-based on URLs;
+// Sanitiser composition: the URL sanitiser is regex-based on URLs;
 // secrets-masking is literal-substring across arbitrary strings. They don't
 // fight — apply secrets-masking AFTER the URL sanitiser at each sink (the
 // URL sanitiser may have already redacted `?token=…`; the literal-value scan
@@ -239,7 +239,7 @@ export interface MaterialiseResult {
 }
 
 /**
- * Compose with W-O1 sanitiser: apply secrets-masking AFTER URL sanitisation.
+ * Compose with the URL sanitiser: apply secrets-masking AFTER URL sanitisation.
  * The two layers are independent — the URL sanitiser handles
  * query/fragment/userinfo/token-paths (regex on URL structure); secrets-
  * masking handles literal real-value substitution anywhere in the text.

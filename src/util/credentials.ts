@@ -3,9 +3,9 @@
 // Why it exists: agents driving real auth flows routinely block on 2FA or
 // stored-credential vault lookups. Without a hook here, the only escapes are
 // (a) bake the seed/password into the prompt — which leaks into transcripts
-// and eval datasets, defeating W-V12 secrets-masking — or (b) hand-fly the
-// step every time. Substrate-tier solution: a thin provider abstraction that
-// reads from a configured vault, with no provider bundled by default.
+// and eval datasets, defeating the SecretRegistry masking — or (b) hand-fly
+// the step every time. Substrate-tier solution: a thin provider abstraction
+// that reads from a configured vault, with no provider bundled by default.
 //
 // Posture: same as `eval` / `network-body` / `secrets`. Off by default, loud
 // one-time warning at boot. Provider selection is per-deployment — NEVER
@@ -31,14 +31,14 @@
 // captured to a string, stderr is captured to a string for failure
 // diagnostics, no exec-via-shell paths.
 //
-// Integration with W-V12 secrets-masking: `get_credential` does NOT echo
+// Integration with SecretRegistry masking: `get_credential` does NOT echo
 // the password back in cleartext. It auto-registers the password into the
 // per-session SecretRegistry under an alias derived from the account name
 // (`<PASSWORD_<account>>`), and the returned object carries the alias —
 // the agent then uses `fill({value:"<PASSWORD_acct>"})` and Playwright
-// receives the real value at dispatch (W-V12 substitution). The egress-
-// masking layer also catches the value in every other sink. `get_totp`
-// returns the 6-digit code directly (TOTPs are single-use and short-lived
+// receives the real value at dispatch via the registry's materialise path.
+// The egress-masking layer also catches the value in every other sink.
+// `get_totp` returns the 6-digit code directly (TOTPs are single-use and short-lived
 // — the value is "spent" the moment it's typed, so masking buys little
 // and complicates the agent's verify-step flow).
 
@@ -83,9 +83,10 @@ export interface TotpResult {
 export interface CredentialResult {
   ok: boolean;
   username?: string;
-  /** The W-V12 alias the password is registered under, e.g. `PASSWORD_ACME`.
-   *  The agent passes `<aliasName>` to `fill`/`press`; the runtime materialises
-   *  the real value at dispatch. NEVER the cleartext password. */
+  /** The SecretRegistry alias the password is registered under, e.g.
+   *  `PASSWORD_ACME`. The agent passes `<aliasName>` to `fill`/`press`; the
+   *  runtime materialises the real value at dispatch. NEVER the cleartext
+   *  password. */
   aliasName?: string;
   error?: string;
   hint?: string;
@@ -185,7 +186,7 @@ export async function runArgv(
 // Alias derivation
 // ---------------------------------------------------------------------------
 
-/** Turn an agent-facing account name into a W-V12 alias identifier.
+/** Turn an agent-facing account name into a SecretRegistry alias identifier.
  *  Result always matches `/^[A-Z][A-Z0-9_]*$/`. */
 export function aliasFromAccount(account: string, prefix = "PASSWORD"): string {
   const sanitised = account
@@ -675,7 +676,7 @@ export function makeFakeProvider(
 }
 
 /**
- * Apply a credential lookup to the W-V12 secrets registry on the session:
+ * Apply a credential lookup to the per-session secrets registry:
  * registers the password under an account-derived alias, then returns the
  * public credential shape (username + aliasName only, NEVER the password).
  *

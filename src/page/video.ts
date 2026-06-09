@@ -35,7 +35,7 @@
 
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
-import type { BrowserContext, Page } from "playwright-core";
+import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 
 /** Maximum size (in bytes) at which a finalized video is returned inline as

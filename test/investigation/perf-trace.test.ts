@@ -6,10 +6,6 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
-import { resolveCandidates, screenshotMarks } from "../../src/page/set-of-marks.js";
-import { composeSnapshot } from "../../src/page/compose.js";
-import { visibleRect, locatorBoundingBox } from "../../src/page/bbox.js";
-import { walk } from "../../src/page/a11y.js";
 
 const SKIP = process.env.WRX_NO_NET === "1";
 let server: Awaited<ReturnType<typeof createServer>>;

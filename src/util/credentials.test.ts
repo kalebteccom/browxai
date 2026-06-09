@@ -19,7 +19,7 @@ describe("aliasFromAccount", () => {
   it("guarantees a leading letter when account starts with digit", () => {
     const a = aliasFromAccount("123abc");
     expect(a).toBe("PASSWORD_X_123ABC");
-    // The W-V12 SecretRegistry contract: alias must match /^[A-Z][A-Z0-9_]*$/
+    // SecretRegistry contract: alias must match /^[A-Z][A-Z0-9_]*$/
     expect(/^[A-Z][A-Z0-9_]*$/.test(a)).toBe(true);
   });
 
@@ -158,7 +158,7 @@ describe("applyCredentialToRegistry — W-V12 integration", () => {
       "logged in with <PASSWORD_ACME_CORP>",
     );
     // And the registry can materialise the alias back to the real value at
-    // dispatch (W-V12 fill/press substitution path).
+    // dispatch (the fill/press substitution path used by SecretRegistry).
     const m = registry.materialize("<PASSWORD_ACME_CORP>", "https://app.example.com");
     expect(m.ok).toBe(true);
     expect(m.materialised).toBe(true);
