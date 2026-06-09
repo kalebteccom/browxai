@@ -165,12 +165,12 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // eval
   eval_js: "eval",
   poll_eval: "eval", // repeatedly evaluates page JS — same posture as eval_js
-  // The tools below were the W-Q7..Q11 experimental lane (formerly the
-  // off-by-default `unstable` capability). Promoted into the stable surface:
-  // each now sits under its natural capability — gestures/route mocking are
-  // `action`, the compound act-and-observe tools are `read` (the inner
-  // action's own capability is still gate-checked separately), region
-  // bind/resolve + profile snapshot/restore are `human` coordination.
+  // The tools below were promoted from the experimental lane (formerly the
+  // off-by-default `unstable` capability) into the stable surface: each now
+  // sits under its natural capability — gestures/route mocking are `action`,
+  // the compound act-and-observe tools are `read` (the inner action's own
+  // capability is still gate-checked separately), region bind/resolve +
+  // profile snapshot/restore are `human` coordination.
   drag: "action",
   double_click: "action",
   // per-session dialog policy mutator. Registers under `action` (it changes
@@ -461,7 +461,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // `network-body` / `secrets` — provider is configured per-deployment,
   // never bundled, loud-warned at boot. `get_credential` additionally
   // requires `secrets` to be enabled at the same time (it auto-registers
-  // the looked-up password into the W-V12 secrets registry).
+  // the looked-up password into the secrets-mask registry).
   get_totp: "credentials",
   get_credential: "credentials",
   // device-emulation — per-session Web Bluetooth / WebUSB / WebHID device

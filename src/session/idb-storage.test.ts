@@ -67,17 +67,6 @@ function makeIdbStub() {
     return req;
   }
 
-  function errorRequest(err: Error) {
-    const req = {
-      result: undefined,
-      error: err,
-      onsuccess: null as null | (() => void),
-      onerror: null as null | (() => void),
-    };
-    queueMicrotask(() => req.onerror?.());
-    return req;
-  }
-
   function makeTransaction(db: StubDb, storeName: string) {
     const store = db.stores.get(storeName)!;
     // The helper expression pattern is:

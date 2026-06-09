@@ -44,8 +44,6 @@
 //   - gesture_chain caps at 200 steps, floors `move` step delays at 5 ms,
 //     bounds `wait` steps at 5000 ms.
 
-import type { Page } from "playwright-core";
-
 // ---------- canvas_capture ----------
 
 export type CanvasFormat = "png" | "webgl-framebuffer" | "2d-imagedata";

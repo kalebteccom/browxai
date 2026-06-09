@@ -62,10 +62,6 @@ function mkLocator(opts: { count?: number; failFill?: boolean } = {}): ScriptedL
   return { fills, count, loc, ...(opts.failFill ? { failFill: true } : {}) };
 }
 
-interface MockRefs {
-  byRef: Map<string, ScriptedLocator>;
-}
-
 function mkCtx(byRef: Map<string, ScriptedLocator>): ActionContext {
   // Minimal RefRegistry surface: just what locator.locatorFor() touches.
   const refs = {

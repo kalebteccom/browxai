@@ -167,13 +167,13 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
   });
 });
 
-describe("composeUrlAndSecretsInText — sanitiser composition (W-O1 + secrets)", () => {
+describe("composeUrlAndSecretsInText — sanitiser composition (URL + secrets)", () => {
   it("applies the URL sanitiser first, then the secrets layer", () => {
     const r = new SecretRegistry();
     r.register({ name: "TOKEN", value: "raw-token-12345" });
     const input = `connected to https://api.example.com/x?key=raw-token-12345 and stored raw-token-12345 locally`;
     const out = composeUrlAndSecretsInText(input, sanitizeUrlsInText, r);
-    // The URL's query was redacted by the W-O1 sanitiser (?…); the LITERAL
+    // The URL's query was redacted by the URL sanitiser (?…); the LITERAL
     // value that landed outside the URL is masked by the secrets layer.
     expect(out).toBe("connected to https://api.example.com/x?… and stored <TOKEN> locally");
   });

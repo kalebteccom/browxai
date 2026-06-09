@@ -72,7 +72,7 @@
 //     a directory" — most modern editors will then re-prompt for
 //     individual files.
 
-import type { BrowserContext, Page } from "playwright-core";
+import type { BrowserContext } from "playwright-core";
 import { writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve, sep, basename } from "node:path";
 import { log } from "../util/logging.js";

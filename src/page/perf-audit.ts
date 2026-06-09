@@ -503,9 +503,7 @@ function capCategory(r: CategoryResult, n: number): CategoryResult {
     (a, b) => SEVERITY_WEIGHT[b.severity] - SEVERITY_WEIGHT[a.severity],
   );
   const keptIssues = sortedIssues.slice(0, n);
-  const keptIssueTitles = new Set(keptIssues.map((i) => i.title));
-  // Remediations don't have severity directly — keep the first N or the
-  // ones whose `target` matches a kept issue.
+  // Remediations don't have severity directly — keep the first N.
   const keptRems: AuditRemediation[] = [];
   for (const rem of r.remediations) {
     if (keptRems.length >= n) break;

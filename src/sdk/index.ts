@@ -8,7 +8,7 @@
 // URL sanitiser, the `<SECRET_NAME>` substitution, and per-session isolation
 // are enforced once at the server and trusted by the SDK.
 
-import { buildClient, defaultSdkCapabilities, NOT_EXPOSED_ERROR } from "./client.js";
+import { buildClient, defaultSdkCapabilities } from "./client.js";
 import type { Capability } from "../util/capabilities.js";
 import { openInProcessTransport } from "./transport-in-process.js";
 import { openSocketTransport } from "./transport-socket.js";
