@@ -196,7 +196,9 @@ export class BrowxBridge {
         // Page may have closed / navigated mid-poll.
       }
     };
-    const t = setInterval(tick, 250);
+    const t = setInterval(() => {
+      void tick();
+    }, 250);
     this.pollers.set(page, t);
     page.on("close", () => {
       const it = this.pollers.get(page);

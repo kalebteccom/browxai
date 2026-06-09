@@ -62,7 +62,7 @@ describe("defaultArchivePath", () => {
   it("sanitises hostile sessionIds for filesystem use", () => {
     const p = defaultArchivePath("../bad/id", "directory");
     expect(p.startsWith("archives/")).toBe(true);
-    expect(p.slice("archives/".length)).not.toMatch(/[\/\\]/);
+    expect(p.slice("archives/".length)).not.toMatch(/[/\\]/);
   });
 });
 

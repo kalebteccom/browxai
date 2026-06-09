@@ -145,7 +145,9 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
         let m: RegExpExecArray | null;
         while ((m = re.exec(bg)) !== null) out.push(m[2]!);
       }
-    } catch (_) {}
+    } catch {
+      // best-effort: getComputedStyle may throw on detached / cross-origin nodes
+    }
     return out;
   }
   const resources: DiscoveredResource[] = [];
@@ -222,11 +224,13 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
           part += rules[ri]!.cssText + "\n";
         }
         cssParts.push(part);
-      } catch (_) {
+      } catch {
         unreadable++;
       }
     }
-  } catch (_) {}
+  } catch {
+    // best-effort: document.styleSheets enumeration can throw on hostile docs
+  }
   return {
     html: el.outerHTML || "",
     css: cssParts.join("\n"),
