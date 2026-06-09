@@ -171,7 +171,11 @@ export async function runShortcut(
 
   const copyChord = chords.find((c) => classifyChord(c) === "copy" || classifyChord(c) === "cut");
   if (copyChord && opts.clipboardEnabled) {
-    const sel = String((await page.evaluate(READ_SELECTION).catch(() => "")) ?? "");
+    // READ_SELECTION returns a string by construction (see definition above);
+    // narrow before coercion so we don't `[object Object]` if the page eval
+    // ever returns a non-primitive.
+    const raw: unknown = await page.evaluate(READ_SELECTION).catch(() => "");
+    const sel = typeof raw === "string" ? raw : "";
     const op = classifyChord(copyChord) as ClipOp;
     opts.clipboard.set(sel, op);
     const w = await osClipboardWrite(sel);

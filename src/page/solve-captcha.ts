@@ -237,7 +237,10 @@ export async function submitToProvider(
     }
     submitBody.set("body", challenge.imageBase64);
   } else {
-    return failureWithHint(config.provider, `unsupported captcha type "${challenge.type}"`);
+    return failureWithHint(
+      config.provider,
+      `unsupported captcha type "${String((challenge as { type: string }).type)}"`,
+    );
   }
   let submitResp: Response;
   try {

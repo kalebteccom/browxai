@@ -18,7 +18,7 @@ interface InitOpts {
   noWrite?: boolean;
 }
 
-export async function runInit(args: string[]): Promise<number> {
+export function runInit(args: string[]): Promise<number> {
   const opts = parseArgs(args);
   if (!opts) {
     process.stderr.write(
@@ -26,7 +26,7 @@ export async function runInit(args: string[]): Promise<number> {
         "  <workspace>  per-app dir to host browxai state (e.g. ~/site-docs/<app>)\n" +
         "  --no-write   print the .mcp.json snippet without creating files\n",
     );
-    return 2;
+    return Promise.resolve(2);
   }
   const workspace = resolve(opts.workspace);
   const browxDir = join(workspace, ".browxai");
@@ -97,7 +97,7 @@ export async function runInit(args: string[]): Promise<number> {
       `  2) (BYOB) \`browxai chrome start\` to launch the attachable Chrome\n` +
       `  3) use the \`browxai\` MCP server for managed mode, \`browxai-attached\` for BYOB\n`,
   );
-  return 0;
+  return Promise.resolve(0);
 }
 
 function parseArgs(args: string[]): InitOpts | null {

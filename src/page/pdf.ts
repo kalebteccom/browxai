@@ -152,12 +152,12 @@ export async function pdfSave(
 
   const relPath = args.path ?? defaultPdfPath(sessionId);
   const resolved = resolveWorkspacePath(workspaceRoot, relPath, "pdf_save");
-  const { mkdirSync } = await import("node:fs");
-  const { dirname } = await import("node:path");
+  const fsMod = await import("node:fs");
+  const pathMod = await import("node:path");
   // Ensure parent dir exists — `resolved` is rooted in BROWX_WORKSPACE by
   // construction (resolveWorkspacePath rejects escapes); Playwright's
   // `page.pdf({path})` writes synchronously and fails if the dir is missing.
-  mkdirSync(dirname(resolved), { recursive: true });
+  fsMod.mkdirSync(pathMod.dirname(resolved), { recursive: true });
 
   await page.pdf({
     path: resolved,

@@ -85,6 +85,30 @@ interface RawAXNode {
 }
 
 /**
+ * CDP returns AX node values as `{ type, value: unknown }`. In practice the
+ * `value` is a primitive (string | number | boolean | null), but the CDP type
+ * is `any` and downstream code consumes a `string | undefined`. Coerce by
+ * type so a hypothetical structured value renders as JSON rather than
+ * `[object Object]`.
+ */
+function stringifyAxValue(v: unknown): string | undefined {
+  if (v === undefined) return undefined;
+  if (v === null) return "null";
+  switch (typeof v) {
+    case "string":
+      return v;
+    case "number":
+    case "boolean":
+    case "bigint":
+      return String(v);
+    case "symbol":
+      return v.toString();
+    default:
+      return JSON.stringify(v);
+  }
+}
+
+/**
  * Get the cleaned a11y tree for the current page, with refs assigned through `refs`.
  * Refs are *stable* across calls: a node that persists keeps its `eN`.
  *
@@ -122,7 +146,7 @@ export async function getA11yTree(
       ref: "", // filled in below
       role,
       name,
-      value: raw.value?.value !== undefined ? String(raw.value.value) : undefined,
+      value: stringifyAxValue(raw.value?.value),
       backendDOMNodeId: raw.backendDOMNodeId,
       children: [],
     };

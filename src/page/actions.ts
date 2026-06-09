@@ -501,7 +501,7 @@ async function resolveOption(page: Page, text: string, exact: boolean): Promise<
   return attempts[0]!();
 }
 
-export interface GoBackArgs extends ActionWindowOptions {}
+export type GoBackArgs = ActionWindowOptions;
 export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goBack" }, args, async () => {
     await ctx.page.goBack({
@@ -511,7 +511,7 @@ export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise
   });
 }
 
-export interface GoForwardArgs extends ActionWindowOptions {}
+export type GoForwardArgs = ActionWindowOptions;
 export async function goForward(
   ctx: ActionContext,
   args: GoForwardArgs = {},

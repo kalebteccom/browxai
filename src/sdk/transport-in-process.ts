@@ -9,11 +9,12 @@ import { createServer, type StartOptions } from "../server.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
 import type { BrowxaiResult } from "./types.js";
 
-export interface InProcessOptions extends StartOptions {
-  /** When true, suppress the server's MCP stdio binding — the SDK never wants
-   *  the server.start() side-effect (which would attach to process.stdin/out).
-   *  We only need the `handlers` map. */
-}
+/**
+ * When passed to {@link createInProcessTransport}, suppresses the server's MCP
+ * stdio binding — the SDK never wants the server.start() side-effect (which
+ * would attach to process.stdin/out). We only need the `handlers` map.
+ */
+export type InProcessOptions = StartOptions;
 
 export interface InProcessTransportHandle {
   /** Map of tool-name → wrapped handler that returns MCP content. */

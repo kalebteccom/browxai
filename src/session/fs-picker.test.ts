@@ -470,9 +470,10 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
 
   it("unknown handle id is a silent no-op", async () => {
     const { write } = await setupCheck({ mode: "allow" }, ws);
-    await expect(
+    // exposeBinding callback is sync; Playwright accepts sync or async handlers.
+    expect(
       write({}, JSON.stringify({ handleId: "h-nonexistent", op: "write", data: "x" })),
-    ).resolves.toBeUndefined();
+    ).toBeUndefined();
   });
 
   it("nested dir is created on first write", async () => {
