@@ -211,12 +211,12 @@ export default tseslint.config(
       "@typescript-eslint/only-throw-error": "warn",
       "@typescript-eslint/unbound-method": "warn",
 
-      // Deferred to Phase 15 Stage 2+: enable after src/page/ and src/session/
-      // nullability narrowing lands. Autofixers strip load-bearing assertions
-      // (e.g. `as PreProbeData` after `.catch(() => ({}))`, non-null `!` on
-      // `frame!`/`targetFrame!` where control flow doesn't narrow for TS).
-      "@typescript-eslint/no-unnecessary-type-assertion": "off",
-      "@typescript-eslint/no-unnecessary-non-null-assertion": "off",
+      // Stage 2c: re-enabled after per-call audit. Catches load-bearing `as T`
+      // and `!` assertions; necessary ones get a per-line disable + WHY.
+      // Note: no-unnecessary-non-null-assertion does not exist in
+      // @typescript-eslint v8 — the unnecessary-`!` case is covered by
+      // no-unnecessary-type-assertion.
+      "@typescript-eslint/no-unnecessary-type-assertion": "error",
 
       // Ban undocumented ts-ignore / ts-expect-error.
       "@typescript-eslint/ban-ts-comment": [

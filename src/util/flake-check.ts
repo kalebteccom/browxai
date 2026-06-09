@@ -314,7 +314,7 @@ export function signatureFor(call: BatchCall, entry: BatchEntry): string {
   // Bound target: just the supplied target string (ref / selector / named).
   // Coords intentionally not cached — by construction non-replayable across
   // a re-render (see plan.ts's policy note).
-  const args = (call.args ?? {}) as Record<string, unknown>;
+  const args = call.args ?? {};
   if (typeof args.ref === "string") return `ref:${args.ref}`;
   if (typeof args.selector === "string") return `selector:${args.selector}`;
   if (typeof args.named === "string") return `named:${args.named}`;
@@ -390,7 +390,7 @@ function buildResolver(step: number, call: BatchCall, source: BatchEntry): Cache
   // Bound target — at minimum record what the caller used. Useful because
   // the per-step success rate is the load-bearing finding here, not a new
   // resolver.
-  const args = (call.args ?? {}) as Record<string, unknown>;
+  const args = call.args ?? {};
   if (typeof args.ref === "string") {
     base.ref = args.ref;
     return base;
@@ -420,7 +420,7 @@ function extractPlanDescriptor(result: unknown): CachedResolver["descriptor"] | 
   const out: NonNullable<CachedResolver["descriptor"]> = {
     ref,
     verb: verb as ActionDescriptor["verb"],
-    args: (args && typeof args === "object" ? args : {}) as ActionDescriptor["args"],
+    args: args && typeof args === "object" ? args : {},
   };
   const ev = (d as { evidence?: unknown }).evidence;
   if (ev && typeof ev === "object") {

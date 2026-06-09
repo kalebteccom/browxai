@@ -97,7 +97,7 @@ import { find } from "./page/find.js";
 import { listFrames, resolveFrameById, FrameRegistry, MAIN_FRAME_ID } from "./page/frames.js";
 import { textSearch } from "./page/text_search.js";
 import { fetchPiercedDocument, collectShadowTrees, runOpenShadowWalk } from "./page/shadow.js";
-import { extract, type ExtractSchema } from "./page/extract.js";
+import { extract } from "./page/extract.js";
 import {
   verifyVisible,
   verifyText,
@@ -441,9 +441,7 @@ function inlineCounts(events: import("./page/perf.js").TraceEvent[]): {
       longTaskCount++;
     else if (name === "LayoutShift") layoutShiftCount++;
     else if (name === "ResourceSendRequest") {
-      const data = (ev.args && (ev.args as Record<string, unknown>).data) as
-        | Record<string, unknown>
-        | undefined;
+      const data = (ev.args && ev.args.data) as Record<string, unknown> | undefined;
       const rb = data && typeof data.renderBlocking === "string" ? data.renderBlocking : "";
       if (rb === "blocking" || rb === "in_body_parser_blocking") renderBlockingCount++;
     } else if (name === "largestContentfulPaint::Candidate") lcpCandidateCount++;
@@ -1510,7 +1508,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!isMainFrame) {
         // Mint stable IDs first so `resolveFrameById` can find the requested frame.
         listFrames(s.page(), e.frames);
-        targetFrame = resolveFrameById(s.page(), e.frames, frame!);
+        targetFrame = resolveFrameById(s.page(), e.frames, frame);
         if (!targetFrame) {
           return {
             content: [
@@ -1532,12 +1530,20 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       // getFullAXTree / DOM-walk via CDP have no timeout — a wedged
       // renderer would stall the read. Race against the config deadline.
+      // `targetFrame!` below: when `!isMainFrame`, `targetFrame` is non-null
+      // (set above, with early-return on miss). TS can't correlate the
+      // `isMainFrame` discriminant with `targetFrame` nullability across the
+      // ternary, and the autofix removal of these assertions breaks TS
+      // (TS18047 'possibly null'). Proper narrowing would be a structural
+      // refactor (split main vs. frame branches into separate functions) —
+      // out of scope for the assertion-audit pass.
       let composed;
       try {
         composed = await withDeadline(
           isMainFrame
             ? composeSnapshot(s.cdp(), e.refs, config.testAttributes, { pierce: includeShadow })
-            : composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame!, {
+            : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+              composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame, {
                 pierce: includeShadow,
               }),
           cfgActionTimeout(),
@@ -1558,13 +1564,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         };
       }
       const { tree, stats, warnings } = composed;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       const url = isMainFrame ? s.page().url() : targetFrame!.url();
       const title = isMainFrame
         ? await s
             .page()
             .title()
             .catch(() => "")
-        : targetFrame!.name() || "";
+        : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+          targetFrame!.name() || "";
       // scope to subtree if requested.
       let root = tree;
       const scopeWarnings: string[] = [];
@@ -1650,7 +1658,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let targetFrame = null;
       if (!isMainFrame) {
         listFrames(s.page(), e.frames);
-        targetFrame = resolveFrameById(s.page(), e.frames, frame!);
+        targetFrame = resolveFrameById(s.page(), e.frames, frame);
         if (!targetFrame) {
           return {
             content: [
@@ -2021,7 +2029,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const result = await withDeadline(
           extract(s.page(), s.cdp(), e.refs, {
-            schema: args.schema as unknown as ExtractSchema,
+            schema: args.schema,
             ref: args.ref,
             scope: args.scope,
             mode: args.mode,
@@ -3612,8 +3620,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const r = await withDeadline(
           drag(e.session.page(), e.refs, {
-            from: toActionTarget(from) as never,
-            to: (to ? toActionTarget(to) : { coords: { x: 0, y: 0 } }) as never,
+            from: toActionTarget(from),
+            to: to ? toActionTarget(to) : { coords: { x: 0, y: 0 } },
             steps,
             preflight,
           }),

@@ -38,7 +38,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     const cap = capabilityFor(name);
     // `human` capability is implicit — it's always on. Otherwise the cap
     // must be in the SDK's opted-in set for the tool to be exposed.
-    if (cap === "human" || capabilities.has(cap as Capability)) {
+    if (cap === "human" || capabilities.has(cap)) {
       exposed.add(name);
     }
   }

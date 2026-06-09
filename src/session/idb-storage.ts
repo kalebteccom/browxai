@@ -66,11 +66,7 @@ export async function idbListDatabases(
     `var dbs = await ${IDB_API}.databases(); ` +
     `return { databases: dbs.map(function (d) { return { name: d.name || "", version: d.version || 0 }; }), ` +
     `         origin: location.origin, supported: true }; })()`;
-  return (await page.evaluate(expr)) as {
-    databases: Array<{ name: string; version: number }>;
-    origin: string;
-    supported: boolean;
-  };
+  return await page.evaluate(expr);
 }
 
 /** List the object-store names inside a database (read-only — does NOT
@@ -94,12 +90,7 @@ export async function idbListStores(
     `var version = db.version; ` +
     `db.close(); ` +
     `return { stores: names, dbName: ${JSON.stringify(args.dbName)}, version: version, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    stores: string[];
-    dbName: string;
-    version: number;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Get the value at a key. Returns `{found:false}` if absent. Non-JSON
@@ -193,13 +184,7 @@ export async function idbPut(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    dbName: string;
-    storeName: string;
-    key: unknown;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Delete the value at a key. Idempotent — returns the same shape
@@ -240,13 +225,7 @@ export async function idbDelete(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    dbName: string;
-    storeName: string;
-    key: unknown;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }
 
 /** Clear every record from an object store (the store itself remains). */
@@ -284,10 +263,5 @@ export async function idbClear(
     `}); ` +
     `db.close(); ` +
     `return { ok: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, origin: location.origin }; })()`;
-  return (await page.evaluate(expr)) as {
-    ok: true;
-    dbName: string;
-    storeName: string;
-    origin: string;
-  };
+  return await page.evaluate(expr);
 }

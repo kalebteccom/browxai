@@ -5,11 +5,9 @@ import {
   resolveFieldsAtomically,
   summariseTarget,
   validateFillFormArgs,
-  type FillFormArgs,
   type FillFormField,
 } from "./fill-form.js";
 import type { ActionContext, ElementProbe } from "./actionresult.js";
-import type { ActionTarget } from "./locator.js";
 
 // ---------- mock plumbing ----------
 //
@@ -105,44 +103,40 @@ function mkCtx(byRef: Map<string, ScriptedLocator>): ActionContext {
 
 describe("summariseTarget — agent-facing error summaries", () => {
   it("renders ref targets compactly", () => {
-    expect(summariseTarget({ ref: "e7" } as ActionTarget)).toBe("ref=e7");
+    expect(summariseTarget({ ref: "e7" })).toBe("ref=e7");
   });
   it("renders selector targets, scoped or unscoped", () => {
-    expect(summariseTarget({ selector: ".x" } as ActionTarget)).toBe("selector=.x");
-    expect(summariseTarget({ selector: ".x", contextRef: "e2" } as ActionTarget)).toBe(
-      "selector=.x (in e2)",
-    );
+    expect(summariseTarget({ selector: ".x" })).toBe("selector=.x");
+    expect(summariseTarget({ selector: ".x", contextRef: "e2" })).toBe("selector=.x (in e2)");
   });
   it("renders coords targets (relevant for the submit slot)", () => {
-    expect(summariseTarget({ coords: { x: 10, y: 20 } } as ActionTarget)).toBe("coords=10,20");
+    expect(summariseTarget({ coords: { x: 10, y: 20 } })).toBe("coords=10,20");
   });
 });
 
 describe("validateFillFormArgs — shape guards before touching the page", () => {
   it("rejects empty `fields`", () => {
-    expect(() => validateFillFormArgs({ fields: [] } as unknown as FillFormArgs)).toThrow(
-      /non-empty array/,
-    );
+    expect(() => validateFillFormArgs({ fields: [] })).toThrow(/non-empty array/);
   });
   it("rejects a field missing `target`", () => {
     expect(() =>
       validateFillFormArgs({
         fields: [{ value: "hi" } as unknown as FillFormField],
-      } as FillFormArgs),
+      }),
     ).toThrow(/target is required/);
   });
   it("rejects non-string values", () => {
     expect(() =>
       validateFillFormArgs({
         fields: [{ target: { ref: "e1" }, value: 42 as unknown as string }],
-      } as FillFormArgs),
+      }),
     ).toThrow(/must be a string/);
   });
   it("rejects coords targets — fill needs a real input element", () => {
     expect(() =>
       validateFillFormArgs({
-        fields: [{ target: { coords: { x: 1, y: 1 } } as ActionTarget, value: "hi" }],
-      } as FillFormArgs),
+        fields: [{ target: { coords: { x: 1, y: 1 } }, value: "hi" }],
+      }),
     ).toThrow(/coords target/);
   });
   it("accepts a well-formed args block", () => {
@@ -152,7 +146,7 @@ describe("validateFillFormArgs — shape guards before touching the page", () =>
           { target: { ref: "e1" }, value: "alice" },
           { target: { ref: "e2" }, value: "alice@example.test" },
         ],
-      } as FillFormArgs),
+      }),
     ).not.toThrow();
   });
 });
@@ -298,7 +292,7 @@ describe("fillForm — atomic-failure result envelope (no partial fills)", () =>
     const ctx = mkCtx(new Map());
     await expect(
       fillForm(ctx, {
-        fields: [{ target: { coords: { x: 1, y: 1 } } as ActionTarget, value: "x" }],
+        fields: [{ target: { coords: { x: 1, y: 1 } }, value: "x" }],
       }),
     ).rejects.toThrow(/coords target/);
   });

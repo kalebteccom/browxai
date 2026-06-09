@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startPluginRuntime, PLUGIN_CALL_GRAPH_VIOLATION } from "./runtime.js";
-import type { PluginToolHandler, PluginToolResponse } from "./types.js";
+import type { PluginToolHandler } from "./types.js";
 
 interface MakePluginOpts {
   name: string;
@@ -312,7 +312,7 @@ describe("startPluginRuntime — call graph enforcement", () => {
     });
     expect(r.plugins.every((p) => p.status === "loaded")).toBe(true);
     const handler = host.tools.get("b.callIntoA");
-    const result = (await handler!.handler({})) as PluginToolResponse;
+    const result = await handler!.handler({});
     const txt = (result.content[0] as { text: string }).text;
     const parsed = JSON.parse(txt) as Record<string, unknown>;
     expect(parsed.ok).toBe(true);

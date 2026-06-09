@@ -79,7 +79,7 @@ describe("drop_files — Node-side argument handling", () => {
     await expect(
       dropFiles(page as never, refs as never, WS, {
         target: { selector: "#zone" },
-        files: [{ path: "x", contents: "AA==", name: "x" } as never],
+        files: [{ path: "x", contents: "AA==", name: "x" }],
       }),
     ).rejects.toThrow(/exactly one of `path` or `contents`/);
   });

@@ -323,7 +323,7 @@ export async function screenshotMarks(
   let imageBase64 = "";
   try {
     if (paintedBoxes.length > 0) {
-      overlayId = (await page.evaluate(buildOverlayScript(paintedBoxes))) as string;
+      overlayId = await page.evaluate(buildOverlayScript(paintedBoxes));
     }
     const buf = await page.screenshot({ type: "png", fullPage: false });
     imageBase64 = Buffer.from(buf).toString("base64");

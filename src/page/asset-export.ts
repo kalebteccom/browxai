@@ -271,9 +271,9 @@ export async function fetchBodyBytes(
   // First try the renderer's cached body — short-lived but free.
   if (entry.requestId) {
     try {
-      const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", {
+      const { body, base64Encoded } = await cdp.send("Network.getResponseBody", {
         requestId: entry.requestId,
-      })) as { body: string; base64Encoded: boolean };
+      });
       const buf = base64Encoded ? Buffer.from(body, "base64") : Buffer.from(body, "utf8");
       const out: { ok: true; bytes: Buffer; mimeType?: string } = { ok: true, bytes: buf };
       if (entry.mimeType !== undefined) out.mimeType = entry.mimeType;

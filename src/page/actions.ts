@@ -112,7 +112,7 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   // recorder appendage, and the post-probe's `valueRequested` echo the
   // alias. Plain strings pass through unchanged.
   const mat = materialiseValue(ctx, args.value);
-  if (!mat.ok) return failedFill(args, mat.error!);
+  if (!mat.ok) return failedFill(args, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
   const descriptor: DispatchedAction = {
     type: "fill",
@@ -157,7 +157,7 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   // single chars; the `<NAME>` shape doesn't collide with either, so the
   // alias detection in the registry is unambiguous.
   const mat = materialiseValue(ctx, args.key);
-  if (!mat.ok) return failedPress(args, mat.error!);
+  if (!mat.ok) return failedPress(args, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
   const descriptor: DispatchedAction = {
     type: "press",
@@ -753,9 +753,9 @@ export async function probe(
     // post-action owner/container state. Always read; compose deltas
     // against `pre` when supplied. Same in-page script as preProbe, so the
     // pre/post values are directly comparable.
-    const post = await loc
+    const post: PreProbeData = await loc
       .evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS })
-      .catch(() => ({}) as PreProbeData);
+      .catch((): PreProbeData => ({}));
     if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
       const before = pre.ownerText;
       const after = post.ownerText;

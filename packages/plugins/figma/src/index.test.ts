@@ -195,7 +195,7 @@ describe("@kalebtec/browxai-plugin-figma register()", () => {
       callTool: async () => ({ content: [] }),
       log: { info: () => undefined, warn: () => undefined, error: () => undefined },
     };
-    register(fakeApi as never);
+    register(fakeApi);
     expect(registered.sort()).toEqual([
       "figma.create_rectangle",
       "figma.get_selection",

@@ -173,8 +173,8 @@ export class EmulationRegistry {
    *  navigation, but cross-process renderer swaps + incognito teardowns can
    *  drop them. Re-push the cached state on every main-frame navigation. */
   private installReattach(page: Page): void {
-    if (this.reattachInstalled.has(page as unknown as object)) return;
-    this.reattachInstalled.add(page as unknown as object);
+    if (this.reattachInstalled.has(page)) return;
+    this.reattachInstalled.add(page);
     const onNav = async (frame: { parentFrame: () => unknown | null }): Promise<void> => {
       // main frame only
       if (frame.parentFrame()) return;

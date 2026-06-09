@@ -357,10 +357,7 @@ export async function fetchResponseBody(
   error?: string;
 }> {
   try {
-    const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", { requestId })) as {
-      body: string;
-      base64Encoded: boolean;
-    };
+    const { body, base64Encoded } = await cdp.send("Network.getResponseBody", { requestId });
     const sliced = body.length > maxBytes ? body.slice(0, maxBytes) : body;
     const truncated = body.length > maxBytes;
     // egress masking. Base64 bodies pass through unchanged — the literal
@@ -397,10 +394,7 @@ async function probeMutation(
   durationMs: number,
 ): Promise<MutationEntry | null> {
   try {
-    const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", { requestId })) as {
-      body: string;
-      base64Encoded: boolean;
-    };
+    const { body, base64Encoded } = await cdp.send("Network.getResponseBody", { requestId });
     if (base64Encoded) return mutationWithoutShape(method, url, status, durationMs);
     if (body.length > MAX_BODY_BYTES_TO_PARSE)
       return mutationWithoutShape(method, url, status, durationMs);
@@ -461,7 +455,7 @@ export function patterniseUrl(url: string): string {
  */
 export function extractTopLevelKeys(parsed: unknown): string[] | null {
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-    return Object.keys(parsed as Record<string, unknown>).slice(0, MAX_RESPONSE_SHAPE_KEYS);
+    return Object.keys(parsed).slice(0, MAX_RESPONSE_SHAPE_KEYS);
   }
   if (
     Array.isArray(parsed) &&

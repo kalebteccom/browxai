@@ -434,7 +434,7 @@ export async function pageArchive(
         } catch (e) {
           return {
             res,
-            r: { ok: false, error: e instanceof Error ? e.message : String(e) } as FetchedResource,
+            r: { ok: false, error: e instanceof Error ? e.message : String(e) },
           };
         }
       }),

@@ -45,7 +45,7 @@ vi.mock("./actions.js", () => {
 // so they exercise the descriptor-building pipeline without spinning up a
 // browser.
 vi.mock("./find.js", async (orig) => {
-  const actual = (await orig()) as typeof import("./find.js");
+  const actual = await orig<typeof import("./find.js")>();
   return { ...actual, find: vi.fn() };
 });
 import * as actions from "./actions.js";
@@ -300,7 +300,7 @@ describe("execute() — refusal modes (no dispatch happens)", () => {
 
   it("refuses a structurally-invalid descriptor with reason 'invalid'", async () => {
     const refs = new RefRegistry();
-    const r = await execute(fakeCtx(refs), { id: "x", verb: "wibble" } as unknown);
+    const r = await execute(fakeCtx(refs), { id: "x", verb: "wibble" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe("invalid");
   });

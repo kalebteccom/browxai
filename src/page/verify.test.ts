@@ -243,7 +243,7 @@ describe("verifyPredicate — pure server-side eval", () => {
 
   it("ok when the predicate holds", () => {
     const r = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "hello world" } as Predicate,
+      { kind: "equals", key: "actionResult.element.value", value: "hello world" },
       data,
     );
     expect(r.ok).toBe(true);
@@ -251,7 +251,7 @@ describe("verifyPredicate — pure server-side eval", () => {
 
   it("fails source:'app' when the predicate doesn't hold over the data", () => {
     const r = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "nope" } as Predicate,
+      { kind: "equals", key: "actionResult.element.value", value: "nope" },
       data,
     );
     expect(r.ok).toBe(false);
@@ -277,7 +277,7 @@ describe("verifyPredicate — pure server-side eval", () => {
 
   it("rejects accessor keys outside the allow-list", () => {
     const r = verifyPredicate(
-      { kind: "equals", key: "process.env.SECRET", value: "x" } as Predicate,
+      { kind: "equals", key: "process.env.SECRET", value: "x" },
       { process: { env: { SECRET: "leaked" } } },
     );
     expect(r.ok).toBe(false);
@@ -311,7 +311,7 @@ describe("verifyPredicate — pure server-side eval", () => {
   // expression and confirming they error in validation, not in eval.
   it("does not interpret string `value` as code — JS-looking strings stay literal", () => {
     const r = verifyPredicate(
-      { kind: "equals", key: "actionResult.element.value", value: "globalThis.foo()" } as Predicate,
+      { kind: "equals", key: "actionResult.element.value", value: "globalThis.foo()" },
       { actionResult: { element: { value: "globalThis.foo()" } } },
     );
     expect(r.ok).toBe(true); // literal string match — never evaluated as code

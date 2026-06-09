@@ -137,7 +137,7 @@ describe("envLayer", () => {
       BROWX_DISABLE_WEB_SECURITY: "1",
       BROWX_DISABLEWEBSECURITY: "true",
       BROWX_INSECURE: "1",
-    } as NodeJS.ProcessEnv);
+    });
     expect(l.disableWebSecurity).toBeUndefined();
   });
 });
@@ -163,7 +163,7 @@ describe("disableWebSecurity precedence", () => {
   it("defaults off; settable only via user/project/session layers", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
     try {
-      const s = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" } as NodeJS.ProcessEnv);
+      const s = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
       expect(s.resolve().disableWebSecurity).toBeUndefined(); // env can't enable it
       s.setLayer("project", { disableWebSecurity: true });
       expect(s.resolve().disableWebSecurity).toBe(true);
@@ -181,7 +181,7 @@ describe("hideOverlaySelectors precedence", () => {
     try {
       const s = new ConfigStore(dir, {
         BROWX_HIDE_OVERLAY_SELECTORS: "#hmr, .devtools-iframe ",
-      } as NodeJS.ProcessEnv);
+      });
       expect(s.resolve().hideOverlaySelectors).toEqual(["#hmr", ".devtools-iframe"]);
       s.setLayer("project", { hideOverlaySelectors: ["#cookie-banner"] });
       expect(s.resolve().hideOverlaySelectors).toEqual(["#cookie-banner"]);

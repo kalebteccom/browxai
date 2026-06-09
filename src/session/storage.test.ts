@@ -110,7 +110,7 @@ function fakeContext(initialState: StorageStateBlob = emptyState()) {
             return false;
           }
         }),
-      ) as StorageStateBlob["cookies"];
+      );
     }),
     clearCookies: vi.fn(async (filter?: { name?: string; domain?: string; path?: string }) => {
       calls.push({ method: "clearCookies", args: filter });

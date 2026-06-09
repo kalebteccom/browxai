@@ -26,14 +26,14 @@ beforeEach(() => {
   stderrLog = [];
   origStdoutWrite = process.stdout.write.bind(process.stdout);
   origStderrWrite = process.stderr.write.bind(process.stderr);
-  process.stdout.write = ((chunk: unknown): boolean => {
+  process.stdout.write = (chunk: unknown): boolean => {
     stdoutLog.push(typeof chunk === "string" ? chunk : (chunk as Buffer).toString("utf8"));
     return true;
-  }) as never;
-  process.stderr.write = ((chunk: unknown): boolean => {
+  };
+  process.stderr.write = (chunk: unknown): boolean => {
     stderrLog.push(typeof chunk === "string" ? chunk : (chunk as Buffer).toString("utf8"));
     return true;
-  }) as never;
+  };
 });
 
 afterEach(() => {
