@@ -14,8 +14,6 @@ concurrency:
 jobs:
   lint:
     runs-on: ubuntu-latest
-    # Phase 15 cleanup target — promote to gating once lint baseline is clean.
-    continue-on-error: true
     permissions:
       contents: read
     steps:
