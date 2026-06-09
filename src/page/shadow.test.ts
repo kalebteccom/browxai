@@ -75,16 +75,12 @@ describe("collectShadowTrees", () => {
         }),
         el("vid-player", {
           backendNodeId: 20,
-          shadowRoots: [
-            shadowRoot("user-agent", [el("button", { backendNodeId: 21 })]),
-          ],
+          shadowRoots: [shadowRoot("user-agent", [el("button", { backendNodeId: 21 })])],
         }),
         el("closed-shell", {
           backendNodeId: 30,
           shadowRoots: [
-            shadowRoot("closed", [
-              el("button", { backendNodeId: 31, children: [text("Secret")] }),
-            ]),
+            shadowRoot("closed", [el("button", { backendNodeId: 31, children: [text("Secret")] })]),
           ],
         }),
       ],

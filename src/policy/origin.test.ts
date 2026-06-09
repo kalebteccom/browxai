@@ -8,13 +8,17 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
   });
 
   it("exact origin match in allowlist", () => {
-    const p = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://app.example.com" } as NodeJS.ProcessEnv);
+    const p = resolveOriginPolicy({
+      BROWX_ALLOWED_ORIGINS: "https://app.example.com",
+    } as NodeJS.ProcessEnv);
     expect(isOriginAllowed("https://app.example.com/x", p)).toBe(true);
     expect(isOriginAllowed("https://other.example.com/", p)).toBe(false);
   });
 
   it("wildcard subdomain", () => {
-    const p = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://*.example.com" } as NodeJS.ProcessEnv);
+    const p = resolveOriginPolicy({
+      BROWX_ALLOWED_ORIGINS: "https://*.example.com",
+    } as NodeJS.ProcessEnv);
     expect(isOriginAllowed("https://api.example.com/", p)).toBe(true);
     expect(isOriginAllowed("https://x.y.example.com/", p)).toBe(true);
     expect(isOriginAllowed("https://example.com/", p)).toBe(false); // bare suffix is NOT a sub-domain match
@@ -31,18 +35,24 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
   });
 
   it("protocol mismatch fails", () => {
-    const p = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://app.example.com" } as NodeJS.ProcessEnv);
+    const p = resolveOriginPolicy({
+      BROWX_ALLOWED_ORIGINS: "https://app.example.com",
+    } as NodeJS.ProcessEnv);
     expect(isOriginAllowed("http://app.example.com/", p)).toBe(false);
   });
 
   it("port honoured when specified", () => {
-    const p = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "http://localhost:3000" } as NodeJS.ProcessEnv);
+    const p = resolveOriginPolicy({
+      BROWX_ALLOWED_ORIGINS: "http://localhost:3000",
+    } as NodeJS.ProcessEnv);
     expect(isOriginAllowed("http://localhost:3000/", p)).toBe(true);
     expect(isOriginAllowed("http://localhost:8080/", p)).toBe(false);
   });
 
   it("unparseable URLs aren't trusted", () => {
-    const p = resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://app.example.com" } as NodeJS.ProcessEnv);
+    const p = resolveOriginPolicy({
+      BROWX_ALLOWED_ORIGINS: "https://app.example.com",
+    } as NodeJS.ProcessEnv);
     expect(isOriginAllowed("not-a-url", p)).toBe(false);
   });
 
@@ -56,6 +66,8 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
   });
 
   it("invalid URL pattern throws at parse time", () => {
-    expect(() => resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "not-a-url" } as NodeJS.ProcessEnv)).toThrow(/invalid URL/);
+    expect(() =>
+      resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "not-a-url" } as NodeJS.ProcessEnv),
+    ).toThrow(/invalid URL/);
   });
 });

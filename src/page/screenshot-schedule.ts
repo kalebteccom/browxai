@@ -47,7 +47,11 @@ export interface ScheduleResult {
 /** Validate the shape; throw early so the MCP handler can return a structured
  *  error before any disk write. */
 export function validateScheduleArgs(args: ScheduleArgs): void {
-  if (!Number.isFinite(args.everyMs) || args.everyMs < MIN_INTERVAL_MS || args.everyMs > MAX_INTERVAL_MS) {
+  if (
+    !Number.isFinite(args.everyMs) ||
+    args.everyMs < MIN_INTERVAL_MS ||
+    args.everyMs > MAX_INTERVAL_MS
+  ) {
     throw new Error(
       `screenshot_schedule: \`everyMs\` must be in [${MIN_INTERVAL_MS}, ${MAX_INTERVAL_MS}] — got ${args.everyMs}`,
     );
@@ -64,12 +68,20 @@ export function validateScheduleArgs(args: ScheduleArgs): void {
       `screenshot_schedule: pass either \`count\` (N captures) or \`durationMs\` (window length, ms) — unbounded schedules are refused`,
     );
   }
-  if (hasCount && (!Number.isInteger(args.count) || (args.count as number) < 1 || (args.count as number) > MAX_CAPTURES_PER_CALL)) {
+  if (
+    hasCount &&
+    (!Number.isInteger(args.count) ||
+      (args.count as number) < 1 ||
+      (args.count as number) > MAX_CAPTURES_PER_CALL)
+  ) {
     throw new Error(
       `screenshot_schedule: \`count\` must be an integer in [1, ${MAX_CAPTURES_PER_CALL}] — got ${args.count}`,
     );
   }
-  if (hasDuration && (!Number.isFinite(args.durationMs) || (args.durationMs as number) < args.everyMs)) {
+  if (
+    hasDuration &&
+    (!Number.isFinite(args.durationMs) || (args.durationMs as number) < args.everyMs)
+  ) {
     throw new Error(
       `screenshot_schedule: \`durationMs\` must be >= \`everyMs\` — got durationMs=${args.durationMs}, everyMs=${args.everyMs}`,
     );
@@ -127,7 +139,9 @@ export async function runSchedule(
     // is already bounded by exactly-one of them; this ensures a 100ms-cadence
     // over the 1h action-timeout ceiling can't blow up disk space in one call.
     if (paths.length >= MAX_CAPTURES_PER_CALL) {
-      warnings.push(`reached MAX_CAPTURES_PER_CALL=${MAX_CAPTURES_PER_CALL}; schedule stopped early`);
+      warnings.push(
+        `reached MAX_CAPTURES_PER_CALL=${MAX_CAPTURES_PER_CALL}; schedule stopped early`,
+      );
       break;
     }
     const t = clock.now();
@@ -139,9 +153,7 @@ export async function runSchedule(
       // capture (e.g. a transient renderer hiccup) shouldn't poison the
       // whole window. If every capture fails the caller still sees an empty
       // paths array + N warnings.
-      warnings.push(
-        `capture ${i}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      warnings.push(`capture ${i}: ${err instanceof Error ? err.message : String(err)}`);
       i++;
       // wait the interval anyway so we honour the cadence semantics.
       if (i < targetCount && clock.now() < windowEndMs) {
@@ -202,5 +214,9 @@ export function ensureWorkspaceDir(workspaceRoot: string, intoDir: string, tool:
 
 /** Stat helper used by the result envelope — best-effort byte count per file. */
 export function fileBytes(path: string): number {
-  try { return statSync(path).size; } catch { return 0; }
+  try {
+    return statSync(path).size;
+  } catch {
+    return 0;
+  }
 }

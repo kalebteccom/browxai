@@ -51,7 +51,7 @@ export interface DialogRecord {
  *  Stable, agent-facing string — referenced in docs/tool-reference.md. */
 export const UNHANDLED_DIALOG_HINT =
   "unhandled dialog — set dialogPolicy (open_session/set_dialog_policy) to " +
-  "\"accept\", \"dismiss\", or \"accept-prompt-with:<text>\" before driving " +
+  '"accept", "dismiss", or "accept-prompt-with:<text>" before driving ' +
   "an action that may trigger one. The dialog was dismissed server-side so " +
   "the page is not deadlocked, but its app effect is the cancel branch.";
 
@@ -128,9 +128,7 @@ function normalise(p: DialogPolicy): DialogPolicy {
   if (p.mode === "accept-prompt-with" && (p.text === undefined || p.text === null)) {
     throw new Error('dialogPolicy: mode "accept-prompt-with" requires `text`');
   }
-  return p.mode === "accept-prompt-with"
-    ? { mode: p.mode, text: p.text }
-    : { mode: p.mode };
+  return p.mode === "accept-prompt-with" ? { mode: p.mode, text: p.text } : { mode: p.mode };
 }
 
 /** Install the `page.on('dialog')` handler on a single page if not already

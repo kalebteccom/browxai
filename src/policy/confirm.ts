@@ -46,7 +46,9 @@ export class ApprovalStore {
     const ttl = Math.max(1, Math.floor(ttlSeconds));
     const expiresAt = Date.now() + ttl * 1000;
     this.grants.set(scope, { expiresAt, grantedAt: Date.now(), uses: 0 });
-    log.info(`approve_actions: scope="${scope}" ttl=${ttl}s expires=${new Date(expiresAt).toISOString()}`);
+    log.info(
+      `approve_actions: scope="${scope}" ttl=${ttl}s expires=${new Date(expiresAt).toISOString()}`,
+    );
   }
 
   /** Revoke a previously-granted scope. Returns true if a live grant existed. */
@@ -72,12 +74,30 @@ export class ApprovalStore {
   }
 
   /** Snapshot of live grants for audit / `list_approvals` style tooling. */
-  list(): Array<{ scope: ConfirmHook; grantedAt: number; expiresAt: number; uses: number; remainingMs: number }> {
+  list(): Array<{
+    scope: ConfirmHook;
+    grantedAt: number;
+    expiresAt: number;
+    uses: number;
+    remainingMs: number;
+  }> {
     const now = Date.now();
-    const out: Array<{ scope: ConfirmHook; grantedAt: number; expiresAt: number; uses: number; remainingMs: number }> = [];
+    const out: Array<{
+      scope: ConfirmHook;
+      grantedAt: number;
+      expiresAt: number;
+      uses: number;
+      remainingMs: number;
+    }> = [];
     for (const [scope, grant] of this.grants) {
       if (now > grant.expiresAt) continue;
-      out.push({ scope, grantedAt: grant.grantedAt, expiresAt: grant.expiresAt, uses: grant.uses, remainingMs: grant.expiresAt - now });
+      out.push({
+        scope,
+        grantedAt: grant.grantedAt,
+        expiresAt: grant.expiresAt,
+        uses: grant.uses,
+        remainingMs: grant.expiresAt - now,
+      });
     }
     return out;
   }
@@ -101,7 +121,10 @@ export interface ConfirmDecision {
  * Returns `{ ok: false }` only when the human declined; never auto-denies (this is
  * defense-in-depth, not a boundary).
  */
-export async function confirmNavigation(url: string, ctx: ConfirmContext): Promise<ConfirmDecision> {
+export async function confirmNavigation(
+  url: string,
+  ctx: ConfirmContext,
+): Promise<ConfirmDecision> {
   if (isOriginAllowed(url, ctx.policy)) {
     return { ok: true, reason: "on-allowlist", asked: false };
   }
@@ -114,14 +137,19 @@ export async function confirmNavigation(url: string, ctx: ConfirmContext): Promi
   }
   if (!ctx.bridge) {
     // No bridge means no way to confirm — fail closed.
-    return { ok: false, reason: "off-allowlist; no helper bridge to confirm; blocked", asked: false };
+    return {
+      ok: false,
+      reason: "off-allowlist; no helper bridge to confirm; blocked",
+      asked: false,
+    };
   }
   log.info(`confirm navigate (off-allowlist): ${url} — call __browx.confirm(true) to proceed`);
   try {
     const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
-    const value = sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
-      ? (sig.data as { value: unknown }).value
-      : sig.data;
+    const value =
+      sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
+        ? (sig.data as { value: unknown }).value
+        : sig.data;
     return value === true
       ? { ok: true, reason: "human-approved", asked: true }
       : { ok: false, reason: "human-declined", asked: true };
@@ -159,9 +187,10 @@ export async function confirmByobAction(
   log.info(`confirm byob ${toolName} — call __browx.confirm(true) to proceed`);
   try {
     const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
-    const value = sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
-      ? (sig.data as { value: unknown }).value
-      : sig.data;
+    const value =
+      sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
+        ? (sig.data as { value: unknown }).value
+        : sig.data;
     return value === true
       ? { ok: true, reason: "human-approved", asked: true }
       : { ok: false, reason: "human-declined", asked: true };

@@ -131,56 +131,77 @@ export const PAGE_CAPTURE_FN = (args: {
   if (args.selector) {
     try {
       const found = document.querySelector(args.selector);
-      if (found && found.tagName.toLowerCase() === 'canvas') {
+      if (found && found.tagName.toLowerCase() === "canvas") {
         canvas = found as HTMLCanvasElement;
       }
-    } catch (_) { /* ignore — fall through */ }
+    } catch (_) {
+      /* ignore — fall through */
+    }
   }
   if (!canvas && args.ref) {
     try {
       const found = document.querySelector(`[data-browx-ref="${args.ref}"]`);
-      if (found && found.tagName.toLowerCase() === 'canvas') {
+      if (found && found.tagName.toLowerCase() === "canvas") {
         canvas = found as HTMLCanvasElement;
       }
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
   }
   if (!canvas) {
-    const all = document.getElementsByTagName('canvas');
+    const all = document.getElementsByTagName("canvas");
     if (all.length > 0) canvas = all[0] as HTMLCanvasElement;
   }
   if (!canvas) {
-    return { ok: false, error: 'no <canvas> element found on the page (ref/selector did not match and no fallback canvas exists)', code: 'no-canvas' };
+    return {
+      ok: false,
+      error:
+        "no <canvas> element found on the page (ref/selector did not match and no fallback canvas exists)",
+      code: "no-canvas",
+    };
   }
   const w = canvas.width;
   const h = canvas.height;
   if (w <= 0 || h <= 0) {
-    return { ok: false, error: `canvas dimensions are non-positive (${w}x${h})`, code: 'bad-dimensions' };
+    return {
+      ok: false,
+      error: `canvas dimensions are non-positive (${w}x${h})`,
+      code: "bad-dimensions",
+    };
   }
   if (w > args.maxDimension || h > args.maxDimension) {
-    return { ok: false, error: `canvas dimensions ${w}x${h} exceed the maximum ${args.maxDimension}x${args.maxDimension} cap`, code: 'too-large' };
+    return {
+      ok: false,
+      error: `canvas dimensions ${w}x${h} exceed the maximum ${args.maxDimension}x${args.maxDimension} cap`,
+      code: "too-large",
+    };
   }
 
-  if (args.format === 'png') {
+  if (args.format === "png") {
     try {
-      const dataUrl = canvas.toDataURL('image/png');
-      const idx = dataUrl.indexOf('base64,');
+      const dataUrl = canvas.toDataURL("image/png");
+      const idx = dataUrl.indexOf("base64,");
       if (idx < 0) {
-        return { ok: false, error: 'toDataURL did not return a base64 payload', code: 'encode-failed' };
+        return {
+          ok: false,
+          error: "toDataURL did not return a base64 payload",
+          code: "encode-failed",
+        };
       }
       const b64 = dataUrl.slice(idx + 7);
       // Byte length of decoded PNG ≈ b64.length * 3/4 (minus padding).
       let pad = 0;
-      if (b64.endsWith('==')) pad = 2;
-      else if (b64.endsWith('=')) pad = 1;
+      if (b64.endsWith("==")) pad = 2;
+      else if (b64.endsWith("=")) pad = 1;
       const byteLength = Math.floor((b64.length * 3) / 4) - pad;
-      return { ok: true, format: 'png', contentBase64: b64, byteLength, width: w, height: h };
+      return { ok: true, format: "png", contentBase64: b64, byteLength, width: w, height: h };
     } catch (e) {
       // toDataURL throws SecurityError on tainted canvases (cross-origin
       // images without CORS). Surface a clean shape.
       return {
         ok: false,
-        error: 'canvas.toDataURL failed: ' + ((e as Error)?.message || String(e)),
-        code: 'taint-or-encode',
+        error: "canvas.toDataURL failed: " + ((e as Error)?.message || String(e)),
+        code: "taint-or-encode",
       };
     }
   }
@@ -189,7 +210,7 @@ export const PAGE_CAPTURE_FN = (args: {
   // btoa wants binary string input; build it in chunks so we don't blow
   // the call stack on huge buffers.
   function bytesToB64(bytes: Uint8Array): string {
-    let binary = '';
+    let binary = "";
     const chunk = 0x8000;
     for (let i = 0; i < bytes.length; i += chunk) {
       const slice = bytes.subarray(i, Math.min(i + chunk, bytes.length));
@@ -200,21 +221,33 @@ export const PAGE_CAPTURE_FN = (args: {
     return btoa(binary);
   }
 
-  if (args.format === '2d-imagedata') {
-    const ctx = canvas.getContext('2d');
+  if (args.format === "2d-imagedata") {
+    const ctx = canvas.getContext("2d");
     if (!ctx) {
-      return { ok: false, error: 'canvas has no 2d context (likely a WebGL/WebGPU canvas — try format:"webgl-framebuffer")', code: 'no-2d-context' };
+      return {
+        ok: false,
+        error:
+          'canvas has no 2d context (likely a WebGL/WebGPU canvas — try format:"webgl-framebuffer")',
+        code: "no-2d-context",
+      };
     }
     try {
       const data = ctx.getImageData(0, 0, w, h);
       const bytes = new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength);
       const b64 = bytesToB64(bytes);
-      return { ok: true, format: '2d-imagedata', contentBase64: b64, width: w, height: h, channelCount: 4 };
+      return {
+        ok: true,
+        format: "2d-imagedata",
+        contentBase64: b64,
+        width: w,
+        height: h,
+        channelCount: 4,
+      };
     } catch (e) {
       return {
         ok: false,
-        error: 'getImageData failed: ' + ((e as Error)?.message || String(e)),
-        code: 'taint-or-read',
+        error: "getImageData failed: " + ((e as Error)?.message || String(e)),
+        code: "taint-or-read",
       };
     }
   }
@@ -226,12 +259,28 @@ export const PAGE_CAPTURE_FN = (args: {
   // returns blank because the compositor cleared the buffer. The caller
   // sees zero-bytes on diff in that case; we can't undo it without
   // recreating the context.
-  try { gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true }) as WebGL2RenderingContext | null; } catch (_) { gl = null; }
-  if (!gl) {
-    try { gl = canvas.getContext('webgl', { preserveDrawingBuffer: true }) as WebGLRenderingContext | null; } catch (_) { gl = null; }
+  try {
+    gl = canvas.getContext("webgl2", {
+      preserveDrawingBuffer: true,
+    }) as WebGL2RenderingContext | null;
+  } catch (_) {
+    gl = null;
   }
   if (!gl) {
-    return { ok: false, error: 'canvas has no webgl/webgl2 context (try format:"2d-imagedata" for a 2D canvas)', code: 'no-webgl-context' };
+    try {
+      gl = canvas.getContext("webgl", {
+        preserveDrawingBuffer: true,
+      }) as WebGLRenderingContext | null;
+    } catch (_) {
+      gl = null;
+    }
+  }
+  if (!gl) {
+    return {
+      ok: false,
+      error: 'canvas has no webgl/webgl2 context (try format:"2d-imagedata" for a 2D canvas)',
+      code: "no-webgl-context",
+    };
   }
   try {
     const pixels = new Uint8Array(w * h * 4);
@@ -247,12 +296,20 @@ export const PAGE_CAPTURE_FN = (args: {
       flipped.set(pixels.subarray(src, src + stride), dst);
     }
     const b64 = bytesToB64(flipped);
-    return { ok: true, format: 'webgl-framebuffer', contentBase64: b64, width: w, height: h, channelCount: 4, isWebGL: true };
+    return {
+      ok: true,
+      format: "webgl-framebuffer",
+      contentBase64: b64,
+      width: w,
+      height: h,
+      channelCount: 4,
+      isWebGL: true,
+    };
   } catch (e) {
     return {
       ok: false,
-      error: 'webgl readPixels failed: ' + ((e as Error)?.message || String(e)),
-      code: 'webgl-read-failed',
+      error: "webgl readPixels failed: " + ((e as Error)?.message || String(e)),
+      code: "webgl-read-failed",
     };
   }
 };
@@ -273,11 +330,16 @@ export async function canvasCapture(
     format: args.format,
     maxDimension: CANVAS_MAX_DIMENSION,
   });
-  if (!r.ok) return { ok: false, error: r.error ?? "canvas_capture failed", ...(r.code ? { code: r.code } : {}) };
-  if (r.format === 'png') {
+  if (!r.ok)
+    return {
+      ok: false,
+      error: r.error ?? "canvas_capture failed",
+      ...(r.code ? { code: r.code } : {}),
+    };
+  if (r.format === "png") {
     return {
       ok: true,
-      format: 'png',
+      format: "png",
       contentBase64: r.contentBase64!,
       byteLength: r.byteLength!,
       width: r.width!,
@@ -298,7 +360,12 @@ export async function canvasCapture(
 
 // ---------- canvas_diff ----------
 
-export interface CanvasDiffRegion { x: number; y: number; w: number; h: number }
+export interface CanvasDiffRegion {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface CanvasDiffArgs {
   /** Base64 RGBA bytes (or PNG — see note below) from a prior capture. */
@@ -376,16 +443,24 @@ export function diffRgba(
 
   let changed = 0;
   let bytes = 0;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   const totalPixels = (x1 - x0) * (y1 - y0);
 
   for (let y = y0; y < y1; y++) {
     for (let x = x0; x < x1; x++) {
       const idx = (y * width + x) * 4;
-      const r0 = before[idx]!, g0 = before[idx + 1]!, b0 = before[idx + 2]!, a0 = before[idx + 3]!;
-      const r1 = after[idx]!, g1 = after[idx + 1]!, b1 = after[idx + 2]!, a1 = after[idx + 3]!;
-      const d =
-        Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0) + Math.abs(a1 - a0);
+      const r0 = before[idx]!,
+        g0 = before[idx + 1]!,
+        b0 = before[idx + 2]!,
+        a0 = before[idx + 3]!;
+      const r1 = after[idx]!,
+        g1 = after[idx + 1]!,
+        b1 = after[idx + 2]!,
+        a1 = after[idx + 3]!;
+      const d = Math.abs(r1 - r0) + Math.abs(g1 - g0) + Math.abs(b1 - b0) + Math.abs(a1 - a0);
       if (d !== 0) {
         changed++;
         bytes += d;
@@ -403,9 +478,7 @@ export function diffRgba(
     changedBytes: bytes,
     percentageChanged: totalPixels === 0 ? 0 : changed / totalPixels,
     bboxOfChanges:
-      changed === 0
-        ? null
-        : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 },
+      changed === 0 ? null : { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 },
   };
 }
 
@@ -442,7 +515,8 @@ export function canvasDiff(args: CanvasDiffArgs): CanvasDiffResult {
       percentageChanged: 0,
       bboxOfChanges: null,
       warnings,
-      error: "canvas_diff with format:'rgba' inputs requires width + height — the byte buffer does not carry dimensions",
+      error:
+        "canvas_diff with format:'rgba' inputs requires width + height — the byte buffer does not carry dimensions",
       code: "missing-dimensions",
     };
   }
@@ -460,7 +534,9 @@ export function canvasDiff(args: CanvasDiffArgs): CanvasDiffResult {
       percentageChanged: 0,
       bboxOfChanges: null,
       warnings,
-      error: "canvas_diff: failed to base64-decode an input — " + (e instanceof Error ? e.message : String(e)),
+      error:
+        "canvas_diff: failed to base64-decode an input — " +
+        (e instanceof Error ? e.message : String(e)),
       code: "decode-failed",
     };
   }
@@ -527,7 +603,13 @@ export function validateGestureChain(steps: GestureChainStep[]): {
 } {
   const warnings: string[] = [];
   if (!Array.isArray(steps) || steps.length === 0) {
-    return { ok: false, steps: [], warnings, error: "gesture_chain: `steps` must be a non-empty array", code: "no-steps" };
+    return {
+      ok: false,
+      steps: [],
+      warnings,
+      error: "gesture_chain: `steps` must be a non-empty array",
+      code: "no-steps",
+    };
   }
   if (steps.length > GESTURE_CHAIN_MAX_STEPS) {
     return {
@@ -542,7 +624,13 @@ export function validateGestureChain(steps: GestureChainStep[]): {
   for (let i = 0; i < steps.length; i++) {
     const s = steps[i]!;
     if (!s || typeof s.kind !== "string") {
-      return { ok: false, steps: [], warnings, error: `gesture_chain: step[${i}] missing kind`, code: "bad-step" };
+      return {
+        ok: false,
+        steps: [],
+        warnings,
+        error: `gesture_chain: step[${i}] missing kind`,
+        code: "bad-step",
+      };
     }
     const clamped: GestureChainStep = { kind: s.kind };
     if (s.kind === "down" || s.kind === "up" || s.kind === "move") {
@@ -572,7 +660,13 @@ export function validateGestureChain(steps: GestureChainStep[]): {
     } else if (s.kind === "wait") {
       const ms = typeof s.ms === "number" ? s.ms : 0;
       if (ms < 0) {
-        return { ok: false, steps: [], warnings, error: `gesture_chain: step[${i}] wait ms must be non-negative`, code: "bad-step" };
+        return {
+          ok: false,
+          steps: [],
+          warnings,
+          error: `gesture_chain: step[${i}] wait ms must be non-negative`,
+          code: "bad-step",
+        };
       }
       if (ms > GESTURE_CHAIN_MAX_WAIT_MS) {
         warnings.push(
@@ -730,7 +824,10 @@ export interface CanvasScreenToWorldResult {
  *  `screen = (world + pan) * scale + origin`. Documented this way (rather
  *  than the matrix form) because that's the shape the discovery probes
  *  return for the three named editors. */
-export function applyWorldToScreen(world: { x: number; y: number }, t: CanvasTransform): { x: number; y: number } {
+export function applyWorldToScreen(
+  world: { x: number; y: number },
+  t: CanvasTransform,
+): { x: number; y: number } {
   const ox = t.originX ?? 0;
   const oy = t.originY ?? 0;
   return {
@@ -741,7 +838,10 @@ export function applyWorldToScreen(world: { x: number; y: number }, t: CanvasTra
 
 /** Inverse: `world = (screen - origin) / scale - pan`. Round-trips with
  *  `applyWorldToScreen` to within fp precision. */
-export function applyScreenToWorld(screen: { x: number; y: number }, t: CanvasTransform): { x: number; y: number } {
+export function applyScreenToWorld(
+  screen: { x: number; y: number },
+  t: CanvasTransform,
+): { x: number; y: number } {
   if (t.scale === 0 || !Number.isFinite(t.scale)) {
     return { x: NaN, y: NaN };
   }
@@ -766,41 +866,41 @@ export const PAGE_DISCOVER_TRANSFORM_FN = (): {
   // Helper — pull a finite number out of `obj[path]` (dot-path); returns
   // undefined if any segment misses or the leaf is non-finite.
   function get(obj: unknown, path: string): number | undefined {
-    const parts = path.split('.');
+    const parts = path.split(".");
     let cur: unknown = obj;
     for (const p of parts) {
-      if (cur && typeof cur === 'object' && p in (cur as Record<string, unknown>)) {
+      if (cur && typeof cur === "object" && p in (cur as Record<string, unknown>)) {
         cur = (cur as Record<string, unknown>)[p];
       } else {
         return undefined;
       }
     }
-    return typeof cur === 'number' && Number.isFinite(cur) ? cur : undefined;
+    return typeof cur === "number" && Number.isFinite(cur) ? cur : undefined;
   }
 
   const w = window as unknown as Record<string, unknown>;
 
   // 1) Figma / Excalidraw shape — `app.viewport.zoom` + `app.viewport.center.{x,y}`.
-  const zoom = get(w.app, 'viewport.zoom');
-  const cx = get(w.app, 'viewport.center.x');
-  const cy = get(w.app, 'viewport.center.y');
+  const zoom = get(w.app, "viewport.zoom");
+  const cx = get(w.app, "viewport.center.x");
+  const cy = get(w.app, "viewport.center.y");
   if (zoom !== undefined && cx !== undefined && cy !== undefined) {
     return {
       ok: true,
       transform: { scale: zoom, panX: -cx, panY: -cy, originX: 0, originY: 0 },
-      adapterHint: 'figma',
+      adapterHint: "figma",
     };
   }
 
   // 2) Tldraw-like shape — `app.scale` + `app.offset.{x,y}`.
-  const tlScale = get(w.app, 'scale');
-  const tlOffsetX = get(w.app, 'offset.x');
-  const tlOffsetY = get(w.app, 'offset.y');
+  const tlScale = get(w.app, "scale");
+  const tlOffsetX = get(w.app, "offset.x");
+  const tlOffsetY = get(w.app, "offset.y");
   if (tlScale !== undefined && tlOffsetX !== undefined && tlOffsetY !== undefined) {
     return {
       ok: true,
       transform: { scale: tlScale, panX: tlOffsetX, panY: tlOffsetY, originX: 0, originY: 0 },
-      adapterHint: 'tldraw',
+      adapterHint: "tldraw",
     };
   }
 
@@ -811,14 +911,18 @@ export const PAGE_DISCOVER_TRANSFORM_FN = (): {
     | Record<string, unknown>
     | undefined;
   const mat = m?.matrix;
-  if (Array.isArray(mat) && mat.length >= 6 && mat.every((v) => typeof v === 'number' && Number.isFinite(v))) {
+  if (
+    Array.isArray(mat) &&
+    mat.length >= 6 &&
+    mat.every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
     const a = mat[0] as number;
     const e = mat[4] as number;
     const f = mat[5] as number;
     return {
       ok: true,
       transform: { scale: a, panX: 0, panY: 0, originX: e, originY: f },
-      adapterHint: 'generic',
+      adapterHint: "generic",
     };
   }
 
@@ -843,7 +947,8 @@ export async function canvasWorldToScreen(
   if (!discovered.ok || !discovered.transform) {
     return {
       ok: false,
-      error: "no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin",
+      error:
+        "no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin",
       code: "no-transform",
     };
   }
@@ -872,7 +977,8 @@ export async function canvasScreenToWorld(
   if (!discovered.ok || !discovered.transform) {
     return {
       ok: false,
-      error: "no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin",
+      error:
+        "no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin",
       code: "no-transform",
     };
   }

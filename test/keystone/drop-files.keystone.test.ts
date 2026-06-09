@@ -82,8 +82,11 @@ describe("drop_files keystone — synthesized HTML5 drop reaches DOM handlers wi
       // 5-byte payload "HELLO" (0x48 0x45 0x4C 0x4C 0x4F)
       const payload = Buffer.from("HELLO");
       const r = await callJson<{
-        ok: boolean; fileCount: number; totalBytes: number;
-        eventsFired: string[]; dropDispatched: boolean;
+        ok: boolean;
+        fileCount: number;
+        totalBytes: number;
+        eventsFired: string[];
+        dropDispatched: boolean;
         tokensEstimate: number;
       }>("drop_files", {
         session,
@@ -124,13 +127,19 @@ describe("drop_files keystone — synthesized HTML5 drop reaches DOM handlers wi
       // Stage bytes inside the workspace; the path-mode reader resolves
       // there. PDF magic bytes (0x25 0x50 0x44 0x46) — easy to verify.
       const stagedPath = join(workspace, "doc.pdf");
-      writeFileSync(stagedPath, Buffer.from([0x25, 0x50, 0x44, 0x46, 0xaa, 0xbb, 0xcc, 0xdd, 0xee]));
+      writeFileSync(
+        stagedPath,
+        Buffer.from([0x25, 0x50, 0x44, 0x46, 0xaa, 0xbb, 0xcc, 0xdd, 0xee]),
+      );
 
-      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>("drop_files", {
-        session,
-        selector: '[data-testid="drop-zone"]',
-        files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
-      });
+      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>(
+        "drop_files",
+        {
+          session,
+          selector: '[data-testid="drop-zone"]',
+          files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
+        },
+      );
       expect(r.ok).toBe(true);
       expect(r.fileCount).toBe(1);
       expect(r.totalBytes).toBe(9);
@@ -153,14 +162,25 @@ describe("drop_files keystone — synthesized HTML5 drop reaches DOM handlers wi
       await callJson("open_session", { session, mode: "incognito" });
       await callJson("navigate", { session, url: `${fixture.url}/` });
 
-      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>("drop_files", {
-        session,
-        selector: '[data-testid="drop-zone"]',
-        files: [
-          { contents: Buffer.from("abc").toString("base64"), name: "a.txt", mimeType: "text/plain" },
-          { contents: Buffer.from("hi").toString("base64"), name: "b.bin", mimeType: "application/octet-stream" },
-        ],
-      });
+      const r = await callJson<{ ok: boolean; fileCount: number; totalBytes: number }>(
+        "drop_files",
+        {
+          session,
+          selector: '[data-testid="drop-zone"]',
+          files: [
+            {
+              contents: Buffer.from("abc").toString("base64"),
+              name: "a.txt",
+              mimeType: "text/plain",
+            },
+            {
+              contents: Buffer.from("hi").toString("base64"),
+              name: "b.bin",
+              mimeType: "application/octet-stream",
+            },
+          ],
+        },
+      );
       expect(r.ok).toBe(true);
       expect(r.fileCount).toBe(2);
       expect(r.totalBytes).toBe(5); // 3 + 2

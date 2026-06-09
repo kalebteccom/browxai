@@ -152,7 +152,12 @@ export const handlers = {
     const r = await runEval(api, expr);
     if (!r.ok) return json({ ok: false, error: r.error, code: "eval-failed" });
     const v = r.value as { shapeId: string | null };
-    if (!v.shapeId) return json({ ok: false, error: "tldraw create_shape did not produce a new shape id", code: "create-failed" });
+    if (!v.shapeId)
+      return json({
+        ok: false,
+        error: "tldraw create_shape did not produce a new shape id",
+        code: "create-failed",
+      });
     return json({ ok: true, shapeId: v.shapeId });
   },
 

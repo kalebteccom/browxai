@@ -27,7 +27,7 @@
 // arbitrary-JS escape hatch in browxai — the verify family does not add a
 // second one.
 
-import type { Locator, Page } from "playwright-core";
+import type { Locator, Page, CDPSession } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshot } from "./compose.js";
 import { findByRef } from "./snapshot.js";
@@ -35,7 +35,6 @@ import { searchTreeForText } from "./text_search.js";
 import { walk } from "./a11y.js";
 import { visibleRect } from "./bbox.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
-import type { CDPSession } from "playwright-core";
 import {
   evaluatePredicate,
   validatePredicate,
@@ -103,7 +102,10 @@ function resolveOrFail(
           kind,
           expected,
           actual: "ref no longer in the snapshot",
-          evidence: { ref: target.ref, hint: "call snapshot() or find() again — the page may have re-rendered" },
+          evidence: {
+            ref: target.ref,
+            hint: "call snapshot() or find() again — the page may have re-rendered",
+          },
         },
       };
     }
@@ -177,18 +179,20 @@ export async function verifyVisible(
 
 async function probeNotVisibleReason(loc: Locator): Promise<string> {
   try {
-    return await loc.evaluate((el: unknown) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e = el as any;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const cs = (globalThis as any).getComputedStyle(e);
-      if (cs.display === "none") return "hidden (display:none)";
-      if (cs.visibility === "hidden") return "hidden (visibility:hidden)";
-      if (Number(cs.opacity || "1") === 0) return "hidden (opacity:0)";
-      const r = e.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return "hidden (zero-sized box)";
-      return "off-screen or covered";
-    }).catch(() => "hidden");
+    return await loc
+      .evaluate((el: unknown) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = el as any;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cs = (globalThis as any).getComputedStyle(e);
+        if (cs.display === "none") return "hidden (display:none)";
+        if (cs.visibility === "hidden") return "hidden (visibility:hidden)";
+        if (Number(cs.opacity || "1") === 0) return "hidden (opacity:0)";
+        const r = e.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) return "hidden (zero-sized box)";
+        return "off-screen or covered";
+      })
+      .catch(() => "hidden");
   } catch {
     return "hidden";
   }
@@ -204,7 +208,9 @@ export async function verifyText(
   text: string,
   exact: boolean,
 ): Promise<VerifyResult> {
-  const expected = exact ? `text === ${JSON.stringify(text)}` : `text includes ${JSON.stringify(text)}`;
+  const expected = exact
+    ? `text === ${JSON.stringify(text)}`
+    : `text includes ${JSON.stringify(text)}`;
   const resolved = resolveOrFail(page, refs, target, "text", expected);
   if (!resolved.ok) return resolved;
   const { loc } = resolved;
@@ -220,11 +226,13 @@ export async function verifyText(
         },
       };
     }
-    const actualText = (await loc.first().innerText().catch(() => null)) ?? "";
+    const actualText =
+      (await loc
+        .first()
+        .innerText()
+        .catch(() => null)) ?? "";
     const trimmed = actualText.trim();
-    const hit = exact
-      ? trimmed === text
-      : trimmed.toLowerCase().includes(text.toLowerCase());
+    const hit = exact ? trimmed === text : trimmed.toLowerCase().includes(text.toLowerCase());
     if (hit) return { ok: true };
     return {
       ok: false,
@@ -274,13 +282,16 @@ export async function verifyValue(
         },
       };
     }
-    const actual = await loc.first().evaluate((el: unknown): string | null => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e = el as any;
-      if (typeof e.value === "string") return e.value;
-      if (e.isContentEditable) return e.innerText ?? "";
-      return null;
-    }).catch(() => null);
+    const actual = await loc
+      .first()
+      .evaluate((el: unknown): string | null => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const e = el as any;
+        if (typeof e.value === "string") return e.value;
+        if (e.isContentEditable) return e.innerText ?? "";
+        return null;
+      })
+      .catch(() => null);
     if (actual === null) {
       return {
         ok: false,
@@ -392,9 +403,10 @@ export async function verifyAttribute(
   attr: string,
   value: string | undefined,
 ): Promise<VerifyResult> {
-  const expected = value === undefined
-    ? `attribute "${attr}" is present`
-    : `attribute "${attr}" === ${JSON.stringify(value)}`;
+  const expected =
+    value === undefined
+      ? `attribute "${attr}" is present`
+      : `attribute "${attr}" === ${JSON.stringify(value)}`;
   const resolved = resolveOrFail(page, refs, target, "attribute", expected);
   if (!resolved.ok) return resolved;
   const { loc } = resolved;
@@ -410,7 +422,10 @@ export async function verifyAttribute(
         },
       };
     }
-    const actual = await loc.first().getAttribute(attr).catch(() => null);
+    const actual = await loc
+      .first()
+      .getAttribute(attr)
+      .catch(() => null);
     if (value === undefined) {
       if (actual !== null) return { ok: true };
       return {
@@ -457,10 +472,7 @@ export async function verifyAttribute(
  * root segment. Adopters supply *data* (which key, which expected value);
  * the *vocabulary* is owned server-side. See `src/util/predicates.ts`.
  */
-export function verifyPredicate(
-  predicate: Predicate,
-  data: unknown,
-): VerifyResult {
+export function verifyPredicate(predicate: Predicate, data: unknown): VerifyResult {
   const shapeError = validatePredicate(predicate);
   if (shapeError) {
     return {

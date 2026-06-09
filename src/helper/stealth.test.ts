@@ -48,7 +48,7 @@ describe("buildStealthScript", () => {
     const win: Record<string, unknown> = { __navigator: navProto };
     const navigator: Record<string, unknown> = { languages: ["en-US"] };
     const ctx = { window: win, navigator };
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function("window", "navigator", buildStealthScript());
     expect(() => fn(ctx.window, ctx.navigator)).not.toThrow();
   });
@@ -66,7 +66,7 @@ describe("applyStealth", () => {
 
   it("registers the init script and re-applies it to already-open pages", async () => {
     const ctx = fakeContext();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await applyStealth(ctx as any);
     expect(ctx.addInitScript).toHaveBeenCalledTimes(1);
     expect(ctx._pages[0]!.evaluate).toHaveBeenCalledTimes(1);
@@ -77,7 +77,7 @@ describe("applyStealth", () => {
     ctx._pages[0]!.evaluate = vi.fn(async () => {
       throw new Error("page closed");
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await expect(applyStealth(ctx as any)).resolves.toBeUndefined();
   });
 });

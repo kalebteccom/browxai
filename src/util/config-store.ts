@@ -85,7 +85,12 @@ const CONFIG_FILE = "config.json";
 export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   const layer: ConfigLayer = {};
   const list = (v?: string) =>
-    v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined;
+    v
+      ? v
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
   const ta = list(env.BROWX_TEST_ATTRIBUTES?.trim());
   if (ta) layer.testAttributes = ta;
   const caps = list(env.BROWX_CAPABILITIES?.trim());
@@ -179,11 +184,16 @@ export class ConfigStore {
   /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. */
   getLayer(scope: ConfigScope): ConfigLayer | ResolvedConfig {
     switch (scope) {
-      case "defaults": return BUILTIN_DEFAULTS;
-      case "env": return this.env;
-      case "user": return this.persisted.user ?? {};
-      case "project": return this.persisted.project ?? {};
-      case "session": return {}; // session config isn't held here; it's per open_session
+      case "defaults":
+        return BUILTIN_DEFAULTS;
+      case "env":
+        return this.env;
+      case "user":
+        return this.persisted.user ?? {};
+      case "project":
+        return this.persisted.project ?? {};
+      case "session":
+        return {}; // session config isn't held here; it's per open_session
     }
   }
 
@@ -193,9 +203,7 @@ export class ConfigStore {
     this.persisted[scope] = {
       ...current,
       ...patch,
-      ...(patch.unstable
-        ? { unstable: { ...(current.unstable ?? {}), ...patch.unstable } }
-        : {}),
+      ...(patch.unstable ? { unstable: { ...(current.unstable ?? {}), ...patch.unstable } } : {}),
     };
     this.save();
     log.info(`config: set scope="${scope}"`, { keys: Object.keys(patch) });

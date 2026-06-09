@@ -77,7 +77,10 @@ function isBeacon(url: string): boolean {
 }
 
 export class NetworkTap {
-  private requests = new Map<string, { method: string; url: string; type: string; startedAt: number }>();
+  private requests = new Map<
+    string,
+    { method: string; url: string; type: string; startedAt: number }
+  >();
   private finished: NetworkEntry[] = [];
   private mutationPromises: Array<Promise<MutationEntry | null>> = [];
   private listeners: Array<() => void> = [];
@@ -86,7 +89,10 @@ export class NetworkTap {
   /** Optional per-session secrets registry. When non-null, every URL +
    *  response-shape key that leaves through `close()` is run through the
    *  egress masking layer in addition to the W-O1 URL sanitiser. */
-  constructor(private cdp: CDPSession, private secrets: SecretRegistry | null = null) {}
+  constructor(
+    private cdp: CDPSession,
+    private secrets: SecretRegistry | null = null,
+  ) {}
 
   async open(): Promise<void> {
     if (!this.enabled) {
@@ -97,7 +103,11 @@ export class NetworkTap {
     this.finished = [];
     this.mutationPromises = [];
 
-    const onRequest = (e: { requestId: string; request: { method: string; url: string }; type?: string }) => {
+    const onRequest = (e: {
+      requestId: string;
+      request: { method: string; url: string };
+      type?: string;
+    }) => {
       this.requests.set(e.requestId, {
         method: e.request.method,
         url: e.request.url,
@@ -129,7 +139,13 @@ export class NetworkTap {
     const onFailed = (e: { requestId: string }) => {
       const r = this.requests.get(e.requestId);
       if (!r) return;
-      this.finished.push({ method: r.method, url: r.url, type: r.type, failed: true, ms: Date.now() - r.startedAt });
+      this.finished.push({
+        method: r.method,
+        url: r.url,
+        type: r.type,
+        failed: true,
+        ms: Date.now() - r.startedAt,
+      });
       this.requests.delete(e.requestId);
     };
 
@@ -149,7 +165,11 @@ export class NetworkTap {
    * non-beacon). Noise still counts toward `summary.byType.other`. `mutations`
    * is awaited from the response-body probes kicked off during the window.
    */
-  async close(): Promise<{ summary: NetworkSummary; requests: NetworkEntry[]; mutations: MutationEntry[] }> {
+  async close(): Promise<{
+    summary: NetworkSummary;
+    requests: NetworkEntry[];
+    mutations: MutationEntry[];
+  }> {
     for (const off of this.listeners) off();
     this.listeners = [];
     const summary: NetworkSummary = { total: this.finished.length, byType: {}, failed: 0 };
@@ -165,7 +185,9 @@ export class NetworkTap {
       // sanitiser is regex on URL shape; masking is literal real-value scan).
       if (bucket !== "other") interesting.push({ ...e, url: maskedUrl(e.url, this.secrets) });
     }
-    const mutationsRaw = (await Promise.all(this.mutationPromises)).filter((m): m is MutationEntry => m !== null);
+    const mutationsRaw = (await Promise.all(this.mutationPromises)).filter(
+      (m): m is MutationEntry => m !== null,
+    );
     // mask mutation URLs + responseShape keys at egress. A response-key name
     // (`sessionToken`, `apiSecret`) typically won't literally equal a
     // registered value, but the key list is still string data — applying the
@@ -229,7 +251,11 @@ export class WsBuffer {
    *  every `recent` / `since` read. */
   private secrets: SecretRegistry | null = null;
 
-  constructor(private cdp: CDPSession, private cap = 500, private maxPayload = 2000) {}
+  constructor(
+    private cdp: CDPSession,
+    private cap = 500,
+    private maxPayload = 2000,
+  ) {}
 
   setSecrets(secrets: SecretRegistry): void {
     this.secrets = secrets;
@@ -258,8 +284,13 @@ export class WsBuffer {
         if (e.type === "EventSource") this.urls.set(e.requestId, e.request.url);
       },
     );
-    const onFrame = (dir: "sent" | "recv") =>
-      (e: { requestId: string; timestamp?: number; response: { opcode: number; payloadData: string } }) => {
+    const onFrame =
+      (dir: "sent" | "recv") =>
+      (e: {
+        requestId: string;
+        timestamp?: number;
+        response: { opcode: number; payloadData: string };
+      }) => {
         this.push({
           url: this.urls.get(e.requestId) ?? "",
           dir,
@@ -291,12 +322,18 @@ export class WsBuffer {
     let frames = this.ring;
     // filter on the raw url, then sanitize the endpoint on the way out.
     if (urlPattern) frames = frames.filter((f) => f.url.includes(urlPattern));
-    return { total: frames.length, frames: frames.slice(-limit).map((f) => sanitizeFrame(f, this.secrets)) };
+    return {
+      total: frames.length,
+      frames: frames.slice(-limit).map((f) => sanitizeFrame(f, this.secrets)),
+    };
   }
 
   /** Frames since a timestamp — for the per-action `ActionResult` slice. */
   since(ts: number, cap = 25): WsFrame[] {
-    return this.ring.filter((f) => f.ts >= ts).slice(-cap).map((f) => sanitizeFrame(f, this.secrets));
+    return this.ring
+      .filter((f) => f.ts >= ts)
+      .slice(-cap)
+      .map((f) => sanitizeFrame(f, this.secrets));
   }
 }
 
@@ -311,7 +348,13 @@ export async function fetchResponseBody(
   requestId: string,
   maxBytes = 256_000,
   secrets: SecretRegistry | null = null,
-): Promise<{ ok: boolean; body?: string; base64Encoded?: boolean; truncated?: boolean; error?: string }> {
+): Promise<{
+  ok: boolean;
+  body?: string;
+  base64Encoded?: boolean;
+  truncated?: boolean;
+  error?: string;
+}> {
   try {
     const { body, base64Encoded } = (await cdp.send("Network.getResponseBody", { requestId })) as {
       body: string;
@@ -358,10 +401,12 @@ async function probeMutation(
       base64Encoded: boolean;
     };
     if (base64Encoded) return mutationWithoutShape(method, url, status, durationMs);
-    if (body.length > MAX_BODY_BYTES_TO_PARSE) return mutationWithoutShape(method, url, status, durationMs);
+    if (body.length > MAX_BODY_BYTES_TO_PARSE)
+      return mutationWithoutShape(method, url, status, durationMs);
     const trimmed = body.trim();
     if (!trimmed) return mutationWithoutShape(method, url, status, durationMs);
-    if (trimmed[0] !== "{" && trimmed[0] !== "[") return mutationWithoutShape(method, url, status, durationMs);
+    if (trimmed[0] !== "{" && trimmed[0] !== "[")
+      return mutationWithoutShape(method, url, status, durationMs);
     const parsed = JSON.parse(trimmed);
     const responseShape = extractTopLevelKeys(parsed);
     const entry: MutationEntry = {
@@ -380,7 +425,12 @@ async function probeMutation(
   }
 }
 
-function mutationWithoutShape(method: string, url: string, status: number, durationMs: number): MutationEntry {
+function mutationWithoutShape(
+  method: string,
+  url: string,
+  status: number,
+  durationMs: number,
+): MutationEntry {
   return { method, urlPattern: patterniseUrl(url), status, ok: true, durationMs };
 }
 
@@ -412,7 +462,13 @@ export function extractTopLevelKeys(parsed: unknown): string[] | null {
   if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
     return Object.keys(parsed as Record<string, unknown>).slice(0, MAX_RESPONSE_SHAPE_KEYS);
   }
-  if (Array.isArray(parsed) && parsed.length > 0 && parsed[0] && typeof parsed[0] === "object" && !Array.isArray(parsed[0])) {
+  if (
+    Array.isArray(parsed) &&
+    parsed.length > 0 &&
+    parsed[0] &&
+    typeof parsed[0] === "object" &&
+    !Array.isArray(parsed[0])
+  ) {
     return Object.keys(parsed[0] as Record<string, unknown>)
       .slice(0, MAX_RESPONSE_SHAPE_KEYS)
       .map((k) => `[].${k}`);
@@ -427,7 +483,10 @@ export function extractTopLevelKeys(parsed: unknown): string[] | null {
  * this is the "what happened recently across the session" surface.
  */
 export class NetworkBuffer {
-  private requests = new Map<string, { method: string; url: string; type: string; startedAt: number }>();
+  private requests = new Map<
+    string,
+    { method: string; url: string; type: string; startedAt: number }
+  >();
   private ring: NetworkEntry[] = [];
   /** requestId → entry pointer for the entries currently in `ring`. Lets
    *  `Network.loadingFinished` stamp `bytes` onto the corresponding entry
@@ -436,7 +495,10 @@ export class NetworkBuffer {
   private enabled = false;
   private secrets: SecretRegistry | null = null;
 
-  constructor(private cdp: CDPSession, private cap = 500) {}
+  constructor(
+    private cdp: CDPSession,
+    private cap = 500,
+  ) {}
 
   setSecrets(secrets: SecretRegistry): void {
     this.secrets = secrets;
@@ -446,44 +508,60 @@ export class NetworkBuffer {
     if (this.enabled) return;
     await this.cdp.send("Network.enable");
     this.enabled = true;
-    this.cdp.on("Network.requestWillBeSent", (e: { requestId: string; request: { method: string; url: string }; type?: string }) => {
-      this.requests.set(e.requestId, {
-        method: e.request.method,
-        url: e.request.url,
-        type: e.type ?? "Other",
-        startedAt: Date.now(),
-      });
-    });
-    this.cdp.on("Network.responseReceived", (e: { requestId: string; response: { status: number; mimeType?: string } }) => {
-      const r = this.requests.get(e.requestId);
-      if (!r) return;
-      const entry: NetworkEntry = {
-        method: r.method,
-        url: r.url,
-        status: e.response.status,
-        type: r.type,
-        ms: Date.now() - r.startedAt,
-        requestId: e.requestId,
-      };
-      if (e.response.mimeType) entry.mimeType = e.response.mimeType;
-      this.push(entry);
-      // Index the just-pushed entry by requestId so a subsequent
-      // `Network.loadingFinished` can stamp the encoded byte size on it
-      // without a linear scan. Cleared on eviction (see `push`).
-      this.byReqId.set(e.requestId, entry);
-      this.requests.delete(e.requestId);
-    });
-    this.cdp.on("Network.loadingFinished", (e: { requestId: string; encodedDataLength?: number }) => {
-      const entry = this.byReqId.get(e.requestId);
-      if (!entry) return;
-      if (typeof e.encodedDataLength === "number" && e.encodedDataLength >= 0) {
-        entry.bytes = e.encodedDataLength;
-      }
-    });
+    this.cdp.on(
+      "Network.requestWillBeSent",
+      (e: { requestId: string; request: { method: string; url: string }; type?: string }) => {
+        this.requests.set(e.requestId, {
+          method: e.request.method,
+          url: e.request.url,
+          type: e.type ?? "Other",
+          startedAt: Date.now(),
+        });
+      },
+    );
+    this.cdp.on(
+      "Network.responseReceived",
+      (e: { requestId: string; response: { status: number; mimeType?: string } }) => {
+        const r = this.requests.get(e.requestId);
+        if (!r) return;
+        const entry: NetworkEntry = {
+          method: r.method,
+          url: r.url,
+          status: e.response.status,
+          type: r.type,
+          ms: Date.now() - r.startedAt,
+          requestId: e.requestId,
+        };
+        if (e.response.mimeType) entry.mimeType = e.response.mimeType;
+        this.push(entry);
+        // Index the just-pushed entry by requestId so a subsequent
+        // `Network.loadingFinished` can stamp the encoded byte size on it
+        // without a linear scan. Cleared on eviction (see `push`).
+        this.byReqId.set(e.requestId, entry);
+        this.requests.delete(e.requestId);
+      },
+    );
+    this.cdp.on(
+      "Network.loadingFinished",
+      (e: { requestId: string; encodedDataLength?: number }) => {
+        const entry = this.byReqId.get(e.requestId);
+        if (!entry) return;
+        if (typeof e.encodedDataLength === "number" && e.encodedDataLength >= 0) {
+          entry.bytes = e.encodedDataLength;
+        }
+      },
+    );
     this.cdp.on("Network.loadingFailed", (e: { requestId: string }) => {
       const r = this.requests.get(e.requestId);
       if (!r) return;
-      this.push({ method: r.method, url: r.url, type: r.type, failed: true, ms: Date.now() - r.startedAt, requestId: e.requestId });
+      this.push({
+        method: r.method,
+        url: r.url,
+        type: r.type,
+        failed: true,
+        ms: Date.now() - r.startedAt,
+        requestId: e.requestId,
+      });
       this.requests.delete(e.requestId);
     });
   }

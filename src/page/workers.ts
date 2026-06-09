@@ -267,14 +267,21 @@ export class WorkersRegistry {
     // Enumerate + monitor running versions.
     await cdp.send("ServiceWorker.enable").catch(() => undefined);
     // Auto-attach so we get a child session per SW.
-    await cdp.send("Target.setAutoAttach", {
-      autoAttach: true,
-      waitForDebuggerOnStart: false,
-      flatten: true,
-    }).catch(() => undefined);
+    await cdp
+      .send("Target.setAutoAttach", {
+        autoAttach: true,
+        waitForDebuggerOnStart: false,
+        flatten: true,
+      })
+      .catch(() => undefined);
 
     type WorkerVersionUpdated = {
-      versions: Array<{ versionId: string; scriptURL: string; runningStatus: string; targetId?: string }>;
+      versions: Array<{
+        versionId: string;
+        scriptURL: string;
+        runningStatus: string;
+        targetId?: string;
+      }>;
     };
     const onVersionUpdated = (e: WorkerVersionUpdated): void => {
       for (const v of e.versions ?? []) {
@@ -289,7 +296,9 @@ export class WorkersRegistry {
       }
     };
     cdp.on("ServiceWorker.workerVersionUpdated", onVersionUpdated as (e: unknown) => void);
-    this.detachers.push(() => cdp.off("ServiceWorker.workerVersionUpdated", onVersionUpdated as (e: unknown) => void));
+    this.detachers.push(() =>
+      cdp.off("ServiceWorker.workerVersionUpdated", onVersionUpdated as (e: unknown) => void),
+    );
 
     type AttachedToTarget = {
       sessionId: string;
@@ -312,7 +321,9 @@ export class WorkersRegistry {
       }
     };
     cdp.on("Target.attachedToTarget", onAttached as (e: unknown) => void);
-    this.detachers.push(() => cdp.off("Target.attachedToTarget", onAttached as (e: unknown) => void));
+    this.detachers.push(() =>
+      cdp.off("Target.attachedToTarget", onAttached as (e: unknown) => void),
+    );
 
     type DetachedFromTarget = { sessionId: string };
     const onDetached = (e: DetachedFromTarget): void => {
@@ -320,7 +331,9 @@ export class WorkersRegistry {
       this.swIdBySession.delete(e.sessionId);
     };
     cdp.on("Target.detachedFromTarget", onDetached as (e: unknown) => void);
-    this.detachers.push(() => cdp.off("Target.detachedFromTarget", onDetached as (e: unknown) => void));
+    this.detachers.push(() =>
+      cdp.off("Target.detachedFromTarget", onDetached as (e: unknown) => void),
+    );
 
     // Listen for Fetch.requestPaused on the TOP session — flatten:true means
     // child-session events come up here, demultiplexed by `sessionId`. The
@@ -335,14 +348,19 @@ export class WorkersRegistry {
       // Find a matching interceptor.
       let hit: ActiveFetchIntercept | undefined;
       for (const ic of this.fetchInterceptors.values()) {
-        if (ic.regex.test(e.request.url)) { hit = ic; break; }
+        if (ic.regex.test(e.request.url)) {
+          hit = ic;
+          break;
+        }
       }
       if (!hit) {
         // No match: continue the request unchanged.
-        await cdp.send("Fetch.continueRequest", {
-          requestId: e.requestId,
-          ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-        } as unknown as { requestId: string }).catch(() => undefined);
+        await cdp
+          .send("Fetch.continueRequest", {
+            requestId: e.requestId,
+            ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+          } as unknown as { requestId: string })
+          .catch(() => undefined);
         return;
       }
       const r = hit.response;
@@ -351,13 +369,15 @@ export class WorkersRegistry {
         ...Object.entries(r.headers ?? {}).map(([name, value]) => ({ name, value })),
       ];
       const body = Buffer.from(r.body ?? "", "utf-8").toString("base64");
-      await cdp.send("Fetch.fulfillRequest", {
-        requestId: e.requestId,
-        responseCode: r.status ?? 200,
-        responseHeaders: headers,
-        body,
-        ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-      } as unknown as { requestId: string; responseCode: number }).catch(() => undefined);
+      await cdp
+        .send("Fetch.fulfillRequest", {
+          requestId: e.requestId,
+          responseCode: r.status ?? 200,
+          responseHeaders: headers,
+          body,
+          ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+        } as unknown as { requestId: string; responseCode: number })
+        .catch(() => undefined);
     };
     cdp.on("Fetch.requestPaused", onPaused as (e: unknown) => void);
     this.detachers.push(() => cdp.off("Fetch.requestPaused", onPaused as (e: unknown) => void));
@@ -371,9 +391,11 @@ export class WorkersRegistry {
     // the public surface. We rely on the parent CDP and the auto-attach
     // routing the Fetch events up with `sessionId` set.
     // We enable Fetch on the parent so all child Fetch events route up.
-    await cdp.send("Fetch.enable", {
-      patterns: [{ urlPattern: "*", requestStage: "Request" }],
-    }).catch(() => undefined);
+    await cdp
+      .send("Fetch.enable", {
+        patterns: [{ urlPattern: "*", requestStage: "Request" }],
+      })
+      .catch(() => undefined);
     att.fetchEnabled = true;
   }
 
@@ -392,7 +414,9 @@ export class WorkersRegistry {
           return w ? w.list() : [];
         })) as Array<{ workerId: string; url: string }>;
         for (const e of ws) out.push({ workerId: e.workerId, type: "web", url: e.url });
-      } catch { /* page navigation race — empty is fine */ }
+      } catch {
+        /* page navigation race — empty is fine */
+      }
     }
     if (filter === "all" || filter === "service") {
       for (const [sessionId, att] of this.swAttached) {
@@ -427,9 +451,17 @@ export class WorkersRegistry {
       // Find the SW attachment for this id.
       let sessionId: string | undefined;
       for (const [sid, id] of this.swIdBySession) {
-        if (id === args.workerId) { sessionId = sid; break; }
+        if (id === args.workerId) {
+          sessionId = sid;
+          break;
+        }
       }
-      if (!sessionId) return { ok: false, workerId: args.workerId, error: `no service worker with id ${args.workerId}` };
+      if (!sessionId)
+        return {
+          ok: false,
+          workerId: args.workerId,
+          error: `no service worker with id ${args.workerId}`,
+        };
       // Dispatch a MessageEvent into the SW global by running JS in the SW
       // context. Playwright doesn't surface child-session sends as a public
       // API; we use the parent CDP's Runtime.evaluate routed via the
@@ -441,19 +473,26 @@ export class WorkersRegistry {
         returnByValue: true,
       };
       try {
-        await cdp.send("Runtime.evaluate", { ...sendOpts, sessionId } as unknown as { expression: string });
+        await cdp.send("Runtime.evaluate", { ...sendOpts, sessionId } as unknown as {
+          expression: string;
+        });
         return { ok: true, workerId: args.workerId };
       } catch (err) {
-        return { ok: false, workerId: args.workerId, error: err instanceof Error ? err.message : String(err) };
+        return {
+          ok: false,
+          workerId: args.workerId,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
     }
-    return { ok: false, workerId: args.workerId, error: `unknown workerId prefix (expected ww-* or sw-*): ${args.workerId}` };
+    return {
+      ok: false,
+      workerId: args.workerId,
+      error: `unknown workerId prefix (expected ww-* or sw-*): ${args.workerId}`,
+    };
   }
 
-  async readMessages(
-    page: Page,
-    args: { workerId?: string },
-  ): Promise<WorkerMessage[]> {
+  async readMessages(page: Page, args: { workerId?: string }): Promise<WorkerMessage[]> {
     await this.installPageWrapper(page);
     const out: WorkerMessage[] = [];
     // Web Worker messages — drain from the page ring.
@@ -469,7 +508,9 @@ export class WorkersRegistry {
           { id: args.workerId ?? null },
         )) as Array<{ workerId: string; data: string; at: number }>;
         for (const m of drained) out.push({ workerId: m.workerId, data: m.data, at: m.at });
-      } catch { /* race — empty is fine */ }
+      } catch {
+        /* race — empty is fine */
+      }
     }
     // Service Worker messages — drain from the server-side ring.
     if (!args.workerId || args.workerId.startsWith("sw-")) {
@@ -498,9 +539,11 @@ export class WorkersRegistry {
     });
     // Enable Fetch on every currently-attached SW (and on the parent — we
     // need the parent Fetch.enable so child Fetch events route up).
-    await cdp.send("Fetch.enable", {
-      patterns: [{ urlPattern: "*", requestStage: "Request" }],
-    }).catch(() => undefined);
+    await cdp
+      .send("Fetch.enable", {
+        patterns: [{ urlPattern: "*", requestStage: "Request" }],
+      })
+      .catch(() => undefined);
     for (const att of this.swAttached.values()) {
       await this.applyFetchEnable(cdp, att).catch(() => undefined);
     }
@@ -549,7 +592,11 @@ export class WorkersRegistry {
   /** Release all CDP listeners. Called from the session teardown. */
   dispose(): void {
     for (const off of this.detachers) {
-      try { off(); } catch { /* tolerate */ }
+      try {
+        off();
+      } catch {
+        /* tolerate */
+      }
     }
     this.detachers = [];
   }

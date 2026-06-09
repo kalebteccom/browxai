@@ -63,7 +63,10 @@ describe("pdfSave", () => {
   it("dispatches page.pdf with the requested format/scale/printBackground", async () => {
     const { page, pdf } = fakePage({ writeBytes: 2048 });
     const r = await pdfSave(page, WS, "s1", {
-      path: "out.pdf", format: "Letter", scale: 0.75, printBackground: true,
+      path: "out.pdf",
+      format: "Letter",
+      scale: 0.75,
+      printBackground: true,
     });
     expect(r.ok).toBe(true);
     expect(r.format).toBe("Letter");
@@ -108,29 +111,29 @@ describe("pdfSave", () => {
 
   it("rejects a path that escapes the workspace", async () => {
     const { page } = fakePage();
-    await expect(
-      pdfSave(page, WS, "s1", { path: "../../etc/escape.pdf" }),
-    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
+    await expect(pdfSave(page, WS, "s1", { path: "../../etc/escape.pdf" })).rejects.toThrow(
+      /\$BROWX_WORKSPACE/,
+    );
   });
 
   it("rejects an absolute path outside the workspace", async () => {
     const { page } = fakePage();
-    await expect(
-      pdfSave(page, WS, "s1", { path: "/tmp/elsewhere.pdf" }),
-    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
+    await expect(pdfSave(page, WS, "s1", { path: "/tmp/elsewhere.pdf" })).rejects.toThrow(
+      /\$BROWX_WORKSPACE/,
+    );
   });
 
   it("rejects scale below the [0.1, 2.0] band", async () => {
     const { page } = fakePage();
-    await expect(
-      pdfSave(page, WS, "s1", { path: "x.pdf", scale: 0.05 }),
-    ).rejects.toThrow(/scale must be in \[0\.1, 2\.0\]/);
+    await expect(pdfSave(page, WS, "s1", { path: "x.pdf", scale: 0.05 })).rejects.toThrow(
+      /scale must be in \[0\.1, 2\.0\]/,
+    );
   });
 
   it("rejects scale above the [0.1, 2.0] band", async () => {
     const { page } = fakePage();
-    await expect(
-      pdfSave(page, WS, "s1", { path: "x.pdf", scale: 5 }),
-    ).rejects.toThrow(/scale must be in \[0\.1, 2\.0\]/);
+    await expect(pdfSave(page, WS, "s1", { path: "x.pdf", scale: 5 })).rejects.toThrow(
+      /scale must be in \[0\.1, 2\.0\]/,
+    );
   });
 });

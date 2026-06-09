@@ -35,7 +35,7 @@ describe("classifyFailure", () => {
 
   it("does not throw on empty/garbage input", () => {
     expect(classifyFailure("").source).toBe("unknown");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     expect(classifyFailure(undefined as any).source).toBe("unknown");
   });
 });

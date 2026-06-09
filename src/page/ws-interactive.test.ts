@@ -131,9 +131,21 @@ describe("WsInteractiveRegistry.addInterceptor", () => {
     await reg.addInterceptor(f.page, { pattern: "c", response: { data: "REPLACED" } });
     // first evaluate per addInterceptor is install's re-inject, second is the
     // intercept registration — so the intercept args land at odd indices.
-    const dropArg = f.evaluates[1]!.arg as { pattern: string; mode: string; replacement: string | null };
-    const echoArg = f.evaluates[3]!.arg as { pattern: string; mode: string; replacement: string | null };
-    const replaceArg = f.evaluates[5]!.arg as { pattern: string; mode: string; replacement: string | null };
+    const dropArg = f.evaluates[1]!.arg as {
+      pattern: string;
+      mode: string;
+      replacement: string | null;
+    };
+    const echoArg = f.evaluates[3]!.arg as {
+      pattern: string;
+      mode: string;
+      replacement: string | null;
+    };
+    const replaceArg = f.evaluates[5]!.arg as {
+      pattern: string;
+      mode: string;
+      replacement: string | null;
+    };
     expect(dropArg).toEqual({ pattern: "a", mode: "drop", replacement: null });
     expect(echoArg).toEqual({ pattern: "b", mode: "echo", replacement: null });
     expect(replaceArg).toEqual({ pattern: "c", mode: "replace", replacement: "REPLACED" });

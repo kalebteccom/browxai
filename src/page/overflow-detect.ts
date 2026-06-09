@@ -48,20 +48,11 @@
 // function — a stringified `(args) => {...}` evaluates to the function
 // value uncalled, which CDP can't serialize → undefined.
 
-export type OverflowType =
-  | "layout"
-  | "clipped"
-  | "text-ellipsis"
-  | "viewport-horizontal";
+export type OverflowType = "layout" | "clipped" | "text-ellipsis" | "viewport-horizontal";
 
 export type OverflowScope = "viewport" | "document";
 
-const ALL_TYPES: OverflowType[] = [
-  "layout",
-  "clipped",
-  "text-ellipsis",
-  "viewport-horizontal",
-];
+const ALL_TYPES: OverflowType[] = ["layout", "clipped", "text-ellipsis", "viewport-horizontal"];
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
@@ -214,10 +205,7 @@ function escapeClassName(c: string): string {
 
 /** Pure helper: cap findings at `limit`, set `truncated` when exceeded.
  *  Exported for unit tests. */
-export function applyLimit<T>(
-  findings: T[],
-  limit: number,
-): { kept: T[]; truncated: boolean } {
+export function applyLimit<T>(findings: T[], limit: number): { kept: T[]; truncated: boolean } {
   if (findings.length <= limit) {
     return { kept: findings, truncated: false };
   }
@@ -316,7 +304,11 @@ const PAGE_DETECT_FN = (args: {
         // Tier 3 — nth-of-type CSS path bounded at 5 levels (4 ancestors + self).
         const path: string[] = [];
         let cur: Element | null = el;
-        for (let i = 0; i < 5 && cur && cur.nodeType === 1 && cur !== document.documentElement; i++) {
+        for (
+          let i = 0;
+          i < 5 && cur && cur.nodeType === 1 && cur !== document.documentElement;
+          i++
+        ) {
           const ctag = (cur.tagName || "").toLowerCase();
           path.unshift(ctag + ":nth-of-type(" + nthOfType(cur) + ")");
           cur = cur.parentElement;
@@ -400,7 +392,9 @@ const PAGE_DETECT_FN = (args: {
               documentScrollWidth: sw,
               viewportWidth: cw,
               overrunPx: sw - cw,
-              ...(widestSel ? { widestDescendantSelector: widestSel, widestDescendantWidth: widestW } : {}),
+              ...(widestSel
+                ? { widestDescendantSelector: widestSel, widestDescendantWidth: widestW }
+                : {}),
             },
           });
         }

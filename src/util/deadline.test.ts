@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  withDeadline, clampTimeout, DeadlineError,
-  DEFAULT_ACTION_TIMEOUT_MS, MAX_ACTION_TIMEOUT_MS, MIN_ACTION_TIMEOUT_MS,
+  withDeadline,
+  clampTimeout,
+  DeadlineError,
+  DEFAULT_ACTION_TIMEOUT_MS,
+  MAX_ACTION_TIMEOUT_MS,
+  MIN_ACTION_TIMEOUT_MS,
 } from "./deadline.js";
 
 describe("withDeadline", () => {
@@ -30,7 +34,9 @@ describe("withDeadline", () => {
   });
 
   it("propagates the op's own rejection (not masked by the timer)", async () => {
-    await expect(withDeadline(Promise.reject(new Error("boom")), 1000, "x")).rejects.toThrow("boom");
+    await expect(withDeadline(Promise.reject(new Error("boom")), 1000, "x")).rejects.toThrow(
+      "boom",
+    );
   });
 
   it("does not leak the timer when the op wins (process exits clean)", async () => {
@@ -42,7 +48,9 @@ describe("withDeadline", () => {
 
 describe("clampTimeout — ceiling", () => {
   it("uses the fallback when no request is given", () => {
-    expect(clampTimeout(undefined, DEFAULT_ACTION_TIMEOUT_MS)).toEqual({ ms: DEFAULT_ACTION_TIMEOUT_MS });
+    expect(clampTimeout(undefined, DEFAULT_ACTION_TIMEOUT_MS)).toEqual({
+      ms: DEFAULT_ACTION_TIMEOUT_MS,
+    });
   });
 
   it("passes an in-range request through unchanged", () => {

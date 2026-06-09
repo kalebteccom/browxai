@@ -96,7 +96,7 @@ function warnExplicitNlQueryRetired(): void {
       "RETIRED as of v0.3.3. The NL tree-scan ranker is unreliable on " +
       "prose-style queries (uniform null/0 across rows, no partialMiss " +
       "surfaced — see R-5 / wrightxai smoke trial). Use " +
-      '`x-browx-source.selector` (raw CSS / selectorHint) for per-field ' +
+      "`x-browx-source.selector` (raw CSS / selectorHint) for per-field " +
       "targeting; the implicit property-name lowering still works for " +
       "testid-friendly pages. The runtime still attempts resolution and " +
       "records a partialMisses entry so the diagnostic surfaces in " +
@@ -219,11 +219,7 @@ export interface ExtractFailure {
   /** Stable kind label. `"llm-assisted-not-implemented"` is retained in the
    *  union as a RETIRED kind — v0.3.2 stopped emitting it (the `mode` arg
    *  is tolerated with a warn instead). New code should not narrow on it. */
-  kind:
-    | "invalid-schema"
-    | "scope-not-found"
-    | "required-miss"
-    | "llm-assisted-not-implemented";
+  kind: "invalid-schema" | "scope-not-found" | "required-miss" | "llm-assisted-not-implemented";
   expected: string;
   actual: unknown;
   evidence?: Partial<ExtractEvidence> & Record<string, unknown>;
@@ -271,9 +267,7 @@ export async function extract(
   // entries to a hard `invalid-schema` rejection. The integer-coerce and
   // selector-alias notes are NOT promoted — they're educational signals,
   // not typo-like errors. Default off; opt-in via env or call-arg.
-  const strict =
-    opts.strictUnknownHintKeys ??
-    process.env.BROWX_EXTRACT_STRICT === "1";
+  const strict = opts.strictUnknownHintKeys ?? process.env.BROWX_EXTRACT_STRICT === "1";
   if (strict) {
     const unknown: string[] = [];
     collectUnknownHintKeys(relaxedSchema, "", unknown);
@@ -281,7 +275,8 @@ export async function extract(
       return fail({
         source: "browxai",
         kind: "invalid-schema",
-        expected: "every `x-browx-source` key to be one of the known set (BROWX_EXTRACT_STRICT=1 is on)",
+        expected:
+          "every `x-browx-source` key to be one of the known set (BROWX_EXTRACT_STRICT=1 is on)",
         actual: unknown.join(" | "),
       });
     }
@@ -398,14 +393,23 @@ const SUPPORTED_TYPES = ["object", "array", "string", "number", "boolean"] as co
  *  resolver only reads these; any other key is silently dropped today,
  *  which costs adopters debugging time when (say) `attribute` is used
  *  instead of `attr`. */
-const KNOWN_HINT_KEYS = ["query", "selector", "attr", "prop", "text", "value", "collection"] as const;
+const KNOWN_HINT_KEYS = [
+  "query",
+  "selector",
+  "attr",
+  "prop",
+  "text",
+  "value",
+  "collection",
+] as const;
 
 /** Closest known type for a rejected type — used to power "Did you mean?"
  *  hints in the validator error. Conservative: only suggests when there's
  *  a clear high-confidence alias (e.g. `integer`/`int` → `number`). */
 function suggestType(t: unknown): string | null {
   const s = String(t).toLowerCase();
-  if (s === "integer" || s === "int" || s === "float" || s === "double" || s === "long") return "number";
+  if (s === "integer" || s === "int" || s === "float" || s === "double" || s === "long")
+    return "number";
   if (s === "bool") return "boolean";
   if (s === "str" || s === "text") return "string";
   if (s === "list" || s === "tuple") return "array";
@@ -421,7 +425,8 @@ function suggestHintKey(k: string): string | null {
   if (s === "property") return "prop";
   if (s === "css" || s === "cssselector" || s === "css_selector") return "selector";
   if (s === "label" || s === "name" || s === "search") return "query";
-  if (s === "container" || s === "items_selector" || s === "rows" || s === "list") return "collection";
+  if (s === "container" || s === "items_selector" || s === "rows" || s === "list")
+    return "collection";
   // `transform`, `format`, `regex`, `parser` are NOT supported at all.
   return null;
 }
@@ -451,11 +456,7 @@ function suggestHintKey(k: string): string | null {
  *  diagnostics still fire (the strict-env opt-in is what changes those
  *  into hard rejections), and validateSchema runs AFTER this pass, so a
  *  schema that was previously rejected for `integer` now resolves. */
-export function applySchemaRelaxations(
-  schema: ExtractSchema,
-  path: string,
-  notes: string[],
-): void {
+export function applySchemaRelaxations(schema: ExtractSchema, path: string, notes: string[]): void {
   // (A) integer → number — in place.
   if ((schema.type as unknown) === "integer") {
     schema.type = "number";
@@ -513,7 +514,8 @@ export function validateSchema(schema: ExtractSchema | undefined, path: string):
       if (e) return e;
     }
   } else if (t === "array") {
-    if (!schema.items) return `${path || "<root>"}: array schema requires \`items\` (the per-row sub-schema)`;
+    if (!schema.items)
+      return `${path || "<root>"}: array schema requires \`items\` (the per-row sub-schema)`;
     const e = validateSchema(schema.items, `${path}[]`);
     if (e) return e;
   }
@@ -534,7 +536,9 @@ export function collectUnknownHintKeys(schema: ExtractSchema, path: string, out:
     for (const k of Object.keys(hint)) {
       if (!(KNOWN_HINT_KEYS as readonly string[]).includes(k)) {
         const suggestion = suggestHintKey(k);
-        const hintTxt = suggestion ? `; did you mean \`${suggestion}\`?` : ` (known: ${KNOWN_HINT_KEYS.join(", ")})`;
+        const hintTxt = suggestion
+          ? `; did you mean \`${suggestion}\`?`
+          : ` (known: ${KNOWN_HINT_KEYS.join(", ")})`;
         out.push(`${path || "<root>"}: unknown \`x-browx-source\` key \`${k}\`${hintTxt}`);
       }
     }
@@ -605,9 +609,11 @@ async function resolveObject(ctx: ResolveCtx): Promise<Record<string, unknown>> 
     const subPath = ctx.path ? `${ctx.path}.${name}` : name;
     // implicit query = the property name; merged with explicit hint if any.
     const childSchema: ExtractSchema = { ...subSchema };
-    if (!childSchema["x-browx-source"]?.query &&
-        !childSchema["x-browx-source"]?.selector &&
-        !childSchema["x-browx-source"]?.collection) {
+    if (
+      !childSchema["x-browx-source"]?.query &&
+      !childSchema["x-browx-source"]?.selector &&
+      !childSchema["x-browx-source"]?.collection
+    ) {
       const hint: HintWithMarker = { ...(childSchema["x-browx-source"] ?? {}), query: name };
       // Mark the implicit-lowering case so resolveLeaf knows this query
       // came from the property name (not a user-authored prose query) and
@@ -654,7 +660,9 @@ async function resolveArray(ctx: ResolveCtx): Promise<unknown[]> {
   );
   ctx.evidence.selectorsUsed.push(hint.collection);
   if (collectionLocators.length === 0) {
-    ctx.evidence.partialMisses.push(`${ctx.path}: collection "${hint.collection}" matched 0 elements`);
+    ctx.evidence.partialMisses.push(
+      `${ctx.path}: collection "${hint.collection}" matched 0 elements`,
+    );
     if (ctx.schema.required) ctx.requiredMisses.push(ctx.path);
     return [];
   }
@@ -673,7 +681,10 @@ async function resolveArray(ctx: ResolveCtx): Promise<unknown[]> {
   return out;
 }
 
-interface CollectionEntry { loc?: Locator; subTree?: A11yNode; }
+interface CollectionEntry {
+  loc?: Locator;
+  subTree?: A11yNode;
+}
 
 async function resolveCollection(
   page: Page,
@@ -801,7 +812,10 @@ async function readLeafFromLocator(
     }
     if (hint.prop || hint.value) {
       const propName = hint.prop ?? "value";
-      const v = await loc.evaluate((el, p) => (el as unknown as Record<string, unknown>)[p], propName);
+      const v = await loc.evaluate(
+        (el, p) => (el as unknown as Record<string, unknown>)[p],
+        propName,
+      );
       if (v === undefined || v === null) return missLeaf(ctx);
       return coerceLeaf(v, ctx.schema.type);
     }
@@ -814,11 +828,7 @@ async function readLeafFromLocator(
   }
 }
 
-function readLeafFromNode(
-  ctx: ResolveCtx,
-  node: A11yNode,
-  hint: ExtractSourceHint,
-): unknown {
+function readLeafFromNode(ctx: ResolveCtx, node: A11yNode, hint: ExtractSourceHint): unknown {
   // No live Locator; the tree-only path covers what the snapshot carries.
   if (hint.attr || hint.prop) {
     // Annotation needs a page; record the miss so the caller knows the
@@ -848,7 +858,8 @@ export function coerceLeaf(raw: unknown, type: ExtractSchema["type"]): unknown {
     case "boolean":
       if (typeof raw === "boolean") return raw;
       if (raw === "true" || raw === 1 || raw === "1" || raw === "yes" || raw === "on") return true;
-      if (raw === "false" || raw === 0 || raw === "0" || raw === "no" || raw === "off") return false;
+      if (raw === "false" || raw === 0 || raw === "0" || raw === "no" || raw === "off")
+        return false;
       return Boolean(raw);
     case "object":
     case "array":
@@ -867,6 +878,9 @@ function locatorForRef(page: Page, refs: RefRegistry, ref: string): Locator | un
     return page.locator(`[${attr}=${JSON.stringify(inputs.testId)}]`).first();
   }
   if (inputs.cssPath) return page.locator(inputs.cssPath).first();
-  if (inputs.name) return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name }).first();
+  if (inputs.name)
+    return page
+      .getByRole(inputs.role as Parameters<Page["getByRole"]>[0], { name: inputs.name })
+      .first();
   return page.getByRole(inputs.role as Parameters<Page["getByRole"]>[0]).first();
 }

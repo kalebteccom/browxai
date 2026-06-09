@@ -86,9 +86,7 @@ export interface FillFormResult extends ActionResult {
 export function summariseTarget(t: ActionTarget): string {
   if (t.ref) return `ref=${t.ref}`;
   if (t.selector) {
-    return t.contextRef
-      ? `selector=${t.selector} (in ${t.contextRef})`
-      : `selector=${t.selector}`;
+    return t.contextRef ? `selector=${t.selector} (in ${t.contextRef})` : `selector=${t.selector}`;
   }
   if (t.coords) return `coords=${t.coords.x},${t.coords.y}`;
   return "<empty target>";
@@ -115,7 +113,7 @@ export function validateFillFormArgs(args: FillFormArgs): void {
     if (f.target.coords) {
       throw new Error(
         `fill_form: fields[${i}] uses a coords target — fill requires a real input/textarea element, ` +
-        `so pass ref/selector/named. coords stays for click/hover.`,
+          `so pass ref/selector/named. coords stays for click/hover.`,
       );
     }
   }

@@ -50,21 +50,34 @@ describe("no-trace contract — static source guard", () => {
     // a known subdir, a `path.join` rooted at one of those). False positives are
     // allowed (test-only mock writes); false negatives are the failure mode.
     const SAFE_TOKENS = [
-      "workspace.", "BROWX_WORKSPACE", "browxDir", "profileDir", "runsDir",
-      "pidFile", "mcpPath", "ws.sub", "ws.root", "tmp", "/tmp",
-      "tmpdir", "join(root", "root,",
+      "workspace.",
+      "BROWX_WORKSPACE",
+      "browxDir",
+      "profileDir",
+      "runsDir",
+      "pidFile",
+      "mcpPath",
+      "ws.sub",
+      "ws.root",
+      "tmp",
+      "/tmp",
+      "tmpdir",
+      "join(root",
+      "root,",
       // Operator-supplied path via a CLI flag (same trust posture as `pidFile`):
       // `browxai serve --socket <p>` consumes a path the operator hands in. The
       // path lives in `socketPath`; cleanup/listen-prep mutations against it
       // are workspace-equivalent (the operator's chosen target).
-      "socketPath", "opts.socketPath",
+      "socketPath",
+      "opts.socketPath",
       // Phase 8 — plugin CLI subcommands write to paths derived from
       // `pluginPaths(workspaceRoot)` (see src/plugin/resolver.ts). Every
       // `paths.root` / `paths.installDir` / `paths.declarationFile` /
       // `paths.lockFile` / `paths.nodeModulesDir` is workspace-rooted
       // by construction — `paths.` is a workspace-derived prefix in the
       // same sense as `workspace.`.
-      "paths.", "pluginPaths",
+      "paths.",
+      "pluginPaths",
     ];
     // util/workspace.ts is the resolver itself — its `mkdirSync(p, ...)` calls are
     // BY DEFINITION rooted at the workspace `root`. util/config-store.ts writes
@@ -81,9 +94,22 @@ describe("no-trace contract — static source guard", () => {
       const lines = text.split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i]!;
-        if (!/\b(writeFileSync|appendFileSync|mkdirSync|writeFile\b|appendFile\b|mkdir\b|unlinkSync\b)\(/.test(line)) continue;
-        // Look at this line and the previous 4 (the path is often built one line up).
-        const ctx = lines.slice(Math.max(0, i - 4), i + 1).join("\n");
+        if (
+          !/\b(writeFileSync|appendFileSync|mkdirSync|writeFile\b|appendFile\b|mkdir\b|unlinkSync\b)\(/.test(
+            line,
+          )
+        )
+          continue;
+        // Look at this line and the previous 24. Width was 4 historically;
+        // bumped to 24 so the window stays robust to Prettier reformat choices.
+        // E.g. Prettier reflows a single-line `try { unlinkSync(d.path); } catch {}`
+        // into a 4+ line block, which pushes the workspace-rooted path
+        // declaration (the `BROWX_WORKSPACE` / `workspace.root` comment or
+        // assignment one line up in source) outside a 4-line window and
+        // produces a false positive. Tighten this back only if you understand
+        // the Prettier interaction — false negatives are the failure mode the
+        // test guards against, so erring wider is the right tradeoff.
+        const ctx = lines.slice(Math.max(0, i - 24), i + 1).join("\n");
         const safe = SAFE_TOKENS.some((t) => ctx.includes(t));
         if (!safe) offenders.push({ file: rel, line: line.trim() });
       }

@@ -39,24 +39,8 @@ Capabilities after Codex restart:
 
 ```json
 {
-  "env.capabilities": [
-    "read",
-    "navigation",
-    "action",
-    "human",
-    "eval",
-    "unstable",
-    "file-io"
-  ],
-  "resolved.capabilities": [
-    "action",
-    "eval",
-    "file-io",
-    "human",
-    "navigation",
-    "read",
-    "unstable"
-  ]
+  "env.capabilities": ["read", "navigation", "action", "human", "eval", "unstable", "file-io"],
+  "resolved.capabilities": ["action", "eval", "file-io", "human", "navigation", "read", "unstable"]
 }
 ```
 
@@ -439,4 +423,3 @@ The new Browxai tools are a clear improvement for media-editor QA.
 For the Clipro CSV replay-ticket workflow, Browxai now has the right primitives to test the
 feature predictably without relying on brittle manual coordinate guesses or page-side file
 construction.
-

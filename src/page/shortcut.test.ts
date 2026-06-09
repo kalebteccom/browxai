@@ -48,10 +48,15 @@ const refs = {} as never;
 describe("runShortcut — observability", () => {
   it("returns active element + events and marks handled when a copy/keydown-prevented fired", async () => {
     const { page, presses } = fakePage();
-    const r = await runShortcut(page as never, refs, { keys: "Control+C" }, {
-      clipboardEnabled: false,
-      clipboard: new ClipboardBuffer(),
-    });
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "Control+C" },
+      {
+        clipboardEnabled: false,
+        clipboard: new ClipboardBuffer(),
+      },
+    );
     expect(presses).toEqual(["Control+C"]);
     expect(r.activeElement).toEqual({ tag: "div", testId: "editor" });
     expect(r.handled).toBe(true);
@@ -60,20 +65,30 @@ describe("runShortcut — observability", () => {
 
   it("dispatches an ordered sequence in order", async () => {
     const { page, presses } = fakePage();
-    await runShortcut(page as never, refs, { keys: ["Control+A", "Control+C"] }, {
-      clipboardEnabled: false,
-      clipboard: new ClipboardBuffer(),
-    });
+    await runShortcut(
+      page as never,
+      refs,
+      { keys: ["Control+A", "Control+C"] },
+      {
+        clipboardEnabled: false,
+        clipboard: new ClipboardBuffer(),
+      },
+    );
     expect(presses).toEqual(["Control+A", "Control+C"]);
   });
 
   it("clipboard disabled: keys + observability work, no buffer/OS write, note present", async () => {
     const { page } = fakePage();
     const buf = new ClipboardBuffer();
-    const r = await runShortcut(page as never, refs, { keys: "Control+C" }, {
-      clipboardEnabled: false,
-      clipboard: buf,
-    });
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "Control+C" },
+      {
+        clipboardEnabled: false,
+        clipboard: buf,
+      },
+    );
     expect(buf.get()).toBeNull();
     expect(osClipboardWrite).not.toHaveBeenCalled();
     expect(r.clipboardNote).toMatch(/clipboard capability disabled/);
@@ -85,10 +100,15 @@ describe("runShortcut — per-session clipboard (capability on)", () => {
     vi.mocked(osClipboardWrite).mockClear();
     const { page } = fakePage("the selected text");
     const buf = new ClipboardBuffer();
-    const r = await runShortcut(page as never, refs, { keys: "Control+C" }, {
-      clipboardEnabled: true,
-      clipboard: buf,
-    });
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "Control+C" },
+      {
+        clipboardEnabled: true,
+        clipboard: buf,
+      },
+    );
     expect(buf.get()).toMatchObject({ text: "the selected text", op: "copy" });
     expect(osClipboardWrite).toHaveBeenCalledWith("the selected text");
     expect(r.clipboard).toMatchObject({ op: "copy", capturedChars: 17, osSync: true });
@@ -99,10 +119,15 @@ describe("runShortcut — per-session clipboard (capability on)", () => {
     const { page, presses } = fakePage();
     const buf = new ClipboardBuffer();
     buf.set("session-A-content", "copy");
-    const r = await runShortcut(page as never, refs, { keys: "Control+V" }, {
-      clipboardEnabled: true,
-      clipboard: buf,
-    });
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "Control+V" },
+      {
+        clipboardEnabled: true,
+        clipboard: buf,
+      },
+    );
     expect(osClipboardWrite).toHaveBeenCalledWith("session-A-content");
     expect(presses).toEqual(["Control+V"]);
     expect(r.clipboard).toMatchObject({ op: "paste", fromSessionBuffer: true, chars: 17 });
@@ -111,10 +136,15 @@ describe("runShortcut — per-session clipboard (capability on)", () => {
   it("paste with an empty session buffer does not touch the OS clipboard", async () => {
     vi.mocked(osClipboardWrite).mockClear();
     const { page } = fakePage();
-    const r = await runShortcut(page as never, refs, { keys: "Control+V" }, {
-      clipboardEnabled: true,
-      clipboard: new ClipboardBuffer(),
-    });
+    const r = await runShortcut(
+      page as never,
+      refs,
+      { keys: "Control+V" },
+      {
+        clipboardEnabled: true,
+        clipboard: new ClipboardBuffer(),
+      },
+    );
     expect(osClipboardWrite).not.toHaveBeenCalled();
     expect(r.clipboard).toBeUndefined();
   });

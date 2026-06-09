@@ -39,18 +39,26 @@ export class ClipboardBuffer {
  * still works for same-session paste reasoning; the result just notes
  * `osSync:false`.
  */
-export async function osClipboardWrite(text: string): Promise<{ ok: boolean; tool: string; error?: string }> {
+export async function osClipboardWrite(
+  text: string,
+): Promise<{ ok: boolean; tool: string; error?: string }> {
   const plat = process.platform;
   const argv =
-    plat === "darwin" ? ["pbcopy"]
-    : plat === "win32" ? ["clip"]
-    : ["xclip", "-selection", "clipboard"];
+    plat === "darwin"
+      ? ["pbcopy"]
+      : plat === "win32"
+        ? ["clip"]
+        : ["xclip", "-selection", "clipboard"];
   return new Promise((resolve) => {
     try {
       const cp = spawn(argv[0]!, argv.slice(1), { stdio: ["pipe", "ignore", "ignore"] });
       cp.on("error", (e) => resolve({ ok: false, tool: argv[0]!, error: e.message }));
       cp.on("close", (code) =>
-        resolve(code === 0 ? { ok: true, tool: argv[0]! } : { ok: false, tool: argv[0]!, error: `exit ${code}` }),
+        resolve(
+          code === 0
+            ? { ok: true, tool: argv[0]! }
+            : { ok: false, tool: argv[0]!, error: `exit ${code}` },
+        ),
       );
       cp.stdin.end(text);
     } catch (e) {

@@ -3,11 +3,47 @@ import { pointProbe } from "./point_probe.js";
 
 const cannedStack = {
   stack: [
-    { tag: "div", testId: "audio-seg", pointerEvents: "auto", visibility: "visible", display: "block", zIndex: "5", cursor: "pointer", bbox: { x: 10, y: 20, width: 100, height: 30 } },
-    { tag: "canvas", pointerEvents: "none", visibility: "visible", display: "block", zIndex: "0", cursor: "default", bbox: { x: 0, y: 0, width: 800, height: 400 } },
+    {
+      tag: "div",
+      testId: "audio-seg",
+      pointerEvents: "auto",
+      visibility: "visible",
+      display: "block",
+      zIndex: "5",
+      cursor: "pointer",
+      bbox: { x: 10, y: 20, width: 100, height: 30 },
+    },
+    {
+      tag: "canvas",
+      pointerEvents: "none",
+      visibility: "visible",
+      display: "block",
+      zIndex: "0",
+      cursor: "default",
+      bbox: { x: 0, y: 0, width: 800, height: 400 },
+    },
   ],
-  scrollContainer: { tag: "div", classes: "timeline-scroll", pointerEvents: "auto", visibility: "visible", display: "block", zIndex: "auto", cursor: "default", bbox: null },
-  clickableAncestor: { tag: "button", role: "button", name: "Select clip", pointerEvents: "auto", visibility: "visible", display: "inline", zIndex: "auto", cursor: "pointer", bbox: null },
+  scrollContainer: {
+    tag: "div",
+    classes: "timeline-scroll",
+    pointerEvents: "auto",
+    visibility: "visible",
+    display: "block",
+    zIndex: "auto",
+    cursor: "default",
+    bbox: null,
+  },
+  clickableAncestor: {
+    tag: "button",
+    role: "button",
+    name: "Select clip",
+    pointerEvents: "auto",
+    visibility: "visible",
+    display: "inline",
+    zIndex: "auto",
+    cursor: "pointer",
+    bbox: null,
+  },
 };
 
 function fakePage(withShot = true) {
@@ -15,7 +51,9 @@ function fakePage(withShot = true) {
     evaluate: vi.fn(async () => cannedStack),
     screenshot: withShot
       ? vi.fn(async () => Buffer.from("PNGDATA"))
-      : vi.fn(async () => { throw new Error("no screenshot"); }),
+      : vi.fn(async () => {
+          throw new Error("no screenshot");
+        }),
   };
 }
 

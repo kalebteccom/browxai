@@ -60,9 +60,7 @@ function clampDuration(d?: number): number {
 function resolveAuditPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`,
-    );
+    throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
   return resolved;
 }
@@ -108,7 +106,9 @@ export async function runPerfAudit(
   const onData = (e: { value: TraceEvent[] }) => {
     if (Array.isArray(e?.value)) for (const ev of e.value) traceEvents.push(ev);
   };
-  const onTraceComplete = () => { if (traceComplete) traceComplete(); };
+  const onTraceComplete = () => {
+    if (traceComplete) traceComplete();
+  };
   cdp.on("Tracing.dataCollected", onData);
   cdp.on("Tracing.tracingComplete", onTraceComplete);
 
@@ -174,22 +174,37 @@ export async function runPerfAudit(
 
     await new Promise<void>((res) => setTimeout(res, durationMs));
 
-    const traceCompletePromise = new Promise<void>((res) => { traceComplete = res; });
+    const traceCompletePromise = new Promise<void>((res) => {
+      traceComplete = res;
+    });
     await cdp.send("Tracing.end").catch(() => undefined);
-    await Promise.race([
-      traceCompletePromise,
-      new Promise<void>((res) => setTimeout(res, 30_000)),
-    ]);
+    await Promise.race([traceCompletePromise, new Promise<void>((res) => setTimeout(res, 30_000))]);
     const covResult = await coverage.stop(cdp).catch(() => undefined);
     if (covResult && !covResult.notRunning) {
       jsCoverage = covResult.jsCoverage;
       cssCoverage = covResult.cssCoverage;
     }
   } finally {
-    try { cdp.off("Tracing.dataCollected", onData); } catch { /* best-effort */ }
-    try { cdp.off("Tracing.tracingComplete", onTraceComplete); } catch { /* best-effort */ }
-    try { cdp.off("Network.responseReceived", onResponseReceived); } catch { /* best-effort */ }
-    try { cdp.off("Network.loadingFinished", onLoadingFinished); } catch { /* best-effort */ }
+    try {
+      cdp.off("Tracing.dataCollected", onData);
+    } catch {
+      /* best-effort */
+    }
+    try {
+      cdp.off("Tracing.tracingComplete", onTraceComplete);
+    } catch {
+      /* best-effort */
+    }
+    try {
+      cdp.off("Network.responseReceived", onResponseReceived);
+    } catch {
+      /* best-effort */
+    }
+    try {
+      cdp.off("Network.loadingFinished", onLoadingFinished);
+    } catch {
+      /* best-effort */
+    }
   }
 
   // -- write evidence files
@@ -199,30 +214,38 @@ export async function runPerfAudit(
   // ws.sub-style: ensure parent exists under workspace.root.
   if (traceParent && !existsSync(traceParent)) mkdirSync(traceParent, { recursive: true });
   // ws.root-rooted path — see resolveAuditPath above for the guard.
-  writeFileSync(resolvedTrace, JSON.stringify({
-    traceEvents,
-    metadata: {
-      source: "browxai",
-      sessionId,
-      categories: AUDIT_TRACE_CATEGORIES,
-      durationMs,
-      eventCount: traceEvents.length,
-      capturedAt: new Date().toISOString(),
-      kind: "perf-audit",
-    },
-  }), "utf8");
+  writeFileSync(
+    resolvedTrace,
+    JSON.stringify({
+      traceEvents,
+      metadata: {
+        source: "browxai",
+        sessionId,
+        categories: AUDIT_TRACE_CATEGORIES,
+        durationMs,
+        eventCount: traceEvents.length,
+        capturedAt: new Date().toISOString(),
+        kind: "perf-audit",
+      },
+    }),
+    "utf8",
+  );
 
   let coveragePath: string | undefined;
   if (jsCoverage && cssCoverage) {
     const path = defaultCoveragePath(workspaceRoot, sessionId);
     const resolvedCov = resolveAuditPath(workspaceRoot, path, "perf_audit");
     // ws.root-rooted path — see resolveAuditPath above for the guard.
-    writeFileSync(resolvedCov, JSON.stringify({
-      jsCoverage,
-      cssCoverage,
-      durationMs,
-      capturedAt: new Date().toISOString(),
-    }), "utf8");
+    writeFileSync(
+      resolvedCov,
+      JSON.stringify({
+        jsCoverage,
+        cssCoverage,
+        durationMs,
+        capturedAt: new Date().toISOString(),
+      }),
+      "utf8",
+    );
     coveragePath = resolvedCov;
   }
 

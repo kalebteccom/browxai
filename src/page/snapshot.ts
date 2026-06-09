@@ -57,7 +57,10 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
       stack.push({ node: node.children[i]!, depth: depth + 1 });
     }
   }
-  if (truncated) lines.push(`... [+${elided} more nodes elided; raise maxNodes or pass scope=<ref> to drill in]`);
+  if (truncated)
+    lines.push(
+      `... [+${elided} more nodes elided; raise maxNodes or pass scope=<ref> to drill in]`,
+    );
   if (elidedBranches > 0 && !truncated) {
     lines.push(`... [omit matched ${elidedBranches} subtree(s), ${elided} nodes total]`);
   }
@@ -96,11 +99,7 @@ function formatNode(node: A11yNode, depth: number, indent: string, maxNameLen: n
   const tid = node.testId
     ? ` [${node.testIdAttr ?? "data-testid"}=${JSON.stringify(node.testId)}]`
     : "";
-  const src = node.source === "dom"
-    ? " [from-dom]"
-    : node.source === "both"
-      ? " [from-both]"
-      : "";
+  const src = node.source === "dom" ? " [from-dom]" : node.source === "both" ? " [from-both]" : "";
   return `${pad}${node.role}${nm} [ref=${node.ref}]${tid}${src}${fmtState(node)}`;
 }
 

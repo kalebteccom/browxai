@@ -28,7 +28,13 @@
 // This module is intentionally dep-free below `runBatch` — unit tests can
 // exercise the variance / cache logic without standing up the MCP server.
 
-import { runBatch, type BatchCall, type BatchOptions, type BatchReport, type BatchEntry } from "./batch.js";
+import {
+  runBatch,
+  type BatchCall,
+  type BatchOptions,
+  type BatchReport,
+  type BatchEntry,
+} from "./batch.js";
 import type { ActionDescriptor, PlanEvidence } from "../page/plan.js";
 
 export interface FlakeCheckOptions extends BatchOptions {
@@ -85,7 +91,10 @@ export interface CachedResolver {
   descriptor?: Pick<ActionDescriptor, "ref" | "verb" | "args"> & {
     /** Carried for evidence-trail purposes only — caller should not trust
      *  the `score` / `actionable` fields if it intends to re-execute later. */
-    evidence?: Pick<PlanEvidence, "selectorHint" | "selectorTier" | "stability" | "role" | "name" | "testId">;
+    evidence?: Pick<
+      PlanEvidence,
+      "selectorHint" | "selectorTier" | "stability" | "role" | "name" | "testId"
+    >;
   };
   /** How many of the reaching-this-step runs agreed on this resolver. The
    *  caller's read of `runs == n` + `agreedRuns == runs` is the "100% green"
@@ -126,7 +135,10 @@ const MAX_DISTINCT_SIGNATURES_PER_STEP = 8;
  * variance picture survives a mid-sequence failure (the whole point — knowing
  * step 4 sometimes fails AND that step 5 then also fails differently).
  */
-export async function runFlakeCheck(calls: BatchCall[], opts: FlakeCheckOptions): Promise<FlakeCheckReport> {
+export async function runFlakeCheck(
+  calls: BatchCall[],
+  opts: FlakeCheckOptions,
+): Promise<FlakeCheckReport> {
   const n = Math.max(1, opts.n | 0);
   const runs: BatchReport[] = [];
   let consecutiveGreen = 0;
@@ -145,7 +157,11 @@ export async function runFlakeCheck(calls: BatchCall[], opts: FlakeCheckOptions)
     const green = report.failedAt === null && report.results.every((r) => r.ok);
     consecutiveGreen = green ? consecutiveGreen + 1 : 0;
 
-    if (opts.stopOnAllGreen !== undefined && opts.stopOnAllGreen > 0 && consecutiveGreen >= opts.stopOnAllGreen) {
+    if (
+      opts.stopOnAllGreen !== undefined &&
+      opts.stopOnAllGreen > 0 &&
+      consecutiveGreen >= opts.stopOnAllGreen
+    ) {
       shortCircuitedAfter = consecutiveGreen;
       break;
     }
@@ -188,9 +204,12 @@ export function rollUpSteps(calls: BatchCall[], runs: BatchReport[]): StepStats[
       // surface that too so the variance roll-up isn't blank when the inner
       // tool failed cleanly.
       const fromEntry = typeof e.error === "string" ? e.error : null;
-      const fromResult = e.result && typeof e.result === "object" && typeof (e.result as { error?: unknown }).error === "string"
-        ? (e.result as { error: string }).error
-        : null;
+      const fromResult =
+        e.result &&
+        typeof e.result === "object" &&
+        typeof (e.result as { error?: unknown }).error === "string"
+          ? (e.result as { error: string }).error
+          : null;
       const msg = fromEntry ?? fromResult;
       if (msg) {
         errorSet.add(msg);
@@ -219,7 +238,10 @@ export function rollUpSteps(calls: BatchCall[], runs: BatchReport[]): StepStats[
 
 /** Pure; exported for tests. Smallest step index where `ok` differed across
  *  the runs that reached that step. */
-export function findFirstDivergence(calls: BatchCall[], runs: BatchReport[]): FlakeCheckReport["firstDivergence"] {
+export function findFirstDivergence(
+  calls: BatchCall[],
+  runs: BatchReport[],
+): FlakeCheckReport["firstDivergence"] {
   for (let step = 0; step < calls.length; step++) {
     let seenOk = false;
     let seenFail = false;
@@ -229,7 +251,10 @@ export function findFirstDivergence(calls: BatchCall[], runs: BatchReport[]): Fl
       if (e.ok) seenOk = true;
       else seenFail = true;
       if (seenOk && seenFail) {
-        const out: { step: number; tool: string; label?: string } = { step, tool: calls[step]!.tool };
+        const out: { step: number; tool: string; label?: string } = {
+          step,
+          tool: calls[step]!.tool,
+        };
         if (calls[step]!.label !== undefined) out.label = calls[step]!.label!;
         return out;
       }
@@ -261,7 +286,10 @@ export function extractCachedResolvers(
     let source: BatchEntry | undefined;
     for (const r of runs) {
       const e = r.results[step];
-      if (e) { source = e; break; }
+      if (e) {
+        source = e;
+        break;
+      }
     }
     if (!source) continue;
 
@@ -313,9 +341,12 @@ function planSignature(result: unknown): string | null {
   const ref = typeof d.ref === "string" ? d.ref : null;
   if (!ref) return null;
   const ev = d.evidence;
-  const hint = ev && typeof ev === "object" && typeof (ev as { selectorHint?: unknown }).selectorHint === "string"
-    ? (ev as { selectorHint: string }).selectorHint
-    : "";
+  const hint =
+    ev &&
+    typeof ev === "object" &&
+    typeof (ev as { selectorHint?: unknown }).selectorHint === "string"
+      ? (ev as { selectorHint: string }).selectorHint
+      : "";
   return `${ref}::${hint}`;
 }
 
@@ -396,8 +427,12 @@ function extractPlanDescriptor(result: unknown): CachedResolver["descriptor"] | 
     const e = ev as Record<string, unknown>;
     const projected: NonNullable<NonNullable<CachedResolver["descriptor"]>["evidence"]> = {
       selectorHint: typeof e.selectorHint === "string" ? e.selectorHint : "",
-      selectorTier: (typeof e.selectorTier === "number" ? e.selectorTier : 5) as PlanEvidence["selectorTier"],
-      stability: (typeof e.stability === "string" ? e.stability : "low") as PlanEvidence["stability"],
+      selectorTier: (typeof e.selectorTier === "number"
+        ? e.selectorTier
+        : 5) as PlanEvidence["selectorTier"],
+      stability: (typeof e.stability === "string"
+        ? e.stability
+        : "low") as PlanEvidence["stability"],
       role: typeof e.role === "string" ? e.role : "",
     };
     if (typeof e.name === "string") projected.name = e.name;

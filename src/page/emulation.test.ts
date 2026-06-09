@@ -49,11 +49,23 @@ describe("EmulationRegistry — network_emulate", () => {
       uploadBps: 750_000,
     });
     expect(reset).toBe(false);
-    expect(state).toEqual({ offline: false, latencyMs: 200, downloadBps: 1_500_000, uploadBps: 750_000 });
-    expect(calls).toEqual([{
-      method: "Network.emulateNetworkConditions",
-      params: { offline: false, latency: 200, downloadThroughput: 1_500_000, uploadThroughput: 750_000 },
-    }]);
+    expect(state).toEqual({
+      offline: false,
+      latencyMs: 200,
+      downloadBps: 1_500_000,
+      uploadBps: 750_000,
+    });
+    expect(calls).toEqual([
+      {
+        method: "Network.emulateNetworkConditions",
+        params: {
+          offline: false,
+          latency: 200,
+          downloadThroughput: 1_500_000,
+          uploadThroughput: 750_000,
+        },
+      },
+    ]);
   });
 
   it("offline:true forces offline mode", async () => {
@@ -73,7 +85,10 @@ describe("EmulationRegistry — network_emulate", () => {
     expect(reset).toBe(true);
     expect(state).toEqual(DEFAULT_NETWORK);
     expect(calls[0]!.params).toEqual({
-      offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+      offline: false,
+      latency: 0,
+      downloadThroughput: -1,
+      uploadThroughput: -1,
     });
   });
 
@@ -89,7 +104,9 @@ describe("EmulationRegistry — network_emulate", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new EmulationRegistry();
-    await expect(reg.applyNetwork(cdp as never, page as never, { packetLoss: 1.5 })).rejects.toThrow(/packetLoss/);
+    await expect(
+      reg.applyNetwork(cdp as never, page as never, { packetLoss: 1.5 }),
+    ).rejects.toThrow(/packetLoss/);
   });
 });
 
@@ -127,8 +144,12 @@ describe("EmulationRegistry — cpu_emulate", () => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new EmulationRegistry();
-    await expect(reg.applyCpu(cdp as never, page as never, { throttleRate: 0.5 })).rejects.toThrow(/throttleRate/);
-    await expect(reg.applyCpu(cdp as never, page as never, { throttleRate: 200 })).rejects.toThrow(/throttleRate/);
+    await expect(reg.applyCpu(cdp as never, page as never, { throttleRate: 0.5 })).rejects.toThrow(
+      /throttleRate/,
+    );
+    await expect(reg.applyCpu(cdp as never, page as never, { throttleRate: 200 })).rejects.toThrow(
+      /throttleRate/,
+    );
   });
 });
 
@@ -143,11 +164,17 @@ describe("EmulationRegistry — re-apply on navigation", () => {
     await reg.applyCpu(cdp1 as never, page as never, { throttleRate: 6 });
 
     // Sub-frame nav: ignored
-    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit("framenavigated", frame(false));
+    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
+      "framenavigated",
+      frame(false),
+    );
     expect(calls2).toHaveLength(0);
 
     // Main-frame nav: both overrides re-pushed onto the fresh CDP session
-    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit("framenavigated", frame(true));
+    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
+      "framenavigated",
+      frame(true),
+    );
     const methods = calls2.map((c) => c.method).sort();
     expect(methods).toEqual(["Emulation.setCPUThrottlingRate", "Network.emulateNetworkConditions"]);
     expect(calls1).toHaveLength(2); // original applies, untouched
@@ -161,7 +188,10 @@ describe("EmulationRegistry — re-apply on navigation", () => {
 
     await reg.applyNetwork(cdp1 as never, page as never, {});
     await reg.applyCpu(cdp1 as never, page as never, {});
-    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit("framenavigated", frame(true));
+    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
+      "framenavigated",
+      frame(true),
+    );
     expect(calls2).toHaveLength(0);
   });
 
@@ -173,7 +203,9 @@ describe("EmulationRegistry — re-apply on navigation", () => {
     await reg.applyNetwork(cdp as never, page as never, { latencyMs: 200 });
     await reg.applyCpu(cdp as never, page as never, { throttleRate: 2 });
     // page.on should have been called exactly once across all three apply calls
-    expect((page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated")).toHaveLength(1);
+    expect(
+      (page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"),
+    ).toHaveLength(1);
   });
 });
 

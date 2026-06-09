@@ -65,7 +65,10 @@ describe("page-archive keystone — directory mode against the fixture", () => {
     "writes index.html + assets/ sidecar with non-zero size on a real page",
     async () => {
       const session = "ks-archive-dir";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
 
       const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/` });

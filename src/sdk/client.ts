@@ -87,7 +87,8 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   // `BrowxaiClient` narrow it. `<F>` lets each call site project the wrapper
   // into the exact typed slot without per-method duplication.
   const guarded = <F>(toolName: string): F =>
-    (async (args?: BrowxaiArgs): Promise<BrowxaiResult> => callTool(toolName, args)) as unknown as F;
+    (async (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
+      callTool(toolName, args)) as unknown as F;
 
   /** Shorthand: pluck a typed-method slot off `BrowxaiClient` for `guarded<F>`'s
    *  type parameter. Keeps the assignment table below readable. */
@@ -107,33 +108,35 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   // every namespaced access just dispatches via `callTool`, which
   // round-trips to the server and surfaces a clear error if the tool
   // doesn't exist).
-  const plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>> =
-    new Proxy(
-      {},
-      {
-        get(_target, namespace: string) {
-          if (typeof namespace !== "string") return undefined;
-          return new Proxy(
-            {},
-            {
-              get(_t2, toolName: string) {
-                if (typeof toolName !== "string") return undefined;
-                return (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
-                  // Mirror tool naming: `namespace.tool`. Convert camelCase
-                  // tool name back to snake_case? No — the SDK uses the
-                  // tool name as-is. Plugin authors declare e.g.
-                  // `figma.move_node` AND `figma.moveNode`'s caller hits
-                  // `figma.moveNode` — so the JS-style access maps 1:1 to
-                  // whatever the plugin registered. Plugin authors who
-                  // want snake_case at the wire and camelCase at the JS
-                  // level can ship a `.d.ts` wrapper (documented).
-                  callTool(`${namespace}.${toolName}`, args);
-              },
+  const plugins: Record<
+    string,
+    Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>
+  > = new Proxy(
+    {},
+    {
+      get(_target, namespace: string) {
+        if (typeof namespace !== "string") return undefined;
+        return new Proxy(
+          {},
+          {
+            get(_t2, toolName: string) {
+              if (typeof toolName !== "string") return undefined;
+              return (args?: BrowxaiArgs): Promise<BrowxaiResult> =>
+                // Mirror tool naming: `namespace.tool`. Convert camelCase
+                // tool name back to snake_case? No — the SDK uses the
+                // tool name as-is. Plugin authors declare e.g.
+                // `figma.move_node` AND `figma.moveNode`'s caller hits
+                // `figma.moveNode` — so the JS-style access maps 1:1 to
+                // whatever the plugin registered. Plugin authors who
+                // want snake_case at the wire and camelCase at the JS
+                // level can ship a `.d.ts` wrapper (documented).
+                callTool(`${namespace}.${toolName}`, args);
             },
-          );
-        },
+          },
+        );
       },
-    );
+    },
+  );
 
   const client: BrowxaiClient = {
     // read

@@ -100,9 +100,22 @@ export interface FindResult {
 }
 
 const INTERACTIVE_ROLES = new Set([
-  "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
-  "switch", "slider", "spinbutton", "menuitem", "menuitemcheckbox", "menuitemradio",
-  "option", "tab", "treeitem",
+  "button",
+  "link",
+  "textbox",
+  "searchbox",
+  "combobox",
+  "checkbox",
+  "radio",
+  "switch",
+  "slider",
+  "spinbutton",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "tab",
+  "treeitem",
 ]);
 
 /**
@@ -126,9 +139,21 @@ const PROBE_TIMEOUT_MS = 500;
 // conservative — list/listitem/article/section are omitted because they can
 // legitimately be the intended target in some UIs.
 const CONTAINER_ROLES = new Set([
-  "generic", "group", "region", "toolbar", "none", "presentation",
-  "navigation", "complementary", "banner", "contentinfo", "main",
-  "application", "document", "form", "search",
+  "generic",
+  "group",
+  "region",
+  "toolbar",
+  "none",
+  "presentation",
+  "navigation",
+  "complementary",
+  "banner",
+  "contentinfo",
+  "main",
+  "application",
+  "document",
+  "form",
+  "search",
 ]);
 
 /**
@@ -159,16 +184,20 @@ export async function find(
   // Phase 7 — `pierce` propagates through to the dom-walk + (when "closed",
   // main-frame only) the CDP pierce path. Omitting `pierce` preserves
   // byte-identical pre-Phase-7 output.
-  const composed = opts.frame && opts.frameId
-    ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, { pierce: opts.pierce })
-    : await composeSnapshot(cdp, refs, opts.testAttributes, { pierce: opts.pierce });
+  const composed =
+    opts.frame && opts.frameId
+      ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, {
+          pierce: opts.pierce,
+        })
+      : await composeSnapshot(cdp, refs, opts.testAttributes, { pierce: opts.pierce });
   const { tree } = composed;
   if (!tree) {
     // Same byte-identical-back-compat reasoning as the success path:
     // surface compose warnings only when pierce was explicitly opted in.
-    const w = opts.pierce !== undefined
-      ? composed.warnings.filter((s) => !s.startsWith("low-content"))
-      : [];
+    const w =
+      opts.pierce !== undefined
+        ? composed.warnings.filter((s) => !s.startsWith("low-content"))
+        : [];
     return { candidates: [], warnings: w };
   }
   // The locator-resolution root: page for main-frame finds, frame for
@@ -200,7 +229,8 @@ export async function find(
   if (opts.contextRef) {
     const sub = findByRef(tree, opts.contextRef);
     if (sub) walkRoot = sub;
-    else warnings.push(`contextRef=${opts.contextRef} not found; ranking over the full tree instead.`);
+    else
+      warnings.push(`contextRef=${opts.contextRef} not found; ranking over the full tree instead.`);
   }
 
   const scored: Array<{ node: A11yNode; score: number }> = [];
@@ -208,7 +238,10 @@ export async function find(
     let score = scoreNode(node, q, qTokens);
     if (score > 0 && opts.feedback) {
       score += opts.feedback.bonusFor(opts.query, {
-        testId: node.testId, testIdAttr: node.testIdAttr, role: node.role, name: node.name,
+        testId: node.testId,
+        testIdAttr: node.testIdAttr,
+        role: node.role,
+        name: node.name,
       });
     }
     if (score > 0) scored.push({ node, score });
@@ -239,14 +272,16 @@ export async function find(
       // resolve into OOPIFs). Same-origin frames technically could be
       // probed via CDP with the right node-id juggling but the
       // locator-bounding-box path is portable and identical-behaviour.
-      let bbox = opts.frame === undefined && node.backendDOMNodeId !== undefined
-        ? await visibleRect(cdp, node.backendDOMNodeId)
-        : null;
+      let bbox =
+        opts.frame === undefined && node.backendDOMNodeId !== undefined
+          ? await visibleRect(cdp, node.backendDOMNodeId)
+          : null;
       // attached/BYOB: the CDP rect path can spuriously null out a rendered
       // DOM-walk node → fall back to Playwright's locator box before we let a
       // bad signal classify a visible element off-screen (which `visibleOnly`
       // would then drop entirely).
-      if (bbox === null) bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
+      if (bbox === null)
+        bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
       const actionable = await probeActionable(locatorRoot, hint, bbox);
       return {
         ref: node.ref,
@@ -276,7 +311,7 @@ export async function find(
   if (floor > 0 && (ranked.length === 0 || ranked[0]!.score < floor)) {
     warnings.push(
       `no candidate scored confidently above ${floor} (top score: ${ranked[0]?.score ?? 0}). ` +
-      `Consider falling through to a snapshot scan + raw selector, or rephrasing the query against the element's accessible name / test-attribute value.`,
+        `Consider falling through to a snapshot scan + raw selector, or rephrasing the query against the element's accessible name / test-attribute value.`,
     );
   }
 
@@ -340,7 +375,8 @@ export function noVisibleCandidateWarning(
   fallbackHints?: { coords: boolean; evalJs: boolean },
 ): string {
   const suggestions: string[] = [];
-  if (fallbackHints?.coords) suggestions.push("compute the element rect and use `coords` on click/hover");
+  if (fallbackHints?.coords)
+    suggestions.push("compute the element rect and use `coords` on click/hover");
   if (fallbackHints?.evalJs) suggestions.push("read state directly via `eval_js`");
   const tail = suggestions.length ? ` You may want to: ${suggestions.join("; or ")}.` : "";
   return (
@@ -422,8 +458,8 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   // query like "X-time-input-seconds inside Y-start-time-input" failed to
   // surface an `<input data-testid="X-time-input-seconds">` because the score
   // came entirely from accidental short-token hits.
-  if (testIdLower === q) s += 15;             // exact testId match wins big
-  if (testIdLower.includes(q)) s += 10;       // (was +5 pre-ask-#14)
+  if (testIdLower === q) s += 15; // exact testId match wins big
+  if (testIdLower.includes(q)) s += 10; // (was +5 pre-ask-#14)
   if (roleLower.includes(q)) s += 2;
   // per-testId-token weight is amplified for icon-only controls (no
   // accessible name) where the only signal is the testId itself. Without this
@@ -441,7 +477,10 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   // this is the case round 3 exposed.
   if (testIdLower && INPUT_LIKE_ROLES.has(node.role)) {
     for (const t of qTokens) {
-      if (t.length >= 2 && testIdLower.includes(t)) { s += 3; break; }
+      if (t.length >= 2 && testIdLower.includes(t)) {
+        s += 3;
+        break;
+      }
     }
   }
   // Trimmed text content (a `title` tooltip, an sr-only label, visible

@@ -21,7 +21,7 @@ let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;
 let workspace: string;
 const cwdBefore = process.cwd();
-let savedEnv: Record<string, string | undefined> = {};
+const savedEnv: Record<string, string | undefined> = {};
 
 async function callJson<T = Record<string, unknown>>(
   name: string,

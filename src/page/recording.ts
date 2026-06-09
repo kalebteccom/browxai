@@ -40,7 +40,9 @@ export class Recorder {
     return { ok: true, name: flowName };
   }
 
-  active(): boolean { return this.name !== null; }
+  active(): boolean {
+    return this.name !== null;
+  }
 
   /** Read-only access to the recorded trace + the flow name without ending
    *  the recording. Used by trace-export tools (e.g. the Playwright-script
@@ -56,14 +58,28 @@ export class Recorder {
    *  passes the descriptor + the URL it ended at + whatever selectorHint was
    *  used to resolve the target. Best-effort: if no recording is active, this
    *  is a no-op. */
-  record(descriptor: DispatchedAction, url: string, hint?: { selectorHint: string; stability?: FindCandidate["stability"] }): void {
+  record(
+    descriptor: DispatchedAction,
+    url: string,
+    hint?: { selectorHint: string; stability?: FindCandidate["stability"] },
+  ): void {
     if (!this.name) return;
     const id = this.suggestId(descriptor);
-    this.steps.push({ id, action: descriptor, url, selectorHint: hint?.selectorHint, stability: hint?.stability, ts: Date.now() });
+    this.steps.push({
+      id,
+      action: descriptor,
+      url,
+      selectorHint: hint?.selectorHint,
+      stability: hint?.stability,
+      ts: Date.now(),
+    });
   }
 
   /** Attach an annotation to the most-recent step (or by id). */
-  annotate(args: { stepId?: string; copy: string; arrow?: string; target?: string }): { ok: boolean; error?: string } {
+  annotate(args: { stepId?: string; copy: string; arrow?: string; target?: string }): {
+    ok: boolean;
+    error?: string;
+  } {
     if (!this.name) return { ok: false, error: "no active recording" };
     if (this.steps.length === 0) return { ok: false, error: "no steps recorded yet" };
     const step = args.stepId
@@ -87,14 +103,21 @@ export class Recorder {
 
   private suggestId(d: DispatchedAction): string {
     const base =
-      d.type === "navigate" ? "open" :
-      d.type === "click" ? "click" :
-      d.type === "fill" ? "fill" :
-      d.type === "press" ? "press" :
-      d.type === "hover" ? "hover" :
-      d.type === "select" ? "select" :
-      d.type === "waitFor" ? "wait" :
-      d.type;
+      d.type === "navigate"
+        ? "open"
+        : d.type === "click"
+          ? "click"
+          : d.type === "fill"
+            ? "fill"
+            : d.type === "press"
+              ? "press"
+              : d.type === "hover"
+                ? "hover"
+                : d.type === "select"
+                  ? "select"
+                  : d.type === "waitFor"
+                    ? "wait"
+                    : d.type;
     return `${base}-${++this.autoCounter}`;
   }
 
@@ -104,13 +127,16 @@ export class Recorder {
   private toYaml(): string {
     const lines: string[] = [];
     lines.push(`name: ${this.name}`);
-    lines.push(`# Drafted via browxai recording — review locator stability + add prerequisites/assertions before committing.`);
+    lines.push(
+      `# Drafted via browxai recording — review locator stability + add prerequisites/assertions before committing.`,
+    );
     // Locators block — pulled from steps that have a selectorHint.
     const locatorEntries = this.collectLocators();
     if (locatorEntries.length > 0) {
       lines.push("locators:");
       for (const { name, hint, stability } of locatorEntries) {
-        const stabilityTag = stability && stability !== "high" ? `   # stability: ${stability} — review`: "";
+        const stabilityTag =
+          stability && stability !== "high" ? `   # stability: ${stability} — review` : "";
         lines.push(`  ${name}: ${quote(hint)}${stabilityTag}`);
       }
     }
@@ -134,12 +160,20 @@ export class Recorder {
     return lines.join("\n") + "\n";
   }
 
-  private collectLocators(): Array<{ name: string; hint: string; stability?: FindCandidate["stability"] }> {
-    const seen = new Map<string, { name: string; hint: string; stability?: FindCandidate["stability"] }>();
+  private collectLocators(): Array<{
+    name: string;
+    hint: string;
+    stability?: FindCandidate["stability"];
+  }> {
+    const seen = new Map<
+      string,
+      { name: string; hint: string; stability?: FindCandidate["stability"] }
+    >();
     for (const step of this.steps) {
       if (!step.selectorHint || step.action.type === "navigate") continue;
       const name = this.locatorNameFor(step);
-      if (!seen.has(name)) seen.set(name, { name, hint: step.selectorHint, stability: step.stability });
+      if (!seen.has(name))
+        seen.set(name, { name, hint: step.selectorHint, stability: step.stability });
     }
     return [...seen.values()];
   }
@@ -159,7 +193,12 @@ export class Recorder {
 }
 
 function slugify(s: string): string {
-  return s.replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toLowerCase() || "step";
+  return (
+    s
+      .replace(/[^a-z0-9]+/gi, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase() || "step"
+  );
 }
 
 function quote(s: string): string {

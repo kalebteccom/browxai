@@ -7,7 +7,12 @@ describe("elementKey", () => {
     const b = elementKey({ role: "button", name: "Save", path: "main/form/button[1]" });
     const c = elementKey({ role: "button", name: "Cancel", path: "main/form/button[0]" });
     const d = elementKey({ role: "link", name: "Save", path: "main/form/button[0]" });
-    const e = elementKey({ role: "button", name: "Save", path: "main/form/button[0]", testId: "save-btn" });
+    const e = elementKey({
+      role: "button",
+      name: "Save",
+      path: "main/form/button[0]",
+      testId: "save-btn",
+    });
     expect(new Set([a, b, c, d, e]).size).toBe(5);
   });
 
@@ -55,14 +60,18 @@ describe("augmentLocator — provenance merge", () => {
     // DOM walk later discovers the same node and adds cssPath / source dom.
     r.augmentLocator(ref, { role: "button", cssPath: "body > button:nth-child(1)", source: "dom" });
     const got = r.locatorOf(ref);
-    expect(got?.name).toBe("Save");                                  // a11y richness preserved
-    expect(got?.cssPath).toBe("body > button:nth-child(1)");         // dom-side gap filled
-    expect(got?.source).toBe("both");                                // sources combine
+    expect(got?.name).toBe("Save"); // a11y richness preserved
+    expect(got?.cssPath).toBe("body > button:nth-child(1)"); // dom-side gap filled
+    expect(got?.source).toBe("both"); // sources combine
   });
 
   it("a11y testId discovered later fills in without clobbering cssPath", () => {
     const r = new RefRegistry();
-    const ref = r.forKey("k1", { role: "td", cssPath: "table > tbody > tr:nth-child(3) > td:nth-child(2)", source: "dom" });
+    const ref = r.forKey("k1", {
+      role: "td",
+      cssPath: "table > tbody > tr:nth-child(3) > td:nth-child(2)",
+      source: "dom",
+    });
     r.augmentLocator(ref, { testId: "row-3-status", testIdAttr: "data-testid" });
     const got = r.locatorOf(ref);
     expect(got?.testId).toBe("row-3-status");
@@ -123,7 +132,12 @@ describe("Phase-7: frameId in elementKey", () => {
   it("two identical node signatures in distinct frames hash differently", async () => {
     const { elementKey } = await import("./refs.js");
     const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
-    const k2 = elementKey({ role: "button", name: "Save", path: "main/form/button", frameId: "f1" });
+    const k2 = elementKey({
+      role: "button",
+      name: "Save",
+      path: "main/form/button",
+      frameId: "f1",
+    });
     expect(k1).not.toBe(k2);
   });
 
@@ -136,8 +150,7 @@ describe("Phase-7: frameId in elementKey", () => {
 });
 
 describe("Phase-7: frame binding on RefRegistry", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fakeFrame = (tag: string) => ({ __tag: tag } as any);
+  const fakeFrame = (tag: string) => ({ __tag: tag }) as any;
 
   it("binds a Frame handle to a ref and returns it via frameOf()", () => {
     const r = new RefRegistry();

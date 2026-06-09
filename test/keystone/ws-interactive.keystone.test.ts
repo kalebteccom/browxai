@@ -19,7 +19,7 @@ let fixture: Fixture;
 let server: Awaited<ReturnType<typeof createServer>>;
 let handlers: Handlers;
 let workspace: string;
-let savedEnv: Record<string, string | undefined> = {};
+const savedEnv: Record<string, string | undefined> = {};
 
 async function callJson<T = Record<string, unknown>>(
   name: string,
@@ -81,7 +81,10 @@ describe("ws_send / ws_intercept keystone", () => {
     "page opens WS, server echoes, ws_send pushes a frame, ws_intercept rewrites inbound",
     async () => {
       const session = "ks-ws";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
 
       await callJson("navigate", { session, url: `${fixture.url}/ws-page` });
@@ -113,12 +116,20 @@ describe("ws_send / ws_intercept keystone", () => {
       // by the first ws_send / ws_intercept; we drive that by calling
       // ws_send with a bogus id first to force install, then list. Cleaner:
       // call ws_intercept (a no-op pattern) once, then list.
-      await callJson("ws_intercept", { session, pattern: "wss://never-matches/**", response: "drop" });
-      const list = await callJson<{ ok: boolean; value: Array<{ wsId: string; url: string; readyState: number }> }>(
-        "eval_js",
-        { session, expr: "JSON.stringify(window.__browxWs.list())" },
-      );
-      const sockets = JSON.parse((list as { value: string }).value) as Array<{ wsId: string; url: string; readyState: number }>;
+      await callJson("ws_intercept", {
+        session,
+        pattern: "wss://never-matches/**",
+        response: "drop",
+      });
+      const list = await callJson<{
+        ok: boolean;
+        value: Array<{ wsId: string; url: string; readyState: number }>;
+      }>("eval_js", { session, expr: "JSON.stringify(window.__browxWs.list())" });
+      const sockets = JSON.parse((list as { value: string }).value) as Array<{
+        wsId: string;
+        url: string;
+        readyState: number;
+      }>;
       expect(sockets.length).toBeGreaterThan(0);
       const wsId = sockets[0]!.wsId;
       expect(sockets[0]!.url).toMatch(/\/ws$/);
@@ -157,7 +168,11 @@ describe("ws_send / ws_intercept keystone", () => {
       // Drive a new round-trip: page sends INTERCEPT_ME, server echoes
       // "echo:INTERCEPT_ME" — wrapper REPLACES it with REPLACED_BY_INTERCEPT
       // before the message handler appends to the log.
-      await callJson("click", { session, named: undefined, selector: '[data-testid="ws-trigger"]' });
+      await callJson("click", {
+        session,
+        named: undefined,
+        selector: '[data-testid="ws-trigger"]',
+      });
 
       const log2 = await pollUntil(
         () =>

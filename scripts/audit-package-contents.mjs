@@ -160,9 +160,15 @@ function auditTarball(cwd, label) {
 function main() {
   const targets = [
     { cwd: REPO_ROOT, label: "root (browxai)" },
-    { cwd: resolve(REPO_ROOT, "packages/plugins/example"), label: "@kalebtec/browxai-plugin-example" },
+    {
+      cwd: resolve(REPO_ROOT, "packages/plugins/example"),
+      label: "@kalebtec/browxai-plugin-example",
+    },
     { cwd: resolve(REPO_ROOT, "packages/plugins/figma"), label: "@kalebtec/browxai-plugin-figma" },
-    { cwd: resolve(REPO_ROOT, "packages/plugins/tldraw"), label: "@kalebtec/browxai-plugin-tldraw" },
+    {
+      cwd: resolve(REPO_ROOT, "packages/plugins/tldraw"),
+      label: "@kalebtec/browxai-plugin-tldraw",
+    },
     {
       cwd: resolve(REPO_ROOT, "packages/plugins/excalidraw"),
       label: "@kalebtec/browxai-plugin-excalidraw",

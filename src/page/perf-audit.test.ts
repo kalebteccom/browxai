@@ -28,7 +28,8 @@ describe("resolveCategories", () => {
 
   it("filters to known categories", () => {
     expect(resolveCategories(["long-tasks", "unused-code", "fake"])).toEqual([
-      "long-tasks", "unused-code",
+      "long-tasks",
+      "unused-code",
     ]);
   });
 
@@ -40,11 +41,19 @@ describe("resolveCategories", () => {
 describe("category analysers — fixture traces", () => {
   it("render-blocking flags VeryHigh-priority blocking resources before firstPaint", () => {
     const trace = [
-      { name: "ResourceSendRequest", ts: 100,
-        args: { data: { url: "https://x/a.css", priority: "VeryHigh", renderBlocking: "blocking" } } },
+      {
+        name: "ResourceSendRequest",
+        ts: 100,
+        args: {
+          data: { url: "https://x/a.css", priority: "VeryHigh", renderBlocking: "blocking" },
+        },
+      },
       { name: "firstPaint", ts: 500 },
-      { name: "ResourceSendRequest", ts: 1000,
-        args: { data: { url: "https://x/late.js", priority: "VeryHigh" } } },
+      {
+        name: "ResourceSendRequest",
+        ts: 1000,
+        args: { data: { url: "https://x/late.js", priority: "VeryHigh" } },
+      },
     ];
     const r = analyseRenderBlocking({ trace });
     expect(r.issues).toHaveLength(1);
@@ -62,7 +71,14 @@ describe("category analysers — fixture traces", () => {
         { url: "ok.js", totalBytes: 50_000, usedBytes: 40_000, usagePercent: 80 }, // skipped — >=30%
       ],
       cssCoverage: [
-        { url: "main.css", totalBytes: 60_000, usedBytes: 5000, usagePercent: 8, usedRules: 5, totalRules: 50 },
+        {
+          url: "main.css",
+          totalBytes: 60_000,
+          usedBytes: 5000,
+          usagePercent: 8,
+          usedRules: 5,
+          totalRules: 50,
+        },
       ],
     });
     const titles = r.issues.map((i) => i.title);
@@ -76,8 +92,18 @@ describe("category analysers — fixture traces", () => {
     const r = analyseOversizeImages({
       trace: [],
       responses: [
-        { url: "https://x/hero.png", status: 200, mimeType: "image/png", encodedDataLength: 3_000_000 },
-        { url: "https://x/small.png", status: 200, mimeType: "image/png", encodedDataLength: 50_000 },
+        {
+          url: "https://x/hero.png",
+          status: 200,
+          mimeType: "image/png",
+          encodedDataLength: 3_000_000,
+        },
+        {
+          url: "https://x/small.png",
+          status: 200,
+          mimeType: "image/png",
+          encodedDataLength: 50_000,
+        },
       ],
     });
     expect(r.issues).toHaveLength(1);
@@ -89,15 +115,17 @@ describe("category analysers — fixture traces", () => {
     const trace = Array.from({ length: 6 }, () => ({ name: "ForcedSyncLayout", ts: 0 }));
     const r = analyseLayoutThrashing({ trace });
     expect(r.issues).toHaveLength(1);
-    const noRows = analyseLayoutThrashing({ trace: [{ name: "ForcedSyncLayout" }, { name: "ForcedSyncLayout" }] });
+    const noRows = analyseLayoutThrashing({
+      trace: [{ name: "ForcedSyncLayout" }, { name: "ForcedSyncLayout" }],
+    });
     expect(noRows.issues).toHaveLength(0);
   });
 
   it("long-tasks flags RunTask >50ms", () => {
     const trace = [
       { name: "RunTask", ts: 0, dur: 250_000 }, // 250ms — high
-      { name: "RunTask", ts: 0, dur: 60_000 },  // 60ms — low
-      { name: "RunTask", ts: 0, dur: 30_000 },  // dropped — <50ms
+      { name: "RunTask", ts: 0, dur: 60_000 }, // 60ms — low
+      { name: "RunTask", ts: 0, dur: 30_000 }, // dropped — <50ms
     ];
     const r = analyseLongTasks({ trace });
     expect(r.issues).toHaveLength(2);
@@ -109,9 +137,30 @@ describe("category analysers — fixture traces", () => {
       trace: [],
       memoryDiff: {
         retainerGrowth: [
-          { node: "object:Cache", type: "object", sizeBefore: 1000, sizeAfter: 5000, deltaBytes: 4000, deltaPercent: 400 },
-          { node: "object:Quiet", type: "object", sizeBefore: 10000, sizeAfter: 10500, deltaBytes: 500, deltaPercent: 5 },
-          { node: "object:Shrunk", type: "object", sizeBefore: 5000, sizeAfter: 1000, deltaBytes: -4000, deltaPercent: -80 },
+          {
+            node: "object:Cache",
+            type: "object",
+            sizeBefore: 1000,
+            sizeAfter: 5000,
+            deltaBytes: 4000,
+            deltaPercent: 400,
+          },
+          {
+            node: "object:Quiet",
+            type: "object",
+            sizeBefore: 10000,
+            sizeAfter: 10500,
+            deltaBytes: 500,
+            deltaPercent: 5,
+          },
+          {
+            node: "object:Shrunk",
+            type: "object",
+            sizeBefore: 5000,
+            sizeAfter: 1000,
+            deltaBytes: -4000,
+            deltaPercent: -80,
+          },
         ],
         summary: { totalGrowth: 4000, top3Growers: [] },
       },
@@ -177,7 +226,12 @@ describe("enforceSummaryBudget — token-cap truncation", () => {
       details: { padding: "x".repeat(50) },
     }));
     const report: AuditReport = {
-      summary: { score: 50, topIssues: lowIssues.slice(0, 50).map((i) => ({ category: i.category, severity: i.severity, title: i.title })) },
+      summary: {
+        score: 50,
+        topIssues: lowIssues
+          .slice(0, 50)
+          .map((i) => ({ category: i.category, severity: i.severity, title: i.title })),
+      },
       byCategory: { "long-tasks": { issues: lowIssues, remediations: [] } },
       warnings: [],
     };

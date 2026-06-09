@@ -17,16 +17,34 @@
 import type { CDPSession, Frame } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { runDomWalk, runDomWalkOnFrame, mergeDomWalkIntoTree, type DomWalkEntry } from "./dom-walk.js";
+import {
+  runDomWalk,
+  runDomWalkOnFrame,
+  mergeDomWalkIntoTree,
+  type DomWalkEntry,
+} from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
 import { LOW_A11Y_THRESHOLD } from "../util/config.js";
 import { elementKey } from "./refs.js";
 import { harvestClosedShadowElements } from "./shadow.js";
 
 const INTERACTIVE_ROLES = new Set([
-  "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
-  "switch", "slider", "spinbutton", "menuitem", "menuitemcheckbox", "menuitemradio",
-  "option", "tab", "treeitem",
+  "button",
+  "link",
+  "textbox",
+  "searchbox",
+  "combobox",
+  "checkbox",
+  "radio",
+  "switch",
+  "slider",
+  "spinbutton",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "tab",
+  "treeitem",
 ]);
 
 export interface ComposedSnapshot {
@@ -98,9 +116,7 @@ export async function composeSnapshot(
     closedShadowWarning = harvested.warning;
   }
   const allEntries = [...entries, ...closedEntries];
-  const merge = a11y
-    ? mergeDomWalkIntoTree(a11y, allEntries, refs)
-    : { added: 0, combined: 0 };
+  const merge = a11y ? mergeDomWalkIntoTree(a11y, allEntries, refs) : { added: 0, combined: 0 };
 
   // After merging a11y + DOM-walk, tag descendants of repeated containers
   // with their structural neighbourhood (row/column/rowText). Cheap O(n)
@@ -112,18 +128,18 @@ export async function composeSnapshot(
   if (a11yInteractive < LOW_A11Y_THRESHOLD) {
     warnings.push(
       `low-content a11y tree (${a11yInteractive} interactive descendants under root); ` +
-      `the DOM-walk fallback supplied ${merge.added} new node(s) (${allEntries.length} total candidates seen). ` +
-      `Heavy SPAs with non-semantic markup often surface useful state through the DOM-walk source — ` +
-      `use [from-dom]-marked entries with their [testid=…] hints when present.`,
+        `the DOM-walk fallback supplied ${merge.added} new node(s) (${allEntries.length} total candidates seen). ` +
+        `Heavy SPAs with non-semantic markup often surface useful state through the DOM-walk source — ` +
+        `use [from-dom]-marked entries with their [testid=…] hints when present.`,
     );
   }
   if (closedShadowWarning) warnings.push(closedShadowWarning);
   if (closedShadowCount > 0) {
     warnings.push(
       `${closedShadowCount} candidate(s) discovered inside CLOSED shadow root(s) via CDP. ` +
-      `Closed-shadow elements are platform-protected — action tools (click/fill/etc) ` +
-      `CANNOT reach them through Playwright's locator engine. Use them as evidence ` +
-      `("this widget exists at depth N") only.`,
+        `Closed-shadow elements are platform-protected — action tools (click/fill/etc) ` +
+        `CANNOT reach them through Playwright's locator engine. Use them as evidence ` +
+        `("this widget exists at depth N") only.`,
     );
   }
   return {

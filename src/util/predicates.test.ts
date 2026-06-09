@@ -83,10 +83,7 @@ describe("resolveKey", () => {
     // Plumb the denylist all the way through the public evaluator — an
     // `equals` against `actionResult.__proto__` must fail (actual=undefined)
     // rather than match the prototype object's stringification.
-    const r = evaluatePredicate(
-      { kind: "exists", key: "actionResult.__proto__.toString" },
-      SAMPLE,
-    );
+    const r = evaluatePredicate({ kind: "exists", key: "actionResult.__proto__.toString" }, SAMPLE);
     expect(r.ok).toBe(false);
   });
 });
@@ -95,8 +92,16 @@ describe("evaluatePredicate — leaf kinds", () => {
   const data = SAMPLE;
 
   it("equals matches strict-equal scalars", () => {
-    expect(evaluatePredicate({ kind: "equals", key: "actionResult.element.value", value: "hello world" }, data).ok).toBe(true);
-    const fail = evaluatePredicate({ kind: "equals", key: "actionResult.element.value", value: "nope" }, data);
+    expect(
+      evaluatePredicate(
+        { kind: "equals", key: "actionResult.element.value", value: "hello world" },
+        data,
+      ).ok,
+    ).toBe(true);
+    const fail = evaluatePredicate(
+      { kind: "equals", key: "actionResult.element.value", value: "nope" },
+      data,
+    );
     expect(fail.ok).toBe(false);
     if (!fail.ok) {
       expect(fail.kind).toBe("equals");
@@ -106,36 +111,93 @@ describe("evaluatePredicate — leaf kinds", () => {
   });
 
   it("notEquals inverts equals", () => {
-    expect(evaluatePredicate({ kind: "notEquals", key: "actionResult.element.value", value: "no" }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "notEquals", key: "actionResult.element.value", value: "hello world" }, data).ok).toBe(false);
+    expect(
+      evaluatePredicate({ kind: "notEquals", key: "actionResult.element.value", value: "no" }, data)
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate(
+        { kind: "notEquals", key: "actionResult.element.value", value: "hello world" },
+        data,
+      ).ok,
+    ).toBe(false);
   });
 
   it("contains works on strings and arrays", () => {
-    expect(evaluatePredicate({ kind: "contains", key: "actionResult.element.value", value: "world" }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "contains", key: "actionResult.console.errors", value: "one" }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "contains", key: "actionResult.console.errors", value: "absent" }, data).ok).toBe(false);
+    expect(
+      evaluatePredicate(
+        { kind: "contains", key: "actionResult.element.value", value: "world" },
+        data,
+      ).ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate(
+        { kind: "contains", key: "actionResult.console.errors", value: "one" },
+        data,
+      ).ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate(
+        { kind: "contains", key: "actionResult.console.errors", value: "absent" },
+        data,
+      ).ok,
+    ).toBe(false);
   });
 
   it("gt / lt / gte / lte are numeric and reject non-numbers", () => {
-    expect(evaluatePredicate({ kind: "gt", key: "actionResult.network.summary.total", value: 5 }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "lt", key: "actionResult.network.summary.total", value: 10 }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "gte", key: "actionResult.network.summary.total", value: 7 }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "lte", key: "actionResult.network.summary.total", value: 7 }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "gt", key: "actionResult.element.value", value: 3 }, data).ok).toBe(false);
+    expect(
+      evaluatePredicate({ kind: "gt", key: "actionResult.network.summary.total", value: 5 }, data)
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate({ kind: "lt", key: "actionResult.network.summary.total", value: 10 }, data)
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate({ kind: "gte", key: "actionResult.network.summary.total", value: 7 }, data)
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate({ kind: "lte", key: "actionResult.network.summary.total", value: 7 }, data)
+        .ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate({ kind: "gt", key: "actionResult.element.value", value: 3 }, data).ok,
+    ).toBe(false);
   });
 
   it("between is inclusive numeric", () => {
-    expect(evaluatePredicate({ kind: "between", key: "actionResult.network.summary.total", lo: 0, hi: 10 }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "between", key: "actionResult.network.summary.total", lo: 8, hi: 10 }, data).ok).toBe(false);
+    expect(
+      evaluatePredicate(
+        { kind: "between", key: "actionResult.network.summary.total", lo: 0, hi: 10 },
+        data,
+      ).ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate(
+        { kind: "between", key: "actionResult.network.summary.total", lo: 8, hi: 10 },
+        data,
+      ).ok,
+    ).toBe(false);
   });
 
   it("matches takes a regex string", () => {
-    expect(evaluatePredicate({ kind: "matches", key: "actionResult.navigation.to", value: "^https://example\\.com" }, data).ok).toBe(true);
-    expect(evaluatePredicate({ kind: "matches", key: "actionResult.navigation.to", value: "nope" }, data).ok).toBe(false);
+    expect(
+      evaluatePredicate(
+        { kind: "matches", key: "actionResult.navigation.to", value: "^https://example\\.com" },
+        data,
+      ).ok,
+    ).toBe(true);
+    expect(
+      evaluatePredicate({ kind: "matches", key: "actionResult.navigation.to", value: "nope" }, data)
+        .ok,
+    ).toBe(false);
   });
 
   it("exists checks non-null/undefined", () => {
-    expect(evaluatePredicate({ kind: "exists", key: "actionResult.element.value" }, data).ok).toBe(true);
+    expect(evaluatePredicate({ kind: "exists", key: "actionResult.element.value" }, data).ok).toBe(
+      true,
+    );
     expect(evaluatePredicate({ kind: "exists", key: "actionResult.missing" }, data).ok).toBe(false);
   });
 
@@ -176,7 +238,7 @@ describe("evaluatePredicate — and / or / not", () => {
       kind: "or",
       predicates: [
         { kind: "equals", key: "actionResult.navigation.kind", value: "full_load" }, // fails
-        { kind: "equals", key: "actionResult.navigation.kind", value: "spa" },       // passes
+        { kind: "equals", key: "actionResult.navigation.kind", value: "spa" }, // passes
       ],
     };
     expect(evaluatePredicate(pred, SAMPLE).ok).toBe(true);
@@ -236,20 +298,38 @@ describe("evaluatePredicate — and / or / not", () => {
 describe("validatePredicate", () => {
   it("accepts well-formed leaves and composites", () => {
     expect(validatePredicate({ kind: "equals", key: "actionResult.x", value: 1 })).toBeNull();
-    expect(validatePredicate({ kind: "between", key: "snapshot.warnings.length", lo: 0, hi: 5 })).toBeNull();
+    expect(
+      validatePredicate({ kind: "between", key: "snapshot.warnings.length", lo: 0, hi: 5 }),
+    ).toBeNull();
     expect(validatePredicate({ kind: "exists", key: "actionResult.element" })).toBeNull();
-    expect(validatePredicate({
-      kind: "and",
-      predicates: [{ kind: "equals", key: "actionResult.x", value: 1 }],
-    })).toBeNull();
+    expect(
+      validatePredicate({
+        kind: "and",
+        predicates: [{ kind: "equals", key: "actionResult.x", value: 1 }],
+      }),
+    ).toBeNull();
   });
 
   it("rejects unknown kinds, missing fields, and bad accessor roots", () => {
-    expect(validatePredicate({ kind: "unknown", key: "actionResult.x", value: 1 })).toMatch(/unknown kind/);
-    expect(validatePredicate({ kind: "equals", key: "actionResult.x" })).toMatch(/requires "value"/);
-    expect(validatePredicate({ kind: "equals", key: "page.url", value: "x" })).toMatch(/not allowed/);
+    expect(validatePredicate({ kind: "unknown", key: "actionResult.x", value: 1 })).toMatch(
+      /unknown kind/,
+    );
+    expect(validatePredicate({ kind: "equals", key: "actionResult.x" })).toMatch(
+      /requires "value"/,
+    );
+    expect(validatePredicate({ kind: "equals", key: "page.url", value: "x" })).toMatch(
+      /not allowed/,
+    );
     expect(validatePredicate({ kind: "between", key: "actionResult.x", lo: 0 })).toMatch(/numeric/);
-    expect(validatePredicate({ kind: "not", predicates: [{ kind: "exists", key: "actionResult.x" }, { kind: "exists", key: "actionResult.y" }] })).toMatch(/exactly one/);
+    expect(
+      validatePredicate({
+        kind: "not",
+        predicates: [
+          { kind: "exists", key: "actionResult.x" },
+          { kind: "exists", key: "actionResult.y" },
+        ],
+      }),
+    ).toMatch(/exactly one/);
     expect(validatePredicate({ kind: "and", predicates: [] })).toMatch(/≥1/);
   });
 });

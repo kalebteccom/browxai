@@ -21,7 +21,11 @@ function makeWorkspace(): string {
   return mkdtempSync(join(tmpdir(), "browxai-ext-"));
 }
 
-function makeExtensionDir(workspace: string, rel: string, manifest: Record<string, unknown>): string {
+function makeExtensionDir(
+  workspace: string,
+  rel: string,
+  manifest: Record<string, unknown>,
+): string {
   const dir = join(workspace, rel);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "manifest.json"), JSON.stringify(manifest), "utf8");
@@ -35,23 +39,35 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  try { rmSync(workspace, { recursive: true, force: true }); } catch { /* best-effort */ }
+  try {
+    rmSync(workspace, { recursive: true, force: true });
+  } catch {
+    /* best-effort */
+  }
 });
 
 // --- resolveExtensionPath --------------------------------------------------
 
 describe("resolveExtensionPath", () => {
   it("resolves a workspace-rooted extension directory", () => {
-    const ext = makeExtensionDir(workspace, "ext/foo", { name: "foo", version: "0.0.1", manifest_version: 3 });
+    const ext = makeExtensionDir(workspace, "ext/foo", {
+      name: "foo",
+      version: "0.0.1",
+      manifest_version: 3,
+    });
     expect(resolveExtensionPath(workspace, "ext/foo", "extensions_install")).toBe(ext);
   });
 
   it("rejects path traversal that escapes the workspace", () => {
-    expect(() => resolveExtensionPath(workspace, "../escape", "extensions_install")).toThrow(/must resolve inside/);
+    expect(() => resolveExtensionPath(workspace, "../escape", "extensions_install")).toThrow(
+      /must resolve inside/,
+    );
   });
 
   it("rejects absolute paths pointing outside the workspace", () => {
-    expect(() => resolveExtensionPath(workspace, "/etc", "extensions_install")).toThrow(/must resolve inside/);
+    expect(() => resolveExtensionPath(workspace, "/etc", "extensions_install")).toThrow(
+      /must resolve inside/,
+    );
   });
 
   it("rejects empty / whitespace path", () => {
@@ -60,21 +76,31 @@ describe("resolveExtensionPath", () => {
   });
 
   it("rejects a non-existent directory", () => {
-    expect(() => resolveExtensionPath(workspace, "ext/missing", "extensions_install")).toThrow(/not found/);
+    expect(() => resolveExtensionPath(workspace, "ext/missing", "extensions_install")).toThrow(
+      /not found/,
+    );
   });
 
   it("rejects a file (not a directory)", () => {
     writeFileSync(join(workspace, "not-a-dir.crx"), "binary", "utf8");
-    expect(() => resolveExtensionPath(workspace, "not-a-dir.crx", "extensions_install")).toThrow(/not a directory/);
+    expect(() => resolveExtensionPath(workspace, "not-a-dir.crx", "extensions_install")).toThrow(
+      /not a directory/,
+    );
   });
 
   it("rejects a directory missing manifest.json", () => {
     mkdirSync(join(workspace, "no-manifest"), { recursive: true });
-    expect(() => resolveExtensionPath(workspace, "no-manifest", "extensions_install")).toThrow(/no manifest\.json/);
+    expect(() => resolveExtensionPath(workspace, "no-manifest", "extensions_install")).toThrow(
+      /no manifest\.json/,
+    );
   });
 
   it("accepts an absolute path that is INSIDE the workspace", () => {
-    const ext = makeExtensionDir(workspace, "ext/inside", { name: "inside", version: "1.0.0", manifest_version: 3 });
+    const ext = makeExtensionDir(workspace, "ext/inside", {
+      name: "inside",
+      version: "1.0.0",
+      manifest_version: 3,
+    });
     expect(resolveExtensionPath(workspace, ext, "extensions_install")).toBe(ext);
   });
 });
@@ -83,13 +109,25 @@ describe("resolveExtensionPath", () => {
 
 describe("readManifest", () => {
   it("parses name/version/manifest_version", () => {
-    const ext = makeExtensionDir(workspace, "ext/m", { name: "My Ext", version: "1.2.3", manifest_version: 3 });
-    expect(readManifest(ext, "extensions_install")).toEqual({ name: "My Ext", version: "1.2.3", manifestVersion: 3 });
+    const ext = makeExtensionDir(workspace, "ext/m", {
+      name: "My Ext",
+      version: "1.2.3",
+      manifest_version: 3,
+    });
+    expect(readManifest(ext, "extensions_install")).toEqual({
+      name: "My Ext",
+      version: "1.2.3",
+      manifestVersion: 3,
+    });
   });
 
   it("falls back to defaults for missing/wrong-typed fields", () => {
     const ext = makeExtensionDir(workspace, "ext/m", { foo: "bar" });
-    expect(readManifest(ext, "extensions_install")).toEqual({ name: "(unnamed)", version: "0.0.0", manifestVersion: 0 });
+    expect(readManifest(ext, "extensions_install")).toEqual({
+      name: "(unnamed)",
+      version: "0.0.0",
+      manifestVersion: 0,
+    });
   });
 
   it("throws on non-JSON manifest", () => {
@@ -127,8 +165,13 @@ describe("extensionIdFromPath", () => {
 // --- buildLaunchArgs -------------------------------------------------------
 
 describe("buildLaunchArgs", () => {
-  const mk = (path: string, enabled = true): LoadedExtension =>
-    ({ id: extensionIdFromPath(path), name: "n", version: "0", path, enabled });
+  const mk = (path: string, enabled = true): LoadedExtension => ({
+    id: extensionIdFromPath(path),
+    name: "n",
+    version: "0",
+    path,
+    enabled,
+  });
 
   it("returns empty args for an empty list", () => {
     expect(buildLaunchArgs([])).toEqual([]);
@@ -144,10 +187,7 @@ describe("buildLaunchArgs", () => {
 
   it("skips disabled extensions", () => {
     const args = buildLaunchArgs([mk("/a", true), mk("/b", false), mk("/c", true)]);
-    expect(args).toEqual([
-      "--disable-extensions-except=/a,/c",
-      "--load-extension=/a,/c",
-    ]);
+    expect(args).toEqual(["--disable-extensions-except=/a,/c", "--load-extension=/a,/c"]);
   });
 });
 
@@ -155,27 +195,41 @@ describe("buildLaunchArgs", () => {
 
 describe("refuseIfUnsupported", () => {
   it("refuses attached/BYOB sessions", () => {
-    const r = refuseIfUnsupported({ mode: "attached", headless: false, tool: "extensions_install" });
+    const r = refuseIfUnsupported({
+      mode: "attached",
+      headless: false,
+      tool: "extensions_install",
+    });
     expect(r?.ok).toBe(false);
     expect(r?.error).toMatch(/attached\/BYOB sessions/);
     expect(r?.hint).toMatch(/not-owned/);
   });
 
   it("refuses incognito sessions", () => {
-    const r = refuseIfUnsupported({ mode: "incognito", headless: false, tool: "extensions_install" });
+    const r = refuseIfUnsupported({
+      mode: "incognito",
+      headless: false,
+      tool: "extensions_install",
+    });
     expect(r?.ok).toBe(false);
     expect(r?.error).toMatch(/incognito/);
     expect(r?.hint).toMatch(/allowed in incognito/);
   });
 
   it("refuses headless persistent sessions", () => {
-    const r = refuseIfUnsupported({ mode: "persistent", headless: true, tool: "extensions_install" });
+    const r = refuseIfUnsupported({
+      mode: "persistent",
+      headless: true,
+      tool: "extensions_install",
+    });
     expect(r?.ok).toBe(false);
     expect(r?.error).toMatch(/headed session/);
   });
 
   it("returns null for headed persistent sessions", () => {
-    expect(refuseIfUnsupported({ mode: "persistent", headless: false, tool: "extensions_install" })).toBeNull();
+    expect(
+      refuseIfUnsupported({ mode: "persistent", headless: false, tool: "extensions_install" }),
+    ).toBeNull();
   });
 });
 
@@ -187,7 +241,13 @@ describe("applyInstall", () => {
     const r = applyInstall(reg, { path: "/p/a", name: "A", version: "1.0" }, "extensions_install");
     expect(r.id).toMatch(/^[a-p]{32}$/);
     expect(r.loaded).toHaveLength(1);
-    expect(r.loaded[0]).toMatchObject({ id: r.id, name: "A", version: "1.0", path: "/p/a", enabled: true });
+    expect(r.loaded[0]).toMatchObject({
+      id: r.id,
+      name: "A",
+      version: "1.0",
+      path: "/p/a",
+      enabled: true,
+    });
   });
 
   it("rejects a duplicate path", () => {
@@ -195,7 +255,9 @@ describe("applyInstall", () => {
     const reg: ReturnType<typeof newExtensionRegistry> = {
       loaded: [{ id: extensionIdFromPath(path), name: "A", version: "1.0", path, enabled: true }],
     };
-    expect(() => applyInstall(reg, { path, name: "A", version: "1.0" }, "extensions_install")).toThrow(/already loaded/);
+    expect(() =>
+      applyInstall(reg, { path, name: "A", version: "1.0" }, "extensions_install"),
+    ).toThrow(/already loaded/);
   });
 });
 
@@ -211,7 +273,13 @@ describe("applyUninstall", () => {
   });
 
   it("throws when the id is unknown", () => {
-    expect(() => applyUninstall(newExtensionRegistry(), "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "extensions_uninstall")).toThrow(/no extension with id/);
+    expect(() =>
+      applyUninstall(
+        newExtensionRegistry(),
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "extensions_uninstall",
+      ),
+    ).toThrow(/no extension with id/);
   });
 });
 
@@ -222,13 +290,25 @@ describe("applyReload", () => {
     const reg: ReturnType<typeof newExtensionRegistry> = {
       loaded: [{ id, name: "A", version: "1.0", path, enabled: true }],
     };
-    const r = applyReload(reg, id, { name: "A2", version: "2.0", manifestVersion: 3 }, "extensions_reload");
+    const r = applyReload(
+      reg,
+      id,
+      { name: "A2", version: "2.0", manifestVersion: 3 },
+      "extensions_reload",
+    );
     expect(r.entry).toMatchObject({ id, name: "A2", version: "2.0" });
     expect(r.loaded).toHaveLength(1);
     expect(r.loaded[0]?.name).toBe("A2");
   });
 
   it("throws when the id is unknown", () => {
-    expect(() => applyReload(newExtensionRegistry(), "x".repeat(32), { name: "n", version: "0", manifestVersion: 3 }, "extensions_reload")).toThrow(/no extension with id/);
+    expect(() =>
+      applyReload(
+        newExtensionRegistry(),
+        "x".repeat(32),
+        { name: "n", version: "0", manifestVersion: 3 },
+        "extensions_reload",
+      ),
+    ).toThrow(/no extension with id/);
   });
 });

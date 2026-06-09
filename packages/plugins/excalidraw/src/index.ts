@@ -160,7 +160,8 @@ export const handlers = {
   /** `excalidraw.delete_element({elementId})` — updateScene without that element. */
   async delete_element(api: PluginApi, args: unknown): Promise<ToolResponse> {
     const a = (args ?? {}) as { elementId?: unknown };
-    if (typeof a.elementId !== "string" || a.elementId.length === 0) return json(badArg("elementId"));
+    if (typeof a.elementId !== "string" || a.elementId.length === 0)
+      return json(badArg("elementId"));
     if (!(await excalidrawLoaded(api))) return json(NOT_LOADED);
     const id = JSON.stringify(a.elementId);
     const expr = `(() => {
@@ -173,7 +174,12 @@ export const handlers = {
     const r = await runEval(api, expr);
     if (!r.ok) return json({ ok: false, error: r.error, code: "eval-failed" });
     const v = r.value as { removed: number };
-    if (v.removed === 0) return json({ ok: false, error: `element not found: ${a.elementId}`, code: "element-not-found" });
+    if (v.removed === 0)
+      return json({
+        ok: false,
+        error: `element not found: ${a.elementId}`,
+        code: "element-not-found",
+      });
     return json({ ok: true, elementId: a.elementId });
   },
 

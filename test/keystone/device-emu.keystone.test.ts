@@ -103,11 +103,15 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
 
       // ---- (1) No catalog staged. Bluetooth/USB reject; HID resolves with []. ----
       await callJson("click", { session, selector: '[data-testid="bt-btn"]' });
-      const btDismissed = await pollSnapshot(session, (s) => /bt-result.*?rejected name=NotFoundError/.test(s));
+      const btDismissed = await pollSnapshot(session, (s) =>
+        /bt-result.*?rejected name=NotFoundError/.test(s),
+      );
       expect(btDismissed).toMatch(/rejected name=NotFoundError/);
 
       await callJson("click", { session, selector: '[data-testid="usb-btn"]' });
-      const usbDismissed = await pollSnapshot(session, (s) => /usb-result.*?rejected name=NotFoundError/.test(s));
+      const usbDismissed = await pollSnapshot(session, (s) =>
+        /usb-result.*?rejected name=NotFoundError/.test(s),
+      );
       expect(usbDismissed).toMatch(/rejected name=NotFoundError/);
 
       await callJson("click", { session, selector: '[data-testid="hid-btn"]' });
@@ -120,7 +124,9 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
         requests: Array<{ api: string; handledAs: string; returned: number }>;
       }>("device_requests", { session });
       expect(reqs0.ok).toBe(true);
-      expect(reqs0.requests.some((r) => r.api === "bluetooth" && r.handledAs === "rejected")).toBe(true);
+      expect(reqs0.requests.some((r) => r.api === "bluetooth" && r.handledAs === "rejected")).toBe(
+        true,
+      );
       expect(reqs0.requests.some((r) => r.api === "usb" && r.handledAs === "rejected")).toBe(true);
       expect(reqs0.requests.some((r) => r.api === "hid" && r.handledAs === "empty")).toBe(true);
 
@@ -134,32 +140,41 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
       expect(stageBt.api).toBe("bluetooth");
       expect(stageBt.catalog.devices).toHaveLength(1);
 
-      const stageUsb = await callJson<{ ok: boolean }>(
-        "emulate_usb",
-        { session, devices: [{ name: "browxai-usb-pen", vendorId: 0x1234, productId: 0x5678 }] },
-      );
+      const stageUsb = await callJson<{ ok: boolean }>("emulate_usb", {
+        session,
+        devices: [{ name: "browxai-usb-pen", vendorId: 0x1234, productId: 0x5678 }],
+      });
       expect(stageUsb.ok).toBe(true);
 
       const stageHid = await callJson<{ ok: boolean; catalog: { devices: unknown[] } }>(
         "emulate_hid",
-        { session, devices: [
-          { name: "hid-one", vendorId: 0x1111, productId: 0x2222 },
-          { name: "hid-two", vendorId: 0x3333, productId: 0x4444 },
-        ] },
+        {
+          session,
+          devices: [
+            { name: "hid-one", vendorId: 0x1111, productId: 0x2222 },
+            { name: "hid-two", vendorId: 0x3333, productId: 0x4444 },
+          ],
+        },
       );
       expect(stageHid.ok).toBe(true);
       expect(stageHid.catalog.devices).toHaveLength(2);
 
       await callJson("click", { session, selector: '[data-testid="bt-btn"]' });
-      const btOk = await pollSnapshot(session, (s) => /bt-result.*?resolved name=heart-rate-monitor/.test(s));
+      const btOk = await pollSnapshot(session, (s) =>
+        /bt-result.*?resolved name=heart-rate-monitor/.test(s),
+      );
       expect(btOk).toMatch(/resolved name=heart-rate-monitor id=bt-aa-bb-cc/);
 
       await callJson("click", { session, selector: '[data-testid="usb-btn"]' });
-      const usbOk = await pollSnapshot(session, (s) => /usb-result.*?resolved vendorId=4660/.test(s));
+      const usbOk = await pollSnapshot(session, (s) =>
+        /usb-result.*?resolved vendorId=4660/.test(s),
+      );
       expect(usbOk).toMatch(/resolved vendorId=4660 productName=browxai-usb-pen/);
 
       await callJson("click", { session, selector: '[data-testid="hid-btn"]' });
-      const hidOk = await pollSnapshot(session, (s) => /hid-result.*?resolved count=2 first=hid-one/.test(s));
+      const hidOk = await pollSnapshot(session, (s) =>
+        /hid-result.*?resolved count=2 first=hid-one/.test(s),
+      );
       expect(hidOk).toMatch(/resolved count=2 first=hid-one/);
 
       // device_requests sees the second-pass resolved calls.
@@ -186,7 +201,11 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
       // distinguish the new click via DOM text. The request buffer is the
       // canonical source of "what happened since the clear".
       let postClear: Array<{ api: string; handledAs: string }> = [];
-      for (let i = 0; i < 60 && !postClear.some((r) => r.api === "bluetooth" && r.handledAs === "rejected"); i++) {
+      for (
+        let i = 0;
+        i < 60 && !postClear.some((r) => r.api === "bluetooth" && r.handledAs === "rejected");
+        i++
+      ) {
         const r = await callJson<{ requests: Array<{ api: string; handledAs: string }> }>(
           "device_requests",
           { session, since: cutBeforeReclick },
@@ -197,7 +216,9 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
       }
       expect(postClear.some((r) => r.api === "bluetooth" && r.handledAs === "rejected")).toBe(true);
       // And no `resolved` bluetooth entry was issued after the clear.
-      expect(postClear.some((r) => r.api === "bluetooth" && r.handledAs === "resolved")).toBe(false);
+      expect(postClear.some((r) => r.api === "bluetooth" && r.handledAs === "resolved")).toBe(
+        false,
+      );
 
       await callJson("close_session", { session });
     },
@@ -220,10 +241,10 @@ describe("device-emulation keystone — Web Bluetooth / WebUSB / WebHID against 
       await callJson("click", { session, selector: '[data-testid="usb-btn"]' });
       await pollSnapshot(session, (s) => /usb-result.*?rejected/.test(s));
 
-      const slice = await callJson<{ requests: Array<{ api: string }> }>(
-        "device_requests",
-        { session, since: cut },
-      );
+      const slice = await callJson<{ requests: Array<{ api: string }> }>("device_requests", {
+        session,
+        since: cut,
+      });
       expect(slice.requests.length).toBeGreaterThanOrEqual(1);
       expect(slice.requests.every((r) => r.api !== "bluetooth")).toBe(true);
       expect(slice.requests.some((r) => r.api === "usb")).toBe(true);

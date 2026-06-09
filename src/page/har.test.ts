@@ -23,8 +23,12 @@ import {
 } from "./har.js";
 
 let ws: string;
-beforeEach(() => { ws = mkdtempSync(join(tmpdir(), "browx-har-")); });
-afterEach(() => { rmSync(ws, { recursive: true, force: true }); });
+beforeEach(() => {
+  ws = mkdtempSync(join(tmpdir(), "browx-har-"));
+});
+afterEach(() => {
+  rmSync(ws, { recursive: true, force: true });
+});
 
 /** Minimal fake BrowserContext — records every HAR-related call. */
 function fakeContext() {
@@ -69,24 +73,32 @@ describe("resolveHarPath (workspace-rooted)", () => {
   });
 
   it("rejects path traversal outside the workspace", () => {
-    expect(() => resolveHarPath(ws, "s", "../escape.har", "start_har")).toThrow(/inside \$BROWX_WORKSPACE/);
-    expect(() => resolveHarPath(ws, "s", "/etc/passwd", "start_har")).toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => resolveHarPath(ws, "s", "../escape.har", "start_har")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
+    expect(() => resolveHarPath(ws, "s", "/etc/passwd", "start_har")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 });
 
 describe("resolveHarReplayPaths", () => {
   it("rejects empty / non-string entries", () => {
-    expect(() => resolveHarReplayPaths(ws, [""], "open_session")).toThrow(/non-empty workspace-rooted/);
+    expect(() => resolveHarReplayPaths(ws, [""], "open_session")).toThrow(
+      /non-empty workspace-rooted/,
+    );
   });
 
   it("rejects missing files (no silent fallback to network on a typo)", () => {
-    expect(() => resolveHarReplayPaths(ws, ["captures/nope.har"], "open_session"))
-      .toThrow(/HAR replay file not found/);
+    expect(() => resolveHarReplayPaths(ws, ["captures/nope.har"], "open_session")).toThrow(
+      /HAR replay file not found/,
+    );
   });
 
   it("rejects path traversal outside the workspace", () => {
-    expect(() => resolveHarReplayPaths(ws, ["../escape.har"], "open_session"))
-      .toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => resolveHarReplayPaths(ws, ["../escape.har"], "open_session")).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 
   it("returns workspace-absolute paths for every entry that exists", () => {
@@ -127,7 +139,12 @@ describe("startHar (happy path)", () => {
   it("honours mode + content overrides", async () => {
     const { ctx, calls } = fakeContext();
     const state = newHarRecorderState();
-    await startHar(ctx, state, ws, "agent-a", { path: "minimal.har", mode: "minimal", content: "attach", urlFilter: "**/*.api" });
+    await startHar(ctx, state, ws, "agent-a", {
+      path: "minimal.har",
+      mode: "minimal",
+      content: "attach",
+      urlFilter: "**/*.api",
+    });
     const [, options] = calls[0]!.args as [string, Record<string, unknown>];
     expect(options.updateMode).toBe("minimal");
     expect(options.updateContent).toBe("attach");
@@ -147,14 +164,18 @@ describe("startHar (workspace-escape rejection)", () => {
   it("rejects a path that escapes the workspace", async () => {
     const { ctx } = fakeContext();
     const state = newHarRecorderState();
-    await expect(startHar(ctx, state, ws, "s", { path: "../escape.har" })).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
+    await expect(startHar(ctx, state, ws, "s", { path: "../escape.har" })).rejects.toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
     expect(state.active).toBe(false);
   });
 
   it("rejects an absolute path pointing outside the workspace", async () => {
     const { ctx } = fakeContext();
     const state = newHarRecorderState();
-    await expect(startHar(ctx, state, ws, "s", { path: "/etc/passwd" })).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
+    await expect(startHar(ctx, state, ws, "s", { path: "/etc/passwd" })).rejects.toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 
   it("refuses to start over an active native-record session", async () => {
@@ -163,7 +184,9 @@ describe("startHar (workspace-escape rejection)", () => {
     state.active = true;
     state.nativeRecord = true;
     state.path = join(ws, "creation.har");
-    await expect(startHar(ctx, state, ws, "s", { path: "again.har" })).rejects.toThrow(/wired at session creation/);
+    await expect(startHar(ctx, state, ws, "s", { path: "again.har" })).rejects.toThrow(
+      /wired at session creation/,
+    );
   });
 });
 
@@ -292,6 +315,8 @@ describe("buildRecordHarOption (open_session({har}))", () => {
   });
 
   it("rejects a path that escapes the workspace", () => {
-    expect(() => buildRecordHarOption(ws, "s", { path: "../escape.har" })).toThrow(/inside \$BROWX_WORKSPACE/);
+    expect(() => buildRecordHarOption(ws, "s", { path: "../escape.har" })).toThrow(
+      /inside \$BROWX_WORKSPACE/,
+    );
   });
 });

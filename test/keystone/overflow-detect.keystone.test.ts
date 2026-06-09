@@ -79,11 +79,17 @@ describe("overflow-detect keystone — all four detectors fire on the fixture", 
     "reports each of layout / clipped / text-ellipsis / viewport-horizontal exactly once on the dedicated fixture (regression gate for stringified-arrow PAGE_DETECT_FN bug)",
     async () => {
       const session = "ks-overflow-all";
-      const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
       expect(opened.ok).toBe(true);
       // Force a small viewport so 200vw element definitely overflows.
       await callJson("set_viewport", { session, width: 400, height: 600 });
-      const nav = await callJson<{ ok: boolean }>("navigate", { session, url: `${fixture.url}/overflow-page` });
+      const nav = await callJson<{ ok: boolean }>("navigate", {
+        session,
+        url: `${fixture.url}/overflow-page`,
+      });
       expect(nav.ok).toBe(true);
 
       const r = await callJson<OverflowResult>("overflow_detect", { session });
@@ -121,7 +127,11 @@ describe("overflow-detect keystone — all four detectors fire on the fixture", 
       const layout = byType.get("layout")!.find((f) => f.selector.includes("ks-layout"));
       expect(layout).toBeTruthy();
       expect(layout!.bbox).not.toBeNull();
-      const layoutEv = layout!.evidence as { scrollHeight: number; clientHeight: number; overflowY: string };
+      const layoutEv = layout!.evidence as {
+        scrollHeight: number;
+        clientHeight: number;
+        overflowY: string;
+      };
       expect(layoutEv.scrollHeight).toBeGreaterThan(layoutEv.clientHeight);
       expect(["auto", "scroll"]).toContain(layoutEv.overflowY);
 

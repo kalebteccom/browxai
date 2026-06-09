@@ -26,10 +26,7 @@ interface PageRawResult {
   scanCapped: boolean;
 }
 
-function fakePage(
-  result: PageRawResult,
-  capture?: { args?: unknown },
-): OverflowDetectPage {
+function fakePage(result: PageRawResult, capture?: { args?: unknown }): OverflowDetectPage {
   return {
     async evaluate<T, Arg>(_fn: (arg: Arg) => T | Promise<T>, a?: Arg): Promise<T> {
       if (capture) capture.args = a;
@@ -78,9 +75,7 @@ describe("synthesiseSelector — selector tiers", () => {
       ],
     };
     const s = synthesiseSelector(el);
-    expect(s.selector).toBe(
-      "main:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)",
-    );
+    expect(s.selector).toBe("main:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)");
   });
 
   it("tier 3: caps at 5 levels of chain", () => {
@@ -275,7 +270,14 @@ describe("detectOverflow — runner integration with fake page", () => {
       selectorOriginalLength: 5,
       bbox: { x: 0, y: 0, w: 10, h: 10 },
       type: "layout" as const,
-      evidence: { scrollWidth: 100, clientWidth: 50, scrollHeight: 50, clientHeight: 50, overflowX: "auto", overflowY: "visible" },
+      evidence: {
+        scrollWidth: 100,
+        clientWidth: 50,
+        scrollHeight: 50,
+        clientHeight: 50,
+        overflowX: "auto",
+        overflowY: "visible",
+      },
     }));
     const page = fakePage({ findings, scanCapped: false });
     const r = await detectOverflow(page, { limit: 10_000 });

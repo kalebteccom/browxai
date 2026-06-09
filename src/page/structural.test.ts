@@ -64,10 +64,7 @@ describe("annotateStructuralContext", () => {
     refSeq = 0;
     const inner = n("button", "Open");
     const item = n("listitem", undefined, [n("text", "Item A"), inner]);
-    const list = n("list", undefined, [
-      item,
-      n("listitem", undefined, [n("text", "Item B")]),
-    ]);
+    const list = n("list", undefined, [item, n("listitem", undefined, [n("text", "Item B")])]);
     const root = n("WebArea", undefined, [list]);
 
     annotateStructuralContext(root);
@@ -126,7 +123,9 @@ describe("annotateStructuralContext", () => {
 
   it("caps rowText at 200 chars with an ellipsis", () => {
     refSeq = 0;
-    const cells = Array.from({ length: 30 }, (_, i) => n("cell", `Long-cell-text-${i}-aaaaaaaaaaaaaaaaaaaa`));
+    const cells = Array.from({ length: 30 }, (_, i) =>
+      n("cell", `Long-cell-text-${i}-aaaaaaaaaaaaaaaaaaaa`),
+    );
     const row = n("row", undefined, cells);
     const root = n("WebArea", undefined, [n("table", undefined, [row])]);
 

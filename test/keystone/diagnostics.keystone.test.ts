@@ -28,7 +28,10 @@ let handlers: Handlers;
 let workspace: string;
 const savedEnv: Record<string, string | undefined> = {};
 
-async function callJson<T = Record<string, unknown>>(name: string, args: Record<string, unknown>): Promise<T> {
+async function callJson<T = Record<string, unknown>>(
+  name: string,
+  args: Record<string, unknown>,
+): Promise<T> {
   const fn = handlers[name];
   if (!fn) throw new Error(`keystone: no handler "${name}"`);
   const res = await fn(args);

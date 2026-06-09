@@ -39,7 +39,10 @@ function frame(isMain = true) {
  *  script references `Math` / `Object` / `globalThis` — we run it as a
  *  Function body with a custom globalThis to keep the host's Math.random
  *  untouched. */
-function runInitScript(script: string): { math: { random: () => number }; globalThis: Record<string, unknown> } {
+function runInitScript(script: string): {
+  math: { random: () => number };
+  globalThis: Record<string, unknown>;
+} {
   const fakeMath: { random: () => number } & Record<string, unknown> = {
     random: () => 0,
     imul: Math.imul,
@@ -153,11 +156,17 @@ describe("SeededRandomRegistry — re-apply on navigation", () => {
     const initialPushes = evaluates.length;
 
     // Sub-frame nav: ignored
-    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit("framenavigated", frame(false));
+    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
+      "framenavigated",
+      frame(false),
+    );
     expect(evaluates.length).toBe(initialPushes);
 
     // Main-frame nav: cached seed re-pushed onto the page realm
-    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit("framenavigated", frame(true));
+    await (page as unknown as { _emit: (e: string, a: unknown) => Promise<void> })._emit(
+      "framenavigated",
+      frame(true),
+    );
     expect(evaluates.length).toBe(initialPushes + 1);
     expect(evaluates[evaluates.length - 1]).toContain("9");
   });
@@ -169,6 +178,8 @@ describe("SeededRandomRegistry — re-apply on navigation", () => {
     await reg.apply(ctx as never, page as never, { seed: 1 });
     await reg.apply(ctx as never, page as never, { seed: 2 });
     await reg.apply(ctx as never, page as never, { seed: 3 });
-    expect((page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated")).toHaveLength(1);
+    expect(
+      (page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"),
+    ).toHaveLength(1);
   });
 });

@@ -8,7 +8,7 @@
 
 browxai is **v0.1.0**. The public surface is now **frozen** and versioned so it can stabilise toward a Phase-3 public release (the release trigger requires "public API stable ~1 week + semver" — revised down from ~1 month by owner decision 2026-05-20; every adoption round that grew the surface previously reset that clock — this baseline stops that).
 
-- **Stable surface** = the tool *names* + documented input/output shapes in this file, the `eN` ref scheme, the `ActionResult` shape, the default capability set (`read,navigation,action,human`), and the documented `BROWX_*` / config keys. **Pre-1.0 contract:** the stable surface does **not** change in a `patch` release; an additive change is a `minor`; a breaking change to it requires a `minor` bump **plus** a changelog entry **and** a deprecation note (no silent breaks). Goal: ≥1 week with no breaking change to the stable surface before Phase 3.
+- **Stable surface** = the tool _names_ + documented input/output shapes in this file, the `eN` ref scheme, the `ActionResult` shape, the default capability set (`read,navigation,action,human`), and the documented `BROWX_*` / config keys. **Pre-1.0 contract:** the stable surface does **not** change in a `patch` release; an additive change is a `minor`; a breaking change to it requires a `minor` bump **plus** a changelog entry **and** a deprecation note (no silent breaks). Goal: ≥1 week with no breaking change to the stable surface before Phase 3.
 - **Explicitly NOT covered by the stability guarantee** (may change/appear/vanish in any release): anything behind an **off-by-default capability** (`eval`, `network-body`, `clipboard`, `byob-attach`, `file-io`) and the `unstable.*` config namespace. New experimental surface lands behind an off-by-default capability by default; promotion into the stable surface is a deliberate, versioned act, not the reflex.
 - Adoption rounds continue, but a round that only adds capability-gated surface (or fixes behaviour) is **not** a stable-surface change and does not reset the stability clock.
 
@@ -55,29 +55,29 @@ built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (ope
 ```
 
 - **`get_config({ scope? })`** — resolved merged view by default; pass `scope ∈ {defaults,env,user,project,session,resolved}` for one raw layer.
-- **`set_config({ scope: "user"|"project", patch })`** — the *only* supported way to persist config. Writes `<workspace>/config.json` (machine-managed; do not hand-edit). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after the call.
+- **`set_config({ scope: "user"|"project", patch })`** — the _only_ supported way to persist config. Writes `<workspace>/config.json` (machine-managed; do not hand-edit). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after the call.
 - **`reset_config({ scope: "user"|"project" })`** — clears that persistent layer.
 
 Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, `defaultDevice`, `defaultViewport`, `actionTimeoutMs`, `disableWebSecurity`, `hideOverlaySelectors`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
 
-**`actionTimeoutMs`** (W-M1, anti-wedge): hard deadline (ms) applied to every action body, `eval_js`, and the read CDP paths (`snapshot`/`find`/`text_search`/`inspect`). **Default 5000.** Every action/read tool also takes a per-call `timeoutMs` override. The deadline is a `Promise.race` at the dispatch boundary — a wedged `page.evaluate`/CDP call returns a structured `ok:false` "anti-wedge timeout" *within the deadline* instead of stalling forever (the orphaned op can't be cancelled but the agent is unblocked). Clamped to **[1, 3600000]** (1 h hard ceiling); an over-ceiling request is clamped and a deterrent warning is added to the result. **An action needing >5 s is almost always a no-op or a wedged page op** — raise `timeoutMs` only for one specific known-slow call, never as a blanket. `wait_for`'s `timeoutMs` is both its max wait *and* its deadline (a wait is meant to wait). `await_human` is human-paced (5 min default, 1 h hard cap — no infinite wait; the only previously-unbounded path is closed). `watch`/`sample`/`batch` are bounded by their own `durationMs` / per-inner-call deadlines.
+**`actionTimeoutMs`** (W-M1, anti-wedge): hard deadline (ms) applied to every action body, `eval_js`, and the read CDP paths (`snapshot`/`find`/`text_search`/`inspect`). **Default 5000.** Every action/read tool also takes a per-call `timeoutMs` override. The deadline is a `Promise.race` at the dispatch boundary — a wedged `page.evaluate`/CDP call returns a structured `ok:false` "anti-wedge timeout" _within the deadline_ instead of stalling forever (the orphaned op can't be cancelled but the agent is unblocked). Clamped to **[1, 3600000]** (1 h hard ceiling); an over-ceiling request is clamped and a deterrent warning is added to the result. **An action needing >5 s is almost always a no-op or a wedged page op** — raise `timeoutMs` only for one specific known-slow call, never as a blanket. `wait_for`'s `timeoutMs` is both its max wait _and_ its deadline (a wait is meant to wait). `await_human` is human-paced (5 min default, 1 h hard cap — no infinite wait; the only previously-unbounded path is closed). `watch`/`sample`/`batch` are bounded by their own `durationMs` / per-inner-call deadlines.
 
 **`disableWebSecurity`** (W-L1, dangerous opt-in): `false` by default. When `true`, **`managed` + `incognito`** sessions launch with `--disable-web-security --disable-site-isolation-trials` — SOP/CORS off browser-wide (any origin → any server). For CORS-less-API / cross-origin QA. `attached`/BYOB is unaffected (externally launched — its flags are whoever started it's responsibility). Loud warning at server boot **and** per session launch. **Deliberately not mappable from any `BROWX_*` env var** — set it only via `set_config({ scope, patch:{ disableWebSecurity:true } })` or the managed config file, so it can't be ambiently enabled. Resolved fresh per `open_session` (no restart needed after `set_config`). Same posture class as `eval` / `network-body` — see `docs/threat-model.md`.
 
 **`hideOverlaySelectors`** (`string[]`, default `[]` — off): CSS selectors for chrome/overlay elements (dev-build HMR widgets, devtools iframes, cookie/consent banners) that intercept coordinate clicks or pollute the snapshot. The server injects a **CSS-only** init script that applies `pointer-events:none; display:none` to matches on every navigation — **non-destructive** (no node removal, the DOM is intact for assertions) and **no agent JS** (the selectors come from operator-managed config, never the page). Resolved fresh per `open_session` (no restart needed after `set_config`). Prefer this over hand-rolled per-session `eval_js` removal. Also mappable from the legacy `BROWX_HIDE_OVERLAY_SELECTORS` env (comma-separated).
 
-The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer** (one notch above built-in defaults, below user/project) — documented but no longer the recommended path. `BROWX_WORKSPACE` is the exception: it's a *location* anchor (where the config store itself lives), not config.
+The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer** (one notch above built-in defaults, below user/project) — documented but no longer the recommended path. `BROWX_WORKSPACE` is the exception: it's a _location_ anchor (where the config store itself lives), not config.
 
-| Env var | Default | What |
-|---|---|---|
-| `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
-| `BROWX_ATTACH_CDP` | *(unset)* | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. |
-| `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
-| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management — headed + persistent only). A disabled tool returns a structured error on call. |
-| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
-| `BROWX_ALLOWED_ORIGINS` | *(unset)* | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
-| `BROWX_BLOCKED_ORIGINS` | *(unset)* | Comma-separated blocklist; overrides the allowlist. |
+| Env var                  | Default                                 | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWX_WORKSPACE`        | `~/.browxai/`                           | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `BROWX_ATTACH_CDP`       | _(unset)_                               | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown.                                                                                                                                                                                                                                                                                                                                                                                    |
+| `BROWX_HEADLESS`         | `0`                                     | Managed-mode only. `1` to launch headless.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `BROWX_TEST_ATTRIBUTES`  | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes.                                                                                                                                                                                                                                                                                  |
+| `BROWX_CAPABILITIES`     | `read,navigation,action,human`          | Comma-separated list of capability categories enabled at server start (Phase-2 — see `docs/threat-model.md`). Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management — headed + persistent only). A disabled tool returns a structured error on call. |
+| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`.                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `BROWX_ALLOWED_ORIGINS`  | _(unset)_                               | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model.                                                                                                                                                                                                                                                                                                                                                    |
+| `BROWX_BLOCKED_ORIGINS`  | _(unset)_                               | Comma-separated blocklist; overrides the allowlist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ## Sessions (Phase 2.5)
 
@@ -85,7 +85,7 @@ Every browser-touching tool accepts an optional **`session`** arg (default `"def
 
 - **Multiple agents, one server** — give each agent its own `session` id; they can't stomp each other (no server-global "active session").
 - **One agent, many sessions** — drive several windows/flows in parallel by id.
-- **Multi-user / multiplayer** — two sessions logged in as different users on the *same* app don't bleed, because they're different browser contexts (different cookie jars).
+- **Multi-user / multiplayer** — two sessions logged in as different users on the _same_ app don't bleed, because they're different browser contexts (different cookie jars).
 
 Omitting `session` resolves to the lazily-created `"default"` session — byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
 
@@ -96,11 +96,11 @@ Omitting `session` resolves to the lazily-created `"default"` session — byte-i
 
 **Session modes** (`open_session({ mode })`):
 
-| mode | isolation | persistence | when |
-|---|---|---|---|
-| `persistent` *(default off-attach)* | own profile dir `<workspace>/profiles/<profile\|id>` (default session keeps legacy `<workspace>/profile`) | cookies/storage survive across runs | logged-in flows you want to resume |
-| `incognito` | own ephemeral context + browser | nothing persisted; all state discarded on close | one-off agentic driving with no profile trace |
-| `attached` *(default when `BROWX_ATTACH_CDP` set)* | the externally-launched Chrome (not-owned) | the user's real profile | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
+| mode                                               | isolation                                                                                                 | persistence                                     | when                                                                                          |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `persistent` _(default off-attach)_                | own profile dir `<workspace>/profiles/<profile\|id>` (default session keeps legacy `<workspace>/profile`) | cookies/storage survive across runs             | logged-in flows you want to resume                                                            |
+| `incognito`                                        | own ephemeral context + browser                                                                           | nothing persisted; all state discarded on close | one-off agentic driving with no profile trace                                                 |
+| `attached` _(default when `BROWX_ATTACH_CDP` set)_ | the externally-launched Chrome (not-owned)                                                                | the user's real profile                         | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
 
 Different ids are always isolated browser contexts regardless of mode, so multi-user / multiplayer scenarios don't bleed. `profile` (persistent only) lets two ids share a profile dir, or pin a stable name.
 
@@ -142,20 +142,20 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 
 **Notification policy** (`new Notification(title, opts)` constructor):
 
-- The page constructing a `new Notification(...)` is a user-facing event distinct from the *permission* check above. Pre-Phase-7 browxai had no visibility into these calls; an action that fired three notifications was indistinguishable from one that fired zero. The per-session **notification policy** intercepts the constructor surface, captures every call, and routes the construction through one of four modes.
+- The page constructing a `new Notification(...)` is a user-facing event distinct from the _permission_ check above. Pre-Phase-7 browxai had no visibility into these calls; an action that fired three notifications was indistinguishable from one that fired zero. The per-session **notification policy** intercepts the constructor surface, captures every call, and routes the construction through one of four modes.
 - `open_session({ session, notificationPolicy: "<mode>" })` — set the initial policy. String form sets the mode; object form is `{mode}`. Modes:
   - `"allow"` — **DEFAULT** (browser default). Constructor proceeds; the OS displays per its own settings. Every call is still captured on `ActionResult.notifications[]` for observability.
   - `"deny"` — Constructor throws `NotAllowedError` (the same exception the browser raises when permission is denied). Use to suppress OS notifications while still observing what the page would have shown.
   - `"raise"` — Constructor throws AND records; the next `ActionResult` flips `ok:false` with `failure:{source:"app", hint:"unhandled notification — set notificationPolicy …"}`. Useful when notifications should be a hard signal that the action triggered an unexpected user-facing event.
-  - `"ask-human"` — server blocks on `__browx.confirm(true|false)` (the `await_human({kind:"confirm"})` mechanism), then resolves to allow/deny per the human's answer. The constructor returns a stub *synchronously* (the spec requires it); the real OS notification fires once the human-decision resolves. Apps that immediately read `notification.close()` will operate on the stub until the real one attaches.
+  - `"ask-human"` — server blocks on `__browx.confirm(true|false)` (the `await_human({kind:"confirm"})` mechanism), then resolves to allow/deny per the human's answer. The constructor returns a stub _synchronously_ (the spec requires it); the real OS notification fires once the human-decision resolves. Apps that immediately read `notification.close()` will operate on the stub until the real one attaches.
 - **`set_notification_policy({ session, mode })`** — mutate the policy at runtime. Persists across navigation. Returns the resolved policy. Capability: `action`.
 - Fired calls surface on `ActionResult.notifications[] = [{ title, body?, icon?, tag?, timestamp, origin?, handledAs: "allowed"|"denied"|"raised"|"asked-human" }]` — independent of `ok` (a successful action that happened to construct a Notification under `allow`/`deny`/`ask-human` reports it in this array; `raise` mode additionally flips `ok` to false). Only the documented `NotificationOptions` subset (`body` / `icon` / `tag`) is captured — `actions`/`data`/`badge`/etc. are dropped to bound the result envelope.
 - **Coordination with `permissionPolicy`** — disjoint surfaces:
-  - `permissionPolicy.notifications` governs the W3C *permission* check (`Notification.requestPermission()` and the `Notification.permission` state-getter). It controls whether the page is permitted to show notifications at all.
-  - `notificationPolicy` governs the *constructor invocation* (`new Notification(...)`). It controls what happens when the page actually attempts to display one.
+  - `permissionPolicy.notifications` governs the W3C _permission_ check (`Notification.requestPermission()` and the `Notification.permission` state-getter). It controls whether the page is permitted to show notifications at all.
+  - `notificationPolicy` governs the _constructor invocation_ (`new Notification(...)`). It controls what happens when the page actually attempts to display one.
   - The two policies compose. Typical recipe: `permissionPolicy: {perPermission: {notifications: "allow"}}` (so the app gets a granted permission and constructs freely) + `notificationPolicy: "allow"` (so the constructor proceeds and every call is captured). To suppress OS notifications while still observing: `notificationPolicy: "deny"` (constructor throws `NotAllowedError`) with permission left allowed.
 - **`instanceof Notification` caveat** — the constructor wrapper uses a fresh prototype so platform accessor-only properties on `Notification.prototype` (`title`, `body`, …) don't shadow our writes (a `TypeError: Cannot set property … which has only a getter` would otherwise fire in headless Chromium). The trade-off: `n instanceof Notification` returns `false` for the wrapped stub. The native Notification — when the policy allows construction — is attached internally so `n.close()` / event listeners still route to the real OS notification.
-**File System Access policy** (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`):
+  **File System Access policy** (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`):
 
 - Modern web editors (VSCode for the web, Figma, anything with a "save to disk" button) call `showSaveFilePicker` / `showOpenFilePicker` / `showDirectoryPicker`. Headless Chromium can't drive the OS file chooser; without a server-side interceptor the picker call sits forever and the session deadlocks. browxai replaces the three entry points with init-script stubs (re-injected on every new document) that route through the per-session **fs-picker policy** — same posture class as the dialog and permission policies.
 - `open_session({ session, fsPickerPolicy: "<mode>" })` — set the initial policy. String form sets the top-level mode; object form (`{ mode, perAPI?: { <api>: <mode> } }`) takes per-API overrides. Modes:
@@ -176,15 +176,15 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 
 **Per-primitive runtime device emulation** — 7 sibling tools, each setting ONE knob on the live session. State persists on the session and is re-applied to new tabs in the same context. Deliberately NOT a bundled `emulate({...})` — Playwright + chrome-devtools-mcp keep these as siblings for a reason (forcing an over-spec on every call wastes tokens and locks the agent into setting fields it didn't mean to change). All 7 sit under capability `action`.
 
-| Tool | Mechanism | Mid-session mutable? | Reset |
-|---|---|---|---|
-| `set_locale({locale})` | CDP `Emulation.setLocaleOverride` (Playwright `context.locale` is creation-time-only) | yes (CDP) | `locale: null` |
-| `set_timezone({timezoneId})` | CDP `Emulation.setTimezoneOverride` (Playwright `timezoneId` is creation-time-only) | yes (CDP) | `timezoneId: null` |
-| `set_geolocation({latitude, longitude, accuracy?})` | Playwright `context.setGeolocation()` | yes (Playwright) | `latitude: null` |
-| `set_color_scheme({scheme})` | Playwright `page.emulateMedia({colorScheme})`; `light` / `dark` / `no-preference` | yes (Playwright) | `scheme: "no-preference"` |
-| `set_reduced_motion({on})` | Playwright `page.emulateMedia({reducedMotion})`; maps `on:true → "reduce"`, `on:false → "no-preference"` | yes (Playwright) | `on: false` |
-| `set_user_agent({userAgent})` | CDP `Network.setUserAgentOverride` (Playwright `context.userAgent` is creation-time-only) | yes (CDP) | `userAgent: null` |
-| `grant_permissions({permissions, origin?})` | Playwright `context.grantPermissions()` | yes (Playwright) | `permissions: []` (context-wide — per-origin revocation isn't supported by the platform) |
+| Tool                                                | Mechanism                                                                                                | Mid-session mutable? | Reset                                                                                    |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- |
+| `set_locale({locale})`                              | CDP `Emulation.setLocaleOverride` (Playwright `context.locale` is creation-time-only)                    | yes (CDP)            | `locale: null`                                                                           |
+| `set_timezone({timezoneId})`                        | CDP `Emulation.setTimezoneOverride` (Playwright `timezoneId` is creation-time-only)                      | yes (CDP)            | `timezoneId: null`                                                                       |
+| `set_geolocation({latitude, longitude, accuracy?})` | Playwright `context.setGeolocation()`                                                                    | yes (Playwright)     | `latitude: null`                                                                         |
+| `set_color_scheme({scheme})`                        | Playwright `page.emulateMedia({colorScheme})`; `light` / `dark` / `no-preference`                        | yes (Playwright)     | `scheme: "no-preference"`                                                                |
+| `set_reduced_motion({on})`                          | Playwright `page.emulateMedia({reducedMotion})`; maps `on:true → "reduce"`, `on:false → "no-preference"` | yes (Playwright)     | `on: false`                                                                              |
+| `set_user_agent({userAgent})`                       | CDP `Network.setUserAgentOverride` (Playwright `context.userAgent` is creation-time-only)                | yes (CDP)            | `userAgent: null`                                                                        |
+| `grant_permissions({permissions, origin?})`         | Playwright `context.grantPermissions()`                                                                  | yes (Playwright)     | `permissions: []` (context-wide — per-origin revocation isn't supported by the platform) |
 
 Persistence model: each call records the resolved value on the session's `deviceEmulation` bag; a `BrowserContext.on("page")` listener re-applies every set knob to new tabs in the same context, so an OAuth pop-up or `target=_blank` link inherits the overrides. The four CDP-routed primitives (locale, timezone, UA) are exactly the ones with no Playwright mid-session mutator — the CDP equivalents DO take effect on existing pages, so the runtime distinction is invisible to the agent.
 
@@ -194,9 +194,10 @@ Persistence model: each call records the resolved value on the session's `device
 
 ## Read-only tools
 
-> **URL redaction is default-on.** Every surface that returns *captured* page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response *body* remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
+> **URL redaction is default-on.** Every surface that returns _captured_ page traffic — `ActionResult.network`, `network_read`, `ws_read`, and URL substrings inside `console_read` / page-error text — is routed through one centralized sanitizer at the egress boundary: query strings, fragments, `user:pass@` userinfo, and token/identity-shaped path segments are stripped (a present-but-stripped query/fragment shows as `?…` / `#…`), while scheme + host + path-pattern + method + status + timing + response-shape are preserved. This is a posture, not an opt-in — browxai output is meant to be shareable and the server is heading public. The raw request/response _body_ remains separately gated behind the off-by-default `network-body` capability. Internal filtering (beacon detection, `ws_read` url-substring filter) still operates on the un-redacted value; only what leaves toward an MCP result is sanitized. See `docs/threat-model.md`.
 
 ### `snapshot`
+
 Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot — it makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`.
 
 Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient — generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[<test-attr>=…]`) are inlined. Test-attribute hints emit the **actual attribute name** that matched (e.g. `[data-type="feature-panel-language-input"]`) so you can transcribe the selector directly.
@@ -207,20 +208,23 @@ When the a11y tree has fewer than 5 interactive descendants under root, a warnin
 
 - `scope: <ref>` — only emit the subtree rooted at this ref (from a prior snapshot/find). Drops "I asked for one section and got 500 nodes" cost. Falls back to full tree with a warning if the ref isn't found.
 - `maxNodes: <N>` — hard cap on emitted nodes; excess is elided with a `+N more nodes elided` marker pointing the agent at `scope` or a higher cap.
-- `omit: ["<pattern>", ...]` — case-insensitive substring patterns matched against each node's `role` / `name` / `testId`. Matching nodes and their *entire subtrees* are skipped. Useful for noisy regions: `omit: ["timeline-segment-", "clip-thumbnail"]`.
+- `omit: ["<pattern>", ...]` — case-insensitive substring patterns matched against each node's `role` / `name` / `testId`. Matching nodes and their _entire subtrees_ are skipped. Useful for noisy regions: `omit: ["timeline-segment-", "clip-thumbnail"]`.
 
 **Output:** text — `url:` / `title:` / `stats:` header + (optional) `scope:` / `warnings:` block + indented `role "name" [ref=eN] [<test-attr>=…] [from-dom|from-both] [state]` lines + (when relevant) `... [+N more nodes elided]` or `... [omit matched N subtree(s), M nodes total]`.
 
 ### `find`
+
 Find candidate elements by natural-language description.
 
 **Inputs:** `{ query: string, maxCandidates?: number (default 5, max 20), confidenceFloor?: number, contextRef?: string, visibleOnly?: boolean }`
-- `visibleOnly`: default `false`. When `true`, non-actionable candidates (off-screen / clipped / covered / disabled) are **dropped entirely** rather than ranked last — `find` returns an empty `candidates` list **plus** the "no visible candidate" warning. A confident *hidden* hit otherwise lures agents into coordinate fallbacks despite the warning; an empty result is the safer signal ("the target isn't actionable yet — wait/renavigate, don't chase coordinates").
-- **Attached/BYOB bbox reliability:** the CDP visible-rect path can spuriously null out a *rendered* DOM-walk node on an attached Chrome (no live backend node, cross-frame quirks), which would wrongly classify it `off-screen` (and make `visibleOnly:true` drop a correct hit). `find` now falls back to Playwright's own locator bounding box before classifying — a node that is genuinely on the page keeps a real `bbox` / `actionable:true`. So `visibleOnly` is dependable in attached mode, not just managed/incognito.
+
+- `visibleOnly`: default `false`. When `true`, non-actionable candidates (off-screen / clipped / covered / disabled) are **dropped entirely** rather than ranked last — `find` returns an empty `candidates` list **plus** the "no visible candidate" warning. A confident _hidden_ hit otherwise lures agents into coordinate fallbacks despite the warning; an empty result is the safer signal ("the target isn't actionable yet — wait/renavigate, don't chase coordinates").
+- **Attached/BYOB bbox reliability:** the CDP visible-rect path can spuriously null out a _rendered_ DOM-walk node on an attached Chrome (no live backend node, cross-frame quirks), which would wrongly classify it `off-screen` (and make `visibleOnly:true` drop a correct hit). `find` now falls back to Playwright's own locator bounding box before classifying — a node that is genuinely on the page keeps a real `bbox` / `actionable:true`. So `visibleOnly` is dependable in attached mode, not just managed/incognito.
 - `confidenceFloor` (W-A3): emit a `warnings: ["no candidate scored confidently above N (top score: …)"]` block when no top candidate exceeds this score. Default `0` (off). Pass e.g. `0.5` (or any chosen integer) to get a "fall through to snapshot" signal instead of grinding through low-quality results.
-- `contextRef` (W-A3): limit ranking to descendants of this ref. Lets you say "the X *under* Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
+- `contextRef` (W-A3): limit ranking to descendants of this ref. Lets you say "the X _under_ Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
 
 **Output:** JSON
+
 ```jsonc
 {
   "query": "the Save button",
@@ -230,37 +234,39 @@ Find candidate elements by natural-language description.
       "role": "button",
       "name": "Save",
       "testId": "save-btn",
-      "stability": "high",         // high = data-testid; medium = role+name; low = fallback
+      "stability": "high", // high = data-testid; medium = role+name; low = fallback
       "selectorHint": "[data-testid=\"save-btn\"]",
-      "selectorTier": 1,            // 1..5 preference order
-      "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 },   // visible-rect
-      "clipped": false,             // true → bbox: null (element fully off-screen / clipped)
+      "selectorTier": 1, // 1..5 preference order
+      "bbox": { "x": 12, "y": 200, "width": 80, "height": 30 }, // visible-rect
+      "clipped": false, // true → bbox: null (element fully off-screen / clipped)
       "score": 17,
-      "context": {                  // W-F1: structural neighbourhood when this candidate
-        "collection": "table",      //         lives in a repeated container. Omitted otherwise.
+      "context": {
+        // W-F1: structural neighbourhood when this candidate
+        "collection": "table", //         lives in a repeated container. Omitted otherwise.
         "rowKey": "Wed, May 13",
         "column": "Type",
-        "rowText": "Wed, May 13 Engineering Reviewed PR …"
-      }
-    }
-  ]
+        "rowText": "Wed, May 13 Engineering Reviewed PR …",
+      },
+    },
+  ],
 }
 ```
-**selectorHint preference order:** `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role *(Phase-1.5)* → structural (id/semantic) *(Phase-1.5)* → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
 
-**Stability semantics:** `stability: "high"` means "**uniquely identifies this element in this snapshot**" — i.e. the locator works *right now*. It does **not** mean "survives content rotation across deploys." An asset card with `[data-testid="asset-container-12345678"]` (a content-keyed numeric suffix) is `"high"` for this snapshot but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer a structural/name selector or compose: `[data-testid^="asset-container-"]:has-text("…")`. The current `stability` field is honest about per-snapshot uniqueness; "deploy stability" is the agent's call to make on top of it.
+**selectorHint preference order:** `[<test-attr>="…"]` → `role=<role>[name="…"]` → stable text on stable role _(Phase-1.5)_ → structural (id/semantic) _(Phase-1.5)_ → positional (last resort). Tier-1 fires on **any** configured `BROWX_TEST_ATTRIBUTES` value and **does not gate on a role wrapper** — a `<div data-type="x">` on a heavy SPA gets `stability: "high"` directly. The emitted selector preserves the matched attribute name. `stability: "low"` still means the agent should refuse to transcribe into a flow-file and ask a human or push for a test attribute on the app team.
 
-**What `find()` matches against:** the query is tokenised on whitespace and matched (case-insensitive substring) against each candidate's **accessible name** + **role** + **test-attribute value** (whichever attribute matched per `BROWX_TEST_ATTRIBUTES`) + the candidate's **trimmed text content** (a weaker signal that picks up a `title` tooltip or sr-only label when it surfaced into the node's text). It does *not* match raw HTML attribute *names*, icon glyphs, `placeholder=`, or off-screen ancestors' text. For truly icon-only controls, the testid/data-attr value is still the strongest query target.
+**Stability semantics:** `stability: "high"` means "**uniquely identifies this element in this snapshot**" — i.e. the locator works _right now_. It does **not** mean "survives content rotation across deploys." An asset card with `[data-testid="asset-container-12345678"]` (a content-keyed numeric suffix) is `"high"` for this snapshot but rotates with content. For a flow-file that needs to survive day-to-day rotation, prefer a structural/name selector or compose: `[data-testid^="asset-container-"]:has-text("…")`. The current `stability` field is honest about per-snapshot uniqueness; "deploy stability" is the agent's call to make on top of it.
 
-**Name-less / icon-only ranking.** For controls with no accessible name, per-test-attribute-token weight is amplified, the trimmed text signal is added, and a control already in a **selected / pressed / checked** state that also matches the query gets a bonus — so the *live* feature-panel tab outranks its inert icon-only siblings and unrelated top-nav tabs. The state bonus only ever lifts an existing match; it never fabricates a hit from nothing.
+**What `find()` matches against:** the query is tokenised on whitespace and matched (case-insensitive substring) against each candidate's **accessible name** + **role** + **test-attribute value** (whichever attribute matched per `BROWX_TEST_ATTRIBUTES`) + the candidate's **trimmed text content** (a weaker signal that picks up a `title` tooltip or sr-only label when it surfaced into the node's text). It does _not_ match raw HTML attribute _names_, icon glyphs, `placeholder=`, or off-screen ancestors' text. For truly icon-only controls, the testid/data-attr value is still the strongest query target.
+
+**Name-less / icon-only ranking.** For controls with no accessible name, per-test-attribute-token weight is amplified, the trimmed text signal is added, and a control already in a **selected / pressed / checked** state that also matches the query gets a bonus — so the _live_ feature-panel tab outranks its inert icon-only siblings and unrelated top-nav tabs. The state bonus only ever lifts an existing match; it never fabricates a hit from nothing.
 
 **Disambiguation:** when the bare `selectorHint` matches multiple DOM nodes (e.g. a visible button + a hidden DOM sibling sharing the same `data-type`), the emitted hint is auto-promoted to `[<attr>="…"]:visible` (or `:nth-match(..., 1)` last-resort) so mechanical transcription into a flow file doesn't re-introduce a hidden-duplicate `boundingBox` hang.
 
 **Actionable predicate** (wishlist W-D1): each candidate carries `actionable: true | "disabled" | "off-screen" | "covered"` alongside `stability` / `bbox`. Lets a calibration agent reject `<input disabled>`-shaped halts at write-time instead of run-time. `"covered"` is reserved for a future check; today the value is `true` / `"disabled"` / `"off-screen"`.
 
-**Visibility-aware ranking** (W-J2): after scoring, candidates are stable-partitioned so `actionable: true` ones rank ahead of non-visible (off-screen / clipped / covered / disabled) ones — a slightly-lower-scored *visible* match outranks a high-scored hidden modal. When there are matches but **none** are actionable, `find()` emits a `warnings` entry ("no visible candidate — all N match(es) are off-screen/clipped/covered; usually means the wrong element matched"). The suggestion is **capability-aware**: it only names `coords` when the `action` capability is enabled, and `eval_js` when `eval` is enabled — it never points you at a disabled tool.
+**Visibility-aware ranking** (W-J2): after scoring, candidates are stable-partitioned so `actionable: true` ones rank ahead of non-visible (off-screen / clipped / covered / disabled) ones — a slightly-lower-scored _visible_ match outranks a high-scored hidden modal. When there are matches but **none** are actionable, `find()` emits a `warnings` entry ("no visible candidate — all N match(es) are off-screen/clipped/covered; usually means the wrong element matched"). The suggestion is **capability-aware**: it only names `coords` when the `action` capability is enabled, and `eval_js` when `eval` is enabled — it never points you at a disabled tool.
 
-**Container demotion.** Within the actionable tier there is a second stable partition: non-interactive structural / layout / landmark wrappers (`generic`, `group`, `region`, `toolbar`, `navigation`, `main`, `form`, … — the things that *enclose* a control, never the control itself) are demoted **below** interactive matches — but only when at least one actionable interactive candidate matched. So an aliased / product-facing query ("the X panel in the right tool rail") returns the button/tab, not its enclosing wrapper. If nothing interactive matched, containers stay put (they may be the best available target). Role-driven and generic — no query-string heuristics; `list` / `listitem` / `article` / `section` are deliberately *not* treated as containers since they can legitimately be the target.
+**Container demotion.** Within the actionable tier there is a second stable partition: non-interactive structural / layout / landmark wrappers (`generic`, `group`, `region`, `toolbar`, `navigation`, `main`, `form`, … — the things that _enclose_ a control, never the control itself) are demoted **below** interactive matches — but only when at least one actionable interactive candidate matched. So an aliased / product-facing query ("the X panel in the right tool rail") returns the button/tab, not its enclosing wrapper. If nothing interactive matched, containers stay put (they may be the best available target). Role-driven and generic — no query-string heuristics; `list` / `listitem` / `article` / `section` are deliberately _not_ treated as containers since they can legitimately be the target.
 
 **`confidenceFloor`** (wishlist W-A3): pass `confidenceFloor: <N>` and `find()` emits a `warnings: ["no candidate scored confidently above N (top score: …)"]` entry when nothing crosses the bar — gives the agent a clean "fall through to snapshot" signal instead of grinding through a list of low-quality candidates.
 
@@ -268,42 +274,67 @@ Find candidate elements by natural-language description.
 
 **Structural context** (W-F1): candidates that live inside a recognised repeated layout (semantic `table`/`grid` row, `list` listitem, `feed` article) carry a `context: { collection, rowKey, column?, rowText }` field. Lets the caller answer "what row/column is this candidate in?" without re-walking the snapshot. `column` is populated only when the collection has a header row with `columnheader` cells and the candidate's index aligns to a header. `rowKey` is the first non-empty visible text within the row, capped at 80 chars. `rowText` is the row's concatenated visible text, capped at 200 chars. Detection is generic — driven by ARIA roles, not by app-specific markers. Nodes outside a repeated layout simply omit `context`.
 
-### `frames_list` *(Phase 7)*
+### `frames_list` _(Phase 7)_
+
 List every frame in the current page tree with a stable per-session ID (`fN`; `f0` is always the main frame). Pass the returned `frameId` back as `frame: <fN>` to `snapshot` / `find` to scope observation to a child iframe; refs minted in that frame are bound to it on the registry so subsequent actions (`click`, `fill`, etc.) land inside the iframe transparently — same-origin and cross-origin (OOPIF) iframes both work through Playwright's frame API.
 
 **Inputs:** `{ session? }`
 
 **Output:** JSON
+
 ```jsonc
 {
   "ok": true,
   "frames": [
-    { "frameId": "f0", "url": "http://example.test/with-iframe", "name": "", "isMainFrame": true, "origin": "http://example.test" },
-    { "frameId": "f1", "parentFrameId": "f0", "url": "http://example.test/child", "name": "same", "isMainFrame": false, "origin": "http://example.test" },
-    { "frameId": "f2", "parentFrameId": "f0", "url": "about:srcdoc", "name": "data", "isMainFrame": false, "origin": "" }
+    {
+      "frameId": "f0",
+      "url": "http://example.test/with-iframe",
+      "name": "",
+      "isMainFrame": true,
+      "origin": "http://example.test",
+    },
+    {
+      "frameId": "f1",
+      "parentFrameId": "f0",
+      "url": "http://example.test/child",
+      "name": "same",
+      "isMainFrame": false,
+      "origin": "http://example.test",
+    },
+    {
+      "frameId": "f2",
+      "parentFrameId": "f0",
+      "url": "about:srcdoc",
+      "name": "data",
+      "isMainFrame": false,
+      "origin": "",
+    },
   ],
-  "tokensEstimate": 312
+  "tokensEstimate": 312,
 }
 ```
 
 **Frame ID stability:** within a session, the main frame is always `f0`. Child frames mint `f1`, `f2`, … in first-seen order; identical-fingerprint frames across repeat `frames_list` calls keep their ID. Intra-iframe navigation (the same `<iframe>` handle changing URL) preserves the ID. Refs minted while a child frame was attached survive across `frames_list` calls; if the iframe detaches, calls into the frame return a structured "unknown frame" error rather than throwing.
 
 **Frame-scoped `snapshot` / `find`:** both tools accept an optional `frame: <fN>`. When set:
+
 - `snapshot({frame})` returns a tree scoped to that frame. The CDP accessibility-tree path is not run for child frames (rooted at the top target, doesn't reach into OOPIFs); the snapshot is DOM-walk-sourced only. This is surfaced as a `warnings:` entry on the result so the agent isn't surprised by the `[from-dom]` markers.
 - `find({frame, query, …})` ranks candidates inside that frame and binds the returned `ref`s to it; passing the `ref` to `click` / `fill` / `hover` / etc. fires inside the iframe — no separate action surface needed.
 
 **Cross-origin caveats:**
+
 - Read works: Playwright's `frame.locator(…)` and `frame.evaluate(…)` span the OOPIF boundary.
 - Actions work: `frame.locator(…).click()` (etc.) cross the same boundary.
 - The CDP accessibility-tree skip on child frames means a heavily a11y-driven page in an iframe surfaces less context than the same page would as a top-level document — the DOM-walk pass still surfaces every `BROWX_TEST_ATTRIBUTES`-bearing element and every interactive control, which is what action targeting needs.
 - Frame-scoped `bbox` is computed via Playwright's locator `.boundingBox()` rather than the CDP `getBoxModel` path used for main-frame finds; behaviour is identical for visible elements.
+
 ### Shadow DOM piercing (Phase 7)
 
 Modern web components default to shadow DOM; `find` / `snapshot` see open shadow content through Playwright's a11y tree automatically. Phase 7 adds two opt-in extensions plus a dedicated read-only tool for direct introspection.
 
 **`find({ …, pierce? })` and `snapshot({ …, includeShadow? })`.** Both accept a `pierce` (find) / `includeShadow` (snapshot) parameter:
 
-- *omitted* — back-compat. Playwright's a11y tree already auto-pierces open shadow roots; the DOM-walk fallback does **not** recurse into shadow content. Pre-Phase-7 callers see byte-identical output.
+- _omitted_ — back-compat. Playwright's a11y tree already auto-pierces open shadow roots; the DOM-walk fallback does **not** recurse into shadow content. Pre-Phase-7 callers see byte-identical output.
 - `"open"` — additionally have the DOM-walk recurse through every reachable open shadow root (`Element.shadowRoot` for each host). Useful on heavy-SPA targets whose a11y tree is sparse and whose interactive controls live behind web-component boundaries.
 - `"closed"` — open-walk **plus** a CDP `DOM.getDocument({pierce:true})` pass that harvests interactive / test-attr-bearing elements behind **closed** shadow boundaries. Closed-shadow candidates carry `[from-dom]` source marks like any other DOM-walk entry; the result envelope additionally surfaces a warning that closed-shadow elements **cannot** be actioned through Playwright's locator engine — treat them as evidence ("this widget exists at depth N"), not actionable targets.
 - `false` — disables shadow recursion entirely.
@@ -316,19 +347,19 @@ Closed-shadow piercing is **best-effort** by construction. `DOM.getDocument({pie
 {
   "trees": [
     {
-      "hostRef": "backend:1234",  // or "backend:0" when the page-side fallback ran
+      "hostRef": "backend:1234", // or "backend:0" when the page-side fallback ran
       "hostTag": "my-widget",
-      "mode": "open",              // or "closed"
+      "mode": "open", // or "closed"
       "children": [
         { "tag": "div", "text": "Hello", "childCount": 2 },
-        { "tag": "button", "childCount": 0 }
+        { "tag": "button", "childCount": 0 },
       ],
-      "descendantCount": 12
-    }
+      "descendantCount": 12,
+    },
   ],
   "closedShadowAvailable": true,
   "warnings": [],
-  "tokensEstimate": 142
+  "tokensEstimate": 142,
 }
 ```
 
@@ -339,6 +370,7 @@ Closed-shadow piercing is **best-effort** by construction. `DOM.getDocument({pie
 Capability `read` (same posture as `snapshot` / `find`; no new capability gate).
 
 ### `screenshot`
+
 PNG or JPEG of the viewport, optionally cropped to an element, optionally full-page, optionally written to a workspace-rooted file instead of returned inline.
 
 **Format / size knobs (W-F7):**
@@ -354,10 +386,12 @@ For multimodal agents filling a constrained context window, `format: "jpeg", qua
 - `fullPage: boolean` — default `false`. When `true`, captures the whole document (Playwright's `page.screenshot({fullPage:true})`) rather than just the viewport. Mutually exclusive with `ref` / `selector` / `named` — element-scoped captures are already bounded by the element's box; combining them returns a structured rejection.
 - `path: string` — workspace-rooted file path. When set, writes the bytes to disk and the result swaps the inline `image` content part for a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }`. Path-traversal is rejected (must resolve under `$BROWX_WORKSPACE` — same chokepoint as `pdf_save` / `start_har` / `dump_storage_state`). Parent directories are auto-created. **Requires the `file-io` capability** (in addition to the tool's own `read` gate); a request with `path` set against a server without `file-io` returns a structured `requiredCapability: "file-io"` rejection. Default mode (no `path`) is unchanged and needs no extra capability.
 
-**Inputs:** `{ ref?, selector?, named?, describe?: boolean, fullPage?: boolean, path?: string }` *(pass at most one of ref/selector/named; none = viewport unless `fullPage:true`)*
+**Inputs:** `{ ref?, selector?, named?, describe?: boolean, fullPage?: boolean, path?: string }` _(pass at most one of ref/selector/named; none = viewport unless `fullPage:true`)_
+
 - `describe`: emit a structured one-line caption alongside the PNG (`role "name" [<attr>="…"] bbox=x,y w×h [not-visible|disabled]`). Lets the agent skip vision-reading when it just needs to confirm presence. When `path` is set, the caption rides on the JSON envelope as `caption`.
 
 **Output:**
+
 - Default (no `path`): an MCP `image` content part (base64 PNG/JPEG), optionally preceded by a `text` part with the caption. **Byte-identical to the v0.3.x shape** when `path` is omitted.
 - With `path`: a JSON envelope `{ ok, path, bytes, format, fullPage, caption?, tokensEstimate }` — no inline image bytes.
 
@@ -404,11 +438,12 @@ A per-window cap of **50 captures** prevents event-storm runaway (e.g. a console
 
 **Capability:** `file-io`.
 
-### `text_search` *(W-F4)*
+### `text_search` _(W-F4)_
 
 Find nodes whose visible text matches a query. **Read-only — distinct from `find()`**: `find()` ranks actionable targets; `text_search` verifies presence/absence ("is the bad value gone?", "did 'Saved' appear?", "no `Wrong Type` chip in the record grid").
 
 Args:
+
 - `text` — string to match.
 - `exact` (default `false`) — when `false`, case-insensitive substring. When `true`, case-sensitive equality on the trimmed node name.
 - `scope` — limit the search to descendants of this ref (a prior snapshot/find result).
@@ -428,6 +463,7 @@ Structured, schema-driven data extraction — the primitive every browxai adopte
 The `mode` parameter is **RETIRED** as of v0.3.2 — the `deterministic` mode is the only supported path, and the typed SDK no longer exposes the field. Setting `mode: "llm-assisted"` is tolerated (treated as deterministic) for back-compat but will emit a one-shot `console.warn` at the call site. Drop the `mode` arg from new code.
 
 Args:
+
 - `schema` — a JSON-schema-flavoured shape (object/array/string/number/boolean; `properties` for objects, `items` for arrays). See the lowering rules below.
 - `ref` — scope to this ref's subtree (from a prior snapshot/find).
 - `scope` — scope to this CSS selector's first match. Invalid (zero matches) → structured `failure`, not an empty object. Mutually exclusive with `ref`.
@@ -439,7 +475,7 @@ Returns `{ok:true, data:<schema-shaped>, evidence:{refsUsed,selectorsUsed,partia
 
 Two paths, deliberately layered:
 
-1. **Implicit (the simple rule):** the property *name* is the query. A `{type:"string"}` property `"price"` looks for a node whose accessible name / testid contains `"price"` and reads its visible text. This is the path most testid-rich pages take.
+1. **Implicit (the simple rule):** the property _name_ is the query. A `{type:"string"}` property `"price"` looks for a node whose accessible name / testid contains `"price"` and reads its visible text. This is the path most testid-rich pages take.
 
 2. **Explicit (the escape hatch):** add `x-browx-source` per property to override. The fields (first-present wins in source-resolution order):
    - `selector` — raw CSS / `selectorHint`, resolved against the current scope. **This is the typed escape hatch for per-field targeting.**
@@ -491,7 +527,7 @@ List with per-row sub-schema (explicit collection + mixed implicit/explicit fiel
         "properties": {
           "name": { "type": "string", "x-browx-source": { "selector": ".name" } },
           "price": { "type": "number", "x-browx-source": { "selector": ".price" } },
-          "href":  { "type": "string", "x-browx-source": { "selector": "a", "attr": "href" } }
+          "href": { "type": "string", "x-browx-source": { "selector": "a", "attr": "href" } }
         }
       }
     }
@@ -501,33 +537,41 @@ List with per-row sub-schema (explicit collection + mixed implicit/explicit fiel
 
 ### `verify_visible` / `verify_text` / `verify_value` / `verify_count` / `verify_attribute` / `verify_predicate`
 
-Assertive read primitives. `wait_for` is **permissive** — it returns when satisfied OR when its deadline expires with `ok:false` as a normal outcome. The `verify_*` family is the **fail-emitting sibling**: each tool returns `{ok: true}` when the assertion holds *right now*, or `{ok: false, failure: {source, kind, expected, actual, evidence?}, tokensEstimate}` when it doesn't — so an agent loop terminates deterministically instead of relying on the LLM eyeballing a snapshot.
+Assertive read primitives. `wait_for` is **permissive** — it returns when satisfied OR when its deadline expires with `ok:false` as a normal outcome. The `verify_*` family is the **fail-emitting sibling**: each tool returns `{ok: true}` when the assertion holds _right now_, or `{ok: false, failure: {source, kind, expected, actual, evidence?}, tokensEstimate}` when it doesn't — so an agent loop terminates deterministically instead of relying on the LLM eyeballing a snapshot.
 
 Failure shape carries the standard `{source}` classifier from `failure.ts`:
+
 - `source: "app"` — the predicate didn't hold against the page (a real signal the agent should act on).
 - `source: "browxai"` — verify itself couldn't run (ref no longer in the snapshot, malformed input, etc — agent should re-snapshot, not file a defect).
 
 All six are read-only (capability `read`). Coords targets are rejected — verify is structural; the rare canvas / dismiss-empty-space case stays on `click` + `screenshot`.
 
 #### `verify_visible({ ref?|selector?|named?, session? })`
+
 Asserts the element is currently visible (non-zero box, displayed, opacity > 0). On failure, `actual` carries a one-word reason — `"hidden (display:none)"`, `"hidden (visibility:hidden)"`, `"hidden (opacity:0)"`, `"hidden (zero-sized box)"`, `"off-screen or covered"`, or `"missing (locator matched 0 nodes)"`.
 
 #### `verify_text({ ref?|selector?|named?, text, exact?, session? })`
+
 Asserts the element's visible text matches. Default: case-insensitive substring on the trimmed `innerText`. `exact: true` → case-sensitive equality. `failure.actual` carries the first 200 chars of what we saw.
 
 #### `verify_value({ ref?|selector?|named?, value, session? })`
+
 Asserts the targeted form-control's current value (input / textarea / select / contenteditable). Strict equality on the DOM-side `value` (or `innerText` for `contenteditable`). Pairs with `ActionResult.element.value` from `fill` — assert the post-fill state without an extra round-trip.
 
 #### `verify_count({ selector?|text?, n, session? })`
+
 Asserts exactly `n` matches. One of `selector` (raw CSS / Playwright locator) or `text` (case-insensitive visible-text search over the composed a11y tree) is required. Use for grid/list invariants: "5 rows remain after the delete", "no `Wrong Type` chips left in the record grid".
 
 #### `verify_attribute({ ref?|selector?|named?, attr, value?, session? })`
+
 Asserts the element's HTML attribute. Pass `value` for strict-equality; omit `value` to assert mere presence. Use for `aria-pressed`, `data-state`, `disabled`, role state that doesn't surface as visible text.
 
 #### `verify_predicate({ predicate, data, session? })`
-Composed predicate check over caller-supplied data. **Fixed vocabulary — NOT arbitrary JS.** The agent supplies *data* (which key, which expected value); the *vocabulary* is server-owned.
+
+Composed predicate check over caller-supplied data. **Fixed vocabulary — NOT arbitrary JS.** The agent supplies _data_ (which key, which expected value); the _vocabulary_ is server-owned.
 
 The `predicate.kind` enum:
+
 - Leaves: `equals`, `notEquals`, `contains`, `notContains`, `gt`, `lt`, `gte`, `lte`, `between`, `matches` (regex string), `exists`.
 - Combinators: `and`, `or`, `not` (recursive — combinators take a `predicates` array of child predicates).
 
@@ -536,6 +580,7 @@ Each leaf carries `{kind, key, value}` (or `{kind, key, lo, hi}` for `between`).
 `eval_js` (gated behind the `eval` capability) remains the only arbitrary-JS path in browxai. `verify_predicate` does **not** add a second one — it shares the predicate vocabulary with `batch.expect` (one source of truth lives in `src/util/predicates.ts`). Use it as a deterministic gate on an already-captured `ActionResult` / snapshot / metric — the screenshot-judge analogue when chained behind a `screenshot`.
 
 ### `console_read`
+
 Recent console messages (ring buffer). For per-action attribution, use `ActionResult.console` from any action tool.
 
 **Inputs:** `{ limit?: number (default 50, max 500) }`
@@ -543,9 +588,11 @@ Recent console messages (ring buffer). For per-action attribution, use `ActionRe
 **Output:** JSON array of `{ ts, type, text }`.
 
 ### `network_read`
+
 Session-wide ring buffer of recent network requests (cap: 500). For per-action attribution use `ActionResult.network` from any action tool — that's still the primary surface. This is the "what happened across the session" view; useful when an XHR isn't tied to a specific action. Same noise-folding rules as the action-window tap (Image/Font/Stylesheet/Media/beacons → `summary.byType.other`).
 
-### `sample` *(W-J3)*
+### `sample` _(W-J3)_
+
 Sample a DOM metric over a window → time series. Jank / CLS / scroll-drift QA without hand-rolling an in-page loop. `sample({ session?, ref?|selector?|named?, metric, durationMs, everyFrame?, intervalMs? })`:
 
 - `metric` is a **fixed enum** — the agent supplies **no JavaScript** (arbitrary JS stays `eval_js`, gated behind `eval`). With a target: `scrollTop`/`scrollLeft`/`scrollHeight`/`scrollWidth`/`clientWidth`/`clientHeight`/`bboxX`/`bboxY`/`bboxWidth`/`bboxHeight`. Without a target: the document scroller (`bbox*` rejected — needs an element).
@@ -555,8 +602,9 @@ Sample a DOM metric over a window → time series. Jank / CLS / scroll-drift QA 
 
 browxai supplies the fixed in-page rAF/interval loop — this is a bounded primitive, **not** an `eval_js` variant.
 
-### `act_and_sample` *(W-N1)*
-Run **one** action and capture a metric trace *across its transition*, in a single call. Closes the state-capture-latency blind spot: a separate `read` after an `action` lands *after* the transient UI (spinner / pending button / in-flight counter) has already resolved, so the agent wrongly scores it "fine". `act_and_sample({ session?, action: { tool, args }, ref?|selector?|named?, metric, durationMs, everyFrame?, intervalMs?, summary? })`:
+### `act_and_sample` _(W-N1)_
+
+Run **one** action and capture a metric trace _across its transition_, in a single call. Closes the state-capture-latency blind spot: a separate `read` after an `action` lands _after_ the transient UI (spinner / pending button / in-flight counter) has already resolved, so the agent wrongly scores it "fine". `act_and_sample({ session?, action: { tool, args }, ref?|selector?|named?, metric, durationMs, everyFrame?, intervalMs?, summary? })`:
 
 - `action` is a `{ tool, args }` from the **batch whitelist** (no `batch` / `await_human` / recording-control / self). The inner tool's own capability gate, the confirm hooks, and the W-M1 anti-wedge deadline all still apply.
 - The sampler (`sample`'s **fixed enum**, no agent JS) starts, the inner action dispatches **concurrently**, both are awaited. Sampler self-bounds via `durationMs`; the action via its W-M1 deadline. Pick `durationMs` to cover the expected transition.
@@ -565,15 +613,18 @@ Run **one** action and capture a metric trace *across its transition*, in a sing
 
 No agent JS anywhere — reuses `sample`'s fixed-enum sampler + `batch`'s tool whitelist; `eval_js` (gated) stays the only arbitrary-JS path.
 
-### `watch` *(W-H4)*
-Observe a fixed time window with **no driving action**. Samples top-level transient surfaces (`dialog`/`alertdialog`/`alert`/`status`/`tooltip`/`log`/`banner`/`timer`) every `sampleMs` (default 250) so a region that appears *and* disappears inside the window is caught — endpoint-only diffs (`ActionResult.structure`) miss it. `watch({ session?, durationMs, sampleMs? })` → `{ durationMs, samples, regions: [{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. `disappearedAtMs: null` = still present at window end. Catches double-fire toasts, flash-of-content, "notification never broadcast". Read-only (`read`); caps at 60 s.
+### `watch` _(W-H4)_
 
-### `network_body` *(W-H5 — gated)*
+Observe a fixed time window with **no driving action**. Samples top-level transient surfaces (`dialog`/`alertdialog`/`alert`/`status`/`tooltip`/`log`/`banner`/`timer`) every `sampleMs` (default 250) so a region that appears _and_ disappears inside the window is caught — endpoint-only diffs (`ActionResult.structure`) miss it. `watch({ session?, durationMs, sampleMs? })` → `{ durationMs, samples, regions: [{ role, name, ref, appearedAtMs, disappearedAtMs }], console, network, wsFrames }`. `disappearedAtMs: null` = still present at window end. Catches double-fire toasts, flash-of-content, "notification never broadcast". Read-only (`read`); caps at 60 s.
+
+### `network_body` _(W-H5 — gated)_
+
 Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default** — requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request; not retained across navigations.
 
 Why gated: full bodies routinely carry PII / auth tokens. W-F5's `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`/W-H1).
 
-### `inspect` *(W-H3)*
+### `inspect` _(W-H3)_
+
 Read an element's whitelisted **computed styles + box + overflow/clip state**. `inspect({ session?, ref?|selector?|named?, styles? })` → `{ found, box: {x,y,width,height}, styles, overflowing: {x,y}, visible, childCount }`. The layout-break / control-state verification primitive — distinct from `find()` (ranking) and `text_search` (presence):
 
 - Default style set: `display`, `visibility`, `opacity`, `position`, `cursor`, `pointerEvents`, `overflow{,X,Y}`, `zIndex`, `flexDirection`, `justifyContent`, `alignItems`. `styles: [...]` appends extra camelCase property names.
@@ -584,18 +635,19 @@ Read an element's whitelisted **computed styles + box + overflow/clip state**. `
 Read-only (capability `read`). Coords targets unsupported (no element to resolve) — use `point_probe` for a coordinate.
 
 ### `overflow_detect`
+
 Page-wide **overflow scan** — the silent UI-breakage primitive. Generalises `inspect`'s per-element overflow check into a typed multi-detector pass: walks the DOM, applies four overflow-shape detectors, returns one finding per offending element. The bugs this catches are precisely the ones a screenshot looks "fine" for (clipped pixel doesn't shout) and `find()` doesn't surface ("the element rendered but its content was lost"):
 
 `overflow_detect({ session?, scope?, types?, limit? })` → `{ ok, scope, findings: [{ selector, bbox: {x,y,w,h} | null, type, evidence }], truncated, warnings, tokensEstimate }`.
 
 **Detector types** (default = all four; opt out via `types:[…]`):
 
-| Type | Condition | Evidence | Why it matters |
-|------|-----------|----------|----------------|
-| `layout` | `scrollWidth/Height > clientWidth/Height` AND `overflow:auto\|scroll` on the relevant axis | `{ scrollWidth, clientWidth, scrollHeight, clientHeight, overflowX, overflowY }` | Content overflows the padding box; scrollbar IS provided. Subtler than `clipped` — recoverable, but often unintended. |
-| `clipped` | same dimensional check, but `overflow:hidden\|clip` on the relevant axis | same shape as `layout` | **The high-value finding** — content invisible with no scrollbar. "The button got cut off." |
-| `text-ellipsis` | `text-overflow:ellipsis` AND `scrollWidth > clientWidth` | `{ scrollWidth, clientWidth, visibleText, fullText }` | Truncated labels. `visibleText` is a best-effort prefix (offsetWidth-bounded heuristic); the agent reads `fullText` for the truth. |
-| `viewport-horizontal` | `documentElement.scrollWidth > clientWidth` | `{ documentScrollWidth, viewportWidth, overrunPx, widestDescendantSelector?, widestDescendantWidth? }` | The "horizontal scrollbar on body" mobile-layout bug. Singleton finding — selector `"html"`, evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable. |
+| Type                  | Condition                                                                                  | Evidence                                                                                               | Why it matters                                                                                                                                                                                  |
+| --------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `layout`              | `scrollWidth/Height > clientWidth/Height` AND `overflow:auto\|scroll` on the relevant axis | `{ scrollWidth, clientWidth, scrollHeight, clientHeight, overflowX, overflowY }`                       | Content overflows the padding box; scrollbar IS provided. Subtler than `clipped` — recoverable, but often unintended.                                                                           |
+| `clipped`             | same dimensional check, but `overflow:hidden\|clip` on the relevant axis                   | same shape as `layout`                                                                                 | **The high-value finding** — content invisible with no scrollbar. "The button got cut off."                                                                                                     |
+| `text-ellipsis`       | `text-overflow:ellipsis` AND `scrollWidth > clientWidth`                                   | `{ scrollWidth, clientWidth, visibleText, fullText }`                                                  | Truncated labels. `visibleText` is a best-effort prefix (offsetWidth-bounded heuristic); the agent reads `fullText` for the truth.                                                              |
+| `viewport-horizontal` | `documentElement.scrollWidth > clientWidth`                                                | `{ documentScrollWidth, viewportWidth, overrunPx, widestDescendantSelector?, widestDescendantWidth? }` | The "horizontal scrollbar on body" mobile-layout bug. Singleton finding — selector `"html"`, evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable. |
 
 `EPSILON = 1` CSS px tolerates sub-pixel rounding noise — without it, pages that scale fonts or run on a fractional devicePixelRatio routinely trip false positives by ≤0.5 px.
 
@@ -640,9 +692,9 @@ Convert a session-internal `eN` ref (from `snapshot()` / `find()` / `plan()`) in
   "stability": "high",
   "components": [
     { "kind": "role", "value": "button", "name": "Save" },
-    { "kind": "text", "value": "Save" }
+    { "kind": "text", "value": "Save" },
   ],
-  "tokensEstimate": 28
+  "tokensEstimate": 28,
 }
 ```
 
@@ -654,22 +706,22 @@ Or, when the ref isn't in this session's registry (structured failure — no thr
   "failure": {
     "kind": "ref-not-found",
     "ref": "e42",
-    "hint": "ref \"e42\" is not in this session's registry. Call snapshot() or find() first…"
+    "hint": "ref \"e42\" is not in this session's registry. Call snapshot() or find() first…",
   },
-  "tokensEstimate": 41
+  "tokensEstimate": 41,
 }
 ```
 
 **Tier mapping** (same five-tier preference order `find()` uses; the emitted expression mirrors how browxai itself would resolve the ref at action time):
 
-| Ref shape                                  | Emitted expression                                        | `stability` |
-|--------------------------------------------|-----------------------------------------------------------|-------------|
-| `data-testid` (default attr)               | `page.getByTestId('save-btn')`                            | `high`      |
-| Custom test attribute (`data-cy`, `data-type`, …) | `page.locator('[data-cy="submit-form"]')`          | `high`      |
-| `role` + accessible `name`                 | `page.getByRole('button', { name: 'Save' })`              | `high`      |
-| Stable structural CSS path (semantic anchor / `#id` / `[data-*]`) | `page.locator('main > table > tbody > tr:nth-child(4)')` | `medium`    |
-| Purely positional CSS path (chains of `:nth-child` under generic tags) | `page.locator('div > div:nth-child(2) > div')` | `low`       |
-| Role only (no name, no path)               | `page.getByRole('button')`                                | `low`       |
+| Ref shape                                                              | Emitted expression                                       | `stability` |
+| ---------------------------------------------------------------------- | -------------------------------------------------------- | ----------- |
+| `data-testid` (default attr)                                           | `page.getByTestId('save-btn')`                           | `high`      |
+| Custom test attribute (`data-cy`, `data-type`, …)                      | `page.locator('[data-cy="submit-form"]')`                | `high`      |
+| `role` + accessible `name`                                             | `page.getByRole('button', { name: 'Save' })`             | `high`      |
+| Stable structural CSS path (semantic anchor / `#id` / `[data-*]`)      | `page.locator('main > table > tbody > tr:nth-child(4)')` | `medium`    |
+| Purely positional CSS path (chains of `:nth-child` under generic tags) | `page.locator('div > div:nth-child(2) > div')`           | `low`       |
+| Role only (no name, no path)                                           | `page.getByRole('button')`                               | `low`       |
 
 **`stability` semantics** are the same as `find()`'s: `high` = "uniquely identifies this element via a stable signal" (testid or role+name); `medium` = "stable structural / stable text on a stable role"; `low` = "positional or role-only — likely to drift on the next render." Both labels reflect per-snapshot uniqueness; long-term deploy stability is still the adopter's call on top.
 
@@ -682,13 +734,16 @@ Or, when the ref isn't in this session's registry (structured failure — no thr
 Read-only (capability `read`); no new capability gate. In the `batch` whitelist — compose `find` → `generate_locator` → record the string somewhere durable in one batch.
 
 ### `point_probe({ coords, crop?, session? })`
+
 Read-only: **what is actually under a viewport coordinate**. `point_probe({ coords:{x,y} })` → `{ ok, point, stack:[…], scrollContainer, clickableAncestor, cropBase64? }`. The coordinate-target verifier for canvas / virtualised-timeline / painted UIs where the target isn't a clean accessible element and `find()`/`inspect` can't address it.
-- `stack` — the full `document.elementsFromPoint(x,y)` top-down (capped 8); **`stack[0]` is what a real `click({coords})` would hit**. Each layer carries `tag/id/testId/role/name/classes` + computed `pointerEvents/visibility/display/zIndex/cursor` + `bbox` — enough to prove "this point hits the audio segment, not the video layer above it" and to see *why* (`pointer-events:none` passthrough, z-index ordering).
+
+- `stack` — the full `document.elementsFromPoint(x,y)` top-down (capped 8); **`stack[0]` is what a real `click({coords})` would hit**. Each layer carries `tag/id/testId/role/name/classes` + computed `pointerEvents/visibility/display/zIndex/cursor` + `bbox` — enough to prove "this point hits the audio segment, not the video layer above it" and to see _why_ (`pointer-events:none` passthrough, z-index ordering).
 - `scrollContainer` / `clickableAncestor` — nearest scrollable ancestor and nearest semantically-clickable ancestor of the top element (what a click here would actually activate).
 - `crop:true` adds a small bounded PNG (base64) around the point; **off by default** (token-cheap). No agent JS. Capability `read`. Pairs with `click({coords})`: probe first, then drive.
 - On failure the result is structured for triage: `{ ok:false, point, url, error }` (the coordinate + page URL, not a bare error).
 
-### `ws_read` *(W-H1)*
+### `ws_read` _(W-H1)_
+
 Session-wide ring of recent **WebSocket / Server-Sent-Events frames** (cap 500; HTTP is `network_read`, this is the realtime channel). `ws_read({ session?, limit?, urlPattern? })` → `{ total, frames: [{ url, dir: "sent"|"recv", kind: "ws"|"sse", opcode?, event?, payload, truncated?, ts }] }`. Payloads truncated (~2000 chars). The verification primitive for realtime correctness — chat / multiplayer / collaborative-editing / live-dashboard broadcasts, where the frame stream is the only ground truth. Per-action frames also land in **`ActionResult.network.wsFrames`** (frames that arrived during that action's window) — e.g. assert a click produced the expected broadcast without polling `ws_read` separately. Capability: `read`.
 
 ### Interactive WebSocket — `ws_send` / `ws_intercept` / `ws_unintercept`
@@ -698,10 +753,13 @@ The read-only WS view is `ws_read`; this family is the mutation half — send a 
 A page-side wrapper on `window.WebSocket` is installed eagerly at session creation (`Page.addInitScript`) so a socket constructed during initial document parse is captured. Each `new WebSocket(...)` is assigned a stable per-session `wsId` (`ws-1`, `ws-2`, …) you can discover via `eval_js JSON.stringify(window.__browxWs.list())` — `[{wsId, url, readyState}]`.
 
 #### `ws_send({ wsId, message, session? })`
+
 Push a payload onto an OPEN socket. Calls the real (unwrapped) `WebSocket.prototype.send`, so app-level `message` listeners do NOT observe a fake event — only the server sees the outbound frame. Returns `{ ok:true, wsId, url, bytes }` on success; `{ ok:false, error }` if the id is unknown or the socket isn't `OPEN`. Binary frames are not in MVP — send as text.
 
 #### `ws_intercept({ pattern, response, session? })`
+
 Install a route-handler for INBOUND frames. `pattern` is a glob (the route family's intent: `*` = single segment, `**` = any) matched against `socket.url` at frame time. Three response modes:
+
 - `"drop"` — silently discard the frame before app handlers run.
 - `"echo"` — mirror the inbound payload back to the server (the app still receives the original locally).
 - `{ data: "<string>" }` — replace the inbound payload with `data`; app handlers see the replacement.
@@ -709,6 +767,7 @@ Install a route-handler for INBOUND frames. `pattern` is a glob (the route famil
 Re-adding the same pattern replaces the prior entry (no duplication). The interceptor evaluates on every matching frame until removed.
 
 #### `ws_unintercept({ pattern?, session? })`
+
 Remove one interceptor (by exact `pattern`) or — with no `pattern` — every interceptor this session installed.
 
 **Caveats.** The wrapper installs at session creation; if you swap a session out via the BYOB rebuild path, both the wrapper AND any active interceptors are lost (a fresh wrapper installs on the new context, but the registry is empty). Same with full session close. There is no equivalent of `network_emulate`'s "applies cross-context"; the wrapper is per-context by construction.
@@ -764,6 +823,7 @@ Full response-body inspection is intentionally **not** exposed here; that would 
 **Output:** JSON `{ summary, requests }`.
 
 ### `eval_js`
+
 Run a JavaScript expression in the page's main frame. The escape hatch when no other tool covers your case (typically: trigger a page-side function the app exposes, e.g. `window.__siteDocs.capture()`). **Use sparingly.** Wishlist W-B1.
 
 > ⚠ **`eval_js` `element.click()` does NOT fire framework click handlers.** A programmatic `.click()` (or dispatched synthetic event) here is not a trusted/synthetic-equivalent event, so Vue `@click` / React synthetic / custom-element listeners never run — the app does nothing and you'll wrongly conclude the feature is broken. This is a recurring, expensive false negative. **Use the `click` tool for any click you're testing**; reserve `eval_js` for reading state or calling app-exposed functions. The server emits a soft `warning` on the result when it detects `.click()` in the expression.
@@ -772,11 +832,12 @@ Run a JavaScript expression in the page's main frame. The escape hatch when no o
 
 **Output:** JSON `{ ok: true, value }` / `{ ok: true, returnType: "void" }` / `{ ok: false, error }`.
 
-**Trust boundary**: the *call* originates from the (trusted) agent, but the *return value* is page-controlled — treat it as untrusted just like snapshot text.
+**Trust boundary**: the _call_ originates from the (trusted) agent, but the _return value_ is page-controlled — treat it as untrusted just like snapshot text.
 
 **Gating**: off by default — the `eval` capability isn't in `DEFAULT_CAPABILITIES`. Set `BROWX_CAPABILITIES=read,navigation,action,human,eval` to enable; the server logs a loud warning at startup.
 
 ### `find_feedback`
+
 Tell browxai which candidate was the right answer to a prior `find(query)`. Subsequent finds whose query overlaps the token set will boost candidates matching this winner's identity (testId, or role+name). Session-scoped, in-memory, capped at 100 entries with LRU eviction. The learning is intentionally simple — a "don't re-do that mistake" signal, not an ML model. Phase-2.
 
 **Inputs:** `{ query: string, ref: string }` — the query you previously passed to `find()` (or a paraphrase; token overlap is what matters), and the ref the agent ended up acting on.
@@ -798,20 +859,22 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 **Failure origin.** When `ok:false`, the result carries `failure: { source, hint }` — `source` is `"browxai"` (the context was torn down / detached / hit the anti-wedge deadline — **not** an app crash; re-open the session and retry), `"app"` (a real navigation/renderer failure — a genuine defect signal), or `"unknown"` (verify the session is still open via `list_sessions` before treating it as a defect). This exists because a browxai-side incognito-context teardown otherwise reads identically to "page crashed to about:blank" and produced expensive false CRITICAL defects — never file an app-crash defect on a `source:"browxai"` failure.
 
 ### Common per-call inputs (`ACTION_OPTS`)
-| Field | Default | Effect |
-|---|---|---|
-| `mode` | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree. `"full"` returns the whole post-action tree. `"scoped_snapshot"` (default, W-A2) re-snapshots **just** the action's element subtree + any newly-appeared regions (`structure.appeared` refs); falls back to the full tree if no scope refs exist; auto-promotes to `"none"` when no nav/structure change happened (W-A6). `"tree_diff"` (W-A2 partial) emits just the appeared-region subtrees (a full unified diff is still future work). |
-| `maxResultTokens` | `600` | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`. |
+
+| Field             | Default             | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`            | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree. `"full"` returns the whole post-action tree. `"scoped_snapshot"` (default, W-A2) re-snapshots **just** the action's element subtree + any newly-appeared regions (`structure.appeared` refs); falls back to the full tree if no scope refs exist; auto-promotes to `"none"` when no nav/structure change happened (W-A6). `"tree_diff"` (W-A2 partial) emits just the appeared-region subtrees (a full unified diff is still future work). |
+| `maxResultTokens` | `600`               | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`.                                                                                                                                                                                                                                                                                                                                                                                           |
 
 ### Target shape (for tools that act on an element)
+
 `{ ref: string }` OR `{ selector: string }` OR `{ named: string }` OR `{ coords: { x, y } }` — exactly one. All four are **first-class** target shapes; choose by what the page lets you address:
 
 - `ref` — preferred for semantic UIs. Stable across snapshots, carries role+name+testId so Playwright auto-waiting + strict-match Just Works.
 - `selector` — accepts the `selectorHint` strings `find()` emits plus arbitrary Playwright locator strings.
 - `named` — mnemonic previously bound via `name_ref` (wishlist W-C1).
-- `coords` — page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see W-F2 below) so the action stays inspectable; for the *full* hit-stack + why a layer is/ isn't hittable, `point_probe({coords})` first.
+- `coords` — page coordinates `{ x, y }` in CSS pixels, viewport-relative. First-class for canvas, WebGL / three.js, painted UIs, and any surface where the agent locates targets visually (their own multimodal vision or geometric reasoning). Honoured by `click` and `hover`; fill/press/select still require a resolved element. Coord-mode actions populate `ActionResult.element.hit` with `elementFromPoint` evidence before+after (see W-F2 below) so the action stays inspectable; for the _full_ hit-stack + why a layer is/ isn't hittable, `point_probe({coords})` first.
 
-Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action *inside* this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
+Optional `contextRef: string` scopes a `selector` to the subtree of a prior ref (row, card, panel) — `click({ selector: '[data-testid="row-action"]', contextRef: rowRef })` says "the action _inside_ this row" without positional `:nth` chains. Mirrors `find()`'s `contextRef`; ignored when `ref` / `named` / `coords` is used.
 
 #### Ref provenance and locator routing
 
@@ -823,7 +886,7 @@ Every ref records the pass that discovered it: `a11y` (via the accessibility tre
 4. **`cssPath` fallback** — for `both`-source refs whose a11y pass yielded no name.
 5. **role only** — last resort; `stability: "low"` candidates land here.
 
-**Ambiguity guard on the acting path (`click` / `hover`).** A ref built from a signal shared across repeated or hover-revealed items (e.g. one `data-testid` reused on every row's edit button) would resolve via `.first()` to whatever instance is first in the DOM — a *different* visible element than the one you found, so the action silently lands at the wrong place. Before dispatching a click/hover on a ref, browxai checks the primary locator's match count: if it is ambiguous (>1) and the ref carries the concrete structural path it was discovered as, the action **re-resolves to that concrete element** and adds a `warnings` entry saying so. If the concrete path no longer resolves, it keeps `.first()` but warns you to verify. Verify-before-dispatch — a loud "I re-resolved" beats a silent wrong-location action.
+**Ambiguity guard on the acting path (`click` / `hover`).** A ref built from a signal shared across repeated or hover-revealed items (e.g. one `data-testid` reused on every row's edit button) would resolve via `.first()` to whatever instance is first in the DOM — a _different_ visible element than the one you found, so the action silently lands at the wrong place. Before dispatching a click/hover on a ref, browxai checks the primary locator's match count: if it is ambiguous (>1) and the ref carries the concrete structural path it was discovered as, the action **re-resolves to that concrete element** and adds a `warnings` entry saying so. If the concrete path no longer resolves, it keeps `.first()` but warns you to verify. Verify-before-dispatch — a loud "I re-resolved" beats a silent wrong-location action.
 
 ### Named refs (wishlist W-C1)
 
@@ -834,16 +897,18 @@ For frequently-acted-on anchors across a long session, bind a mnemonic once and 
 - Then `click({ named: "voiceover_tab" })`, `fill({ named: "search_input", value: "…" })`, etc.
 
 ### `navigate({ url, ...opts })`
+
 Goto a URL. Returns an `ActionResult`.
 
 **Target a deployed URL over a dev tunnel when you can.** A cold dev tunnel (ngrok / cloudflared / framework `--tunnel`) routinely takes **>15 s** for first paint — well past the 5 s anti-wedge default — so the first `navigate` may return `ok:false` "anti-wedge timeout" while the page is, in fact, still loading. Treat `navigate`'s deadline as a **soft signal, not a hard failure**: on a timeout against a known-slow origin, follow with `wait_for({ text })` (or a generous per-call `timeoutMs` on the navigate) and re-check, rather than concluding the target is down. A deployed/static origin avoids the whole class — prefer it for calibration/QA runs.
 
 ### `click({ ref?|selector?|named?|coords?, button?, ...opts })`
+
 Click. Accepts all four target shapes. `button` is `"left" | "right" | "middle"` (default left). Returns an `ActionResult.element` probe (`stillAttached`, `focused`, `value`, `displayText`, `ownerControl`, `container`) for ref/selector/named targets; coord targets populate `element.hit` (with `before`/`after` from `elementFromPoint` and `focusChanged`) in place of the locator-based fields.
 
 #### Post-action context probe (W-F2)
 
-When the action target is a ref/selector/named, `element` also carries delta-aware context for the *logical thing that changed* — not just the direct target. This eliminates the screenshot-to-confirm loop for combobox commits and row-level saves.
+When the action target is a ref/selector/named, `element` also carries delta-aware context for the _logical thing that changed_ — not just the direct target. This eliminates the screenshot-to-confirm loop for combobox commits and row-level saves.
 
 - `element.ownerControl` — the logical owning control (combobox / listbox / radiogroup / labelled field wrapper) the action targeted. Walks up to 6 ancestors looking for a recognised owner. Surfaces `label`, `displayTextBefore` / `displayTextAfter` (innerText of the owner pre- and post-action, capped at 200 chars), and `changed: true` when they differ. Use this to confirm "the combobox now displays X" without re-snapshotting.
 - `element.container` — the repeated container (`role=row` / `role=listitem` / `role=article` / `<tr>` / `<li>`) the target lives inside. Surfaces `kind`, `rowKey` (first non-empty visible text within the row, capped at 80), `rowText` (concatenated row text, capped at 200), and `changed: true` when `rowText` differs pre-vs-post. Lets a row-level save confirm "the row's visible state now reads …" in one round-trip.
@@ -852,19 +917,22 @@ When the action target is a ref/selector/named, `element` also carries delta-awa
 A robust "did the click commit the right option?" check: `element.ownerControl?.displayTextAfter?.includes(expectedLabel) && element.ownerControl.changed`.
 
 ### `fill({ ref?|selector?, value, ...opts })`
+
 Type into an input. The post-action `element` probe is the confirmation signal — no follow-up `snapshot`/`screenshot` needed in the common case:
 
-- `element.value` — what's *actually* in the DOM after the write. **Not an echo** of the requested `value`. If the field is masked / capped / controlled, this differs from what you asked for.
+- `element.value` — what's _actually_ in the DOM after the write. **Not an echo** of the requested `value`. If the field is masked / capped / controlled, this differs from what you asked for.
 - `element.valueRequested` — the string you asked us to type. `value === valueRequested` ⇒ write landed as-asked; mismatch ⇒ the field rejected or transformed it.
-- `element.displayText` — visible text of the closest labelled wrapper (role attr or `data-testid|test|cy|qa`) up to 4 ancestors above. Surfaces the *displayed* state for controls that render the result outside `input.value` (chip-style selects, combobox displays, badge pickers, custom dropdowns that clear the underlying input on commit). Capped at 200 chars; omitted when no labelled wrapper was found.
+- `element.displayText` — visible text of the closest labelled wrapper (role attr or `data-testid|test|cy|qa`) up to 4 ancestors above. Surfaces the _displayed_ state for controls that render the result outside `input.value` (chip-style selects, combobox displays, badge pickers, custom dropdowns that clear the underlying input on commit). Capped at 200 chars; omitted when no labelled wrapper was found.
 - `element.checked` — for `<input type=checkbox|radio>`: `true | false | "mixed"` (indeterminate). Omitted for non-checkbox elements.
 
 A robust confirmation check across input shapes: `value === valueRequested || displayText?.includes(valueRequested)`.
 
 ### `fill_form({ fields, submit?, ...opts })`
+
 Fill **N form fields atomically in one action window**, with an optional final `submit` click. Replaces the fill / fill / fill / click round-trip pattern with one dispatch — covers ~80% of real form work in a single tool call. Same action-window envelope (navigation / structure / console / network / snapshotDelta) as a single `fill`, plus a per-field probe slot.
 
 **Args:**
+
 - `fields` — non-empty array of `{ ref?|selector?|named?|contextRef?, value }`. Field targets accept the standard target shapes minus `coords` (fill needs a real input element, not a viewport point). `value` follows the same secrets-substitution contract as the single-field `fill`: a `<NAME>`-shaped value triggers the secrets-registry materialisation at dispatch (capability `secrets`); the recorded descriptor and per-field probe carry the alias, never the real value.
 - `submit` — optional click target (`ref`/`selector`/`named`/`contextRef`). Clicked after every field has filled successfully.
 
@@ -875,6 +943,7 @@ Fill **N form fields atomically in one action window**, with an optional final `
 **Per-field probes.** The result carries `elements: ElementProbe[]` in dispatch order — the multi-target variant of the single-field `element` probe (`{ value, valueRequested, displayText, ownerControl, container, … }`). When a `submit` is supplied, `element` (singular) is the submit's post-click probe so single-target consumers don't have to feature-detect.
 
 **Failure envelope (atomic rejection):**
+
 ```json
 {
   "ok": false,
@@ -882,7 +951,12 @@ Fill **N form fields atomically in one action window**, with an optional final `
   "error": "fill_form: atomic pre-resolution rejected the call — no fields were typed. Misses: [1] ref=e_missing: target resolved to zero DOM nodes — element no longer present",
   "fieldResolution": [
     { "index": 0, "targetSummary": "ref=e7", "ok": true },
-    { "index": 1, "targetSummary": "ref=e_missing", "ok": false, "error": "target resolved to zero DOM nodes — element no longer present" },
+    {
+      "index": 1,
+      "targetSummary": "ref=e_missing",
+      "ok": false,
+      "error": "target resolved to zero DOM nodes — element no longer present"
+    },
     { "index": 2, "targetSummary": "selector=[data-testid=\"phone\"]", "ok": true }
   ],
   "navigation": { "changed": false, "...": "..." }
@@ -892,21 +966,27 @@ Fill **N form fields atomically in one action window**, with an optional final `
 Composes inside `batch`. Capability `action`.
 
 ### `press({ ref?|selector?, key, ...opts })`
+
 Press a key (Playwright key syntax: `"Enter"`, `"Control+A"`, …). If `ref`/`selector` is omitted, presses on the page.
 
 ### `shortcut({ keys, ref?|selector?, session?, timeoutMs? })`
+
 Dispatch a chord (`"Control+C"`) **or an ordered sequence** (`["Control+A","Control+C"]`) and get **handled-observability** — not just "keys were sent". Optional `ref`/`selector` is focused first; else page-level. Returns `{ ok, keys, activeElement, events:[{type,key,defaultPrevented,target}], handled, clipboard?, clipboardNote? }`:
+
 - `events` is captured by a fixed server-injected document listener (no agent JS) over the dispatch — `keydown`/`copy`/`cut`/`paste`, each with `defaultPrevented` and a target summary.
 - `handled` = a copy/cut/paste event fired **or** the app `preventDefault`'d a keydown — i.e. the app actually responded, distinguishing "shortcut handled" from "selector/no-op".
-- **Clipboard** (only when the off-by-default `clipboard` capability is enabled — observability works without it): the per-session clipboard model. Each session has its **own** buffer; the shared OS clipboard is touched **only transactionally** — at a copy/cut it captures the current selection into the session buffer and writes it out once; at a paste it writes *this session's* buffer to the OS clipboard immediately before the keystroke (so concurrent sessions never paste each other's content). browxai never reads the OS clipboard into a session (no cross-session/human clipboard bleed) and never touches it between commands. OS write is best-effort (`osSync:false` + note when the platform tool, e.g. `xclip`, is absent). Same posture class as `eval`/`network-body`.
+- **Clipboard** (only when the off-by-default `clipboard` capability is enabled — observability works without it): the per-session clipboard model. Each session has its **own** buffer; the shared OS clipboard is touched **only transactionally** — at a copy/cut it captures the current selection into the session buffer and writes it out once; at a paste it writes _this session's_ buffer to the OS clipboard immediately before the keystroke (so concurrent sessions never paste each other's content). browxai never reads the OS clipboard into a session (no cross-session/human clipboard bleed) and never touches it between commands. OS write is best-effort (`osSync:false` + note when the platform tool, e.g. `xclip`, is absent). Same posture class as `eval`/`network-body`.
 
 ### `hover({ ref?|selector?|named?|coords?, ...opts })`
+
 Hover. Accepts the standard target shapes plus `coords: {x, y}` for visually-located targets.
 
 ### `select({ ref?|selector?, values, ...opts })`
+
 `selectOption` on a `<select>`.
 
 ### `upload_file({ ref?|selector?, name?, mimeType?, content?, path?, session? })`
+
 Set a file on a file `<input>` via Playwright `setInputFiles` (works on hidden inputs) — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is **exactly one of**: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) or `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there first). → `{ ok, mode, name, bytes, mimeType?, target, fileCount }` (`bytes`/`target`/`fileCount` for debugging a bad upload; `mimeType` set in content-mode). Gated by the off-by-default **`file-io`** capability. No agent JS.
 
 ### Drag-drop files from disk — `drop_files({ ref?|selector?|named?|coords?, files, session? })`
@@ -923,6 +1003,7 @@ Multiple entries land as a multi-file drop in a single sequence (one `dragenter`
 **In-page File construction.** The page-side script is shipped inline per call via `page.evaluate` (not `addInitScript`) — each drop is one-shot, the byte payload differs per call, and a boot-time injection would leak page-side identifiers across unrelated tools. Bytes ride the boundary as base64 (then `atob` + `Uint8Array` → `new File(...)` in-page); `Uint8Array` over Playwright's structured-clone boundary explodes into a per-byte object array (~10× larger on the wire). Gated by the off-by-default **`file-io`** capability — same posture as `upload_file`. No agent JS.
 
 ### `pdf_save({ path?, format?, scale?, printBackground?, session? })`
+
 Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF` under the hood) — the first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog through `shortcut`. The mirror of `upload_file`: file-io OUT instead of IN.
 
 Defaults are what an agent reaching for "save the page as a PDF" expects without reading the docs: `format:"A4"`, `scale:1`, `printBackground:false` (matches browser-print's default — opt in when background colour / imagery matters for the artefact). `path` is resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; omit it for a default `pdfs/<sessionId>-<ts>.pdf`. `format` accepts every Playwright paper preset (`Letter`/`Legal`/`Tabloid`/`Ledger`/`A0`–`A6`). `scale` is bounded `[0.1, 2.0]` (Playwright's CDP-layer clamp; out-of-band values are rejected up-front with a clearer error). → `{ ok, path, bytes, format, scale, printBackground }`.
@@ -1019,12 +1100,14 @@ cancelling Playwright's temp artifact — sessions that never opt in leave no
 on-disk trace, preserving the no-trace contract.
 
 #### `downloads_capture({ on, clear?, session? })`
+
 - `on: boolean` — turn capture on or off.
 - `clear?: boolean` — when toggling off, ALSO delete every previously-captured
   file on disk. No-op when `on:true`.
 - → `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`.
 
 #### `download_get({ id, pathOnly?, session? })`
+
 - `id: string` — download id from `ActionResult.downloads[].id`.
 - `pathOnly?: boolean` — omit the base64 payload, return only path + metadata.
 - → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`.
@@ -1035,7 +1118,7 @@ with capture off.
 
 ### Asset export — `asset_export`
 
-`downloads_capture` only sees what the page chose to *download* (`<a download>`
+`downloads_capture` only sees what the page chose to _download_ (`<a download>`
 links, `Content-Disposition: attachment`, programmatic `download` events).
 Plenty of useful artifacts never trigger a download — every image, font, video,
 audio clip, stylesheet, and script the page actually rendered came in through
@@ -1093,17 +1176,20 @@ Three layers ship together; no parallel implementations.
 `inject_storage_state`, `auth_save`, `auth_load`, `auth_delete`) under
 `action`. No new capability gate to enable.
 
-**Security note (W-V12 gap)** — cookie *values* may carry credentials. The
+**Security note (W-V12 gap)** — cookie _values_ may carry credentials. The
 future W-V12 secrets-masking pass will mask them on egress; this cycle
 ships unmasked. Treat dumps + saved named-states as sensitive.
 
 #### Layer 1 — bulk
 
 ##### `dump_storage_state({ path?, session? })`
+
 Wraps Playwright's `BrowserContext.storageState()` — `{cookies, origins:[{origin, localStorage}]}`. Always returns the blob inline; with `path`, also writes the JSON to a workspace-rooted file (path-traversal rejected — must resolve under `$BROWX_WORKSPACE`). Read-only.
 
 ##### `inject_storage_state({ state, mode?, session? })`
+
 Apply a bulk state to the current session's context. `state` accepts an inline blob OR a workspace-rooted JSON path. Two modes:
+
 - `replace` (default) — uses Playwright's `setStorageState`, which **clears the context's existing cookies / localStorage / IndexedDB before applying**. Clean swap.
 - `merge` — adds cookies via `addCookies` without clearing AND merges localStorage for the **currently-loaded origin only** (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound).
 
@@ -1112,6 +1198,7 @@ For per-session seeding **at creation**, prefer `open_session({storageState | au
 #### Layer 2 — granular CRUD
 
 **Cookies** (context-scoped, no navigation required):
+
 - `cookies_get({ name, url?, session? })` → `{cookie | null}`
 - `cookies_list({ urls?, session? })` → `{count, cookies}` (Playwright's URL-filter is honoured)
 - `cookies_set({ name, value, url?|domain+path, expires?, httpOnly?, secure?, sameSite?, session? })` — Playwright's `addCookies` requires **either `url` (recommended — derives domain/path/secure) OR both `domain` AND `path`**; one form must be supplied.
@@ -1119,6 +1206,7 @@ For per-session seeding **at creation**, prefer `open_session({storageState | au
 - `cookies_clear({ session? })` — wipes ALL cookies in the context. localStorage/sessionStorage untouched.
 
 **localStorage / sessionStorage** (origin-scoped, page-bound — see caveat below):
+
 - `localstorage_get` / `sessionstorage_get` `({ key, session? })` → `{value, origin}`
 - `localstorage_list` / `sessionstorage_list` `({ session? })` → `{count, entries:[{key,value}…], origin}`
 - `localstorage_set` / `sessionstorage_set` `({ key, value, session? })`
@@ -1136,7 +1224,7 @@ Wraps layer 1 with workspace-rooted JSON files at `$BROWX_WORKSPACE/.auth-states
 - `auth_list()` → `{count, slots:[{name, path, bytes, modifiedAt}…]}`
 - `auth_delete({ name })` → `{ok, existed}` (idempotent).
 
-#### Cache API CRUD *(Phase 7)*
+#### Cache API CRUD _(Phase 7)_
 
 Sibling of cookies / web-storage CRUD on the W3C Cache API (`window.caches`)
 — what Service Workers populate for offline-first apps. Origin-scoped and
@@ -1153,7 +1241,7 @@ synthetic IDs — each entry keyed by its `(cacheName, url)` pair.
 - `caches_clear({ cacheName, session? })` → `{ok, cleared:N}` (cache storage itself remains).
 - `caches_delete_storage({ cacheName, session? })` → `{ok, existed}` — drops the whole storage.
 
-#### IndexedDB CRUD *(Phase 7)*
+#### IndexedDB CRUD _(Phase 7)_
 
 Sibling of cookies / web-storage / Cache API CRUD on the W3C IndexedDB API.
 Origin-scoped and page-bound (same caveat as above). Reads under `read`;
@@ -1167,13 +1255,15 @@ writes under `action`. No synthetic IDs — each entry keyed by its
 - `idb_delete({ dbName, storeName, key, session? })` — idempotent (same shape whether or not a record was there).
 - `idb_clear({ dbName, storeName, session? })` — clears every record from the store; the store itself remains.
 
-#### `open_session({ ... storageState?, authState? })` extension *(additive)*
+#### `open_session({ ... storageState?, authState? })` extension _(additive)_
 
 `open_session` now optionally seeds the new context with a storage state at creation. **Mutually exclusive** — pass one or the other:
+
 - `storageState` — inline blob (as returned by `dump_storage_state`) OR a workspace-rooted JSON path.
 - `authState` — name of a slot from `auth_save`.
 
 Per-mode semantics:
+
 - **incognito** — Playwright-native primitive (`browser.newContext({storageState})`). Cheapest path; preferred for "open a fresh browser already logged in as X."
 - **persistent** (managed) — Playwright's `launchPersistentContext` doesn't accept `storageState` at creation (the profile's state lives on disk). The session post-seeds via `setStorageState`, **which clears the profile's existing cookies / localStorage / IndexedDB first**. Loud-warned. Use incognito instead if you don't want to touch a persistent profile.
 - **attached** (BYOB) — ignored with a warning. The consumer's Chrome is not-owned; use `inject_storage_state` explicitly if you really mean to overwrite the attached browser's state.
@@ -1205,20 +1295,24 @@ payloads — `artifact_get` returns the same encoding the caller asks for
 (round-trip-faithful for both text and binary).
 
 #### `artifact_save({ name, content, encoding?, session? })`
+
 - `name: string` — `/[A-Za-z0-9._-]+/` only; no separators, no `..`, no leading dot.
 - `content: string` — payload. Text by default; pass `encoding:"base64"` for binary.
 - `encoding?: "utf8" | "base64"` — defaults to `"utf8"`.
 - → `{ ok, name, size, mtime, path }`. Overwrites an existing same-named artifact.
 
 #### `artifact_get({ name, encoding?, session? })`
+
 - `name: string` — as passed to `artifact_save`.
 - `encoding?: "utf8" | "base64"` — return shape; defaults to `"utf8"`.
 - → `{ ok, name, content, size, mtime, encoding }`. Throws if the name is unknown in this session.
 
 #### `artifact_list({ session? })`
+
 - → `{ ok, count, artifacts: [{ name, size, mtime }] }` (sorted by name asc).
 
-### `choose_option({ target, option, exact?, ...opts })` *(W-F3)*
+### `choose_option({ target, option, exact?, ...opts })` _(W-F3)_
+
 Pick an option in a **custom combobox / listbox / menu** by visible text. Generic primitive for controls that aren't native `<select>` — the kind that open a portal listbox on click and commit on option click. The `target` is the trigger (the combobox itself); `option` is the visible text of the option to commit. Behaviour:
 
 1. If `aria-expanded !== "true"` on the trigger, click the trigger to open the control.
@@ -1229,13 +1323,15 @@ Pick an option in a **custom combobox / listbox / menu** by visible text. Generi
 `exact` defaults to `true` (option text must match exactly). Set `false` to allow substring. Does **not** simulate type-and-press-Enter — that's prone to picking the wrong option in dense lists.
 
 ### `plan({ query, verb, verbArgs?, contextRef?, confidenceFloor?, ttlMs?, session? })` / `execute({ descriptor, ...opts })`
-Separate **intent capture** from **dispatch**. `plan` resolves a natural-language `query` against the live tree (same ranker as `find()`), picks the top candidate, validates the verb's args, and returns a serialisable `ActionDescriptor` — *no action runs*. Hand it back verbatim to `execute` to dispatch; cache it for replay; or inspect `evidence` and refuse to dispatch when the stability is too low. This is browxai's caching + self-healing substrate (the agent can re-execute a stored descriptor across runs, detect "ref-gone" / "expired" structurally, and re-plan only when needed).
 
-Not a mock dispatch. `execute` actually runs the action — the value here is *captured intent*, not *suppressed effects*.
+Separate **intent capture** from **dispatch**. `plan` resolves a natural-language `query` against the live tree (same ranker as `find()`), picks the top candidate, validates the verb's args, and returns a serialisable `ActionDescriptor` — _no action runs_. Hand it back verbatim to `execute` to dispatch; cache it for replay; or inspect `evidence` and refuse to dispatch when the stability is too low. This is browxai's caching + self-healing substrate (the agent can re-execute a stored descriptor across runs, detect "ref-gone" / "expired" structurally, and re-plan only when needed).
+
+Not a mock dispatch. `execute` actually runs the action — the value here is _captured intent_, not _suppressed effects_.
 
 **Verbs:** `click`, `fill`, `hover`, `press`, `select` (single-target verbs only — `navigate`/`scroll`/`wait_for`/`choose_option` either don't need a ranked candidate or expand into multiple action-window dispatches and stay as their own primitives).
 
 **`ActionDescriptor` shape (returned by `plan`):**
+
 - `id` — opaque uuid for this descriptor (caches key on it).
 - `ref` — the bound element ref. **Same `eN` namespace as `snapshot`/`find`/`name_ref` — there is no parallel id system.** A named ref is an alias for an `eN`; a descriptor that targets `e7` and a `name_ref({name:"play_btn",ref:"e7"})` refer to the same element.
 - `verb` — the action verb (one of the five above).
@@ -1244,6 +1340,7 @@ Not a mock dispatch. `execute` actually runs the action — the value here is *c
 - `expiresAt` — epoch-ms past which `execute` refuses to dispatch. Default `now + 60000` (1 min); `ttlMs` overrides, clamped to `[1000, 1800000]` (1s..30min).
 
 **`execute` refusal modes** (no action runs, descriptor is rejected up front):
+
 - `reason: "expired"` — past `expiresAt`. Re-plan.
 - `reason: "ref-gone"` — the ref is no longer in the session's registry (e.g. a navigation evicted it). Re-plan.
 - `reason: "invalid"` — descriptor shape is malformed (bad verb, missing fields, missing required arg).
@@ -1253,13 +1350,17 @@ On a successful dispatch, `execute` returns `{ ok: true, result: <ActionResult>,
 **Capability gating:** `plan` is `read` (it only ranks candidates). `execute` is `action` AND the **underlying verb's capability** is enforced — a descriptor with `verb:"click"` denied with the `action` capability disabled surfaces as `click` denied, not a generic "execute denied". `byob_action` confirm-hooks apply the same way: a policy that blocks `click` also blocks `execute` of a click descriptor.
 
 ### `wait_for({ ref?|selector?|named?|coords? | text?, timeoutMs?, ...opts })`
-Wait until an element is visible, **or** (W-J1) until visible `text` appears anywhere on the page — the SPA-readiness gate real apps need after a reload/nav (`wait_for({ text: "Dashboard" })`). Pass exactly one of a target or `text`; neither → clear error. **Substring** match — case-insensitive, whitespace-trimmed (Playwright `getByText` default; a short token *inside* a longer string matches), visible-only. **No arbitrary-JS predicate mode by design** — "poll an in-page condition until truthy" stays `eval_js`'s domain (gated behind the `eval` capability; browxai keeps a single arbitrary-JS loophole).
+
+Wait until an element is visible, **or** (W-J1) until visible `text` appears anywhere on the page — the SPA-readiness gate real apps need after a reload/nav (`wait_for({ text: "Dashboard" })`). Pass exactly one of a target or `text`; neither → clear error. **Substring** match — case-insensitive, whitespace-trimmed (Playwright `getByText` default; a short token _inside_ a longer string matches), visible-only. **No arbitrary-JS predicate mode by design** — "poll an in-page condition until truthy" stays `eval_js`'s domain (gated behind the `eval` capability; browxai keeps a single arbitrary-JS loophole).
 
 ### `go_back({ ...opts })` / `go_forward({ ...opts })`
+
 History navigation.
 
 ### `tab_visibility({ state, holdMs?, session? })`
+
 Background or foreground the session's tab — the only way to reproduce the bug class that **only fires when the tab is hidden**: throttled `setTimeout`, paused `requestAnimationFrame` (framework enter/animation hooks never run), and an on-return `visibilitychange`/focus handler that replays stale state. browxai otherwise keeps the driven tab foreground, so agentic QA scores these flows PASS while they're broken.
+
 - `state: "background"` — overrides `document.visibilityState`/`hidden` and dispatches `visibilitychange` (+ `blur`), **and** best-effort takes front focus away from the page (a blank scratch page in the same context is brought to front) so real timer/rAF throttling applies. The synthetic flip is deterministic everywhere; **real throttling is best-effort and may not occur under headless** — the result's `realBackgrounding` and `note` say which you got (named, never silently assumed).
 - `state: "background"` **with `holdMs`** is the headline form: background → hold hidden `holdMs` → auto-foreground, reproducing the background→return transition in one call. Returns `state:"foreground"` + `heldMs`.
 - `state: "foreground"` — restores visibility (+ `focus`) and re-focuses the tab.
@@ -1291,24 +1392,31 @@ Every emulation-tool result returns:
 ```
 
 #### `set_locale({ locale | null, session? })`
+
 Override `navigator.language`, `Intl.*` defaults, and the `Accept-Language` header. Pass `locale: null` (or omit) to clear. **Runtime mutation goes through CDP `Emulation.setLocaleOverride`** because Playwright's `BrowserContext.locale` is creation-time-only; the CDP equivalent takes effect immediately on existing pages.
 
 #### `set_timezone({ timezoneId | null, session? })`
+
 Override the session's IANA timezone (`Date`, `Intl.DateTimeFormat`). Pass `timezoneId: null` to clear. **Runtime mutation via CDP `Emulation.setTimezoneOverride`** for the same reason as `set_locale`.
 
 #### `set_geolocation({ latitude, longitude, accuracy?, session? })`
+
 Override the HTML5 Geolocation reading. Mutates a live context via Playwright's `context.setGeolocation()`. Pass `latitude: null` (or no coords) to clear. **`navigator.geolocation` is gated on the `geolocation` permission**; pair with `grant_permissions({ permissions: ["geolocation"] })` for the relevant origin. When no `geolocation` grant is recorded for the session, the result includes a warning naming the missing grant.
 
 #### `set_color_scheme({ scheme, session? })`
+
 Override `prefers-color-scheme` for the session via Playwright's `page.emulateMedia`. `scheme: "light" | "dark" | "no-preference"`; `"no-preference"` clears the override. CSS media queries re-evaluate immediately.
 
 #### `set_reduced_motion({ on, session? })`
+
 Override `prefers-reduced-motion`. `on: true → "reduce"`, `on: false → "no-preference"` (clears). Mutates a live page via `page.emulateMedia`. Useful when an animation-heavy page is unstable to drive, or to verify a reduced-motion code path.
 
 #### `set_user_agent({ userAgent | null, session? })`
+
 Override the User-Agent string (HTTP header **and** `navigator.userAgent`). Pass `userAgent: null` to clear. **Runtime mutation via CDP `Network.setUserAgentOverride`** (Playwright's `context.userAgent` is creation-time-only). Updates both surfaces in one call.
 
 #### `grant_permissions({ permissions, origin?, session? })`
+
 Grant browser permissions for the session — Chromium permission names: `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, …. Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. **Re-granting for the same origin REPLACES** the prior set (Playwright semantics). Pass `permissions: []` (or omit) to clear ALL grants — Playwright does not expose per-origin revocation, so clearing is context-wide; the result names this in `note` whenever `origin` was passed alongside an empty `permissions`.
 
 #### Persistence & reset semantics
@@ -1322,11 +1430,12 @@ Grant browser permissions for the session — Chromium permission names: `geoloc
 When the session is `mode:"attached"`, the locale / timezone / UA overrides go in via CDP to a Chrome browxai does **NOT** own. CDP doesn't revoke these on detach: **the human's Chrome will keep them until it navigates or restarts.** Every emulation tool's `warnings` includes a one-line note to this effect for attached sessions. (Geolocation / colour scheme / reduced motion / permissions are mutated via Playwright on the attached context; the same caveat applies as a defensive default, even though those mechanisms are scoped slightly differently.)
 
 ### `scroll({ ref?|selector?|named?|coords?, to?, by?, intoView?, ...opts })`
+
 One general scroll primitive (capability: `navigation`):
 
 - **No target** → scroll the window. Pass `to: "top"|"bottom"|"left"|"right"` or `by: { x?, y? }` (CSS px; `+y` = down, `+x` = right).
-- **`ref`/`selector`/`named` target, no `to`/`by`** → scroll that element *into view* (`scrollIntoViewIfNeeded`) — the lazy-load / virtualised-list case.
-- **element target + `to`/`by`** → scroll *within* that container (e.g. an `overflow:auto` panel). `intoView:false` is implied; set `intoView:true` to force into-view even with `to`/`by`.
+- **`ref`/`selector`/`named` target, no `to`/`by`** → scroll that element _into view_ (`scrollIntoViewIfNeeded`) — the lazy-load / virtualised-list case.
+- **element target + `to`/`by`** → scroll _within_ that container (e.g. an `overflow:auto` panel). `intoView:false` is implied; set `intoView:true` to force into-view even with `to`/`by`.
 - **`coords` target** → wheel-scroll at that point (`mouse.wheel`) — canvas / map / WebGL panning.
 
 Returns an `ActionResult`. Scroll commonly triggers infinite-scroll XHRs and DOM growth, so `network` / `structure` / `snapshotDelta` on the result show what loaded. No-op calls (no target and no `to`/`by`) return a clear error rather than silently doing nothing.
@@ -1453,13 +1562,16 @@ Audit helper. Returns live grants: `{ scope, grantedAt, expiresAt, uses, remaini
 > These tools were formerly an off-by-default experimental lane; as of v0.1.0 they are **promoted into the stable surface** under their natural capabilities. Pointer gestures and route mocking are `action`; the compound act-and-observe tools and region screenshots are `read`; named-region bind/resolve and profile snapshot/restore are `human` coordination — all in the default capability set. The one exception is `poll_eval`: it evaluates page JS, so it sits under the off-by-default `eval` capability. They cover the heavier media-editor / race-condition QA workflows.
 
 ### Pointer gestures — `drag` / `double_click` / `mouse_down` / `mouse_move` / `mouse_up` / `mouse_wheel`
+
 For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`hover` can't express.
+
 - `drag({ from, to, steps?, preflight?, session? })` — press at `from`, move to `to` over `steps` intermediate points (default 12, clamped 1–100), release. `from`/`to` are each `{ref}|{selector}|{coords}` (element targets resolve to box centre). → `{ ok, from, to, steps }`. **`preflight: true`** instead probes the `from` point and returns `{ ok, preflight: { point, hit, resizeRisk } }` **without dragging** — `hit` is the `point_probe` stack, `resizeRisk` is true when a press-point layer has a `*-resize` cursor. Check it before dragging a narrow item so you grab its body, not a resize handle (`to` is not required when `preflight:true`).
 - `double_click({ target, session? })` — double-click a `{ref}|{selector}|{coords}` target.
 - `mouse_down` / `mouse_move` / `mouse_up({ coords?, session? })` — low-level mouse for custom gestures: `mouse_move` requires `coords`; `mouse_down`/`mouse_up` move there first when `coords` is given, else act at the current pointer position.
 - `mouse_wheel({ coords, deltaX?, deltaY?, session? })` — coordinate-space wheel event dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore `scroll`'s element-level path. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero. → `{ ok, coords, deltaX, deltaY }`.
 
 ### Touch + multi-touch gestures — `touch_start` / `touch_move` / `touch_end` / `gesture_pinch` / `gesture_swipe`
+
 **A separate dispatch pipeline from `mouse_*`.** Mobile-default apps, canvas / map / drawing widgets, and pull-to-refresh / swipeable list UIs wire `touchstart` / `touchmove` / `touchend` handlers that the mouse pipeline does NOT reach. CDP `Input.dispatchTouchEvent` is the touch sibling of `dispatchMouseEvent`; touch and mouse stay net-additive — neither aliases the other.
 
 **Touch does NOT auto-fire mouse events.** Browsers MAY synthesize `mousedown`/`mouseup`/`click` from a touchend on touch-aware pages, but that's app-policy (governed by the page's `touch-action` CSS and `preventDefault` choices in its handlers) — not a browxai guarantee. **An agent that needs both pipelines must dispatch both explicitly** (e.g. `touch_start` + `mouse_down`).
@@ -1473,21 +1585,26 @@ For timeline scrub/trim, drag-reorder, sliders, lasso — interactions `click`/`
 **Multi-touch fan-out by hand** — for gestures the canned compounds don't cover (e.g. three-finger rotate), dispatch a sequence of `touch_start` / `touch_move` / `touch_end` calls with distinct `identifier` values per finger. The CDP touch pipeline maintains active touchpoint state across dispatches as long as the identifiers stay consistent. Note that Chromium fires a separate DOM `touchstart` / `touchend` for each finger added or lifted (rather than one event with multiple `changedTouches`), even when you batch multiple points into one CDP dispatch.
 
 ### Network route mocking — `route` / `route_queue` / `unroute`
+
 Drive Playwright request interception for race-condition QA, per-session (discarded with the session).
+
 - `route({ urlPattern, method?, status?, body?, contentType?, delayMs?, session? })` — fulfil **every** request matching `urlPattern` (Playwright glob) with one canned response; non-matching `method` falls through to the real network.
 - `route_queue({ urlPattern, method?, responses:[{status?,body?,contentType?,delayMs?}], session? })` — fulfil **successive** matches from `responses[]` (one per request, in order); once exhausted, matches hit the real network. Each response has its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the exact "response order ≠ request order" failure class).
 - `unroute({ urlPattern?, method?, session? })` — remove one route, or (no `urlPattern`) every route this session registered.
 
 ### Network + CPU emulation — `network_emulate` / `cpu_emulate`
+
 Throttle the session's network conditions and the renderer CPU. For flaky-mobile / offline / "works on M3, breaks on Chromebook" repros against a real backend, without a real lab device. Both are per-session, both **persist across navigation** (re-applied on main-frame `framenavigated` in case a renderer swap drops the CDP override), both **compose** with `route_queue` — a route's `delayMs` stacks ON TOP of `latencyMs`.
+
 - `network_emulate({ offline?, latencyMs?, downloadBps?, uploadBps?, packetLoss?, session? })` — wraps CDP `Network.emulateNetworkConditions`. `offline:true` wins over latency / bps. `downloadBps` / `uploadBps` are bytes/sec (0 / unset = unthrottled). `packetLoss` is a 0..1 hint (most Chromium builds ignore it). **Empty input** (or `{offline:false}` with nothing else set) **resets** to no throttle. → `{ ok, applied:{offline, latencyMs, downloadBps, uploadBps, packetLoss?}, reset, warning?, tokensEstimate }`.
 - `cpu_emulate({ throttleRate?, session? })` — wraps CDP `Emulation.setCPUThrottlingRate`. `throttleRate: 1` = no throttle (and is the **reset** path); `2` = 2× slowdown; `4`–`6` = mid-to-low-end mobile. Independent of `network_emulate` — call both for a full low-end-device repro. → `{ ok, applied:{throttleRate}, reset, warning?, tokensEstimate }`.
 
-**Composition** — `route_queue({ urlPattern:"**/api/*", responses:[{delayMs:400, body:"…"}] })` + `network_emulate({ latencyMs:200 })` ⇒ the matched request waits ~200 ms of emulated link latency *before* the route handler's 400 ms delay fires, then fulfils — the two delays stack.
+**Composition** — `route_queue({ urlPattern:"**/api/*", responses:[{delayMs:400, body:"…"}] })` + `network_emulate({ latencyMs:200 })` ⇒ the matched request waits ~200 ms of emulated link latency _before_ the route handler's 400 ms delay fires, then fulfils — the two delays stack.
 
 **BYOB / attached Chrome** — the override applies to the attached browser's page and **stays in effect after browxai detaches**, until the human resets DevTools' Network / Performance panels or closes the page. Both tools surface `warning` on the result in `attached` session mode so the operator knows to reset.
 
 ### Clock control — `clock`
+
 Drive the page's virtual clock deterministically — for date-sensitive flows (renewal dates, "today" filters, scheduling, expiry edges) where rewinding `Date.now()` to a known instant beats matching test data to wall time. Wraps CDP `Emulation.setVirtualTimePolicy`. Per-session; persists across navigation (re-applied on main-frame `framenavigated` in case a renderer swap drops the policy). Independent of `network_emulate` / `cpu_emulate` — compose freely with any combination.
 
 - `clock({ mode: "freeze", atIso?, session? })` — pause virtual time at `atIso` (or wall-clock now if omitted). CDP policy: `pauseIfNetworkFetchesPending` (network keeps running so the page can still load assets; the JS clock is held).
@@ -1499,6 +1616,7 @@ Drive the page's virtual clock deterministically — for date-sensitive flows (r
 **BYOB / attached Chrome** — the virtual-time policy stays in effect on the attached browser until released (`mode:"release"`), reloaded, or the page is closed. A page that displays a wall-clock-looking time which has actually been frozen is a debugging trap; the result surfaces a `warning` in `attached` session mode.
 
 ### Deterministic `Math.random` — `seed_random`
+
 Override the page's `Math.random` with a Mulberry32 PRNG seeded from a caller-supplied integer — for flake repros where unseeded randomness drives id generation, dice / card / A-B picks, or jittered retry timing. Injected via Playwright `addInitScript` so every new document in the session (including subsequent navigations) bootstraps the same override; the current page's main realm is re-seeded immediately so the effect is visible without navigating. Per-session; persists across navigation (re-applied on main-frame `framenavigated`, mirroring `network_emulate` / `clock`).
 
 - `seed_random({ seed, session? })` — `seed` is a non-negative integer in `[0, 2^32 - 1]` (the Mulberry32 state domain; `0` is valid). → `{ ok, applied:{seed}, warning?, tokensEstimate }`. Re-calling with a different seed swaps the active seed on both the current realm and any future document bootstrap.
@@ -1512,7 +1630,7 @@ Override the page's `Math.random` with a Mulberry32 PRNG seeded from a caller-su
 Full-session reproducibility — capture every request the page made into a HAR (HTTP Archive) file, then later replay a session against that archive instead of the live network. Two recording entrypoints + one replay entrypoint:
 
 - **`start_har({ path?, mode?, content?, urlFilter?, session? })`** — begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"embed"` (default — bodies inlined), `"attach"` (sidecar files / `.zip` entries), or `"omit"` (drop bodies). **`urlFilter`** narrows to matching requests. → `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
-- **`stop_har({ session? })`** — remove the HAR recording route so further requests aren't logged. → `{ ok, session, wasActive, path?, finalized:false, nativeRecord, har?, inlineBytes?, hint, tokensEstimate }`. If the file is already on disk *and* under ~256 KB, it's also inlined on the result. Capability `action`.
+- **`stop_har({ session? })`** — remove the HAR recording route so further requests aren't logged. → `{ ok, session, wasActive, path?, finalized:false, nativeRecord, har?, inlineBytes?, hint, tokensEstimate }`. If the file is already on disk _and_ under ~256 KB, it's also inlined on the result. Capability `action`.
 - **`open_session({ har: { path?, mode?, content?, urlFilter? } })`** — wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned — a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses — `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
 - **`open_session({ hars: ["a.har", "b.har", …] })`** — REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create — requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.
 
@@ -1539,7 +1657,8 @@ Record every page in the session as a `.webm` via Playwright's native `recordVid
 **Inline cap** — `get_video({format:"bytes"})` inlines as base64 when the file is ≤ ~1 MiB; larger files return `tooLargeToInline:true` and the caller reads from `path`.
 
 ### Performance tracing — `perf_start` / `perf_stop` / `perf_insights`
-"This click took 4s — why?" has no diagnostic surface in the read-only tools: a screenshot/snapshot/network slice shows *what* happened, not *why* it was slow. These three tools wrap CDP `Tracing.start` / `Tracing.end` to produce a chromium-format trace file (the same shape DevTools' Performance panel and `chrome://tracing` consume), then extract structured insights from it. Per-session; one trace lifecycle at a time. All three are under capability `action` (`perf_stop` writes a file).
+
+"This click took 4s — why?" has no diagnostic surface in the read-only tools: a screenshot/snapshot/network slice shows _what_ happened, not _why_ it was slow. These three tools wrap CDP `Tracing.start` / `Tracing.end` to produce a chromium-format trace file (the same shape DevTools' Performance panel and `chrome://tracing` consume), then extract structured insights from it. Per-session; one trace lifecycle at a time. All three are under capability `action` (`perf_stop` writes a file).
 
 - `perf_start({ categories?, session? })` — arm a CDP trace on this session. Omit `categories` for the DevTools-Performance-equivalent default (`devtools.timeline`, `loading`, `blink.user_timing`, frame, latency). **Idempotent restart:** calling `perf_start` while a trace is already running cleanly stops the in-flight one (events discarded) and starts fresh — an agent that lost track of state always recovers by calling again. → `{ ok, running:true, categories, restarted, warning?, tokensEstimate }`.
 - `perf_stop({ path?, session? })` — stop the in-flight trace and flush events to a workspace-rooted JSON file. Default path: `<workspace>/perf-traces/<sessionId>-<ts>.json` (path-traversal rejected — `path` must resolve under `$BROWX_WORKSPACE`). **Safe to call any number of times:** if no trace is running, returns `notRunning:true` instead of an error. → `{ ok, path, bytes, eventCount, categories, durationMs, summary:{ longTaskCount, layoutShiftCount, renderBlockingCount, lcpCandidateCount }, hint, warning?, tokensEstimate }`. The summary is the one-glance answer; `perf_insights` is the detailed read.
@@ -1550,6 +1669,7 @@ Record every page in the session as a `.webm` via Playwright's native `recordVid
 **BYOB / attached Chrome** — `perf_stop` is **required** to release the trace buffer on the human's Chrome. `close_session` also cleans up on its way out (best-effort), and `perf_stop` surfaces a `warning` in `attached` mode so the operator sees that the buffer was released.
 
 ### V8 heap snapshots — `heap_snapshot` / `heap_retainers`
+
 "This page slowly leaks memory — what's still holding the old DOM tree alive?" has no diagnostic surface in the read-only tools either: a `snapshot` shows what's on the page now, not what's still retained from a previous state. These two tools wrap CDP `HeapProfiler.takeHeapSnapshot` to produce a V8 `.heapsnapshot` (the format `chrome://inspect`'s Memory panel consumes on drag-and-drop) and run a structured retainer query against it. One-shot (a heap snapshot is a point-in-time capture, not a recording window — no start/stop pair). Both are under capability `action` (`heap_snapshot` writes a file; `heap_retainers` is kept under the same capability so a memory-diagnosis batch doesn't have to juggle two grants).
 
 - `heap_snapshot({ path?, session? })` — take a V8 heap snapshot on this session's target. Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` (path-traversal rejected — `path` must resolve under `$BROWX_WORKSPACE`). Snapshots are heavy (tens to hundreds of MiB on a real page); don't take them in a tight loop. → `{ ok, path, bytes, hint, warning?, tokensEstimate }`. Drag-and-drop the file onto `chrome://inspect`'s Memory panel for the full interactive view.
@@ -1561,7 +1681,7 @@ Record every page in the session as a `.webm` via Playwright's native `recordVid
 
 ### Performance audit — `perf_audit` / `coverage_start` / `coverage_stop` / `layout_thrash_trace` / `memory_diff`
 
-Phase 10 promotes browxai's perf surface from *measurement* (`perf_start` / `perf_stop` / `perf_insights`) to *actionable*. The four new tools below give an agent a structured audit with remediation hints, dead-code coverage reports, focused layout-thrash diagnosis, and a pure-function heap-snapshot diff.
+Phase 10 promotes browxai's perf surface from _measurement_ (`perf_start` / `perf_stop` / `perf_insights`) to _actionable_. The four new tools below give an agent a structured audit with remediation hints, dead-code coverage reports, focused layout-thrash diagnosis, and a pure-function heap-snapshot diff.
 
 - `perf_audit({ session?, categories?, durationMs?, format? })` — the headline tool. Records a CDP trace + JS/CSS precise coverage + network response metadata for `durationMs` (default 5000, max 30000), then runs 8 pluggable category analysers against the assembled context and composes a report. → `{ ok, summary:{score, topIssues:[{category, severity, title}]}, byCategory:{[cat]:{issues[], remediations[]}}, evidence:{tracePath, coveragePath?}, durationMs, categoriesRun, warnings, tokensEstimate }`. **Categories** (default = all): `render-blocking` (resources blocking first paint), `unused-code` (scripts/stylesheets with <30% usage), `oversize-images` (>500KB), `layout-thrashing` (>5 forced sync layouts in window), `long-tasks` (>50ms main-thread blockers), `leak-suspects` (>10% retainer growth — fed by `memory_diff` data on the context), `cache-opportunities` (static assets with missing/short `Cache-Control`), `font-loading` (fonts loaded >200ms after document start). **`format`** (default `"summary"`) caps each category to 3 issues + 3 remediations AND enforces a **2000-token body budget** — over-budget low/medium severity entries are dropped + a `warnings[]` entry surfaces it. `"full"` is unbounded. **Score** = `100 − sum(severity-weight × issue-count)` floored at 0 (high=10, medium=4, low=1). **Evidence files** (workspace-rooted): the trace under `<workspace>/perf/<sessionId>-audit-<ts>.json` + a coverage JSON alongside; both load in DevTools' Performance / Coverage panels. The category set is **internally pluggable** — adding a category = adding a registry entry in `src/page/perf-audit.ts`; the public surface doesn't change. Capability `read`.
 - `coverage_start({ session? })` — arm precise JS + CSS coverage tracking on this session — wraps CDP `Profiler.startPreciseCoverage` (per-script byte-level use counts) + `CSS.startRuleUsageTracking` (per-stylesheet rule-level use counts) in lockstep. **Idempotent restart:** calling `coverage_start` while a tracker is already running cleanly stops the in-flight one (results discarded) and starts fresh. → `{ ok, running:true, startedAt, restarted, warning?, hint, tokensEstimate }`. Capability `action`.
@@ -1574,15 +1694,19 @@ Phase 10 promotes browxai's perf surface from *measurement* (`perf_start` / `per
 **BYOB / attached Chrome** — `perf_audit` / `coverage_stop` / `layout_thrash_trace` release any in-flight trace + coverage state on the human's Chrome before returning. `close_session` also cleans up on its way out (best-effort). Each surfaces a `warning` in `attached` mode so the operator sees that buffers were released.
 
 ### `act_and_diff({ action, scope?, session? })`
-Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before *and* after the action.
+
+Run **one** action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where "which clip/row became selected" shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to `snapshot`/`find`/`text_search`. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (inner tool's capability + deadline still apply). → `{ action: <inner result>, diff: { changed:[{ path, tag, testId, classDelta:{added,removed}, styleDelta, attrDelta }], added, removed, counts } }`. `scope` (CSS selector, default `document.body`) must exist before _and_ after the action.
 
 ### `act_and_wait_for_network({ action, match, timeoutMs? })`
+
 Run **one** action and wait for a specific network response — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed **before** the action dispatches (no race). `match` = `urlPattern` (case-insensitive substring) / `method` / `status`, at least one required. → `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` = max wait (default 10000).
 
 ### `poll_eval({ expr, intervalMs?, timeoutMs?, session? })`
+
 Repeatedly evaluate a JS expression until it returns truthy or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). → `{ ok, truthy, value, polls, elapsedMs, timedOut }`. The value is **page-controlled — untrusted**, like `eval_js`. Requires the off-by-default `eval` capability. `intervalMs` default 250 (min 50); `timeoutMs` default 5000.
 
 ### Visual regions + cross-session + session report
+
 - `screenshot_region({ box, session? })` — PNG of an arbitrary viewport rectangle (not an element) — virtualised timelines / canvas / unlabelled positioned regions.
 - `screenshot_marks({ candidates, label?, session? })` — composed PNG with numbered bounding boxes painted over the supplied candidates: the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}` — fast path, no extra tree walk). `label` is `"index"` (default) → paints 1..N array positions, `"ref"` → paints the existing `eN`, `"role"` → paints the role for visual grounding. The numbering scheme **shares the existing `name_ref` / `eN` namespace** — no parallel ID space — so the result's `mapping[index] === ref` and an agent can address either way (`click({ref: mapping[2]})`). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Image-library choice: a transient in-page DOM overlay drawn over the viewport, screenshot taken, overlay removed — dependency-free (browxai has no Node-side image library in `dependencies`) and runs in the same coordinate space `find().evidence.bbox` reports. → `{ marks:[{index, ref, role?, name?, testId?, bbox, painted}], mapping:{"1":"eN", …}, warnings }` + the PNG.
 - `name_region({ name, box, session? })` / `region({ name, session? })` — bind a viewport rectangle to a mnemonic and resolve it back to `{ box, center }`; pass `center` to `click({coords})` to act on the same media segment without coordinate drift across a sub-agent's select→copy→re-check.
@@ -1625,14 +1749,16 @@ import { test, expect } from "@playwright/test";
 void expect;
 
 test("login", async ({ page }) => {
-    await page.goto("https://app.example.com/login");
-    await page.locator("[data-testid=\"username\"]").fill("alice");
-    await page.getByRole("button", { name: "Sign in" }).click();
+  await page.goto("https://app.example.com/login");
+  await page.locator('[data-testid="username"]').fill("alice");
+  await page.getByRole("button", { name: "Sign in" }).click();
 });
 ```
 
 ### Profile snapshot / restore — `profile_snapshot` / `profile_restore`
+
 Checkpoint and reset a persistent session's profile directory for repeatable destructive authenticated-SPA tests.
+
 - `profile_snapshot({ snapshot, profile? })` — copy the profile dir into `<workspace>/profile-snapshots/<snapshot>`. `profile` defaults to `"default"`.
 - `profile_restore({ snapshot, profile? })` — copy a named snapshot back over the profile dir.
 - **All sessions must be closed first** (`close_sessions({all:true})`) — copying a profile dir while Chromium has it open corrupts it; both tools refuse while any session is live. Names are letters/digits/`._-` only (no path traversal).
@@ -1677,26 +1803,26 @@ echoes the live alias list (NOT values).
 **Egress-side masking.** Every sink that could carry the real value is
 scanned on the way out:
 
-| Sink | Status |
-|---|---|
-| `ActionResult.network.requests[].url` (URLs in action-window tap) | masked |
-| `ActionResult.network.mutations[].urlPattern` + `responseShape` | masked |
-| `ActionResult.network.wsFrames[].payload` + `url` | masked |
-| `network_read.requests[].url` (session ring) | masked |
-| `network_body.body` (response body) | masked — JSON / text only; base64 bodies pass through unchanged (see below) |
-| `ws_read.frames[].payload` + `.url` | masked |
-| `console_read.recent[].text` + `errors` + `pageErrors` | masked |
-| `snapshot()` tree (a11y node names) | masked |
-| `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`) | masked (deep-walk) |
-| `text_search()` matches (visible text) | masked (deep-walk) |
-| `plan().evidence` (`selectorHint` / role / name on the planned descriptor) | masked (deep-walk) |
-| `inspect().styles` (computed `content` / `background-image: url(...)`) | masked (deep-walk) |
-| `point_probe()` (textContent of element-under-point + ancestor text) | masked (deep-walk) |
+| Sink                                                                           | Status                                                                                    |
+| ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `ActionResult.network.requests[].url` (URLs in action-window tap)              | masked                                                                                    |
+| `ActionResult.network.mutations[].urlPattern` + `responseShape`                | masked                                                                                    |
+| `ActionResult.network.wsFrames[].payload` + `url`                              | masked                                                                                    |
+| `network_read.requests[].url` (session ring)                                   | masked                                                                                    |
+| `network_body.body` (response body)                                            | masked — JSON / text only; base64 bodies pass through unchanged (see below)               |
+| `ws_read.frames[].payload` + `.url`                                            | masked                                                                                    |
+| `console_read.recent[].text` + `errors` + `pageErrors`                         | masked                                                                                    |
+| `snapshot()` tree (a11y node names)                                            | masked                                                                                    |
+| `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`)      | masked (deep-walk)                                                                        |
+| `text_search()` matches (visible text)                                         | masked (deep-walk)                                                                        |
+| `plan().evidence` (`selectorHint` / role / name on the planned descriptor)     | masked (deep-walk)                                                                        |
+| `inspect().styles` (computed `content` / `background-image: url(...)`)         | masked (deep-walk)                                                                        |
+| `point_probe()` (textContent of element-under-point + ancestor text)           | masked (deep-walk)                                                                        |
 | `verify_text` / `verify_value` / `verify_attribute` — `failure.actual` on miss | masked (deep-walk) — without this, a wrong-expected verify would echo the real value back |
-| `verify_count` / `verify_visible` / `verify_predicate` — `failure.actual` | masked (deep-walk) |
-| `act_and_diff().diff` (classDelta / styleDelta / attrDelta values) | masked (deep-walk) — covers `aria-*` / `data-*` attribute values + inline-style values |
-| `watch()` regions / network / WS over the watch window | masked (NetworkTap takes the secrets registry; result deep-walked) |
-| `screenshot()` (image bytes) | **partial — warning only**, see below |
+| `verify_count` / `verify_visible` / `verify_predicate` — `failure.actual`      | masked (deep-walk)                                                                        |
+| `act_and_diff().diff` (classDelta / styleDelta / attrDelta values)             | masked (deep-walk) — covers `aria-*` / `data-*` attribute values + inline-style values    |
+| `watch()` regions / network / WS over the watch window                         | masked (NetworkTap takes the secrets registry; result deep-walked)                        |
+| `screenshot()` (image bytes)                                                   | **partial — warning only**, see below                                                     |
 
 **Masking guarantees.** The egress layer composes with the existing W-O1
 URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
@@ -1756,13 +1882,13 @@ different account, calls `await_human`, or fails cleanly.
 
 **Provider matrix** (selected via `BROWX_CREDENTIALS_PROVIDER`):
 
-| Provider | TOTP | Credential | Dependency |
-|---|---|---|---|
-| `oathtool` (default) | yes | no (TOTP-only) | system `oathtool` (macOS: `brew install oath-toolkit`; Debian/Ubuntu: `apt install oathtool`); seeds via env |
-| `1password` | yes | yes | 1Password CLI `op` on PATH; `op signin` performed out-of-band |
-| `bitwarden` | yes | yes | Bitwarden CLI `bw` on PATH; `$BW_SESSION` from `bw unlock` in server env |
-| `lastpass` | yes | yes | `lpass` CLI on PATH; `lpass login` performed out-of-band |
-| `none` | no | no | explicit no-op; useful for testing the surface without a real vault |
+| Provider             | TOTP | Credential     | Dependency                                                                                                   |
+| -------------------- | ---- | -------------- | ------------------------------------------------------------------------------------------------------------ |
+| `oathtool` (default) | yes  | no (TOTP-only) | system `oathtool` (macOS: `brew install oath-toolkit`; Debian/Ubuntu: `apt install oathtool`); seeds via env |
+| `1password`          | yes  | yes            | 1Password CLI `op` on PATH; `op signin` performed out-of-band                                                |
+| `bitwarden`          | yes  | yes            | Bitwarden CLI `bw` on PATH; `$BW_SESSION` from `bw unlock` in server env                                     |
+| `lastpass`           | yes  | yes            | `lpass` CLI on PATH; `lpass login` performed out-of-band                                                     |
+| `none`               | no   | no             | explicit no-op; useful for testing the surface without a real vault                                          |
 
 Configuration env:
 
@@ -2089,6 +2215,7 @@ stream.
 Returns `{ok, session, supportedApis:["bluetooth","usb","hid"],
 requests:[{api, handledAs, returned, filters?, ts}], tokensEstimate}`.
 `handledAs`:
+
 - `"resolved"` — catalog non-empty; picker resolved with synthetic
   device (Bluetooth/USB) or list (HID).
 - `"rejected"` — Bluetooth/USB + catalog empty; picker rejected with
@@ -2105,19 +2232,19 @@ requests:[{api, handledAs, returned, filters?, ts}], tokensEstimate}`.
 accept the W3C-relevant union of fields across the three APIs — each
 wrapper picks the ones its spec exposes:
 
-| Field | Bluetooth | USB | HID | Default |
-| --- | --- | --- | --- | --- |
-| `name` | `device.name` | `device.productName` | `device.productName` | `"browxai-virtual"` |
-| `id` | `device.id` | — | — | `"browxai-<api>-<index>"` |
-| `vendorId` | — | `device.vendorId` | `device.vendorId` | `0x0000` |
-| `productId` | — | `device.productId` | `device.productId` | `0x0000` |
-| `manufacturerName` | — | `device.manufacturerName` | — | `"browxai virtual"` |
-| `serialNumber` | — | `device.serialNumber` | — | `"BROWX-VIRTUAL"` |
-| `deviceClass` | — | `device.deviceClass` | — | `0xFF` |
-| `deviceSubclass` | — | `device.deviceSubclass` | — | `0x00` |
-| `deviceProtocol` | — | `device.deviceProtocol` | — | `0x00` |
-| `services` | `device.uuids` | — | — | `[]` |
-| `collections` | — | — | `device.collections` | `[]` |
+| Field              | Bluetooth      | USB                       | HID                  | Default                   |
+| ------------------ | -------------- | ------------------------- | -------------------- | ------------------------- |
+| `name`             | `device.name`  | `device.productName`      | `device.productName` | `"browxai-virtual"`       |
+| `id`               | `device.id`    | —                         | —                    | `"browxai-<api>-<index>"` |
+| `vendorId`         | —              | `device.vendorId`         | `device.vendorId`    | `0x0000`                  |
+| `productId`        | —              | `device.productId`        | `device.productId`   | `0x0000`                  |
+| `manufacturerName` | —              | `device.manufacturerName` | —                    | `"browxai virtual"`       |
+| `serialNumber`     | —              | `device.serialNumber`     | —                    | `"BROWX-VIRTUAL"`         |
+| `deviceClass`      | —              | `device.deviceClass`      | —                    | `0xFF`                    |
+| `deviceSubclass`   | —              | `device.deviceSubclass`   | —                    | `0x00`                    |
+| `deviceProtocol`   | —              | `device.deviceProtocol`   | —                    | `0x00`                    |
+| `services`         | `device.uuids` | —                         | —                    | `[]`                      |
+| `collections`      | —              | —                         | `device.collections` | `[]`                      |
 
 Missing fields default to deterministic placeholders so the page sees a
 complete shape regardless of how sparsely the catalog was populated. The
@@ -2143,6 +2270,7 @@ Off-by-default. App-agnostic primitives for driving canvas-based editors (Figma,
 - `canvas_query` — dispatcher to a canvas-app adapter plugin (Phase 9b — the first adapter plugins land separately).
 
 ### `canvas_capture({ ref?, selector?, format, session? })`
+
 Extract framebuffer or 2D ImageData from a `<canvas>` element. Three formats:
 
 - `format:"png"` — `canvas.toDataURL("image/png")`. Returns `{ ok, format:"png", contentBase64, byteLength, width, height }`. Suitable for handoff to the host agent's multimodal vision call (see BYO-vision pattern below).
@@ -2158,6 +2286,7 @@ Extract framebuffer or 2D ImageData from a `<canvas>` element. Three formats:
 **WebGL preserveDrawingBuffer** — `canvas_capture` requests `preserveDrawingBuffer:true` when it acquires a WebGL context, but it cannot undo a prior context's choice. Pages that explicitly set `preserveDrawingBuffer:false` may read back as zero bytes; this is a platform constraint, not a browxai bug.
 
 ### `canvas_diff({ beforeBase64, afterBase64, width?, height?, region?, inputFormat?, session? })`
+
 Pure function — pixel/region delta over two RGBA captures. → `{ ok, changedPixelCount, changedBytes, percentageChanged, bboxOfChanges:{x,y,w,h}|null, warnings[] }`.
 
 - RGBA inputs require `width` + `height` (the byte buffer alone does not carry dimensions). Over-flow `region` rectangles clamp to image bounds rather than throwing.
@@ -2167,6 +2296,7 @@ Pure function — pixel/region delta over two RGBA captures. → `{ ok, changedP
 **PNG-format inputs (deferred)** — pass `inputFormat:"png"`; this cycle compares base64 byte equality only and surfaces a warning. Per-pixel diff over PNG is a follow-up; for `bbox` + per-channel math today, recapture with `2d-imagedata` or `webgl-framebuffer`.
 
 ### `gesture_chain({ steps, session? })`
+
 Multi-step pointer program. Each step is `{ kind, x?, y?, deltaX?, deltaY?, ms?, pointerId? }`. → `{ ok, stepsExecuted, totalDurationMs, warnings[] }`.
 
 - `kind:"down" | "up" | "move"` — require numeric `x` + `y`. `move` accepts optional `ms` pacing delay; values below 5 ms floor to 5 ms with a warning (tighter pacing rarely changes app behaviour and starves the renderer).
@@ -2177,6 +2307,7 @@ Multi-step pointer program. Each step is `{ kind, x?, y?, deltaX?, deltaY?, ms?,
 `pointerId` is accepted on input but the v1 implementation routes through Playwright's single-mouse pipeline; multi-pointer fan-out is a future extension. For multi-touch gestures today use `touch_*` / `gesture_pinch` / `gesture_swipe`.
 
 ### `canvas_world_to_screen({ worldX, worldY, ref?, selector?, transform?, session? })` and `canvas_screen_to_world({ screenX, screenY, ref?, selector?, transform?, session? })`
+
 Affine coord-space translation. Two modes:
 
 - **Explicit** — caller passes `transform: { scale, panX, panY, originX?, originY? }`. Math: `screenX = (worldX + panX) * scale + originX` (and the inverse). Pure function — no page contact.
@@ -2194,6 +2325,7 @@ On discovery failure: `{ ok:false, error:"no transform discoverable — pass `tr
 The inverse round-trips with the forward call to within floating-point precision under the same explicit transform.
 
 ### `canvas_query({ adapter, op, args?, session? })`
+
 Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `"figma"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args` (with the session passed through).
 
 When no plugin matches: `{ ok:false, error:"no canvas adapter registered for <adapter>; install @kalebtec/browxai-plugin-<adapter> or pass a registered adapter namespace", code:"no-adapter", requestedAdapter, requestedOp }`.
@@ -2204,7 +2336,7 @@ Phase 9a ships the dispatcher only. The first canvas-app adapter plugins land se
 
 ### Canvas-app automation — BYO vision pattern
 
-**browxai is BYO-vision by design.** Owner direction 2026-05-30: no bundled OCR, no hosted vision API. browxai's job is to be a *substrate* for canvas-app automation — pixels, gestures, transform math, plugin dispatch. *Understanding* what the pixels mean is the host agent's multimodal vision call.
+**browxai is BYO-vision by design.** Owner direction 2026-05-30: no bundled OCR, no hosted vision API. browxai's job is to be a _substrate_ for canvas-app automation — pixels, gestures, transform math, plugin dispatch. _Understanding_ what the pixels mean is the host agent's multimodal vision call.
 
 The composition loop:
 
@@ -2234,7 +2366,7 @@ await client.callTool("gesture_chain", {
 });
 ```
 
-**Why BYO** — bundling a vision call into browxai would (a) lock the substrate to a single vision provider (the curator does NOT want to pick winners on the modality side), (b) require browxai to ship model credentials / per-call billing / a configured-provider chain analogous to the captcha and credentials capabilities (additional ops burden, additional posture-broadening surface), (c) collapse a clean composition boundary — host-agent owns *what to do*, browxai owns *how to do it*. The BYO posture preserves the property that browxai is RC-independent and substrate-pure; the vision dimension is the host agent's choice.
+**Why BYO** — bundling a vision call into browxai would (a) lock the substrate to a single vision provider (the curator does NOT want to pick winners on the modality side), (b) require browxai to ship model credentials / per-call billing / a configured-provider chain analogous to the captcha and credentials capabilities (additional ops burden, additional posture-broadening surface), (c) collapse a clean composition boundary — host-agent owns _what to do_, browxai owns _how to do it_. The BYO posture preserves the property that browxai is RC-independent and substrate-pure; the vision dimension is the host agent's choice.
 
 **For app-specific understanding without vision** — install a canvas-app adapter plugin (Phase 9b). An adapter plugin can read scene-graph node bounds / layer ids / frame names directly from the app's own state (via `eval_js` or app-specific RPC) and surface them as structured `canvas_query({adapter:"figma", op:"getNodeBounds"})` lookups — no vision call required for the cases the app's internals already answer.
 
@@ -2246,12 +2378,12 @@ capability adds three surfaces and one implicit recorder hook:
 1. **The recorder hook** at the MCP-handler dispatch boundary — when the
    capability is OFF, the hook is a single boolean gate check (no allocations,
    no file IO, no observable side-effect). When ON, every dispatched tool call
-   lands as a JSONL line. The recorder runs **DOWNSTREAM of the URL sanitiser
-   + secrets-masking egress chokepoint** — by the time the recorder sees a
-   result, every egress sink has already rewritten registered secret values
-   back to `<NAME>` aliases; args are additionally walked through
-   `applyMaskDeep` so a secret echoed in the call args never lands raw in
-   the store. Capability: `diagnostics`.
+   lands as a JSONL line. The recorder runs \*\*DOWNSTREAM of the URL sanitiser
+   - secrets-masking egress chokepoint\*\* — by the time the recorder sees a
+     result, every egress sink has already rewritten registered secret values
+     back to `<NAME>` aliases; args are additionally walked through
+     `applyMaskDeep` so a secret echoed in the call args never lands raw in
+     the store. Capability: `diagnostics`.
 2. `diagnostics_note` — agent self-feedback.
 3. `diagnostics_search` — read-side query (rides `read`).
 4. `diagnostics_report` — analysis primitive (rides `read`).
@@ -2278,25 +2410,27 @@ Call records (`kind:"call"`):
   "ts": "2026-06-08T12:34:56.789Z",
   "tool": "click",
   "sessionId": "default",
-  "argsRedacted": {                     // structural — keys + types + sizes
+  "argsRedacted": {
+    // structural — keys + types + sizes
     "selector": "button[data-testid=save]",
-    "value": { "__redacted": true, "sha256": "…", "byteLength": 12345 }
+    "value": { "__redacted": true, "sha256": "…", "byteLength": 12345 },
   },
   "resultMeta": {
     "ok": true,
-    "sizeBytes": 482,                   // total result envelope byte length
+    "sizeBytes": 482, // total result envelope byte length
     "warningsCount": 0,
-    "failureKind": "target-not-found"   // only present on ok:false
+    "failureKind": "target-not-found", // only present on ok:false
   },
   "durationMs": 12,
-  "capabilityDenials": 3,               // cumulative across the recorder
-  "evalJs": {                           // only present for eval_js / poll_eval
+  "capabilityDenials": 3, // cumulative across the recorder
+  "evalJs": {
+    // only present for eval_js / poll_eval
     "exprSha": "…",
     "exprHead": "document.querySelector('#save')",
     "returnType": "string",
     "returnSizeBytes": 24,
-    "taxonomy": "dom-query"             // dom-query | storage-access | computed-style | callback-trigger | feature-detect | custom
-  }
+    "taxonomy": "dom-query", // dom-query | storage-access | computed-style | callback-trigger | feature-detect | custom
+  },
 }
 ```
 
@@ -2308,9 +2442,9 @@ Note records (`kind:"note"`):
   "ts": "2026-06-08T12:34:56.789Z",
   "sessionId": "default",
   "insight": "would like an inner_text tool that returns text without eval_js",
-  "category": "missing-primitive",      // missing-primitive | workaround | perf-concern | ergonomic-friction | other
-  "severity": "warn",                   // info | warn | blocker
-  "ref": "eval_js:2026-06-08T12:34:56.000Z"  // optional pointer at a prior call
+  "category": "missing-primitive", // missing-primitive | workaround | perf-concern | ergonomic-friction | other
+  "severity": "warn", // info | warn | blocker
+  "ref": "eval_js:2026-06-08T12:34:56.000Z", // optional pointer at a prior call
 }
 ```
 
@@ -2368,6 +2502,7 @@ JSONL records the redacted form — never the raw value.
 ## Human↔agent helper
 
 ### `await_human({ kind, prompt, choices?, timeoutMs? })`
+
 Blocks the calling agent until the human responds. The `prompt` is logged to stderr; the operator triggers the response from DevTools. Wishlist W-B5 expanded the kinds from Phase 1's `acknowledge`-only:
 
 - `acknowledge` → `__browx.proceed()` (no value; the original site-docs `manual-capture` use case)

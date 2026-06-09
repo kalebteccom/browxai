@@ -259,10 +259,7 @@ export interface BrowxaiClient {
    * autocomplete. Cast through `BrowxaiClientWithPlugins<Schema>`
    * (see docs/plugin-authoring.md) to enable the typed path.
    */
-  readonly plugins: Record<
-    string,
-    Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>
-  >;
+  readonly plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>>;
 
   /** Names of every MCP tool currently exposed on this client. */
   readonly exposedTools: ReadonlyArray<string>;

@@ -15,12 +15,19 @@ import {
 } from "./screenshot-on.js";
 
 let WS: string;
-beforeEach(() => { WS = mkdtempSync(join(tmpdir(), "browx-on-")); });
-afterEach(() => { rmSync(WS, { recursive: true, force: true }); });
+beforeEach(() => {
+  WS = mkdtempSync(join(tmpdir(), "browx-on-"));
+});
+afterEach(() => {
+  rmSync(WS, { recursive: true, force: true });
+});
 
 function fakePng(seed = 0): Buffer {
   const b = Buffer.alloc(32);
-  b[0] = 0x89; b[1] = 0x50; b[2] = 0x4e; b[3] = 0x47;
+  b[0] = 0x89;
+  b[1] = 0x50;
+  b[2] = 0x4e;
+  b[3] = 0x47;
   b[4] = seed & 0xff;
   return b;
 }
@@ -40,12 +47,25 @@ function makeSource(): TriggerSource & {
     subscribe(trigger, onFire) {
       subscribedTo = trigger;
       onFireCb = onFire;
-      return () => { disposed = true; onFireCb = null; };
+      return () => {
+        disposed = true;
+        onFireCb = null;
+      };
     },
-    get subscribedTo() { return subscribedTo; },
-    get disposed() { return disposed; },
-    fire() { if (onFireCb) onFireCb(); },
-  } as TriggerSource & { fire: (t?: Trigger) => void; subscribedTo: Trigger | null; disposed: boolean };
+    get subscribedTo() {
+      return subscribedTo;
+    },
+    get disposed() {
+      return disposed;
+    },
+    fire() {
+      if (onFireCb) onFireCb();
+    },
+  } as TriggerSource & {
+    fire: (t?: Trigger) => void;
+    subscribedTo: Trigger | null;
+    disposed: boolean;
+  };
 }
 
 /** Controllable clock: window-end timer is queued; the test calls `tick()`
@@ -57,9 +77,13 @@ function virtualClock(): OnClock & { advance(ms: number): void; runWindowEnd(): 
     now: () => t,
     setTimeout(fn, ms) {
       pendingEnd = { fn, at: t + ms };
-      return () => { pendingEnd = null; };
+      return () => {
+        pendingEnd = null;
+      };
     },
-    advance(ms) { t += ms; },
+    advance(ms) {
+      t += ms;
+    },
     runWindowEnd() {
       if (pendingEnd) {
         t = pendingEnd.at;
@@ -73,16 +97,19 @@ function virtualClock(): OnClock & { advance(ms: number): void; runWindowEnd(): 
 
 describe("validateOnArgs", () => {
   it("rejects an unknown trigger", () => {
-    expect(() => validateOnArgs({ trigger: "bogus" as unknown as Trigger, durationMs: 100, intoDir: "x" }))
-      .toThrow(/trigger/);
+    expect(() =>
+      validateOnArgs({ trigger: "bogus" as unknown as Trigger, durationMs: 100, intoDir: "x" }),
+    ).toThrow(/trigger/);
   });
   it("rejects durationMs below the floor", () => {
-    expect(() => validateOnArgs({ trigger: "navigation", durationMs: 0, intoDir: "x" }))
-      .toThrow(/durationMs/);
+    expect(() => validateOnArgs({ trigger: "navigation", durationMs: 0, intoDir: "x" })).toThrow(
+      /durationMs/,
+    );
   });
   it("rejects durationMs above the ceiling", () => {
-    expect(() => validateOnArgs({ trigger: "navigation", durationMs: 600_001, intoDir: "x" }))
-      .toThrow(/durationMs/);
+    expect(() =>
+      validateOnArgs({ trigger: "navigation", durationMs: 600_001, intoDir: "x" }),
+    ).toThrow(/durationMs/);
   });
   it("accepts each of the four supported triggers", () => {
     for (const t of TRIGGERS) {
@@ -97,9 +124,17 @@ describe("runScreenshotOn — happy path per trigger", () => {
       const snap: SnapFn = () => Promise.resolve(fakePng());
       const source = makeSource();
       const clock = virtualClock();
-      const p = runScreenshotOn(snap, source, {
-        trigger, durationMs: 1000, intoDir: `evt/${trigger}`,
-      }, WS, clock);
+      const p = runScreenshotOn(
+        snap,
+        source,
+        {
+          trigger,
+          durationMs: 1000,
+          intoDir: `evt/${trigger}`,
+        },
+        WS,
+        clock,
+      );
       // settle subscription
       await new Promise((r) => setImmediate(r));
       expect(source.subscribedTo).toBe(trigger);
@@ -123,9 +158,17 @@ describe("runScreenshotOn — bounded & safe", () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();
     const clock = virtualClock();
-    const p = runScreenshotOn(snap, source, {
-      trigger: "navigation", durationMs: 500, intoDir: "evt/silent",
-    }, WS, clock);
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger: "navigation",
+        durationMs: 500,
+        intoDir: "evt/silent",
+      },
+      WS,
+      clock,
+    );
     await new Promise((r) => setImmediate(r));
     clock.runWindowEnd();
     const r = await p;
@@ -138,9 +181,17 @@ describe("runScreenshotOn — bounded & safe", () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();
     const clock = virtualClock();
-    const p = runScreenshotOn(snap, source, {
-      trigger: "console-error", durationMs: 5000, intoDir: "evt/storm",
-    }, WS, clock);
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger: "console-error",
+        durationMs: 5000,
+        intoDir: "evt/storm",
+      },
+      WS,
+      clock,
+    );
     await new Promise((r) => setImmediate(r));
     // Drive the trigger one-at-a-time and yield between fires so the snap
     // settles (otherwise the in-flight `snapping` guard drops them).
@@ -159,9 +210,19 @@ describe("runScreenshotOn — bounded & safe", () => {
   it("rejects a path that escapes the workspace", async () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();
-    await expect(runScreenshotOn(snap, source, {
-      trigger: "navigation", durationMs: 100, intoDir: "../escape",
-    }, WS, virtualClock())).rejects.toThrow(/\$BROWX_WORKSPACE/);
+    await expect(
+      runScreenshotOn(
+        snap,
+        source,
+        {
+          trigger: "navigation",
+          durationMs: 100,
+          intoDir: "../escape",
+        },
+        WS,
+        virtualClock(),
+      ),
+    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
   });
 
   it("surfaces snap errors as warnings (window still closes cleanly)", async () => {
@@ -173,9 +234,17 @@ describe("runScreenshotOn — bounded & safe", () => {
     };
     const source = makeSource();
     const clock = virtualClock();
-    const p = runScreenshotOn(snap, source, {
-      trigger: "dialog", durationMs: 1000, intoDir: "evt/err",
-    }, WS, clock);
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger: "dialog",
+        durationMs: 1000,
+        intoDir: "evt/err",
+      },
+      WS,
+      clock,
+    );
     await new Promise((r) => setImmediate(r));
     source.fire();
     await new Promise((r) => setImmediate(r));
@@ -184,16 +253,24 @@ describe("runScreenshotOn — bounded & safe", () => {
     clock.runWindowEnd();
     const r = await p;
     expect(r.warnings.some((w) => /snap fail/.test(w))).toBe(true);
-    expect(r.paths.length).toBe(1);                     // 1 success
+    expect(r.paths.length).toBe(1); // 1 success
   });
 
   it("disposes the trigger subscription on every exit path", async () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();
     const clock = virtualClock();
-    const p = runScreenshotOn(snap, source, {
-      trigger: "network-mutation", durationMs: 300, intoDir: "evt/dispose",
-    }, WS, clock);
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger: "network-mutation",
+        durationMs: 300,
+        intoDir: "evt/dispose",
+      },
+      WS,
+      clock,
+    );
     await new Promise((r) => setImmediate(r));
     clock.runWindowEnd();
     await p;
@@ -204,9 +281,17 @@ describe("runScreenshotOn — bounded & safe", () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();
     const clock = virtualClock();
-    const p = runScreenshotOn(snap, source, {
-      trigger: "navigation", durationMs: 100, intoDir: "deep/nested/evt",
-    }, WS, clock);
+    const p = runScreenshotOn(
+      snap,
+      source,
+      {
+        trigger: "navigation",
+        durationMs: 100,
+        intoDir: "deep/nested/evt",
+      },
+      WS,
+      clock,
+    );
     await new Promise((r) => setImmediate(r));
     clock.runWindowEnd();
     const r = await p;

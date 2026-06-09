@@ -31,6 +31,11 @@ describe("RegionRegistry", () => {
     const reg = new RegionRegistry();
     reg.set("a", { x: 0, y: 0, width: 1, height: 1 });
     reg.set("b", { x: 1, y: 1, width: 1, height: 1 });
-    expect(reg.list().map((r) => r.name).sort()).toEqual(["a", "b"]);
+    expect(
+      reg
+        .list()
+        .map((r) => r.name)
+        .sort(),
+    ).toEqual(["a", "b"]);
   });
 });

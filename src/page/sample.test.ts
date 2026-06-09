@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { sampleMetric, ELEMENT_METRICS, summariseSeries, shouldOmitSeries, AUTO_SUMMARY_THRESHOLD } from "./sample.js";
+import {
+  sampleMetric,
+  ELEMENT_METRICS,
+  summariseSeries,
+  shouldOmitSeries,
+  AUTO_SUMMARY_THRESHOLD,
+} from "./sample.js";
 
 const fakePage = {} as never;
 const fakeRefs = {} as never;
@@ -16,9 +22,16 @@ describe("sampleMetric — bounded sampler", () => {
   it("the metric enum is the fixed whitelist (no arbitrary expression escape)", () => {
     // Guard: the enum must never include a free-form 'expr'-like member.
     expect([...ELEMENT_METRICS]).toEqual([
-      "scrollTop", "scrollLeft", "scrollHeight", "scrollWidth",
-      "clientWidth", "clientHeight",
-      "bboxX", "bboxY", "bboxWidth", "bboxHeight",
+      "scrollTop",
+      "scrollLeft",
+      "scrollHeight",
+      "scrollWidth",
+      "clientWidth",
+      "clientHeight",
+      "bboxX",
+      "bboxY",
+      "bboxWidth",
+      "bboxHeight",
     ]);
     expect(ELEMENT_METRICS).not.toContain("expr");
   });
@@ -37,8 +50,13 @@ describe("summariseSeries — reducer", () => {
   it("reduces a flat series (no change → firstChangeTMs null, distinctCount 1)", () => {
     const s = [0, 100, 200, 300].map((tMs) => ({ tMs, value: 6500 }));
     expect(summariseSeries(s)).toEqual({
-      count: 4, min: 6500, max: 6500, first: 6500, last: 6500,
-      distinctCount: 1, firstChangeTMs: null,
+      count: 4,
+      min: 6500,
+      max: 6500,
+      first: 6500,
+      last: 6500,
+      distinctCount: 1,
+      firstChangeTMs: null,
     });
   });
 
@@ -46,8 +64,8 @@ describe("summariseSeries — reducer", () => {
     const s = [
       { tMs: 0, value: 10 },
       { tMs: 16, value: 10 },
-      { tMs: 32, value: 14 },   // first change
-      { tMs: 48, value: 9 },    // new min, but firstChange already set
+      { tMs: 32, value: 14 }, // first change
+      { tMs: 48, value: 9 }, // new min, but firstChange already set
     ];
     const r = summariseSeries(s);
     expect(r.first).toBe(10);

@@ -68,7 +68,10 @@ export interface StructuralContext {
 }
 
 // Raw CDP shapes (subset we use).
-interface RawProp { name: string; value?: { value?: unknown; type?: string }; }
+interface RawProp {
+  name: string;
+  value?: { value?: unknown; type?: string };
+}
 interface RawAXNode {
   nodeId: string;
   parentId?: string;
@@ -126,17 +129,35 @@ export async function getA11yTree(
     for (const p of raw.properties ?? []) {
       const v = p.value?.value;
       switch (p.name) {
-        case "disabled": node.disabled = !!v; break;
-        case "checked": node.checked = v as boolean | "mixed"; break;
-        case "pressed": node.pressed = v as boolean | "mixed"; break;
-        case "selected": node.selected = !!v; break;
-        case "expanded": node.expanded = !!v; break;
-        case "focused": node.focused = !!v; break;
-        default: break;
+        case "disabled":
+          node.disabled = !!v;
+          break;
+        case "checked":
+          node.checked = v as boolean | "mixed";
+          break;
+        case "pressed":
+          node.pressed = v as boolean | "mixed";
+          break;
+        case "selected":
+          node.selected = !!v;
+          break;
+        case "expanded":
+          node.expanded = !!v;
+          break;
+        case "focused":
+          node.focused = !!v;
+          break;
+        default:
+          break;
       }
     }
     // testId attaches later in enrichTestIds if we batch-fetch attributes.
-    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), { role, name, testId: node.testId, source: "a11y" });
+    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), {
+      role,
+      name,
+      testId: node.testId,
+      source: "a11y",
+    });
     let i = 0;
     for (const cid of raw.childIds ?? []) {
       const c = byId.get(cid);
@@ -216,12 +237,39 @@ async function enrichTestIds(
 }
 
 const INTERACTIVE_ROLES = new Set([
-  "button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio",
-  "switch", "slider", "spinbutton", "menuitem", "menuitemcheckbox", "menuitemradio",
-  "option", "tab", "treeitem", "listbox",
+  "button",
+  "link",
+  "textbox",
+  "searchbox",
+  "combobox",
+  "checkbox",
+  "radio",
+  "switch",
+  "slider",
+  "spinbutton",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "tab",
+  "treeitem",
+  "listbox",
 ]);
 
 const STRUCTURAL_ROLES = new Set([
-  "dialog", "alertdialog", "navigation", "main", "form", "search", "region",
-  "tablist", "menu", "menubar", "tree", "grid", "table", "alert", "status",
+  "dialog",
+  "alertdialog",
+  "navigation",
+  "main",
+  "form",
+  "search",
+  "region",
+  "tablist",
+  "menu",
+  "menubar",
+  "tree",
+  "grid",
+  "table",
+  "alert",
+  "status",
 ]);

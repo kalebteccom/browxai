@@ -11,11 +11,7 @@
 // `verify_predicate`. One source of truth: if the predicate vocabulary's
 // `contains` semantics ever change, both surfaces move together.
 
-import {
-  evaluatePredicate,
-  type Predicate,
-  type PredicateResult,
-} from "./predicates.js";
+import { evaluatePredicate, type Predicate, type PredicateResult } from "./predicates.js";
 
 export interface BatchCall {
   tool: string;
@@ -114,7 +110,11 @@ export async function runBatch(calls: BatchCall[], opts: BatchOptions): Promise<
         if (stop) break;
       }
     } catch (e) {
-      const entry: BatchEntry = { tool: call.tool, ok: false, error: e instanceof Error ? e.message : String(e) };
+      const entry: BatchEntry = {
+        tool: call.tool,
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      };
       if (call.label !== undefined) entry.label = call.label;
       results.push(entry);
       failedAt = i;
@@ -175,7 +175,11 @@ export function lowerExpect(expect: BatchExpect): LoweredShorthand[] {
       field: "displayTextIncludes",
       path: "element.displayText",
       expected: expect.displayTextIncludes,
-      predicate: { kind: "contains", key: "element.displayText", value: expect.displayTextIncludes },
+      predicate: {
+        kind: "contains",
+        key: "element.displayText",
+        value: expect.displayTextIncludes,
+      },
     });
   }
   if (expect.controlDisplayTextIncludes !== undefined) {
@@ -183,7 +187,11 @@ export function lowerExpect(expect: BatchExpect): LoweredShorthand[] {
       field: "controlDisplayTextIncludes",
       path: "element.ownerControl.displayTextAfter",
       expected: expect.controlDisplayTextIncludes,
-      predicate: { kind: "contains", key: "element.ownerControl.displayTextAfter", value: expect.controlDisplayTextIncludes },
+      predicate: {
+        kind: "contains",
+        key: "element.ownerControl.displayTextAfter",
+        value: expect.controlDisplayTextIncludes,
+      },
     });
   }
   if (expect.containerTextIncludes !== undefined) {
@@ -191,7 +199,11 @@ export function lowerExpect(expect: BatchExpect): LoweredShorthand[] {
       field: "containerTextIncludes",
       path: "element.container.rowText",
       expected: expect.containerTextIncludes,
-      predicate: { kind: "contains", key: "element.container.rowText", value: expect.containerTextIncludes },
+      predicate: {
+        kind: "contains",
+        key: "element.container.rowText",
+        value: expect.containerTextIncludes,
+      },
     });
   }
   if (expect.controlChanged !== undefined) {
@@ -199,7 +211,11 @@ export function lowerExpect(expect: BatchExpect): LoweredShorthand[] {
       field: "controlChanged",
       path: "element.ownerControl.changed",
       expected: expect.controlChanged,
-      predicate: { kind: "equals", key: "element.ownerControl.changed", value: expect.controlChanged },
+      predicate: {
+        kind: "equals",
+        key: "element.ownerControl.changed",
+        value: expect.controlChanged,
+      },
     });
   }
   return out;

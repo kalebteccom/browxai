@@ -19,7 +19,7 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
     log.warn(
       "⚠  session.incognito: disableWebSecurity is ON — launching with --disable-web-security. " +
-      "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+        "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
     );
   }
   const browser = await chromium.launch({

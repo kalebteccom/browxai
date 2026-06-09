@@ -137,7 +137,9 @@ export async function runScreenshotOn(
   // Resolver for the window's natural end. The trigger source can also push
   // us to early-finish when the per-window cap is hit.
   let resolveWindow: () => void = () => undefined;
-  const windowDone = new Promise<void>((r) => { resolveWindow = r; });
+  const windowDone = new Promise<void>((r) => {
+    resolveWindow = r;
+  });
 
   const cancelTimer = clock.setTimeout(() => resolveWindow(), args.durationMs);
 
@@ -199,7 +201,9 @@ export async function runScreenshotOn(
     await new Promise((r) => setTimeout(r, 10));
   }
   if (snapping) {
-    warnings.push(`screenshot_on: final capture did not settle within 250ms drain window — result may omit one frame`);
+    warnings.push(
+      `screenshot_on: final capture did not settle within 250ms drain window — result may omit one frame`,
+    );
   }
 
   return {

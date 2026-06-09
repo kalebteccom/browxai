@@ -46,9 +46,8 @@
 //   the archive as sensitive material. Documented in tool-reference + flagged
 //   on every result through `warnings[]`.
 
-import { resolve as resolvePath } from "node:path";
+import { resolve as resolvePath, dirname, join, sep, extname } from "node:path";
 import { mkdirSync, writeFileSync, statSync, readdirSync } from "node:fs";
-import { dirname, join, sep, extname } from "node:path";
 import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 
@@ -314,23 +313,35 @@ function guessExtFromContentType(ct: string): string {
 
 function guessExtFromKind(kind: DiscoveredResource["kind"]): string {
   switch (kind) {
-    case "image": return ".bin";
-    case "font": return ".font";
-    case "script": return ".js";
-    case "stylesheet": return ".css";
-    case "media": return ".media";
-    default: return ".bin";
+    case "image":
+      return ".bin";
+    case "font":
+      return ".font";
+    case "script":
+      return ".js";
+    case "stylesheet":
+      return ".css";
+    case "media":
+      return ".media";
+    default:
+      return ".bin";
   }
 }
 
 function subdirForKind(kind: DiscoveredResource["kind"]): string {
   switch (kind) {
-    case "image": return "images";
-    case "font": return "fonts";
-    case "script": return "scripts";
-    case "stylesheet": return "styles";
-    case "media": return "media";
-    default: return "other";
+    case "image":
+      return "images";
+    case "font":
+      return "fonts";
+    case "script":
+      return "scripts";
+    case "stylesheet":
+      return "styles";
+    case "media":
+      return "media";
+    default:
+      return "other";
   }
 }
 
@@ -342,7 +353,10 @@ function subdirForKind(kind: DiscoveredResource["kind"]): string {
  *
  *  The order matters — replace longer `rawRef`s before shorter ones so a
  *  prefix-substring of a different URL isn't accidentally matched. */
-function rewriteHtml(html: string, replacements: Array<{ rawRef: string; replacement: string }>): string {
+function rewriteHtml(
+  html: string,
+  replacements: Array<{ rawRef: string; replacement: string }>,
+): string {
   const sorted = [...replacements].sort((a, b) => b.rawRef.length - a.rawRef.length);
   let out = html;
   for (const { rawRef, replacement } of sorted) {
@@ -380,9 +394,7 @@ export async function pageArchive(
   const format: ArchiveFormat = args.format ?? "directory";
   const maxSizeMb = args.maxSizeMb ?? DEFAULT_MAX_SIZE_MB;
   if (!(maxSizeMb > 0) || maxSizeMb > 10_000) {
-    throw new Error(
-      `page_archive: maxSizeMb must be in (0, 10000] — got ${maxSizeMb}.`,
-    );
+    throw new Error(`page_archive: maxSizeMb must be in (0, 10000] — got ${maxSizeMb}.`);
   }
   const maxBytes = Math.floor(maxSizeMb * 1024 * 1024);
 
@@ -434,7 +446,11 @@ export async function pageArchive(
         // "Failed to fetch" or "Refused to connect". Treat any fetch
         // error as a drop; flag CSP separately when the message hints.
         const err = (f.r.error ?? "").toLowerCase();
-        if (err.includes("connect-src") || err.includes("refused to connect") || err.includes("content security policy")) {
+        if (
+          err.includes("connect-src") ||
+          err.includes("refused to connect") ||
+          err.includes("content security policy")
+        ) {
           cspBlocked++;
         }
         fetched.push(f);
@@ -443,7 +459,13 @@ export async function pageArchive(
       const bytes = f.r.bytes ?? 0;
       if (bytes > PER_RESOURCE_HARD_MB * 1024 * 1024) {
         perResourceOversize++;
-        fetched.push({ res: f.res, r: { ok: false, error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)` } });
+        fetched.push({
+          res: f.res,
+          r: {
+            ok: false,
+            error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)`,
+          },
+        });
         continue;
       }
       if (runningBytes + bytes > maxBytes) {
@@ -468,20 +490,22 @@ export async function pageArchive(
   if (cspBlocked > 0) {
     warnings.push(
       `${cspBlocked} resource(s) blocked by the page's Content-Security-Policy ` +
-      "(typically `connect-src` — fetch() inside the page is subject to the same " +
-      "policy as the page itself). These are counted in droppedCount.",
+        "(typically `connect-src` — fetch() inside the page is subject to the same " +
+        "policy as the page itself). These are counted in droppedCount.",
     );
   }
   if (perResourceOversize > 0) {
     warnings.push(
       `${perResourceOversize} resource(s) exceeded the per-resource ${PER_RESOURCE_HARD_MB} MB cap and were dropped. ` +
-      "Raise the per-resource cap by forking — the cap is hard-coded by design (an archive is fidelity, not a CDN).",
+        "Raise the per-resource cap by forking — the cap is hard-coded by design (an archive is fidelity, not a CDN).",
     );
   }
   if (budgetExhausted) {
     warnings.push(
       `Archive size cap (maxSizeMb=${maxSizeMb}) reached — remaining resources were dropped. ` +
-      "Raise `maxSizeMb` to capture more, but note browsers struggle with single-file archives > " + SINGLE_FILE_SOFT_WARN_MB + " MB.",
+        "Raise `maxSizeMb` to capture more, but note browsers struggle with single-file archives > " +
+        SINGLE_FILE_SOFT_WARN_MB +
+        " MB.",
     );
   }
 
@@ -501,7 +525,10 @@ export async function pageArchive(
 
     const replacements: Array<{ rawRef: string; replacement: string }> = [];
     for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) { droppedCount++; continue; }
+      if (!f.r.ok || !f.r.base64) {
+        droppedCount++;
+        continue;
+      }
       const subdir = subdirForKind(f.res.kind);
       // workspace-rooted: dir = join(assetsRoot, ...), assetsRoot ⊆ $BROWX_WORKSPACE.
       const dir = join(assetsRoot, subdir);
@@ -529,7 +556,10 @@ export async function pageArchive(
     mkdirSync(dirname(resolved), { recursive: true });
     const replacements: Array<{ rawRef: string; replacement: string }> = [];
     for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) { droppedCount++; continue; }
+      if (!f.r.ok || !f.r.base64) {
+        droppedCount++;
+        continue;
+      }
       const mime = (f.r.contentType ?? "").split(";")[0]!.trim() || mimeFromKind(f.res.kind);
       const dataUri = `data:${mime};base64,${f.r.base64}`;
       replacements.push({ rawRef: f.res.rawRef, replacement: dataUri });
@@ -542,8 +572,8 @@ export async function pageArchive(
     if (sizeBytes > SINGLE_FILE_SOFT_WARN_MB * 1024 * 1024) {
       warnings.push(
         `single-file archive is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. ` +
-        `Browsers commonly struggle to open inline-data HTML beyond ~${SINGLE_FILE_SOFT_WARN_MB} MB ` +
-        "(the data: URI cost compounds in-memory). Use `format:\"directory\"` for large pages.",
+          `Browsers commonly struggle to open inline-data HTML beyond ~${SINGLE_FILE_SOFT_WARN_MB} MB ` +
+          '(the data: URI cost compounds in-memory). Use `format:"directory"` for large pages.',
       );
     }
   }
@@ -565,12 +595,18 @@ function mimeFromKind(kind: DiscoveredResource["kind"]): string {
   // in a `data:` URI). These are best-guesses, not authoritative — the
   // upstream response should be carrying Content-Type in any sane setup.
   switch (kind) {
-    case "image": return "image/png";
-    case "font": return "font/woff2";
-    case "script": return "application/javascript";
-    case "stylesheet": return "text/css";
-    case "media": return "video/mp4";
-    default: return "application/octet-stream";
+    case "image":
+      return "image/png";
+    case "font":
+      return "font/woff2";
+    case "script":
+      return "application/javascript";
+    case "stylesheet":
+      return "text/css";
+    case "media":
+      return "video/mp4";
+    default:
+      return "application/octet-stream";
   }
 }
 
@@ -581,7 +617,11 @@ function directorySize(dir: string): number {
       const p = d + sep + entry.name;
       if (entry.isDirectory()) walk(p);
       else if (entry.isFile()) {
-        try { total += statSync(p).size; } catch { /* best-effort */ }
+        try {
+          total += statSync(p).size;
+        } catch {
+          /* best-effort */
+        }
       }
     }
   };

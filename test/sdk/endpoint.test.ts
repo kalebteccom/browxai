@@ -15,7 +15,9 @@ describe("resolveEndpointPath — unix:// + pipe:// + reject-unknown", () => {
   });
 
   it("rejects http:// schemes with an actionable error", () => {
-    expect(() => resolveEndpointPath("http://localhost:9999/")).toThrow(/unsupported endpoint scheme/);
+    expect(() => resolveEndpointPath("http://localhost:9999/")).toThrow(
+      /unsupported endpoint scheme/,
+    );
   });
 
   it("rejects unix:// with an empty path", () => {

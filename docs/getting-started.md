@@ -21,9 +21,9 @@ Add browxai to your client's MCP server config. For example, an `.mcp.json`:
 {
   "mcpServers": {
     "browxai": {
-      "command": "browxai"
-    }
-  }
+      "command": "browxai",
+    },
+  },
 }
 ```
 
@@ -33,12 +33,12 @@ headed, with the default capability set (`read`, `navigation`, `action`,
 
 ### Common environment variables
 
-| Variable | Purpose |
-|---|---|
-| `BROWX_WORKSPACE` | Where all transient state lives (default `~/.browxai/`). Never `cwd`. |
-| `BROWX_HEADLESS` | `1` launches headless. |
+| Variable             | Purpose                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`). Never `cwd`.                                          |
+| `BROWX_HEADLESS`     | `1` launches headless.                                                                                         |
 | `BROWX_CAPABILITIES` | Comma-separated capability set. Add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
-| `BROWX_ATTACH_CDP` | Loopback CDP endpoint to attach to an existing Chrome (BYOB). |
+| `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB).                                                  |
 
 See the [tool reference](/tool-reference) for the full configuration surface —
 and note that **capabilities are resolved once at server start**: changing

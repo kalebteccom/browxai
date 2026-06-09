@@ -4,8 +4,13 @@
 import { describe, it, expect } from "vitest";
 import { handlers, register } from "./index.js";
 
-type CallToolFn = (name: string, args?: Record<string, unknown>) => Promise<{
-  content: ReadonlyArray<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
+type CallToolFn = (
+  name: string,
+  args?: Record<string, unknown>,
+) => Promise<{
+  content: ReadonlyArray<
+    { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
+  >;
 }>;
 
 function evalEnvelope(value: unknown) {
@@ -26,7 +31,9 @@ function makeApi(callTool: CallToolFn) {
   } as never;
 }
 
-function parseFirst(res: { content: ReadonlyArray<{ type: string; text?: string }> }): Record<string, unknown> {
+function parseFirst(res: {
+  content: ReadonlyArray<{ type: string; text?: string }>;
+}): Record<string, unknown> {
   const first = res.content[0];
   if (!first || first.type !== "text") throw new Error("expected text content");
   return JSON.parse(first.text!) as Record<string, unknown>;
@@ -40,13 +47,17 @@ describe("@kalebtec/browxai-plugin-figma handlers", () => {
         const expr = (args as { expr: string }).expr;
         if (expr.includes("typeof figma")) return evalEnvelope(true);
         return evalEnvelope({
-          nodes: [{ id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 }],
+          nodes: [
+            { id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 },
+          ],
         });
       });
       const res = await handlers.get_selection(api, {});
       expect(parseFirst(res)).toEqual({
         ok: true,
-        nodes: [{ id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 }],
+        nodes: [
+          { id: "1:2", name: "Rect", type: "RECTANGLE", x: 10, y: 20, width: 100, height: 50 },
+        ],
       });
     });
 

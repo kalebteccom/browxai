@@ -143,7 +143,7 @@ describe("WorkersRegistry.list", () => {
     const f = fakePage();
     const c = fakeCdp();
     // Seed a fake SW attachment server-side.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     (reg as any).swAttached.set("sess-A", {
       targetId: "tgt-A",
       sessionId: "sess-A",
@@ -241,7 +241,7 @@ describe("WorkersRegistry.readMessages", () => {
     const reg = new WorkersRegistry();
     const huge = "x".repeat(8000);
     reg.recordSwMessage("sw-1", huge);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const ring = (reg as any).swMessages as Array<{ data: string }>;
     expect(ring[0]!.data.length).toBeLessThan(huge.length);
     expect(ring[0]!.data.endsWith("…")).toBe(true);

@@ -31,8 +31,17 @@ import { resolveWorkspacePath } from "../session/storage.js";
  *  set; surface every one rather than re-curating — adopters that need
  *  jurisdiction-specific paper get it without a roundtrip back to us. */
 export type PdfFormat =
-  | "Letter" | "Legal" | "Tabloid" | "Ledger"
-  | "A0" | "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
+  | "Letter"
+  | "Legal"
+  | "Tabloid"
+  | "Ledger"
+  | "A0"
+  | "A1"
+  | "A2"
+  | "A3"
+  | "A4"
+  | "A5"
+  | "A6";
 
 export interface PdfSaveArgs {
   /** Workspace-rooted file path. Default `pdfs/<sessionId>-<ts>.pdf`. Caller
@@ -96,8 +105,8 @@ export function assertPdfSupported(ctx: PdfSupportContext): PdfRefusal | null {
         "drives Chromium's PrintToPDF and would surface a print dialog / " +
         "mutate the human's Chrome window state",
       hint:
-        "open a managed session (open_session({mode:\"persistent\"}) or " +
-        "{mode:\"incognito\"}) and re-run pdf_save against that.",
+        'open a managed session (open_session({mode:"persistent"}) or ' +
+        '{mode:"incognito"}) and re-run pdf_save against that.',
     };
   }
   return null;
@@ -136,8 +145,8 @@ export async function pdfSave(
   if (scale < 0.1 || scale > 2.0) {
     throw new Error(
       `pdf_save: scale must be in [0.1, 2.0] — got ${scale}. ` +
-      `Playwright's page.pdf() clamps the value at the underlying CDP layer; ` +
-      `we reject up-front for a clearer error.`,
+        `Playwright's page.pdf() clamps the value at the underlying CDP layer; ` +
+        `we reject up-front for a clearer error.`,
     );
   }
 
@@ -158,7 +167,11 @@ export async function pdfSave(
   });
 
   let bytes = 0;
-  try { bytes = statSync(resolved).size; } catch { /* best-effort */ }
+  try {
+    bytes = statSync(resolved).size;
+  } catch {
+    /* best-effort */
+  }
   // Belt-and-braces: re-run resolve to surface the absolute path in the
   // result (the input may have been relative).
   const absolute = resolvePath(resolved);

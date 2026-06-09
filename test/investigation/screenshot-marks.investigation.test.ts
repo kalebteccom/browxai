@@ -95,7 +95,9 @@ async function callMarks(args: Record<string, unknown>): Promise<{
   return { json, imageBase64, imageBytes };
 }
 
-async function callScreenshot(args: Record<string, unknown>): Promise<{ bytes: number; base64: string }> {
+async function callScreenshot(
+  args: Record<string, unknown>,
+): Promise<{ bytes: number; base64: string }> {
   const fn = handlers["screenshot"];
   if (!fn) throw new Error(`no handler "screenshot"`);
   const res = await fn(args);
@@ -109,7 +111,9 @@ async function callScreenshot(args: Record<string, unknown>): Promise<{ bytes: n
   return { bytes: 0, base64: "" };
 }
 
-function now(): number { return Date.now(); }
+function now(): number {
+  return Date.now();
+}
 
 beforeAll(async () => {
   if (SKIP) return;
@@ -164,9 +168,9 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         const t0Snap = now();
         const snapText = await callJson<string>("snapshot", { session });
         const tSnapshot = now() - t0Snap;
-        const refs = Array.from(new Set(
-          Array.from(snapText.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!),
-        )).slice(0, 6);
+        const refs = Array.from(
+          new Set(Array.from(snapText.matchAll(/\[ref=(e\d+)\]/g)).map((m) => m[1]!)),
+        ).slice(0, 6);
         expect(refs.length, `${target.name}: snapshot minted >=1 ref`).toBeGreaterThanOrEqual(1);
         const useRefs = refs.slice(0, Math.min(3, refs.length));
 
@@ -177,15 +181,21 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         let cands: FindCandidate[] = [];
         try {
           const found = await callJson<{ candidates?: FindCandidate[] }>("find", {
-            session, query: "link", maxCandidates: 5,
+            session,
+            query: "link",
+            maxCandidates: 5,
           });
           cands = (found.candidates ?? []).filter((c) => c.bbox !== null);
-        } catch { /* swallow — find() failure is a data point, not a test fail */ }
+        } catch {
+          /* swallow — find() failure is a data point, not a test fail */
+        }
         const tFind = now() - t0Find;
         const haveFindCands = cands.length >= 1;
         const withBbox = cands.slice(0, 3);
-        // eslint-disable-next-line no-console
-        console.log(`[${target.name}] tSnapshot=${tSnapshot}ms tFind=${tFind}ms refs=${refs.length} findBbox=${cands.length}`);
+
+        console.log(
+          `[${target.name}] tSnapshot=${tSnapshot}ms tFind=${tFind}ms refs=${refs.length} findBbox=${cands.length}`,
+        );
 
         // (b) Flow A: screenshot_marks. Prefer the full-candidate fast path
         // when find() returned bbox-carrying rows; otherwise use bare-ref
@@ -196,14 +206,23 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
           session,
           candidates: fastPath
             ? withBbox.map((c) => ({
-                ref: c.ref, role: c.role, name: c.name, testId: c.testId, bbox: c.bbox,
+                ref: c.ref,
+                role: c.role,
+                name: c.name,
+                testId: c.testId,
+                bbox: c.bbox,
               }))
             : useRefs.map((r) => ({ ref: r })),
           label: "index",
         });
         const tMarks = now() - t0Marks;
-        // eslint-disable-next-line no-console
-        console.log(`[${target.name}] marks.json keys=`, Object.keys(marks.json ?? {}), "bytes=", marks.imageBytes);
+
+        console.log(
+          `[${target.name}] marks.json keys=`,
+          Object.keys(marks.json ?? {}),
+          "bytes=",
+          marks.imageBytes,
+        );
 
         // Namespace round-trip: mapping["N"] must equal the eM of the
         // N-th candidate, AND must equal entry.ref for that index. The
@@ -217,7 +236,9 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         if (!marksTimedOut) {
           for (let i = 0; i < sourceRefs.length; i++) {
             const idx = String(i + 1);
-            expect(marks.json.mapping[idx], `mapping[${idx}] == sourceRef[${i}]`).toBe(sourceRefs[i]);
+            expect(marks.json.mapping[idx], `mapping[${idx}] == sourceRef[${i}]`).toBe(
+              sourceRefs[i],
+            );
             expect(marks.json.marks[i]!.ref).toBe(sourceRefs[i]);
             if (fastPath) {
               // Fast-path: bbox passed through must match find()'s evidence.bbox.
@@ -259,11 +280,25 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         let labelRoleBytes = 0;
         if (fastPath) {
           const labelRef = await callMarks({
-            session, candidates: withBbox.map((c) => ({ ref: c.ref, bbox: c.bbox, role: c.role, name: c.name })), label: "ref",
+            session,
+            candidates: withBbox.map((c) => ({
+              ref: c.ref,
+              bbox: c.bbox,
+              role: c.role,
+              name: c.name,
+            })),
+            label: "ref",
           });
           labelRefBytes = labelRef.imageBytes;
           const labelRole = await callMarks({
-            session, candidates: withBbox.map((c) => ({ ref: c.ref, bbox: c.bbox, role: c.role, name: c.name })), label: "role",
+            session,
+            candidates: withBbox.map((c) => ({
+              ref: c.ref,
+              bbox: c.bbox,
+              role: c.role,
+              name: c.name,
+            })),
+            label: "role",
           });
           labelRoleBytes = labelRole.imageBytes;
         }
@@ -346,7 +381,10 @@ describe.skipIf(SKIP)("screenshot_marks investigation — edge cases", () => {
       expect(overlap.json.mapping["1"]).toBe("e1");
       expect(overlap.json.mapping["2"]).toBe("e2");
       expect(overlap.imageBytes).toBeGreaterThan(0);
-      writeFileSync(join(artifactsDir, "marks-overlap.png"), Buffer.from(overlap.imageBase64, "base64"));
+      writeFileSync(
+        join(artifactsDir, "marks-overlap.png"),
+        Buffer.from(overlap.imageBase64, "base64"),
+      );
 
       await callJson("close_session", { session });
     },

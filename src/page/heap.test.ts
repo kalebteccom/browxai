@@ -50,7 +50,15 @@ function fakeCdp() {
 // to_node values are FIRST-FIELD INDEX into the flat `nodes` array (V8 quirk):
 //   node 0 → 0, node 1 → 7, node 2 → 14   (nodeFieldCount = 7)
 function makeFixtureSnapshot(): string {
-  const nodeFields = ["type", "name", "id", "self_size", "edge_count", "trace_node_id", "detachedness"];
+  const nodeFields = [
+    "type",
+    "name",
+    "id",
+    "self_size",
+    "edge_count",
+    "trace_node_id",
+    "detachedness",
+  ];
   const edgeFields = ["type", "name_or_index", "to_node"];
   const nodeTypes = ["hidden", "object", "closure", "string"];
   const edgeTypes = ["context", "element", "property", "internal"];
@@ -61,17 +69,15 @@ function makeFixtureSnapshot(): string {
   // node 1: Cache  @ first-field-idx 7
   // node 2: LeakyItem @ first-field-idx 14
   const nodes = [
-    /* node 0 Window    */ 1, 1, 1, 100, 1, 0, 0,
-    /* node 1 Cache     */ 1, 2, 2,  50, 2, 0, 0,
-    /* node 2 LeakyItem */ 1, 3, 3,  20, 0, 0, 0,
+    /* node 0 Window    */ 1, 1, 1, 100, 1, 0, 0, /* node 1 Cache     */ 1, 2, 2, 50, 2, 0, 0,
+    /* node 2 LeakyItem */ 1, 3, 3, 20, 0, 0, 0,
   ];
   // edges, in node order:
   //   from node 0: -> node 1 (idx 7)
   //   from node 1: -> node 2 (idx 14), -> node 2 (idx 14)
   const edges = [
-    /* Window -> Cache  */ 2, 4, 7,
-    /* Cache  -> Leaky  */ 2, 4, 14,
-    /* Cache  -> Leaky  */ 2, 5, 14,
+    /* Window -> Cache  */ 2, 4, 7, /* Cache  -> Leaky  */ 2, 4, 14, /* Cache  -> Leaky  */ 2, 5,
+    14,
   ];
   return JSON.stringify({
     snapshot: {
@@ -111,7 +117,9 @@ describe("takeHeapSnapshot — CDP plumbing", () => {
 
   it("detaches the chunk listener even when the take call throws", async () => {
     const { cdp } = fakeCdp();
-    cdp.send = vi.fn(async () => { throw new Error("boom"); });
+    cdp.send = vi.fn(async () => {
+      throw new Error("boom");
+    });
     await expect(takeHeapSnapshot(cdp as never)).rejects.toThrow("boom");
     expect(cdp._listenerCount("HeapProfiler.addHeapSnapshotChunk")).toBe(0);
   });
@@ -130,14 +138,16 @@ describe("takeHeapSnapshot — CDP plumbing", () => {
 describe("workspace path enforcement", () => {
   it("resolveHeapSnapshotPath: rejects paths that escape the workspace", () => {
     const root = "/tmp/wsX";
-    expect(() => resolveHeapSnapshotPath(root, "../outside.heapsnapshot", "heap_snapshot"))
-      .toThrow(/must resolve inside \$BROWX_WORKSPACE/);
+    expect(() => resolveHeapSnapshotPath(root, "../outside.heapsnapshot", "heap_snapshot")).toThrow(
+      /must resolve inside \$BROWX_WORKSPACE/,
+    );
   });
 
   it("resolveHeapSnapshotPath: accepts paths inside the workspace", () => {
     const root = "/tmp/wsX";
-    expect(resolveHeapSnapshotPath(root, "heap-snapshots/x.heapsnapshot", "heap_snapshot"))
-      .toBe("/tmp/wsX/heap-snapshots/x.heapsnapshot");
+    expect(resolveHeapSnapshotPath(root, "heap-snapshots/x.heapsnapshot", "heap_snapshot")).toBe(
+      "/tmp/wsX/heap-snapshots/x.heapsnapshot",
+    );
   });
 
   it("defaultHeapSnapshotPath: sessionId is sanitised + ISO timestamp", () => {
@@ -166,8 +176,7 @@ describe("parseHeapSnapshot", () => {
   });
 
   it("rejects missing snapshot.meta.node_fields", () => {
-    expect(() => parseHeapSnapshot(JSON.stringify({ snapshot: {} })))
-      .toThrow(/node_fields/);
+    expect(() => parseHeapSnapshot(JSON.stringify({ snapshot: {} }))).toThrow(/node_fields/);
   });
 
   it("rejects when nodes/edges/strings are missing", () => {
@@ -179,11 +188,15 @@ describe("parseHeapSnapshot", () => {
 
   it("rejects when a required field is missing from meta", () => {
     const bad = JSON.stringify({
-      snapshot: { meta: {
-        node_fields: ["type", "name"], // missing self_size etc.
-        edge_fields: ["type", "name_or_index", "to_node"],
-      } },
-      nodes: [], edges: [], strings: [],
+      snapshot: {
+        meta: {
+          node_fields: ["type", "name"], // missing self_size etc.
+          edge_fields: ["type", "name_or_index", "to_node"],
+        },
+      },
+      nodes: [],
+      edges: [],
+      strings: [],
     });
     expect(() => parseHeapSnapshot(bad)).toThrow(/required field/);
   });
@@ -193,7 +206,7 @@ describe("parseHeapSnapshot", () => {
     expect(p.nodeFieldCount).toBe(7);
     expect(p.edgeFieldCount).toBe(3);
     expect(p.nodes.length).toBe(21); // 3 nodes * 7 fields
-    expect(p.edges.length).toBe(9);  // 3 edges * 3 fields
+    expect(p.edges.length).toBe(9); // 3 edges * 3 fields
     expect(p.strings.length).toBe(6);
   });
 });
@@ -279,8 +292,9 @@ describe("readHeapSnapshotFile", () => {
   it("throws a helpful error when the file is missing", () => {
     const root = mkdtempSync(join(tmpdir(), "browx-heap-"));
     try {
-      expect(() => readHeapSnapshotFile(root, "missing.heapsnapshot", "heap_retainers"))
-        .toThrow(/snapshot file not found/);
+      expect(() => readHeapSnapshotFile(root, "missing.heapsnapshot", "heap_retainers")).toThrow(
+        /snapshot file not found/,
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

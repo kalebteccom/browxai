@@ -36,7 +36,9 @@ async function startChrome(opts: string[]): Promise<number> {
   if (existsSync(pidFile)) {
     const oldPid = readFileSync(pidFile, "utf8").trim();
     if (oldPid && isProcessAlive(Number(oldPid))) {
-      process.stdout.write(`a previous browxai chrome is already running (pid ${oldPid}, port ${port}). Use \`browxai chrome stop\` first.\n`);
+      process.stdout.write(
+        `a previous browxai chrome is already running (pid ${oldPid}, port ${port}). Use \`browxai chrome stop\` first.\n`,
+      );
       return 1;
     }
     unlinkSync(pidFile);
@@ -94,7 +96,9 @@ async function stopChrome(): Promise<number> {
     process.stdout.write(`browxai chrome (pid ${pid}) stopped\n`);
     return 0;
   } catch (e) {
-    process.stderr.write(`failed to stop pid ${pid}: ${e instanceof Error ? e.message : String(e)}\n`);
+    process.stderr.write(
+      `failed to stop pid ${pid}: ${e instanceof Error ? e.message : String(e)}\n`,
+    );
     return 1;
   }
 }
@@ -117,7 +121,12 @@ async function statusChrome(): Promise<number> {
 
 function isProcessAlive(pid: number): boolean {
   if (!pid) return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parseFlagNum(args: string[], flag: string): number | undefined {

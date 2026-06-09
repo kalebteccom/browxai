@@ -73,11 +73,16 @@ export async function reapplyAll(
   state: EmulationState,
 ): Promise<void> {
   if (state.locale !== undefined) await applyLocaleCdp(cdp, state.locale).catch(() => undefined);
-  if (state.timezoneId !== undefined) await applyTimezoneCdp(cdp, state.timezoneId).catch(() => undefined);
-  if (state.userAgent !== undefined) await applyUserAgentCdp(cdp, state.userAgent).catch(() => undefined);
-  if (state.geolocation !== undefined) await applyGeolocation(context, state.geolocation).catch(() => undefined);
-  if (state.colorScheme !== undefined) await applyColorScheme(page, state.colorScheme).catch(() => undefined);
-  if (state.reducedMotion !== undefined) await applyReducedMotion(page, state.reducedMotion).catch(() => undefined);
+  if (state.timezoneId !== undefined)
+    await applyTimezoneCdp(cdp, state.timezoneId).catch(() => undefined);
+  if (state.userAgent !== undefined)
+    await applyUserAgentCdp(cdp, state.userAgent).catch(() => undefined);
+  if (state.geolocation !== undefined)
+    await applyGeolocation(context, state.geolocation).catch(() => undefined);
+  if (state.colorScheme !== undefined)
+    await applyColorScheme(page, state.colorScheme).catch(() => undefined);
+  if (state.reducedMotion !== undefined)
+    await applyReducedMotion(page, state.reducedMotion).catch(() => undefined);
   for (const [origin, perms] of state.permissions) {
     const opts = origin ? { origin } : undefined;
     await context.grantPermissions(perms, opts).catch(() => undefined);

@@ -17,7 +17,7 @@ primitives — ordered by impact on test outcomes.
 3. **First-class act-then-capture-window primitive.** Roundtrip latency makes
    transient UI (spinners, bounded reveals) unobservable with separate calls.
 
-## 1. Cannot simulate a backgrounded / hidden tab  — CRITICAL
+## 1. Cannot simulate a backgrounded / hidden tab — CRITICAL
 
 The most severe contest bug this campaign (recurring "ghost" stage + a false
 "could not finish syncing" toast + cross-quiz state bleed) only occurs when
@@ -30,6 +30,7 @@ the driven tab foreground/active, so every QA agent reported the flow
 from operator-supplied console logs, not from agentic QA.
 
 Ask: primitives to
+
 - set `document.visibilityState = 'hidden'` + dispatch `visibilitychange`,
   and ideally **actually deprioritize the tab** so real timer/rAF throttling
   applies (a synthetic visibilitychange alone does not reproduce timer
@@ -37,8 +38,8 @@ Ask: primitives to
 - background a session (open/focus another tab) and later refocus it;
 - a combined "run these actions, then background for N s, then foreground"
   script step.
-Without this, any bug gated on tab visibility / background throttling /
-on-focus refetch is invisible to agentic QA.
+  Without this, any bug gated on tab visibility / background throttling /
+  on-focus refetch is invisible to agentic QA.
 
 ## 2. `approve_actions` is a hidden prerequisite; failures look like a human gate
 

@@ -61,7 +61,7 @@ export interface CaptchaProviderConfig {
 
 const DEFAULT_BASE_FOR: Record<CaptchaProvider, string> = {
   "2captcha": "https://2captcha.com",
-  "capmonster": "https://api.capmonster.cloud",
+  capmonster: "https://api.capmonster.cloud",
 };
 
 /** Read provider config from env. Returns `null` when nothing is configured —
@@ -72,7 +72,9 @@ const DEFAULT_BASE_FOR: Record<CaptchaProvider, string> = {
  *  api-key, unknown provider name) so the agent sees a clear pointer. */
 export function resolveCaptchaProvider(
   env: NodeJS.ProcessEnv = process.env,
-): { ok: true; config: CaptchaProviderConfig } | { ok: false; reason: "unconfigured" | "partial"; error?: string } {
+):
+  | { ok: true; config: CaptchaProviderConfig }
+  | { ok: false; reason: "unconfigured" | "partial"; error?: string } {
   const rawProvider = env.BROWX_CAPTCHA_PROVIDER?.trim();
   const rawKey = env.BROWX_CAPTCHA_API_KEY?.trim();
   if (!rawProvider && !rawKey) {
@@ -82,7 +84,8 @@ export function resolveCaptchaProvider(
     return {
       ok: false,
       reason: "partial",
-      error: "BROWX_CAPTCHA_API_KEY is set but BROWX_CAPTCHA_PROVIDER is not — set both, or unset both.",
+      error:
+        "BROWX_CAPTCHA_API_KEY is set but BROWX_CAPTCHA_PROVIDER is not — set both, or unset both.",
     };
   }
   if (!rawKey) {
@@ -103,7 +106,10 @@ export function resolveCaptchaProvider(
         `Other providers can be supported by extending src/page/solve-captcha.ts.`,
     };
   }
-  const apiBase = (env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider]).replace(/\/+$/, "");
+  const apiBase = (env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider]).replace(
+    /\/+$/,
+    "",
+  );
   const timeoutRaw = env.BROWX_CAPTCHA_TIMEOUT_MS?.trim();
   const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) : 120_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -183,7 +189,10 @@ export async function submitToProvider(
   if (challenge.type === "recaptcha2") {
     submitBody.set("method", "userrecaptcha");
     if (!challenge.siteKey) {
-      return failureWithHint(config.provider, "recaptcha2 requires a siteKey (the page's `data-sitekey` attribute)");
+      return failureWithHint(
+        config.provider,
+        "recaptcha2 requires a siteKey (the page's `data-sitekey` attribute)",
+      );
     }
     submitBody.set("googlekey", challenge.siteKey);
     submitBody.set("pageurl", challenge.pageUrl);
@@ -191,28 +200,40 @@ export async function submitToProvider(
     submitBody.set("method", "userrecaptcha");
     submitBody.set("version", "v3");
     if (!challenge.siteKey) {
-      return failureWithHint(config.provider, "recaptcha3 requires a siteKey (the page's `data-sitekey` attribute)");
+      return failureWithHint(
+        config.provider,
+        "recaptcha3 requires a siteKey (the page's `data-sitekey` attribute)",
+      );
     }
     submitBody.set("googlekey", challenge.siteKey);
     submitBody.set("pageurl", challenge.pageUrl);
   } else if (challenge.type === "hcaptcha") {
     submitBody.set("method", "hcaptcha");
     if (!challenge.siteKey) {
-      return failureWithHint(config.provider, "hcaptcha requires a siteKey (the hCaptcha widget's `data-sitekey`)");
+      return failureWithHint(
+        config.provider,
+        "hcaptcha requires a siteKey (the hCaptcha widget's `data-sitekey`)",
+      );
     }
     submitBody.set("sitekey", challenge.siteKey);
     submitBody.set("pageurl", challenge.pageUrl);
   } else if (challenge.type === "turnstile") {
     submitBody.set("method", "turnstile");
     if (!challenge.siteKey) {
-      return failureWithHint(config.provider, "turnstile requires a siteKey (Cloudflare Turnstile's `data-sitekey`)");
+      return failureWithHint(
+        config.provider,
+        "turnstile requires a siteKey (Cloudflare Turnstile's `data-sitekey`)",
+      );
     }
     submitBody.set("sitekey", challenge.siteKey);
     submitBody.set("pageurl", challenge.pageUrl);
   } else if (challenge.type === "image") {
     submitBody.set("method", "base64");
     if (!challenge.imageBase64) {
-      return failureWithHint(config.provider, "image captcha requires `imageBase64` (raw base64, no data URL prefix)");
+      return failureWithHint(
+        config.provider,
+        "image captcha requires `imageBase64` (raw base64, no data URL prefix)",
+      );
     }
     submitBody.set("body", challenge.imageBase64);
   } else {
@@ -232,20 +253,28 @@ export async function submitToProvider(
     );
   }
   if (!submitResp.ok) {
-    return failureWithHint(config.provider, `provider returned HTTP ${submitResp.status} on submit`);
+    return failureWithHint(
+      config.provider,
+      `provider returned HTTP ${submitResp.status} on submit`,
+    );
   }
   let submitJson: { status?: number; request?: string; error_text?: string };
   try {
     submitJson = (await submitResp.json()) as typeof submitJson;
   } catch (err) {
-    return failureWithHint(config.provider, `provider returned non-JSON on submit: ${err instanceof Error ? err.message : String(err)}`);
+    return failureWithHint(
+      config.provider,
+      `provider returned non-JSON on submit: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   if (submitJson.status !== 1 || !submitJson.request) {
     return {
       ok: false,
       provider: config.provider,
       error: `provider rejected submission: ${submitJson.request ?? "(no detail)"}`,
-      hint: submitJson.error_text ?? "Check the provider dashboard for account balance / blocked-method status.",
+      hint:
+        submitJson.error_text ??
+        "Check the provider dashboard for account balance / blocked-method status.",
       ...(submitJson.request ? { providerCode: submitJson.request } : {}),
     };
   }
@@ -269,7 +298,9 @@ export async function submitToProvider(
       );
     } catch (err) {
       // transient network blip — keep polling until the deadline
-      log.warn(`solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`);
+      log.warn(
+        `solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`,
+      );
       continue;
     }
     if (!pollResp.ok) {
@@ -327,7 +358,7 @@ export function unconfiguredFailure(): CaptchaFailure {
     provider: null,
     error: "no captcha provider configured — `solve_captcha` cannot delegate.",
     hint:
-      "Set BROWX_CAPTCHA_PROVIDER (e.g. \"2captcha\" or \"capmonster\") and BROWX_CAPTCHA_API_KEY in the server's " +
+      'Set BROWX_CAPTCHA_PROVIDER (e.g. "2captcha" or "capmonster") and BROWX_CAPTCHA_API_KEY in the server\'s ' +
       "environment to enable delegation. browxai does NOT bundle a solver and does NOT auto-purchase credits — the " +
       "operator chooses a provider, funds the account, and configures the server. Known providers in this version: " +
       `${KNOWN_PROVIDERS.join(", ")} (both speak the 2Captcha-compatible HTTP API).`,

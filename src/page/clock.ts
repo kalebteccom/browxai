@@ -47,12 +47,17 @@ const MAX_ADVANCE_MS = 365 * 24 * 60 * 60 * 1000; // one year — sanity ceiling
 function parseIso(iso: string, field: string): number {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) {
-    throw new Error(`clock: ${field} is not a valid ISO-8601 timestamp (got ${JSON.stringify(iso)})`);
+    throw new Error(
+      `clock: ${field} is not a valid ISO-8601 timestamp (got ${JSON.stringify(iso)})`,
+    );
   }
   return t;
 }
 
-function normalizeInput(input: ClockInput, currentMs: number): {
+function normalizeInput(
+  input: ClockInput,
+  currentMs: number,
+): {
   mode: ClockMode;
   targetMs: number;
   advanceBudgetMs: number;
@@ -88,7 +93,9 @@ function normalizeInput(input: ClockInput, currentMs: number): {
   }
   const advanceBudgetMs = Math.max(0, targetMs - currentMs);
   if (advanceBudgetMs > MAX_ADVANCE_MS) {
-    throw new Error(`clock: advance distance ${advanceBudgetMs}ms exceeds max ${MAX_ADVANCE_MS}ms (1 year)`);
+    throw new Error(
+      `clock: advance distance ${advanceBudgetMs}ms exceeds max ${MAX_ADVANCE_MS}ms (1 year)`,
+    );
   }
   return { mode: "advance", targetMs, advanceBudgetMs };
 }
@@ -153,7 +160,9 @@ export class ClockRegistry {
   }
 
   /** Test introspection. */
-  current(): ClockState | undefined { return this.state; }
+  current(): ClockState | undefined {
+    return this.state;
+  }
 
   private installReattach(page: Page): void {
     if (this.reattachInstalled.has(page as unknown as object)) return;
@@ -161,7 +170,10 @@ export class ClockRegistry {
     const onNav = async (frame: { parentFrame: () => unknown | null }): Promise<void> => {
       if (frame.parentFrame()) return; // main frame only
       try {
-        const cdp = await page.context().newCDPSession(page).catch(() => null);
+        const cdp = await page
+          .context()
+          .newCDPSession(page)
+          .catch(() => null);
         if (!cdp) return;
         if (this.state) {
           await this.sendPauseAt(cdp, this.state.nowMs).catch(() => undefined);

@@ -92,10 +92,18 @@ export class RefRegistry {
     return ref;
   }
 
-  has(ref: string): boolean { return this.keyByRef.has(ref); }
-  hasKey(key: string): boolean { return this.refByKey.has(key); }
-  keyOf(ref: string): string | undefined { return this.keyByRef.get(ref); }
-  locatorOf(ref: string): RefLocatorInputs | undefined { return this.locatorByRef.get(ref); }
+  has(ref: string): boolean {
+    return this.keyByRef.has(ref);
+  }
+  hasKey(key: string): boolean {
+    return this.refByKey.has(key);
+  }
+  keyOf(ref: string): string | undefined {
+    return this.keyByRef.get(ref);
+  }
+  locatorOf(ref: string): RefLocatorInputs | undefined {
+    return this.locatorByRef.get(ref);
+  }
   updateLocator(ref: string, locator: RefLocatorInputs): void {
     if (this.keyByRef.has(ref)) this.locatorByRef.set(ref, locator);
   }
@@ -136,7 +144,9 @@ export class RefRegistry {
     this.frameByRef.set(ref, frame);
   }
   /** Resolve a ref to its bound Frame, or undefined for main-frame refs. */
-  frameOf(ref: string): Frame | undefined { return this.frameByRef.get(ref); }
+  frameOf(ref: string): Frame | undefined {
+    return this.frameByRef.get(ref);
+  }
 
   // --- named refs ---
   /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */
@@ -145,14 +155,18 @@ export class RefRegistry {
     this.refByName.set(name, ref);
   }
   /** Resolve a name back to a ref. */
-  refByNameLookup(name: string): string | undefined { return this.refByName.get(name); }
+  refByNameLookup(name: string): string | undefined {
+    return this.refByName.get(name);
+  }
   /** List all current name → ref bindings. */
   listNames(): Array<{ name: string; ref: string }> {
     return [...this.refByName.entries()].map(([name, ref]) => ({ name, ref }));
   }
 
   /** Useful for tests / introspection only. */
-  size(): number { return this.refByKey.size; }
+  size(): number {
+    return this.refByKey.size;
+  }
 }
 
 function combineSource(

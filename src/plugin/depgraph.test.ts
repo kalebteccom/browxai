@@ -18,8 +18,8 @@ describe("buildDepGraph", () => {
       ]),
     });
     expect(new Set(r.loadOrder)).toEqual(new Set(["a", "b"]));
-    expect([...r.transitiveDeps.get("a") ?? []]).toEqual([]);
-    expect([...r.transitiveDeps.get("b") ?? []]).toEqual([]);
+    expect([...(r.transitiveDeps.get("a") ?? [])]).toEqual([]);
+    expect([...(r.transitiveDeps.get("b") ?? [])]).toEqual([]);
   });
 
   it("topo-sorts deps before dependents", () => {

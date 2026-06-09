@@ -34,11 +34,30 @@ export type Capability =
   | "canvas";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human", "eval", "byob-attach", "file-io", "network-body", "clipboard", "secrets", "extensions", "stealth", "captcha", "credentials", "device-emulation", "diagnostics", "canvas",
+  "read",
+  "navigation",
+  "action",
+  "human",
+  "eval",
+  "byob-attach",
+  "file-io",
+  "network-body",
+  "clipboard",
+  "secrets",
+  "extensions",
+  "stealth",
+  "captcha",
+  "credentials",
+  "device-emulation",
+  "diagnostics",
+  "canvas",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
-  "read", "navigation", "action", "human",
+  "read",
+  "navigation",
+  "action",
+  "human",
 ];
 
 /**
@@ -516,7 +535,10 @@ export interface CapabilityConfig {
 export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): CapabilityConfig {
   const raw = env.BROWX_CAPABILITIES?.trim();
   const list = raw
-    ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+    ? raw
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
     : [...DEFAULT_CAPABILITIES];
   const warnings: string[] = [];
   const live: string[] = [];
@@ -528,7 +550,7 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
       // Retired, not unknown — tolerate it so an old config never crashes.
       warnings.push(
         `BROWX_CAPABILITIES: "${c}" is a retired capability — ${RETIRED_CAPABILITIES[c]}. ` +
-        `It is ignored (no effect); the rest of your config is honoured.`,
+          `It is ignored (no effect); the rest of your config is honoured.`,
       );
     } else {
       unknown.push(c);
@@ -537,7 +559,7 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
   if (unknown.length) {
     throw new Error(
       `BROWX_CAPABILITIES: unknown capability/capabilities ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
-      `Valid: ${ALL_CAPABILITIES.join(", ")}.`,
+        `Valid: ${ALL_CAPABILITIES.join(", ")}.`,
     );
   }
   const enabled = new Set(live as Capability[]);
@@ -565,22 +587,28 @@ export type ConfirmHook =
   | "byob_action";
 
 const ALL_CONFIRM_HOOKS: readonly ConfirmHook[] = [
-  "navigate_off_allowlist", "file_download", "file_upload", "byob_action",
+  "navigate_off_allowlist",
+  "file_download",
+  "file_upload",
+  "byob_action",
 ];
 
-const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = [
-  "navigate_off_allowlist", "byob_action",
-];
+const DEFAULT_CONFIRM_HOOKS: readonly ConfirmHook[] = ["navigate_off_allowlist", "byob_action"];
 
-export function resolveConfirmHooks(env: NodeJS.ProcessEnv = process.env): ReadonlySet<ConfirmHook> {
+export function resolveConfirmHooks(
+  env: NodeJS.ProcessEnv = process.env,
+): ReadonlySet<ConfirmHook> {
   const raw = env.BROWX_CONFIRM_REQUIRED?.trim();
   if (!raw) return new Set(DEFAULT_CONFIRM_HOOKS);
-  const list = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  const list = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const unknown = list.filter((h) => !ALL_CONFIRM_HOOKS.includes(h as ConfirmHook));
   if (unknown.length) {
     throw new Error(
       `BROWX_CONFIRM_REQUIRED: unknown hook(s) ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
-      `Valid: ${ALL_CONFIRM_HOOKS.join(", ")}.`,
+        `Valid: ${ALL_CONFIRM_HOOKS.join(", ")}.`,
     );
   }
   return new Set(list as ConfirmHook[]);

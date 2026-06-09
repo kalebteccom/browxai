@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,7 +11,6 @@ import {
 } from "./export-playwright-script.js";
 import { Recorder } from "./recording.js";
 import { resolveWorkspacePath } from "../session/storage.js";
-import { writeFileSync, mkdirSync } from "node:fs";
 
 describe("export_playwright_script — lowering", () => {
   it("emits a complete spec shell for an empty recording", () => {
@@ -161,11 +160,10 @@ describe("export_playwright_script — lowering", () => {
     const rec = new Recorder();
     rec.start("integration");
     rec.record({ type: "navigate", url: "https://a.example.com" }, "https://a.example.com");
-    rec.record(
-      { type: "click", ref: "e1" },
-      "https://a.example.com",
-      { selectorHint: '[data-testid="go"]', stability: "high" },
-    );
+    rec.record({ type: "click", ref: "e1" }, "https://a.example.com", {
+      selectorHint: '[data-testid="go"]',
+      stability: "high",
+    });
     const snap = rec.inspect();
     expect(snap).not.toBeNull();
     const r = lowerTraceToSpec(snap!.name, snap!.steps);
@@ -195,7 +193,11 @@ describe("export_playwright_script — workspace path", () => {
     // Happy path — `resolveWorkspacePath` returns a path inside the workspace
     // root that we can write to ourselves; mirrors how `dump_storage_state`
     // composes its writer + path validator.
-    const target = resolveWorkspacePath(workspace, "scripts/login.spec.ts", "export_playwright_script");
+    const target = resolveWorkspacePath(
+      workspace,
+      "scripts/login.spec.ts",
+      "export_playwright_script",
+    );
     expect(target.startsWith(workspace)).toBe(true);
 
     const r = lowerTraceToSpec("write-flow", [
