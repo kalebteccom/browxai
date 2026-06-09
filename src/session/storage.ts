@@ -26,9 +26,9 @@
 // path-traversal is rejected (same posture as `upload_file`). Named-state
 // names are restricted to a safe character set (no separators, no `..`).
 //
-// Secrets-masking interplay: cookie *values* may carry credentials. The
-// future W-V12 (secrets-masking) will mask them on egress. For this cycle
-// the gap is documented; no extra work here.
+// Secrets-masking interplay: cookie *values* may carry credentials. A
+// future secrets-masking pass will mask them on egress. For now the gap
+// is documented; no extra work here.
 
 import { resolve, sep, join } from "node:path";
 import {

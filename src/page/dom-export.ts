@@ -33,7 +33,6 @@
 
 import { resolve as resolvePath, dirname } from "node:path";
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
-import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 
 export type DomExportFormat = "html" | "jsonl";

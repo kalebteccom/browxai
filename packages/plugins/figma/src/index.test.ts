@@ -17,10 +17,6 @@ function evalEnvelope(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify({ ok: true, value }) }] };
 }
 
-function evalError(error: string) {
-  return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error }) }] };
-}
-
 function makeApi(callTool: CallToolFn) {
   return {
     namespace: "figma",

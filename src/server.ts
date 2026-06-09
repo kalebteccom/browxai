@@ -258,7 +258,6 @@ import {
 import {
   newVideoRecorderState,
   buildRecordVideoOption,
-  assertVideoSupported,
   stopVideo,
   finalizeVideoOnClose,
   readVideoIfReady,
@@ -294,7 +293,7 @@ import {
 import { startPluginRuntime } from "./plugin/runtime.js";
 import type { PluginRecord, PluginToolHandler, PluginToolResponse } from "./plugin/types.js";
 import { RUNTIME_API_VERSION } from "./plugin/manifest.js";
-import { resolveOriginPolicy, describePolicy, isOriginAllowed } from "./policy/origin.js";
+import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
 import { confirmNavigation, confirmByobAction, ApprovalStore } from "./policy/confirm.js";
 import { Recorder } from "./page/recording.js";
 import {
@@ -1228,7 +1227,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // reference it via closure (registered before plugin loading runs).
   let pluginRecords: ReadonlyArray<PluginRecord> = [];
 
-  // W-T1 — wedge tracking. Only tools that actually exercise the page can
+  // Wedge tracking. Only tools that actually exercise the page can
   // wedge a session; session-management / config / coordination tools are
   // excluded so their (always fast) results don't reset the streak.
   const WEDGE_TRACKED_CAPABILITIES = new Set<string>([
@@ -1430,7 +1429,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // Wrapper that preserves the inner handler's parameter type for typechecking
   // (destructuring inside each registration still works) but stores a
   // type-erased copy for `batch` dispatch. Page-exercising tools additionally
-  // route their result through the W-T1 wedge tracker; every tool is timed +
+  // route their result through the wedge tracker; every tool is timed +
   // counted on the session's per-session metrics rollup. When the
   // `diagnostics` capability is on, each dispatch ALSO lands as a JSONL
   // record under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl;
@@ -3168,7 +3167,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const maskedProbe = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
         return { content: [{ type: "text" as const, text: JSON.stringify(maskedProbe, null, 2) }] };
       } catch (err) {
-        // structured failure — coordinate + page URL for triage (W-R3).
+        // structured failure — coordinate + page URL for triage.
         let url = "";
         try {
           url = e.session.page().url();
@@ -3543,9 +3542,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   );
 
   // ---------- gestures, route mocking, compound act-and-observe tools ----------
-  // These were the W-Q7..Q11 experimental lane; now promoted into the stable
-  // surface under their natural capabilities (gestures/route = `action`,
-  // compound observe tools = `read`, region/profile coordination = `human`).
+  // These were promoted from the experimental lane into the stable surface
+  // under their natural capabilities (gestures/route = `action`, compound
+  // observe tools = `read`, region/profile coordination = `human`).
 
   // A *factory* — each call returns a fresh schema instance. Reusing one
   // shared instance across `from`/`to`/`target` made zod-to-json-schema emit a
@@ -7472,9 +7471,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   //                      `auth_save`, `auth_load`, `auth_delete`)
   //
   // Secrets-masking interplay (documented gap): cookie *values* may carry
-  // credentials. The future W-V12 secrets-masking pass will mask them on
-  // egress. This cycle ships unmasked — adopters should treat the dump as
-  // sensitive until W-V12 lands.
+  // credentials. A future secrets-masking pass will mask them on egress.
+  // For now the dump ships unmasked — adopters should treat it as sensitive.
   // ===========================================================================
 
   /** Envelope helper for the storage tools: JSON-stringify with `tokensEstimate`. */
@@ -11419,7 +11417,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // Pluggable TOTP / username+password lookup against an operator-configured
   // vault. Off-by-default; loud-warned at boot. Provider is per-deployment,
   // NEVER bundled. `get_credential` ADDITIONALLY requires the `secrets`
-  // capability (auto-registers the looked-up password into the W-V12
+  // capability (auto-registers the looked-up password into the secrets-mask
   // registry under `<PASSWORD_<account>>` — without `secrets`, the lookup
   // refuses rather than leak cleartext into the result).
 

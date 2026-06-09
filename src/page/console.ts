@@ -25,7 +25,9 @@ export class ConsoleBuffer {
 
   /** Wire a per-session secrets registry. After this, every `recent` /
    *  `errorsSince` / `pageErrorsSince` read substitutes registered real-values
-   *  with their `<NAME>` aliases AFTER the W-O1 URL sanitiser runs. */
+   *  with their `<NAME>` aliases AFTER the URL sanitiser runs (the
+   *  query-string secret-stripper that runs first so encoded secrets in URLs
+   *  don't leak past the name-substitution pass). */
   setSecrets(secrets: SecretRegistry): void {
     this.secrets = secrets;
   }

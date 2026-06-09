@@ -48,7 +48,6 @@
 
 import { resolve as resolvePath, dirname, join, sep, extname } from "node:path";
 import { mkdirSync, writeFileSync, statSync, readdirSync } from "node:fs";
-import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
 
 /** Archive format. `directory` writes index.html + assets/ sidecar; `single-file`

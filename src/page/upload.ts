@@ -1,4 +1,4 @@
-// `upload_file` — set files on a file `<input>` (W-R2).
+// `upload_file` — set files on a file `<input>`.
 //
 // Setting files on a file input is a common browser-test primitive that
 // otherwise forces agents into injecting `File`/`DataTransfer` via `eval_js`

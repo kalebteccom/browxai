@@ -18,8 +18,6 @@ import {
 } from "./perf-audit.js";
 import { estimateTokens } from "../util/tokens.js";
 
-const emptyCtx: AuditContext = { trace: [] };
-
 describe("resolveCategories", () => {
   it("defaults to all 8 categories when empty/undefined", () => {
     expect(resolveCategories()).toEqual(ALL_AUDIT_CATEGORIES);

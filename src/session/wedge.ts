@@ -1,4 +1,4 @@
-// W-T1 — per-session wedge detector.
+// Per-session wedge detector.
 //
 // The anti-wedge deadline (see util/deadline.ts) makes every individual call
 // return within its budget — but an agent driving a wedged session sees only

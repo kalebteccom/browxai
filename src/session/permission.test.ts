@@ -10,7 +10,6 @@ import {
   UNHANDLED_PERMISSION_HINT,
   PERMISSION_PAGE_SCRIPT,
   type PermissionAskHandler,
-  type SupportedPermission,
 } from "./permission.js";
 import type { BrowserContext, CDPSession, Page } from "playwright-core";
 

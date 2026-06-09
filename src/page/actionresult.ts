@@ -282,7 +282,7 @@ export interface ActionResult {
    *  (context torn down / detached / anti-wedge — NOT an app crash)? Stops
    *  agents filing false "page crashed" defects for tool teardown. */
   failure?: import("../util/failure.js").FailureClass;
-  /** W-T1: set by the server when this session has hit the anti-wedge
+  /** Set by the server when this session has hit the anti-wedge
    *  deadline on several consecutive calls — the session is wedged and
    *  retrying it (or raising `timeoutMs`) will not recover it. When present,
    *  discard the session (`close_session`) and `open_session` a fresh one.

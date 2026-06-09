@@ -135,7 +135,7 @@ const PROBE_TIMEOUT_MS = 500;
 // thing an agent wants to act on; they are never themselves the click target.
 // When a query is phrased loosely (a product alias rather than the test-attr
 // tokens) one of these can outscore the actual control it contains, so we
-// demote them below an actionable interactive match (W-P1). Deliberately
+// demote them below an actionable interactive match. Deliberately
 // conservative — list/listitem/article/section are omitted because they can
 // legitimately be the intended target in some UIs.
 const CONTAINER_ROLES = new Set([
