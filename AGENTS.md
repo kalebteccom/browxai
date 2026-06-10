@@ -20,18 +20,18 @@ browxai is an MCP-native, model-agnostic, agentic-first browser-control server o
 
 Agents reading this file must not invoke the commands below unless the operator explicitly authorizes the specific invocation in the same session.
 
-| Pattern | Decision | Why |
-|---|---|---|
-| `pnpm publish`, `npm publish` | forbidden | Releases go through OIDC trusted publishing in `release.yml`. No human or agent runs publish locally (baseline rule 8). |
-| `npm install -g <anything>` | prompt | Global installs are a typosquat vector and route around the project lockfile (baseline rules 41 / 49). |
-| `git push --force` (and `--force-with-lease` to protected branches) | forbidden | Branch ruleset rejects this server-side; the agent layer is defense-in-depth (baseline rule 26). |
-| `pnpm install-browser` | explicit allow | Documented Playwright/Chromium fetch — the legit exception to `--ignore-scripts` (baseline rule 39). Must not be blocked by any blanket install rule. |
-| `gh pr merge --admin` | forbidden | Bypasses branch protection and CODEOWNERS review (baseline rules 25 / 26). |
-| `curl <url> \| bash`, `wget <url> \| bash` | forbidden | Unverified pipe-to-shell is the Codecov-2021 class. Fetch + SHA-256 verify instead (baseline rule 41). |
-| `git reset --hard` | forbidden | Never discard local work. Use a targeted revert if asked. |
-| `git checkout -- <path>` | forbidden | Never overwrite local files with checkout. |
-| `git clean` | prompt | Deletes untracked work; needs explicit operator review. |
-| `rm -rf` | prompt | Recursive deletion needs explicit operator review. |
+| Pattern                                                             | Decision       | Why                                                                                                                                                   |
+| ------------------------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm publish`, `npm publish`                                       | forbidden      | Releases go through OIDC trusted publishing in `release.yml`. No human or agent runs publish locally (baseline rule 8).                               |
+| `npm install -g <anything>`                                         | prompt         | Global installs are a typosquat vector and route around the project lockfile (baseline rules 41 / 49).                                                |
+| `git push --force` (and `--force-with-lease` to protected branches) | forbidden      | Branch ruleset rejects this server-side; the agent layer is defense-in-depth (baseline rule 26).                                                      |
+| `pnpm install-browser`                                              | explicit allow | Documented Playwright/Chromium fetch — the legit exception to `--ignore-scripts` (baseline rule 39). Must not be blocked by any blanket install rule. |
+| `gh pr merge --admin`                                               | forbidden      | Bypasses branch protection and CODEOWNERS review (baseline rules 25 / 26).                                                                            |
+| `curl <url> \| bash`, `wget <url> \| bash`                          | forbidden      | Unverified pipe-to-shell is the Codecov-2021 class. Fetch + SHA-256 verify instead (baseline rule 41).                                                |
+| `git reset --hard`                                                  | forbidden      | Never discard local work. Use a targeted revert if asked.                                                                                             |
+| `git checkout -- <path>`                                            | forbidden      | Never overwrite local files with checkout.                                                                                                            |
+| `git clean`                                                         | prompt         | Deletes untracked work; needs explicit operator review.                                                                                               |
+| `rm -rf`                                                            | prompt         | Recursive deletion needs explicit operator review.                                                                                                    |
 
 Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rules`](.codex/rules/default.rules) (Codex DSL) and [`.claude/hooks/block-forbidden-commands.sh`](.claude/hooks/block-forbidden-commands.sh) (Claude `PreToolUse`); advisory in [`.cursor/rules/01-forbidden-commands.mdc`](.cursor/rules/01-forbidden-commands.mdc) (Cursor has no hook system — the model is expected to respect the rule).
 
