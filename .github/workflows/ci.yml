@@ -59,4 +59,8 @@ jobs:
             playwright-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright-core install --with-deps chromium
+      # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/
+      # into a staged workspace and fails with ENOENT if dist/ is missing.
+      # The unit `pnpm test` doesn't need it but the keystone does.
+      - run: pnpm build
       - run: pnpm test:keystone
