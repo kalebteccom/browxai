@@ -15,10 +15,7 @@ name: docs
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 
 concurrency:
   group: pages
@@ -27,9 +24,13 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Build only reads the repo and produces a pages artifact; no Pages or
+    # OIDC scope needed here (universal-baseline excessive-permissions).
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -44,6 +45,11 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # Pages deployment is the only step that needs `pages: write` +
+    # `id-token: write` (the latter for the OIDC-attested Pages publish).
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
