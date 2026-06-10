@@ -1,0 +1,30 @@
+# browxai project command policy. Rules apply to commands Codex asks to run
+# outside the sandbox in trusted project sessions.
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "Never discard local work. Ask the user and use a targeted revert if needed.",
+    match = ["git reset --hard", "git reset --hard HEAD"],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", "--"],
+    decision = "forbidden",
+    justification = "Never overwrite local files with checkout. Ask the user before discarding changes.",
+    match = ["git checkout -- src/server.ts"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "prompt",
+    justification = "Cleaning untracked files can delete user work.",
+    match = ["git clean -fd", "git clean -fdx"],
+)
+
+prefix_rule(
+    pattern = ["rm", "-rf"],
+    decision = "prompt",
+    justification = "Recursive deletion needs explicit review.",
+    match = ["rm -rf dist", "rm -rf node_modules"],
+)

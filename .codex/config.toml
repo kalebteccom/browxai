@@ -1,15 +1,16 @@
-# Codex project config for browxai.
-#
-# The canonical agent operating guide is the repo-root `AGENTS.md` file.
-# Codex picks it up automatically (AGENTS.md is the industry-standard
-# discovery path); this config exists to declare the link explicitly,
-# register expert agent definitions, and document Codex-side glue.
-#
-# Do NOT duplicate rules here — change AGENTS.md and every harness picks
-# up the new rule on the next session.
+# Project-scoped Codex defaults for browxai.
+# The canonical agent operating guide is the repo-root AGENTS.md file —
+# Codex picks it up automatically. This config exists to declare features
+# and document Codex-side glue. Do NOT duplicate rules here — change
+# AGENTS.md and every harness picks up the new rule on the next session.
 
-# Rules file (agent-agnostic, single source of truth).
-rules_file = "AGENTS.md"
+project_doc_max_bytes = 65536
 
-# Expert agent definitions for this repo.
-agents_dir = ".codex/agents"
+[features]
+hooks = true
+multi_agent = true
+shell_snapshot = true
+
+[agents]
+max_threads = 6
+max_depth = 1

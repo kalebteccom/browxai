@@ -1,16 +1,22 @@
 # Codex agent definitions — browxai
 
-Mirrored copies of the expert agent definitions also present in `.claude/agents/` and `.agents/skills/`. The canonical role logic is `.agents/skills/<name>.md`; this directory holds the Codex-flavoured copy so Codex picks them up via its own discovery path.
+Codex expert agents for this repo, in Codex's native TOML schema. Each file is the Codex-format mirror of the canonical Claude-skill version in `.agents/skills/<name>.md` — the role content is the same; only the wrapper format differs. Don't edit these in isolation: change `.agents/skills/<name>.md` first, then re-mirror.
 
-The Codex agent-file format is still under iteration. Until the format stabilizes upstream, files here mirror the Claude shape (markdown body with YAML frontmatter declaring `name`, `description`, `model`, `tools`). When Codex publishes a stricter schema (TOML or otherwise), convert these files in a follow-up cycle — the role content stays; only the wrapper format changes.
+The repo-root `AGENTS.md` is the single source of truth for cross-harness rules. These agents add role-specific framing on top of that base.
 
 ## Agents
 
-- `tool-author.md` — adding a new MCP tool end-to-end.
-- `plugin-author.md` — scaffolding a workspace plugin per the v0.7 contract.
-- `keystone-writer.md` — regression-gate keystone tests for page-side function changes.
-- `capability-gate-auditor.md` — verifying off-by-default capability discipline.
-- `security-reviewer.md` — security checklist on egress/secrets/workspace/capability diffs.
-- `docs-impact-auditor.md` — docs-impact verification on behavior-change diffs.
-- `release-engineer.md` — the release ritual.
-- `tracker-id-auditor.md` — scanning diffs for tracker IDs.
+- `tool-author.toml` — Tool / MCP / Surface — adding a new MCP tool end-to-end.
+- `plugin-author.toml` — Plugin / Adapter / Workspace — scaffolding a workspace plugin per the v0.7 contract.
+- `keystone-writer.toml` — Keystone / Regression / Chromium — regression-gate keystone tests for page-side function changes.
+- `capability-gate-auditor.toml` — Gate / Capability / Posture — verifying off-by-default capability discipline.
+- `security-reviewer.toml` — Security / Egress / Secrets — security checklist on egress/secrets/workspace/capability diffs.
+- `docs-impact-auditor.toml` — Docs / Audit / Changelog — docs-impact verification on behavior-change diffs.
+- `release-engineer.toml` — Release / Ship / Tag — the release ritual.
+- `tracker-id-auditor.toml` — Tracker / Lint / Comments — scanning diffs for tracker IDs.
+
+## See also
+
+- `.agents/skills/<name>.md` — canonical Claude-skill version (source of truth).
+- `.claude/agents/<name>.md` — Claude harness mirror (same `.md` shape).
+- `AGENTS.md` — cross-harness rule base.
