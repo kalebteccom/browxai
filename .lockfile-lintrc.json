@@ -1,9 +1,0 @@
-{
-  "path": "pnpm-lock.yaml",
-  "type": "pnpm",
-  "allowed-hosts": ["npm"],
-  "allowed-schemes": ["https:"],
-  "validate-https": true,
-  "validate-integrity": true,
-  "validate-package-names": true
-}
