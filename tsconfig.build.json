@@ -3,7 +3,19 @@
   "compilerOptions": {
     "sourceMap": false,
     "inlineSourceMap": false,
-    "declarationMap": true
+    // Declaration maps reference src/ paths and would ship .d.ts.map files in
+    // the published tarball — same leak class as .js.map. Audit-package-
+    // contents gates on `*.map`, so they have to stay out of dist/.
+    "declarationMap": false
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests live alongside source (e.g. src/page/actions.test.ts) and would be
+  // compiled into dist/ by `include: ["src"]`. The publish gate rejects
+  // *.test.js — exclude them at the tsc level.
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts",
+    "src/**/__tests__/**",
+    "src/**/__fixtures__/**"
+  ]
 }
