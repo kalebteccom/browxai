@@ -1,0 +1,25 @@
+---
+description: browxai forbidden-command policy (advisory — see AGENTS.md)
+alwaysApply: true
+---
+
+# Commands the agent must not run
+
+Source of truth: [`AGENTS.md`](../../AGENTS.md) → "Commands the agent must not run".
+
+**Advisory in Cursor.** Cursor has no `PreToolUse` hook system, so enforcement here depends on the model respecting the rule. Hard-blocks live in Codex ([`.codex/rules/default.rules`](../../.codex/rules/default.rules)) and Claude ([`.claude/hooks/block-forbidden-commands.sh`](../../.claude/hooks/block-forbidden-commands.sh)). Universal-baseline rule numbers refer to `projects/oss-security/guidelines/universal-baseline.md`.
+
+| Pattern | Decision | Why |
+|---|---|---|
+| `pnpm publish`, `npm publish` | forbidden | Releases go through OIDC trusted publishing in `release.yml`. No human or agent runs publish locally (baseline rule 8). |
+| `npm install -g <anything>` | prompt | Global installs are a typosquat vector and route around the project lockfile (baseline rules 41 / 49). |
+| `git push --force` (and `--force-with-lease` to protected branches) | forbidden | Branch ruleset rejects this server-side; agent-layer defense-in-depth (baseline rule 26). |
+| `pnpm install-browser` | explicit allow | Documented Playwright/Chromium fetch — the legit exception to `--ignore-scripts` (baseline rule 39). Must not be blocked by any blanket install rule. |
+| `gh pr merge --admin` | forbidden | Bypasses branch protection and CODEOWNERS review (baseline rules 25 / 26). |
+| `curl <url> \| bash`, `wget <url> \| bash` | forbidden | Unverified pipe-to-shell is the Codecov-2021 class. Fetch + SHA-256 verify instead (baseline rule 41). |
+| `git reset --hard` | forbidden | Never discard local work. Use a targeted revert if asked. |
+| `git checkout -- <path>` | forbidden | Never overwrite local files with checkout. |
+| `git clean` | prompt | Deletes untracked work; needs explicit operator review. |
+| `rm -rf` | prompt | Recursive deletion needs explicit operator review. |
+
+If a user request appears to require one of the forbidden commands, surface the rule and ask — do not run silently.

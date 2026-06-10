@@ -28,3 +28,71 @@ prefix_rule(
     justification = "Recursive deletion needs explicit review.",
     match = ["rm -rf dist", "rm -rf node_modules"],
 )
+
+# browxai-specific rules. See AGENTS.md "Commands the agent must not run" for
+# the canonical table and rationale. Universal-baseline rule numbers refer to
+# projects/oss-security/guidelines/universal-baseline.md.
+
+prefix_rule(
+    pattern = ["pnpm", "publish"],
+    decision = "forbidden",
+    justification = "Releases go through OIDC trusted publishing in release.yml. No local publish (baseline rule 8).",
+    match = ["pnpm publish", "pnpm publish --access public"],
+)
+
+prefix_rule(
+    pattern = ["npm", "publish"],
+    decision = "forbidden",
+    justification = "Releases go through OIDC trusted publishing in release.yml. No local publish (baseline rule 8).",
+    match = ["npm publish", "npm publish --access public"],
+)
+
+# Token-prefix match on the -g flag — does NOT match `pnpm install-browser`
+# (different binary token, and "install-browser" is a distinct token from
+# "install"). The Playwright/Chromium exception (baseline rule 39) is
+# preserved by this specificity.
+prefix_rule(
+    pattern = ["npm", "install", "-g"],
+    decision = "prompt",
+    justification = "Global installs are a typosquat vector and route around the lockfile (baseline rules 41 / 49).",
+    match = ["npm install -g typescript", "npm install -g @some/pkg"],
+)
+
+prefix_rule(
+    pattern = ["npm", "i", "-g"],
+    decision = "prompt",
+    justification = "Global installs are a typosquat vector and route around the lockfile (baseline rules 41 / 49).",
+    match = ["npm i -g typescript"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "Branch ruleset rejects this server-side; agent-layer defense-in-depth (baseline rule 26).",
+    match = ["git push --force", "git push --force origin main"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-f"],
+    decision = "forbidden",
+    justification = "Branch ruleset rejects this server-side; agent-layer defense-in-depth (baseline rule 26).",
+    match = ["git push -f origin main"],
+)
+
+# --force-with-lease is allowed against feature branches but forbidden against
+# protected branches. prefix_rule can't carve out "to main" vs. "to feature/*";
+# leave this as advisory in AGENTS.md and rely on the server-side branch ruleset.
+# The Claude hook also enforces it pattern-side.
+
+prefix_rule(
+    pattern = ["gh", "pr", "merge", "--admin"],
+    decision = "forbidden",
+    justification = "Bypasses branch protection and CODEOWNERS review (baseline rules 25 / 26).",
+    match = ["gh pr merge --admin", "gh pr merge 123 --admin --squash"],
+)
+
+# Pipe-to-shell (`curl … | bash`, `wget … | bash`) is a pipeline, not a
+# command prefix — prefix_rule cannot see the `| bash` tail. The Claude hook
+# (.claude/hooks/block-forbidden-commands.sh) catches it at agent-tool-call time
+# and AGENTS.md declares it forbidden. Documented gap, not silent omission
+# (baseline rule 41).
