@@ -37,10 +37,16 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      # No `cache: pnpm` on setup-node below — tag-triggered release jobs
+      # avoid the pnpm cache to stay immune to cache-poisoning (universal-
+      # baseline rule 26 / zizmor cache-poisoning). The ~30s install penalty
+      # per matrix job is acceptable in exchange. zizmor still flags the
+      # action's presence as a "cache enabled by default" heuristic (Low
+      # confidence) — the suppression below documents that the real
+      # mitigation is the absent `cache:` opt-in.
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: ${{ matrix.node-version }}
-          cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm typecheck
@@ -73,10 +79,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      # No `cache: pnpm` — see cache-poisoning note on build job above.
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
-          cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
@@ -105,10 +111,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      # No `cache: pnpm` — see cache-poisoning note on build job above.
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
-          cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm sbom
       - name: Attach SBOM to GitHub Release
@@ -138,7 +144,10 @@ jobs:
             .npmignore
             scripts/
           sparse-checkout-cone-mode: false
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      # No `cache` opt-in on setup-node — tag-triggered publish job avoids
+      # any package-manager cache to stay immune to cache-poisoning attacks
+      # against the OIDC-publishing path (universal-baseline rule 26).
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
@@ -163,10 +172,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      # No `cache: pnpm` — see cache-poisoning note on publish job above.
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
-          cache: pnpm
           registry-url: https://registry.npmjs.org
       - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
         run: npm install -g npm@latest

@@ -9,7 +9,10 @@ permissions: {}
 
 jobs:
   auto-merge:
-    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.type == 'Bot'
+    # Verify bot identity via the PR-author's user object — `user.type == 'Bot'`
+    # combined with the GitHub App's `user.login` is not spoofable, unlike
+    # bare `github.actor` (universal-baseline rule 28 / zizmor bot-conditions).
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.type == 'Bot'
     runs-on: ubuntu-latest
     permissions:
       contents: write
