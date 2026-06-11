@@ -1,4 +1,11 @@
-# browxai
+<p align="center">
+  <a href="https://browxai.com"><img src="brand/browxai-glass-aurora-1024.png" width="116" alt="browxai" /></a>
+</p>
+
+<h1 align="center">browxai</h1>
+
+<p align="center"><strong>A browser, built for agents.</strong><br/>
+<a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
 **An MCP-native, model-agnostic, agentic-first browser-control server for AI agents.**
 
