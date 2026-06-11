@@ -11,10 +11,10 @@ lastUpdated: false
   <div class="browx-hero-copy">
     <p class="browx-kicker">MCP-native browser control</p>
     <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
-    <p class="browx-lede">
+    <div class="browx-lede">
       A browser, built for agents. Playwright and CDP under the hood, a curated
       surface on top that an AI agent can actually drive without drowning in tokens.
-    </p>
+    </div>
     <div class="browx-cta">
       <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
       <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
@@ -113,47 +113,47 @@ lastUpdated: false
 
 <div class="browx-section not-content">
   <h2 class="browx-section-title">Why it exists</h2>
-  <p class="browx-section-sub">
+  <div class="browx-section-sub">
     browxai is not a wrapper over someone else's MCP server. It owns its own
     Playwright and CDP transport so it can own the whole session lifecycle.
-  </p>
+  </div>
 
   <div class="browx-grid">
     <div class="browx-card">
       <span class="browx-card-mark">// surface</span>
       <h3>Token-efficient</h3>
-      <p>
+      <div class="browx-card-text">
         <code>snapshot()</code> is a scoped, paginated, budgeted accessibility
         tree. <code>find()</code> returns ranked candidates with evidence, not a
         guess. Results stay small on purpose.
-      </p>
+      </div>
     </div>
     <div class="browx-card">
       <span class="browx-card-mark">// safety</span>
       <h3>Safe by default</h3>
-      <p>
+      <div class="browx-card-text">
         Capability-gated tools, an origin allow and block list, confirmation
         hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
         response bodies, the OS clipboard, and network mocking are all off until
         you opt in.
-      </p>
+      </div>
     </div>
     <div class="browx-card">
       <span class="browx-card-mark">// clients</span>
       <h3>Model-agnostic</h3>
-      <p>
+      <div class="browx-card-text">
         Any MCP client over stdio. Use it from Claude, Codex, or anything else
         that speaks the protocol. It is not tied to one model or one vendor.
-      </p>
+      </div>
     </div>
     <div class="browx-card">
       <span class="browx-card-mark">// sessions</span>
       <h3>Sessions and lifecycle</h3>
-      <p>
+      <div class="browx-card-text">
         Isolated per-session contexts: persistent, incognito, or attach to an
         existing Chrome you already control. Headed and headless. Config is
         driven over MCP, with no out-of-band setup.
-      </p>
+      </div>
     </div>
   </div>
 </div>

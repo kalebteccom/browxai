@@ -437,11 +437,22 @@ main:has(.browx-hero) > .content-panel {
   margin: 0 0 0.5rem;
   font-size: 1.05rem;
 }
-.browx-card p {
+.browx-card-text {
   margin: 0;
   color: var(--sl-color-gray-2);
   font-size: 0.94rem;
   line-height: 1.55;
+}
+
+/* MDX wraps the multi-line text inside these <div>s in its own <p>. Neutralize
+   that inner paragraph so only the container controls spacing. */
+.browx-lede > p,
+.browx-section-sub > p,
+.browx-card-text > p {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  max-width: inherit;
 }
 .browx-card .browx-card-mark {
   font-family: var(--browx-font-mono);
