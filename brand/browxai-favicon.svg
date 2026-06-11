@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
-  <style>
-    .s{stroke:#16161A}.f{fill:#16161A}
-    @media(prefers-color-scheme:dark){.s{stroke:#FAFAF7}.f{fill:#FAFAF7}}
-  </style>
-  <path class="s" fill="none" stroke-width="10" stroke-linecap="round" d="M14.5 53.9A34 34 0 0 1 53.9 14.5"/>
-  <path class="s" fill="none" stroke-width="10" stroke-linecap="round" d="M81.5 42.1A34 34 0 0 1 42.1 81.5"/>
-  <path class="f" d="M29.6 65.4L33.2 38.9L69.3 25.7L56.1 61.8Z"/>
+  <defs>
+    <linearGradient id="t" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6D28D9"/>
+      <stop offset="1" stop-color="#9333EA"/>
+    </linearGradient>
+  </defs>
+  <rect width="96" height="96" rx="21" fill="url(#t)"/>
+  <g transform="translate(9.6,9.6) scale(0.8)" fill="none" stroke="#FFFFFF" stroke-width="11" stroke-linecap="butt">
+    <path d="M17.2 59.8A33 33 0 0 1 59.8 17.2"/>
+    <path d="M78.8 36.2A33 33 0 0 1 36.2 78.8"/>
+    <path d="M29.6 65.4L33.2 38.9L69.3 25.7L56.1 61.8Z" fill="#FFFFFF" stroke="none"/>
+  </g>
 </svg>
