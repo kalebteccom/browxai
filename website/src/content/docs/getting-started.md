@@ -10,11 +10,13 @@ any MCP client.
 ## Install
 
 ```bash
-npm install browxai
+npm install -g browxai
 npx playwright-core install chromium    # one-time, ~150 MB
 ```
 
-`browxai` ships a `browxai` binary, the MCP server on the stdio transport.
+A global install puts the `browxai` binary on your `PATH`, so an MCP client can
+launch it by name (`command: "browxai"`). The binary is the MCP server on the
+stdio transport.
 
 ## Wire it into an MCP client
 

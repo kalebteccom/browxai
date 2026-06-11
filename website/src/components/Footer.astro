@@ -1,0 +1,15 @@
+---
+// Wraps Starlight's default footer (prev/next, edit link, last updated) and
+// adds a site-wide credit line.
+import Default from "@astrojs/starlight/components/Footer.astro";
+---
+
+<Default><slot /></Default>
+
+<div class="browx-credit">
+  Made by <a href="https://kalebtec.com">Kalebtec</a>
+  <span class="sep">·</span>
+  <a href="https://github.com/kalebteccom/browxai">GitHub</a>
+  <span class="sep">·</span>
+  MIT licensed
+</div>

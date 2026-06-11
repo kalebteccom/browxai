@@ -20,7 +20,7 @@ lastUpdated: false
       <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
     </div>
     <div class="browx-install">
-      <span class="pfx">$</span> npm install browxai
+      <span class="pfx">$</span> npm install -g browxai
     </div>
   </div>
 
@@ -59,26 +59,56 @@ lastUpdated: false
   </div>
 </div>
 
-<div class="browx-loop not-content">
-  <div class="browx-loop-step">
-    <b>navigate</b>
-    <span>go to a URL</span>
-  </div>
-  <span class="browx-loop-arrow">&rarr;</span>
-  <div class="browx-loop-step">
-    <b>snapshot</b>
-    <span>read the page as refs</span>
-  </div>
-  <span class="browx-loop-arrow">&rarr;</span>
-  <div class="browx-loop-step">
-    <b>find</b>
-    <span>locate a target</span>
-  </div>
-  <span class="browx-loop-arrow">&rarr;</span>
-  <div class="browx-loop-step">
-    <b>act</b>
-    <span>click, fill, verify</span>
-  </div>
+<div class="browx-diagram not-content">
+  <svg
+    class="browx-loop-svg"
+    viewBox="0 0 960 210"
+    role="img"
+    aria-label="The agent loop: navigate, then snapshot, then find, then act, repeating."
+  >
+    <defs>
+      <marker
+        id="bx-arrow"
+        viewBox="0 0 10 10"
+        refX="8.5"
+        refY="5"
+        markerWidth="7"
+        markerHeight="7"
+        orient="auto-start-reverse"
+      >
+        <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
+      </marker>
+    </defs>
+
+    <line class="bx-link" x1="202" y1="75" x2="262" y2="75" marker-end="url(#bx-arrow)" />
+    <line class="bx-link" x1="448" y1="75" x2="508" y2="75" marker-end="url(#bx-arrow)" />
+    <line class="bx-link" x1="694" y1="75" x2="754" y2="75" marker-end="url(#bx-arrow)" />
+
+    <path class="bx-link bx-loopback" d="M848 110 C 848 190, 110 190, 110 112" marker-end="url(#bx-arrow)" />
+    <text class="bx-loop-label" x="479" y="184" text-anchor="middle">repeat</text>
+
+    <g class="bx-node">
+      <rect x="20" y="44" width="180" height="62" rx="12" />
+      <text class="bx-node-name" x="38" y="73">navigate</text>
+      <text class="bx-node-sub" x="38" y="92">go to a URL</text>
+    </g>
+    <g class="bx-node">
+      <rect x="266" y="44" width="180" height="62" rx="12" />
+      <text class="bx-node-name" x="284" y="73">snapshot</text>
+      <text class="bx-node-sub" x="284" y="92">read the page as refs</text>
+    </g>
+    <g class="bx-node">
+      <rect x="512" y="44" width="180" height="62" rx="12" />
+      <text class="bx-node-name" x="530" y="73">find</text>
+      <text class="bx-node-sub" x="530" y="92">locate a target</text>
+    </g>
+    <g class="bx-node">
+      <rect x="758" y="44" width="180" height="62" rx="12" />
+      <text class="bx-node-name" x="776" y="73">act</text>
+      <text class="bx-node-sub" x="776" y="92">click, fill, verify</text>
+    </g>
+
+  </svg>
 </div>
 
 <div class="browx-section not-content">

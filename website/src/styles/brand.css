@@ -116,7 +116,7 @@ main:has(.browx-hero) > .content-panel {
 /* Center every landing block on a shared column width. */
 .browx-wrap,
 .browx-hero,
-.browx-loop,
+.browx-diagram,
 .browx-section {
   max-width: 1140px;
   margin-inline: auto;
@@ -170,7 +170,7 @@ main:has(.browx-hero) > .content-panel {
 
 @media (prefers-reduced-motion: reduce) {
   .browx-hero *,
-  .browx-loop * {
+  .browx-diagram * {
     animation: none !important;
     transition: none !important;
   }
@@ -349,48 +349,52 @@ main:has(.browx-hero) > .content-panel {
   color: var(--sl-color-text-accent);
 }
 
-/* The agent loop: navigate -> snapshot -> find -> act, centered + connected. */
-.browx-loop {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: stretch;
-  gap: 0.5rem;
-  margin-top: clamp(2.5rem, 6vw, 4rem);
-  font-family: var(--browx-font-mono);
-  font-size: 0.82rem;
+/* The agent loop, drawn as a flow diagram: navigate -> snapshot -> find ->
+   act, with a dashed return arc back to the start. Inline SVG so it inherits
+   the brand tokens and scales crisply. */
+.browx-diagram {
+  margin-top: clamp(2rem, 5vw, 3rem);
 }
-.browx-loop-step {
-  flex: 0 1 9.5rem;
-  border: 1px solid var(--sl-color-hairline-shade);
-  border-radius: 0.6rem;
-  padding: 0.75rem 0.9rem;
-  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, transparent);
-}
-.browx-loop-step b {
-  color: var(--sl-color-text-accent);
-  font-weight: 600;
+.browx-loop-svg {
   display: block;
-  margin-bottom: 0.2rem;
+  width: 100%;
+  height: auto;
 }
-.browx-loop-step span {
-  color: var(--sl-color-gray-3);
+.browx-loop-svg .bx-node rect {
+  fill: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, var(--sl-color-bg));
+  stroke: var(--sl-color-hairline-shade);
+  stroke-width: 1;
+  transition: stroke 0.15s ease;
+}
+.browx-loop-svg .bx-node:hover rect {
+  stroke: color-mix(in srgb, var(--browx-lime-400) 55%, transparent);
+}
+.browx-loop-svg .bx-node-name {
+  fill: var(--sl-color-text-accent);
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  font-size: 17px;
+}
+.browx-loop-svg .bx-node-sub {
+  fill: var(--sl-color-gray-3);
   font-family: var(--browx-font-body);
-  font-size: 0.82rem;
+  font-size: 12.5px;
 }
-.browx-loop-arrow {
-  display: inline-flex;
-  align-items: center;
-  color: var(--sl-color-text-accent);
-  opacity: 0.55;
+.browx-loop-svg .bx-link {
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2;
+  fill: none;
 }
-@media (max-width: 34rem) {
-  .browx-loop-arrow {
-    display: none;
-  }
-  .browx-loop-step {
-    flex: 1 1 42%;
-  }
+.browx-loop-svg .bx-loopback {
+  stroke-dasharray: 5 6;
+  opacity: 0.5;
+}
+.browx-loop-svg .bx-loop-label {
+  fill: var(--sl-color-gray-4);
+  font-family: var(--browx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
 }
 
 /* Feature grid. */
@@ -456,4 +460,25 @@ main:has(.browx-hero) > .content-panel {
 .browx-cta--center {
   justify-content: center;
   margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+
+/* Site-wide credit line, appended after Starlight's default footer. */
+.browx-credit {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--sl-color-hairline-shade);
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+}
+.browx-credit a {
+  color: var(--sl-color-text-accent);
+  text-decoration: none;
+}
+.browx-credit a:hover {
+  text-decoration: underline;
+}
+.browx-credit .sep {
+  margin: 0 0.5rem;
+  opacity: 0.5;
 }

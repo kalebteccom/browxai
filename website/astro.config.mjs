@@ -19,6 +19,9 @@ export default defineConfig({
         light: "./src/assets/mark-light.svg",
         dark: "./src/assets/mark-dark.svg",
       },
+      components: {
+        Footer: "./src/components/Footer.astro",
+      },
       favicon: "/favicon.svg",
       head: [
         { tag: "meta", attrs: { property: "og:image", content: "https://browxai.com/og.png" } },
