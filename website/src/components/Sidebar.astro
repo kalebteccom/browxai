@@ -1,0 +1,41 @@
+---
+// Wraps Starlight's default sidebar and pins an llms.txt affordance to the
+// bottom (the surrounding .sidebar-content is made a flex column in brand.css,
+// so the link sits at the bottom via margin-top: auto).
+import Default from "@astrojs/starlight/components/Sidebar.astro";
+---
+
+<Default><slot /></Default>
+
+<a class="browx-sidebar-llms" href="/llms.txt" target="_blank" rel="noopener">
+  <svg
+    class="ico"
+    width="15"
+    height="15"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+    <path d="M14 2v6h6"></path>
+  </svg>
+  <span class="lbl">llms.txt</span>
+  <svg
+    class="ext"
+    width="12"
+    height="12"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M7 17 17 7M7 7h10v10"></path>
+  </svg>
+</a>

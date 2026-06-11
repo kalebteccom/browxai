@@ -21,6 +21,7 @@ export default defineConfig({
       },
       components: {
         Footer: "./src/components/Footer.astro",
+        Sidebar: "./src/components/Sidebar.astro",
       },
       favicon: "/favicon.svg",
       head: [

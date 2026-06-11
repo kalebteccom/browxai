@@ -210,10 +210,10 @@ main:has(.browx-hero) > .content-panel {
 
 .browx-lede {
   font-size: clamp(1.05rem, 1.6vw, 1.28rem);
-  line-height: 1.55;
+  line-height: 1.6;
   max-width: 42ch;
   color: var(--sl-color-gray-2);
-  margin: 1.4rem 0 1.9rem;
+  margin: 1.6rem 0 2.6rem;
 }
 
 .browx-cta {
@@ -232,7 +232,7 @@ main:has(.browx-hero) > .content-panel {
   font-family: var(--browx-font-display);
   font-weight: 600;
   border-radius: 0.55rem;
-  padding: 0.7rem 1.15rem;
+  padding: 0.8rem 1.3rem;
   transition:
     transform 0.12s ease,
     box-shadow 0.12s ease,
@@ -260,7 +260,7 @@ main:has(.browx-hero) > .content-panel {
 
 /* Install one-liner under the CTAs. */
 .browx-install {
-  margin-top: 1.5rem;
+  margin-top: 1.85rem;
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
@@ -481,4 +481,99 @@ main:has(.browx-hero) > .content-panel {
 .browx-credit .sep {
   margin: 0 0.5rem;
   opacity: 0.5;
+}
+
+/* ---- Sidebar: non-collapsible, Vercel / Next.js / MCP-docs feel ---------- */
+
+/* Groups are always open: kill the toggle and the caret. */
+#starlight__sidebar summary {
+  pointer-events: none;
+  padding-block: 0.25rem;
+}
+#starlight__sidebar summary .caret {
+  display: none;
+}
+
+/* Section labels: small, uppercase, quiet, like the MCP sidebar. */
+#starlight__sidebar .group-label .large {
+  font-family: var(--browx-font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+
+/* Make the sidebar a column so the llms.txt link can pin to the bottom. */
+#starlight__sidebar .sidebar-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+/* Items: more vertical padding, rounded, subtle hover, refined active state. */
+#starlight__sidebar .top-level a {
+  display: block;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  color: var(--sl-color-gray-2);
+  transition:
+    background 0.13s ease,
+    color 0.13s ease;
+}
+#starlight__sidebar .top-level a:hover {
+  background: color-mix(in srgb, var(--sl-color-gray-5) 22%, transparent);
+  color: var(--sl-color-white);
+}
+#starlight__sidebar .top-level a[aria-current="page"] {
+  background: color-mix(in srgb, var(--sl-color-text-accent) 13%, transparent);
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+}
+#starlight__sidebar .top-level ul ul {
+  border-inline-start-color: var(--sl-color-hairline-shade);
+}
+
+/* The llms.txt affordance, pinned to the bottom of the sidebar. */
+.browx-sidebar-llms {
+  margin: auto 0.5rem 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--sl-color-hairline-shade);
+  border-radius: 0.55rem;
+  font-family: var(--browx-font-mono);
+  font-size: 0.82rem;
+  color: var(--sl-color-gray-2);
+  text-decoration: none;
+  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 50%, transparent);
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.browx-sidebar-llms:hover {
+  border-color: color-mix(in srgb, var(--browx-lime-400) 50%, transparent);
+  color: var(--sl-color-white);
+}
+.browx-sidebar-llms .ico {
+  color: var(--sl-color-text-accent);
+  flex-shrink: 0;
+}
+.browx-sidebar-llms .lbl {
+  flex: 1;
+}
+.browx-sidebar-llms .ext {
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+/* ---- Content polish: comfortable measure + rhythm ----------------------- */
+.sl-markdown-content {
+  --sl-content-width: 50rem;
+}
+.sl-markdown-content :is(h2, h3) {
+  letter-spacing: -0.01em;
 }
