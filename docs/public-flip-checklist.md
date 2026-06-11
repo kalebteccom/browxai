@@ -77,9 +77,9 @@ are generated from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`;
 6. Verify: `https://browxai.com` loads, search works, `www` 301s to the apex,
    the branded 404 renders on an unknown path, and a shared link shows `og.png`.
 
-GitHub Pages is superseded by Netlify. `.github/workflows/docs.yml` and
-`website/public/CNAME` are GitHub-Pages-specific; remove them once Netlify is
-live (the CNAME file is harmless on Netlify, where domains are set in the UI).
+Netlify is the only deploy. The former GitHub Pages workflow
+(`.github/workflows/docs.yml`) and the `website/public/CNAME` file have been
+removed; Netlify sets the domain in its UI / `netlify.toml`.
 
 ## Post-flip monitoring (first 30 days)
 
