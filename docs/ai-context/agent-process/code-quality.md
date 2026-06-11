@@ -60,6 +60,22 @@ Default to writing no comments. Only add one when the WHY is non-obvious: a hidd
 
 A PR-time `tracker-id-auditor` agent (see `.agents/skills/tracker-id-auditor.md`) regex-scans diffs as a backup to the ESLint custom rule.
 
+## Documentation and public-surface hygiene
+
+The "no internal tracking identifiers" rule is not limited to code comments. It applies to every surface a **user or a calling agent** reads: the published docs (`docs/*.md` that ship to browxai.com), the tool descriptions and capability warnings in `src/` that reach the MCP client, the README, and CHANGELOG entries.
+
+The reader cares what a tool does **today**, not how it got there. Strip the provenance:
+
+- **Roadmap phase tags** — `(Phase 8)`, `Phase-2.5`, `Pre-Phase-7`. Describe current behavior, not the internal phase that shipped it.
+- **Wishlist / tracker IDs** — `(Wishlist W-D3.)`, `_(W-F4)_`, `W-H5`. Provenance for the team, noise to a user.
+- **Decision history** — "revised down from ~1 month by owner decision 2026-05-20", "baseline cut 2026-05-19", "every adoption round reset the clock". The current rule is the documentation; how it was reached is git history.
+- **Dead-feature and futures callouts** — "(deferred)", "(queued as a future cycle)", "(Tracked: … — see feedback_X)", or describing a removed feature. If it does not ship, do not mention it; if it is planned, it does not belong in the reference for what ships.
+- **Memory / internal-doc pointers** — `see feedback_chrome_child_dies_with_server`. State the fact inline or link a public doc; never expose an internal memory slug.
+
+Write the fact, not the provenance: "Capability `eval` is off by default", not "the `eval` capability (Phase 2, W-L3, revised by owner decision …) is off by default". Cross-references to other **public** docs (`see docs/threat-model.md`) are reader-useful navigation, not internal tracking, and are fine.
+
+Internal working docs under `docs/ai-context/` and `docs/rfcs/` are exempt — phase and decision history are legitimate context there. The line is simple: **anything a user or calling agent can read must be clean.**
+
 ## No half-finished implementations
 
 - Don't add error handling, fallbacks, or validation for scenarios that can't happen. Trust internal code and framework guarantees. Validate at system boundaries (user input, external APIs, MCP wire, Playwright/CDP edge).
