@@ -1,0 +1,36 @@
+# Netlify deploy for the browxai documentation site (website/).
+#
+# The site is a static Astro + Starlight build, so no serverless adapter is
+# needed - Netlify just builds and serves the static output. This repo is a
+# pnpm workspace, so install/build run from the repo root (the default base)
+# where the workspace and lockfile resolve; the command then builds only the
+# website package.
+#
+# Netlify auto-detects pnpm from pnpm-lock.yaml + the root package.json
+# `packageManager` field (pnpm@9 via corepack) and runs the install itself.
+
+[build]
+  command = "pnpm --filter @browxai/website rebuild esbuild sharp && pnpm --filter @browxai/website build"
+  publish = "website/dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # The repo's .npmrc sets ignore-scripts=true as a supply-chain guard, so the
+  # Astro toolchain's native binaries are not compiled on install. The
+  # `pnpm rebuild esbuild sharp` step in the build command compiles the two the
+  # build actually needs. (If Netlify ever resolves the wrong pnpm, pin it with
+  # PNPM_VERSION = "9".)
+
+# Content-hashed assets never change - cache them for a year.
+[[headers]]
+  for = "/_astro/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Baseline security headers for every response.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"

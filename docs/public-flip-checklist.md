@@ -50,30 +50,36 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 10. Flip repository visibility to public.
 11. Post the launch announcement.
 
-## Docs site go-live (browxai.com)
+## Docs site go-live (browxai.com via Netlify)
 
-The docs site is an Astro + Starlight app in `website/`, deployed to GitHub
-Pages by `.github/workflows/docs.yml`. That workflow is `workflow_dispatch`-only
-until the steps below land, so a private repo with Pages disabled does not
-red-flag every push. The published pages for the canonical docs are generated
-from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`; `docs/` stays
-the single source of truth.
+The docs site is a static Astro + Starlight app in `website/`, deployed by
+Netlify (config in `netlify.toml`). The published pages for the canonical docs
+are generated from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`;
+`docs/` stays the single source of truth.
 
-1. Smoke-test the build while still private: `gh workflow run docs.yml` and
-   confirm the `build` job is green (the `deploy` job needs Pages enabled).
-2. Point DNS for `browxai.com`:
-   - Apex `A` records to the GitHub Pages IPs (verify against GitHub's current
-     published set): `185.199.108.153`, `185.199.109.153`, `185.199.110.153`,
-     `185.199.111.153`. Add the matching `AAAA` records for IPv6.
-   - `www` `CNAME` to `kalebteccom.github.io` (www 301s to the apex).
-3. Enable Pages: Settings -> Pages -> Source = "GitHub Actions".
-4. Set the custom domain to `browxai.com`, wait for the DNS check to pass, then
-   enable "Enforce HTTPS". The `website/public/CNAME` file is preserved into the
-   build output, so the domain sticks across deploys.
-5. Restore the auto-publish trigger in `.github/workflows/docs.yml`: change
-   `on: workflow_dispatch` to also include `push: branches: [main]`.
-6. Verify: `https://browxai.com` loads, the search box works, `www` redirects to
-   the apex, and a shared link renders the `og.png` social card.
+1. Create the Netlify site from the `kalebteccom/browxai` repo. `netlify.toml`
+   already declares the build:
+   - Command: `pnpm --filter @browxai/website rebuild esbuild sharp && pnpm --filter @browxai/website build`
+   - Publish: `website/dist`. Node 20; pnpm via the root `packageManager` field.
+   - For a private repo, grant Netlify's GitHub app read access, or do a manual
+     deploy of the prebuilt output: `netlify deploy --prod --dir=website/dist`.
+2. Trigger a deploy and confirm it is green. The build runs prose-guard, the
+   link validator, and Pagefind - the same gates as local.
+3. Add the custom domain (Netlify -> Domain management): set `browxai.com` as the
+   primary domain and add `www.browxai.com`; Netlify auto-redirects www -> apex.
+4. Point DNS for `browxai.com`:
+   - Easiest: switch the registrar's nameservers to Netlify DNS.
+   - Or external DNS: apex `ALIAS`/`A` to Netlify's load balancer
+     (`apex-loadbalancer.netlify.com`), and a `www` `CNAME` to
+     `<site>.netlify.app`.
+5. Netlify provisions the Let's Encrypt certificate once DNS resolves; turn on
+   "Force HTTPS".
+6. Verify: `https://browxai.com` loads, search works, `www` 301s to the apex,
+   the branded 404 renders on an unknown path, and a shared link shows `og.png`.
+
+GitHub Pages is superseded by Netlify. `.github/workflows/docs.yml` and
+`website/public/CNAME` are GitHub-Pages-specific; remove them once Netlify is
+live (the CNAME file is harmless on Netlify, where domains are set in the UI).
 
 ## Post-flip monitoring (first 30 days)
 
