@@ -25,7 +25,7 @@ sessions, headed and headless — and shape an agent-first surface around it.
 ## Install
 
 ```bash
-npm install browxai
+npm install -g browxai
 npx playwright-core install chromium    # one-time, ~150 MB
 ```
 
@@ -93,7 +93,7 @@ plus a portable "driving browxai well" Agent Skill — lives in
 - **capabilities** — `read,navigation,action,human` on by default; `eval`, `network-body`, `clipboard`, `file-io`, and `byob-attach` are explicit opt-ins.
 
 Full per-tool reference, the security model, and the stability policy are in the
-**[documentation site](https://kalebteccom.github.io/browxai/)**.
+**[documentation site](https://browxai.com/)**.
 
 ## Stability
 
@@ -101,7 +101,7 @@ browxai is **v0.7.0** and follows semver. The public tool surface (tool names,
 documented input/output shapes, the `ActionResult` shape, the default
 capability set) is frozen; anything behind an off-by-default capability is
 explicitly experimental and not covered by the stability guarantee. See the
-[Stability & semver](https://kalebteccom.github.io/browxai/tool-reference#stability--semver) policy.
+[Stability and semver](https://browxai.com/reference/tool-reference/#stability-and-semver) policy.
 
 ## Develop
 
