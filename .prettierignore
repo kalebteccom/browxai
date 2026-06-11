@@ -5,8 +5,15 @@ packages/plugins/*/dist
 coverage
 pnpm-lock.yaml
 package-lock.json
-docs/.vitepress/cache
-docs/.vitepress/dist
+# Astro docs site: build output, Astro cache, and the sync-generated ports.
+website/dist
+website/.astro
+website/src/content/docs/reference/tool-reference.md
+website/src/content/docs/security/threat-model.md
+website/src/content/docs/security/best-practices.md
+website/src/content/docs/plugins/overview.md
+website/src/content/docs/plugins/authoring.md
+website/src/content/docs/plugins/governance.md
 *.generated.*
 .claude
 .github

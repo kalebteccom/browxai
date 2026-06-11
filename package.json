@@ -15,7 +15,7 @@
     "agentic",
     "browser-control"
   ],
-  "homepage": "https://kalebteccom.github.io/browxai/",
+  "homepage": "https://browxai.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kalebteccom/browxai.git"
@@ -54,8 +54,9 @@
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
     "install-browser": "playwright-core install chromium",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
+    "docs:dev": "pnpm --filter @browxai/website dev",
+    "docs:build": "pnpm --filter @browxai/website build",
+    "docs:preview": "pnpm --filter @browxai/website preview",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint .",
@@ -94,7 +95,6 @@
     "tsx": "^4.19.0",
     "typescript": "^5.5.0",
     "typescript-eslint": "^8.8.0",
-    "vitepress": "^1.6.3",
     "vitest": "^2.0.0"
   }
 }

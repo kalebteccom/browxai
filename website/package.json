@@ -1,0 +1,24 @@
+{
+  "name": "@browxai/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The browxai documentation site (browxai.com). Astro + Starlight.",
+  "scripts": {
+    "dev": "node scripts/sync-docs.mjs && astro dev",
+    "start": "node scripts/sync-docs.mjs && astro dev",
+    "build": "node scripts/sync-docs.mjs && node ../scripts/prose-guard.mjs && astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "check": "astro check",
+    "og": "node scripts/gen-og.mjs"
+  },
+  "devDependencies": {
+    "@astrojs/starlight": "^0.40.0",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@fontsource/space-grotesk": "^5.2.10",
+    "astro": "^6.4.6",
+    "sharp": "^0.35.0"
+  }
+}

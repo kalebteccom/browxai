@@ -5,9 +5,18 @@ coverage/
 # Investigation artifacts (screenshots, profile JSONs) live under artifacts/
 # and are regenerable via `pnpm exec vitest run --config vitest.investigation.config.ts`.
 artifacts/
-# VitePress build output + cache (any location)
-.vitepress/dist/
-.vitepress/cache/
+# Astro + Starlight docs site (website/) build + generated artifacts.
+website/dist/
+website/.astro/
+# The published ports are generated from the canonical docs/*.md by
+# website/scripts/sync-docs.mjs at dev/build time. docs/ stays the single
+# source of truth; do not commit or hand-edit the generated copies.
+website/src/content/docs/reference/tool-reference.md
+website/src/content/docs/security/threat-model.md
+website/src/content/docs/security/best-practices.md
+website/src/content/docs/plugins/overview.md
+website/src/content/docs/plugins/authoring.md
+website/src/content/docs/plugins/governance.md
 # Transient state lives in $BROWX_WORKSPACE (~/.browxai/), NOT here. Guardrail
 # entries below catch anything that would accidentally land in-tree.
 .browxai/
