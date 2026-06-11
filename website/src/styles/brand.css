@@ -131,6 +131,8 @@ main:has(.browx-hero) > .content-panel {
   gap: clamp(2rem, 5vw, 4rem);
   padding: clamp(2.5rem, 7vw, 5.5rem) 0 clamp(2rem, 4vw, 3rem);
   isolation: isolate;
+  /* Keep the decorative grid + glow from ever widening the page. */
+  overflow-x: clip;
 }
 @media (max-width: 52rem) {
   .browx-hero {
@@ -148,22 +150,24 @@ main:has(.browx-hero) > .content-panel {
 .browx-hero::before {
   content: "";
   position: absolute;
-  inset: -60px -50vw;
+  inset: 0;
   z-index: -2;
   background-image:
     linear-gradient(to right, var(--browx-grid-line) 1px, transparent 1px),
     linear-gradient(to bottom, var(--browx-grid-line) 1px, transparent 1px);
   background-size: 46px 46px;
-  -webkit-mask-image: radial-gradient(70% 75% at 50% 10%, #000 0%, transparent 72%);
-  mask-image: radial-gradient(70% 75% at 50% 10%, #000 0%, transparent 72%);
+  -webkit-mask-image: radial-gradient(85% 80% at 50% 0%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(85% 80% at 50% 0%, #000 0%, transparent 72%);
 }
 .browx-hero::after {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -25% -10% auto 25%;
+  top: -8%;
+  left: 34%;
+  width: 56%;
   height: 95%;
-  background: radial-gradient(45% 60% at 65% 35%, var(--browx-glow) 0%, transparent 70%);
+  background: radial-gradient(50% 60% at 60% 30%, var(--browx-glow) 0%, transparent 70%);
   filter: blur(26px);
   pointer-events: none;
 }
@@ -347,6 +351,17 @@ main:has(.browx-hero) > .content-panel {
 }
 .browx-snap .t-acc {
   color: var(--sl-color-text-accent);
+}
+/* Shrink the snapshot on small screens so it fits without an inner scroll. */
+@media (max-width: 34rem) {
+  .browx-snap {
+    font-size: 0.72rem;
+    padding: 0.9rem 1rem 1rem;
+  }
+  .browx-snap .row {
+    grid-template-columns: 3.3rem 5.8rem 3.9rem 1fr;
+    gap: 0.3rem;
+  }
 }
 
 /* The agent loop, drawn as a flow diagram: navigate -> snapshot -> find ->
