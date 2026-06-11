@@ -17,7 +17,7 @@
     "@astrojs/starlight": "^0.40.0",
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
-    "@fontsource/space-grotesk": "^5.2.10",
+    "@fontsource/poppins": "^5.2.7",
     "astro": "^6.4.6",
     "sharp": "^0.35.0"
   }

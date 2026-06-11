@@ -41,10 +41,9 @@ export default defineConfig({
         baseUrl: "https://github.com/kalebteccom/browxai/edit/main/website/",
       },
       customCss: [
-        "@fontsource/space-grotesk/400.css",
-        "@fontsource/space-grotesk/500.css",
-        "@fontsource/space-grotesk/600.css",
-        "@fontsource/space-grotesk/700.css",
+        "@fontsource/poppins/500.css",
+        "@fontsource/poppins/600.css",
+        "@fontsource/poppins/700.css",
         "@fontsource/inter/400.css",
         "@fontsource/inter/500.css",
         "@fontsource/inter/600.css",
