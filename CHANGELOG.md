@@ -10,21 +10,21 @@ surface" covers.
 
 ### Added
 
-- **Phase 14a — tooling baseline + OIDC release pipeline.** ESLint flat
-  config, Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
+- **Tooling baseline + OIDC release pipeline.** ESLint flat config,
+  Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
   `.npmrc`, repo `.githooks/` (commit-msg + pre-commit), Dependabot config
   with allowlisted auto-merge, `quality.yml` CI workflow (typecheck, lint,
   format-check, depcheck, lockfile-lint), and an OIDC-trusted-publisher
   `release.yml` workflow plus a package-contents audit script.
-- **Phase 14b — public-flip governance docs.** Top-level `CODE_OF_CONDUCT.md`,
+- **Public-flip governance docs.** Top-level `CODE_OF_CONDUCT.md`,
   `CONTRIBUTING.md`, `MAINTAINERS.md`, `RELEASING.md`, `SECURITY.md`,
   `THIRD_PARTY_NOTICES.md`; per-plugin MIT `LICENSE` files; supporting
   governance docs (`plugin-governance.md`, `public-flip-checklist.md`,
   `security-best-practices-for-adopters.md`).
-- **Phase 14c — AGENTS.md + ai-context + multi-harness pointers.** Root
-  `AGENTS.md` operating rules; cross-harness `.agents/skills/` source of
-  truth with eight expert-agent definitions mirrored into `.claude/agents/`
-  and `.codex/agents/`; `docs/ai-context/` tree covering architecture,
+- **`AGENTS.md` + ai-context + multi-harness pointers.** Root `AGENTS.md`
+  operating rules; cross-harness `.agents/skills/` source of truth with
+  eight expert-agent definitions mirrored into `.claude/agents/` and
+  `.codex/agents/`; `docs/ai-context/` tree covering architecture,
   agent-process, page-side-functions, plugin-runtime, recorder-and-replay,
   release-process, investigations, and adopter reports.
 
@@ -35,18 +35,18 @@ surface" covers.
 
 ## v0.7.0 — 2026-06-08 — Canvas substrate + canvas plugins + perf optimization module
 
-Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; v1.0 launches with the public flip per the standing roadmap.
+v0.7.0 is the final v0.x release; v1.0 launches with the public flip per the standing roadmap.
 
 ### Added
 
-- **Phase 9b — first-party canvas-app adapter plugins.** Three Kalebtec
-  plugins demonstrating that the Phase-8 plugin runtime + the Phase-9a
-  canvas substrate compose into a real ecosystem story. Each declares
-  capabilities `eval` + `canvas`, routes every tool through
-  `api.callTool("eval_js", {expr})`, and returns a structured
-  `code:"<adapter>-not-loaded"` envelope when the host app isn't on the
-  page. Resolved via `canvas_query({adapter, op, args})` from the
-  Phase-9a dispatcher.
+- **First-party canvas-app adapter plugins.** Three Kalebtec plugins
+  demonstrating that the plugin runtime + the canvas substrate compose
+  into a real ecosystem story. Each declares capabilities `eval` +
+  `canvas`, routes every tool through `api.callTool("eval_js", {expr})`,
+  and returns a structured `code:"<adapter>-not-loaded"` envelope when
+  the host app isn't on the page. Resolved via
+  `canvas_query({adapter, op, args})` from the canvas-substrate
+  dispatcher.
   - **`@kalebtec/browxai-plugin-figma`** — namespace `figma`; surfaces
     `figma.get_selection`, `figma.get_viewport`, `figma.select_node`,
     `figma.move_node`, `figma.create_rectangle` over the page-side
@@ -62,8 +62,8 @@ Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; 
     `excalidraw.set_scroll` over the host-page `window.excalidrawAPI`
     ref.
 
-- **Phase 9a — canvas-app automation core.** Five MCP tools + a pure-RGBA
-  diff under the new off-by-default `canvas` capability — the generic,
+- **Canvas-app automation core.** Five MCP tools + a pure-RGBA diff under
+  the new off-by-default `canvas` capability — the generic,
   app-agnostic substrate for driving canvas-based editors (Figma, Tldraw,
   Excalidraw, video editors, drawing apps). The capability is loud-warned
   at boot in the same posture class as `eval` / `network-body` /
@@ -120,10 +120,10 @@ Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; 
     install @kalebtec/browxai-plugin-<adapter> or pass a registered
     adapter namespace", code:"no-adapter", requestedAdapter,
     requestedOp }`. The inner plugin tool's own capability is enforced
-    via the Phase-8 plugin call-graph gate. Phase 9a ships the
-    dispatcher only — the first canvas-app adapter plugins land
-    separately in Phase 9b. Capability `canvas` (+ the inner tool's
-    own capability).
+    via the plugin call-graph gate. This release ships the dispatcher
+    only — the first canvas-app adapter plugins ship as the companion
+    canvas-adapter family below. Capability `canvas` (+ the inner
+    tool's own capability).
   - **BYO-vision pattern** — `docs/tool-reference.md` documents the
     composition loop: `canvas_capture({format:"png"})` → host-agent's
     own multimodal vision call → `gesture_chain` / `mouse_*`. browxai
@@ -132,13 +132,13 @@ Closes every committed pre-public-flip phase. v0.7.0 is the final v0.x release; 
     substrate-pure / RC-independent property and keeps the modality
     dimension the host agent's choice.
 
-### Added — Phase 10 — perf optimization module
+### Added — Perf optimization module
 
 Promotes browxai's perf surface from *measurement* (the v0.2.0 `perf_start`
 / `perf_stop` / `perf_insights` trio that produces raw chromium traces) to
 *actionable* — an agent can run a structured audit and receive remediation
-recommendations, not just trace blobs. Closes Phase 10 with five new MCP
-tools (the prior `overflow_detect` Phase-10 entry landed in v0.6.0).
+recommendations, not just trace blobs. Five new MCP tools (the companion
+`overflow_detect` perf-surface tool shipped in v0.6.0).
 
 - **`perf_audit({categories?, durationMs?, format?, session?})`** — the
   headline tool. Records a CDP trace + JS/CSS precise coverage + network
@@ -248,7 +248,7 @@ tools (the prior `overflow_detect` Phase-10 entry landed in v0.6.0).
   responsive checks, "the button I clicked got truncated" diagnosis.
   Read-only (capability `read`).
 
-### Added — Phase 8 — Plugin runtime
+### Added — Plugin runtime
 
 The v1 plugin runtime foundations: external packages register
 namespaced tools on the MCP + SDK surface. In-process JS modules
@@ -292,7 +292,7 @@ cannot override or wrap core tools).
   `packages/plugins/example/`. Three trivial tools (`example.echo`,
   `example.add`, `example.now`) exercising every primitive of the
   v1 contract; vitest unit suite; ships a typed `schema.d.ts` for
-  SDK consumers. Used as the Phase 8 keystone fodder.
+  SDK consumers. Used as the plugin-runtime keystone fodder.
 - **Author guide** — `docs/plugin-authoring.md` (manifest fields,
   capability rules, dep declarations, call-graph enforcement, trust
   tiers, local-dev workflow, npm publishing, typed SDK seam) and
@@ -302,7 +302,7 @@ cannot override or wrap core tools).
   builds in the same `pnpm install` cycle as the host.
 
 Plugin lifecycle mirrors capability lifecycle: changes take effect
-on next server restart, never mid-session. Phase 9 (canvas plugins)
+on next server restart, never mid-session. The v0.7.0 canvas plugins
 and the diagnostics-report plugin follow-up are the first real
 consumers of this foundation.
 
@@ -334,8 +334,8 @@ consumers of this foundation.
   probe degrades to partial data instead of failing the whole action.
 
 - **Diagnostics JSONL is now KEPT across `close_session` / `close_sessions`.**
-  Same adopter report. The Phase-7.5 builder wired per-session removal of
-  the diagnostics directory on close. But `close_session` IS the
+  Same adopter report. The v0.5.1 diagnostics builder wired per-session
+  removal of the diagnostics directory on close. But `close_session` IS the
   wedge-recovery path — notes filed right before a (real OR falsely-flagged)
   wedge were exactly the most valuable feedback the curator gets, and they
   were being deleted at the worst possible moment. Fix: stop deleting on
@@ -390,7 +390,7 @@ consumers of this foundation.
 
 ### Added
 
-- **Phase 7.5: structured usage diagnostics + agent self-feedback (`diagnostics` capability + recorder hook + 3 tools).**
+- **Structured usage diagnostics + agent self-feedback (`diagnostics` capability + recorder hook + 3 tools).**
   Promotes agent friction from anecdote to data — so the curator can answer
   "what primitive is missing?" with evidence instead of guesses. Off-by-default
   capability; loud-warned at boot. Same posture class as `eval` /
@@ -430,11 +430,11 @@ consumers of this foundation.
     the per-record list capped at 500 (`truncated:true` when exceeded).
     Capability: `read`.
 
-## v0.5.0 — 2026-05-30 — Automation completeness (Phase 7)
+## v0.5.0 — 2026-05-30 — Automation completeness
 
 ### Added
 
-- **Phase 7: Web Workers + Service Workers visibility (`workers_list` / `worker_message_send` / `worker_messages_read` / `sw_intercept_fetch` / `sw_unintercept_fetch`).**
+- **Web Workers + Service Workers visibility (`workers_list` / `worker_message_send` / `worker_messages_read` / `sw_intercept_fetch` / `sw_unintercept_fetch`).**
   Workers were previously off-grid: `network_read` shows page fetches but
   never the SW that responds from cache, and the `postMessage` IPC between
   page and workers was invisible to the surface. This family makes both
@@ -465,7 +465,7 @@ consumers of this foundation.
     flatten:true})` on the top-level CDP. Per-session by construction; lost
     on session close or BYOB rebuild (a fresh wrapper installs on the new
     context).
-- **Phase 7: Cache API + IndexedDB CRUD — siblings of cookie / web-storage CRUD.**
+- **Cache API + IndexedDB CRUD — siblings of cookie / web-storage CRUD.**
   Completes the storage-state surface so adopters can checkpoint and replay
   Service-Worker offline caches and app-level IDB stores the same way they
   already drive cookies and localStorage. Origin-scoped (same posture as
@@ -492,7 +492,7 @@ consumers of this foundation.
     transaction so `idb_put` against a missing store rejects with the schema
     hint instead of silently creating it. → standard envelopes with
     `tokensEstimate`.
-- **Phase 7: Web Bluetooth / WebUSB / WebHID device emulation
+- **Web Bluetooth / WebUSB / WebHID device emulation
   (`emulate_bluetooth` / `emulate_usb` / `emulate_hid` / `device_requests`).**
   Per-session synthetic-device catalogs for the three Web platform
   device-picker APIs. The page-side init-script wrappers around
@@ -548,7 +548,7 @@ consumers of this foundation.
     `transferIn` / `transferOut` synthetic data streams for WebUSB;
     `oninputreport` synthetic input streams for WebHID.
 
-- **Phase 7: `drop_files` — drag-drop files from disk onto a page element.**
+- **`drop_files` — drag-drop files from disk onto a page element.**
   Sibling to `upload_file` for drop-zone uploaders (modern SaaS file pickers
   that listen for `dragenter` / `dragover` / `drop` with a populated
   `DataTransfer.files` and never expose an `<input type=file>` for
@@ -564,7 +564,7 @@ consumers of this foundation.
   dropDispatched, tokensEstimate }`. Gated by the off-by-default
   **`file-io`** capability — same posture as `upload_file`. No agent JS.
 
-- **Phase 7: interactive WebSocket primitives (`ws_send` / `ws_intercept` / `ws_unintercept`).**
+- **Interactive WebSocket primitives (`ws_send` / `ws_intercept` / `ws_unintercept`).**
   The read-only WS view (`ws_read` + `ActionResult.network.wsFrames`) gets a
   mutation half. Sibling of the HTTP `route` family on the realtime channel —
   all three under capability `action`; no new capability gate.
@@ -586,7 +586,7 @@ consumers of this foundation.
     stable per-session `wsId` (`ws-1`, `ws-2`, …) the agent can discover
     via the page-side `__browxWs.list()` registry. Per-context by
     construction; lost on session close or BYOB rebuild.
-- **Phase 7: File System Access policy (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`).**
+- **File System Access policy (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`).**
   Modern web editors (VSCode for the web, Figma, anything with a "save to
   disk" button) deadlock under a headless session — the picker dialog
   blocks every subsequent browser event until the human clicks a real OS
@@ -597,8 +597,8 @@ consumers of this foundation.
   - **`fs_picker_respond({api, files: [{path | contents, name?, mimeType?}], session?})`** — agent-side response queue, per-API. For `showSaveFilePicker`: the supplied workspace-rooted `path` is the destination for `createWritable()`-driven writes (page-side `write()`/`truncate()`/`close()` routed through a server binding that persists the bytes; back-pressure preserved). For `showOpenFilePicker`: inline `{contents}` or workspace-rooted `{path}` (server reads at respond-time and inlines bytes the page reads via `getFile()`). For `showDirectoryPicker`: a minimal handle whose `.name` is the basename and `entries()`/`values()`/`keys()` iterate empty (MVP scope — most editors fall back to per-file pickers). Capability `file-io`. Workspace-escape on `path` rejected at the tool layer.
   - **`ActionResult.fsPickerRequests[]`** — every picker call that fired during the action window is sliced off the per-session buffer and surfaced as `[{api, suggestedName?, handledAs: "allowed"|"denied"|"raised"|"asked-human"}]`. Independent of `ok`; `raise` mode additionally flips `ok` to false with `failure:{source:"app", hint:"unhandled File System Access picker — set fsPickerPolicy …"}`.
 
-- **Phase 7: frame-scoped observation (iframes + cross-origin frames).**
-  Iframes are everywhere on real pages; pre-Phase-7 `find` / `snapshot` saw
+- **Frame-scoped observation (iframes + cross-origin frames).**
+  Iframes are everywhere on real pages; pre-v0.5.0 `find` / `snapshot` saw
   only the top frame. Three additions, all back-compat:
   - **`frames_list({ session? })`** — returns the page's full frame tree
     with a stable per-session ID per frame (`fN`; `f0` is always the main
@@ -609,7 +609,7 @@ consumers of this foundation.
     to the frame on the registry so subsequent `click` / `fill` / etc. fire
     inside the iframe transparently. Same-origin and cross-origin (OOPIF)
     both work through Playwright's frame API. Omitting `frame` (or passing
-    `f0`) is byte-identical to the pre-Phase-7 main-frame path.
+    `f0`) is byte-identical to the pre-v0.5.0 main-frame path.
   - **Frame-scoped action targets**: `locatorFor` consults the registry's
     new per-ref frame binding; refs minted in a child frame route through
     `frame.locator(...)` rather than `page.locator(...)`. No new action
@@ -620,9 +620,9 @@ consumers of this foundation.
     DOM-walk-sourced only and surface a warning so the agent isn't
     surprised by `[from-dom]` markers. Read + action still work for both
     same-origin and cross-origin iframes.
-- **Shadow DOM deep piercing (Phase 7)** — three pieces:
+- **Shadow DOM deep piercing** — three pieces:
   - `find({ …, pierce? })` — optional `pierce: "open" | "closed" | false`.
-    Omitting `pierce` preserves pre-Phase-7 behaviour byte-for-byte
+    Omitting `pierce` preserves pre-v0.5.0 behaviour byte-for-byte
     (Playwright's a11y tree already auto-pierces open shadow; the DOM-walk
     fallback didn't recurse into shadow content). `"open"` extends the
     DOM-walk into every reachable open shadow root. `"closed"` additionally
@@ -787,7 +787,7 @@ consumers of this foundation.
 
 ## v0.4.0 — 2026-05-30 — image-to-path + page archive + asset export + session video
 
-Patch release on the path to v1.0. Four small additive primitives lead the new-feature roadmap (Phase 5+) shipping ahead of the public flip. v0.3.x stable surface is **unchanged** — every addition is net-additive. Default capability set unchanged; new disk-writing primitives all ride the existing off-by-default `file-io` capability (no new capability gates).
+Patch release on the path to v1.0. Four small additive primitives lead the new-feature roadmap shipping ahead of the public flip. v0.3.x stable surface is **unchanged** — every addition is net-additive. Default capability set unchanged; new disk-writing primitives all ride the existing off-by-default `file-io` capability (no new capability gates).
 
 ### Added
 
@@ -1027,7 +1027,7 @@ behaviour change. The `BrowxaiClient` interface now carries per-tool
 argument and result-data types instead of the Stage-A
 `(args: BrowxaiArgs) => Promise<BrowxaiResult>` uniform shape, because the
 emitted `.d.ts` is the canonical reference for LLM-authoring consumers
-(wrightxai Phase 1.6 generates TypeScript that imports from this surface).
+(wrightxai's lowering step generates TypeScript that imports from this surface).
 
 ### Added
 
@@ -1155,7 +1155,7 @@ shape, and `{ok, data, evidence, tokensEstimate}` / `{ok:false, failure}`
 semantics are byte-identical to v0.2.1. Validator error messages and
 `evidence.partialMisses` diagnostics improve; nothing previously-succeeding
 now fails, and nothing previously-failing now succeeds. Trigger: wrightxai
-Phase-1 Wave-4 trial-1 burned ~3-5k output tokens across three turns
+early-trial schema-discovery burned ~3-5k output tokens across three turns
 learning the schema convention from scratch (rejected `integer`, learned
 arrays need `x-browx-source.collection`, silently mis-spelled `attr` as
 `attribute` causing wrong leaf values).
@@ -1289,7 +1289,7 @@ to v0.2.0. Internal-only fix to the per-candidate probe loop.
 
 ## v0.2.0 — 2026-05-26 — Agentic-browser substrate baseline parity
 
-Phase-3.5 baseline-parity release. Adds 24 primitives across observation,
+Baseline-parity release. Adds 24 primitives across observation,
 network/CPU emulation, device emulation, persistence, eval, security, and
 agent-ergonomics — closing the gap against Stagehand / browser-use / Skyvern /
 Browserbase / @playwright/mcp / chrome-devtools-mcp / Vercel `agent-browser`.
@@ -1695,7 +1695,7 @@ hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
   sessions surface a warning that CDP overrides persist on the human's Chrome
   after detach. See
   [docs/tool-reference.md § Device emulation](docs/tool-reference.md#device-emulation--set_locale--set_timezone--set_geolocation--set_color_scheme--set_reduced_motion--set_user_agent--grant_permissions).
-- **Three-layer storage-state** — the deferred Phase-2 bulk-state ask,
+- **Three-layer storage-state** — the previously deferred bulk-state ask,
   shipped as three layers so adopters don't have to round-trip a full blob to
   read one cookie. Capability split (no new gate): reads under `read`, writes
   under `action`.

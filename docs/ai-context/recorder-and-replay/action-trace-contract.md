@@ -27,7 +27,7 @@ The no-trace contract is enforced by tests in `src/util/no-trace.test.ts`. Any n
 
 ## Replayability (forward-looking)
 
-Phase 11's `.browx-flow.json` work formalizes the action-trace IR as a replayable script. Today's trace is a debugging artifact; tomorrow's trace is an executable replay. The contract above is the foundation:
+A planned `.browx-flow.json` format will formalize the action-trace IR as a replayable script. Today's trace is a debugging artifact; tomorrow's trace is an executable replay. The contract above is the foundation:
 
 - Stable tool names (semver-frozen) — replay against a newer browxai picks up the same handlers.
 - Stable args (Zod schema versioned with the tool) — additive args are forward-compatible.

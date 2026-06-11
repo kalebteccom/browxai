@@ -42,7 +42,7 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 - `src/page/` — per-tool handlers and page-side functions (`actions.ts`, `dom-export.ts`, `bbox.ts`, `compose.ts`, `archive.ts`, `coverage.ts`, …). One tool = one file. Page-side functions run inside the browser context.
 - `src/session/` — session lifecycle, managed profiles, BYOB attach, persistent vs. incognito modes.
 - `src/util/` — capability gate (`capabilities.ts`), workspace path resolution (`workspace.ts`), secrets masking (`secrets.ts`), config store, deadlines, url sanitizer, no-trace contract.
-- `src/plugin/` — Phase-8 plugin runtime (loader, namespace registry, dependsOn resolver, capability composition).
+- `src/plugin/` — plugin runtime (loader, namespace registry, dependsOn resolver, capability composition).
 - `src/sdk/` — typed SDK surface (in-process, stdio-child, socket-attached transports).
 - `src/helper/` — shared internals for handlers.
 - `src/policy/` — origin allow/blocklist, confirmation hooks, capability lattice.

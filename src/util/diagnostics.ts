@@ -1,6 +1,6 @@
 // Diagnostics — structured per-call recording + agent self-feedback.
 //
-// Phase 7.5. Off-by-default `diagnostics` capability; once enabled, every MCP
+// . Off-by-default `diagnostics` capability; once enabled, every MCP
 // tool call is recorded as a JSONL line in
 //   $BROWX_WORKSPACE/diagnostics/<sessionId>/<server-start-ISO>.jsonl
 // and the three diagnostics_* tools surface a read-side query / report.

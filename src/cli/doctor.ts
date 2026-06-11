@@ -109,7 +109,7 @@ export async function runDoctor(): Promise<number> {
     }
   }
 
-  // 5. Capabilities (Phase-2 security model).
+  // 5. Capabilities ( security model).
   try {
     const c = resolveCapabilities();
     const explicit = !!process.env.BROWX_CAPABILITIES;

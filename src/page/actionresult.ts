@@ -2,10 +2,10 @@
 // (network tap, console slice, navigation detection, structure diff, post-snapshot)
 // and emits the structured result.
 //
-// Phase-1 simplification: `snapshotDelta.mode = "scoped_snapshot"` (default) currently
+//  simplification: `snapshotDelta.mode = "scoped_snapshot"` (default) currently
 // returns the *full* a11y tree with a warning noting that scope-down is pending.
 // The always-on cheap signals (navigation / structure / console / pageErrors / element)
-// are real. `tree_diff` is a Phase-1.5 follow-on.
+// are real. `tree_diff` is a follow-on.
 
 import type { CDPSession, Page } from "playwright-core";
 import { getA11yTree, walk, type A11yNode } from "./a11y.js";
@@ -176,7 +176,7 @@ export interface ActionResult {
   network: {
     summary: NetworkSummary;
     requests?: NetworkEntry[];
-    /** Phase-2: count of requests in this action window that left
+    /** count of requests in this action window that left
      *  `BROWX_ALLOWED_ORIGINS` (0 when no allowlist is set). */
     egressOffAllowlist?: number;
     /** bounded summary of write-shaped requests (POST/PUT/PATCH/DELETE,
@@ -301,7 +301,7 @@ export interface ActionContext {
   /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). Threaded
    *  through so pre/post a11y trees pick up the same testIds the canonical surface uses. */
   testAttributes: string[];
-  /** Phase-2: origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
+  /** origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
    *  Empty allow-set means "no allowlist" → egress count is always 0. */
   originPolicy?: import("../policy/origin.js").OriginPolicy;
   /** if a recording is active, the recorder is wired in here so
@@ -563,7 +563,7 @@ export async function runInActionWindow(
   if (descriptor.ref) scopeRefs.push(descriptor.ref);
   for (const r of structure.appeared) scopeRefs.push(r.ref);
   const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings, scopeRefs);
-  // Phase-2: egress-off-allowlist count, for the security model's
+  // egress-off-allowlist count, for the security model's
   // network-egress-visibility surface (docs/threat-model.md §"What browxai defends against" #2).
   const egressOffAllowlist =
     ctx.originPolicy && ctx.originPolicy.allowed.length > 0
@@ -826,7 +826,7 @@ function buildSnapshotDelta(
   }
   let renderMode: SnapshotMode = mode;
   if (mode === "tree_diff") {
-    // Phase-1.5 partial: emit appeared/removed-as-subtrees instead of a unified diff.
+    //  partial: emit appeared/removed-as-subtrees instead of a unified diff.
     // Closer in spirit to Vercel agent-browser's diff than the previous fallback,
     // without needing the line-stable cross-snapshot diff plumbing.
     warnings.push(

@@ -10,7 +10,7 @@
 //     `new Notification(title, opts)`. The constructor only succeeds when
 //     permission is granted (browser-policy), but its construction is the
 //     observability event: it's what the page actually does when it tries to
-//     notify the human. Pre-Phase-7 browxai had no visibility into these
+//     notify the human. Pre-v0.5.0 browxai had no visibility into these
 //     calls; an action that fired three notifications was indistinguishable
 //     from one that fired zero.
 //

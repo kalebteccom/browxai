@@ -1,6 +1,6 @@
-// Three-layer storage-state primitives — Phase 3.5.
+// Three-layer storage-state primitives — .
 //
-// The deferred Phase-2 bulk-state ask, with the @playwright/mcp lesson baked
+// The deferred bulk-state ask, with the @playwright/mcp lesson baked
 // in: bulk alone isn't enough — adopters constantly need to read a single
 // cookie ("am I logged in?") or set one ("opt-out=1") without round-tripping
 // a full blob. So three layers ship together:

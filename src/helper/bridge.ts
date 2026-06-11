@@ -3,14 +3,14 @@
 // resolves on the next matching `__browx.signal()` / `proceed()` / `abort()` /
 // `done()` call from the page.
 //
-// Phase-1 scope:
+//  scope:
 //   ✓ signal queue + awaitSignal (the site-docs `manual-capture` use case is
 //     `awaitHuman({kind:"acknowledge"})` → human calls `__browx.proceed()` →
 //     server unblocks).
 //   ✓ DOM-attribute-polling fallback for environments where `exposeBinding`
 //     gets clobbered (BYOB multi-attach — Playwright #34359).
 //   ✗ Shadow-DOM banner UI; `confirm` / `choose` / `input` / `pick_element`
-//     kinds — Phase-1.5 polish.
+//     kinds —  polish.
 
 import type { BrowserContext, Page } from "playwright-core";
 import { BROWX_PAGE_SCRIPT } from "./browx-page.js";

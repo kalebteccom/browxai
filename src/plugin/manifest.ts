@@ -139,7 +139,7 @@ export interface ResolvedManifest {
  * `apiVersion`; the runtime checks plugin.apiVersion startsWith the
  * runtime's major.
  *
- * Phase 8 ships 1.0 — the first stable runtime contract. Breaking
+ *  ships 1.0 — the first stable runtime contract. Breaking
  * changes here are deferred to a major-version bump.
  */
 export const RUNTIME_API_VERSION = "1.0.0";
@@ -181,7 +181,7 @@ export function parseManifestField(raw: unknown): BrowxaiManifestData {
  * is "the plugin's apiVersion has the same MAJOR as the runtime, and the
  * plugin's MINOR is ≤ runtime's MINOR". This is the standard semver
  * "library guarantees backwards compat within a major" assumption and
- * is enough for the Phase-8 contract.
+ * is enough for the contract.
  *
  * A plugin built for `1.0.0` works under runtime `1.5.0`; a plugin built
  * for `1.5.0` does NOT work under runtime `1.0.0` (newer API surface).

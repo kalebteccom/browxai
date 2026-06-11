@@ -1,5 +1,5 @@
-// Headless-CI keystone — the sole remaining Phase-2-close exercise, and the
-// live assertion for the three [~] Phase-2.5 exit criteria (zero-env config,
+// Headless-CI keystone — the sole remaining -close exercise, and the
+// live assertion for the three [~]  exit criteria (zero-env config,
 // two-user isolation, incognito no-trace).
 //
 // This is the ONLY test that drives a real headless Chromium end-to-end
@@ -7,7 +7,7 @@
 // mock-based unit coverage. It deliberately runs from a separate vitest
 // config so `pnpm test` stays hermetic and browser-free.
 //
-// Definition of done (AGENT-RUNBOOK.md "Phase 2 close"):
+// Definition of done (AGENT-RUNBOOK.md " close"):
 //   - BROWX_HEADLESS-equivalent works end-to-end (here: createServer({headless})
 //     — programmatic, NOT the env-var singleton, exercising the session model).
 //   - Zero BROWX_* *config* env; config flows through set_config/get_config.
@@ -575,10 +575,10 @@ describe("headless-CI keystone — notification_policy (Notification constructor
   );
 });
 
-// Phase-7 frame-scoped observation — exercises frames_list, frame-scoped
+//  frame-scoped observation — exercises frames_list, frame-scoped
 // snapshot, frame-scoped find, and a frame-scoped action that fires inside
 // the iframe (state mutation observable in a follow-up frame-scoped snapshot).
-describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
+describe("headless-CI keystone — frame-scoped observation", () => {
   it(
     "frames_list discovers iframes; snapshot/find/action scope to a child frame",
     async () => {
@@ -678,7 +678,7 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
   );
 });
 
-// Phase 7 — Shadow DOM deep piercing. Exercises the three new surfaces
+// Shadow DOM deep piercing. Exercises the three new surfaces
 // (find/snapshot pierce options + shadow_trees) against a real Chromium
 // page that defines one open-shadow and one closed-shadow custom element.
 //
@@ -687,7 +687,7 @@ describe("headless-CI keystone — frame-scoped observation (Phase 7)", () => {
 // is genuinely inaccessible from page-side JavaScript. Open-shadow is
 // already covered by Playwright's a11y tree; this test is here to keep
 // the pierce surface from regressing.
-describe("headless-CI keystone — Shadow DOM deep piercing (Phase 7)", () => {
+describe("headless-CI keystone — Shadow DOM deep piercing", () => {
   it(
     "shadow_trees surfaces open + closed shadow hosts, find({pierce:'closed'}) sees closed-shadow content",
     async () => {

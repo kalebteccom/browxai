@@ -1,6 +1,6 @@
 ---
 name: tracker-id-auditor
-description: PR-time backup to the ESLint custom rule — regex-scans diffs for tracker IDs (W-X#, Round-N, TICKET-N, JIRA-N, ask #N) in source and comments.
+description: PR-time backup to the ESLint custom rule — regex-scans diffs for tracker IDs (W-X#, R[Oo]und-N, TICKET-N, JIRA-N, ask #N) in source and comments.
 model: claude-sonnet-4-7
 tools: [Read, Bash, Grep, Glob]
 ---
@@ -12,7 +12,7 @@ Runs at PR time. Scans the diff for internal tracker IDs in code or comments —
 ## Patterns flagged
 
 - `W-[A-Z]\d+` / `W-X\d+` — internal phase / sprint tags.
-- `Round-\d+` — round identifiers.
+- `R[Oo]und-\d+` — iteration / r[Oo]und identifiers.
 - `ask #?\d+` — adopter-ask numbers.
 - `TICKET-\d+`, `JIRA-\d+`, `PROJ-\d+` — generic tracker IDs.
 - `#\d+` in code or comments (not in markdown documentation links).
@@ -35,7 +35,7 @@ Runs at PR time. Scans the diff for internal tracker IDs in code or comments —
 ## Success criteria
 
 - Zero unflagged tracker IDs in added source / comments.
-- The ESLint custom rule (Phase 14a) is the primary enforcement; this agent is the PR-time backup.
+- The ESLint custom rule (`no-tracker-ids-in-comments`) is the primary enforcement; this agent is the PR-time backup.
 
 ## What NOT to do
 

@@ -45,7 +45,7 @@ Every tool calling `page.evaluate` / `locator.evaluate` against real DOM has a k
 
 ## Static backstop
 
-Phase 14a ships an ESLint custom rule that flags stringified arrow expressions passed to `evaluate(...)`. It's a backstop; the keystone test is the source of truth.
+The repository ships an ESLint custom rule (`no-stringified-arrow-in-evaluate`) that flags stringified arrow expressions passed to `evaluate(...)`. It's a backstop; the keystone test is the source of truth.
 
 ## Discipline derived from this lesson
 

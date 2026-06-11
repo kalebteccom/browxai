@@ -15,7 +15,7 @@ pnpm format:check
 pnpm build
 ```
 
-CI runs the same gate (see `.github/workflows/`). Pushing a diff that the local gate would reject is a self-inflicted CI failure. The Phase-15 zero-ignores discipline (no `// @ts-ignore`, no `eslint-disable` without justified comment) applies on top of this gate.
+CI runs the same gate (see `.github/workflows/`). Pushing a diff that the local gate would reject is a self-inflicted CI failure. The zero-ignores discipline (no `// @ts-ignore`, no `eslint-disable` without justified comment) applies on top of this gate.
 
 If a residual issue remains (e.g. an external dependency emits a warning you can't suppress), document the owner and reason in the PR — don't leave unexplained global debt.
 
@@ -27,7 +27,7 @@ If a residual issue remains (e.g. an external dependency emits a warning you can
 - Hooks enforce this on visible `git commit -m` / `--message=` invocations.
 - Use `--no-edit` only when amending or rebasing a commit whose existing subject already satisfies the contract.
 
-Rationale: terse, scannable git log; AI trailer noise dilutes attribution; ticket / round / plan references rot — state the why in the PR description or in `docs/ai-context/`, not the commit body.
+Rationale: terse, scannable git log; AI trailer noise dilutes attribution; ticket / iteration / plan references rot — state the why in the PR description or in `docs/ai-context/`, not the commit body.
 
 ## Improve existing code
 
@@ -55,7 +55,7 @@ Default to writing no comments. Only add one when the WHY is non-obvious: a hidd
 
 - Don't explain WHAT the code does — well-named identifiers do that.
 - Don't reference the current task / fix / callers ("used by X", "added for the Y flow", "handles the case from PR #123") — that belongs in the PR description.
-- **No internal tracking identifiers in code or comments.** Ticket / plan / round / PR refs (`W-X#`, `Round-N`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`, `ROLLBACK-SAFETY-PLAN`, `Security-RECOMMENDED-1`, etc.) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Example: `// Kept as a zombie for safe rollback; remove in a follow-up cleanup` — not `// Kept per ROLLBACK-SAFETY-PLAN Rule 1`.
+- **No internal tracking identifiers in code or comments.** Ticket / plan / iteration / PR refs (`W-X#`, `R[Oo]und-\d+`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`, `ROLLBACK-SAFETY-PLAN`, `Security-RECOMMENDED-1`, etc.) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Example: `// Kept as a zombie for safe rollback; remove in a follow-up cleanup` — not `// Kept per ROLLBACK-SAFETY-PLAN Rule 1`.
 - **Exception — load-bearing identifier schemes** like `INV-N` invariant tags whose literal text the test discovers. browxai has none today; the rule shape is documented for future-proofing.
 
 A PR-time `tracker-id-auditor` agent (see `.agents/skills/tracker-id-auditor.md`) regex-scans diffs as a backup to the ESLint custom rule.
@@ -66,13 +66,13 @@ The "no internal tracking identifiers" rule is not limited to code comments. It 
 
 The reader cares what a tool does **today**, not how it got there. Strip the provenance:
 
-- **Roadmap phase tags** — `(Phase 8)`, `Phase-2.5`, `Pre-Phase-7`. Describe current behavior, not the internal phase that shipped it.
+- **Roadmap phase tags** — internal phase/iteration labels (e.g., `P[ -]?\d+`, `pre-P\d+`). Describe current behavior, not the internal phase that shipped it.
 - **Wishlist / tracker IDs** — `(Wishlist W-D3.)`, `_(W-F4)_`, `W-H5`. Provenance for the team, noise to a user.
 - **Decision history** — "revised down from ~1 month by owner decision 2026-05-20", "baseline cut 2026-05-19", "every adoption round reset the clock". The current rule is the documentation; how it was reached is git history.
 - **Dead-feature and futures callouts** — "(deferred)", "(queued as a future cycle)", "(Tracked: … — see feedback_X)", or describing a removed feature. If it does not ship, do not mention it; if it is planned, it does not belong in the reference for what ships.
 - **Memory / internal-doc pointers** — `see feedback_chrome_child_dies_with_server`. State the fact inline or link a public doc; never expose an internal memory slug.
 
-Write the fact, not the provenance: "Capability `eval` is off by default", not "the `eval` capability (Phase 2, W-L3, revised by owner decision …) is off by default". Cross-references to other **public** docs (`see docs/threat-model.md`) are reader-useful navigation, not internal tracking, and are fine.
+Write the fact, not the provenance: "Capability `eval` is off by default", not "the `eval` capability (per the early scoping decision, revised by owner decision …) is off by default". Cross-references to other **public** docs (`see docs/threat-model.md`) are reader-useful navigation, not internal tracking, and are fine.
 
 Internal working docs under `docs/ai-context/` and `docs/rfcs/` are exempt — phase and decision history are legitimate context there. The line is simple: **anything a user or calling agent can read must be clean.**
 
@@ -94,8 +94,8 @@ browxai's architecture leans on SOLID with TypeScript-idiomatic interpretations.
 
 ### Open–closed — extend without modifying
 
-- Phase-10's `perf_audit` pluggable analyser registry is the canonical example: new categories (LCP, CLS, layout-thrash, memory) attach to an internal registry; the public `perf_audit` surface is unchanged. New analysers add by extending the registry, not by editing `perf_audit`'s handler.
-- Phase-8's plugin runtime is substrate-level OCP: an external package adds tools via `register(api)` without any change to the browxai core.
+- The `perf_audit` pluggable analyser registry is the canonical example: new categories (LCP, CLS, layout-thrash, memory) attach to an internal registry; the public `perf_audit` surface is unchanged. New analysers add by extending the registry, not by editing `perf_audit`'s handler.
+- The plugin runtime is substrate-level OCP: an external package adds tools via `register(api)` without any change to the browxai core.
 
 ### Liskov — substitutable contracts
 

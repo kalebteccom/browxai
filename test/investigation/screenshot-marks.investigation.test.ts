@@ -1,5 +1,5 @@
 // Investigation smoke for `screenshot_marks` — substantiates the
-// wrightxai Phase-0 tool-fit question:
+// wrightxai tool-fit question:
 //
 //   1. Verify the namespace-sharing claim end-to-end (snapshot → pick refs →
 //      screenshot_marks → mapping["N"] === eM AND painted bbox == find()
@@ -11,7 +11,7 @@
 //      bboxes.
 //
 // Targets: example.com, developer.mozilla.org, en.wikipedia.org/wiki/Main_Page.
-// Public no-auth pages only. Same scope Builder A used for the Phase-0 smoke.
+// Public no-auth pages only. Same scope Builder A used for the smoke.
 //
 // NOT part of the keystone or unit suite — runs from
 // vitest.investigation.config.ts. Live network; skipped when WRX_NO_NET is

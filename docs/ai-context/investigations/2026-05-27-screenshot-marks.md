@@ -1,6 +1,6 @@
 # `screenshot_marks` — tool-fit investigation (2026-05-27)
 
-This investigation was scoped from a wrightxai Phase-0 tool-fit question:
+This investigation was scoped from a wrightxai early-discovery tool-fit question:
 the wrightxai spec at `projects/webwright-on-browxai/spec.md` line 57 says
 wrightxai "never re-exposes …`screenshot_marks`", yet wrightxai's curated
 `BrowxaiToolName` union includes `screenshot_marks` in the agent-callable

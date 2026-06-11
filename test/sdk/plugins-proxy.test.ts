@@ -1,4 +1,4 @@
-// Phase 8 — `client.plugins.<namespace>.<tool>(args)` proxy seam.
+// `client.plugins.<namespace>.<tool>(args)` proxy seam.
 //
 // The proxy is purely lexical — every namespaced access returns a
 // function that routes through `callTool`. The function exists even

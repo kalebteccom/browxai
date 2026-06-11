@@ -22,7 +22,7 @@ Per-tool handlers. One file per tool. Files of note:
 - `bbox.ts`, `compose.ts` — geometry helpers used by `find`, `actions`, `screenshot`.
 - `clock.ts`, `await_network.ts`, `coverage.ts`, `dom_diff.ts` — diagnostics and timing.
 - `drop-files.ts`, `downloads.ts` — file-io capability surface.
-- `canvas.ts` — Phase-9a canvas-app eval routing (used by figma/tldraw/excalidraw plugins).
+- `canvas.ts` — canvas-app eval routing (used by figma/tldraw/excalidraw plugins).
 - `clipboard.ts`, `console.ts` — read surfaces.
 
 Each handler file ends with a `.test.ts` for unit coverage and is also covered by a keystone test in `test/`.
@@ -46,7 +46,7 @@ Cross-cutting utilities:
 
 ### `src/plugin/`
 
-Phase-8 plugin runtime: loader, namespace registry, `dependsOn` resolver with cycle detection, capability composition, call-graph enforcement.
+Plugin runtime: loader, namespace registry, `dependsOn` resolver with cycle detection, capability composition, call-graph enforcement.
 
 ### `src/sdk/`
 

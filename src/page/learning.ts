@@ -1,4 +1,4 @@
-// Learned `find()` ranking — Phase-2 follow-on.
+// Learned `find()` ranking —  follow-on.
 //
 // Session-scoped, in-memory feedback signal: when the agent calls
 // `find_feedback({ query, ref })` after a successful find→act, we remember that
@@ -9,7 +9,7 @@
 // stable-ref scheme uses. So the boost survives snapshots that re-key refs.
 //
 // Cap: 100 entries per session, LRU-evict. Adding more learning sophistication
-// (frequency, decay over wall-clock) is straightforward but Phase-3 work; this
+// (frequency, decay over wall-clock) is straightforward but work; this
 // minimum-viable version closes the "ranking should adapt" loop without
 // committing to a model.
 

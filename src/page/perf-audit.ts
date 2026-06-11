@@ -1,4 +1,4 @@
-// perf_audit — capability `read`. The headline Phase-10 tool.
+// perf_audit — capability `read`. The headline tool.
 //
 // Promotes browxai's perf surface from *measurement* (`perf_start/stop/insights`)
 // to *actionable* — agents get a structured audit with remediation hints, not
@@ -84,7 +84,7 @@ export interface AuditContext {
 export type AuditCategoryAnalyser = (ctx: AuditContext) => CategoryResult;
 
 /** Registry — exported so tests can monkey-patch categories, and so future
- *  Phase-10.x additions are a one-liner change. */
+ *  .x additions are a one-liner change. */
 export const ANALYSERS: Record<AuditCategory, AuditCategoryAnalyser> = {
   "render-blocking": analyseRenderBlocking,
   "unused-code": analyseUnusedCode,

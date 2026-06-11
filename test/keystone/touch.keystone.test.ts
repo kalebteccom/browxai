@@ -6,7 +6,7 @@
 //
 // The unit suite proves each tool dispatches the right CDP shape; this
 // keystone proves the dispatched events actually fire DOM handlers on a
-// real browser — the headless-CI guarantee Phase 7 ships.
+// real browser — the headless-CI guarantee ships.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";

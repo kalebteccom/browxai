@@ -1,4 +1,4 @@
-// Unit tests for the Phase-7 shadow-piercing primitives. The CDP path is
+// Unit tests for the shadow-piercing primitives. The CDP path is
 // fakeable through a stub `CDPSession` — we feed in a synthetic
 // `DOM.getDocument` payload and assert the harvester produces the right
 // `ShadowTreeEntry[]` / `ClosedShadowDomEntry[]` shapes.

@@ -20,7 +20,7 @@ This subtree is the **agent-facing** companion to the public `docs/` site. It is
 | `tool-registration/`   | How an MCP tool gets registered, gated, returned, and tested.                                                 |
 | `page-side-functions/` | The real-function-literal discipline + the dom_export / element_export trap lesson.                           |
 | `recorder-and-replay/` | Action-trace IR, no-trace contract, replayability.                                                            |
-| `plugin-runtime/`      | Phase-8 plugin runtime: lifecycle, namespacing, dependsOn, capability composition.                            |
+| `plugin-runtime/`      | Plugin runtime: lifecycle, namespacing, dependsOn, capability composition.                                    |
 | `secrets-and-egress/`  | network-body capability, secrets masking chokepoint, egress order of composition.                             |
 | `testing/`             | Unit / plugin-integration / keystone layering; the QA patterns playbook.                                      |
 | `release-process/`     | Semver clock, retired-registry deprecation pattern, branch protection.                                        |

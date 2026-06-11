@@ -53,7 +53,7 @@ import { log } from "../util/logging.js";
 export type PolicyMode = "allow" | "deny" | "raise" | "ask-human";
 
 /** Canonical name set for v1. Aligned with Playwright/Chromium permission names.
- *  USB/Bluetooth/HID are deliberately NOT in v1 (Phase 7's `device-emulation`).
+ *  USB/Bluetooth/HID are deliberately NOT in v1 ('s `device-emulation`).
  *  Re-exported in `permission_state` tool docs + tool-reference.md. */
 export const SUPPORTED_PERMISSIONS = [
   "camera",

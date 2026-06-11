@@ -1,4 +1,4 @@
-// Cache API + IndexedDB keystone — drives the Phase 7 storage-state CRUD
+// Cache API + IndexedDB keystone — drives the storage-state CRUD
 // surface against a real headless Chromium. The fixture page populates
 // `caches.open("v1")` with a text + binary entry and `indexedDB.open("app")`
 // with a "kv" store carrying two records; this suite reads them back,
@@ -75,7 +75,7 @@ async function waitForSeed(session: string): Promise<void> {
   throw new Error("cache-idb keystone: storage seeding never reached 'ready'");
 }
 
-describe("cache + idb keystone — Phase 7 storage CRUD against real Chromium", () => {
+describe("cache + idb keystone —  storage CRUD against real Chromium", () => {
   it(
     "Cache API round-trip — list / get text + binary / put / delete / clear / delete_storage",
     async () => {

@@ -1,4 +1,4 @@
-// Phase 10 perf module keystone — drive the four new tools against real
+//  perf module keystone — drive the four new tools against real
 // headless Chromium with fixture pages purpose-built to trip categories.
 //
 // Coverage:

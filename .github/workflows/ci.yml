@@ -34,10 +34,10 @@ jobs:
       - run: pnpm test
 
   keystone:
-    # Phase-2-close gate: real headless Chromium drives the MCP surface
-    # end-to-end (also asserts the Phase-2.5 zero-env / two-user-isolation /
-    # incognito-no-trace criteria). Isolated from the hermetic unit job so a
-    # browser download never slows or flakes `pnpm test`.
+    # Real headless Chromium drives the MCP surface end-to-end and asserts
+    # the zero-env / two-user-isolation / incognito-no-trace criteria.
+    # Isolated from the hermetic unit job so a browser download never slows
+    # or flakes `pnpm test`.
     runs-on: ubuntu-latest
     permissions:
       contents: read

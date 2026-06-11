@@ -1,4 +1,4 @@
-// Origin allow/blocklist — Phase-2 defense-in-depth gate (NOT a security boundary).
+// Origin allow/blocklist —  defense-in-depth gate (NOT a security boundary).
 // See `docs/threat-model.md` for the framing: this is a blast-radius reducer + a hook
 // point for confirmation prompts, *not* a guarantee that off-allowlist requests can't
 // happen (page-initiated redirects, JS-driven nav, BYOB-mode etc. can still escape).
@@ -8,7 +8,7 @@
 //   BROWX_BLOCKED_ORIGINS=https://*.tracking.example.com,https://ads.example.com
 
 export interface OriginPolicy {
-  /** Empty allowlist = no restriction (Phase-1 default). */
+  /** Empty allowlist = no restriction ( default). */
   readonly allowed: ReadonlyArray<OriginPattern>;
   /** Blocked overrides allowed: an origin in `blocked` returns false even if in `allowed`. */
   readonly blocked: ReadonlyArray<OriginPattern>;

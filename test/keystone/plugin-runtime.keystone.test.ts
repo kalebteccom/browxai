@@ -1,4 +1,4 @@
-// Phase 8 keystone — plugin runtime drives a real headless Chromium
+//  keystone — plugin runtime drives a real headless Chromium
 // session through the actual MCP tool handlers, with a real example
 // plugin loaded.
 //
@@ -84,7 +84,7 @@ afterAll(async () => {
   rmSync(workspace, { recursive: true, force: true });
 }, 120_000);
 
-describe("Phase 8 plugin runtime — keystone", () => {
+describe(" plugin runtime — keystone", () => {
   it("registers the example plugin's tools through MCP", async () => {
     const list = await callJson<{
       ok: boolean;

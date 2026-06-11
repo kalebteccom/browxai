@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { resolveOriginPolicy, isOriginAllowed } from "./origin.js";
 
 describe("resolveOriginPolicy + isOriginAllowed", () => {
-  it("empty policy = no restriction (Phase-1 default)", () => {
+  it("empty policy = no restriction ( default)", () => {
     const p = resolveOriginPolicy({});
     expect(isOriginAllowed("https://anything.example.com/", p)).toBe(true);
   });

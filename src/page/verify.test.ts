@@ -319,7 +319,7 @@ describe("verifyPredicate — pure server-side eval", () => {
 });
 
 describe("shared-vocabulary regression: batch.expect and verify_predicate share one engine", () => {
-  // The Phase-3.5 invariant: `batch.expect` shorthands and `verify_predicate`
+  // The invariant: `batch.expect` shorthands and `verify_predicate`
   // must speak the same primitives — one source of truth in
   // `src/util/predicates.ts`. The shorthand INPUT shape stays frozen
   // (back-compat with v0.1.0), but each shorthand lowers into a `Predicate`

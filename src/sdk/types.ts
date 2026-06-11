@@ -248,7 +248,7 @@ export interface BrowxaiClient {
   callTool(name: string, args?: BrowxaiArgs): Promise<BrowxaiResult>;
 
   /**
-   * Phase 8 — namespaced caller for plugin-registered tools. Indexed
+   * namespaced caller for plugin-registered tools. Indexed
    * twice: `client.plugins.<namespace>.<tool>(args)`. The wrapper
    * round-trips through {@link BrowxaiClient.callTool}, so
    * capability gating + the call-graph enforcement applied at the

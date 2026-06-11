@@ -1,4 +1,4 @@
-// Phase-7 workers keystone — drives `workers_list` + `worker_message_send` +
+//  workers keystone — drives `workers_list` + `worker_message_send` +
 // `worker_messages_read` end-to-end against a real headless Chromium and a
 // fixture page that constructs a real `Worker`. The unit tests stub the
 // page-side wrapper against a fake Page; this keystone proves the wrapper

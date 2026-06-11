@@ -1,4 +1,4 @@
-// Phase 7 — Shadow DOM deep piercing.
+// Shadow DOM deep piercing.
 //
 // Two layers:
 //   1. Open shadow — reachable from page-side JS via `Element.shadowRoot`.
