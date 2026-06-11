@@ -8,90 +8,127 @@ lastUpdated: false
 ---
 
 <div class="browx-hero not-content">
-  <p class="browx-kicker">MCP-native browser control</p>
-  <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
-  <p class="browx-lede">
-    A browser, built for agents. Playwright and CDP under the hood, a curated
-    surface on top that an AI agent can actually drive without drowning in tokens.
+  <div class="browx-hero-copy">
+    <p class="browx-kicker">MCP-native browser control</p>
+    <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
+    <p class="browx-lede">
+      A browser, built for agents. Playwright and CDP under the hood, a curated
+      surface on top that an AI agent can actually drive without drowning in tokens.
+    </p>
+    <div class="browx-cta">
+      <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
+      <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
+    </div>
+    <div class="browx-install">
+      <span class="pfx">$</span> npm install browxai
+    </div>
+  </div>
+
+  <div class="browx-window" aria-hidden="true">
+    <div class="browx-window-bar">
+      <span class="browx-window-dots"><i></i><i></i><i></i></span>
+      <span class="browx-window-title">agent <span class="dot">·</span> snapshot()</span>
+    </div>
+    <div class="browx-snap">
+      <div class="browx-snap-note"># a page an agent can read, not a DOM dump</div>
+      <div class="row">
+        <span class="t-role">form</span>
+        <span class="t-str">"Sign in"</span>
+        <span class="t-acc">[ref=e3]</span>
+        <span></span>
+      </div>
+      <div class="row indent">
+        <span class="t-role">textbox</span>
+        <span class="t-str">"Email"</span>
+        <span class="t-acc">[ref=e4]</span>
+        <span class="t-acc">actionable</span>
+      </div>
+      <div class="row indent">
+        <span class="t-role">textbox</span>
+        <span class="t-str">"Password"</span>
+        <span class="t-acc">[ref=e5]</span>
+        <span class="t-acc">actionable</span>
+      </div>
+      <div class="row indent">
+        <span class="t-role">button</span>
+        <span class="t-str">"Continue"</span>
+        <span class="t-acc">[ref=e6]</span>
+        <span class="t-acc">actionable</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="browx-loop not-content">
+  <div class="browx-loop-step">
+    <b>navigate</b>
+    <span>go to a URL</span>
+  </div>
+  <span class="browx-loop-arrow">&rarr;</span>
+  <div class="browx-loop-step">
+    <b>snapshot</b>
+    <span>read the page as refs</span>
+  </div>
+  <span class="browx-loop-arrow">&rarr;</span>
+  <div class="browx-loop-step">
+    <b>find</b>
+    <span>locate a target</span>
+  </div>
+  <span class="browx-loop-arrow">&rarr;</span>
+  <div class="browx-loop-step">
+    <b>act</b>
+    <span>click, fill, verify</span>
+  </div>
+</div>
+
+<div class="browx-section not-content">
+  <h2 class="browx-section-title">Why it exists</h2>
+  <p class="browx-section-sub">
+    browxai is not a wrapper over someone else's MCP server. It owns its own
+    Playwright and CDP transport so it can own the whole session lifecycle.
   </p>
-  <div class="browx-cta">
-    <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
-    <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
-    <a href="https://github.com/kalebteccom/browxai" class="browx-btn browx-btn--ghost">GitHub</a>
-  </div>
 
-  <div class="browx-loop">
-    <div class="browx-loop-step"><b>navigate</b><span>go to a URL</span></div>
-    <div class="browx-loop-step"><b>snapshot</b><span>read the page as refs</span></div>
-    <div class="browx-loop-step"><b>find</b><span>locate a target</span></div>
-    <div class="browx-loop-step"><b>act</b><span>click, fill, verify</span></div>
-  </div>
-</div>
-
-<h2 class="browx-section-title">Pages an agent can read</h2>
-<p class="browx-section-sub">
-  <code>snapshot()</code> returns a compact accessibility tree with stable refs, not a DOM dump. The
-  agent asks for a target in plain language and acts by ref.
-</p>
-
-```ts
-await navigate({ url: "https://example.com/login" });
-const ui = await snapshot();
-const hits = await find({ query: "the email field" });
-await fill({ ref: hits[0].ref, text: "ada@example.com" });
-```
-
-```text
-form "Sign in" [ref=e3]
-  textbox "Email"    [ref=e4]  actionable
-  textbox "Password" [ref=e5]  actionable
-  button  "Continue" [ref=e6]  actionable
-```
-
-<h2 class="browx-section-title">Why it exists</h2>
-<p class="browx-section-sub">
-  browxai is not a wrapper over someone else's MCP server. It owns its own Playwright and CDP
-  transport so it can own the whole session lifecycle.
-</p>
-
-<div class="browx-grid not-content">
-  <div class="browx-card">
-    <span class="browx-card-mark">// surface</span>
-    <h3>Token-efficient</h3>
-    <p>
-      <code>snapshot()</code> is a scoped, paginated, budgeted accessibility tree.{" "}
-      <code>find()</code> returns ranked candidates with evidence, not a guess. Results stay small
-      on purpose.
-    </p>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">// safety</span>
-    <h3>Safe by default</h3>
-    <p>
-      Capability-gated tools, an origin allow and block list, confirmation hooks, and a hard
-      anti-wedge deadline on every call. Arbitrary JS, full response bodies, the OS clipboard, and
-      network mocking are all off until you opt in.
-    </p>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">// clients</span>
-    <h3>Model-agnostic</h3>
-    <p>
-      Any MCP client over stdio. Use it from Claude, Codex, or anything else that speaks the
-      protocol. It is not tied to one model or one vendor.
-    </p>
-  </div>
-  <div class="browx-card">
-    <span class="browx-card-mark">// sessions</span>
-    <h3>Sessions and lifecycle</h3>
-    <p>
-      Isolated per-session contexts: persistent, incognito, or attach to an existing Chrome you
-      already control. Headed and headless. Config is driven over MCP, with no out-of-band setup.
-    </p>
+  <div class="browx-grid">
+    <div class="browx-card">
+      <span class="browx-card-mark">// surface</span>
+      <h3>Token-efficient</h3>
+      <p>
+        <code>snapshot()</code> is a scoped, paginated, budgeted accessibility
+        tree. <code>find()</code> returns ranked candidates with evidence, not a
+        guess. Results stay small on purpose.
+      </p>
+    </div>
+    <div class="browx-card">
+      <span class="browx-card-mark">// safety</span>
+      <h3>Safe by default</h3>
+      <p>
+        Capability-gated tools, an origin allow and block list, confirmation
+        hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
+        response bodies, the OS clipboard, and network mocking are all off until
+        you opt in.
+      </p>
+    </div>
+    <div class="browx-card">
+      <span class="browx-card-mark">// clients</span>
+      <h3>Model-agnostic</h3>
+      <p>
+        Any MCP client over stdio. Use it from Claude, Codex, or anything else
+        that speaks the protocol. It is not tied to one model or one vendor.
+      </p>
+    </div>
+    <div class="browx-card">
+      <span class="browx-card-mark">// sessions</span>
+      <h3>Sessions and lifecycle</h3>
+      <p>
+        Isolated per-session contexts: persistent, incognito, or attach to an
+        existing Chrome you already control. Headed and headless. Config is
+        driven over MCP, with no out-of-band setup.
+      </p>
+    </div>
   </div>
 </div>
 
-<div class="browx-cta" style="margin-top: 2rem;">
+<div class="browx-cta browx-cta--center not-content">
   <a href="/getting-started/" class="browx-btn browx-btn--primary">
     Wire it into your agent
   </a>
