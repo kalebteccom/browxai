@@ -3,9 +3,9 @@
 This is the operator-facing index of browxai plugins. For **authoring
 a plugin**, see [`docs/plugin-authoring.md`](./plugin-authoring.md).
 
-The Phase 8 plugin runtime ships as part of browxai v1.0 foundations.
+The plugin runtime ships as part of browxai's v1.0 foundations.
 The first wave of plugins consumes the runtime; this index will grow
-as Phase 9 (canvas plugins) and the diagnostics-report plugin land.
+as the canvas plugins and the diagnostics-report plugin land.
 
 ## How to install a plugin
 
@@ -47,11 +47,11 @@ $ browxai plugin sync                       # reconcile installed dir with plugi
 
 ## Currently published
 
-| Name                                                                     | Tier       | Description                                                                                                                                                                                                                                                  |
+| Name | Tier | Description |
 | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@kalebtec/browxai-plugin-example`](../packages/plugins/example/)       | `kalebtec` | Reference plugin — exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors.                                                                                                                     |
-| [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/)           | `kalebtec` | Figma canvas-app adapter — selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`.                               |
-| [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/)         | `kalebtec` | Tldraw canvas-app adapter — shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`.                                |
+| [`@kalebtec/browxai-plugin-example`](../packages/plugins/example/) | `kalebtec` | Reference plugin — exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors. |
+| [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/) | `kalebtec` | Figma canvas-app adapter — selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`. |
+| [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/) | `kalebtec` | Tldraw canvas-app adapter — shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`. |
 | [`@kalebtec/browxai-plugin-excalidraw`](../packages/plugins/excalidraw/) | `kalebtec` | Excalidraw canvas-app adapter — scene state, viewport, element add/delete, scroll (`excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element`, `excalidraw.set_scroll`). Capabilities `eval` + `canvas`. |
 
 The three canvas-app adapter plugins are the v1.0 proof that the plugin
@@ -76,7 +76,7 @@ operator can audit.
 
 The plugin runtime turns browxai from "the best curated agentic-
 browser substrate" into "the ecosystem substrate". The runtime is
-the generic primitive (Phase 8); the canvas plugins (Phase 9) and
+the generic primitive; the canvas plugins and
 the diagnostics-report plugin will be the first real consumers, and
 will demonstrate the inter-plugin composition model
 (`dependsOn`-declared, call-graph-enforced).

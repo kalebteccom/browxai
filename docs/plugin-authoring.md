@@ -6,7 +6,7 @@ looking to extend browxai's core surface (not write a plugin), the
 contribution path is `src/page/` / `src/session/` — plugins are for
 self-contained surfaces an outside team owns.
 
-The Phase 8 plugin runtime ships as part of browxai's v1.0
+The plugin runtime ships as part of browxai's v1.0
 foundations. The contract is **resolved-once-at-server-start**, the
 loading model is **in-process JS modules**, and tool registration is
 **globally namespaced**.
@@ -104,7 +104,7 @@ The `api` argument exposes:
     object. Same shape as core browxai tools use. Pass an empty
     object (or omit) for argless tools.
   - `handler(args)` returns the MCP envelope `{content:[...]}`.
-    Handlers should produce `{ok:true, ...}` or `{ok:false, error, ...}`
+    Handlers should produce `{ok:true,...}` or `{ok:false, error,...}`
     JSON in the first text item — matches the convention every core
     tool uses.
 - `api.callTool(targetName, args?)` — call another tool by name.
@@ -330,7 +330,7 @@ plugin actually does.
 The example plugin is the toy / learning path. For a look at how real
 first-party plugins consume the runtime — declared capabilities, an
 `api.callTool("eval_js", …)` inner loop, structured app-not-loaded
-errors, the typed schema overlay — see the three Phase 9b canvas-app
+errors, the typed schema overlay — see the three canvas-app
 adapter plugins:
 
 - [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/) —
