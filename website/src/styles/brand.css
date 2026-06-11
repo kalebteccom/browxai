@@ -644,3 +644,75 @@ main:has(.browx-404) > .content-panel {
 .sl-markdown-content :is(h1, h2, h3) {
   letter-spacing: -0.015em;
 }
+
+/* Reference tables: top-align cells and tighten type. Starlight keeps tables
+   in a display:block + overflow-x container, so a genuinely wide one scrolls
+   within the column rather than bleeding under the right-hand sidebar. Tables
+   carrying paragraph-length content (the capability set) are written as lists
+   instead, since that is what they are. */
+.sl-markdown-content table {
+  font-size: 0.9rem;
+}
+.sl-markdown-content table :is(th, td) {
+  vertical-align: top;
+}
+
+/* ---- Trust-boundary diagram (security/threat-model) --------------------- */
+.browx-trust {
+  display: block;
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  margin: 0.5rem 0 1.75rem;
+}
+.browx-trust .tb-node rect {
+  fill: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, var(--sl-color-bg));
+  stroke: var(--sl-color-hairline-shade);
+  stroke-width: 1;
+}
+.browx-trust .tb-title {
+  fill: var(--sl-color-white);
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  font-size: 18px;
+}
+.browx-trust .tb-sub {
+  fill: var(--sl-color-gray-3);
+  font-family: var(--browx-font-body);
+  font-size: 13px;
+}
+.browx-trust .tb-tag {
+  fill: var(--sl-color-text-accent);
+  font-family: var(--browx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.browx-trust .tb-link {
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 2;
+  fill: none;
+}
+.browx-trust .tb-label {
+  fill: var(--sl-color-gray-3);
+  font-family: var(--browx-font-mono);
+  font-size: 12px;
+}
+.browx-trust .tb-untrusted rect {
+  fill: color-mix(in srgb, #f87171 13%, transparent);
+  stroke: #f87171;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+.browx-trust .tb-untrusted-title {
+  fill: var(--sl-color-white);
+  font-family: var(--browx-font-body);
+  font-weight: 600;
+  font-size: 14px;
+}
+.browx-trust .tb-untrusted-tag {
+  fill: #f87171;
+  font-family: var(--browx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
