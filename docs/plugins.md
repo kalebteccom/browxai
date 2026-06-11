@@ -47,11 +47,11 @@ $ browxai plugin sync                       # reconcile installed dir with plugi
 
 ## Currently published
 
-| Name | Tier | Description |
+| Name                                                                     | Tier       | Description                                                                                                                                                                                                                                                  |
 | ------------------------------------------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@kalebtec/browxai-plugin-example`](../packages/plugins/example/) | `kalebtec` | Reference plugin — exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors. |
-| [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/) | `kalebtec` | Figma canvas-app adapter — selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`. |
-| [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/) | `kalebtec` | Tldraw canvas-app adapter — shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`. |
+| [`@kalebtec/browxai-plugin-example`](../packages/plugins/example/)       | `kalebtec` | Reference plugin — exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors.                                                                                                                     |
+| [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/)           | `kalebtec` | Figma canvas-app adapter — selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`.                               |
+| [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/)         | `kalebtec` | Tldraw canvas-app adapter — shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`.                                |
 | [`@kalebtec/browxai-plugin-excalidraw`](../packages/plugins/excalidraw/) | `kalebtec` | Excalidraw canvas-app adapter — scene state, viewport, element add/delete, scroll (`excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element`, `excalidraw.set_scroll`). Capabilities `eval` + `canvas`. |
 
 The three canvas-app adapter plugins are the v1.0 proof that the plugin

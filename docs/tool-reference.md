@@ -67,16 +67,16 @@ Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigin
 
 The `BROWX_*` env vars below remain honoured as a **legacy compatibility layer** (one notch above built-in defaults, below user/project) — documented but no longer the recommended path. `BROWX_WORKSPACE` is the exception: it's a _location_ anchor (where the config store itself lives), not config.
 
-| Env var | Default | What |
-| ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_WORKSPACE` | `~/.browxai/` | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec. |
-| `BROWX_ATTACH_CDP` | _(unset)_ | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown. |
-| `BROWX_HEADLESS` | `0` | Managed-mode only. `1` to launch headless. |
-| `BROWX_TEST_ATTRIBUTES` | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes. |
-| `BROWX_CAPABILITIES` | `read,navigation,action,human` | Comma-separated list of capability categories enabled at server start. Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management — headed + persistent only). A disabled tool returns a structured error on call. |
-| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action` | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`. |
-| `BROWX_ALLOWED_ORIGINS` | _(unset)_ | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model. |
-| `BROWX_BLOCKED_ORIGINS` | _(unset)_ | Comma-separated blocklist; overrides the allowlist. |
+| Env var                  | Default                                 | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWX_WORKSPACE`        | `~/.browxai/`                           | Workspace root. **All** transient state (managed profile, logs, helper artefacts, `config.json`) lives here. NEVER `cwd`. See "no-trace contract" in the spec.                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `BROWX_ATTACH_CDP`       | _(unset)_                               | If set, attach to an externally-launched Chrome over CDP (BYOB). Loopback-only hostnames; the server refuses anything else. Attached browser is **not-owned** — the server never closes it or resets its storage on shutdown.                                                                                                                                                                                                                                                                                                                                             |
+| `BROWX_HEADLESS`         | `0`                                     | Managed-mode only. `1` to launch headless.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `BROWX_TEST_ATTRIBUTES`  | `data-testid,data-test,data-cy,data-qa` | Comma-separated list of HTML attributes treated as tier-1 selector anchors. **Order-sensitive — the first match on a node wins.** Add your codebase's convention here (e.g. `data-testid,data-type,data-test,data-cy`) so it flows through `snapshot()` / `find()` / `selectorHint` / `click({selector})` without code changes.                                                                                                                                                                                                                                           |
+| `BROWX_CAPABILITIES`     | `read,navigation,action,human`          | Comma-separated list of capability categories enabled at server start. Off-by-default: `eval` (`eval_js` + `poll_eval` tools), `byob-attach` (`BROWX_ATTACH_CDP` opt-in), `network-body` (full response bodies), `clipboard` (the `shortcut` tool's OS-clipboard side-effect — observability still works without it), `file-io` (`upload_file` tool), `secrets` (per-session sensitive-data registry + egress masking), `extensions` (per-session unpacked-Chromium-extension management — headed + persistent only). A disabled tool returns a structured error on call. |
+| `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Comma-separated list of policy hooks that route through `await_human({kind:"confirm"})` before dispatch. Valid: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`.                                                                                                                                                                                                                                                                                                                                                                                  |
+| `BROWX_ALLOWED_ORIGINS`  | _(unset)_                               | Comma-separated allowlist for `navigate`. Wildcards allowed: `https://*.example.com`. Off-allowlist navigations route through the confirm hook (if set) or proceed with a warning (if not). **Defense-in-depth, not a security boundary** — see threat model.                                                                                                                                                                                                                                                                                                             |
+| `BROWX_BLOCKED_ORIGINS`  | _(unset)_                               | Comma-separated blocklist; overrides the allowlist.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 
 ## Sessions
 
@@ -95,11 +95,11 @@ Omitting `session` resolves to the lazily-created `"default"` session — byte-i
 
 **Session modes** (`open_session({ mode })`):
 
-| mode | isolation | persistence | when |
+| mode                                               | isolation                                                                                                 | persistence                                     | when                                                                                          |
 | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `persistent` _(default off-attach)_ | own profile dir `<workspace>/profiles/<profile\|id>` (default session keeps legacy `<workspace>/profile`) | cookies/storage survive across runs | logged-in flows you want to resume |
-| `incognito` | own ephemeral context + browser | nothing persisted; all state discarded on close | one-off agentic driving with no profile trace |
-| `attached` _(default when `BROWX_ATTACH_CDP` set)_ | the externally-launched Chrome (not-owned) | the user's real profile | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
+| `persistent` _(default off-attach)_                | own profile dir `<workspace>/profiles/<profile\|id>` (default session keeps legacy `<workspace>/profile`) | cookies/storage survive across runs             | logged-in flows you want to resume                                                            |
+| `incognito`                                        | own ephemeral context + browser                                                                           | nothing persisted; all state discarded on close | one-off agentic driving with no profile trace                                                 |
+| `attached` _(default when `BROWX_ATTACH_CDP` set)_ | the externally-launched Chrome (not-owned)                                                                | the user's real profile                         | BYOB; per-session attach not yet supported — needs the server started with `BROWX_ATTACH_CDP` |
 
 Different ids are always isolated browser contexts regardless of mode, so multi-user / multiplayer scenarios don't bleed. `profile` (persistent only) lets two ids share a profile dir, or pin a stable name.
 
@@ -175,15 +175,15 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
 
 **Per-primitive runtime device emulation** — 7 sibling tools, each setting ONE knob on the live session. State persists on the session and is re-applied to new tabs in the same context. Deliberately NOT a bundled `emulate({...})` — Playwright + chrome-devtools-mcp keep these as siblings for a reason (forcing an over-spec on every call wastes tokens and locks the agent into setting fields it didn't mean to change). All 7 sit under capability `action`.
 
-| Tool | Mechanism | Mid-session mutable? | Reset |
+| Tool                                                | Mechanism                                                                                                | Mid-session mutable? | Reset                                                                                    |
 | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------- | ---------------------------------------------------------------------------------------- |
-| `set_locale({locale})` | CDP `Emulation.setLocaleOverride` (Playwright `context.locale` is creation-time-only) | yes (CDP) | `locale: null` |
-| `set_timezone({timezoneId})` | CDP `Emulation.setTimezoneOverride` (Playwright `timezoneId` is creation-time-only) | yes (CDP) | `timezoneId: null` |
-| `set_geolocation({latitude, longitude, accuracy?})` | Playwright `context.setGeolocation()` | yes (Playwright) | `latitude: null` |
-| `set_color_scheme({scheme})` | Playwright `page.emulateMedia({colorScheme})`; `light` / `dark` / `no-preference` | yes (Playwright) | `scheme: "no-preference"` |
-| `set_reduced_motion({on})` | Playwright `page.emulateMedia({reducedMotion})`; maps `on:true → "reduce"`, `on:false → "no-preference"` | yes (Playwright) | `on: false` |
-| `set_user_agent({userAgent})` | CDP `Network.setUserAgentOverride` (Playwright `context.userAgent` is creation-time-only) | yes (CDP) | `userAgent: null` |
-| `grant_permissions({permissions, origin?})` | Playwright `context.grantPermissions()` | yes (Playwright) | `permissions: []` (context-wide — per-origin revocation isn't supported by the platform) |
+| `set_locale({locale})`                              | CDP `Emulation.setLocaleOverride` (Playwright `context.locale` is creation-time-only)                    | yes (CDP)            | `locale: null`                                                                           |
+| `set_timezone({timezoneId})`                        | CDP `Emulation.setTimezoneOverride` (Playwright `timezoneId` is creation-time-only)                      | yes (CDP)            | `timezoneId: null`                                                                       |
+| `set_geolocation({latitude, longitude, accuracy?})` | Playwright `context.setGeolocation()`                                                                    | yes (Playwright)     | `latitude: null`                                                                         |
+| `set_color_scheme({scheme})`                        | Playwright `page.emulateMedia({colorScheme})`; `light` / `dark` / `no-preference`                        | yes (Playwright)     | `scheme: "no-preference"`                                                                |
+| `set_reduced_motion({on})`                          | Playwright `page.emulateMedia({reducedMotion})`; maps `on:true → "reduce"`, `on:false → "no-preference"` | yes (Playwright)     | `on: false`                                                                              |
+| `set_user_agent({userAgent})`                       | CDP `Network.setUserAgentOverride` (Playwright `context.userAgent` is creation-time-only)                | yes (CDP)            | `userAgent: null`                                                                        |
+| `grant_permissions({permissions, origin?})`         | Playwright `context.grantPermissions()`                                                                  | yes (Playwright)     | `permissions: []` (context-wide — per-origin revocation isn't supported by the platform) |
 
 Persistence model: each call records the resolved value on the session's `deviceEmulation` bag; a `BrowserContext.on("page")` listener re-applies every set knob to new tabs in the same context, so an OAuth pop-up or `target=_blank` link inherits the overrides. The four CDP-routed primitives (locale, timezone, UA) are exactly the ones with no Playwright mid-session mutator — the CDP equivalents DO take effect on existing pages, so the runtime distinction is invisible to the agent.
 
@@ -641,12 +641,12 @@ Page-wide **overflow scan** — the silent UI-breakage primitive. Generalises `i
 
 **Detector types** (default = all four; opt out via `types:[…]`):
 
-| Type | Condition | Evidence | Why it matters |
+| Type                  | Condition                                                                                  | Evidence                                                                                               | Why it matters                                                                                                                                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `layout` | `scrollWidth/Height > clientWidth/Height` AND `overflow:auto\|scroll` on the relevant axis | `{ scrollWidth, clientWidth, scrollHeight, clientHeight, overflowX, overflowY }` | Content overflows the padding box; scrollbar IS provided. Subtler than `clipped` — recoverable, but often unintended. |
-| `clipped` | same dimensional check, but `overflow:hidden\|clip` on the relevant axis | same shape as `layout` | **The high-value finding** — content invisible with no scrollbar. "The button got cut off." |
-| `text-ellipsis` | `text-overflow:ellipsis` AND `scrollWidth > clientWidth` | `{ scrollWidth, clientWidth, visibleText, fullText }` | Truncated labels. `visibleText` is a best-effort prefix (offsetWidth-bounded heuristic); the agent reads `fullText` for the truth. |
-| `viewport-horizontal` | `documentElement.scrollWidth > clientWidth` | `{ documentScrollWidth, viewportWidth, overrunPx, widestDescendantSelector?, widestDescendantWidth? }` | The "horizontal scrollbar on body" mobile-layout bug. Singleton finding — selector `"html"`, evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable. |
+| `layout`              | `scrollWidth/Height > clientWidth/Height` AND `overflow:auto\|scroll` on the relevant axis | `{ scrollWidth, clientWidth, scrollHeight, clientHeight, overflowX, overflowY }`                       | Content overflows the padding box; scrollbar IS provided. Subtler than `clipped` — recoverable, but often unintended.                                                                           |
+| `clipped`             | same dimensional check, but `overflow:hidden\|clip` on the relevant axis                   | same shape as `layout`                                                                                 | **The high-value finding** — content invisible with no scrollbar. "The button got cut off."                                                                                                     |
+| `text-ellipsis`       | `text-overflow:ellipsis` AND `scrollWidth > clientWidth`                                   | `{ scrollWidth, clientWidth, visibleText, fullText }`                                                  | Truncated labels. `visibleText` is a best-effort prefix (offsetWidth-bounded heuristic); the agent reads `fullText` for the truth.                                                              |
+| `viewport-horizontal` | `documentElement.scrollWidth > clientWidth`                                                | `{ documentScrollWidth, viewportWidth, overrunPx, widestDescendantSelector?, widestDescendantWidth? }` | The "horizontal scrollbar on body" mobile-layout bug. Singleton finding — selector `"html"`, evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable. |
 
 `EPSILON = 1` CSS px tolerates sub-pixel rounding noise — without it, pages that scale fonts or run on a fractional devicePixelRatio routinely trip false positives by ≤0.5 px.
 
@@ -713,14 +713,14 @@ Or, when the ref isn't in this session's registry (structured failure — no thr
 
 **Tier mapping** (same five-tier preference order `find()` uses; the emitted expression mirrors how browxai itself would resolve the ref at action time):
 
-| Ref shape | Emitted expression | `stability` |
+| Ref shape                                                              | Emitted expression                                       | `stability` |
 | ---------------------------------------------------------------------- | -------------------------------------------------------- | ----------- |
-| `data-testid` (default attr) | `page.getByTestId('save-btn')` | `high` |
-| Custom test attribute (`data-cy`, `data-type`, …) | `page.locator('[data-cy="submit-form"]')` | `high` |
-| `role` + accessible `name` | `page.getByRole('button', { name: 'Save' })` | `high` |
-| Stable structural CSS path (semantic anchor / `#id` / `[data-*]`) | `page.locator('main > table > tbody > tr:nth-child(4)')` | `medium` |
-| Purely positional CSS path (chains of `:nth-child` under generic tags) | `page.locator('div > div:nth-child(2) > div')` | `low` |
-| Role only (no name, no path) | `page.getByRole('button')` | `low` |
+| `data-testid` (default attr)                                           | `page.getByTestId('save-btn')`                           | `high`      |
+| Custom test attribute (`data-cy`, `data-type`, …)                      | `page.locator('[data-cy="submit-form"]')`                | `high`      |
+| `role` + accessible `name`                                             | `page.getByRole('button', { name: 'Save' })`             | `high`      |
+| Stable structural CSS path (semantic anchor / `#id` / `[data-*]`)      | `page.locator('main > table > tbody > tr:nth-child(4)')` | `medium`    |
+| Purely positional CSS path (chains of `:nth-child` under generic tags) | `page.locator('div > div:nth-child(2) > div')`           | `low`       |
+| Role only (no name, no path)                                           | `page.getByRole('button')`                               | `low`       |
 
 **`stability` semantics** are the same as `find()`'s: `high` = "uniquely identifies this element via a stable signal" (testid or role+name); `medium` = "stable structural / stable text on a stable role"; `low` = "positional or role-only — likely to drift on the next render." Both labels reflect per-snapshot uniqueness; long-term deploy stability is still the adopter's call on top.
 
@@ -859,10 +859,10 @@ All action tools return an `ActionResult` (text content; JSON-encoded) — the s
 
 ### Common per-call inputs (`ACTION_OPTS`)
 
-| Field | Default | Effect |
-| ----------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mode` | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree. `"full"` returns the whole post-action tree. `"scoped_snapshot"` (default) re-snapshots **just** the action's element subtree + any newly-appeared regions (`structure.appeared` refs); falls back to the full tree if no scope refs exist; auto-promotes to `"none"` when no nav/structure change happened. `"tree_diff"` emits just the appeared-region subtrees (a full unified diff is still future work). |
-| `maxResultTokens` | `600` | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`. |
+| Field             | Default             | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mode`            | `"scoped_snapshot"` | Shape of `snapshotDelta`. `"none"` omits the tree. `"full"` returns the whole post-action tree. `"scoped_snapshot"` (default) re-snapshots **just** the action's element subtree + any newly-appeared regions (`structure.appeared` refs); falls back to the full tree if no scope refs exist; auto-promotes to `"none"` when no nav/structure change happened. `"tree_diff"` emits just the appeared-region subtrees (a full unified diff is still future work). |
+| `maxResultTokens` | `600`               | Approximate cap for the elastic part (`snapshotDelta.tree`). Truncation is surfaced via `warnings`.                                                                                                                                                                                                                                                                                                                                                               |
 
 ### Target shape (for tools that act on an element)
 
@@ -1802,26 +1802,26 @@ echoes the live alias list (NOT values).
 **Egress-side masking.** Every sink that could carry the real value is
 scanned on the way out:
 
-| Sink | Status |
+| Sink                                                                           | Status                                                                                    |
 | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| `ActionResult.network.requests[].url` (URLs in action-window tap) | masked |
-| `ActionResult.network.mutations[].urlPattern` + `responseShape` | masked |
-| `ActionResult.network.wsFrames[].payload` + `url` | masked |
-| `network_read.requests[].url` (session ring) | masked |
-| `network_body.body` (response body) | masked — JSON / text only; base64 bodies pass through unchanged (see below) |
-| `ws_read.frames[].payload` + `.url` | masked |
-| `console_read.recent[].text` + `errors` + `pageErrors` | masked |
-| `snapshot()` tree (a11y node names) | masked |
-| `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`) | masked (deep-walk) |
-| `text_search()` matches (visible text) | masked (deep-walk) |
-| `plan().evidence` (`selectorHint` / role / name on the planned descriptor) | masked (deep-walk) |
-| `inspect().styles` (computed `content` / `background-image: url(...)`) | masked (deep-walk) |
-| `point_probe()` (textContent of element-under-point + ancestor text) | masked (deep-walk) |
+| `ActionResult.network.requests[].url` (URLs in action-window tap)              | masked                                                                                    |
+| `ActionResult.network.mutations[].urlPattern` + `responseShape`                | masked                                                                                    |
+| `ActionResult.network.wsFrames[].payload` + `url`                              | masked                                                                                    |
+| `network_read.requests[].url` (session ring)                                   | masked                                                                                    |
+| `network_body.body` (response body)                                            | masked — JSON / text only; base64 bodies pass through unchanged (see below)               |
+| `ws_read.frames[].payload` + `.url`                                            | masked                                                                                    |
+| `console_read.recent[].text` + `errors` + `pageErrors`                         | masked                                                                                    |
+| `snapshot()` tree (a11y node names)                                            | masked                                                                                    |
+| `find()` candidates (`name`, `testId`, `selectorHint`, `context.rowText`)      | masked (deep-walk)                                                                        |
+| `text_search()` matches (visible text)                                         | masked (deep-walk)                                                                        |
+| `plan().evidence` (`selectorHint` / role / name on the planned descriptor)     | masked (deep-walk)                                                                        |
+| `inspect().styles` (computed `content` / `background-image: url(...)`)         | masked (deep-walk)                                                                        |
+| `point_probe()` (textContent of element-under-point + ancestor text)           | masked (deep-walk)                                                                        |
 | `verify_text` / `verify_value` / `verify_attribute` — `failure.actual` on miss | masked (deep-walk) — without this, a wrong-expected verify would echo the real value back |
-| `verify_count` / `verify_visible` / `verify_predicate` — `failure.actual` | masked (deep-walk) |
-| `act_and_diff().diff` (classDelta / styleDelta / attrDelta values) | masked (deep-walk) — covers `aria-*` / `data-*` attribute values + inline-style values |
-| `watch()` regions / network / WS over the watch window | masked (NetworkTap takes the secrets registry; result deep-walked) |
-| `screenshot()` (image bytes) | **partial — warning only**, see below |
+| `verify_count` / `verify_visible` / `verify_predicate` — `failure.actual`      | masked (deep-walk)                                                                        |
+| `act_and_diff().diff` (classDelta / styleDelta / attrDelta values)             | masked (deep-walk) — covers `aria-*` / `data-*` attribute values + inline-style values    |
+| `watch()` regions / network / WS over the watch window                         | masked (NetworkTap takes the secrets registry; result deep-walked)                        |
+| `screenshot()` (image bytes)                                                   | **partial — warning only**, see below                                                     |
 
 **Masking guarantees.** The egress layer composes with the existing
 URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
@@ -1881,13 +1881,13 @@ different account, calls `await_human`, or fails cleanly.
 
 **Provider matrix** (selected via `BROWX_CREDENTIALS_PROVIDER`):
 
-| Provider | TOTP | Credential | Dependency |
+| Provider             | TOTP | Credential     | Dependency                                                                                                   |
 | -------------------- | ---- | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `oathtool` (default) | yes | no (TOTP-only) | system `oathtool` (macOS: `brew install oath-toolkit`; Debian/Ubuntu: `apt install oathtool`); seeds via env |
-| `1password` | yes | yes | 1Password CLI `op` on PATH; `op signin` performed out-of-band |
-| `bitwarden` | yes | yes | Bitwarden CLI `bw` on PATH; `$BW_SESSION` from `bw unlock` in server env |
-| `lastpass` | yes | yes | `lpass` CLI on PATH; `lpass login` performed out-of-band |
-| `none` | no | no | explicit no-op; useful for testing the surface without a real vault |
+| `oathtool` (default) | yes  | no (TOTP-only) | system `oathtool` (macOS: `brew install oath-toolkit`; Debian/Ubuntu: `apt install oathtool`); seeds via env |
+| `1password`          | yes  | yes            | 1Password CLI `op` on PATH; `op signin` performed out-of-band                                                |
+| `bitwarden`          | yes  | yes            | Bitwarden CLI `bw` on PATH; `$BW_SESSION` from `bw unlock` in server env                                     |
+| `lastpass`           | yes  | yes            | `lpass` CLI on PATH; `lpass login` performed out-of-band                                                     |
+| `none`               | no   | no             | explicit no-op; useful for testing the surface without a real vault                                          |
 
 Configuration env:
 
@@ -2231,19 +2231,19 @@ requests:[{api, handledAs, returned, filters?, ts}], tokensEstimate}`.
 accept the W3C-relevant union of fields across the three APIs — each
 wrapper picks the ones its spec exposes:
 
-| Field | Bluetooth | USB | HID | Default |
+| Field              | Bluetooth      | USB                       | HID                  | Default                   |
 | ------------------ | -------------- | ------------------------- | -------------------- | ------------------------- |
-| `name` | `device.name` | `device.productName` | `device.productName` | `"browxai-virtual"` |
-| `id` | `device.id` | — | — | `"browxai-<api>-<index>"` |
-| `vendorId` | — | `device.vendorId` | `device.vendorId` | `0x0000` |
-| `productId` | — | `device.productId` | `device.productId` | `0x0000` |
-| `manufacturerName` | — | `device.manufacturerName` | — | `"browxai virtual"` |
-| `serialNumber` | — | `device.serialNumber` | — | `"BROWX-VIRTUAL"` |
-| `deviceClass` | — | `device.deviceClass` | — | `0xFF` |
-| `deviceSubclass` | — | `device.deviceSubclass` | — | `0x00` |
-| `deviceProtocol` | — | `device.deviceProtocol` | — | `0x00` |
-| `services` | `device.uuids` | — | — | `[]` |
-| `collections` | — | — | `device.collections` | `[]` |
+| `name`             | `device.name`  | `device.productName`      | `device.productName` | `"browxai-virtual"`       |
+| `id`               | `device.id`    | —                         | —                    | `"browxai-<api>-<index>"` |
+| `vendorId`         | —              | `device.vendorId`         | `device.vendorId`    | `0x0000`                  |
+| `productId`        | —              | `device.productId`        | `device.productId`   | `0x0000`                  |
+| `manufacturerName` | —              | `device.manufacturerName` | —                    | `"browxai virtual"`       |
+| `serialNumber`     | —              | `device.serialNumber`     | —                    | `"BROWX-VIRTUAL"`         |
+| `deviceClass`      | —              | `device.deviceClass`      | —                    | `0xFF`                    |
+| `deviceSubclass`   | —              | `device.deviceSubclass`   | —                    | `0x00`                    |
+| `deviceProtocol`   | —              | `device.deviceProtocol`   | —                    | `0x00`                    |
+| `services`         | `device.uuids` | —                         | —                    | `[]`                      |
+| `collections`      | —              | —                         | `device.collections` | `[]`                      |
 
 Missing fields default to deterministic placeholders so the page sees a
 complete shape regardless of how sparsely the catalog was populated. The
