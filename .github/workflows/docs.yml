@@ -1,14 +1,19 @@
 name: docs
 
-# Build the VitePress documentation site and deploy it to GitHub Pages.
+# Build the Astro + Starlight documentation site (website/) and deploy it to
+# GitHub Pages at the custom domain browxai.com.
 #
-# Requires a one-time owner step BEFORE the auto-publish push-trigger
-# is re-enabled:
-#   1. Flip the repo public (Settings → General → Change visibility).
-#   2. Enable Pages: Settings → Pages → Source = "GitHub Actions".
+# Requires a one-time owner step BEFORE the auto-publish push-trigger is
+# re-enabled (see docs/public-flip-checklist.md for the full sequence):
+#   1. Flip the repo public (Settings -> General -> Change visibility).
+#   2. Point DNS: apex browxai.com A/AAAA to the GitHub Pages IPs, and a
+#      www CNAME to kalebteccom.github.io.
+#   3. Enable Pages: Settings -> Pages -> Source = "GitHub Actions".
+#   4. Set the custom domain to browxai.com and enforce HTTPS. The CNAME file
+#      shipped in website/public/CNAME is preserved into the build output.
 # Until that lands, this workflow runs ONLY on explicit dispatch
-# (`gh workflow run docs.yml` or the GitHub UI's "Run workflow" button),
-# so a private-repo + Pages-disabled state doesn't red-flag every push.
+# (`gh workflow run docs.yml` or the GitHub UI "Run workflow" button), so a
+# private-repo + Pages-disabled state does not red-flag every push.
 # Once the repo is public and Pages is enabled, restore `push: branches: [main]`
 # on the trigger below to resume auto-publish.
 
@@ -29,18 +34,24 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
         with:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # .npmrc sets ignore-scripts=true, so the Astro toolchain's native
+      # binaries are not built on install. Build the two the docs build needs
+      # explicitly (the prose-guard gate runs inside `pnpm docs:build`).
+      - run: pnpm --filter @browxai/website rebuild esbuild sharp
       - run: pnpm docs:build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/.vitepress/dist
+          path: website/dist
 
   deploy:
     needs: build

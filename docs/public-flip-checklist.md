@@ -50,6 +50,31 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 10. Flip repository visibility to public.
 11. Post the launch announcement.
 
+## Docs site go-live (browxai.com)
+
+The docs site is an Astro + Starlight app in `website/`, deployed to GitHub
+Pages by `.github/workflows/docs.yml`. That workflow is `workflow_dispatch`-only
+until the steps below land, so a private repo with Pages disabled does not
+red-flag every push. The published pages for the canonical docs are generated
+from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`; `docs/` stays
+the single source of truth.
+
+1. Smoke-test the build while still private: `gh workflow run docs.yml` and
+   confirm the `build` job is green (the `deploy` job needs Pages enabled).
+2. Point DNS for `browxai.com`:
+   - Apex `A` records to the GitHub Pages IPs (verify against GitHub's current
+     published set): `185.199.108.153`, `185.199.109.153`, `185.199.110.153`,
+     `185.199.111.153`. Add the matching `AAAA` records for IPv6.
+   - `www` `CNAME` to `kalebteccom.github.io` (www 301s to the apex).
+3. Enable Pages: Settings -> Pages -> Source = "GitHub Actions".
+4. Set the custom domain to `browxai.com`, wait for the DNS check to pass, then
+   enable "Enforce HTTPS". The `website/public/CNAME` file is preserved into the
+   build output, so the domain sticks across deploys.
+5. Restore the auto-publish trigger in `.github/workflows/docs.yml`: change
+   `on: workflow_dispatch` to also include `push: branches: [main]`.
+6. Verify: `https://browxai.com` loads, the search box works, `www` redirects to
+   the apex, and a shared link renders the `og.png` social card.
+
 ## Post-flip monitoring (first 30 days)
 
 - Watch the security disclosure channel.
