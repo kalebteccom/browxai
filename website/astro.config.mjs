@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import starlightLinksValidator from "starlight-links-validator";
 
 // The browxai documentation site, served at browxai.com.
 // Static Astro + Starlight. The published content lives in
@@ -15,6 +16,10 @@ export default defineConfig({
       description:
         "A browser built for agents. MCP-native, model-agnostic, agentic-first browser control on Playwright and CDP.",
       tagline: "A browser, built for agents.",
+      // Fail the build on broken internal links or heading anchors, so dead
+      // links can never ship. This is the build-time "error boundary" for a
+      // static docs site.
+      plugins: [starlightLinksValidator()],
       logo: {
         light: "./src/assets/mark-light.svg",
         dark: "./src/assets/mark-dark.svg",

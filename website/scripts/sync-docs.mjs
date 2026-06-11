@@ -51,6 +51,12 @@ function port({ src, out, title, description }) {
   let text = readFileSync(join(SRC, src), "utf8");
   text = convertDashes(text);
   for (const [re, to] of linkMap) text = text.replace(re, to);
+  // Repo-relative links (valid inside docs/, dead on the published site) point
+  // at repo root, so rewrite them to GitHub. Directories -> tree, files -> blob.
+  text = text.replace(/\]\(\.\.\/([^)]+)\)/g, (_, p) => {
+    const kind = p.endsWith("/") ? "tree" : "blob";
+    return `](https://github.com/kalebteccom/browxai/${kind}/main/${p.replace(/\/$/, "")})`;
+  });
   text = text.replace(/^#\s+.*\n+/, ""); // drop the H1; the frontmatter title is the H1
   const banner = `<!-- AUTO-GENERATED from docs/${src} by website/scripts/sync-docs.mjs. Edit the source, not this file. -->`;
   const fm = `---\ntitle: ${q(title)}\ndescription: ${q(description)}\n---\n\n${banner}\n\n`;

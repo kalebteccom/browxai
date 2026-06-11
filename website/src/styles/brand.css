@@ -105,11 +105,13 @@ h1#_top,
 
 /* ---- Landing page (splash) ---------------------------------------------- */
 
-/* On the splash, our custom hero replaces Starlight's page-title block. */
-main:has(.browx-hero) > .content-panel:first-of-type {
+/* On the splash, our custom hero / 404 replaces Starlight's page-title block. */
+main:has(.browx-hero) > .content-panel:first-of-type,
+main:has(.browx-404) > .content-panel:first-of-type {
   display: none;
 }
-main:has(.browx-hero) > .content-panel {
+main:has(.browx-hero) > .content-panel,
+main:has(.browx-404) > .content-panel {
   border-top: 0;
 }
 
@@ -448,7 +450,9 @@ main:has(.browx-hero) > .content-panel {
    that inner paragraph so only the container controls spacing. */
 .browx-lede > p,
 .browx-section-sub > p,
-.browx-card-text > p {
+.browx-card-text > p,
+.browx-404-code > p,
+.browx-404-msg > p {
   margin: 0;
   font: inherit;
   color: inherit;
@@ -486,6 +490,33 @@ main:has(.browx-hero) > .content-panel {
 .browx-cta--center {
   justify-content: center;
   margin-top: clamp(2.5rem, 6vw, 4rem);
+}
+
+/* ---- 404 ---------------------------------------------------------------- */
+.browx-404 {
+  text-align: center;
+  padding: clamp(2rem, 9vw, 5.5rem) 0;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+.browx-404 .browx-kicker {
+  margin-bottom: 0.75rem;
+}
+.browx-404-code {
+  font-family: var(--browx-font-display);
+  font-weight: 700;
+  font-size: clamp(5rem, 18vw, 9rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  margin: 0.25rem 0 0.75rem;
+}
+.browx-404-code .x {
+  color: var(--sl-color-text-accent);
+}
+.browx-404-msg {
+  color: var(--sl-color-gray-2);
+  font-size: 1.15rem;
+  margin-bottom: 2.25rem;
 }
 
 /* Site-wide credit line, appended after Starlight's default footer. */
