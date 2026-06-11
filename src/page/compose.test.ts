@@ -1,8 +1,8 @@
-// Phase-7 compose tests. The Phase-7 surface area on compose is the new
+//  compose tests. The surface area on compose is the new
 // `opts.pierce` knob. Two things to assert:
 //   1. Back-compat — omitting `opts` (or passing `{}`) produces a result
-//      whose shape is byte-identical to pre-Phase-7 (no `closedShadowEntries`
-//      stat, no Phase-7-only warnings).
+//      whose shape is byte-identical to pre-v0.5.0 (no `closedShadowEntries`
+//      stat, no -only warnings).
 //   2. Pierce-closed — when CDP refuses pierce we fall back to open-only +
 //      surface a warning; when CDP returns closed candidates we merge them
 //      into the tree.
@@ -103,8 +103,8 @@ function happyPathCdp(opts: { closedAvailable?: boolean; pierceFails?: boolean }
   });
 }
 
-describe("composeSnapshot — Phase 7 back-compat", () => {
-  it("omitting `opts` produces no Phase-7 stats and no Phase-7 warnings", async () => {
+describe("composeSnapshot —  back-compat", () => {
+  it("omitting `opts` produces no stats and no warnings", async () => {
     const cdp = happyPathCdp();
     const refs = new RefRegistry();
     const out = await composeSnapshot(cdp, refs, ["data-testid"]);
@@ -124,7 +124,7 @@ describe("composeSnapshot — Phase 7 back-compat", () => {
   });
 });
 
-describe("composeSnapshot — Phase 7 pierce: 'closed'", () => {
+describe("composeSnapshot —  pierce: 'closed'", () => {
   it("merges closed-shadow candidates and surfaces the inspect-only warning", async () => {
     const cdp = happyPathCdp({ closedAvailable: true });
     const refs = new RefRegistry();

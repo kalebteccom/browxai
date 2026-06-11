@@ -577,7 +577,7 @@ export class WorkersRegistry {
 
   /** Append a FROM-SW message to the server-side ring. Currently unused by
    *  the production path (the SW side message-relay is left as a future
-   *  follow-up — see Phase 7 report); kept for symmetry + future use. */
+   *  follow-up — see report); kept for symmetry + future use. */
   recordSwMessage(workerId: string, data: string): void {
     let trimmed = data;
     if (trimmed.length > SW_PAYLOAD_MAX) trimmed = trimmed.slice(0, SW_PAYLOAD_MAX) + "…";

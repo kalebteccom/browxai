@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-28
 **Investigator:** Claude (Opus 4.7) — `investigation/extract-ergonomics-2026-05-28`
-**Trigger:** wrightxai Phase-1 Wave-4 trial-1 against `hn-frontpage-rank-extract` showed the agent burning ~3-5k output tokens learning `extract()`'s schema convention on a cold start. This doc captures the conservative-NOW fixes (shipped on the same branch) and the contract-affecting proposals deferred for owner approval.
+**Trigger:** a wrightxai trial against `hn-frontpage-rank-extract` showed the agent burning ~3-5k output tokens learning `extract()`'s schema convention on a cold start. This doc captures the conservative-NOW fixes (shipped on the same branch) and the contract-affecting proposals deferred for owner approval.
 
 **Status update (2026-05-28):** Proposals A, B, and D are **SHIPPED in v0.2.3** on `release/v0.2.3-extract-relaxations`. Proposal C (`dialect:"plain"`) remains deferred to v0.3.x scope. See `CHANGELOG.md` for the per-proposal contract notes; the per-proposal status flags below are updated inline.
 
@@ -59,7 +59,7 @@ The wrightxai trial-1 burned ~15 115 output tokens across turns 5/6/7 — schema
 - Turn 5 array-no-collection → message tells the agent the fix is a CSS-selector-or-query for the row container. Saves the "what does collection mean?" exploration turn (~500-800 output tokens of CoT + a partial schema retry).
 - Turn 6 silent `attribute`/`transform` typos → `evidence.partialMisses` now flags both with suggestions. The agent could land turn-6 + turn-7 in a single retry that uses the correct `attr` key, saving ~3-5k output tokens (turn 7's 7 556 output_tokens was overwhelmingly the agent re-emitting the same big schema with a fix).
 
-**Conservative estimate: -4k to -6k output tokens** on a second cold-start trial-1 run. From 20 268 down to ~14-16k. Still well above the Webwright baseline of 8 574, but the gap closes from 2.36× to ~1.7-1.9× — meaningful but not the gate-passing margin. The leverage thesis still needs the multi-task N=3 evidence the Phase-0 doc calls for.
+**Conservative estimate: -4k to -6k output tokens** on a second cold-start trial-1 run. From 20 268 down to ~14-16k. Still well above the Webwright baseline of 8 574, but the gap closes from 2.36× to ~1.7-1.9× — meaningful but not the gate-passing margin. The leverage thesis still needs the multi-task N=3 evidence the wrightxai early-discovery doc calls for.
 
 ## Open question for the owner
 

@@ -54,7 +54,7 @@ export interface FindOptions {
    *  encoding the relationship in natural language. Ignored if the ref isn't in
    *  the current snapshot. */
   contextRef?: string;
-  /** Phase-2 learned ranking: prior session feedback applied as a per-candidate
+  /**  learned ranking: prior session feedback applied as a per-candidate
    *  score bonus. Skip / null = no learning bonus. */
   feedback?: FeedbackMemory;
   /** which fallback tools to *name* in the "no visible candidate"
@@ -67,17 +67,17 @@ export interface FindOptions {
    *  `visibleOnly` returns an empty list + the same warning rather than a
    *  misleading hit. Default false (hidden candidates kept, ranked last). */
   visibleOnly?: boolean;
-  /** Phase-7: when set, scope ranking + ref-binding to this child Frame.
+  /** when set, scope ranking + ref-binding to this child Frame.
    *  Refs minted are bound to the frame on the registry so subsequent
    *  actions land inside the iframe. The bbox/actionable probes resolve
    *  via the frame's own locator surface. Omitted = main frame (existing
    *  behaviour, byte-identical). */
   frame?: Frame;
-  /** Phase-7: stable frame ID of `frame`, used for ref namespacing in the
+  /** stable frame ID of `frame`, used for ref namespacing in the
    *  registry and for the snapshot warning. Required when `frame` is set. */
   frameId?: string;
-  /** Phase 7 — shadow DOM piercing.
-   *  - `undefined` (default) — preserves pre-Phase-7 behaviour. Playwright's
+  /** shadow DOM piercing.
+   *  - `undefined` (default) — preserves pre-v0.5.0 behaviour. Playwright's
    *    a11y tree auto-pierces open shadow roots; the DOM-walk fallback does
    *    not recurse into shadow content.
    *  - `"open"` — additionally have the DOM-walk fallback recurse through
@@ -177,13 +177,13 @@ export async function find(
   opts: FindOptions,
 ): Promise<FindResult> {
   // Use the composed tree (a11y + DOM-walk fallback) so we can find candidates that
-  // only exist on the DOM-walk side — the Phase-1.5 #7 win on heavy-SPA targets.
-  // Phase-7: when `frame` is set, scope to that frame's DOM-walk-only compose
+  // only exist on the DOM-walk side — the  #7 win on heavy-SPA targets.
+  // when `frame` is set, scope to that frame's DOM-walk-only compose
   // path and bind refs to the frame on the registry so subsequent actions land
   // inside the iframe.
-  // Phase 7 — `pierce` propagates through to the dom-walk + (when "closed",
+  // `pierce` propagates through to the dom-walk + (when "closed",
   // main-frame only) the CDP pierce path. Omitting `pierce` preserves
-  // byte-identical pre-Phase-7 output.
+  // byte-identical pre-v0.5.0 output.
   const composed =
     opts.frame && opts.frameId
       ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, {
@@ -208,14 +208,14 @@ export async function find(
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
   const warnings: string[] = [];
-  // Phase 7 — when pierce was explicitly opted into, surface the compose
+  // when pierce was explicitly opted into, surface the compose
   // layer's shadow-DOM warnings (closed-shadow CDP availability, the
   // "closed-shadow candidates are inspect-only" caveat). Without an
   // explicit pierce arg, the find() envelope stays byte-identical to
-  // pre-Phase-7.
+  // pre-v0.5.0.
   if (opts.pierce !== undefined) {
     for (const w of composed.warnings) {
-      // Skip the low-content warning — it pre-dates Phase 7 and was
+      // Skip the low-content warning — it pre-dates this and was
       // surfaced through snapshot only; smuggling it into find() now
       // would change pre-existing pierce-less callers' output the moment
       // they opt into pierce.
@@ -518,7 +518,7 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
  *   4. structural (#id, semantic)    → stability "low"  (id present + id-shaped stable)
  *   5. positional (last resort)      → stability "low"
  *
- * Phase-2 update: tier 4 now fires when the node has an HTML `id` attribute that
+ *  update: tier 4 now fires when the node has an HTML `id` attribute that
  * looks stable (not a numeric/UUID content-keyed id). The id-stability heuristic:
  * reject pure-numeric (`123`), short numeric+letter combos that look generated
  * (e.g. `mui-1234`), or strings matching common content-keyed shapes. Anything

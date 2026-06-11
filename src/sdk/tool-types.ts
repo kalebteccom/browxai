@@ -4,7 +4,7 @@
 // `(args: BrowxaiArgs) => Promise<BrowxaiResult>` — opaque, generic. Stage A.5
 // specialises each method against the curated SDK surface from
 // `registry.ts` so the emitted `.d.ts` is the canonical reference for
-// LLM-authoring consumers (wrightxai Phase 1.6).
+// LLM-authoring consumers (wrightxai ).
 //
 // **Pure type-layer addition.** The runtime path
 // (`buildClient`/`callTool`/transports/capability gates) is unchanged. The
@@ -72,7 +72,7 @@ export interface SnapshotArgs extends SessionArg {
   scope?: string;
   maxNodes?: number;
   omit?: ReadonlyArray<string>;
-  /** Phase-7: stable frame ID (from `frames_list`) to scope the snapshot to
+  /** stable frame ID (from `frames_list`) to scope the snapshot to
    *  a child iframe. `f0` (or omitting this) targets the main frame. */
   frame?: string;
 }
@@ -87,14 +87,14 @@ export interface FindArgs extends SessionArg {
   confidenceFloor?: number;
   contextRef?: string;
   visibleOnly?: boolean;
-  /** Phase-7: stable frame ID (from `frames_list`) to scope the find to a
+  /** stable frame ID (from `frames_list`) to scope the find to a
    *  child iframe. `f0` (or omitting this) targets the main frame. Refs
    *  minted are bound to the frame so subsequent actions land inside it. */
   frame?: string;
 }
 
 /**
- * Phase-7: frame discovery.
+ * frame discovery.
  */
 export type FramesListArgs = SessionArg;
 export interface FrameInfo {

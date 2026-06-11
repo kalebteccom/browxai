@@ -1,4 +1,4 @@
-// Phase 2.5 — session registry. Holds one isolated SessionEntry per session id;
+// session registry. Holds one isolated SessionEntry per session id;
 // the "default" entry is created lazily on first browser-touching tool call
 // (back-compat: every existing caller that omits `session` resolves here).
 //
@@ -41,14 +41,14 @@ import type { ArtifactsRegistry } from "./artifacts.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
-/** Per-session state. Everything here was a server-singleton pre-Phase-2.5;
+/** Per-session state. Everything here was a server-singleton pre-multi-session;
  *  one of these exists per live session id. */
 export interface SessionEntry {
   id: string;
   mode: SessionMode;
   session: BrowserSession;
   refs: RefRegistry;
-  /** Phase-7: per-session frame ID assignment. `frames_list` mints/looks up
+  /** per-session frame ID assignment. `frames_list` mints/looks up
    *  stable `fN` IDs from this registry; snapshot/find/action consult it to
    *  resolve a `frame` arg back to a Playwright `Frame` handle. */
   frames: FrameRegistry;
@@ -61,7 +61,7 @@ export interface SessionEntry {
    *  `ws_intercept`. Holds the active interceptor patterns server-side
    *  so `unintercept` / `list` answer locally without a page round-trip. */
   wsInteractive: WsInteractiveRegistry;
-  /** Phase-7: per-session worker visibility (Web Workers + Service Workers).
+  /** per-session worker visibility (Web Workers + Service Workers).
    *  Holds the page-side `__browxWorkers` wrapper state + the CDP-side SW
    *  attachments. Lazy in the same shape as `wsInteractive` — eagerly
    *  installed at session creation when `read` is on so workers opened by

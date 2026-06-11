@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { FeedbackMemory } from "./learning.js";
 
-describe("FeedbackMemory (Phase-2 learned ranking)", () => {
+describe("FeedbackMemory ( learned ranking)", () => {
   it("boosts a candidate matching a prior winner's testId", () => {
     const fb = new FeedbackMemory();
     fb.record("the play button", {

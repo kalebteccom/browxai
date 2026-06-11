@@ -134,7 +134,7 @@ describe("locatorFor — provenance routing", () => {
   });
 });
 
-describe("locatorFor — frame-scoped refs (Phase 7)", () => {
+describe("locatorFor — frame-scoped refs", () => {
   it("routes a frame-bound ref through the bound Frame, NOT the page", () => {
     const { page, calls: pageCalls } = mockPage();
     const { page: framePage, calls: frameCalls } = mockPage();

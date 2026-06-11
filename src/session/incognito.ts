@@ -1,4 +1,4 @@
-// Incognito launch (Phase 2.5). A fresh Chromium process + an *ephemeral*
+// Incognito launch. A fresh Chromium process + an *ephemeral*
 // BrowserContext: no profile dir, nothing persisted to disk, everything
 // (cookies, storage, cache) discarded on close. Same safe-by-default flags as
 // managed (no `--disable-web-security`, sandbox on). Use for one-off agentic

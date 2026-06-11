@@ -1,4 +1,4 @@
-// DOM-walk fallback — Phase-1.5 .
+// DOM-walk fallback —  .
 //
 // The 2026-05-13 target-app adoption found that `Accessibility.getFullAXTree` returns
 // root-only on heavy SPAs whose markup is mostly `div`s with `data-testid`/`data-type`
@@ -36,8 +36,8 @@ export interface DomWalkOptions {
   testAttributes?: string[];
   /** Hard cap on returned entries (sanity bound; the JS side already caps). */
   maxEntries?: number;
-  /** Phase 7 — shadow DOM piercing.
-   *  - `"open"` (the implicit default — preserves pre-Phase-7 behaviour;
+  /** shadow DOM piercing.
+   *  - `"open"` (the implicit default — preserves pre-v0.5.0 behaviour;
    *    the page-side walk recurses into every `Element.shadowRoot` it sees,
    *    same as `querySelectorAll` semantics on open roots).
    *  - `"closed"` — additionally invokes the CDP `DOM.getDocument(
@@ -70,7 +70,7 @@ export async function runDomWalk(
 ): Promise<DomWalkEntry[]> {
   const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
   const max = opts.maxEntries ?? DEFAULT_MAX;
-  // Back-compat: `pierce: undefined` preserves pre-Phase-7 behaviour
+  // Back-compat: `pierce: undefined` preserves pre-v0.5.0 behaviour
   // (top-document walk only). `pierce: "open"` / `"closed"` opts into the
   // shadow-aware walk that recurses through every open shadow root we can
   // see from the page side. Closed shadow roots are platform-inaccessible
@@ -91,7 +91,7 @@ export async function runDomWalk(
 }
 
 /**
- * Frame-scoped DOM walk (Phase-7). Same `PAGE_SCRIPT`, but evaluated inside
+ * Frame-scoped DOM walk. Same `PAGE_SCRIPT`, but evaluated inside
  * a Playwright `Frame` via `frame.evaluate(...)` instead of the top-level
  * CDP `Runtime.evaluate`. Works transparently for both same-origin and
  * cross-origin (OOPIF) child frames — Playwright's frame API spans both.
@@ -264,11 +264,11 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
  * present in the registry) so the caller can emit a low-content warning.
  */
 export interface MergeOptions {
-  /** Phase-7: when set, refs minted here are namespaced to this frame
+  /** when set, refs minted here are namespaced to this frame
    *  (via `elementKey`'s `frameId`) so two iframes with identical markup
    *  don't collide on the same ref. */
   frameId?: string;
-  /** Phase-7: when set, refs minted here are bound to this Frame on the
+  /** when set, refs minted here are bound to this Frame on the
    *  registry so action-time `locatorFor` routes through `frame.locator(...)`
    *  instead of `page.locator(...)`. */
   frame?: Frame;

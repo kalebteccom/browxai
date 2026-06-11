@@ -94,7 +94,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
    *  type parameter. Keeps the assignment table below readable. */
   type M<K extends keyof BrowxaiClient> = BrowxaiClient[K];
 
-  // Phase 8 — namespaced caller for plugin tools. Every tool the
+  // namespaced caller for plugin tools. Every tool the
   // server exposes whose name contains a `.` is a plugin tool; the
   // client surfaces it lazily under `client.plugins[namespace][tool]`
   // so an adopter can write `client.plugins.figma.moveNode({...})`
@@ -188,7 +188,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     exposedTools: [...exposed].sort(),
     capabilities,
     session,
-    // Phase 8 — namespaced plugin caller (proxy-based; see comment above).
+    // namespaced plugin caller (proxy-based; see comment above).
     plugins,
     close: async () => {
       if (closed) return;

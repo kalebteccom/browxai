@@ -39,7 +39,7 @@ Every tool calling `page.evaluate` / `locator.evaluate` MUST have a keystone tes
 
 ## ESLint backstop
 
-The repository ships an ESLint custom rule (Phase 14a) that statically catches stringified arrow expressions passed to `evaluate(...)`. The rule is a backstop; the keystone test is the source of truth.
+The repository ships an ESLint custom rule (`no-stringified-arrow-in-evaluate`) that statically catches stringified arrow expressions passed to `evaluate(...)`. The rule is a backstop; the keystone test is the source of truth.
 
 ## Related
 

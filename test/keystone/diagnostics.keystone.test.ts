@@ -1,4 +1,4 @@
-// Diagnostics keystone — round-trip exercise of the Phase 7.5 surface.
+// Diagnostics keystone — round-trip exercise of the surface.
 //
 // Drives the in-process server (no browser launched — every tool used here is
 // a pure registry/diagnostics primitive) end-to-end:
@@ -62,7 +62,7 @@ afterAll(async () => {
   if (workspace) rmSync(workspace, { recursive: true, force: true });
 }, KEYSTONE_TIMEOUT);
 
-describe("Phase 7.5 — diagnostics round-trip", () => {
+describe("diagnostics round-trip", () => {
   it(
     "records calls + notes, then diagnostics_report surfaces sensible counts",
     async () => {

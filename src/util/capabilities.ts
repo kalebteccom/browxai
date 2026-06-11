@@ -1,4 +1,4 @@
-// Capability toggles — Phase-2 security model. See `docs/threat-model.md` for the
+// Capability toggles —  security model. See `docs/threat-model.md` for the
 // full design. The gist:
 //
 //   - Tools group into coarse categories (`read`, `navigation`, `action`, `human`,
@@ -88,7 +88,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // read
   snapshot: "read",
   find: "read",
-  // Phase-7: frame discovery (lists frame tree with stable IDs). Pure-read;
+  // frame discovery (lists frame tree with stable IDs). Pure-read;
   // extends `read` so no new capability gate.
   frames_list: "read",
   screenshot: "read",
@@ -111,7 +111,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // ref up in the existing registry, emits a string + structured breakdown.
   generate_locator: "read",
   text_search: "read",
-  // Phase 7 — read-only introspection of Shadow DOM trees under a given
+  // read-only introspection of Shadow DOM trees under a given
   // host ref (or the document root). Open-shadow walk runs as a
   // Runtime.evaluate; closed-shadow walk uses CDP DOM.getDocument({pierce:
   // true}). Best-effort — when CDP refuses the pierce call, returns the
@@ -243,7 +243,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   perf_start: "action",
   perf_stop: "action",
   perf_insights: "action",
-  // Phase 10 perf module additions. `perf_audit` and `coverage_stop` are
+  //  perf module additions. `perf_audit` and `coverage_stop` are
   // `read` — non-mutating observation/composition over the trace + coverage
   // they collected. `coverage_start` is `action` (arms CDP state on the
   // target). `layout_thrash_trace` and `memory_diff` are `read` — focused
@@ -357,7 +357,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // the other DOM-mutating / state-mutating writers. Refused on `attached`
   // sessions at the tool layer — see src/page/pdf.ts.
   pdf_save: "action",
-  // Three-layer storage-state (Phase 3.5).
+  // Three-layer storage-state.
   //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
   //   writes (`*_set`, `*_delete`, `*_clear`,
   //           `inject_storage_state`, `auth_save`, `auth_load`,
@@ -385,7 +385,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   auth_load: "action",
   auth_list: "read",
   auth_delete: "action",
-  // Phase 7 — Cache API + IndexedDB CRUD.
+  // Cache API + IndexedDB CRUD.
   //   reads  (`*_list*`, `*_get`)            → `read`
   //   writes (`*_put`, `*_delete`, `*_clear`,
   //           `caches_delete_storage`)       → `action`
@@ -507,7 +507,7 @@ export const TOOL_CAPABILITY: Record<string, Capability> = {
   // pointer programs (custom paint strokes, lasso paths); the world↔screen
   // helpers do affine math + heuristic discovery on common app globals.
   // `canvas_query` is the dispatcher into canvas-app adapter plugins
-  // (Phase 9b — landed separately); it returns a structured no-adapter
+  // (landed separately); it returns a structured no-adapter
   // error when no plugin registers under the namespace. `canvas_diff` is
   // pure-RGBA-bytes math — under `read` (no canvas-pixel touch of its own).
   canvas_capture: "canvas",
@@ -577,7 +577,7 @@ export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
   return caps.enabled.has(cap);
 }
 
-/** Phase-2 confirm-required policy. Each name corresponds to a runtime hook (see
+/**  confirm-required policy. Each name corresponds to a runtime hook (see
  *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action` when
  *  `BROWX_ALLOWED_ORIGINS` is set / `BROWX_ATTACH_CDP` is set respectively. */
 export type ConfirmHook =

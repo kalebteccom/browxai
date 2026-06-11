@@ -1,6 +1,6 @@
 # Plugin runtime — lifecycle and namespacing
 
-Phase-8 added a workspace plugin runtime so external packages can extend browxai's tool surface without touching the core. The runtime guarantees: namespace isolation, capability composition, dependsOn resolution with cycle detection, and call-graph enforcement.
+browxai ships a workspace plugin runtime so external packages can extend the tool surface without touching the core. The runtime guarantees: namespace isolation, capability composition, dependsOn resolution with cycle detection, and call-graph enforcement.
 
 ## Lifecycle
 

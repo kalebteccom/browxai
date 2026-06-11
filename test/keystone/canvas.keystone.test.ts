@@ -1,4 +1,4 @@
-// canvas keystone — drive the Phase-9a tools against real headless
+// canvas keystone — drive the tools against real headless
 // Chromium with a fixture page that paints a known pattern into a
 // `<canvas>`. Regression gate for the same stringified-arrow page-side
 // trap that bit `dom_export` / `element_export` / `overflow_detect` —
@@ -252,7 +252,7 @@ describe("canvas keystone — canvas_world_to_screen explicit-mode math", () => 
 
 describe("canvas keystone — canvas_query no-adapter error shape", () => {
   it(
-    "rejects cleanly with code:'no-adapter' when no plugin matches (no Phase-9b plugins loaded)",
+    "rejects cleanly with code:'no-adapter' when no plugin matches (no plugins loaded)",
     async () => {
       const session = "ks-canvas-query";
       await callJson("open_session", { session, mode: "incognito" });

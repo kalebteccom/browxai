@@ -64,7 +64,7 @@ export const SDK_TOOLS = [
   "network_body",
   "upload_file",
   "register_secret",
-  // Phase 7.5 — diagnostics. `diagnostics_note` rides the off-by-default
+  // diagnostics. `diagnostics_note` rides the off-by-default
   // `diagnostics` capability; the two read-side queries ride `read` so an
   // adopter who only enabled diagnostics for a prior run can still pull the
   // report from a fresh SDK client.

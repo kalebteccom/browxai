@@ -56,7 +56,7 @@ describe("buildSelectorHint preference order", () => {
     expect(h.hint).toBe('role=link[name="Hello \\"world\\""]');
   });
 
-  it("tier 4: stable HTML id when no testId/name (Phase-2)", () => {
+  it("tier 4: stable HTML id when no testId/name", () => {
     const h = buildSelectorHint({ role: "div", id: "main-content" });
     expect(h.tier).toBe(4);
     expect(h.stability).toBe("low");

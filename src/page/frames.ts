@@ -1,4 +1,4 @@
-// Frame-scoped observation (Phase 7).
+// Frame-scoped observation.
 //
 // Iframes are everywhere on real pages; today's CDP-rooted snapshot/find
 // observe only the top frame. This module exposes the page's frame tree to

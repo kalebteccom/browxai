@@ -128,7 +128,7 @@ describe("named refs", () => {
   });
 });
 
-describe("Phase-7: frameId in elementKey", () => {
+describe("frameId in elementKey", () => {
   it("two identical node signatures in distinct frames hash differently", async () => {
     const { elementKey } = await import("./refs.js");
     const k1 = elementKey({ role: "button", name: "Save", path: "main/form/button" });
@@ -149,7 +149,7 @@ describe("Phase-7: frameId in elementKey", () => {
   });
 });
 
-describe("Phase-7: frame binding on RefRegistry", () => {
+describe("frame binding on RefRegistry", () => {
   const fakeFrame = (tag: string) => ({ __tag: tag }) as any;
 
   it("binds a Frame handle to a ref and returns it via frameOf()", () => {

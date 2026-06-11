@@ -16,9 +16,9 @@ export interface KeyInputs {
   path: string;
   /** Optional test-id-ish attribute value to disambiguate identical roles. */
   testId?: string;
-  /** Phase-7: stable frame ID this node lives in. Namespaces the key so two
+  /** stable frame ID this node lives in. Namespaces the key so two
    *  iframes with the same internal markup don't collide on the same ref.
-   *  Absent / empty means the main frame, preserving the pre-Phase-7 hash. */
+   *  Absent / empty means the main frame, preserving the pre-v0.5.0 hash. */
   frameId?: string;
 }
 
@@ -55,7 +55,7 @@ export interface RefLocatorInputs {
    *  Used when role/name locators would be ambiguous. Only populated for refs
    *  whose `source` includes `dom`. */
   cssPath?: string;
-  /** Phase-7: stable frame ID the ref was minted in. Absent / `f0` means the
+  /** stable frame ID the ref was minted in. Absent / `f0` means the
    *  main frame (existing behaviour). Anything else: a child iframe — locator
    *  resolution routes through `frame.locator(...)` instead of `page.locator(...)`
    *  so subsequent actions land inside the correct frame. Same-origin and
@@ -72,7 +72,7 @@ export class RefRegistry {
    *  snapshots (see elementKey()) so the name effectively pins an element
    *  identity for the whole session. */
   private refByName = new Map<string, string>();
-  /** Phase-7: Frame handle owning each child-frame ref. Main-frame refs
+  /** Frame handle owning each child-frame ref. Main-frame refs
    *  omit the entry — the page-level locator resolution handles them
    *  unchanged. When a child-frame ref is acted on, `locatorFor` uses
    *  this Frame handle (instead of `page.locator(...)`) so the action
@@ -134,7 +134,7 @@ export class RefRegistry {
     this.locatorByRef.set(ref, merged);
   }
 
-  // --- frame binding (Phase-7) ---
+  // --- frame binding ---
   /** Bind a Playwright Frame handle to a ref. Call when minting a ref in a
    *  child-frame snapshot/find so action-time `locatorFor` can route through
    *  the frame instead of the page. Main-frame refs don't need to call this;

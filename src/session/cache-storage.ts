@@ -1,4 +1,4 @@
-// Cache API CRUD — Phase 7 storage-state surface extension.
+// Cache API CRUD —  storage-state surface extension.
 //
 // Sibling of cookies / localStorage / sessionStorage CRUD. Drives the W3C
 // Cache API (`window.caches`) via `page.evaluate` — the same pattern the

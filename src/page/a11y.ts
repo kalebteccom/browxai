@@ -23,9 +23,9 @@ export interface A11yNode {
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;
-  /** Phase-2 selectorHint tier-4 source: HTML `id=` attribute if present. */
+  /**  selectorHint tier-4 source: HTML `id=` attribute if present. */
   id?: string;
-  /** Phase-2 selectorHint tier-3 source: trimmed text content (truncated, single-line),
+  /**  selectorHint tier-3 source: trimmed text content (truncated, single-line),
    *  set when distinct from `name` and stable-looking. DOM-walk fills this in. */
   text?: string;
   /** State flags as reported by CDP (selected subset — see fmtState). */
@@ -133,7 +133,7 @@ export async function getA11yTree(
   const root = nodes.find((n) => !n.parentId || !byId.has(n.parentId)) ?? nodes[0]!;
 
   // We resolve testId attributes per-node lazily — only the ones that have a
-  // backendDOMNodeId and are roles we care about (interactives). For Phase-1 we
+  // backendDOMNodeId and are roles we care about (interactives). For we
   // hold off on a batched DOM.getAttributes call and just attach testIds when
   // they show up as CDP properties; a future cycle can switch to a batch fetch
   // if the attribute coverage isn't enough.
@@ -221,7 +221,7 @@ export function* walk(root: A11yNode): Generator<{ node: A11yNode; depth: number
  * shifts).
  *
  * Batched in one `DOM.getDocument` walk would be cheaper, but per-node
- * `DOM.resolveNode`+`DOM.describeNode` is simpler and Phase-1 doesn't need to be
+ * `DOM.resolveNode`+`DOM.describeNode` is simpler and doesn't need to be
  * perf-tuned. If this dominates snapshot latency, switch to a batched approach.
  */
 async function enrichTestIds(

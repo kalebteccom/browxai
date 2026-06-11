@@ -1,4 +1,4 @@
-// IndexedDB CRUD — Phase 7 storage-state surface extension.
+// IndexedDB CRUD —  storage-state surface extension.
 //
 // Sibling of cookies / localStorage / sessionStorage / Cache API CRUD.
 // Drives the W3C IndexedDB API via `page.evaluate` — the same posture as

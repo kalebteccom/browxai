@@ -1,5 +1,5 @@
 // Compose the a11y tree + the DOM-walk fallback into a single tree.
-// Phase-1.5 .
+//  .
 //
 // Behaviour:
 //   - Always get the a11y tree first (it carries roles, accessible names, structure).
@@ -56,7 +56,7 @@ export interface ComposedSnapshot {
     domWalkEntries: number;
     domWalkNew: number;
     domWalkCombined: number;
-    /** Phase 7 — count of closed-shadow elements harvested via CDP.
+    /** count of closed-shadow elements harvested via CDP.
      *  Always zero when `pierce !== "closed"` or CDP refused the pierce
      *  call. */
     closedShadowEntries?: number;
@@ -67,8 +67,8 @@ export interface ComposedSnapshot {
 }
 
 export interface ComposeOptions {
-  /** Phase 7 — shadow DOM piercing.
-   *  - `undefined` (default) — pre-Phase-7 behaviour. Playwright's a11y tree
+  /** shadow DOM piercing.
+   *  - `undefined` (default) — pre-v0.5.0 behaviour. Playwright's a11y tree
    *    already includes open shadow content, but the DOM-walk fallback does
    *    not recurse into shadow roots.
    *  - `"open"` — additionally have the DOM-walk recurse through every open
@@ -94,7 +94,7 @@ export async function composeSnapshot(
 
   const a11yInteractive = a11y ? countInteractive(a11y) : 0;
   const entries = await runDomWalk(cdp, { testAttributes, pierce: opts.pierce });
-  // Phase 7 — closed-shadow elements come from a separate CDP pass.
+  // closed-shadow elements come from a separate CDP pass.
   // Same DomWalkEntry shape; merged via the same registry path so the
   // selectorHint tier + `[from-dom]` evidence remain coherent.
   let closedEntries: DomWalkEntry[] = [];
@@ -156,7 +156,7 @@ export async function composeSnapshot(
 }
 
 /**
- * Frame-scoped snapshot (Phase-7). Composes the snapshot for a child iframe.
+ * Frame-scoped snapshot. Composes the snapshot for a child iframe.
  *
  * Cross-origin frames sit in their own renderer (OOPIF) — the top-level CDP
  * session's `Accessibility.getFullAXTree` is rooted at the main target and

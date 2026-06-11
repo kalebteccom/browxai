@@ -12,7 +12,7 @@
 const DEFAULT_TEST_ATTRIBUTES = ["data-testid", "data-test", "data-cy", "data-qa"];
 
 /**
- * Threshold below which `snapshot()` emits the "low-content" warning (Phase-1.5
+ * Threshold below which `snapshot()` emits the "low-content" warning (
  * ). Tuned conservatively — most non-trivial pages have well more than 5
  * interactive descendants in the a11y tree; a hydrated page returning fewer is
  * almost always a sparse-a11y SPA where the DOM-walk fallback wins.

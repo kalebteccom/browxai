@@ -12,4 +12,4 @@ place. Full license texts for each dependency are bundled in the published
 npm package under each package's own `node_modules/<name>/LICENSE`.
 
 A complete generated `THIRD_PARTY_NOTICES.md` with verbatim license texts
-will replace this stub before v1.0.0 cuts (Phase 15 deliverable).
+will replace this stub before v1.0.0 cuts.

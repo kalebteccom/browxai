@@ -13,7 +13,7 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   log.info("session.managed: launching", { profileDir, headless: !!opts.headless });
 
   // opt-in web-security-off. Off by default (safe-by-default is the
-  // Phase-1 non-negotiable); when the gated `disableWebSecurity` config flag
+  //  non-negotiable); when the gated `disableWebSecurity` config flag
   // is set, lower it here with a loud per-launch warning.
   const insecureArgs: string[] = [];
   if (opts.disableWebSecurity) {

@@ -1,4 +1,4 @@
-// Phase-7 interactive-WS keystone — drives `ws_send` + `ws_intercept` end-to-end
+//  interactive-WS keystone — drives `ws_send` + `ws_intercept` end-to-end
 // against a real headless Chromium and a minimal RFC 6455 echo server (see
 // `fixture.ts`'s `/ws` route). The unit tests stub the page-side wrapper; this
 // keystone proves the wrapper survives a real Chromium init-script injection

@@ -2,19 +2,19 @@
 
 Ordered checklist for the v1.0 public flip. Open a tracking issue for each item; close as you complete.
 
-## Pre-flight: Phase 14 deliverables merged
+## Pre-flight: governance + multi-harness pointers
 
-- [ ] `AGENTS.md`, `CLAUDE.md` pointer, `.cursor/`, `.codex/`, `.agents/` (Phase 14c)
-- [ ] `docs/ai-context/` subtree complete (Phase 14c)
-- [ ] `SECURITY.md`, `CODE_OF_CONDUCT.md`, `MAINTAINERS.md`, `CONTRIBUTING.md`, `RELEASING.md` (Phase 14b)
-- [ ] `docs/plugin-governance.md`, `docs/security-best-practices-for-adopters.md` (Phase 14b)
-- [ ] Per-plugin `LICENSE` files + `"author"` fields in plugin `package.json` (Phase 14b)
+- [ ] `AGENTS.md`, `CLAUDE.md` pointer, `.cursor/`, `.codex/`, `.agents/`
+- [ ] `docs/ai-context/` subtree complete
+- [ ] `SECURITY.md`, `CODE_OF_CONDUCT.md`, `MAINTAINERS.md`, `CONTRIBUTING.md`, `RELEASING.md`
+- [ ] `docs/plugin-governance.md`, `docs/security-best-practices-for-adopters.md`
+- [ ] Per-plugin `LICENSE` files + `"author"` fields in plugin `package.json`
 - [ ] `THIRD_PARTY_NOTICES.md` regenerated from current `pnpm-lock.yaml`
-- [ ] Prettier, ESLint, `.githooks/`, `quality.yml`, `release.yml`, CODEOWNERS, Dependabot config (Phase 14a)
+- [ ] Prettier, ESLint, `.githooks/`, `quality.yml`, `release.yml`, CODEOWNERS, Dependabot config
 
-## Pre-flight: Phase 15 deliverables merged
+## Pre-flight: security baseline + lint convergence
 
-- [ ] All 64 items in `impl-docs/security-baseline-for-phase-15.md` closed
+- [ ] OSS security-baseline items closed (universal baseline in the portfolio repo)
 - [ ] Lint baseline clean: zero `// eslint-disable`, `as any`, `// @ts-ignore` without justification across `src/`, `test/`, `packages/`
 - [ ] `pnpm typecheck`, `pnpm test`, `pnpm test:keystone`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm audit:prod` all green
 

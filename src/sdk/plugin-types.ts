@@ -1,4 +1,4 @@
-// Phase 8 — typed SDK seam for plugin tools.
+// typed SDK seam for plugin tools.
 //
 // Plugin authors ship a TypeScript declaration shaped like:
 //

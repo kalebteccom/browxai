@@ -5,8 +5,8 @@ each box as you go. Designed to be opened on one screen with the npm and
 GitHub UIs on the other.
 
 > Planning-level companion: [`docs/public-flip-checklist.md`](../../public-flip-checklist.md)
-> tracks the pre-flight artefact closure across Phase 14/15 — it answers
-> _"are we ready to flip?"_. This document answers _"how do I flip?"_.
+> tracks the pre-flight artefact closure — it answers _"are we ready to
+> flip?"_. This document answers _"how do I flip?"_.
 
 Cross-references used throughout:
 
@@ -24,7 +24,8 @@ Cross-references used throughout:
 - [ ] `pnpm test` — 1602/1602 passing
 - [ ] `pnpm build` — clean
 - [ ] `zizmor --persona=auditor --min-severity=high .github/workflows/` — 0 high-severity findings
-- [ ] All Phase 14 / 15 / 16 work merged to `main`
+- [ ] All pre-flip governance, lint convergence, and CI-hardening work
+      merged to `main`
 - [ ] `CHANGELOG.md` `## Unreleased` matches what is about to release (no
       stale entries, no missing ones)
 - [ ] All governance docs present and final-reviewed: `AGENTS.md`,
@@ -125,7 +126,7 @@ Full release ritual + Changesets handling for plugins:
       linked from `README.md`
 - [ ] `AGENTS.md` discoverable for AI-driven contributors
 - [ ] Issue templates exist (`.github/ISSUE_TEMPLATE/`) — or explicitly note
-      they don't yet (candidate for Phase 17)
+      they don't yet (candidate for a post-flip follow-up)
 - [ ] PR template exists (`.github/PULL_REQUEST_TEMPLATE.md`) — or note that
       it doesn't yet
 

@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 // Canvas-app automation primitives — capability `canvas`.
 //
-// The Phase 9a substrate. Five MCP tools + a pure-math diff:
+// The substrate. Five MCP tools + a pure-math diff:
 //
 //   - `canvas_capture`           — framebuffer / 2D ImageData / PNG bytes
 //                                  of a `<canvas>` element. App-agnostic.

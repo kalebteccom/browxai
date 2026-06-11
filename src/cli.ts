@@ -12,7 +12,7 @@
 //                                 (`createBrowxai({ endpoint: "unix:///..." })`).
 //                                 Off-by-default; explicit operator opt-in.
 //   browxai plugin <sub>          install / remove / list / info / upgrade / sync
-//                                 plugins (Phase 8). All ops are workspace-rooted.
+//                                 plugins. All ops are workspace-rooted.
 //
 // All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 

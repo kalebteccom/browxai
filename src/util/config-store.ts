@@ -1,4 +1,4 @@
-// Phase 2.5 — browxai-managed config store.
+// browxai-managed config store.
 //
 // Precedence (lowest → highest):
 //   built-in defaults < env (legacy BROWX_*) < user < project < session patch
@@ -48,7 +48,7 @@ export interface ResolvedConfig {
    *  navigation — non-destructive (no node removal), config-driven, no
    *  agent JS. Default `[]` (feature off). */
   hideOverlaySelectors: string[];
-  /** Phase 8 — declarative plugin set. Mirrors what `plugins.json`
+  /** declarative plugin set. Mirrors what `plugins.json`
    *  declares; persisted alongside other config so `set_config({plugins})`
    *  and `get_config({scope:"resolved"}).plugins` work without hand-editing
    *  the plugins.json file. Plugin lifecycle is RESOLVED ONCE AT SERVER

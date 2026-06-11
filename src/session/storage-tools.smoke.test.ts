@@ -32,7 +32,7 @@ const STORAGE_TOOLS = [
   "auth_load",
   "auth_list",
   "auth_delete",
-  // Phase 7 — Cache API
+  // Cache API
   "caches_list_storages",
   "caches_list",
   "caches_get",
@@ -40,7 +40,7 @@ const STORAGE_TOOLS = [
   "caches_delete",
   "caches_clear",
   "caches_delete_storage",
-  // Phase 7 — IndexedDB
+  // IndexedDB
   "idb_list_databases",
   "idb_list_stores",
   "idb_get",

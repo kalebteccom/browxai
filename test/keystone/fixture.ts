@@ -101,7 +101,7 @@ const PAGE = `<!doctype html>
             onclick="askSavePicker()">Save via picker</button>
     <output data-testid="fs-result" id="fsResult">unset</output>
 
-    <!-- device-emulation keystone (Phase 7): one button per Web platform
+    <!-- device-emulation keystone: one button per Web platform
          device-picker API. Each calls navigator.<api>.requestDevice() and
          writes the outcome ('resolved name=…' / 'rejected name=…' /
          'empty count=…') into a tagged output so the keystone can assert
@@ -137,7 +137,7 @@ const PAGE = `<!doctype html>
       </tbody>
     </table>
 
-    <!-- Phase 7: Shadow DOM keystone. Two custom elements with shadow
+    <!-- Shadow DOM keystone. Two custom elements with shadow
          roots (open + closed) carrying interactive content the agent
          should be able to discover via shadow_trees + via the pierce-
          aware find / snapshot. -->
@@ -245,7 +245,7 @@ const PAGE = `<!doctype html>
         out.textContent = 'picker-error name=' + (err && err.name) + ' msg=' + (err && err.message);
       }
     }
-    // Phase 7 — Cache API + IndexedDB keystone seeding.
+    // Cache API + IndexedDB keystone seeding.
     // Populate one cache storage with a text entry + a binary entry, and
     // one IDB database with a kv store carrying two records. Both run in
     // an IIFE that flips a tagged <output> to "ready" so the keystone can
@@ -341,7 +341,7 @@ const PAGE = `<!doctype html>
         out.textContent = 'rejected name=' + (err && err.name);
       }
     }
-    // Phase 7 — Shadow DOM keystone fixtures.
+    // Shadow DOM keystone fixtures.
     // open-widget: attachShadow({mode:"open"}) — Element.shadowRoot returns
     // the root, so Playwright / page-side JS / dom-walk can all pierce it.
     customElements.define('open-widget', class extends HTMLElement {
@@ -365,7 +365,7 @@ const PAGE = `<!doctype html>
 
 // Page hosting two iframes: one same-origin (served from this server's
 // /child route) and one cross-origin-ish (a `data:` URL — opaque origin,
-// hits the same OOPIF code path on Chromium). Exercises Phase-7
+// hits the same OOPIF code path on Chromium). Exercises
 // frame-scoped snapshot/find/action through the keystone.
 const IFRAME_HOST = `<!doctype html>
 <html lang="en">
@@ -397,7 +397,7 @@ const CHILD_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-// Phase-7 interactive-WS keystone — page opens a WebSocket against the
+//  interactive-WS keystone — page opens a WebSocket against the
 // fixture's `/ws` echo endpoint, then writes:
 //   - every received message into `#ws-log` (newline-joined)
 //   - the open/closed state into `#ws-state`
@@ -430,7 +430,7 @@ const WS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-// Phase-7 workers keystone — the page constructs a real Web Worker (built
+//  workers keystone — the page constructs a real Web Worker (built
 // from a `Blob` so we don't need a separate served script), wires `onmessage`
 // to write every received frame into `#worker-log` (newline-joined), and
 // exposes a button that posts an "INTERCEPT_ME" string into the worker. The
@@ -468,7 +468,7 @@ const WORKERS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-// Phase-10 overflow_detect keystone — a page deliberately constructed to
+//  overflow_detect keystone — a page deliberately constructed to
 // trip each of the four overflow detectors exactly once:
 //
 //   - `layout`              → #ks-layout: overflow:auto, content larger than box
@@ -546,7 +546,7 @@ const OVERFLOW_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-// Phase-9a canvas keystone — a fixture page with a real `<canvas>` painted
+//  canvas keystone — a fixture page with a real `<canvas>` painted
 // with a recognizable pattern (red square top-left, blue square bottom-
 // right) so `canvas_capture` round-trips through Chromium with predictable
 // bytes. Also wires mousedown/mousemove/mouseup listeners on the canvas
@@ -597,7 +597,7 @@ const CANVAS_PAGE = `<!doctype html>
 </body>
 </html>`;
 
-// -- Phase 10 perf fixtures ---------------------------------------------------
+// --  perf fixtures ---------------------------------------------------
 //
 // Three pages + two static asset routes that together exercise:
 //   - perf_audit: a page with intentionally dead CSS (90% unused selectors),

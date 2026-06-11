@@ -103,11 +103,11 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
         `unknown ref "${target.ref}"; call snapshot() or find() first to populate refs, or pass a selector instead`,
       );
     }
-    // Frame-aware resolution (Phase-7): refs minted inside a child frame
+    // Frame-aware resolution: refs minted inside a child frame
     // carry a bound Frame handle; route through it so `frame.locator(...)`
     // crosses the OOPIF / same-origin iframe boundary transparently. Main-
     // frame refs (no binding) resolve against the page — byte-identical to
-    // pre-Phase-7 behaviour.
+    // pre-v0.5.0 behaviour.
     const frame = refs.frameOf(target.ref);
     return locatorFromInputs(frame ?? page, inputs);
   }

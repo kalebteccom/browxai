@@ -1,7 +1,7 @@
 // In-page script that defines window.__browx. Injected via addInitScript so it
 // runs on every navigation / new document, and evaluated directly on already-open
 // pages at attach time. Tiny and self-contained — no framework, no DOM banner
-// (the shadow-DOM banner UI is a Phase-1.5 polish; for now we log a one-line
+// (the shadow-DOM banner UI is a polish; for now we log a one-line
 // hint to the console so a human in DevTools knows the API is there).
 //
 // stringified so it can be passed as a script source. Keep the contents

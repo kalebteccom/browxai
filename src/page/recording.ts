@@ -18,7 +18,7 @@ export interface RecordedStep {
   action: DispatchedAction;
   url: string;
   selectorHint?: string;
-  /** Stability of the locator at calibration time. Phase-1.5 friend. */
+  /** Stability of the locator at calibration time.  friend. */
   stability?: FindCandidate["stability"];
   /** Optional agent-supplied annotation for the doc emission. */
   annotation?: { copy: string; arrow?: string; target?: string };

@@ -1,9 +1,5 @@
 # Branch protection — required ruleset configuration
 
-<!-- TODO(phase14c): Sibling Phase 14c owns the broader `docs/ai-context/`
-     layout. When it lands, reconcile this file's path / cross-links with
-     the agreed structure. -->
-
 This document captures the GitHub branch-ruleset configuration that the
 owner needs to apply to `main` in the GitHub UI. It is the source of truth
 for what the release pipeline assumes — every CI / OIDC trust property
@@ -65,8 +61,8 @@ The `release.yml` workflow's `publish` and `publish-plugins` jobs reference
 release runs:
 
 - **Required reviewers:** `@rowinkaleb` (plus one additional Kalebtec org
-  member once Phase-15 §1 staffing lands; until then, single reviewer is
-  acceptable as a launch posture).
+  member once secondary-maintainer staffing lands; until then, single
+  reviewer is acceptable as a launch posture).
 - **Deployment branches:** `main` and `release/*` only. No fork branches.
 - **Environment secrets:** none. OIDC removes the need for `NPM_TOKEN`;
   there is no scenario in which this environment should hold secrets.

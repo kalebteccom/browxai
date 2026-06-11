@@ -70,7 +70,7 @@ describe("no-trace contract — static source guard", () => {
       // are workspace-equivalent (the operator's chosen target).
       "socketPath",
       "opts.socketPath",
-      // Phase 8 — plugin CLI subcommands write to paths derived from
+      // plugin CLI subcommands write to paths derived from
       // `pluginPaths(workspaceRoot)` (see src/plugin/resolver.ts). Every
       // `paths.root` / `paths.installDir` / `paths.declarationFile` /
       // `paths.lockFile` / `paths.nodeModulesDir` is workspace-rooted

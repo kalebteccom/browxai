@@ -1,4 +1,4 @@
-// Confirmation hooks — Phase-2 policy. Routes potentially-irreversible operations
+// Confirmation hooks —  policy. Routes potentially-irreversible operations
 // through `await_human({kind:"confirm"})` before they dispatch. See `docs/threat-model.md`
 // "The capability set" → confirm_required.
 //
