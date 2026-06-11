@@ -21,8 +21,7 @@ export default defineConfig({
       // static docs site.
       plugins: [starlightLinksValidator()],
       logo: {
-        light: "./src/assets/mark-light.svg",
-        dark: "./src/assets/mark-dark.svg",
+        src: "./src/assets/browxai-tile.svg",
       },
       components: {
         Footer: "./src/components/Footer.astro",
@@ -31,9 +30,50 @@ export default defineConfig({
       favicon: "/favicon.svg",
       head: [
         { tag: "meta", attrs: { property: "og:image", content: "https://browxai.com/og.png" } },
+        { tag: "meta", attrs: { property: "og:image:type", content: "image/png" } },
+        { tag: "meta", attrs: { property: "og:image:width", content: "1200" } },
+        { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
+        {
+          tag: "meta",
+          attrs: { property: "og:image:alt", content: "browxai - a browser, built for agents" },
+        },
+        { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
         { tag: "meta", attrs: { name: "twitter:image", content: "https://browxai.com/og.png" } },
+        {
+          tag: "meta",
+          attrs: { name: "twitter:image:alt", content: "browxai - a browser, built for agents" },
+        },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
-        { tag: "meta", attrs: { name: "theme-color", content: "#0a0b0d" } },
+        {
+          tag: "meta",
+          attrs: { name: "theme-color", content: "#0c0a14", media: "(prefers-color-scheme: dark)" },
+        },
+        {
+          tag: "meta",
+          attrs: {
+            name: "theme-color",
+            content: "#fbfaff",
+            media: "(prefers-color-scheme: light)",
+          },
+        },
+        {
+          tag: "script",
+          attrs: { type: "application/ld+json" },
+          content: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "SoftwareApplication",
+            name: "browxai",
+            description:
+              "MCP-native, model-agnostic, agentic-first browser-control server on Playwright and CDP.",
+            applicationCategory: "DeveloperApplication",
+            operatingSystem: "Node.js (>=20)",
+            url: "https://browxai.com",
+            license: "https://opensource.org/licenses/MIT",
+            offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+            author: { "@type": "Organization", name: "Kalebtec", url: "https://kalebtec.com" },
+            sameAs: ["https://github.com/kalebteccom/browxai"],
+          }),
+        },
         { tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "any" } },
         {
           tag: "link",
