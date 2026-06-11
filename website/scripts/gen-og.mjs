@@ -21,15 +21,11 @@ const svg = `
   ${Array.from({ length: 13 }, (_, i) => `<line x1="${i * 100}" y1="0" x2="${i * 100}" y2="630" stroke="${lime}" stroke-opacity="0.05"/>`).join("")}
   ${Array.from({ length: 7 }, (_, i) => `<line x1="0" y1="${i * 100}" x2="1200" y2="${i * 100}" stroke="${lime}" stroke-opacity="0.05"/>`).join("")}
 
-  <!-- reticle mark -->
-  <g transform="translate(86,78)">
-    <rect x="1.5" y="2" width="58" height="54" rx="12" stroke="#e6e8ea" stroke-width="3.5" fill="none"/>
-    <path d="M1.5 16H59.5" stroke="#e6e8ea" stroke-width="3.5"/>
-    <circle cx="13" cy="9" r="2.4" fill="#e6e8ea"/>
-    <circle cx="21" cy="9" r="2.4" fill="#e6e8ea"/>
-    <circle cx="34" cy="38" r="10" stroke="${lime}" stroke-width="3.5" fill="none"/>
-    <path d="M34 22V27M34 49V54M18 38H23M45 38H50" stroke="${lime}" stroke-width="3.5" stroke-linecap="round"/>
-    <circle cx="34" cy="38" r="3" fill="${lime}"/>
+  <!-- browxai mark -->
+  <g transform="translate(86,70) scale(0.708)">
+    <path d="M15.2 56.8A34 34 0 0 1 56.8 15.2" stroke="${lime}" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <path d="M80.8 39.2A34 34 0 0 1 39.2 80.8" stroke="${lime}" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <path d="M31 64L34.4 39.4L67.8 27.2L55.6 60.6Z" fill="${lime}"/>
   </g>
 
   <text x="86" y="300" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="150" letter-spacing="-6" fill="#e6e8ea">brow<tspan fill="${lime}">x</tspan>ai</text>

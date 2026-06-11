@@ -34,6 +34,16 @@ export default defineConfig({
         { tag: "meta", attrs: { name: "twitter:image", content: "https://browxai.com/og.png" } },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
         { tag: "meta", attrs: { name: "theme-color", content: "#0a0b0d" } },
+        { tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "any" } },
+        {
+          tag: "link",
+          attrs: { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32.png" },
+        },
+        {
+          tag: "link",
+          attrs: { rel: "icon", type: "image/png", sizes: "16x16", href: "/favicon-16.png" },
+        },
+        { tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
       ],
       social: [
         {
