@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename as pathBasename, sep as pathSep } from "node:path";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
+import { requireCdp, type EngineKind } from "./engine/index.js";
 import { openIncognitoSession } from "./session/incognito.js";
 import { resolveDevice } from "./session/device.js";
 import {
@@ -313,6 +314,11 @@ export const VERSION = PACKAGE_VERSION;
 export interface StartOptions {
   attachCdp?: string;
   headless?: boolean;
+  /** Browser engine for sessions this server launches. Defaults to
+   *  `"chromium"` — the only engine implemented today. firefox/webkit are
+   *  accepted by the type but rejected at the launch path with a clear
+   *  `engine-not-yet-supported` error (see src/engine/). */
+  browserType?: EngineKind;
 }
 
 const SNAPSHOT_MODE = z.enum(["scoped_snapshot", "tree_diff", "full", "none"]).optional();
@@ -632,6 +638,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // persistent. This is the default a lazily-created session inherits; an
   // explicit open_session can override per id (incognito, or a named profile).
   const serverDefaultMode: SessionMode = opts.attachCdp ? "attached" : "persistent";
+  // The engine every session this server opens runs on. Defaults to chromium;
+  // firefox/webkit are accepted by the option type but the launch path rejects
+  // them (engine-not-yet-supported) — there is no silent fallback to chromium.
+  const serverEngine: EngineKind = opts.browserType ?? "chromium";
   const registry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
@@ -749,7 +759,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         // Attached Chrome is not-owned: device emulation is best-effort
         // (viewport via Emulation in byob.ts); isMobile/touch/UA can't be
         // retro-applied to an existing context.
-        sess = await openByobSession({ attachCdp: opts.attachCdp, headless });
+        sess = await openByobSession({
+          attachCdp: opts.attachCdp,
+          headless,
+          browserType: serverEngine,
+        });
       } else if (mode === "incognito") {
         sess = await openIncognitoSession({
           headless,
@@ -758,6 +772,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
+          browserType: serverEngine,
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
@@ -778,6 +793,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
+          browserType: serverEngine,
         });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context
@@ -816,9 +832,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
-      const networkBuf = new NetworkBuffer(sess.cdp());
+      const networkBuf = new NetworkBuffer(requireCdp(sess));
       await networkBuf.attach();
-      const wsBuf = new WsBuffer(sess.cdp());
+      const wsBuf = new WsBuffer(requireCdp(sess));
       await wsBuf.attach();
       // per-session secrets registry. Empty until `register_secret` is
       // called; the egress sinks below all reference this same instance so
@@ -1059,11 +1075,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // Stop any in-flight perf trace BEFORE closing CDP — otherwise the
       // attached Chrome (BYOB) keeps the trace buffer pinned. Best-effort:
       // a stuck Tracing.end won't block teardown (perf state bounds the wait).
-      await e.perf.closeIfRunning(e.session.cdp()).catch(() => undefined);
+      await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // also release any in-flight Profiler/CSS coverage on
       // the attached target so a BYOB Chrome doesn't keep coverage state
       // pinned past detach.
-      await e.coverage.closeIfRunning(e.session.cdp()).catch(() => undefined);
+      await e.coverage.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // workers registry CDP listeners. Detach before CDP closes
       // so we don't race the parent session shutdown.
       try {
@@ -1175,7 +1191,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
     page: e.session.page(),
-    cdp: e.session.cdp(),
+    cdp: requireCdp(e.session),
     refs: e.refs,
     console: e.console,
     pages: () => e.session.page().context().pages(),
@@ -1543,7 +1559,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         composed = await withDeadline(
           isMainFrame
-            ? composeSnapshot(s.cdp(), e.refs, config.testAttributes, { pierce: includeShadow })
+            ? composeSnapshot(requireCdp(s), e.refs, config.testAttributes, {
+                pierce: includeShadow,
+              })
             : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
               composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame, {
                 pierce: includeShadow,
@@ -1683,7 +1701,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let result;
       try {
         result = await withDeadline(
-          find(s.page(), s.cdp(), e.refs, {
+          find(s.page(), requireCdp(s), e.refs, {
             query,
             maxCandidates,
             confidenceFloor,
@@ -1788,7 +1806,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let result;
       try {
         result = await withDeadline(
-          textSearch(e.session.cdp(), e.refs, {
+          textSearch(requireCdp(e.session), e.refs, {
             text,
             exact,
             scope,
@@ -1863,7 +1881,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (ref) {
         try {
           const composed = await withDeadline(
-            composeSnapshot(s.cdp(), e.refs, config.testAttributes),
+            composeSnapshot(requireCdp(s), e.refs, config.testAttributes),
             cfgActionTimeout(),
             "shadow_trees",
           );
@@ -1909,7 +1927,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let cappedAt: number | undefined;
       try {
         const fetched = await withDeadline(
-          fetchPiercedDocument(s.cdp()),
+          fetchPiercedDocument(requireCdp(s)),
           cfgActionTimeout(),
           "shadow_trees",
         );
@@ -1935,7 +1953,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (trees.length === 0) {
         try {
           const open = await withDeadline(
-            runOpenShadowWalk(s.cdp(), scopeSelector, cap),
+            runOpenShadowWalk(requireCdp(s), scopeSelector, cap),
             cfgActionTimeout(),
             "shadow_trees",
           );
@@ -2030,7 +2048,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const s = e.session;
       try {
         const result = await withDeadline(
-          extract(s.page(), s.cdp(), e.refs, {
+          extract(s.page(), requireCdp(s), e.refs, {
             schema: args.schema,
             ref: args.ref,
             scope: args.scope,
@@ -2291,7 +2309,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(args.session);
       try {
         const res = await withDeadline(
-          verifyCount(e.session.page(), e.session.cdp(), e.refs, {
+          verifyCount(e.session.page(), requireCdp(e.session), e.refs, {
             selector: args.selector,
             text: args.text,
             n: args.n,
@@ -2781,7 +2799,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(args.session);
         const page = e.session.page();
-        const cdp = e.session.cdp();
+        const cdp = requireCdp(e.session);
         const fmt: "png" | "jpeg" = args.format ?? "png";
         const { defaultOnDir, runScreenshotOn } = await import("./page/screenshot-on.js");
         const intoDir = args.intoDir ?? defaultOnDir(e.id);
@@ -3229,7 +3247,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // pass through unchanged (the literal scan would never match an
       // encoded form; documented in tool-reference.md as a known limitation).
       const r = await fetchResponseBody(
-        e.session.cdp(),
+        requireCdp(e.session),
         requestId,
         undefined,
         caps.enabled.has("secrets") ? e.secrets : null,
@@ -3747,7 +3765,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const r = await withDeadline(
-          mouseWheel(e.session.cdp(), { coords, deltaX, deltaY }),
+          mouseWheel(requireCdp(e.session), { coords, deltaX, deltaY }),
           cfgActionTimeout(),
           "mouse_wheel",
         );
@@ -3814,7 +3832,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const e = await entryFor(session);
         try {
           const r = await withDeadline(
-            touchAction(e.session.cdp(), act.slice(6) as "start" | "move" | "end", {
+            touchAction(requireCdp(e.session), act.slice(6) as "start" | "move" | "end", {
               coords,
               identifier,
             }),
@@ -3885,7 +3903,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const r = await withDeadline(
-          gesturePinch(e.session.cdp(), { coords, scale, steps, startOffset }),
+          gesturePinch(requireCdp(e.session), { coords, scale, steps, startOffset }),
           cfgActionTimeout(),
           "gesture_pinch",
         );
@@ -3953,7 +3971,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const r = await withDeadline(
-          gestureSwipe(e.session.cdp(), { from, to, durationMs, steps, identifier }),
+          gestureSwipe(requireCdp(e.session), { from, to, durationMs, steps, identifier }),
           cfgActionTimeout(),
           "gesture_swipe",
         );
@@ -4298,7 +4316,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const list = await e.workers.list(e.session.page(), e.session.cdp(), type ?? "all");
+        const list = await e.workers.list(e.session.page(), requireCdp(e.session), type ?? "all");
         const body = { ok: true, workers: list, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -4334,7 +4352,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.workers.sendMessage(e.session.page(), e.session.cdp(), {
+        const r = await e.workers.sendMessage(e.session.page(), requireCdp(e.session), {
           workerId,
           message,
         });
@@ -4420,7 +4438,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.workers.addFetchIntercept(e.session.cdp(), { pattern, response });
+        const r = await e.workers.addFetchIntercept(requireCdp(e.session), { pattern, response });
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -4455,7 +4473,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const r = await e.workers.removeFetchIntercept(
-          e.session.cdp(),
+          requireCdp(e.session),
           pattern !== undefined ? { pattern } : {},
         );
         const body = { ok: true, ...r, tokensEstimate: 0 };
@@ -4520,13 +4538,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const { state, reset } = await e.emulation.applyNetwork(e.session.cdp(), e.session.page(), {
-          offline,
-          latencyMs,
-          downloadBps,
-          uploadBps,
-          packetLoss,
-        });
+        const { state, reset } = await e.emulation.applyNetwork(
+          requireCdp(e.session),
+          e.session.page(),
+          {
+            offline,
+            latencyMs,
+            downloadBps,
+            uploadBps,
+            packetLoss,
+          },
+        );
         const body: Record<string, unknown> = { ok: true, applied: state, reset };
         if (e.mode === "attached") {
           body.warning =
@@ -4570,9 +4592,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const { state, reset } = await e.emulation.applyCpu(e.session.cdp(), e.session.page(), {
-          throttleRate,
-        });
+        const { state, reset } = await e.emulation.applyCpu(
+          requireCdp(e.session),
+          e.session.page(),
+          {
+            throttleRate,
+          },
+        );
         const body: Record<string, unknown> = { ok: true, applied: state, reset };
         if (e.mode === "attached") {
           body.warning =
@@ -4618,7 +4644,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.perf.start(e.session.cdp(), { categories });
+        const r = await e.perf.start(requireCdp(e.session), { categories });
         const body: Record<string, unknown> = {
           ok: true,
           running: true,
@@ -4668,7 +4694,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.perf.stop(e.session.cdp());
+        const r = await e.perf.stop(requireCdp(e.session));
         if (r.notRunning) {
           const body = {
             ok: true,
@@ -4830,7 +4856,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await runPerfAudit(e.session.cdp(), workspace.root, e.id, {
+        const r = await runPerfAudit(requireCdp(e.session), workspace.root, e.id, {
           categories: categories as string[] | undefined,
           durationMs,
           format,
@@ -4880,7 +4906,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.coverage.start(e.session.cdp());
+        const r = await e.coverage.start(requireCdp(e.session));
         const body: Record<string, unknown> = {
           ok: true,
           running: true,
@@ -4924,7 +4950,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.coverage.stop(e.session.cdp());
+        const r = await e.coverage.stop(requireCdp(e.session));
         if (r.notRunning) {
           const body = {
             ok: true,
@@ -4983,7 +5009,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await runLayoutThrashTrace(e.session.cdp(), workspace.root, e.id, { durationMs });
+        const r = await runLayoutThrashTrace(requireCdp(e.session), workspace.root, e.id, {
+          durationMs,
+        });
         const body: Record<string, unknown> = {
           ok: true,
           forcedLayoutsCount: r.forcedLayoutsCount,
@@ -5081,7 +5109,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const snapshotJson = await takeHeapSnapshot(e.session.cdp());
+        const snapshotJson = await takeHeapSnapshot(requireCdp(e.session));
         const targetPath = path ?? defaultHeapSnapshotPath(workspace.root, e.id);
         const written = writeHeapSnapshotFile(
           workspace.root,
@@ -5224,7 +5252,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           state,
           mode: appliedMode,
           appliedAtIso,
-        } = await e.clock.apply(e.session.cdp(), e.session.page(), { mode, atIso, byMs });
+        } = await e.clock.apply(requireCdp(e.session), e.session.page(), { mode, atIso, byMs });
         const body: Record<string, unknown> = {
           ok: true,
           applied: {
@@ -5611,7 +5639,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const candidates = args.candidates as unknown as MarkCandidate[];
       try {
         const result = await withDeadline(
-          screenshotMarks(e.session.page(), e.session.cdp(), e.refs, {
+          screenshotMarks(e.session.page(), requireCdp(e.session), e.refs, {
             candidates,
             label: args.label,
             testAttributes: config.testAttributes,
@@ -6601,7 +6629,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(args.session);
       try {
         const result = await withDeadline(
-          assetExport(e.session.cdp(), e.session.page(), e.network, workspace.root, e.id, {
+          assetExport(requireCdp(e.session), e.session.page(), e.network, workspace.root, e.id, {
             filter: args.filter ?? {},
             intoDir: args.intoDir,
             maxCount: args.maxCount,
@@ -9215,7 +9243,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let outcome;
       try {
         outcome = await withDeadline(
-          planAction(e.session.page(), e.session.cdp(), e.refs, {
+          planAction(e.session.page(), requireCdp(e.session), e.refs, {
             query: args.query,
             verb: args.verb,
             verbArgs: args.verbArgs,
@@ -9904,13 +9932,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "list_sessions",
     {
       description:
-        "List live sessions: id, mode, current url, page count, openedAt. Audit / coordination helper for multi-session work.",
+        "List live sessions: id, mode, engine, current url, page count, openedAt. Audit / coordination helper for multi-session work.",
       inputSchema: {},
     },
     async () => {
       const rows = registry.list().map((e) => ({
         id: e.id,
         mode: e.mode,
+        engine: e.session.engine,
         url: (() => {
           try {
             return e.session.page().url();
@@ -10705,11 +10734,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         if (locale === null || locale === undefined) {
-          await clearLocaleCdp(e.session.cdp());
+          await clearLocaleCdp(requireCdp(e.session));
           e.deviceEmulation.locale = undefined;
           return emulationResult(e, { locale: null });
         }
-        await applyLocaleCdp(e.session.cdp(), locale);
+        await applyLocaleCdp(requireCdp(e.session), locale);
         e.deviceEmulation.locale = locale;
         return emulationResult(e, { locale });
       } catch (err) {
@@ -10739,11 +10768,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         if (timezoneId === null || timezoneId === undefined) {
-          await clearTimezoneCdp(e.session.cdp());
+          await clearTimezoneCdp(requireCdp(e.session));
           e.deviceEmulation.timezoneId = undefined;
           return emulationResult(e, { timezoneId: null });
         }
-        await applyTimezoneCdp(e.session.cdp(), timezoneId);
+        await applyTimezoneCdp(requireCdp(e.session), timezoneId);
         e.deviceEmulation.timezoneId = timezoneId;
         return emulationResult(e, { timezoneId });
       } catch (err) {
@@ -10881,11 +10910,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         if (userAgent === null || userAgent === undefined) {
-          await clearUserAgentCdp(e.session.cdp());
+          await clearUserAgentCdp(requireCdp(e.session));
           e.deviceEmulation.userAgent = undefined;
           return emulationResult(e, { userAgent: null });
         }
-        await applyUserAgentCdp(e.session.cdp(), userAgent);
+        await applyUserAgentCdp(requireCdp(e.session), userAgent);
         e.deviceEmulation.userAgent = userAgent;
         return emulationResult(e, { userAgent });
       } catch (err) {
@@ -11547,6 +11576,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         ? workspace.sub("profile")
         : workspace.sub(`profiles/${profileName}`);
     const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
+    // Preserve the engine across the rebuild (extensions are Chromium-only, so
+    // this is chromium today; reading it before close keeps the rebuild engine-
+    // faithful for when a second engine lands).
+    const rebuildEngine = e.session.engine;
     // Tear down the current session BEFORE relaunching — Chromium will not
     // open a second persistent context on the same profile dir.
     await e.bridge.detach().catch(() => undefined);
@@ -11563,6 +11596,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       profileDir,
       device,
       disableWebSecurity,
+      browserType: rebuildEngine,
       ...(extensionPaths.length ? { extensionPaths } : {}),
     });
     // Rebuild the per-session inner pieces. The secrets / dialog policy /
@@ -11571,9 +11605,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // since they referenced the now-closed CDP session.
     const consoleBuf = new ConsoleBuffer();
     consoleBuf.attach(sess.page());
-    const networkBuf = new NetworkBuffer(sess.cdp());
+    const networkBuf = new NetworkBuffer(requireCdp(sess));
     await networkBuf.attach();
-    const wsBuf = new WsBuffer(sess.cdp());
+    const wsBuf = new WsBuffer(requireCdp(sess));
     await wsBuf.attach();
     consoleBuf.setSecrets(e.secrets);
     networkBuf.setSecrets(e.secrets);
@@ -11664,7 +11698,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // motion/permissions via Playwright). Best-effort — failures don't
     // abort the rebuild.
     try {
-      await reapplyEmulation(sess.page().context(), sess.page(), sess.cdp(), e.deviceEmulation);
+      await reapplyEmulation(
+        sess.page().context(),
+        sess.page(),
+        requireCdp(sess),
+        e.deviceEmulation,
+      );
     } catch {
       /* best-effort */
     }
