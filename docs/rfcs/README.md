@@ -7,6 +7,7 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | #                                  | Title              | Status                                        |
 | ---------------------------------- | ------------------ | --------------------------------------------- |
 | [0001](0001-extract-ergonomics.md) | Extract ergonomics | Tracked — see CHANGELOG for landed proposals. |
+| [0002](0002-multi-engine-bidi.md) | Multi-engine browser support (driver-port abstraction; Firefox/Safari/mobile, WebDriver BiDi) | Draft — research complete ([references/](references/)); Safari real-device lane pending reference 05. |
 
 ## Adding an RFC
 
