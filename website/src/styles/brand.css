@@ -539,6 +539,202 @@ main:has(.browx-404) > .content-panel {
   }
 }
 
+/* ---- Capability posture (concepts/capabilities-and-safety) -------------- */
+/* Two zones: a small solid "on by default" set and a dimmed, dashed "off
+   until you opt in" set. Pure HTML/flex so every chip wraps; no SVG text. */
+.browx-posture {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr);
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+  container-type: inline-size;
+}
+@media (max-width: 40rem) {
+  .browx-posture {
+    grid-template-columns: 1fr;
+  }
+}
+.browx-posture-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border-radius: 0.8rem;
+  min-width: 0;
+}
+.browx-posture-zone.is-on {
+  border: 1px solid color-mix(in srgb, var(--browx-violet-400) 40%, transparent);
+  background: color-mix(in srgb, var(--browx-violet-500) 9%, transparent);
+}
+.browx-posture-zone.is-off {
+  border: 1px dashed var(--browx-glass-border);
+  background: color-mix(in srgb, var(--sl-color-bg-sidebar) 35%, transparent);
+}
+.browx-posture-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--browx-font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.browx-posture-zone.is-on .browx-posture-head {
+  color: var(--sl-color-text-accent);
+}
+.browx-posture-zone.is-off .browx-posture-head {
+  color: var(--sl-color-gray-3);
+}
+.browx-posture-head .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.browx-posture-zone.is-on .browx-posture-head .dot {
+  background: var(--sl-color-text-accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--browx-violet-400) 25%, transparent);
+}
+.browx-posture-zone.is-off .browx-posture-head .dot {
+  background: transparent;
+  border: 1.5px dashed var(--sl-color-gray-4);
+}
+.browx-posture-note {
+  font-size: 0.82rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.4;
+}
+.browx-cap-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.15rem;
+}
+.browx-cap {
+  font-family: var(--browx-font-mono);
+  font-size: 0.8rem;
+  padding: 0.28rem 0.6rem;
+  border-radius: 0.45rem;
+  white-space: nowrap;
+}
+.browx-cap.is-on {
+  color: var(--sl-color-white);
+  background: linear-gradient(180deg, var(--browx-violet-500), var(--browx-violet-600));
+  box-shadow: 0 6px 18px -10px var(--browx-glow);
+}
+:root[data-theme="light"] .browx-cap.is-on {
+  color: #ffffff;
+}
+.browx-cap.is-off {
+  color: var(--sl-color-gray-3);
+  border: 1px dashed var(--browx-glass-border);
+  background: color-mix(in srgb, var(--sl-color-bg) 40%, transparent);
+}
+
+/* ---- Session isolation (concepts/sessions-and-lifecycle) ---------------- */
+/* One server fans out to N isolated session contexts. HTML cards carry the
+   text; a single SVG draws the fan-out connectors. Reflows to a stack with the
+   connector hidden under ~34rem. */
+.browx-iso {
+  margin: 1.5rem 0 2rem;
+  container-type: inline-size;
+}
+.browx-iso-server {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  max-width: 22rem;
+  margin: 0 auto;
+  padding: 0.7rem 1.1rem;
+  text-align: center;
+  border-radius: 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--browx-violet-400) 45%, transparent);
+  background: color-mix(in srgb, var(--browx-violet-500) 10%, transparent);
+}
+.browx-iso-server-k {
+  font-family: var(--browx-font-display);
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+}
+.browx-iso-server-d {
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+}
+.browx-iso-fan {
+  display: block;
+  width: 100%;
+  max-width: 30rem;
+  height: 2.5rem;
+  margin: 0 auto;
+}
+.browx-iso-fan path {
+  fill: none;
+  stroke: var(--sl-color-text-accent);
+  stroke-width: 1.5;
+  opacity: 0.65;
+  vector-effect: non-scaling-stroke;
+}
+.browx-iso-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.browx-iso-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem 0.9rem;
+  min-width: 0;
+  border-radius: 0.7rem;
+  border: 1px solid var(--browx-glass-border);
+  background: var(--browx-glass);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+}
+.browx-iso-id {
+  font-family: var(--browx-font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  word-break: break-word;
+}
+.browx-iso-trait {
+  font-family: var(--browx-font-body);
+  font-size: 0.78rem;
+  color: var(--sl-color-gray-3);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.browx-iso-trait::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--browx-violet-400) 70%, transparent);
+}
+@container (max-width: 34rem) {
+  .browx-iso-fan {
+    height: 1.4rem;
+    width: 2px;
+    background: linear-gradient(
+      var(--sl-color-text-accent),
+      color-mix(in srgb, var(--sl-color-text-accent) 35%, transparent)
+    );
+    opacity: 0.65;
+  }
+  .browx-iso-fan path {
+    display: none;
+  }
+  .browx-iso-row {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+}
+
 /* Feature grid. */
 .browx-grid {
   display: grid;

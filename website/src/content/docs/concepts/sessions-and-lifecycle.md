@@ -8,6 +8,36 @@ Every browser-touching tool accepts an optional `session` argument (default
 cookie jar and storage, its own ref registry, its own console and network
 buffers. That isolation is the whole concurrency model.
 
+<div class="browx-iso not-content" role="img" aria-label="One browxai server holds several isolated session contexts. Each session has its own cookie jar, ref registry, and console plus network buffers, so sessions driven by different agents or logged in as different users never bleed into each other.">
+  <div class="browx-iso-server">
+    <span class="browx-iso-server-k">browxai server</span>
+    <span class="browx-iso-server-d">one process, no global active session</span>
+  </div>
+  <svg class="browx-iso-fan" viewBox="0 0 300 44" preserveAspectRatio="none" aria-hidden="true">
+    <path d="M150 0 V14 M150 14 H40 V44 M150 14 H150 V44 M150 14 H260 V44" />
+  </svg>
+  <div class="browx-iso-row">
+    <div class="browx-iso-cell">
+      <span class="browx-iso-id">session "agent-a"</span>
+      <span class="browx-iso-trait">own cookie jar</span>
+      <span class="browx-iso-trait">own refs</span>
+      <span class="browx-iso-trait">own buffers</span>
+    </div>
+    <div class="browx-iso-cell">
+      <span class="browx-iso-id">session "agent-b"</span>
+      <span class="browx-iso-trait">own cookie jar</span>
+      <span class="browx-iso-trait">own refs</span>
+      <span class="browx-iso-trait">own buffers</span>
+    </div>
+    <div class="browx-iso-cell">
+      <span class="browx-iso-id">session "user-2"</span>
+      <span class="browx-iso-trait">own cookie jar</span>
+      <span class="browx-iso-trait">own refs</span>
+      <span class="browx-iso-trait">own buffers</span>
+    </div>
+  </div>
+</div>
+
 ## The concurrency model
 
 - **Many agents, one server.** Give each agent its own `session` id and they

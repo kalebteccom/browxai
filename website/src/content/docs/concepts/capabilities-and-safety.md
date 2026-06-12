@@ -10,6 +10,38 @@ that stay on are bounded.
 For the full trust analysis, read the [threat model](/security/threat-model/).
 This page is the working summary.
 
+<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, and diagnostics, is off until you opt in at server start.">
+  <div class="browx-posture-zone is-on">
+    <span class="browx-posture-head"><span class="dot"></span>on by default</span>
+    <span class="browx-posture-note">read-only or bounded, always safe to run</span>
+    <div class="browx-cap-row">
+      <span class="browx-cap is-on">read</span>
+      <span class="browx-cap is-on">navigation</span>
+      <span class="browx-cap is-on">action</span>
+      <span class="browx-cap is-on">human</span>
+    </div>
+  </div>
+  <div class="browx-posture-zone is-off">
+    <span class="browx-posture-head"><span class="dot"></span>off until you opt in</span>
+    <span class="browx-posture-note">sharp surfaces, each enabled deliberately</span>
+    <div class="browx-cap-row">
+      <span class="browx-cap is-off">eval</span>
+      <span class="browx-cap is-off">byob-attach</span>
+      <span class="browx-cap is-off">network-body</span>
+      <span class="browx-cap is-off">clipboard</span>
+      <span class="browx-cap is-off">file-io</span>
+      <span class="browx-cap is-off">secrets</span>
+      <span class="browx-cap is-off">extensions</span>
+      <span class="browx-cap is-off">credentials</span>
+      <span class="browx-cap is-off">stealth</span>
+      <span class="browx-cap is-off">captcha</span>
+      <span class="browx-cap is-off">device-emulation</span>
+      <span class="browx-cap is-off">canvas</span>
+      <span class="browx-cap is-off">diagnostics</span>
+    </div>
+  </div>
+</div>
+
 ## Capabilities
 
 Tools are grouped into capability categories, resolved once at server start. A
