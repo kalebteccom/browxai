@@ -550,10 +550,16 @@ main:has(.browx-404) > .content-panel {
 
 /* ---- Sidebar: non-collapsible, Vercel / Next.js / MCP-docs feel ---------- */
 
+/* Inter-group air: each top-level group reads as its own section. */
+#starlight__sidebar .top-level > li + li {
+  margin-top: 1.4rem;
+}
+
 /* Groups are always open: kill the toggle and the caret. */
 #starlight__sidebar summary {
   pointer-events: none;
-  padding-block: 0.25rem;
+  padding-block: 0.35rem;
+  margin-bottom: 0.15rem;
 }
 #starlight__sidebar summary .caret {
   display: none;
@@ -562,11 +568,12 @@ main:has(.browx-404) > .content-panel {
 /* Section labels: small, uppercase, quiet, like the MCP sidebar. */
 #starlight__sidebar .group-label .large {
   font-family: var(--browx-font-mono);
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  letter-spacing: 0.09em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--sl-color-gray-3);
+  opacity: 0.85;
 }
 
 /* Make the sidebar a column so the llms.txt link can pin to the bottom. */
@@ -579,14 +586,19 @@ main:has(.browx-404) > .content-panel {
 /* Items: more vertical padding, rounded, subtle hover, refined active state. */
 #starlight__sidebar .top-level a {
   display: block;
-  padding: 0.5rem 0.7rem;
+  padding: 0.45rem 0.75rem;
   border-radius: 0.5rem;
   font-size: 0.9rem;
-  line-height: 1.3;
+  line-height: 1.45;
+  margin-block: 0.0625rem;
   color: var(--sl-color-gray-2);
   transition:
     background 0.13s ease,
     color 0.13s ease;
+}
+#starlight__sidebar .top-level ul ul a {
+  padding-block: 0.35rem;
+  font-size: 0.875rem;
 }
 #starlight__sidebar .top-level a:hover {
   background: color-mix(in srgb, var(--sl-color-gray-5) 22%, transparent);
