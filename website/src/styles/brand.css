@@ -143,8 +143,6 @@ main:has(.browx-404) > .content-panel {
   gap: clamp(2rem, 5vw, 4rem);
   padding: clamp(2.5rem, 7vw, 5.5rem) 0 clamp(2rem, 4vw, 3rem);
   isolation: isolate;
-  /* Keep the decorative grid + glow from ever widening the page. */
-  overflow-x: clip;
 }
 @media (max-width: 52rem) {
   .browx-hero {
