@@ -31,7 +31,7 @@ five-key `package.json#browxai` field.
   "version": "0.1.0",
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.5.0",
+    "browxaiVersion": "^0.7.0",
     "namespace": "example",
     "register": "dist/index.js",
     "capabilities": [],
@@ -51,7 +51,9 @@ Every field:
   for `2.0.0` does NOT run under runtime `1.x` (rejected at load).
 - **`browxaiVersion`** (optional, advisory) — semver range of the
   browxai host the plugin was tested against. Surfaced on
-  `plugins_list`; never used to reject loading.
+  `plugins_list`; never used to reject loading. If the running host's
+  version falls outside the range, the runtime logs a warning at load
+  time (untested combination) and loads the plugin anyway.
 - **`namespace`** (required) — the tool prefix. Every tool the
   plugin registers MUST be `<namespace>.<tool>`. Namespace must
   match `/^[a-z][a-z0-9_]*$/` (lowercase, alphanumeric + underscore,

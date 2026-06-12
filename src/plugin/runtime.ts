@@ -22,6 +22,7 @@
 import { pathToFileURL } from "node:url";
 import type { z } from "zod";
 import { log } from "../util/logging.js";
+import { PACKAGE_VERSION } from "../util/version.js";
 import type { Capability } from "../util/capabilities.js";
 import { isApiVersionCompatible, RUNTIME_API_VERSION, satisfiesRange } from "./manifest.js";
 import {
@@ -203,6 +204,22 @@ export async function startPluginRuntime(opts: RuntimeStartOptions): Promise<Run
       continue;
     }
     validResolved.set(name, res.manifest);
+  }
+
+  // browxaiVersion advisory. The manifest field is the host range the
+  // plugin was tested against — a mismatch NEVER rejects loading (a
+  // conservative range must not lock out a known-good host that already
+  // shipped), but it warns loudly so the operator knows the combination
+  // is untested.
+  for (const [name, m] of validResolved) {
+    const range = m.browxai.browxaiVersion;
+    if (range && !satisfiesRange(PACKAGE_VERSION, range)) {
+      log.warn(
+        `plugin runtime: ${name} was tested against browxai "${range}" but this host is ${PACKAGE_VERSION} — ` +
+          `untested combination (advisory only; the plugin still loads). ` +
+          `Upgrade the plugin or widen its browxaiVersion range.`,
+      );
+    }
   }
 
   // apiVersion check.

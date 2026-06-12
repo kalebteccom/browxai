@@ -2,7 +2,7 @@
 // call-graph enforcement, against an on-disk tmp workspace populated
 // with miniature plugin packages. No browser, no MCP transport.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ interface MakePluginOpts {
   version?: string;
   namespace: string;
   apiVersion?: string;
+  browxaiVersion?: string;
   capabilities?: ReadonlyArray<string>;
   dependsOn?: ReadonlyArray<{ plugin: string; version: string }>;
   /** ESM source for the entry module — must define `export function register(api){...}`. */
@@ -33,6 +34,7 @@ function makePlugin(workspaceRoot: string, opts: MakePluginOpts): void {
         main: "index.js",
         browxai: {
           apiVersion: opts.apiVersion ?? "1.0.0",
+          ...(opts.browxaiVersion ? { browxaiVersion: opts.browxaiVersion } : {}),
           namespace: opts.namespace,
           register: "index.js",
           capabilities: opts.capabilities ?? [],
@@ -450,6 +452,53 @@ describe("startPluginRuntime — apiVersion + dep-version checks", () => {
     });
     expect(r.plugins[0]?.status).toBe("load-error");
     expect(r.plugins[0]?.statusReason).toMatch(/apiVersion/);
+  });
+
+  it("warns (but still loads) on a browxaiVersion range the host doesn't satisfy", async () => {
+    const { log } = await import("../util/logging.js");
+    const { PACKAGE_VERSION } = await import("../util/version.js");
+    const warnSpy = vi.spyOn(log, "warn");
+    makePlugin(workspaceRoot, {
+      name: "plugin-old-range",
+      namespace: "oldrange",
+      browxaiVersion: "^0.0.1",
+      source: "export function register(){}",
+    });
+    writeDecl(workspaceRoot, ["plugin-old-range"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    // Advisory only: the plugin loads anyway.
+    expect(r.plugins[0]?.status).toBe("loaded");
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(warned).toMatch(/plugin-old-range/);
+    expect(warned).toMatch(/advisory/);
+    expect(warned).toContain(PACKAGE_VERSION);
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when the host satisfies browxaiVersion", async () => {
+    const { log } = await import("../util/logging.js");
+    const { PACKAGE_VERSION } = await import("../util/version.js");
+    const warnSpy = vi.spyOn(log, "warn");
+    makePlugin(workspaceRoot, {
+      name: "plugin-good-range",
+      namespace: "goodrange",
+      browxaiVersion: `^${PACKAGE_VERSION}`,
+      source: "export function register(){}",
+    });
+    writeDecl(workspaceRoot, ["plugin-good-range"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("loaded");
+    const warned = warnSpy.mock.calls.map((c) => String(c[0])).join("\n");
+    expect(warned).not.toMatch(/browxaiVersion/);
+    warnSpy.mockRestore();
   });
 
   it("disables a plugin whose dep version range isn't satisfied", async () => {

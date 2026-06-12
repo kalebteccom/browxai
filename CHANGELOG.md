@@ -80,6 +80,16 @@ surface" covers.
   `rfcs/**` — internal docs stay in-repo without leaking into the
   published site.
 
+### Added (plugin runtime)
+
+- **`browxaiVersion` advisory warning.** The manifest docs always said a
+  host/plugin version mismatch "only warns" — now it actually does: at
+  resolve time the runtime compares the plugin's advisory
+  `browxaiVersion` range against the host version and logs a warning on
+  mismatch (the plugin still loads; the field never rejects). The
+  example plugin's dead `^0.5.0` range is corrected to `^0.7.0`, as is
+  the manifest example in `docs/plugin-authoring.md`.
+
 ### Changed (CI)
 
 - **zizmor now gates.** The workflow audit in `quality.yml` ran with

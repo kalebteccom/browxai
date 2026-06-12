@@ -39,7 +39,7 @@
   },
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.5.0",
+    "browxaiVersion": "^0.7.0",
     "namespace": "example",
     "register": "dist/index.js",
     "capabilities": [],
