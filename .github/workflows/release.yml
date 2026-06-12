@@ -184,5 +184,5 @@ jobs:
         with:
           name: dist
           path: ./
-      - name: Publish @kalebtec/browxai-plugin-* with provenance
+      - name: Publish @browxai/plugin-* with provenance
         run: pnpm -r --filter "./packages/plugins/*" publish --provenance --access public --no-git-checks
