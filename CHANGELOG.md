@@ -80,6 +80,17 @@ surface" covers.
 
 ### Fixed
 
+- **Plugin publishing actually works under OIDC trusted publishing.**
+  `release.yml`'s `publish-plugins` job used `pnpm -r publish`, but pnpm
+  9's registry client cannot mint OIDC trusted-publishing tokens (that
+  needs npm ≥ 11.5.1 or pnpm ≥ 10.13) and no `NPM_TOKEN` exists by
+  design — every plugin publish would have failed. The job now loops
+  over `packages/plugins/*` and runs `npm publish --provenance` with the
+  upgraded npm CLI, with a registry existence check first so versions
+  already published by an earlier tag are skipped instead of failing the
+  release. The `publish` job also restores the executable bit on
+  `dist/cli.js` after the artifact download (upload/download-artifact
+  drops unix mode bits), so the published bin stays executable.
 - **MCP handshake version drift.** The server's exported `VERSION` (sent
   in the MCP handshake and used by the SDK client identities) was a
   hand-maintained `"0.1.0"` literal while the package shipped 0.7.0. It

@@ -157,9 +157,22 @@ jobs:
         with:
           name: dist
           path: ./
+      # upload/download-artifact zips entries without preserving the unix
+      # mode bits, so the +x that `pnpm build` sets on the bin is lost in
+      # the round-trip. Restore it before packing the tarball.
+      - name: Restore executable bit on the bin
+        run: chmod +x dist/cli.js
       - name: Publish browxai with provenance
         run: npm publish --provenance --access public
 
+  # Plugins publish with `npm publish` (NOT `pnpm publish`): npm OIDC
+  # trusted publishing needs npm >= 11.5.1, and pnpm 9's registry client
+  # never sees the upgraded npm CLI — `pnpm -r publish` would fall back to
+  # token auth and fail (no NPM_TOKEN exists, by design). The loop also
+  # skips versions that already exist on the registry, so a vX.Y.Z tag of
+  # the host package doesn't fail on plugin versions published by an
+  # earlier tag (plugins are hand-versioned independently — see
+  # RELEASING.md "Workspace plugin publishing").
   publish-plugins:
     needs: [build, reproducibility]
     runs-on: ubuntu-latest
@@ -171,18 +184,37 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      # No `cache: pnpm` — see cache-poisoning note on publish job above.
+      # No pnpm setup / install: the plugin packages have no publish
+      # lifecycle scripts and no production dependencies, so the OIDC job
+      # only needs node + the upgraded npm CLI. No `cache` opt-in — see
+      # cache-poisoning note on the publish job above.
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
       - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
         run: npm install -g npm@latest
-      - run: pnpm install --frozen-lockfile --ignore-scripts
       - uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
           name: dist
           path: ./
-      - name: Publish @browxai/plugin-* with provenance
-        run: pnpm -r --filter "./packages/plugins/*" publish --provenance --access public --no-git-checks
+      - name: Publish @browxai/plugin-* with provenance (skip if published)
+        run: |
+          set -euo pipefail
+          for dir in packages/plugins/*; do
+            name="$(node -p "require('./${dir}/package.json').name")"
+            version="$(node -p "require('./${dir}/package.json').version")"
+            # Registry existence check: E404 means "not published yet" →
+            # publish. Any other failure (registry outage, auth hiccup) is
+            # surfaced loudly rather than risking a duplicate-publish error.
+            if out="$(npm view "${name}@${version}" version 2>&1)" && [ -n "${out}" ]; then
+              echo "skip ${name}@${version} — already on the registry"
+              continue
+            elif ! printf '%s' "${out}" | grep -q "E404"; then
+              echo "registry existence check failed for ${name}@${version}:" >&2
+              printf '%s\n' "${out}" >&2
+              exit 1
+            fi
+            echo "publishing ${name}@${version}"
+            (cd "${dir}" && npm publish --provenance --access public)
+          done
