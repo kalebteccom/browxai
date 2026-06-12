@@ -42,8 +42,8 @@ permissions, notifications, and file pickers.
 
 ## Safe because it has to be
 
-An agent driving a browser is a powerful and a dangerous thing. browxai's
-default posture is closed:
+An agent driving a browser is powerful and dangerous. browxai's default
+posture is closed:
 
 - Tools are grouped into capabilities. The default set is `read`, `navigation`,
   `action`, and `human`. Arbitrary JavaScript, full response bodies, the OS

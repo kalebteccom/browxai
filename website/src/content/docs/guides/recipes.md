@@ -16,15 +16,13 @@ await open_session({ session: "work", mode: "persistent", profile: "acme" });
 await navigate({ session: "work", url: "https://app.example.com/login" });
 
 const email = await find({ session: "work", query: "the email field" });
-await fill({ session: "work", ref: email[0].ref, value: "ada@example.com" });
+await fill({ session: "work", ref: email.candidates[0].ref, value: "ada@example.com" });
 
 const pw = await find({ session: "work", query: "the password field" });
-await fill({ session: "work", ref: pw[0].ref, value: process.env.APP_PASSWORD });
+await fill({ session: "work", ref: pw.candidates[0].ref, value: process.env.APP_PASSWORD });
 
-await click({
-  session: "work",
-  ref: (await find({ session: "work", query: "the sign in button" }))[0].ref,
-});
+const signIn = await find({ session: "work", query: "the sign in button" });
+await click({ session: "work", ref: signIn.candidates[0].ref });
 ```
 
 The next run with the same `profile` starts already logged in. For state that
@@ -33,28 +31,51 @@ see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
 
 ## Fill and submit a form in one call
 
-`fill_form` sets several fields and optionally submits, which is fewer round
-trips than one `fill` per field.
+`fill_form` sets several fields and optionally clicks a submit target, which is
+fewer round trips than one `fill` per field. Each field targets a `ref`,
+`selector`, or `named` ref. Resolution is atomic: if any target misses, nothing
+is typed and the result names the missing field.
 
 ```ts
 await fill_form({
   fields: [
-    { query: "first name", value: "Ada" },
-    { query: "last name", value: "Lovelace" },
-    { query: "email", value: "ada@example.com" },
+    { selector: '[data-testid="first-name"]', value: "Ada" },
+    { selector: '[data-testid="last-name"]', value: "Lovelace" },
+    { selector: '[data-testid="email"]', value: "ada@example.com" },
   ],
-  submit: true,
+  submit: { selector: '[data-testid="save"]' },
 });
 ```
 
 ## Extract structured data
 
 For reading rather than acting, `text_search`, `inspect`, and `extract` keep
-the result scoped instead of dumping the page.
+the result scoped instead of dumping the page. `extract` is schema-driven: each
+property name doubles as the query, and arrays take a `collection` selector for
+the repeated container.
 
 ```ts
 await navigate({ url: "https://example.com/pricing" });
-const plans = await extract({ query: "each plan name and its monthly price" });
+const res = await extract({
+  schema: {
+    type: "object",
+    properties: {
+      plans: {
+        type: "array",
+        "x-browx-source": { collection: ".plan-card" },
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            price: { type: "number" },
+          },
+        },
+      },
+    },
+  },
+});
+// res.data = { plans: [{ name: "Starter", price: 9 }, ...] }
+// res.evidence.partialMisses names anything the schema asked for but missed.
 ```
 
 Pair it with the `verify_*` family when you want an assertion rather than a
@@ -69,8 +90,14 @@ sampling an unstable surface.
 // Wait for a specific thing to exist, with a real deadline.
 await wait_for({ text: "Payment confirmed", timeoutMs: 15000 });
 
-// Act, then sample the result a few times to see if it settled.
-await act_and_sample({ action: { tool: "click", args: { ref: "e12" } } });
+// Act and trace a metric across the transition, in one call.
+const res = await act_and_sample({
+  action: { tool: "click", args: { ref: "e12" } },
+  metric: "scrollHeight",
+  durationMs: 2000,
+});
+// res.action is the click's ActionResult; res.sample.summary shows
+// whether (and when) the metric moved during the window.
 ```
 
 `wait_for`'s `timeoutMs` is both its maximum wait and its deadline. If a

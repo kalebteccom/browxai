@@ -33,9 +33,15 @@ Off by default, each opted in deliberately:
 - `secrets` enables the per-session sensitive-data registry and egress masking.
 - `extensions` enables per-session unpacked-extension management (headed and
   persistent only).
+- `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
+  `diagnostics` gate the remaining posture-broadening lanes. The
+  [threat model](/security/threat-model/) documents each one's rationale and
+  trade-offs.
 
 Because capabilities resolve at server start, changing them means restarting
-the server.
+the server. Request only what the task in front of you needs: a scrape run
+wants `read` and `navigation`; nothing about scraping needs `eval` or
+`network-body`.
 
 ## Origin policy
 

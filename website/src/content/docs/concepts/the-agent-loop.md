@@ -33,12 +33,17 @@ form "Sign in" [ref=e3]
 
 When you know what you want but not its ref, `find({ query })` takes a
 plain-language description and returns ranked candidates with evidence: a
-`stability` flag, an `actionable` verdict, and a visible-rect `bbox`. It hands
-back ranked options with reasons, not a single guess you have to trust blind.
+`stability` flag (`high` / `medium` / `low`), an `actionable` verdict, and a
+visible-rect `bbox`. It hands back ranked options with reasons, not a single
+guess you have to trust blind.
 
 ```ts
-const hits = await find({ query: "the Continue button" });
-// hits[0] = { ref: "e6", stability: "stable", actionable: true, bbox: {...} }
+const res = await find({ query: "the Continue button" });
+// res.candidates[0] = {
+//   ref: "e6", role: "button", name: "Continue",
+//   stability: "high", selectorHint: '[data-testid="continue"]',
+//   actionable: true, bbox: { x: 412, y: 318, width: 96, height: 36 },
+// }
 ```
 
 ## act

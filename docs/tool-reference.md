@@ -88,7 +88,7 @@ Every browser-touching tool accepts an optional **`session`** arg (default `"def
 
 Omitting `session` resolves to the lazily-created `"default"` session — byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
 
-- **`open_session({ session, mode?, profile?, device?, viewport?, har?, hars? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors. `har` wires a HAR recorder at context creation (native Playwright `recordHar` — finalized on session close). `hars` is the symmetric REPLAY axis: a workspace-rooted list of.har files served via `routeFromHAR(notFound:"fallback")`. See the HAR record/replay section under "Advanced tools" for the full lifecycle.
+- **`open_session({ session, mode?, profile?, device?, viewport?, har?, hars? })`** — eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors. `har` wires a HAR recorder at context creation (native Playwright `recordHar` — finalized on session close). `hars` is the symmetric REPLAY axis: a workspace-rooted list of .har files served via `routeFromHAR(notFound:"fallback")`. See the HAR record/replay section under "Advanced tools" for the full lifecycle.
 - **`close_session({ session })`** — tear down (attached detaches only, never closes the user's Chrome; incognito discards its ephemeral context + browser). `"default"` may be closed; it re-creates lazily.
 - **`close_sessions({ prefix?, all?, idleMs? })`** — bulk teardown for multi-agent cleanup. `prefix` (id starts-with, e.g. one agent's `agentA-*`), `all:true`, and/or `idleMs` (no activity in the last N ms). Selectors AND together; at least one required (won't implicitly close nothing/everything). Returns `{ closed:[ids], count }`. The team-lead reap primitive when a sub-agent wedged/was-killed and stranded sessions. Activity is touched on every tool call against a session.
 - **`list_sessions()`** — `[{ id, mode, url, pages, openedAt }]`.
@@ -154,7 +154,8 @@ Different ids are always isolated browser contexts regardless of mode, so multi-
   - `notificationPolicy` governs the _constructor invocation_ (`new Notification(...)`). It controls what happens when the page actually attempts to display one.
   - The two policies compose. Typical recipe: `permissionPolicy: {perPermission: {notifications: "allow"}}` (so the app gets a granted permission and constructs freely) + `notificationPolicy: "allow"` (so the constructor proceeds and every call is captured). To suppress OS notifications while still observing: `notificationPolicy: "deny"` (constructor throws `NotAllowedError`) with permission left allowed.
 - **`instanceof Notification` caveat** — the constructor wrapper uses a fresh prototype so platform accessor-only properties on `Notification.prototype` (`title`, `body`, …) don't shadow our writes (a `TypeError: Cannot set property … which has only a getter` would otherwise fire in headless Chromium). The trade-off: `n instanceof Notification` returns `false` for the wrapped stub. The native Notification — when the policy allows construction — is attached internally so `n.close()` / event listeners still route to the real OS notification.
-  **File System Access policy** (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`):
+
+**File System Access policy** (`showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`):
 
 - Modern web editors (VSCode for the web, Figma, anything with a "save to disk" button) call `showSaveFilePicker` / `showOpenFilePicker` / `showDirectoryPicker`. Headless Chromium can't drive the OS file chooser; without a server-side interceptor the picker call sits forever and the session deadlocks. browxai replaces the three entry points with init-script stubs (re-injected on every new document) that route through the per-session **fs-picker policy** — same posture class as the dialog and permission policies.
 - `open_session({ session, fsPickerPolicy: "<mode>" })` — set the initial policy. String form sets the top-level mode; object form (`{ mode, perAPI?: { <api>: <mode> } }`) takes per-API overrides. Modes:
@@ -620,7 +621,7 @@ Observe a fixed time window with **no driving action**. Samples top-level transi
 
 Fetch a full response body by `requestId` (from `network_read` or `ActionResult.network.requests[].requestId`). **Off by default** — requires the `network-body` capability in `BROWX_CAPABILITIES` (loud startup warning when enabled). Returns `{ ok, body?, base64Encoded?, truncated?, error? }`; bounded at 256 KB (`truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request; not retained across navigations.
 
-Why gated: full bodies routinely carry PII / auth tokens. the `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
+Why gated: full bodies routinely carry PII / auth tokens. The `responseShape` (top-level keys only) is the safe default for "did the mutation write back the right shape"; `network_body` is the higher-risk debugging escape hatch for "assert this exact field value" (e.g. a realtime broadcast payload, paired with `ws_read`).
 
 ### `inspect`
 
@@ -1165,10 +1166,10 @@ Gated by the off-by-default **`file-io`** capability — same posture as
 
 ### Storage-state — three layers
 
-The deferred bulk-state ask, with the @playwright/mcp lesson baked in: bulk
-alone isn't enough — agents constantly need to read a single cookie ("am I
-logged in?") or set one ("opt-out=1") without round-tripping a full blob.
-Three layers ship together; no parallel implementations.
+Bulk state alone isn't enough (the @playwright/mcp lesson): agents constantly
+need to read a single cookie ("am I logged in?") or set one ("opt-out=1")
+without round-tripping a full blob. Three layers ship together; no parallel
+implementations.
 
 **Capability split** — reads (`*_get`, `*_list`, `dump_storage_state`,
 `auth_list`) under `read`; writes (`*_set`, `*_delete`, `*_clear`,
@@ -1270,11 +1271,10 @@ Per-mode semantics:
 ### Per-session artifacts — `artifact_save` / `artifact_get` / `artifact_list`
 
 Session-scoped workspace KV. First-class save/get/list of string or binary
-payloads — the "build your own library over time" loop. Before this lane,
-agents round-tripped scripts/files/blobs through `name_ref`/`name_region`,
-both ref-typed and a poor fit for raw bytes. Three primitives, no new
-capability — `artifact_save` is `action` (writes a file); `artifact_get` /
-`artifact_list` are `read`.
+payloads — the "build your own library over time" loop, and a far better fit
+for raw bytes than round-tripping blobs through ref-typed `name_ref` /
+`name_region`. Three primitives, no new capability — `artifact_save` is
+`action` (writes a file); `artifact_get` / `artifact_list` are `read`.
 
 Artifacts live at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. Names are
 restricted to letters / digits / `._-` only — no path separators, no `..`, no
@@ -1633,11 +1633,11 @@ Full-session reproducibility — capture every request the page made into a HAR 
 - **`open_session({ har: { path?, mode?, content?, urlFilter? } })`** — wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned — a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses — `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
 - **`open_session({ hars: ["a.har", "b.har", …] })`** — REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create — requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.
 
-**Finalize timing** — Playwright writes the.har file on `context.close()`. There is no public mid-session flush. The canonical flow is **`start_har` → drive the page → `stop_har` (optional) → `close_session` → read the.har from disk**. Both `start_har` and `open_session({har})` honour this; every result carries `finalizesOn:"close_session"` so the constraint is visible to the agent rather than implicit.
+**Finalize timing** — Playwright writes the .har file on `context.close()`. There is no public mid-session flush. The canonical flow is **`start_har` → drive the page → `stop_har` (optional) → `close_session` → read the .har from disk**. Both `start_har` and `open_session({har})` honour this; every result carries `finalizesOn:"close_session"` so the constraint is visible to the agent rather than implicit.
 
 **Re-recording within a session** — `stop_har` then `start_har` again with a fresh `path` works cleanly; on the runtime path the prior recorder is transparently flushed before the new one wires. On the native (`open_session({har})`) path the recorder is locked to the session's lifetime — close + reopen the session to swap.
 
-**Inline cap** — `stop_har` inlines the.har on the result when the file exists and is ≤ ~256 KB; otherwise the caller reads it from `path` after `close_session`.
+**Inline cap** — `stop_har` inlines the .har on the result when the file exists and is ≤ ~256 KB; otherwise the caller reads it from `path` after `close_session`.
 
 ### Video recording — `open_session({recordVideo})` / `stop_video` / `get_video`
 
