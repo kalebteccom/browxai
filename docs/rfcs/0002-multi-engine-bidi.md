@@ -16,8 +16,8 @@ The ruling: introduce a **`BrowserEngine` driver port** beneath the tool surface
 ## Non-negotiable framing (from the standards research)
 
 - **Firefox removed CDP entirely in Firefox 141** (22 Jul 2025). The only forward path to Firefox is BiDi/Marionette. Do not build Firefox on a CDP-shaped attach.
-- **Chrome 136+ (May 2025) refuses `--remote-debugging-port` against the default user-data-dir** (anti-infostealer). BYOB-attach to the user's *daily* Chrome profile is dead on stable. This is permanent.
-- **Safari has not shipped BiDi** as of Safari 27 beta (WWDC26, 8 Jun 2026). safaridriver is WebDriver-Classic-only: one session, isolated automation windows, a glass pane, and **attach-to-the-live-session is impossible by design**. The WebKit *engine* is getting BiDi (Igalia-driven, port-agnostic, `browsingContext.navigate` merged Mar 2026, Apple's BJ Burg on the meta-bug) but with zero release-note signal — plan Safari as Classic-only through at least early 2027.
+- **Chrome 136+ (May 2025) refuses `--remote-debugging-port` against the default user-data-dir** (anti-infostealer). BYOB-attach to the user's _daily_ Chrome profile is dead on stable. This is permanent.
+- **Safari has not shipped BiDi** as of Safari 27 beta (WWDC26, 8 Jun 2026). safaridriver is WebDriver-Classic-only: one session, isolated automation windows, a glass pane, and **attach-to-the-live-session is impossible by design**. The WebKit _engine_ is getting BiDi (Igalia-driven, port-agnostic, `browsingContext.navigate` merged Mar 2026, Apple's BJ Burg on the meta-bug) but with zero release-note signal — plan Safari as Classic-only through at least early 2027.
 - **BiDi is a W3C Working Draft, not a REC** (snapshot 1 Jun 2026), but it is the only cross-engine bidirectional protocol with momentum. Treat it as a living standard.
 
 ## The architecture
@@ -44,15 +44,16 @@ Refs are already protocol-neutral (content-hashed role/name/testId/cssPath), so 
 
 ## Decisions
 
-**D1 — Driver abstraction shape: strangler-fig minimal-first, shaped for growth.** Make `BrowserSession.cdp()` capability-optional (lazy), thread a `browserType` option through the three session factories (`managed`/`incognito`/`byob`) and `entryFor` in `server.ts`, and keep Playwright as the sole *client library* for the Chromium/Firefox/WebKit adapters. Do **not** build a raw-BiDi client that reimplements the Locator surface — the audit is explicit that this is "a second product, not an adaptation." But segment the port interfaces now so the Safari Classic lane and any future BiDi-attach adapter grow as new adapters, not as a rewrite.
+**D1 — Driver abstraction shape: strangler-fig minimal-first, shaped for growth.** Make `BrowserSession.cdp()` capability-optional (lazy), thread a `browserType` option through the three session factories (`managed`/`incognito`/`byob`) and `entryFor` in `server.ts`, and keep Playwright as the sole _client library_ for the Chromium/Firefox/WebKit adapters. Do **not** build a raw-BiDi client that reimplements the Locator surface — the audit is explicit that this is "a second product, not an adaptation." But segment the port interfaces now so the Safari Classic lane and any future BiDi-attach adapter grow as new adapters, not as a rewrite.
 
 **D2 — Firefox v1 lane: two-track.** Ship Playwright's bundled **Juggler Firefox as the supported v1 lane** (full Playwright API today — routes, video, HAR — making the ~139 class-A tools real immediately) **plus the `moz-firefox` BiDi channel behind a flag** (stock Firefox, exposed in playwright-mcp 2026-06-08 via PR #41126). Flip the default to stock-Firefox-BiDi when Mozilla Milestone 20 closes (screencast/streaming — the exact browxai tool surface that is missing today); both research reports put that in the 2026-2027 window. Prerequisite: the missing `moz-firefox` API-coverage matrix (build it as part of D2).
 
 **D3 — BYOB per engine (mostly forced moves).**
-- *Chromium:* a separate automation `user-data-dir` is the sanctioned default post-136; `chrome.debugger` extension relay is a tracked research lane; **never promise daily-profile attach on Chrome ≥136**.
-- *Firefox:* glass-box **LAUNCH** of the user's real profile with `--remote-debugging-port` (subject to the profile lock — a second instance against an in-use profile is impossible, so true "attach to your running Firefox" requires the user to have launched it with the flag themselves). Reuse `byob.ts`'s protocol-neutral loopback/not-owned policy. Reserve `BROWX_ATTACH_BIDI` naming until a BiDi attach client exists.
-- *Safari:* structured refusal for `mode:"attached"` — isolated automation windows are the only sanctioned model.
-- *Android:* `adb` + CDP socket discovery (Playwright `_android` pattern) to the user's real Chrome-on-Android is the **one place full-fidelity BYOB to a real profile still works** — reuses browxai's CDP core verbatim.
+
+- _Chromium:_ a separate automation `user-data-dir` is the sanctioned default post-136; `chrome.debugger` extension relay is a tracked research lane; **never promise daily-profile attach on Chrome ≥136**.
+- _Firefox:_ glass-box **LAUNCH** of the user's real profile with `--remote-debugging-port` (subject to the profile lock — a second instance against an in-use profile is impossible, so true "attach to your running Firefox" requires the user to have launched it with the flag themselves). Reuse `byob.ts`'s protocol-neutral loopback/not-owned policy. Reserve `BROWX_ATTACH_BIDI` naming until a BiDi attach client exists.
+- _Safari:_ structured refusal for `mode:"attached"` — isolated automation windows are the only sanctioned model.
+- _Android:_ `adb` + CDP socket discovery (Playwright `_android` pattern) to the user's real Chrome-on-Android is the **one place full-fidelity BYOB to a real profile still works** — reuses browxai's CDP core verbatim.
 
 **D4 — Snapshot/a11y substrate: hybrid behind one interface.** Keep CDP `Accessibility.getFullAXTree` on Chromium for fidelity; use `locator.ariaSnapshot()` or a page-side ARIA walker on Firefox/WebKit. The audit confirms the enablers already exist: refs are content-hashed, `bbox.ts:98` already has a Playwright `boundingBox` fallback, `dom-walk` already uses `frame.evaluate`, and closed-shadow piercing degrades to "open" (`compose.ts:76-80`, the one true feature-level loss). The ariaSnapshot-vs-walker choice is **blocked on a fidelity benchmark** (find-ranking + snapshotDelta quality vs the real AX tree) — run it before this decision freezes.
 

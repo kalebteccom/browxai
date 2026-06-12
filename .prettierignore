@@ -23,3 +23,6 @@ artifacts/
 .browx-profile/
 .auth/
 *.storageState.json
+
+# RFC 0002 research archive: imported reports kept verbatim for provenance.
+docs/rfcs/references/0*.md
