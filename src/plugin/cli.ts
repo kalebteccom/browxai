@@ -1,8 +1,9 @@
 // `browxai plugin` CLI subcommands — install, remove, list, info,
-// upgrade, sync. Shells out to `pnpm` (which the project already
-// declares as the package manager) against the workspace-rooted
-// install dir. Never auto-restarts the server — every command emits a
-// "Server restart required" advisory.
+// upgrade, sync. Shells out to a package manager against the
+// workspace-rooted install dir: `pnpm` when available (the project's
+// native manager), falling back to `npm` for adopters who installed
+// browxai with npm and have no pnpm on PATH. Never auto-restarts the
+// server — every command emits a "Server restart required" advisory.
 //
 // Reproducibility surface:
 //   - <workspace>/plugins.json         declarative truth
@@ -12,7 +13,7 @@
 // The lock file format is documented inline below — kept small and
 // hand-readable.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -147,11 +148,61 @@ function* walkDir(dir: string): Generator<string> {
   }
 }
 
-async function runPnpm(paths: PluginPaths, args: ReadonlyArray<string>): Promise<number> {
+/** Package managers the plugin CLI can drive. */
+export type PackageManager = "pnpm" | "npm";
+
+/** The pnpm-flavoured operations the CLI performs, mapped per manager. */
+export type PmOperation = "add" | "remove" | "update" | "install";
+
+const PM_VERBS: Record<PackageManager, Record<PmOperation, string>> = {
+  pnpm: { add: "add", remove: "remove", update: "update", install: "install" },
+  npm: { add: "install", remove: "uninstall", update: "update", install: "install" },
+};
+
+/** Emitted when neither pnpm nor npm is on PATH — actionable, names the
+ *  requirement. Exported for the CLI tests. */
+export const NO_PACKAGE_MANAGER_ERROR =
+  "browxai plugin: no package manager found. Managing workspace plugins requires `pnpm` (preferred) or `npm` on PATH — install one (https://pnpm.io/installation or https://nodejs.org) and re-run.";
+
+function canSpawn(cmd: string): boolean {
+  const r = spawnSync(cmd, ["--version"], { stdio: "ignore" });
+  return !r.error && r.status === 0;
+}
+
+/**
+ * Probe for an available package manager. pnpm wins (it is the
+ * project's declared manager and what CI uses); npm is the fallback so
+ * `npm install -g browxai` adopters aren't dead-ended with a bare
+ * ENOENT. Returns null when neither is on PATH.
+ */
+export function detectPackageManager(
+  probe: (cmd: string) => boolean = canSpawn,
+): PackageManager | null {
+  if (probe("pnpm")) return "pnpm";
+  if (probe("npm")) return "npm";
+  return null;
+}
+
+/** Translate an operation (+ optional target spec) into manager argv. */
+export function pmArgs(
+  pm: PackageManager,
+  op: PmOperation,
+  target?: string,
+): ReadonlyArray<string> {
+  const verb = PM_VERBS[pm][op];
+  return target === undefined ? [verb] : [verb, target];
+}
+
+async function runPm(paths: PluginPaths, op: PmOperation, target?: string): Promise<number> {
+  const pm = detectPackageManager();
+  if (pm === null) {
+    process.stderr.write(`${NO_PACKAGE_MANAGER_ERROR}\n`);
+    return 127;
+  }
   // paths.installDir is workspace-rooted by construction (see
   // pluginPaths() in resolver.ts — `<workspace>/plugins/`).
   mkdirSync(paths.installDir, { recursive: true });
-  // Create a stub package.json so pnpm has a workspace root to write into.
+  // Create a stub package.json so the manager has a project root to write into.
   const stub = join(paths.installDir, "package.json");
   if (!existsSync(stub)) {
     writeFileSync(
@@ -160,14 +211,16 @@ async function runPnpm(paths: PluginPaths, args: ReadonlyArray<string>): Promise
       "utf8",
     );
   }
+  const args = pmArgs(pm, op, target);
   return new Promise<number>((resolve) => {
-    const child = spawn("pnpm", [...args], {
+    const child = spawn(pm, [...args], {
       cwd: paths.installDir,
       stdio: "inherit",
     });
     child.on("exit", (code) => resolve(code ?? 1));
     child.on("error", (err) => {
-      log.error(`browxai plugin: pnpm spawn failed — ${err.message}`);
+      log.error(`browxai plugin: ${pm} spawn failed — ${err.message}`);
+      process.stderr.write(`${NO_PACKAGE_MANAGER_ERROR}\n`);
       resolve(127);
     });
   });
@@ -268,9 +321,9 @@ async function cmdInstall(spec: string): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
   process.stderr.write(`browxai plugin: installing "${spec}" into ${paths.installDir}\n`);
-  const code = await runPnpm(paths, ["add", spec]);
+  const code = await runPm(paths, "add", spec);
   if (code !== 0) {
-    process.stderr.write(`browxai plugin: pnpm add failed (exit ${code})\n`);
+    process.stderr.write(`browxai plugin: install failed (exit ${code})\n`);
     return code;
   }
   const hintName = resolveInstalledName(spec);
@@ -296,9 +349,9 @@ async function cmdRemove(name: string): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
   process.stderr.write(`browxai plugin: removing "${name}"\n`);
-  const code = await runPnpm(paths, ["remove", name]);
+  const code = await runPm(paths, "remove", name);
   if (code !== 0) {
-    process.stderr.write(`browxai plugin: pnpm remove failed (exit ${code})\n`);
+    process.stderr.write(`browxai plugin: remove failed (exit ${code})\n`);
     return code;
   }
   const data = readPluginsJson(paths);
@@ -380,11 +433,10 @@ function cmdInfo(name: string): number {
 async function cmdUpgrade(name: string | undefined): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
-  const args = name ? ["update", name] : ["update"];
   process.stderr.write(`browxai plugin: ${name ? `upgrading ${name}` : "upgrading all"}\n`);
-  const code = await runPnpm(paths, args);
+  const code = await runPm(paths, "update", name);
   if (code !== 0) {
-    process.stderr.write(`browxai plugin: pnpm update failed (exit ${code})\n`);
+    process.stderr.write(`browxai plugin: upgrade failed (exit ${code})\n`);
     return code;
   }
   // Re-pin the lock for affected entries.
@@ -410,13 +462,12 @@ async function cmdSync(): Promise<number> {
     return 0;
   }
   process.stderr.write(`browxai plugin: syncing ${declared.length} declared plugin(s)\n`);
-  // Run a single `pnpm install <pkg> ...` so pnpm reconciles everything
-  // against the install dir's package.json. For file: entries we don't
-  // know the original spec — fall back to plain `pnpm install` which
-  // reads the install dir's package.json.
-  const code = await runPnpm(paths, ["install"]);
+  // Run a single bare `install` so the package manager reconciles
+  // everything against the install dir's package.json (covers file:
+  // entries, whose original spec we don't know).
+  const code = await runPm(paths, "install");
   if (code !== 0) {
-    process.stderr.write(`browxai plugin: pnpm install failed (exit ${code})\n`);
+    process.stderr.write(`browxai plugin: sync install failed (exit ${code})\n`);
     return code;
   }
   // Refresh lock for everything.

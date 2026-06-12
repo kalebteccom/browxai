@@ -31,7 +31,10 @@ $ browxai plugin install file:./packages/plugins/figma/
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):
 
 - `plugins.json` — the declarative truth (which plugins should load).
-- `plugins/node_modules/` — pnpm-managed install dir.
+- `plugins/node_modules/` — package-manager-managed install dir. The CLI
+  uses `pnpm` when it is on PATH and falls back to `npm` otherwise (so
+  npm-installed adopters need no extra tooling); with neither present it
+  exits with an actionable error.
 - `plugins-lock.json` — auto-generated pin (version + sha256 of the
   installed package) for reproducibility.
 

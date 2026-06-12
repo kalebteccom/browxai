@@ -90,6 +90,16 @@ surface" covers.
   example plugin's dead `^0.5.0` range is corrected to `^0.7.0`, as is
   the manifest example in `docs/plugin-authoring.md`.
 
+### Changed (plugin CLI)
+
+- **`browxai plugin` falls back to npm.** `install` / `remove` /
+  `upgrade` / `sync` shelled out to `pnpm` unconditionally and died with
+  a bare spawn ENOENT for adopters who installed browxai with npm. The
+  CLI now probes for an available package manager (`pnpm` preferred,
+  `npm` fallback, with the operation verbs mapped per manager) and, when
+  neither is on PATH, exits with an actionable error naming the
+  requirement.
+
 ### Changed (CI)
 
 - **zizmor now gates.** The workflow audit in `quality.yml` ran with

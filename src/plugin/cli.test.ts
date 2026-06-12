@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { runPlugin } from "./cli.js";
+import { detectPackageManager, NO_PACKAGE_MANAGER_ERROR, pmArgs, runPlugin } from "./cli.js";
 
 let workspaceRoot: string;
 let originalEnv: string | undefined;
@@ -136,6 +136,46 @@ describe("runPlugin list", () => {
     const code = await runPlugin(["list"]);
     expect(code).toBe(0);
     expect(stdoutLog.join("")).toMatch(/1\.2\.3/);
+  });
+});
+
+describe("package-manager detection + verb mapping", () => {
+  it("prefers pnpm when both managers are available", () => {
+    expect(detectPackageManager(() => true)).toBe("pnpm");
+  });
+
+  it("falls back to npm when pnpm is missing", () => {
+    expect(detectPackageManager((cmd) => cmd === "npm")).toBe("npm");
+  });
+
+  it("returns null when neither manager is on PATH", () => {
+    expect(detectPackageManager(() => false)).toBeNull();
+  });
+
+  it("names both managers in the actionable no-PM error", () => {
+    expect(NO_PACKAGE_MANAGER_ERROR).toMatch(/pnpm/);
+    expect(NO_PACKAGE_MANAGER_ERROR).toMatch(/npm/);
+    expect(NO_PACKAGE_MANAGER_ERROR).toMatch(/PATH/);
+  });
+
+  it("maps operations onto pnpm verbs unchanged", () => {
+    expect(pmArgs("pnpm", "add", "@browxai/plugin-figma")).toEqual([
+      "add",
+      "@browxai/plugin-figma",
+    ]);
+    expect(pmArgs("pnpm", "remove", "x")).toEqual(["remove", "x"]);
+    expect(pmArgs("pnpm", "update")).toEqual(["update"]);
+    expect(pmArgs("pnpm", "install")).toEqual(["install"]);
+  });
+
+  it("maps operations onto npm's verb names", () => {
+    expect(pmArgs("npm", "add", "@browxai/plugin-figma")).toEqual([
+      "install",
+      "@browxai/plugin-figma",
+    ]);
+    expect(pmArgs("npm", "remove", "x")).toEqual(["uninstall", "x"]);
+    expect(pmArgs("npm", "update", "x")).toEqual(["update", "x"]);
+    expect(pmArgs("npm", "install")).toEqual(["install"]);
   });
 });
 
