@@ -1,40 +1,40 @@
 # Every file that gates publish, CI permissions, or release-pipeline
-# trust requires @rowinkaleb review.
+# trust requires @rowinbot review.
 #
 # A path-scoped branch ruleset on `main` enforces "require review from
 # CODEOWNERS" on these paths; defense in depth versus a PR that silently
 # adds an attacker username to a CODEOWNERS entry.
 
 # Default reviewer for anything not otherwise matched.
-* @rowinkaleb
+* @rowinbot
 
 # CI / workflows / Actions surface — write-access to any of these can
 # pivot to OIDC publish abuse.
-/.github/                           @rowinkaleb
-/.github/CODEOWNERS                 @rowinkaleb
-/.github/workflows/release.yml      @rowinkaleb
-/.github/workflows/                 @rowinkaleb
-/.github/dependabot.yml             @rowinkaleb
+/.github/                           @rowinbot
+/.github/CODEOWNERS                 @rowinbot
+/.github/workflows/release.yml      @rowinbot
+/.github/workflows/                 @rowinbot
+/.github/dependabot.yml             @rowinbot
 
 # Publish-side configuration — every line here is a Sigstore-trusted-publisher
 # binding dependency.
-/package.json                       @rowinkaleb
-/pnpm-lock.yaml                     @rowinkaleb
-/pnpm-workspace.yaml                @rowinkaleb
-/.npmrc                             @rowinkaleb
-/.npmignore                         @rowinkaleb
-/LICENSE                            @rowinkaleb
-/THIRD_PARTY_NOTICES.md             @rowinkaleb
-/SECURITY.md                        @rowinkaleb
+/package.json                       @rowinbot
+/pnpm-lock.yaml                     @rowinbot
+/pnpm-workspace.yaml                @rowinbot
+/.npmrc                             @rowinbot
+/.npmignore                         @rowinbot
+/LICENSE                            @rowinbot
+/THIRD_PARTY_NOTICES.md             @rowinbot
+/SECURITY.md                        @rowinbot
 
 # Build + tooling baseline.
-/tsconfig.json                      @rowinkaleb
-/tsconfig.build.json                @rowinkaleb
-/eslint.config.js                   @rowinkaleb
-/.prettierrc.json                   @rowinkaleb
-/.prettierignore                    @rowinkaleb
-/.editorconfig                      @rowinkaleb
-/.lockfile-lintrc.json              @rowinkaleb
-/.depcheckrc.json                   @rowinkaleb
-/.githooks/                         @rowinkaleb
-/scripts/                           @rowinkaleb
+/tsconfig.json                      @rowinbot
+/tsconfig.build.json                @rowinbot
+/eslint.config.js                   @rowinbot
+/.prettierrc.json                   @rowinbot
+/.prettierignore                    @rowinbot
+/.editorconfig                      @rowinbot
+/.lockfile-lintrc.json              @rowinbot
+/.depcheckrc.json                   @rowinbot
+/.githooks/                         @rowinbot
+/scripts/                           @rowinbot

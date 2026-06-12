@@ -20,7 +20,7 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 
 ## Pre-flight: owner-driven setup (out-of-repo)
 
-- [ ] WebAuthn enrolled on the maintainer's npm account
+- [ ] WebAuthn enrolled on the publishing npm account (`kalebtec`, owner of the `@browxai` org)
 - [ ] Breakglass npm account created with separate keys + email
 - [x] `@browxai` org scope claimed on npm (org registered; enforce "Require 2FA" before the first publish)
 - [ ] Old `@kalebtec/browxai-plugin-*` names retained defensively (never published; do not free them for squatting)

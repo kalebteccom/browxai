@@ -43,7 +43,7 @@ Actions involvement. Preview locally with `pnpm docs:dev`; build with
 
 ## Release authority
 
-- `@rowinkaleb` is the sole release authority.
+- `@rowinbot` is the sole release authority.
 - A breakglass account `@kalebtec-breakglass` is available only in emergencies (loss of primary maintainer access).
 
 ## OIDC trusted publishing

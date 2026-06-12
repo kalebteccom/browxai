@@ -47,11 +47,11 @@ A second ruleset, scoped to `.github/**`, layered on top:
   `pnpm-workspace.yaml`, `.npmrc`, `.npmignore`, `LICENSE`, `SECURITY.md`,
   `THIRD_PARTY_NOTICES.md`, `tsconfig.json`, `tsconfig.build.json`,
   `eslint.config.js`, `.githooks/**`.
-- **Required reviewer:** `@rowinkaleb` (matches `.github/CODEOWNERS`).
+- **Required reviewer:** `@rowinbot` (matches `.github/CODEOWNERS`).
 - **Same status-check requirement** as the `main` ruleset.
 
 This is defense in depth versus a PR that silently amends CODEOWNERS — the
-path-scoped ruleset still demands `@rowinkaleb` even if CODEOWNERS itself
+path-scoped ruleset still demands `@rowinbot` even if CODEOWNERS itself
 gets temporarily mis-edited.
 
 ## GitHub Environment: `release`
@@ -60,7 +60,7 @@ The `release.yml` workflow's `publish` and `publish-plugins` jobs reference
 `environment: release`. The environment must be configured before the first
 release runs:
 
-- **Required reviewers:** `@rowinkaleb` (plus one additional Kalebtec org
+- **Required reviewers:** `@rowinbot` (plus one additional Kalebtec org
   member once secondary-maintainer staffing lands; until then, single
   reviewer is acceptable as a launch posture).
 - **Deployment branches:** `main` and `release/*` only. No fork branches.
