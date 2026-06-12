@@ -1,7 +1,7 @@
 # RFC 0002 — Multi-engine browser support via a driver-port abstraction
 
 **Date:** 2026-06-13
-**Status:** Draft (research complete, all five reference lanes landed)
+**Status:** Draft (research complete, all five reference lanes landed). **P0 landed** — the `BrowserEngine` port + `PlaywrightChromiumAdapter` extraction shipped with zero behavior change (all existing unit + keystone tests pass unchanged); see [`docs/ai-context/architecture/engine-adapters.md`](../ai-context/architecture/engine-adapters.md).
 **Author:** Claude (orchestrated research + synthesis, June 2026)
 **Trigger:** Owner directive — browxai must automate Firefox, Safari, and any automatable browser/mobile, staying on modern standards (WebDriver BiDi), and must decouple by adapter even from WebDriver itself. Conforms to [`docs/ai-context/architecture/architecture-principles.md`](../ai-context/architecture/architecture-principles.md).
 
@@ -86,7 +86,7 @@ All reports agree 200-tool parity on Safari is impossible — the protocol ceili
 
 ## Phasing (conforms to strangler-fig; gate green every step)
 
-- **P0** — `BrowserEngine` port + `PlaywrightChromiumAdapter` extraction, zero behavior change, Chromium keystone unchanged. (Task #20, #21)
+- [x] **P0** — `BrowserEngine` port + `PlaywrightChromiumAdapter` extraction, zero behavior change, Chromium keystone unchanged. **Landed:** port in `src/engine/`, `cdp()` made optional + routed through `requireCdp`, `browserType` threaded (default chromium) with a structured not-yet-supported error for firefox/webkit, the engine dimension on the capability system (chromium = everything), doctor + `list_sessions` report the active engine. (Task #20, #21)
 - **P1** — Firefox Juggler adapter + Firefox keystone lane + engine-dimension capability gating + doctor engine checks. (Task #22, #24)
 - **P2** — playwright-webkit adapter; the snapshot/network hybrid substrates behind their interfaces; the four empirical benchmarks.
 - **P3** — stock-Firefox `moz-firefox` BiDi adapter behind a flag; Android adb+CDP adapter.

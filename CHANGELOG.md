@@ -10,6 +10,23 @@ surface" covers.
 
 ### Added
 
+- **`BrowserEngine` engine-adapter seam (zero behavior change).** A driver
+  port under `src/engine/` decouples the session layer from Chromium: an
+  `EngineKind` (`chromium` | `firefox` | `webkit`), a capability-segregated
+  `BrowserEngine` port, a `PlaywrightChromiumAdapter` that wraps today's
+  Chromium/CDP launch verbatim, and a per-engine capability declaration that
+  composes with the existing per-tool capability system. `BrowserSession.cdp()`
+  becomes optional — present and fully functional on Chromium (the only engine
+  wired today), routed through `requireCdp()` for consumers that need the raw
+  handle. A `browserType` option threads (default `chromium`) through the three
+  session factories and the server; firefox/webkit are accepted by the type but
+  rejected at the launch path with a clear `engine-not-yet-supported` error
+  rather than a silent fallback. `browxai doctor` reports the active engine, and
+  `list_sessions` surfaces each session's engine. Chromium declares every
+  sub-interface and the CDP escape hatch, so nothing is newly gated and all
+  existing tests pass unchanged. See
+  `docs/ai-context/architecture/engine-adapters.md`.
+
 - **Docs: `docs/agent-guidance.md` + per-tool examples + agent callouts.**
   New agent-facing "reach for this, not that" guidance page (published as
   `guides/agent-guidance` on the website, linked from the sidebar and
