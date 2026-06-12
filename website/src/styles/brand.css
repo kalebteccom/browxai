@@ -374,52 +374,169 @@ main:has(.browx-404) > .content-panel {
   }
 }
 
-/* The agent loop, drawn as a flow diagram: navigate -> snapshot -> find ->
-   act, with a dashed return arc back to the start. Inline SVG so it inherits
-   the brand tokens and scales crisply. */
+/* The agent loop, drawn as a real cycle: four steps at the compass points of a
+   ring, with curved arrows running clockwise and an ActionResult hub at the
+   center that closes the loop. The step labels are HTML (so the text wraps and
+   never overflows); the SVG layer behind them carries only the ring and arrows.
+   Under ~560px the ring collapses to a vertical stepped flow. */
 .browx-diagram {
   margin-top: clamp(2rem, 5vw, 3rem);
+  container-type: inline-size;
 }
-.browx-loop-svg {
-  display: block;
+
+/* --- Ring layout (wide) ------------------------------------------------- */
+.browx-loop {
+  position: relative;
+  width: min(100%, 540px);
+  aspect-ratio: 1 / 1;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 9.5rem) 1fr;
+  grid-template-rows: 1fr minmax(0, 9.5rem) 1fr;
+  grid-template-areas:
+    ".  n  ."
+    "w  c  e"
+    ".  s  .";
+  place-items: center;
+}
+.browx-loop-arcs {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  height: auto;
+  height: 100%;
+  pointer-events: none;
 }
-.browx-loop-svg .bx-node rect {
-  fill: color-mix(in srgb, var(--sl-color-bg-sidebar) 70%, var(--sl-color-bg));
-  stroke: var(--sl-color-hairline-shade);
-  stroke-width: 1;
-  transition: stroke 0.15s ease;
+.browx-loop-arcs .bx-ring-glow {
+  fill: none;
+  stroke: color-mix(in srgb, var(--browx-violet-500) 14%, transparent);
+  stroke-width: 30;
 }
-.browx-loop-svg .bx-node:hover rect {
-  stroke: color-mix(in srgb, var(--browx-violet-400) 55%, transparent);
+.browx-loop-arcs .bx-arc {
+  fill: none;
+  stroke: url(#bx-ring);
+  stroke-width: 2.4;
+  stroke-linecap: round;
 }
-.browx-loop-svg .bx-node-name {
-  fill: var(--sl-color-text-accent);
+
+/* Center hub: the ActionResult that feeds the next pass. */
+.bx-hub {
+  grid-area: c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  text-align: center;
+  font-family: var(--browx-font-mono);
+  font-size: clamp(0.74rem, 2.4cqi, 0.92rem);
+  font-weight: 600;
+  color: var(--sl-color-text-accent);
+  background: radial-gradient(
+    circle at 50% 38%,
+    color-mix(in srgb, var(--browx-aurora-bright) 22%, transparent),
+    transparent 70%
+  );
+  border: 1px dashed color-mix(in srgb, var(--browx-violet-400) 45%, transparent);
+}
+.bx-hub small {
+  font-family: var(--browx-font-body);
+  font-weight: 400;
+  font-size: 0.72em;
+  color: var(--sl-color-gray-3);
+}
+
+/* Step cards. */
+.bx-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.55rem 0.85rem;
+  min-width: 0;
+  max-width: 9.5rem;
+  text-align: center;
+  border-radius: 0.7rem;
+  border: 1px solid var(--browx-glass-border);
+  background: var(--browx-glass);
+  backdrop-filter: blur(12px) saturate(130%);
+  -webkit-backdrop-filter: blur(12px) saturate(130%);
+  box-shadow: 0 10px 28px -16px var(--browx-glow);
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.bx-step:hover {
+  border-color: color-mix(in srgb, var(--browx-violet-400) 55%, transparent);
+  transform: translateY(-2px);
+}
+.bx-step--n { grid-area: n; }
+.bx-step--e { grid-area: e; }
+.bx-step--s { grid-area: s; }
+.bx-step--w { grid-area: w; }
+.bx-step-k {
   font-family: var(--browx-font-display);
   font-weight: 600;
-  font-size: 17px;
+  font-size: 1.02rem;
+  color: var(--sl-color-text-accent);
+  line-height: 1.15;
 }
-.browx-loop-svg .bx-node-sub {
-  fill: var(--sl-color-gray-3);
+.bx-step-d {
   font-family: var(--browx-font-body);
-  font-size: 12.5px;
+  font-size: 0.8rem;
+  color: var(--sl-color-gray-3);
+  line-height: 1.3;
 }
-.browx-loop-svg .bx-link {
-  stroke: var(--sl-color-text-accent);
-  stroke-width: 2;
-  fill: none;
-}
-.browx-loop-svg .bx-loopback {
-  stroke-dasharray: 5 6;
-  opacity: 0.5;
-}
-.browx-loop-svg .bx-loop-label {
-  fill: var(--sl-color-gray-4);
-  font-family: var(--browx-font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
+
+/* --- Vertical reflow (narrow) ------------------------------------------- */
+@container (max-width: 560px) {
+  .browx-loop {
+    width: 100%;
+    max-width: 22rem;
+    aspect-ratio: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    grid-template-areas:
+      "n"
+      "e"
+      "s"
+      "w"
+      "c";
+    gap: 1.6rem;
+    padding: 0.5rem 0;
+  }
+  .browx-loop-arcs {
+    display: none;
+  }
+  .bx-step {
+    max-width: none;
+    width: 100%;
+    position: relative;
+  }
+  /* Down-arrow connectors between the stacked steps. */
+  .bx-step--n::after,
+  .bx-step--e::after,
+  .bx-step--s::after,
+  .bx-step--w::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: -1.2rem;
+    width: 2px;
+    height: 1.6rem;
+    transform: translateX(-50%);
+    background: linear-gradient(
+      var(--sl-color-text-accent),
+      color-mix(in srgb, var(--sl-color-text-accent) 35%, transparent)
+    );
+  }
+  .bx-hub {
+    aspect-ratio: 1 / 1;
+    width: 9rem;
+    margin-inline: auto;
+    font-size: 0.86rem;
+  }
 }
 
 /* Feature grid. */

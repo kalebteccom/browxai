@@ -60,55 +60,47 @@ lastUpdated: false
 </div>
 
 <div class="browx-diagram not-content">
-  <svg
-    class="browx-loop-svg"
-    viewBox="0 0 960 210"
+  <div
+    class="browx-loop"
     role="img"
-    aria-label="The agent loop: navigate, then snapshot, then find, then act, repeating."
+    aria-label="The agent loop runs as a cycle: navigate to a URL, snapshot the page into refs, find the target, act on it, then the ActionResult feeds the next pass. The four steps repeat."
   >
-    <defs>
-      <marker
-        id="bx-arrow"
-        viewBox="0 0 10 10"
-        refX="8.5"
-        refY="5"
-        markerWidth="7"
-        markerHeight="7"
-        orient="auto-start-reverse"
-      >
-        <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
-      </marker>
-    </defs>
+    <svg class="browx-loop-arcs" viewBox="0 0 320 320" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <marker id="bx-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto">
+          <path d="M0 0 L10 5 L0 10 z" fill="var(--sl-color-text-accent)" />
+        </marker>
+        <linearGradient id="bx-ring" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="var(--browx-aurora-bright)" />
+          <stop offset="1" stop-color="var(--browx-violet-600)" />
+        </linearGradient>
+      </defs>
+      <circle class="bx-ring-glow" cx="160" cy="160" r="118" />
+      <path class="bx-arc" d="M196 54 A118 118 0 0 1 266 124" marker-end="url(#bx-arrow)" />
+      <path class="bx-arc" d="M266 196 A118 118 0 0 1 196 266" marker-end="url(#bx-arrow)" />
+      <path class="bx-arc" d="M124 266 A118 118 0 0 1 54 196" marker-end="url(#bx-arrow)" />
+      <path class="bx-arc" d="M54 124 A118 118 0 0 1 124 54" marker-end="url(#bx-arrow)" />
+    </svg>
 
-    <line class="bx-link" x1="202" y1="75" x2="262" y2="75" marker-end="url(#bx-arrow)" />
-    <line class="bx-link" x1="448" y1="75" x2="508" y2="75" marker-end="url(#bx-arrow)" />
-    <line class="bx-link" x1="694" y1="75" x2="754" y2="75" marker-end="url(#bx-arrow)" />
+    <span class="bx-hub" aria-hidden="true">ActionResult<small>closes the loop</small></span>
 
-    <path class="bx-link bx-loopback" d="M848 110 C 848 190, 110 190, 110 112" marker-end="url(#bx-arrow)" />
-    <text class="bx-loop-label" x="479" y="184" text-anchor="middle">repeat</text>
-
-    <g class="bx-node">
-      <rect x="20" y="44" width="180" height="62" rx="12" />
-      <text class="bx-node-name" x="38" y="73">navigate</text>
-      <text class="bx-node-sub" x="38" y="92">go to a URL</text>
-    </g>
-    <g class="bx-node">
-      <rect x="266" y="44" width="180" height="62" rx="12" />
-      <text class="bx-node-name" x="284" y="73">snapshot</text>
-      <text class="bx-node-sub" x="284" y="92">read the page as refs</text>
-    </g>
-    <g class="bx-node">
-      <rect x="512" y="44" width="180" height="62" rx="12" />
-      <text class="bx-node-name" x="530" y="73">find</text>
-      <text class="bx-node-sub" x="530" y="92">locate a target</text>
-    </g>
-    <g class="bx-node">
-      <rect x="758" y="44" width="180" height="62" rx="12" />
-      <text class="bx-node-name" x="776" y="73">act</text>
-      <text class="bx-node-sub" x="776" y="92">click, fill, verify</text>
-    </g>
-
-  </svg>
+    <div class="bx-step bx-step--n" aria-hidden="true">
+      <span class="bx-step-k">navigate</span>
+      <span class="bx-step-d">go to a URL</span>
+    </div>
+    <div class="bx-step bx-step--e" aria-hidden="true">
+      <span class="bx-step-k">snapshot</span>
+      <span class="bx-step-d">read the page as refs</span>
+    </div>
+    <div class="bx-step bx-step--s" aria-hidden="true">
+      <span class="bx-step-k">find</span>
+      <span class="bx-step-d">locate a target</span>
+    </div>
+    <div class="bx-step bx-step--w" aria-hidden="true">
+      <span class="bx-step-k">act</span>
+      <span class="bx-step-d">click, fill, verify</span>
+    </div>
+  </div>
 </div>
 
 <div class="browx-section not-content">
