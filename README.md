@@ -125,4 +125,10 @@ pnpm docs:dev            # the documentation site, locally
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Code is MIT — see [LICENSE](LICENSE).
+
+The **browxai name and logo are trademarks of Kalebtec** and are not
+covered by the MIT License. The brand assets under [`brand/`](brand/)
+are all-rights-reserved (see [`brand/LICENSE`](brand/LICENSE)). See
+[TRADEMARKS.md](TRADEMARKS.md) for the full brand policy and what
+nominative use is allowed.
