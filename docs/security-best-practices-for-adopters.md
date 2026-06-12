@@ -24,7 +24,7 @@ The capability gate documents what a tool is allowed to reach. It does not conta
 
 Plugins are in-process JS modules with full Node access. Treat plugin adoption like a dependency review:
 
-- Prefer `@kalebtec/*` first-party plugins.
+- Prefer `@browxai/*` first-party plugins (and the bare `browxai` host package).
 - For third-party plugins, check the registry trust tier.
 - Read `docs/plugin-governance.md` for the trust tier policy.
 

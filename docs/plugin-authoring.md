@@ -27,7 +27,7 @@ five-key `package.json#browxai` field.
 
 ```json
 {
-  "name": "@kalebtec/browxai-plugin-example",
+  "name": "@browxai/plugin-example",
   "version": "0.1.0",
   "browxai": {
     "apiVersion": "1.0.0",
@@ -158,7 +158,7 @@ with a version range:
 
 ```json
 "dependsOn": [
-  { "plugin": "@kalebtec/browxai-plugin-example", "version": "^0.1.0" }
+  { "plugin": "@browxai/plugin-example", "version": "^0.1.0" }
 ]
 ```
 
@@ -197,7 +197,7 @@ declarations may come in a future minor version.
 
 ## Trust tiers
 
-- **`kalebtec`** — published by Kalebtec under `@kalebtec/browxai-plugin-*`.
+- **`kalebtec`** — published by Kalebtec under `@browxai/plugin-*`.
   Reference plugins; same release/CI hygiene as browxai itself.
 - **`community`** — third-party npm packages
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
@@ -236,7 +236,7 @@ For Kalebtec plugins:
 1. Land the plugin under `packages/plugins/<name>/` in the
    `kalebteccom/browxai` repo.
 2. The release pipeline picks it up alongside the host package and
-   publishes `@kalebtec/browxai-plugin-<name>` on npm under the
+   publishes `@browxai/plugin-<name>` on npm under the
    official scope.
 
 For community plugins:
@@ -294,7 +294,7 @@ export interface ExamplePluginSchema {
 
 ```ts
 // In the consumer's code:
-import type { ExamplePluginSchema } from "@kalebtec/browxai-plugin-example/schema";
+import type { ExamplePluginSchema } from "@browxai/plugin-example/schema";
 import type { BrowxaiClientWithPlugins } from "browxai";
 
 const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<ExamplePluginSchema>;
@@ -307,7 +307,7 @@ plugin tool, while the runtime still rides the same dispatch path.
 ## Worked example
 
 See `packages/plugins/example/` in the browxai repo for the
-canonical reference plugin (`@kalebtec/browxai-plugin-example`). It
+canonical reference plugin (`@browxai/plugin-example`). It
 exercises every primitive listed above and is the source the keystone
 test loads end-to-end.
 
@@ -333,13 +333,13 @@ first-party plugins consume the runtime — declared capabilities, an
 errors, the typed schema overlay — see the three canvas-app
 adapter plugins:
 
-- [`@kalebtec/browxai-plugin-figma`](../packages/plugins/figma/) —
+- [`@browxai/plugin-figma`](../packages/plugins/figma/) —
   selection / viewport / node mutate / rectangle create over Figma's
   page-side `figma.*` global.
-- [`@kalebtec/browxai-plugin-tldraw`](../packages/plugins/tldraw/) —
+- [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/) —
   shapes / viewport / create / delete / select over Tldraw's
   `window.editor` global.
-- [`@kalebtec/browxai-plugin-excalidraw`](../packages/plugins/excalidraw/) —
+- [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) —
   scene state / viewport / add / delete / scroll over Excalidraw's
   `window.excalidrawAPI` global.
 

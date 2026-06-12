@@ -26,7 +26,7 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 browxai ships a v1 plugin runtime that lets external packages register namespaced tools on the MCP + SDK surface. The runtime is **in-process JS modules only** (v1), the lifecycle is **resolved-once-at-server-start**, and tool registration is **globally namespaced** (`<namespace>.<tool>` — plugins cannot override or wrap core tools).
 
 - **Install model:**
-  - **Kalebtec-maintained** plugins ship in the monorepo at `packages/plugins/<name>/` and publish as `@kalebtec/browxai-plugin-<name>`.
+  - **Kalebtec-maintained** plugins ship in the monorepo at `packages/plugins/<name>/` and publish as `@browxai/plugin-<name>`.
   - **Community** plugins are `browxai-plugin-<name>` or `@<org>/browxai-plugin-<name>` on npm, installed via `browxai plugin install <pkg>`.
   - **Local/dev** plugins install via file path (`browxai plugin install file:./my-plugin/`), trust-tagged `local`.
 
@@ -2327,11 +2327,11 @@ The inverse round-trips with the forward call to within floating-point precision
 
 Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `"figma"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args` (with the session passed through).
 
-When no plugin matches: `{ ok:false, error:"no canvas adapter registered for <adapter>; install @kalebtec/browxai-plugin-<adapter> or pass a registered adapter namespace", code:"no-adapter", requestedAdapter, requestedOp }`.
+When no plugin matches: `{ ok:false, error:"no canvas adapter registered for <adapter>; install @browxai/plugin-<adapter> or pass a registered adapter namespace", code:"no-adapter", requestedAdapter, requestedOp }`.
 
 When a plugin matches: the inner plugin tool's own capability is enforced via the plugin call-graph gate, so a `canvas` capability turned on alone is not enough to invoke an adapter operation whose plugin declared a different gate.
 
-The dispatcher ships today; the canvas-app adapter plugins (`@kalebtec/browxai-plugin-figma`, `@kalebtec/browxai-plugin-tldraw`, `@kalebtec/browxai-plugin-excalidraw`) install separately. `canvas_query` is a forward-compatible API: writing an agent loop against `canvas_query({adapter:"figma", op:"…"})` works as soon as the operator installs the matching plugin.
+The dispatcher ships today; the canvas-app adapter plugins (`@browxai/plugin-figma`, `@browxai/plugin-tldraw`, `@browxai/plugin-excalidraw`) install separately. `canvas_query` is a forward-compatible API: writing an agent loop against `canvas_query({adapter:"figma", op:"…"})` works as soon as the operator installs the matching plugin.
 
 ### Canvas-app automation — BYO vision pattern
 

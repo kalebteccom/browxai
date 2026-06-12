@@ -7,7 +7,7 @@ decision.
 
 ## Three tiers
 
-- **`kalebtec`** — published under the `@kalebtec/*` npm scope, reviewed and
+- **`kalebtec`** — published under the `@browxai/*` npm scope, reviewed and
   released by the browxai maintainer, npm-provenance signed, listed in the
   curated registry. Identified by `"trust": "kalebtec"` in the plugin
   manifest **and** the scope match — both required.

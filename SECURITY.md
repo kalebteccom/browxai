@@ -124,7 +124,7 @@ provenance after install. See
 
 ## Plugin trust model
 
-Plugins published under `@kalebtec/browxai-plugin-*` are reviewed and
+Plugins published under `@browxai/plugin-*` are reviewed and
 released by the maintainer. Third-party plugins run **in-process with
 full Node access** — there is no sandbox. The plugin trust tier
 (`kalebtec`, `verified-community`, `unverified`) signals the review

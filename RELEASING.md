@@ -49,7 +49,7 @@ Releases go out via `.github/workflows/release.yml`, which uses a GitHub Actions
 
 ## Workspace plugin publishing
 
-The workspace plugins under `@kalebtec/browxai-plugin-*` are versioned independently via Changesets. The same `release.yml` handles all packages in one pass; each package has its own trusted-publisher binding configured on the npm side.
+The workspace plugins under `@browxai/plugin-*` are versioned independently via Changesets. The same `release.yml` handles all packages in one pass; each package has its own trusted-publisher binding configured on the npm side.
 
 ## Deprecation policy
 

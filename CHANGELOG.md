@@ -30,6 +30,17 @@ surface" covers.
 
 ### Changed
 
+- **npm scope rename: `@kalebtec/browxai-*` → `@browxai/*`.** All
+  first-party scoped packages move to the registered `@browxai` npm org
+  and drop the redundant product prefix:
+  `@kalebtec/browxai-plugin-example` → `@browxai/plugin-example`,
+  `@kalebtec/browxai-plugin-figma` → `@browxai/plugin-figma`,
+  `@kalebtec/browxai-plugin-tldraw` → `@browxai/plugin-tldraw`,
+  `@kalebtec/browxai-plugin-excalidraw` → `@browxai/plugin-excalidraw`.
+  The bare `browxai` host package name is unchanged. The first-party
+  trust heuristic now matches `@browxai/*`; the `kalebtec` trust tier
+  identifier itself is unchanged. None of the old names were ever
+  published to npm.
 - VitePress publish surface excludes `ai-context/**` and `rfcs/**` —
   internal docs stay in-repo without leaking into the published site.
 

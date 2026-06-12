@@ -22,8 +22,8 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 
 - [ ] WebAuthn enrolled on the maintainer's npm account
 - [ ] Breakglass npm account created with separate keys + email
-- [ ] `@kalebtec` org scope claimed on npm with "Require 2FA" enforced
-- [ ] `@browxai` defensive scope claimed
+- [x] `@browxai` org scope claimed on npm (org registered; enforce "Require 2FA" before the first publish)
+- [ ] Old `@kalebtec/browxai-plugin-*` names retained defensively (never published; do not free them for squatting)
 - [ ] Typosquat package names pre-claimed and deprecated (see baseline doc)
 - [ ] npm trusted-publisher configuration set per package (repo + workflow + `release` environment binding)
 - [ ] GitHub `release` environment configured (required reviewer, branch restriction)

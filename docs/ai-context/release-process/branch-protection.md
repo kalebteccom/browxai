@@ -72,7 +72,7 @@ release runs:
 ## npm trusted-publisher binding
 
 Configured per-package on `npmjs.com` → package → Settings → Trusted
-Publisher. Each `browxai` and `@kalebtec/browxai-plugin-*` record binds to:
+Publisher. Each `browxai` and `@browxai/plugin-*` record binds to:
 
 - Provider: GitHub Actions
 - Org / repo: `kalebteccom/browxai`

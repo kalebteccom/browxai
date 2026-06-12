@@ -67,15 +67,15 @@ Cross-references used throughout:
 
 ## 4. npm Trusted Publisher binding (5 packages)
 
-- [ ] Log in to `npmjs.com` as the `kalebtec-studio` org owner
+- [ ] Log in to `npmjs.com` as the `browxai` org owner (org registered; enforce "Require 2FA" before the first publish)
 - [ ] For packages that don't yet exist on npm, use the org-level
       **pending trusted publisher** flow
 - [ ] Configure for each of the five packages:
   - [ ] `browxai`
-  - [ ] `@kalebtec/browxai-plugin-example`
-  - [ ] `@kalebtec/browxai-plugin-figma`
-  - [ ] `@kalebtec/browxai-plugin-tldraw`
-  - [ ] `@kalebtec/browxai-plugin-excalidraw`
+  - [ ] `@browxai/plugin-example`
+  - [ ] `@browxai/plugin-figma`
+  - [ ] `@browxai/plugin-tldraw`
+  - [ ] `@browxai/plugin-excalidraw`
 - [ ] Binding values (identical for all five):
   - Repository owner: `kalebteccom`
   - Repository name: `browxai`
