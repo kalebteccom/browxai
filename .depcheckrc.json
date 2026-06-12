@@ -1,5 +1,12 @@
 {
-  "ignore-patterns": ["dist", "node_modules", "coverage", "artifacts", "packages/plugins/*/dist", "website/dist"],
+  "ignore-patterns": [
+    "dist",
+    "node_modules",
+    "coverage",
+    "artifacts",
+    "packages/plugins/*/dist",
+    "website/dist"
+  ],
   "ignores": [
     "@types/*",
     "tsx",

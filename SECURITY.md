@@ -13,11 +13,11 @@ Security fixes are issued against the **latest minor** and (for
 critical-only issues) the **previous minor**. Older minors are
 end-of-life and receive no patches; upgrade.
 
-| Version range                   | Support level                             |
-| ------------------------------- | ----------------------------------------- |
-| latest minor                    | Patches for any qualifying vulnerability. |
-| previous minor                  | Critical only.                            |
-| anything older                  | No support. Upgrade.                      |
+| Version range  | Support level                             |
+| -------------- | ----------------------------------------- |
+| latest minor   | Patches for any qualifying vulnerability. |
+| previous minor | Critical only.                            |
+| anything older | No support. Upgrade.                      |
 
 (Pre-`1.0` releases carry no security guarantees, but reports are triaged
 in good faith and fixes land on the active branch best-effort.)
