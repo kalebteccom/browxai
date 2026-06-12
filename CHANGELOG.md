@@ -114,6 +114,11 @@ surface" covers.
   release. The `publish` job also restores the executable bit on
   `dist/cli.js` after the artifact download (upload/download-artifact
   drops unix mode bits), so the published bin stays executable.
+- **`pnpm audit --prod` is clean.** Five moderate advisories reached the
+  production tree through `@modelcontextprotocol/sdk@1.29.0` (4× `hono`
+  < 4.12.21, 1× `qs` ≤ 6.15.1); the SDK is already at its latest
+  release, so root `pnpm.overrides` now force `hono >= 4.12.21` and
+  `qs >= 6.15.2`. Drop the overrides once the SDK ships patched ranges.
 - **`THIRD_PARTY_NOTICES.md` is real.** The file shipped in the npm
   tarball was a placeholder stub; it now carries the actual notices:
   per-package sections for the host and the plugin packages, license +

@@ -66,6 +66,12 @@
     "audit:prod": "pnpm audit --prod --audit-level=high",
     "sbom": "cyclonedx-npm --output-format JSON --output-file sbom.cdx.json"
   },
+  "pnpm": {
+    "overrides": {
+      "hono": ">=4.12.21",
+      "qs": ">=6.15.2"
+    }
+  },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,cjs}": [
       "prettier --write",
