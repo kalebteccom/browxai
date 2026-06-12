@@ -1,8 +1,8 @@
 // `browxai doctor` — environment + connectivity health-check ().
 //
-// Prints a ✓/✗ checklist + one-line fix per failing check. Exits 0 iff everything
-// passes, 1 otherwise. Writes to stdout (this is a CLI subcommand, not the MCP
-// server — stdout is fine here).
+// Prints a ✓/✗ checklist + one-line fix per failing check (− marks purely
+// informational rows). Exits 0 iff everything passes, 1 otherwise. Writes to
+// stdout (this is a CLI subcommand, not the MCP server — stdout is fine here).
 
 import { existsSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -11,16 +11,21 @@ import {
   resolveCapabilities,
   resolveConfirmHooks,
   DEFAULT_CAPABILITIES,
+  type Capability,
 } from "../util/capabilities.js";
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
+import { ConfigStore } from "../util/config-store.js";
+import { pluginChecks } from "./doctor-plugins.js";
 
-interface Check {
+export interface Check {
   name: string;
   ok: boolean;
   detail: string;
   fix?: string;
+  /** Informational row — printed with − instead of ✓/✗; never fails doctor. */
+  info?: boolean;
 }
 
 export async function runDoctor(): Promise<number> {
@@ -110,8 +115,10 @@ export async function runDoctor(): Promise<number> {
   }
 
   // 5. Capabilities ( security model).
+  let enabledCapabilities: ReadonlySet<Capability> = new Set(DEFAULT_CAPABILITIES);
   try {
     const c = resolveCapabilities();
+    enabledCapabilities = c.enabled;
     const explicit = !!process.env.BROWX_CAPABILITIES;
     const dangerous = [...c.enabled].filter((x) => x === "eval" || x === "byob-attach");
     const detail = `enabled=[${[...c.enabled].join(", ")}]${explicit ? "" : " (default)"}${dangerous.length ? "  ⚠ dangerous: " + dangerous.join(", ") : ""}`;
@@ -197,12 +204,35 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
+  // 9. Plugins — declaration / install drift / lock health / manifest
+  // sanity. Pure inspection of the same files the runtime's resolution
+  // stage reads; doctor NEVER executes a plugin's register module.
+  try {
+    const ws = resolveWorkspace();
+    const store = new ConfigStore(ws.root);
+    checks.push(
+      ...pluginChecks({
+        workspaceRoot: ws.root,
+        enabledCapabilities,
+        extraDeclared: store.resolve().plugins,
+      }),
+    );
+  } catch (e) {
+    checks.push({
+      name: "plugins",
+      ok: false,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "inspect <workspace>/plugins.json, plugins-lock.json and plugins/node_modules/ by hand",
+    });
+  }
+
   // Print + exit.
   let allOk = true;
   process.stdout.write("browxai doctor — environment & connectivity\n\n");
   for (const c of checks) {
     if (!c.ok) allOk = false;
-    process.stdout.write(`  ${c.ok ? "✓" : "✗"} ${c.name.padEnd(12)} ${c.detail}\n`);
+    const glyph = c.info ? "−" : c.ok ? "✓" : "✗";
+    process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
     if (!c.ok && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
   }
   process.stdout.write(`\n${allOk ? "all checks passed" : "fix the ✗ items above"}\n`);

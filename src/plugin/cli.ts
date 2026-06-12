@@ -23,7 +23,7 @@ import { pluginPaths, type PluginPaths } from "./resolver.js";
 const RESTART_NOTICE =
   "Server restart required — plugins are resolved ONCE at server start, so changes only take effect after a fresh `browxai` start.";
 
-interface LockEntry {
+export interface LockEntry {
   /** npm package name. */
   readonly name: string;
   /** Installed version (read from the package's package.json after install). */
@@ -36,7 +36,7 @@ interface LockEntry {
   readonly contentSha256: string;
 }
 
-interface LockFile {
+export interface LockFile {
   /** Version of the lock format itself. Bumped on incompatible change. */
   readonly lockfileVersion: 1;
   /** Entries keyed by package name. */
@@ -77,7 +77,8 @@ function writePluginsJson(
   writeFileSync(paths.declarationFile, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
-function readLock(paths: PluginPaths): LockFile {
+/** Tolerant lock read — also consumed by `browxai doctor` for lock-health checks. */
+export function readLock(paths: PluginPaths): LockFile {
   if (!existsSync(paths.lockFile)) return { lockfileVersion: 1, entries: {} };
   try {
     const raw = JSON.parse(readFileSync(paths.lockFile, "utf8")) as Partial<LockFile>;
@@ -95,7 +96,10 @@ function writeLock(paths: PluginPaths, data: LockFile): void {
   writeFileSync(paths.lockFile, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
-function sha256OfPackage(pkgRoot: string): string {
+/** Content pin over an installed package — the same hash `plugins-lock.json`
+ *  stores as `contentSha256`. Exported so `browxai doctor` can recompute it
+ *  and detect drift against the pinned value. */
+export function sha256OfPackage(pkgRoot: string): string {
   const hash = createHash("sha256");
   // Hash package.json verbatim + every file referenced by `files`/`main`/
   // `browxai.register`. Falls back to walking package.json + main entry
