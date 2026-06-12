@@ -304,9 +304,11 @@ import { FeedbackMemory } from "./page/learning.js";
 import { log } from "./util/logging.js";
 import { runBatch } from "./util/batch.js";
 import { runFlakeCheck } from "./util/flake-check.js";
+import { PACKAGE_VERSION } from "./util/version.js";
 
 export const NAME = "browxai";
-export const VERSION = "0.1.0";
+// Derived from package.json — see src/util/version.ts. Never hand-bump.
+export const VERSION = PACKAGE_VERSION;
 
 export interface StartOptions {
   attachCdp?: string;

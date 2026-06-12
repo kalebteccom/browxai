@@ -73,6 +73,15 @@ surface" covers.
 - VitePress publish surface excludes `ai-context/**` and `rfcs/**` —
   internal docs stay in-repo without leaking into the published site.
 
+### Fixed
+
+- **MCP handshake version drift.** The server's exported `VERSION` (sent
+  in the MCP handshake and used by the SDK client identities) was a
+  hand-maintained `"0.1.0"` literal while the package shipped 0.7.0. It
+  is now derived from `package.json#version` at module load
+  (`src/util/version.ts`), so the constant cannot drift again; a unit
+  test gates against reintroducing a literal.
+
 ## v0.7.0 — 2026-06-08 — Canvas substrate + canvas plugins + perf optimization module
 
 v0.7.0 is the final v0.x release; v1.0 launches with the public flip per the standing roadmap.
