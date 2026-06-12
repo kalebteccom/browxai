@@ -10,6 +10,23 @@ surface" covers.
 
 ### Added
 
+- **Docs: `docs/agent-guidance.md` + per-tool examples + agent callouts.**
+  New agent-facing "reach for this, not that" guidance page (published as
+  `guides/agent-guidance` on the website, linked from the sidebar and
+  `llms.txt`) covering the recurring footguns: `eval_js` vs the curated
+  surface, scoped reads vs full snapshot dumps, ActionResult-first
+  verification, screenshot context budgets, `flake_check` before
+  transcribing a flow, BYOB override residue, and capability minimalism.
+  `docs/tool-reference.md` gains a realistic example call + result shape
+  per tool entry (family-canonical where a family shares the pattern) and
+  inline "for agents" callouts next to the tempting APIs (`eval_js`,
+  `snapshot`, the action `mode` knob, the BYOB emulation caveat); the
+  `choose_option` heading now shows the real `ref?|selector?|named?`
+  target shape. Website: sidebar group spacing aligned to the shared
+  family spec, `llms.txt` page blurbs rewritten to be decision-useful
+  with a distilled `## Guidance` section, and the authored pages' code
+  examples corrected to the exact tool schemas (`find` candidates,
+  `fill_form` field targets, schema-driven `extract`, `act_and_sample`).
 - **`browxai doctor` plugins section.** Doctor now inspects the plugin
   runtime's declarative surface and reports ✓/✗/− per check with a
   one-line fix each: `plugins.json` present/parseable (absent is an
