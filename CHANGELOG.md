@@ -75,8 +75,10 @@ surface" covers.
   trust heuristic now matches `@browxai/*`; the `kalebtec` trust tier
   identifier itself is unchanged. None of the old names were ever
   published to npm.
-- VitePress publish surface excludes `ai-context/**` and `rfcs/**` —
-  internal docs stay in-repo without leaking into the published site.
+- The published docs-site surface (Astro + Starlight in `website/`,
+  synced from an allowlist of `docs/*.md`) excludes `ai-context/**` and
+  `rfcs/**` — internal docs stay in-repo without leaking into the
+  published site.
 
 ### Fixed
 

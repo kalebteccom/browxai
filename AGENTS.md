@@ -48,8 +48,8 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 - `src/policy/` — origin allow/blocklist, confirmation hooks, capability lattice.
 - `harness/` — `driving-browxai/SKILL.md` (portable "drive browxai well" agent skill) + per-harness adapters (`adapters/claude-code/`, `adapters/codex/`, `adapters/pi/`).
 - `packages/plugins/{example, figma, tldraw, excalidraw}/` — workspace plugins demonstrating the v0.7 plugin contract.
-- `docs/` — public, VitePress-published adopter contract (tool-reference, threat-model, plugin-authoring, plugins, sdk, getting-started, byo-vision, capabilities).
-- `docs/ai-context/` — agent-facing routing layer. Discipline, architecture notes, lessons captured. **VitePress-excluded.** Read before touching the corresponding area.
+- `docs/` — public adopter contract (tool-reference, threat-model, plugin-authoring, plugins, sdk, getting-started, byo-vision, capabilities), published via the Astro + Starlight site in `website/` (Netlify).
+- `docs/ai-context/` — agent-facing routing layer. Discipline, architecture notes, lessons captured. **Never published to the docs site.** Read before touching the corresponding area.
 - `docs/rfcs/` — numbered design RFCs.
 - `test/` — keystone tests (real Chromium) and investigation tests.
 - `dist/` — build output; the `browxai` bin is `dist/cli.js`. Built by `pnpm build`.
@@ -131,7 +131,7 @@ Parallel agents that modify the same working tree collide. Dispatch multi-agent 
 
 Three doc surfaces with distinct contracts:
 
-- **`docs/`** — public adopter contract. VitePress-published to GitHub Pages. Every public behavior change updates `docs/tool-reference.md`, `docs/threat-model.md`, `docs/plugin-authoring.md`, `docs/plugins.md`, etc.
+- **`docs/`** — public adopter contract. Published to browxai.com by Netlify via the Astro + Starlight site in `website/` (which syncs an allowlisted set of `docs/*.md` at build time). Every public behavior change updates `docs/tool-reference.md`, `docs/threat-model.md`, `docs/plugin-authoring.md`, `docs/plugins.md`, etc.
 - **`docs/ai-context/`** — agent-facing routing layer. Discipline + architecture notes + lessons. **NOT published.** Read before touching the relevant area. Subtree IA: `agent-process/`, `architecture/`, `tool-registration/`, `page-side-functions/`, `recorder-and-replay/`, `plugin-runtime/`, `secrets-and-egress/`, `testing/`, `release-process/`, `adopter-reports/`, `investigations/`.
 - **Colocated `README.md`** — per-package and per-subdirectory internal contracts (e.g. `packages/plugins/<name>/README.md`).
 
