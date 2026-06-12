@@ -1,11 +1,11 @@
 # RFC 0002 — Multi-engine browser support via a driver-port abstraction
 
 **Date:** 2026-06-13
-**Status:** Draft (research complete; Safari real-device lane pending reference 05)
+**Status:** Draft (research complete, all five reference lanes landed)
 **Author:** Claude (orchestrated research + synthesis, June 2026)
 **Trigger:** Owner directive — browxai must automate Firefox, Safari, and any automatable browser/mobile, staying on modern standards (WebDriver BiDi), and must decouple by adapter even from WebDriver itself. Conforms to [`docs/ai-context/architecture/architecture-principles.md`](../ai-context/architecture/architecture-principles.md).
 
-This RFC is backed by a four-part research record in [`references/`](references/): the WebDriver BiDi standards survey, the ecosystem + Appium survey, a tool-by-tool coupling audit of browxai's own source, and the machine-extracted decision matrix. The Selenium per-driver-protocol diagram (`references/selenium-driver-protocols.webp`) is the mental model: one stable protocol up to the driver, a per-browser native channel below it (chromedriver → CDP, geckodriver → Marionette, **safaridriver → XPC**).
+This RFC is backed by a five-part research record in [`references/`](references/): the WebDriver BiDi standards survey, the ecosystem + Appium survey, a tool-by-tool coupling audit of browxai's own source, the machine-extracted decision matrix, and the Safari-XPC feasibility deep dive. The Selenium per-driver-protocol diagram (`references/selenium-driver-protocols.webp`) is the mental model: one stable protocol up to the driver, a per-browser native channel below it (chromedriver → CDP, geckodriver → Marionette, **safaridriver → XPC**).
 
 ## Summary
 
@@ -61,7 +61,15 @@ Refs are already protocol-neutral (content-hashed role/name/testId/cssPath), so 
 
 **D6 — The ~19 CDP-deep tools: gate, don't port.** All three reports agree perf/coverage/heap/CPU/SW-interception are CDP-only indefinitely (even Puppeteer throws `UnsupportedOperation`). Extend `TOOL_CAPABILITY` with an engine dimension and refuse with a hint off-Chromium. **But first re-classify per the spec facts the critic re-fetched:** `pdf_save` → C (`browsingContext.print` exists; only Playwright's client throws off-Chromium), `network_emulate` → C-pending (`emulation.setNetworkConditions` is spec'd but not yet implemented over BiDi), `set_user_agent` → C (`emulation.setUserAgentOverride` is spec'd). Mandatory companion: a **Firefox keystone lane** (browserType knob through `createServer`, a per-engine skip/refusal expectation matrix, doctor engine checks) — non-negotiable under the repo's own evaluate-serialization discipline.
 
-**D7 — Safari: playwright-webkit now; real-Safari lane pending the XPC research.** Ship `playwright-webkit` for WebKit-engine correctness immediately (cheap once the session layer lands; persistent-mode-on-WebKit is a known loss). The **real-Safari Classic/XPC lane is a separately-scoped decision** whose analysis lands in `references/05-safari-xpc.md` (in progress — the owner's XPC lead: safaridriver is an XPC broker into Safari's automation surface; the `webinspectord` XPC channel into the live browser, entitlement gates, and the AppleEvents/extension BYOB fallback tiers are being evaluated). All reports agree 200-tool parity on Safari is impossible — the protocol ceiling is real. Design the capability matrix so **Safari-BiDi slots in as an engine row, not an architecture change**, when safaridriver ships it (watch WebKit bug 281943).
+**D7 — Safari: playwright-webkit for engine correctness; real-Safari is a tiered companion lane (eval+DOM-grade, not CDP-grade); the XPC surface is categorically closed.** The XPC deep dive ([`references/05-safari-xpc.md`](references/05-safari-xpc.md)) settled the owner's lead with local-machine evidence: safaridriver's protocol IS the Remote Web Inspector protocol with an `Automation` target type, brokered by `webinspectord` over the `com.apple.webinspector` Mach/XPC service — and that surface is **closed to third-party code on three independent Apple gates**: the Apple-private entitlement `com.apple.private.webinspector.driver-client` (CoreTrust/AMFI won't honor `com.apple.private.*` on non-platform binaries; no provisioning profile allowlists it), and `xpc_connection_set_peer_code_signing_requirement` rejects non-Apple peers. The only direct route needs SIP disabled — non-shippable. And it would be the **wrong browser anyway**: WebDriver hard-isolates automation into a clean ephemeral window (no cookies, localStorage, Keychain, or history from the real profile), so it is structurally incapable of BYOB. Safari has not shipped BiDi (June 2026).
+
+Rulings:
+
+- **Engine correctness:** ship `playwright-webkit` (WebKit build, not Safari) once the session layer lands — cheap, covers the class-A surface; persistent-mode-on-WebKit is a known loss.
+- **Sanctioned non-BYOB automation:** `safaridriver` (WebDriver Classic; BiDi when it ships) as a curated subset lane — isolated automation windows, macOS host. Design the capability matrix so **Safari-BiDi slots in as an engine row, not an architecture change** (watch WebKit bug 281943, Apple's BJ Burg on the meta-bug).
+- **True real-Safari BYOB** (only via Apple-supported channels, both eval/DOM-grade): Tier B = an AppleScript `do JavaScript` companion (eval in the user's real page context; Automation-permission gated); Tier C = a notarized **Safari Web Extension + native-messaging companion** for DOM read/write (prior art: `safari-mcp`). No protocol-level network interception, no closed-shadow piercing — the ceiling is real and is documented as such. These are a separate companion product surface, capability-declared honestly, not a browxai engine adapter.
+
+All reports agree 200-tool parity on Safari is impossible — the protocol ceiling, not an implementation gap.
 
 **D8 — Mobile: Android via adb+CDP, no Appium for browsers.** Android browsers/WebViews ride `adb` + CDP (Playwright `_android` pattern), reusing the CDP core — even the CDP-deep tools work. Appium is scoped **strictly to native/hybrid app contexts and iOS device plumbing** (WebDriverAgent, RemoteXPC tunnels via Apache-2.0 `appium-ios-remotexpc` or MIT `go-ios`, never GPL-3.0 `pymobiledevice3`), and only if console/network log streams or hybrid contexts are required. Never route browsers through Appium (a server hop over the same drivers). Whether native-app contexts are in scope is a **product call** the owner makes.
 
@@ -90,5 +98,5 @@ Refs are already protocol-neutral (content-hashed role/name/testId/cssPath), so 
 - [`references/02-ecosystem-and-appium.md`](references/02-ecosystem-and-appium.md) — Playwright/Puppeteer/Selenium/WebdriverIO/Appium strategy + mobile lanes.
 - [`references/03-browxai-coupling-audit.md`](references/03-browxai-coupling-audit.md) — tool-by-tool A/B/C/D classification with file:line evidence.
 - [`references/04-decision-matrix.md`](references/04-decision-matrix.md) — the full critic synthesis: resolved contradictions, missing inputs, eight decisions with evidence leans.
-- `references/05-safari-xpc.md` — real-Safari via XPC/safaridriver/AppleEvents feasibility (in progress).
+- [`references/05-safari-xpc.md`](references/05-safari-xpc.md) — real-Safari feasibility: the `webinspectord` XPC surface is closed to third parties; the AppleScript + Web-Extension companion tiers are the only Apple-supported real-Safari channels.
 - `references/selenium-driver-protocols.webp` — the per-driver-protocol mental model.
