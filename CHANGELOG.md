@@ -39,6 +39,11 @@ surface" covers.
   capability ships with the v0.7.0 host). The `canvas_query` MCP tool
   description no longer carries a dangling pre-release sentence and now
   points at the adapter reference.
+- **CLI `--version` / `-v` and `--help` / `-h` flags.** `browxai
+  --version` prints the package version (the SECURITY.md reporting
+  instructions already referenced it); `browxai --help` prints the full
+  sub-command usage text. Both exit 0; unknown subcommands still exit 2
+  and now point at `--help`.
 - **Tooling baseline + OIDC release pipeline.** ESLint flat config,
   Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
   `.npmrc`, repo `.githooks/` (commit-msg + pre-commit), Dependabot config

@@ -1,18 +1,5 @@
 #!/usr/bin/env node
-// browxai canonical entrypoint.
-//
-// Sub-commands (/ / ):
-//   browxai                       start the MCP server (stdio)            — default
-//   browxai doctor                env + connectivity health-check
-//   browxai chrome start [opts]   launch an attachable Chrome (BYOB host)
-//   browxai chrome stop           kill the Chrome that `chrome start` launched
-//   browxai init <workspace>      bootstrap a per-app workspace (.mcp.json + sniff)
-//   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
-//                                 — accepts MCP-over-socket connections from SDK clients
-//                                 (`createBrowxai({ endpoint: "unix:///..." })`).
-//                                 Off-by-default; explicit operator opt-in.
-//   browxai plugin <sub>          install / remove / list / info / upgrade / sync
-//                                 plugins. All ops are workspace-rooted.
+// browxai canonical entrypoint. See USAGE below for the sub-command surface.
 //
 // All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 
@@ -25,6 +12,27 @@ import { runPlugin } from "./plugin/cli.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
+import { PACKAGE_VERSION } from "./util/version.js";
+
+const USAGE = `Usage: browxai [subcommand]
+
+  browxai                       start the MCP server (stdio)            — default
+  browxai doctor                env + connectivity health-check
+  browxai chrome start [opts]   launch an attachable Chrome (BYOB host)
+  browxai chrome stop           kill the Chrome that \`chrome start\` launched
+  browxai init <workspace>      bootstrap a per-app workspace (.mcp.json + sniff)
+  browxai serve --socket <p>    long-running server on a Unix socket / named pipe
+                                — accepts MCP-over-socket connections from SDK clients
+                                (\`createBrowxai({ endpoint: "unix:///..." })\`).
+                                Off-by-default; explicit operator opt-in.
+  browxai plugin <sub>          install / remove / list / info / upgrade / sync
+                                plugins. All ops are workspace-rooted.
+
+  --version, -v                 print the browxai version
+  --help, -h                    print this usage text
+
+All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
+`;
 
 async function main(): Promise<void> {
   const [, , subcommand, ...rest] = process.argv;
@@ -46,13 +54,23 @@ async function main(): Promise<void> {
     case "plugin":
       process.exit(await runPlugin(rest));
       break;
+    case "--version":
+    case "-v":
+      process.stdout.write(`${PACKAGE_VERSION}\n`);
+      process.exit(0);
+      break;
+    case "--help":
+    case "-h":
+      process.stdout.write(USAGE);
+      process.exit(0);
+      break;
     case undefined:
       break; // fall through to MCP server
     default:
       // Unknown subcommand — print help and exit non-zero (don't silently start the
       // MCP server, since stdout is the MCP wire and we'd corrupt any caller's expectation).
       process.stderr.write(
-        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | serve | plugin | (no args = start MCP server)\n`,
+        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | serve | plugin | (no args = start MCP server). Run \`browxai --help\` for details.\n`,
       );
       process.exit(2);
   }
