@@ -1,4 +1,4 @@
-# @kalebtec/browxai-plugin-tldraw
+# @browxai/plugin-tldraw
 
 First-party browxai canvas-app adapter for Tldraw. Exposes five small,
 useful tools (`tldraw.get_selected_shapes`, `tldraw.get_viewport`,
@@ -13,7 +13,7 @@ returns the structured `code:"tldraw-not-loaded"` envelope.
 ## Install
 
 ```sh
-$ browxai plugin install @kalebtec/browxai-plugin-tldraw
+$ browxai plugin install @browxai/plugin-tldraw
 ```
 
 The host must have the `eval` and `canvas` capabilities enabled — the

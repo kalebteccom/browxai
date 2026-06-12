@@ -1,5 +1,5 @@
 {
-  "name": "@kalebtec/browxai-plugin-tldraw",
+  "name": "@browxai/plugin-tldraw",
   "version": "0.1.0",
   "description": "Tldraw canvas-app adapter plugin for browxai — surfaces shapes/viewport/create/delete/select over the `window.editor` page-side global.",
   "author": "Kalebtec",

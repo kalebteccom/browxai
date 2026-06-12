@@ -1,4 +1,4 @@
-// Typed SDK overlay for `@kalebtec/browxai-plugin-tldraw` consumers.
+// Typed SDK overlay for `@browxai/plugin-tldraw` consumers.
 
 interface TldrawBrowxaiResult {
   readonly content: ReadonlyArray<

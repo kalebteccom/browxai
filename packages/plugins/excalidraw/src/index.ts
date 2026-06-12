@@ -1,4 +1,4 @@
-// @kalebtec/browxai-plugin-excalidraw — Excalidraw canvas-app adapter.
+// @browxai/plugin-excalidraw — Excalidraw canvas-app adapter.
 //
 // Surfaces five small, useful tools over the `window.excalidrawAPI`
 // global that the host page sets when embedding the Excalidraw

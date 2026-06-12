@@ -1,9 +1,9 @@
-// Typed SDK overlay for `@kalebtec/browxai-plugin-figma` consumers.
+// Typed SDK overlay for `@browxai/plugin-figma` consumers.
 //
 // Compose this schema into the host's `BrowxaiClientWithPlugins` helper to
 // get autocomplete on every figma.* tool:
 //
-//   import type { FigmaPluginSchema } from "@kalebtec/browxai-plugin-figma/schema";
+//   import type { FigmaPluginSchema } from "@browxai/plugin-figma/schema";
 //   import type { BrowxaiClientWithPlugins } from "browxai";
 //
 //   const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<FigmaPluginSchema>;

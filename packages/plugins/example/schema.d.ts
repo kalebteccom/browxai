@@ -1,11 +1,11 @@
-// Typed SDK overlay for `@kalebtec/browxai-plugin-example` consumers.
+// Typed SDK overlay for `@browxai/plugin-example` consumers.
 //
 // SDK consumers import the schema type + compose it via the host's
 // `BrowxaiClientWithPlugins` helper to get autocomplete on every
 // example tool — `client.plugins.example.echo({msg:"hi"})` — with full
 // argument typing.
 //
-//   import type { ExamplePluginSchema } from "@kalebtec/browxai-plugin-example/schema";
+//   import type { ExamplePluginSchema } from "@browxai/plugin-example/schema";
 //   import type { BrowxaiClientWithPlugins } from "browxai";
 //
 //   const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<ExamplePluginSchema>;

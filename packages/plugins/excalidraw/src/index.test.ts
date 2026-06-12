@@ -34,7 +34,7 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
-describe("@kalebtec/browxai-plugin-excalidraw handlers", () => {
+describe("@browxai/plugin-excalidraw handlers", () => {
   describe("get_scene_state", () => {
     it("returns parsed scene state on happy path", async () => {
       const api = makeApi(async (_name, args) => {
@@ -177,7 +177,7 @@ describe("@kalebtec/browxai-plugin-excalidraw handlers", () => {
   });
 });
 
-describe("@kalebtec/browxai-plugin-excalidraw register()", () => {
+describe("@browxai/plugin-excalidraw register()", () => {
   it("registers exactly 5 namespaced tools", () => {
     const registered: string[] = [];
     const fakeApi = {

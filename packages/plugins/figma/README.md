@@ -1,4 +1,4 @@
-# @kalebtec/browxai-plugin-figma
+# @browxai/plugin-figma
 
 First-party browxai canvas-app adapter for Figma. Exposes five small,
 useful tools (`figma.get_selection`, `figma.get_viewport`,
@@ -14,7 +14,7 @@ envelope rather than crashing.
 ## Install
 
 ```sh
-$ browxai plugin install @kalebtec/browxai-plugin-figma
+$ browxai plugin install @browxai/plugin-figma
 ```
 
 The host must have the `eval` and `canvas` capabilities enabled — the

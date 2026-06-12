@@ -14,7 +14,7 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
-describe("@kalebtec/browxai-plugin-example handlers", () => {
+describe("@browxai/plugin-example handlers", () => {
   it("echo round-trips msg", async () => {
     const res = await handlers.echo({ msg: "hi" });
     expect(parseFirst(res)).toEqual({ ok: true, result: "hi" });
@@ -44,7 +44,7 @@ describe("@kalebtec/browxai-plugin-example handlers", () => {
   });
 });
 
-describe("@kalebtec/browxai-plugin-example register()", () => {
+describe("@browxai/plugin-example register()", () => {
   it("registers exactly 3 tools, all namespaced", () => {
     const registered: string[] = [];
     const fakeApi = {

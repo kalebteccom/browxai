@@ -1,4 +1,4 @@
-// Typed SDK overlay for `@kalebtec/browxai-plugin-excalidraw` consumers.
+// Typed SDK overlay for `@browxai/plugin-excalidraw` consumers.
 
 interface ExcalidrawBrowxaiResult {
   readonly content: ReadonlyArray<

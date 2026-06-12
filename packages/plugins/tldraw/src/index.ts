@@ -1,4 +1,4 @@
-// @kalebtec/browxai-plugin-tldraw — Tldraw canvas-app adapter.
+// @browxai/plugin-tldraw — Tldraw canvas-app adapter.
 //
 // Surfaces five small, useful tools over the `window.editor` global that
 // Tldraw (v2+) exposes when an Editor component is mounted on the page.

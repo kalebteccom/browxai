@@ -1,4 +1,4 @@
-// @kalebtec/browxai-plugin-figma — Figma canvas-app adapter.
+// @browxai/plugin-figma — Figma canvas-app adapter.
 //
 // Surfaces a small, useful first-party tool surface (selection, viewport,
 // node mutate, rectangle create) over the page-side `figma.*` global that

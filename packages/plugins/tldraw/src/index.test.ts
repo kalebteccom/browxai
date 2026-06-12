@@ -34,7 +34,7 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
-describe("@kalebtec/browxai-plugin-tldraw handlers", () => {
+describe("@browxai/plugin-tldraw handlers", () => {
   describe("get_selected_shapes", () => {
     it("returns parsed shapes on happy path", async () => {
       const api = makeApi(async (_name, args) => {
@@ -165,7 +165,7 @@ describe("@kalebtec/browxai-plugin-tldraw handlers", () => {
   });
 });
 
-describe("@kalebtec/browxai-plugin-tldraw register()", () => {
+describe("@browxai/plugin-tldraw register()", () => {
   it("registers exactly 5 namespaced tools", () => {
     const registered: string[] = [];
     const fakeApi = {

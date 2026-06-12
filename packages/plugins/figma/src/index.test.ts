@@ -35,7 +35,7 @@ function parseFirst(res: {
   return JSON.parse(first.text!) as Record<string, unknown>;
 }
 
-describe("@kalebtec/browxai-plugin-figma handlers", () => {
+describe("@browxai/plugin-figma handlers", () => {
   describe("get_selection", () => {
     it("returns parsed selection on happy path", async () => {
       const api = makeApi(async (name, args) => {
@@ -183,7 +183,7 @@ describe("@kalebtec/browxai-plugin-figma handlers", () => {
   });
 });
 
-describe("@kalebtec/browxai-plugin-figma register()", () => {
+describe("@browxai/plugin-figma register()", () => {
   it("registers exactly 5 namespaced tools", () => {
     const registered: string[] = [];
     const fakeApi = {

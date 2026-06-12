@@ -1,5 +1,5 @@
 {
-  "name": "@kalebtec/browxai-plugin-excalidraw",
+  "name": "@browxai/plugin-excalidraw",
   "version": "0.1.0",
   "description": "Excalidraw canvas-app adapter plugin for browxai — surfaces scene/viewport/add/delete/scroll over the `window.excalidrawAPI` page-side global.",
   "author": "Kalebtec",

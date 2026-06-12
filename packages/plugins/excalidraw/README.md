@@ -1,4 +1,4 @@
-# @kalebtec/browxai-plugin-excalidraw
+# @browxai/plugin-excalidraw
 
 First-party browxai canvas-app adapter for Excalidraw. Exposes five
 small, useful tools (`excalidraw.get_scene_state`,
@@ -15,7 +15,7 @@ the structured `code:"excalidraw-not-loaded"` envelope.
 ## Install
 
 ```sh
-$ browxai plugin install @kalebtec/browxai-plugin-excalidraw
+$ browxai plugin install @browxai/plugin-excalidraw
 ```
 
 The host must have the `eval` and `canvas` capabilities enabled — the

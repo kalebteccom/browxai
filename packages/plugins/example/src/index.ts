@@ -1,4 +1,4 @@
-// @kalebtec/browxai-plugin-example — the canonical reference plugin.
+// @browxai/plugin-example — the canonical reference plugin.
 //
 // Exercises every primitive of the v1 plugin-runtime contract:
 //   - `register(api)` entry point as a named export.
@@ -12,7 +12,7 @@
 //
 // The `PluginApi` shape is documented in the host's plugin-authoring
 // guide. We inline a minimal type here so the plugin doesn't import
-// from a host-internal module — once `@kalebtec/browxai-plugin-types`
+// from a host-internal module — once `@browxai/plugin-types`
 // ships, plugins will import the interface from there.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
