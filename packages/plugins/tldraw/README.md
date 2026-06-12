@@ -33,3 +33,9 @@ This plugin pokes the Tldraw v2.x Editor API as of 2026-06:
 v2 API has been stable across minor versions; if Tldraw renames a
 method, swap the eval-expression string in `src/index.ts` and the
 unit tests stay green.
+
+## Full reference
+
+The per-tool reference for this adapter — every op with args, return
+shape, and error codes, plus a usage walkthrough — lives at
+<https://browxai.com/plugins/first-party/>.

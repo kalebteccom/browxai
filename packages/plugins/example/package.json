@@ -5,6 +5,22 @@
   "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "browxai",
+    "browxai-plugin",
+    "mcp",
+    "browser-automation",
+    "ai-agent"
+  ],
+  "homepage": "https://browxai.com/plugins/first-party/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalebteccom/browxai.git",
+    "directory": "packages/plugins/example"
+  },
+  "bugs": {
+    "url": "https://github.com/kalebteccom/browxai/issues"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

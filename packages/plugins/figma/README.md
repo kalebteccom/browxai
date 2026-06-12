@@ -33,3 +33,9 @@ This plugin pokes the long-stable parts of the Figma plugin API as of
 `figma.getNodeById()`, `figma.createRectangle()`, plus mutable `x` / `y`
 / `fills` properties on scene nodes. Future Figma versions may add
 fields; the targeted surface should remain compatible.
+
+## Full reference
+
+The per-tool reference for this adapter — every op with args, return
+shape, and error codes, plus a usage walkthrough — lives at
+<https://browxai.com/plugins/first-party/>.

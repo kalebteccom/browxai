@@ -35,3 +35,9 @@ top-level stable methods of the imperative API. Host pages that embed
 the Excalidraw component must forward the `excalidrawAPI` ref to
 `window.excalidrawAPI` for this plugin to find it; the public
 excalidraw.com deployment does this by default.
+
+## Full reference
+
+The per-tool reference for this adapter — every op with args, return
+shape, and error codes, plus a usage walkthrough — lives at
+<https://browxai.com/plugins/first-party/>.

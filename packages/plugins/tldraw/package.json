@@ -5,6 +5,24 @@
   "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
+  "keywords": [
+    "browxai",
+    "browxai-plugin",
+    "tldraw",
+    "canvas",
+    "mcp",
+    "browser-automation",
+    "ai-agent"
+  ],
+  "homepage": "https://browxai.com/plugins/first-party/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kalebteccom/browxai.git",
+    "directory": "packages/plugins/tldraw"
+  },
+  "bugs": {
+    "url": "https://github.com/kalebteccom/browxai/issues"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -23,7 +41,7 @@
   },
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.6.0",
+    "browxaiVersion": "^0.7.0",
     "namespace": "tldraw",
     "register": "dist/index.js",
     "capabilities": [
