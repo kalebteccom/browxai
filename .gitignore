@@ -15,6 +15,7 @@ website/src/content/docs/reference/tool-reference.md
 website/src/content/docs/security/threat-model.md
 website/src/content/docs/security/best-practices.md
 website/src/content/docs/plugins/overview.md
+website/src/content/docs/plugins/first-party.md
 website/src/content/docs/plugins/authoring.md
 website/src/content/docs/plugins/governance.md
 # Transient state lives in $BROWX_WORKSPACE (~/.browxai/), NOT here. Guardrail

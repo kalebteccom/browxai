@@ -146,6 +146,7 @@ export default defineConfig({
           label: "Plugins",
           items: [
             { label: "Overview", slug: "plugins/overview" },
+            { label: "First-party plugins", slug: "plugins/first-party" },
             { label: "Authoring", slug: "plugins/authoring" },
             { label: "Governance", slug: "plugins/governance" },
           ],

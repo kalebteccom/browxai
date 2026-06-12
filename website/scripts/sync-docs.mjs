@@ -21,9 +21,11 @@ const linkMap = [
   [/\]\(\/threat-model\/?\)/g, "](/security/threat-model/)"],
   [/\]\(\/getting-started\/?\)/g, "](/getting-started/)"],
   [/\]\(\.\/plugins\.md\)/g, "](/plugins/overview/)"],
+  [/\]\(\.\/plugins-first-party\.md\)/g, "](/plugins/first-party/)"],
   [/\]\(\.\/plugin-authoring\.md\)/g, "](/plugins/authoring/)"],
   [/\]\(\.\/plugin-governance\.md\)/g, "](/plugins/governance/)"],
   [/\]\(\/plugins\/?\)/g, "](/plugins/overview/)"],
+  [/\]\(\/plugins-first-party\/?\)/g, "](/plugins/first-party/)"],
   [/\]\(\/plugin-authoring\/?\)/g, "](/plugins/authoring/)"],
   [/\]\(\/plugin-governance\/?\)/g, "](/plugins/governance/)"],
   [/\]\(\/security-best-practices-for-adopters\/?\)/g, "](/security/best-practices/)"],
@@ -93,6 +95,13 @@ const pages = [
     title: "Plugins overview",
     description:
       "The browxai plugin runtime: install model, the reproducibility surface, lifecycle, and namespacing.",
+  },
+  {
+    src: "plugins-first-party.md",
+    out: "plugins/first-party.md",
+    title: "First-party plugins",
+    description:
+      "The @browxai plugin set - the example plugin plus the figma, tldraw, and excalidraw canvas adapters: every tool, args, return shapes, and error envelopes.",
   },
   {
     src: "plugin-authoring.md",
