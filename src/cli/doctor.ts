@@ -18,6 +18,7 @@ import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
+import { IMPLEMENTED_ENGINES } from "../engine/index.js";
 
 export interface Check {
   name: string;
@@ -203,6 +204,16 @@ export async function runDoctor(): Promise<number> {
       fix: "run `pnpm install` and `pnpm install-browser`",
     });
   }
+
+  // 8b. Active browser engine. Chromium is the only engine wired today; the
+  // seam exists so a second engine lands as an adapter (see src/engine/).
+  // Informational — never fails doctor.
+  checks.push({
+    name: "engine",
+    ok: true,
+    info: true,
+    detail: `chromium (implemented: ${IMPLEMENTED_ENGINES.join(", ")})`,
+  });
 
   // 9. Plugins — declaration / install drift / lock health / manifest
   // sanity. Pure inspection of the same files the runtime's resolution
