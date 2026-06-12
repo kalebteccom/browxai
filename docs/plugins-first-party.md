@@ -8,8 +8,8 @@ the host. For the install model and CLI see
 [`docs/plugins.md`](./plugins.md); for writing your own plugin see
 [`docs/plugin-authoring.md`](./plugin-authoring.md).
 
-| Plugin                                                          | Namespace    | Capabilities      | What it adapts                                          |
-| --------------------------------------------------------------- | ------------ | ----------------- | -------------------------------------------------------- |
+| Plugin                                                          | Namespace    | Capabilities      | What it adapts                                            |
+| --------------------------------------------------------------- | ------------ | ----------------- | --------------------------------------------------------- |
 | [`@browxai/plugin-example`](../packages/plugins/example/)       | `example`    | _(none)_          | Nothing — the canonical runtime-contract reference.       |
 | [`@browxai/plugin-figma`](../packages/plugins/figma/)           | `figma`      | `eval` + `canvas` | Figma, via the page-side `figma.*` plugin-context global. |
 | [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/)         | `tldraw`     | `eval` + `canvas` | Tldraw v2+, via the `window.editor` global.               |
@@ -90,11 +90,11 @@ capabilities, empty `dependsOn` — and is the fixture the plugin-runtime
 keystone test loads end-to-end. Install it to smoke-test your plugin
 wiring; copy it to start your own plugin.
 
-| Tool           | Args                       | Returns                  |
-| -------------- | -------------------------- | ------------------------ |
-| `example.echo` | `{msg: string}`            | `{ok: true, result}` — echoes `msg` back (missing `msg` echoes `""`). |
-| `example.add`  | `{a: number, b: number}`   | `{ok: true, sum}` — non-numeric args coerce to `0`. |
-| `example.now`  | _(none)_                   | `{ok: true, iso, epochMs}`. |
+| Tool           | Args                     | Returns                                                               |
+| -------------- | ------------------------ | --------------------------------------------------------------------- |
+| `example.echo` | `{msg: string}`          | `{ok: true, result}` — echoes `msg` back (missing `msg` echoes `""`). |
+| `example.add`  | `{a: number, b: number}` | `{ok: true, sum}` — non-numeric args coerce to `0`.                   |
+| `example.now`  | _(none)_                 | `{ok: true, iso, epochMs}`.                                           |
 
 ## `@browxai/plugin-figma`
 
@@ -104,13 +104,13 @@ plugin API: `figma.viewport.{center,zoom}`,
 `figma.currentPage.selection`, `figma.getNodeById()`,
 `figma.createRectangle()`, and mutable `x`/`y`/`fills` on scene nodes.
 
-| Tool                     | Args                                                                    | Returns                                                  |
-| ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------- |
-| `figma.get_selection`    | _(none)_                                                                 | `{ok, nodes: [{id, name, type, x, y, width, height}]}`     |
-| `figma.get_viewport`     | _(none)_                                                                 | `{ok, center: {x, y}, zoom}`                               |
-| `figma.select_node`      | `{nodeId: string}`                                                       | `{ok, nodeId}` — or `code:"node-not-found"`                |
-| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                               | `{ok, nodeId, x, y}` (post-move position) — or `code:"node-not-found"` |
-| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats — Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                             |
+| Tool                     | Args                                                                                                                             | Returns                                                                |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `figma.get_selection`    | _(none)_                                                                                                                         | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                 |
+| `figma.get_viewport`     | _(none)_                                                                                                                         | `{ok, center: {x, y}, zoom}`                                           |
+| `figma.select_node`      | `{nodeId: string}`                                                                                                               | `{ok, nodeId}` — or `code:"node-not-found"`                            |
+| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                       | `{ok, nodeId, x, y}` (post-move position) — or `code:"node-not-found"` |
+| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats — Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                         |
 
 Error codes: `figma-not-loaded`, `bad-arg`, `node-not-found`,
 `eval-failed`.
@@ -123,13 +123,13 @@ exposes when an Editor component is mounted. Targets the v2 Editor API:
 `editor.getZoomLevel()`, `editor.createShapes()`,
 `editor.deleteShapes()`, `editor.setSelectedShapes()`.
 
-| Tool                         | Args                                              | Returns                                              |
-| ---------------------------- | -------------------------------------------------- | ----------------------------------------------------- |
-| `tldraw.get_selected_shapes` | _(none)_                                           | `{ok, shapes: [{id, type, x, y, props}]}`              |
-| `tldraw.get_viewport`        | _(none)_                                           | `{ok, x, y, w, h, zoom}` (page-space viewport bounds)  |
+| Tool                         | Args                                                   | Returns                                                                                                                    |
+| ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `tldraw.get_selected_shapes` | _(none)_                                               | `{ok, shapes: [{id, type, x, y, props}]}`                                                                                  |
+| `tldraw.get_viewport`        | _(none)_                                               | `{ok, x, y, w, h, zoom}` (page-space viewport bounds)                                                                      |
 | `tldraw.create_shape`        | `{type: string, x: number, y: number, props?: object}` | `{ok, shapeId}` — id resolved by diffing the page shape list before/after; `code:"create-failed"` if no new shape appeared |
-| `tldraw.delete_shape`        | `{shapeId: string}`                                | `{ok, shapeId}`                                        |
-| `tldraw.select_shapes`       | `{shapeIds: string[]}`                             | `{ok, shapeIds}`                                       |
+| `tldraw.delete_shape`        | `{shapeId: string}`                                    | `{ok, shapeId}`                                                                                                            |
+| `tldraw.select_shapes`       | `{shapeIds: string[]}`                                 | `{ok, shapeIds}`                                                                                                           |
 
 Error codes: `tldraw-not-loaded`, `bad-arg`, `create-failed`,
 `eval-failed`.
@@ -143,13 +143,13 @@ self-hosted embeds must do the same for this plugin to find it).
 Targets `excalidrawAPI.getSceneElements()`,
 `excalidrawAPI.getAppState()`, `excalidrawAPI.updateScene()`.
 
-| Tool                         | Args                                                              | Returns                                                     |
-| ---------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------- |
-| `excalidraw.get_scene_state` | _(none)_                                                            | `{ok, elements: [{id, type, x, y, width, height}], appState: {viewBackgroundColor, viewModeEnabled, zoom}}` |
-| `excalidraw.get_viewport`    | _(none)_                                                            | `{ok, scrollX, scrollY, zoom}`                                |
-| `excalidraw.add_element`     | `{type, x, y, width, height, ...passthrough}` (extra fields forwarded to Excalidraw verbatim; `id` minted via `crypto.randomUUID()` when not supplied) | `{ok, elementId}`                                             |
-| `excalidraw.delete_element`  | `{elementId: string}`                                               | `{ok, elementId}` — or `code:"element-not-found"`             |
-| `excalidraw.set_scroll`      | `{scrollX: number, scrollY: number}`                                | `{ok, scrollX, scrollY}`                                      |
+| Tool                         | Args                                                                                                                                                   | Returns                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `excalidraw.get_scene_state` | _(none)_                                                                                                                                               | `{ok, elements: [{id, type, x, y, width, height}], appState: {viewBackgroundColor, viewModeEnabled, zoom}}` |
+| `excalidraw.get_viewport`    | _(none)_                                                                                                                                               | `{ok, scrollX, scrollY, zoom}`                                                                              |
+| `excalidraw.add_element`     | `{type, x, y, width, height, ...passthrough}` (extra fields forwarded to Excalidraw verbatim; `id` minted via `crypto.randomUUID()` when not supplied) | `{ok, elementId}`                                                                                           |
+| `excalidraw.delete_element`  | `{elementId: string}`                                                                                                                                  | `{ok, elementId}` — or `code:"element-not-found"`                                                           |
+| `excalidraw.set_scroll`      | `{scrollX: number, scrollY: number}`                                                                                                                   | `{ok, scrollX, scrollY}`                                                                                    |
 
 Error codes: `excalidraw-not-loaded`, `bad-arg`, `element-not-found`,
 `eval-failed`.
