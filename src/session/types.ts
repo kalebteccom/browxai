@@ -4,6 +4,7 @@
 // no close, no storage reset on shutdown).
 
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
+import type { EngineKind } from "../engine/index.js";
 
 export type SessionMode = "managed" | "byob";
 
@@ -67,13 +68,25 @@ export interface SessionOptions {
    *  at the tool layer (`extensions_install`); this option is the trusted
    *  internal pipe. Refused on incognito / attached at the tool layer. */
   extensionPaths?: readonly string[];
+  /** Which browser engine to launch. Defaults to `"chromium"` everywhere — the
+   *  default makes every launch byte-identical to the pre-seam behavior. Only
+   *  chromium is implemented today; firefox/webkit throw
+   *  `engine-not-yet-supported` at the launch path (see src/engine/). */
+  browserType?: EngineKind;
 }
 
 export interface BrowserSession {
   readonly mode: SessionMode;
   readonly ownsBrowser: boolean;
+  /** The engine backing this session. Always `"chromium"` today. */
+  readonly engine: EngineKind;
   page(): Page;
-  cdp(): CDPSession;
+  /** Raw CDP handle. Optional: present + fully functional on chromium (the only
+   *  engine wired today), absent on engines without a CDP escape hatch. This is
+   *  the one mandatory interface member that used to hard-gate multi-engine.
+   *  Consumers that need the handle route through `requireCdp()` (src/engine/),
+   *  which asserts presence with a structured, engine-naming error. */
+  cdp?(): CDPSession;
   close(): Promise<void>;
 }
 

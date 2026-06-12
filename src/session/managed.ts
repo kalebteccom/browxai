@@ -2,15 +2,16 @@
 // $BROWX_WORKSPACE/profile/. Never `cwd`, never the human's daily-driver profile,
 // never lowered-security flags.
 
-import { chromium } from "playwright-core";
 import { log } from "../util/logging.js";
 import { resolveWorkspace } from "../util/workspace.js";
+import { PlaywrightChromiumAdapter, type EngineKind } from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 export async function openManagedSession(opts: SessionOptions = {}): Promise<BrowserSession> {
   const workspace = resolveWorkspace();
   const profileDir = opts.profileDir ?? workspace.sub("profile");
-  log.info("session.managed: launching", { profileDir, headless: !!opts.headless });
+  const engine: EngineKind = opts.browserType ?? "chromium";
+  log.info("session.managed: launching", { profileDir, headless: !!opts.headless, engine });
 
   // opt-in web-security-off. Off by default (safe-by-default is the
   //  non-negotiable); when the gated `disableWebSecurity` config flag
@@ -39,33 +40,35 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
     });
   }
   const allArgs = [...insecureArgs, ...extensionArgs];
-  const context = await chromium.launchPersistentContext(profileDir, {
-    headless: !!opts.headless,
-    // device/viewport emulation applied at context creation.
-    ...(opts.device ?? {}),
-    // Accept downloads at the context level — the per-session
-    // `DownloadsRegistry` (off-by-default) intercepts them via the
-    // `context.on("download")` event. Without `acceptDownloads:true`
-    // Playwright never emits that event, so the off-by-default registry
-    // can never opt in either.
-    acceptDownloads: true,
-    // No `--no-sandbox`. `--disable-web-security` only when the gated
-    // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
-    // `--load-extension` + `--disable-extensions-except` only when the
-    // session has registered extensions (capability `extensions`);
-    // `--disable-web-security` only when explicitly enabled (loud-warned).
-    ...(allArgs.length ? { args: allArgs } : {}),
-    // HAR recording at context creation (native Playwright primitive).
-    // Finalized on context.close(). No-op when unset.
-    ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
-    // Video recording at context creation (native Playwright primitive).
-    // Finalized on context.close(). The dir is workspace-rooted by
-    // construction; the registry's teardown calls
-    // `page.video().saveAs(targetPath)` for a deterministic filename.
-    ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
+  const adapter = new PlaywrightChromiumAdapter();
+  const { context, page, cdp } = await adapter.launchPersistent({
+    profileDir,
+    options: {
+      headless: !!opts.headless,
+      // device/viewport emulation applied at context creation.
+      ...(opts.device ?? {}),
+      // Accept downloads at the context level — the per-session
+      // `DownloadsRegistry` (off-by-default) intercepts them via the
+      // `context.on("download")` event. Without `acceptDownloads:true`
+      // Playwright never emits that event, so the off-by-default registry
+      // can never opt in either.
+      acceptDownloads: true,
+      // No `--no-sandbox`. `--disable-web-security` only when the gated
+      // flag is explicitly enabled (loud-warned above); otherwise safe-by-default.
+      // `--load-extension` + `--disable-extensions-except` only when the
+      // session has registered extensions (capability `extensions`);
+      // `--disable-web-security` only when explicitly enabled (loud-warned).
+      ...(allArgs.length ? { args: allArgs } : {}),
+      // HAR recording at context creation (native Playwright primitive).
+      // Finalized on context.close(). No-op when unset.
+      ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
+      // Video recording at context creation (native Playwright primitive).
+      // Finalized on context.close(). The dir is workspace-rooted by
+      // construction; the registry's teardown calls
+      // `page.video().saveAs(targetPath)` for a deterministic filename.
+      ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
+    },
   });
-  const page = context.pages()[0] ?? (await context.newPage());
-  const cdp = await context.newCDPSession(page);
   // Persistent contexts don't take `storageState` at creation (their state
   // lives on disk). When a caller asks for it on a managed session we apply
   // it post-create via `setStorageState` — which CLEARS the profile's
@@ -85,7 +88,9 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   return {
     mode: "managed",
     ownsBrowser: true,
+    engine,
     page: () => page,
+    // chromium always mints a CDP session; `cdp` is non-undefined here.
     cdp: () => cdp,
     close: async () => {
       if (closed) return;

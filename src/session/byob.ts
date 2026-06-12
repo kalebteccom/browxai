@@ -4,8 +4,8 @@
 // Not-owned semantics: on close we detach the CDP session, but never close the
 // browser or reset its storage — that's the consumer's Chrome, not ours.
 
-import { chromium } from "playwright-core";
 import { log } from "../util/logging.js";
+import { PlaywrightChromiumAdapter, type EngineKind } from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
@@ -46,13 +46,14 @@ export async function openByobSession(
   opts: SessionOptions & { attachCdp: string },
 ): Promise<BrowserSession> {
   const url = assertLoopback(opts.attachCdp);
+  // The attach transport is CDP today (the only engine wired); the loopback /
+  // not-owned policy above + below is protocol-neutral and reused verbatim.
+  const engine: EngineKind = opts.browserType ?? "chromium";
   log.warn(ATTACH_WARNING);
-  log.info("session.byob: attaching", { endpoint: url.toString(), owner: "external" });
+  log.info("session.byob: attaching", { endpoint: url.toString(), owner: "external", engine });
 
-  const browser = await chromium.connectOverCDP(url.toString());
-  const context = browser.contexts()[0] ?? (await browser.newContext());
-  const page = context.pages()[0] ?? (await context.newPage());
-  const cdp = await context.newCDPSession(page);
+  const adapter = new PlaywrightChromiumAdapter();
+  const { page, cdp } = await adapter.attachOverCdp(url.toString());
 
   // ensure the attached page reports a usable viewport so the
   // visible-rect bbox path (page/bbox.ts) doesn't intersect against `innerWidth=0
@@ -102,7 +103,9 @@ export async function openByobSession(
   return {
     mode: "byob",
     ownsBrowser: false,
+    engine,
     page: () => page,
+    // chromium always mints a CDP session; `cdp` is non-undefined here.
     cdp: () => cdp,
     close: async () => {
       if (closed) return;
