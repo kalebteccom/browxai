@@ -192,7 +192,7 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
 
 function inferTrustFromSource(source: string): "kalebtec" | "community" | "local" {
   if (source.startsWith("file:")) return "local";
-  if (source.startsWith("@kalebtec/")) return "kalebtec";
+  if (source.startsWith("@browxai/")) return "kalebtec";
   return "community";
 }
 

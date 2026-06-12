@@ -76,21 +76,21 @@ describe("resolveDeclaredPlugin", () => {
     expect(r.kind).toBe("invalid-manifest");
   });
 
-  it("resolves a well-formed plugin and reports kalebtec trust for @kalebtec/", () => {
+  it("resolves a well-formed plugin and reports kalebtec trust for @browxai/", () => {
     const paths = pluginPaths(workspaceRoot);
-    const pkgRoot = join(paths.nodeModulesDir, "@kalebtec", "browxai-plugin-good");
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-good");
     mkdirSync(pkgRoot, { recursive: true });
     writeFileSync(
       join(pkgRoot, "package.json"),
       JSON.stringify({
-        name: "@kalebtec/browxai-plugin-good",
+        name: "@browxai/plugin-good",
         version: "1.2.3",
         browxai: { apiVersion: "1.0.0", namespace: "good", register: "index.js" },
       }),
     );
     writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
     const r = resolveDeclaredPlugin(paths, {
-      name: "@kalebtec/browxai-plugin-good",
+      name: "@browxai/plugin-good",
       enabled: true,
     });
     expect(r.kind).toBe("resolved");
@@ -103,19 +103,19 @@ describe("resolveDeclaredPlugin", () => {
 
   it("honours per-entry trust override from plugins.json", () => {
     const paths = pluginPaths(workspaceRoot);
-    const pkgRoot = join(paths.nodeModulesDir, "@kalebtec", "browxai-plugin-good");
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-good");
     mkdirSync(pkgRoot, { recursive: true });
     writeFileSync(
       join(pkgRoot, "package.json"),
       JSON.stringify({
-        name: "@kalebtec/browxai-plugin-good",
+        name: "@browxai/plugin-good",
         version: "1.2.3",
         browxai: { apiVersion: "1.0.0", namespace: "good", register: "index.js" },
       }),
     );
     writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
     const r = resolveDeclaredPlugin(paths, {
-      name: "@kalebtec/browxai-plugin-good",
+      name: "@browxai/plugin-good",
       enabled: true,
       trust: "local",
     });

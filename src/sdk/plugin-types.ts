@@ -44,8 +44,8 @@ export type _PluginSchemaArgs = BrowxaiArgs;
  * surface is unchanged; this only widens the `plugins` namespace at
  * the type layer.
  *
- *   import type { FigmaPlugin } from "@kalebtec/browxai-plugin-figma";
- *   import type { ExamplePlugin } from "@kalebtec/browxai-plugin-example";
+ *   import type { FigmaPlugin } from "@browxai/plugin-figma";
+ *   import type { ExamplePlugin } from "@browxai/plugin-example";
  *
  *   type Schema = FigmaPlugin & ExamplePlugin;
  *

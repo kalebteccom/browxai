@@ -440,6 +440,6 @@ describe("noAdapterError (structured no-adapter shape)", () => {
     expect(r.code).toBe("no-adapter");
     expect(r.requestedAdapter).toBe("figma");
     expect(r.requestedOp).toBe("moveNode");
-    expect(r.error).toContain("@kalebtec/browxai-plugin-figma");
+    expect(r.error).toContain("@browxai/plugin-figma");
   });
 });

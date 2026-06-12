@@ -20,12 +20,12 @@ import { parseManifestField, type ResolvedManifest, type TrustTier } from "./man
  * ergonomics:
  *
  *   Array form:
- *     { "plugins": ["@kalebtec/browxai-plugin-example", ...] }
+ *     { "plugins": ["@browxai/plugin-example", ...] }
  *
  *   Object form (lets the operator pin trust tier overrides per entry):
  *     {
  *       "plugins": {
- *         "@kalebtec/browxai-plugin-example": { "enabled": true },
+ *         "@browxai/plugin-example": { "enabled": true },
  *         "my-local-plugin": { "enabled": false, "trust": "local" }
  *       }
  *     }
@@ -200,12 +200,12 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
 }
 
 /**
- * Heuristic when no explicit trust tier is set: `@kalebtec/*` is
+ * Heuristic when no explicit trust tier is set: `@browxai/*` is
  * `kalebtec`; everything else is `community`. Local-path installs are
  * tagged `local` by the CLI install command (sets the trust field in
  * the plugins.json entry).
  */
 function inferTrustFromName(name: string): TrustTier {
-  if (name.startsWith("@kalebtec/")) return "kalebtec";
+  if (name.startsWith("@browxai/")) return "kalebtec";
   return "community";
 }

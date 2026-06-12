@@ -7424,7 +7424,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     "canvas_query",
     {
       description:
-        "Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `\"figma\"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args`. If no plugin matches: `{ok:false, error:'no canvas adapter registered for <adapter>; install @kalebtec/browxai-plugin-<adapter> or pass a registered adapter namespace', code:'no-adapter', requestedAdapter, requestedOp}`. The inner plugin tool's capability is enforced via the plugin call-graph gate when reached.  ships the dispatcher only; the first canvas-app adapter plugins land separately in . Capability `canvas` (+ the inner tool's own capability via the plugin runtime gate).",
+        "Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `\"figma\"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args`. If no plugin matches: `{ok:false, error:'no canvas adapter registered for <adapter>; install @browxai/plugin-<adapter> or pass a registered adapter namespace', code:'no-adapter', requestedAdapter, requestedOp}`. The inner plugin tool's capability is enforced via the plugin call-graph gate when reached.  ships the dispatcher only; the first canvas-app adapter plugins land separately in . Capability `canvas` (+ the inner tool's own capability via the plugin runtime gate).",
       inputSchema: {
         adapter: z.string().describe('Plugin namespace to route to (e.g. `"figma"`).'),
         op: z
@@ -12814,7 +12814,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       inputSchema: {
         name: z
           .string()
-          .describe('npm package name of the plugin (e.g. "@kalebtec/browxai-plugin-example").'),
+          .describe('npm package name of the plugin (e.g. "@browxai/plugin-example").'),
       },
     },
     async ({ name }: { name: string }) => {

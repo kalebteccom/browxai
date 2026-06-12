@@ -275,7 +275,7 @@ describe("canvas keystone — canvas_query no-adapter error shape", () => {
       expect(r.code).toBe("no-adapter");
       expect(r.requestedAdapter).toBe("figma");
       expect(r.requestedOp).toBe("getNodeBounds");
-      expect(r.error).toContain("@kalebtec/browxai-plugin-figma");
+      expect(r.error).toContain("@browxai/plugin-figma");
 
       await callJson("close_session", { session });
     },

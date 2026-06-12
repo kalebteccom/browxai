@@ -1015,7 +1015,7 @@ export interface CanvasQueryNoAdapterError {
 export function noAdapterError(adapter: string, op: string): CanvasQueryNoAdapterError {
   return {
     ok: false,
-    error: `no canvas adapter registered for ${adapter}; install @kalebtec/browxai-plugin-${adapter} or pass a registered adapter namespace`,
+    error: `no canvas adapter registered for ${adapter}; install @browxai/plugin-${adapter} or pass a registered adapter namespace`,
     code: "no-adapter",
     requestedAdapter: adapter,
     requestedOp: op,

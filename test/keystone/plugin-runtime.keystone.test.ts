@@ -45,19 +45,13 @@ beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), "browxai-plugin-keystone-"));
   process.env.BROWX_WORKSPACE = workspace;
 
-  // Stage the @kalebtec/browxai-plugin-example package into
+  // Stage the @browxai/plugin-example package into
   // <workspace>/plugins/node_modules/. We copy the compiled output
   // from packages/plugins/example/dist/ — the keystone runs AFTER
   // `pnpm build` so dist/ is on disk.
   const sourceDir = join(__dirname, "..", "..", "packages", "plugins", "example");
-  const targetDir = join(
-    workspace,
-    "plugins",
-    "node_modules",
-    "@kalebtec",
-    "browxai-plugin-example",
-  );
-  mkdirSync(join(workspace, "plugins", "node_modules", "@kalebtec"), {
+  const targetDir = join(workspace, "plugins", "node_modules", "@browxai", "plugin-example");
+  mkdirSync(join(workspace, "plugins", "node_modules", "@browxai"), {
     recursive: true,
   });
   mkdirSync(targetDir, { recursive: true });
@@ -67,7 +61,7 @@ beforeAll(async () => {
   // Declare it.
   writeFileSync(
     join(workspace, "plugins.json"),
-    JSON.stringify({ plugins: ["@kalebtec/browxai-plugin-example"] }, null, 2),
+    JSON.stringify({ plugins: ["@browxai/plugin-example"] }, null, 2),
   );
 
   server = await createServer({});
@@ -91,7 +85,7 @@ describe(" plugin runtime — keystone", () => {
       plugins: Array<{ name: string; status: string; tools: string[]; namespace: string }>;
     }>("plugins_list", {});
     expect(list.ok).toBe(true);
-    const ex = list.plugins.find((p) => p.name === "@kalebtec/browxai-plugin-example");
+    const ex = list.plugins.find((p) => p.name === "@browxai/plugin-example");
     expect(ex).toBeDefined();
     expect(ex?.status).toBe("loaded");
     expect(ex?.namespace).toBe("example");
@@ -122,7 +116,7 @@ describe(" plugin runtime — keystone", () => {
       namespace: string;
       apiVersion: string;
       tools: Array<{ name: string }>;
-    }>("plugins_info", { name: "@kalebtec/browxai-plugin-example" });
+    }>("plugins_info", { name: "@browxai/plugin-example" });
     expect(info.ok).toBe(true);
     expect(info.namespace).toBe("example");
     expect(info.apiVersion).toBe("1.0.0");
@@ -135,6 +129,6 @@ describe(" plugin runtime — keystone", () => {
       config: { plugins: string[] };
     }>("get_config", {});
     expect(cfg.scope).toBe("resolved");
-    expect(cfg.config.plugins).toContain("@kalebtec/browxai-plugin-example");
+    expect(cfg.config.plugins).toContain("@browxai/plugin-example");
   });
 });

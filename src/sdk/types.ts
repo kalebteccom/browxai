@@ -1,4 +1,4 @@
-// Public type surface for `@kalebteccom/browxai` SDK consumers. Argument /
+// Public type surface for `browxai` SDK consumers. Argument /
 // result shapes are deliberately structural (`Record<string, unknown>` /
 // `BrowxaiResult`) so the SDK does not have to re-mirror every Zod schema
 // the MCP server already owns — the source of truth for input shape is the

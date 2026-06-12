@@ -59,10 +59,10 @@ describe("parseManifestField", () => {
       apiVersion: "1.0.0",
       namespace: "demo",
       register: "dist/index.js",
-      dependsOn: [{ plugin: "@kalebtec/browxai-plugin-example", version: "^1.0.0" }],
+      dependsOn: [{ plugin: "@browxai/plugin-example", version: "^1.0.0" }],
     });
     expect(m.dependsOn).toHaveLength(1);
-    expect(m.dependsOn[0]?.plugin).toBe("@kalebtec/browxai-plugin-example");
+    expect(m.dependsOn[0]?.plugin).toBe("@browxai/plugin-example");
   });
 
   it("rejects a dependsOn entry without plugin/version", () => {
