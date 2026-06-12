@@ -133,6 +133,7 @@ export default defineConfig({
           items: [
             { label: "Configuration", slug: "guides/configuration" },
             { label: "Recipes", slug: "guides/recipes" },
+            { label: "Agent guidance", slug: "guides/agent-guidance" },
           ],
         },
         {

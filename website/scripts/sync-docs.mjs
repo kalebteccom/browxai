@@ -19,6 +19,9 @@ const OUT = join(here, "..", "src", "content", "docs");
 const linkMap = [
   [/\]\(\/tool-reference\/?\)/g, "](/reference/tool-reference/)"],
   [/\]\(\/threat-model\/?\)/g, "](/security/threat-model/)"],
+  [/\]\(\.\/tool-reference\.md\)/g, "](/reference/tool-reference/)"],
+  [/\]\(\.\/threat-model\.md\)/g, "](/security/threat-model/)"],
+  [/\]\(\.\/agent-guidance\.md\)/g, "](/guides/agent-guidance/)"],
   [/\]\(\/getting-started\/?\)/g, "](/getting-started/)"],
   [/\]\(\.\/plugins\.md\)/g, "](/plugins/overview/)"],
   [/\]\(\.\/plugins-first-party\.md\)/g, "](/plugins/first-party/)"],
@@ -73,7 +76,14 @@ const pages = [
     out: "reference/tool-reference.md",
     title: "Tool reference",
     description:
-      "Every browxai tool: inputs, outputs, the configuration and session model, capabilities, and the stability policy.",
+      "Every browxai tool: inputs, outputs, example calls, the configuration and session model, capabilities, and the stability policy.",
+  },
+  {
+    src: "agent-guidance.md",
+    out: "guides/agent-guidance.md",
+    title: "Agent guidance",
+    description:
+      "The reach-for-this-not-that map for agents driving browxai: eval_js vs the curated surface, scoped reads, screenshot budgets, flake_check, BYOB cleanup, and capability minimalism.",
   },
   {
     src: "threat-model.md",
