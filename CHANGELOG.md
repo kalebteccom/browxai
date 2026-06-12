@@ -80,6 +80,17 @@ surface" covers.
   `rfcs/**` — internal docs stay in-repo without leaking into the
   published site.
 
+### Changed (CI)
+
+- **zizmor now gates.** The workflow audit in `quality.yml` ran with
+  `continue-on-error: true` while pre-existing high-severity findings
+  were open; those are fixed (the remaining low findings — undocumented
+  permissions, missing concurrency limits, version comments that didn't
+  match their pinned action SHAs — were closed in this pass), so the job
+  now fails the build on any low-or-above finding. zizmor is pinned
+  (1.16.3) and runs without the Advanced-Security SARIF upload, with
+  inline PR annotations instead.
+
 ### Fixed
 
 - **Plugin publishing actually works under OIDC trusted publishing.**

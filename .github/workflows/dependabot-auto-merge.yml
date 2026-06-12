@@ -7,16 +7,22 @@ on: pull_request
 
 permissions: {}
 
+# One run per PR; a force-push to the Dependabot branch supersedes the
+# previous evaluation, so cancelling in-flight runs is safe.
+concurrency:
+  group: dependabot-auto-merge-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   auto-merge:
     # Verify bot identity via the PR-author's user object — `user.type == 'Bot'`
     # combined with the GitHub App's `user.login` is not spoofable, unlike
-    # bare `github.actor` (universal-baseline rule 28 / zizmor bot-conditions).
+    # bare `github.actor` (zizmor bot-conditions).
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.user.type == 'Bot'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # gh pr merge --auto performs the merge commit
+      pull-requests: write # gh pr merge --auto flips the PR's auto-merge bit
     steps:
       - id: meta
         uses: dependabot/fetch-metadata@dbb049abf0d677abbd7f7eee0375145b417fdd34 # v2.2.0

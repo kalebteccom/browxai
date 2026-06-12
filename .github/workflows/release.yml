@@ -23,6 +23,12 @@ on:
 
 permissions: {}
 
+# One release at a time. `cancel-in-progress: false` queues a second tag
+# push instead of cancelling an in-flight publish halfway through.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,7 +42,7 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       # No `cache: pnpm` on setup-node below — tag-triggered release jobs
       # avoid the pnpm cache to stay immune to cache-poisoning (universal-
       # baseline rule 26 / zizmor cache-poisoning). The ~30s install penalty
@@ -44,7 +50,7 @@ jobs:
       # action's presence as a "cache enabled by default" heuristic (Low
       # confidence) — the suppression below documents that the real
       # mitigation is the absent `cache:` opt-in.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
@@ -78,9 +84,9 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       # No `cache: pnpm` — see cache-poisoning note on build job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -105,14 +111,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # action-gh-release attaches sbom.cdx.json to the Release
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       # No `cache: pnpm` — see cache-poisoning note on build job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -128,8 +134,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      id-token: write
-      contents: read
+      id-token: write # mints the OIDC token npm trusted publishing exchanges
+      contents: read # sparse checkout of the packaging files
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
@@ -147,7 +153,7 @@ jobs:
       # No `cache` opt-in on setup-node — tag-triggered publish job avoids
       # any package-manager cache to stay immune to cache-poisoning attacks
       # against the OIDC-publishing path (universal-baseline rule 26).
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
@@ -178,8 +184,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      id-token: write
-      contents: read
+      id-token: write # mints the OIDC token npm trusted publishing exchanges
+      contents: read # checkout of the plugin package sources
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
@@ -188,7 +194,7 @@ jobs:
       # lifecycle scripts and no production dependencies, so the OIDC job
       # only needs node + the upgraded npm CLI. No `cache` opt-in — see
       # cache-poisoning note on the publish job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org

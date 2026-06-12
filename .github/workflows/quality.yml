@@ -20,8 +20,8 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: 20
           cache: pnpm
@@ -37,8 +37,8 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: 20
           cache: pnpm
@@ -67,17 +67,13 @@ jobs:
         with:
           extra_args: --results=verified,unknown
 
+  # Gating since the workflow-hardening pass closed every high finding
+  # (cache-poisoning on release.yml, bot-conditions on dependabot-auto-
+  # merge.yml; docs.yml was deleted outright when the site moved to
+  # Netlify). The job previously ran advisory (continue-on-error) while
+  # those pre-existing highs were open.
   zizmor:
     runs-on: ubuntu-latest
-    # TODO(post-CI-rescue): zizmor surfaces ~9 high-severity pre-existing
-    # workflow audit findings (cache-poisoning on release.yml, excessive-
-    # permissions on docs.yml, bot-conditions on dependabot-auto-merge.yml,
-    # unpinned-uses on docs.yml). These pre-date this PR and need a focused
-    # workflow-hardening pass — out of scope for the CI-rescue PR that
-    # restored this job's ability to *run* (it was 404ing on the old
-    # woodruffw/zizmor-action repo path). Promote to gating once the
-    # workflows are hardened.
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -89,6 +85,20 @@ jobs:
       - uses: zizmorcore/zizmor-action@3aa7e2f1ad15075829ef5158ee06938ae12e1769 # v0.4.0
         with:
           persona: auditor
+          # Gate on low-and-above; auditor-persona informational findings
+          # (e.g. anonymous-definition) stay visible in the log without
+          # blocking merges.
+          min-severity: low
+          # Pinned so a new zizmor release adding audits can't break CI
+          # asynchronously. Bump deliberately alongside a local
+          # `zizmor --persona auditor .github/workflows/` run.
+          version: "1.16.3"
+          # No SARIF upload: GitHub code scanning needs Advanced Security,
+          # which this repo doesn't have pre-flip. Plain output + the
+          # propagated zizmor exit code are the gate; annotations surface
+          # findings inline on PRs.
+          advanced-security: "false"
+          annotations: "true"
 
   package-contents:
     runs-on: ubuntu-latest
@@ -98,8 +108,8 @@ jobs:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.0.2
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
         with:
           node-version: 20
           cache: pnpm
