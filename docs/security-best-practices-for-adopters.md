@@ -1,6 +1,6 @@
 # Best practices for adopters
 
-This page lists the operational practices we recommend for teams integrating browxai. The rationale behind each practice is summarised inline; the threat model behind them lives in [docs/threat-model.md](./threat-model.md).
+This page lists the operational practices we recommend for teams integrating browxai. The rationale behind each practice is summarised inline; the threat model behind them lives in [the threat model](/threat-model/).
 
 ## Install
 
