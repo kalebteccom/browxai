@@ -86,6 +86,13 @@ workspace restored from backup) or to re-pin after out-of-band changes.
 A `contentSha256` mismatch against the previous pin means the installed
 package's contents changed — audit before restarting the server.
 
+`browxai doctor` reports this whole surface as its plugins section:
+declaration parseability, declared-but-not-installed drift, orphan
+installs, lock health (missing lock, `contentSha256` mismatch, stale
+pins), and per-plugin manifest sanity (apiVersion, namespace,
+capabilities, `dependsOn`) — all without executing any plugin code.
+Each `✗` comes with a one-line fix, usually `browxai plugin sync`.
+
 ## Other CLI subcommands
 
 ```sh

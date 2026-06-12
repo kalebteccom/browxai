@@ -10,6 +10,21 @@ surface" covers.
 
 ### Added
 
+- **`browxai doctor` plugins section.** Doctor now inspects the plugin
+  runtime's declarative surface and reports ✓/✗/− per check with a
+  one-line fix each: `plugins.json` present/parseable (absent is an
+  informational `−`, not a failure), declared-but-not-installed drift
+  (`browxai plugin sync`), orphan installs in `plugins/node_modules/`
+  (`browxai plugin remove <name>` or declare it), lock health (missing
+  `plugins-lock.json`, `contentSha256` mismatch vs the installed
+  package — fail-closed, audit before re-pinning — and stale pins for
+  undeclared plugins), and per-plugin manifest sanity mirroring the
+  runtime's resolution stages without executing any plugin code:
+  `apiVersion` vs the runtime contract, namespace validity +
+  uniqueness, declared capabilities ⊆ the operator-enabled set (the
+  missing capability is named in the fix hint), and `dependsOn`
+  resolvable + acyclic. Any plugins `✗` fails doctor (exit 1);
+  informational `−` rows do not.
 - **First-party plugin wiring + reference docs.** New
   `docs/plugins-first-party.md` (published as `plugins/first-party` on
   the website) documenting every tool of the four `@browxai/plugin-*`
