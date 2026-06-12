@@ -14,7 +14,7 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 
 ## Pre-flight: security baseline + lint convergence
 
-- [ ] OSS security-baseline items closed (universal baseline in the portfolio repo)
+- [ ] OSS security-baseline items closed
 - [ ] Lint baseline clean: zero `// eslint-disable`, `as any`, `// @ts-ignore` without justification across `src/`, `test/`, `packages/`
 - [ ] `pnpm typecheck`, `pnpm test`, `pnpm test:keystone`, `pnpm build`, `pnpm lint`, `pnpm format:check`, `pnpm audit:prod` all green
 

@@ -1,6 +1,6 @@
 version: 2
 
-# Per ci-and-bot-threats.md §2.1:
+# Policy:
 #   - Weekly schedule (axios + Kong 2024 pattern: malicious dep ships, every
 #     instant-merging adopter eats it within 5 minutes).
 #   - Group dev-deps patches into a single PR.

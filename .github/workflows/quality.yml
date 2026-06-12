@@ -53,9 +53,8 @@ jobs:
 
   secret-scan:
     # Swapped from gitleaks/gitleaks-action (v2 requires GITLEAKS_LICENSE for
-    # org repos, v1 unmaintained) to trufflesecurity/trufflehog. Per universal-
-    # baseline rule 28: "TruffleHog Action" is an explicitly listed acceptable
-    # CLI-in-CI secret scanner. No license required.
+    # org repos, v1 unmaintained) to trufflesecurity/trufflehog — a
+    # CLI-in-CI secret scanner with no license requirement.
     runs-on: ubuntu-latest
     permissions:
       contents: read

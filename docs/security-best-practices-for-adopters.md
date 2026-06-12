@@ -1,6 +1,6 @@
 # Best practices for adopters
 
-This page lists the operational practices we recommend for teams integrating browxai. Background and rationale live in our shared audits under `projects/oss-security/` in the Kalebtec portfolio repo.
+This page lists the operational practices we recommend for teams integrating browxai. The rationale behind each practice is summarised inline; the threat model behind them lives in [docs/threat-model.md](./threat-model.md).
 
 ## Install
 

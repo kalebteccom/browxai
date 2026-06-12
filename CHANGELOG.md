@@ -145,6 +145,13 @@ surface" covers.
   CI license-allowlist gate, the SBOM pointer, and the Chromium-download
   licensing note. `pnpm licenses:notices` now prints the raw inventory
   to stdout instead of overwriting the curated file.
+- **Internal artifact references swept from public-facing surfaces.**
+  Internal work-item / baseline-document citations (`W-V12`,
+  `universal-baseline`, `npm-package-defense`, `ci-and-bot-threats`,
+  "portfolio repo") are removed from MCP tool descriptions, workflow and
+  CODEOWNERS/Dependabot comments, `AGENTS.md`, and the public docs — the
+  actual reasons are now stated inline instead. Historical CHANGELOG
+  entries and the unpublished `docs/ai-context/` layer are unchanged.
 - **MCP handshake version drift.** The server's exported `VERSION` (sent
   in the MCP handshake and used by the SDK client identities) was a
   hand-maintained `"0.1.0"` literal while the package shipped 0.7.0. It

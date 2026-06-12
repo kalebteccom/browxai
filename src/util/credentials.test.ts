@@ -138,7 +138,7 @@ describe("oathtool provider — env config (no real binary spawn)", () => {
   });
 });
 
-describe("applyCredentialToRegistry — W-V12 integration", () => {
+describe("applyCredentialToRegistry — SecretRegistry integration", () => {
   it("registers the password under an account-derived alias + returns aliasName, never the password", () => {
     const registry = new SecretRegistry();
     const provided: ProviderCredentialInternal = {

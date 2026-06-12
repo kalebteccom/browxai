@@ -1,5 +1,5 @@
-# Per ci-and-bot-threats.md §3.2 — every file that gates publish, CI
-# permissions, or release-pipeline trust requires @rowinkaleb review.
+# Every file that gates publish, CI permissions, or release-pipeline
+# trust requires @rowinkaleb review.
 #
 # A path-scoped branch ruleset on `main` enforces "require review from
 # CODEOWNERS" on these paths; defense in depth versus a PR that silently

@@ -5,7 +5,7 @@
 // does not contain forbidden patterns. Wired to `prepublishOnly` and to a
 // dedicated CI gate so two independent paths catch a regression.
 //
-// Forbidden contents (per universal-baseline §F, npm-package-defense §3.4):
+// Forbidden contents:
 //
 //   - Any dotfile / dot-directory other than the explicit allowlist
 //     (.env, .git, .github, .vscode, .idea, .claude, .DS_Store, etc).

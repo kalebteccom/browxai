@@ -1,7 +1,7 @@
 name: dependabot-auto-merge
 
-# Dev-deps patch only, 7-day cooldown via metadata.
-# Per ci-and-bot-threats.md §4.8 — every other Dependabot PR is human-reviewed.
+# Dev-deps patch only, 7-day cooldown via metadata. Every other
+# Dependabot PR is human-reviewed.
 
 on: pull_request
 
