@@ -13,12 +13,14 @@ Security fixes are issued against the **latest minor** and (for
 critical-only issues) the **previous minor**. Older minors are
 end-of-life and receive no patches; upgrade.
 
-| Version range              | Support level                                  |
-| -------------------------- | ---------------------------------------------- |
-| `1.(latest).x`             | Patches for any qualifying vulnerability.      |
-| `1.(latest-1).x`           | Critical only.                                 |
-| `1.(latest-2).x` and older | No support. Upgrade.                           |
-| `0.x`                      | No support. Pre-public-flip. Upgrade to `1.x`. |
+| Version range                   | Support level                             |
+| ------------------------------- | ----------------------------------------- |
+| latest minor                    | Patches for any qualifying vulnerability. |
+| previous minor                  | Critical only.                            |
+| anything older                  | No support. Upgrade.                      |
+
+(Pre-`1.0` releases carry no security guarantees, but reports are triaged
+in good faith and fixes land on the active branch best-effort.)
 
 "Critical" means: remote code execution, secrets exfiltration, capability
 gate bypass, or workspace escape. Everything else is "qualifying."
@@ -108,8 +110,8 @@ npm with provenance verified (`npm audit signatures`), has no built-in
 code-execution surface. All capability gates are **off by default**. No
 lifecycle script runs at install time.
 
-**What we DO NOT promise.** Enabling a capability gate (`eval`, `fs`,
-`network-unrestricted`, `extensions`, `byob-attach`, `device-emulation`,
+**What we DO NOT promise.** Enabling a capability gate (`eval`, `file-io`,
+`network-body`, `extensions`, `byob-attach`, `device-emulation`,
 `secrets`, `canvas`, etc.) is opt-in to adopter-side execution risk.
 The capability gate is a **Schelling point**, not a sandbox. browxai
 does not isolate or filter what runs once the gate is open. The host is
@@ -127,7 +129,7 @@ provenance after install. See
 Plugins published under `@browxai/plugin-*` are reviewed and
 released by the maintainer. Third-party plugins run **in-process with
 full Node access** — there is no sandbox. The plugin trust tier
-(`kalebtec`, `verified-community`, `unverified`) signals the review
+(`kalebtec`, `community`, `local`) signals the review
 level the host has applied, not an isolation guarantee. See
 [docs/plugin-governance.md](docs/plugin-governance.md) for the full
 policy.

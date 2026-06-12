@@ -2,7 +2,7 @@
 
 ## Current maintainers
 
-- **@rowinbot** (Rowin, Kalebtec) — sole merge authority and sole release authority.
+- **@rowinkaleb** (Rowin, Kalebtec) — sole merge authority and sole release authority.
 
 ## Backing
 
