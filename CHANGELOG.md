@@ -10,6 +10,20 @@ surface" covers.
 
 ### Added
 
+- **First-party plugin wiring + reference docs.** New
+  `docs/plugins-first-party.md` (published as `plugins/first-party` on
+  the website) documenting every tool of the four `@browxai/plugin-*`
+  packages — args, return shapes, the `<adapter>-not-loaded` envelopes,
+  the `eval`+`canvas` capability rationale, and a `canvas_query` usage
+  walkthrough. `docs/plugins.md` gains a complete `plugins.json`
+  example, the dev-loop (`file:`) vs published-package install flows,
+  and the `sync` + lock-pin flow. Per-plugin package hygiene: README
+  for the example plugin, `keywords`/`repository`/`homepage`/`bugs`
+  metadata on all four plugin manifests, and the canvas adapters'
+  advisory `browxaiVersion` corrected to `^0.7.0` (the `canvas`
+  capability ships with the v0.7.0 host). The `canvas_query` MCP tool
+  description no longer carries a dangling pre-release sentence and now
+  points at the adapter reference.
 - **Tooling baseline + OIDC release pipeline.** ESLint flat config,
   Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
   `.npmrc`, repo `.githooks/` (commit-msg + pre-commit), Dependabot config
