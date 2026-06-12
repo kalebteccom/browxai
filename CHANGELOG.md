@@ -104,6 +104,13 @@ surface" covers.
   release. The `publish` job also restores the executable bit on
   `dist/cli.js` after the artifact download (upload/download-artifact
   drops unix mode bits), so the published bin stays executable.
+- **`THIRD_PARTY_NOTICES.md` is real.** The file shipped in the npm
+  tarball was a placeholder stub; it now carries the actual notices:
+  per-package sections for the host and the plugin packages, license +
+  copyright + upstream link for each direct production dependency, the
+  CI license-allowlist gate, the SBOM pointer, and the Chromium-download
+  licensing note. `pnpm licenses:notices` now prints the raw inventory
+  to stdout instead of overwriting the curated file.
 - **MCP handshake version drift.** The server's exported `VERSION` (sent
   in the MCP handshake and used by the SDK client identities) was a
   hand-maintained `"0.1.0"` literal while the package shipped 0.7.0. It
