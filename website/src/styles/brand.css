@@ -471,10 +471,18 @@ main:has(.browx-404) > .content-panel {
   border-color: color-mix(in srgb, var(--browx-violet-400) 55%, transparent);
   transform: translateY(-2px);
 }
-.bx-step--n { grid-area: n; }
-.bx-step--e { grid-area: e; }
-.bx-step--s { grid-area: s; }
-.bx-step--w { grid-area: w; }
+.bx-step--n {
+  grid-area: n;
+}
+.bx-step--e {
+  grid-area: e;
+}
+.bx-step--s {
+  grid-area: s;
+}
+.bx-step--w {
+  grid-area: w;
+}
 .bx-step-k {
   font-family: var(--browx-font-display);
   font-weight: 600;
