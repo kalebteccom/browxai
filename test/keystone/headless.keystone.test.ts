@@ -95,6 +95,17 @@ describe("headless-CI keystone — six non-trivial primitives (incognito, zero-e
       expect(opened.ok).toBe(true);
       expect(opened.mode).toBe("incognito");
 
+      // engine seam — the active engine reports chromium through the new
+      // BrowserEngine port (list_sessions surfaces session.engine). This is the
+      // P0 zero-behavior-change proof at the seam: a real-browser session is
+      // tagged with its engine, and that engine is chromium.
+      const listed = await callJson<{
+        sessions: Array<{ id: string; engine: string }>;
+      }>("list_sessions", {});
+      const row = listed.sessions.find((s) => s.id === session);
+      expect(row, "opened session present in list_sessions").toBeTruthy();
+      expect(row!.engine).toBe("chromium");
+
       const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
         session,
         url: `${fixture.url}/`,
