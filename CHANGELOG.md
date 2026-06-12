@@ -45,10 +45,12 @@ surface" covers.
   sub-command usage text. Both exit 0; unknown subcommands still exit 2
   and now point at `--help`.
 - **Tooling baseline + OIDC release pipeline.** ESLint flat config,
-  Prettier, depcheck, lockfile-lint, `.editorconfig`, `.npmignore`,
+  Prettier, depcheck, `.editorconfig`, `.npmignore`,
   `.npmrc`, repo `.githooks/` (commit-msg + pre-commit), Dependabot config
-  with allowlisted auto-merge, `quality.yml` CI workflow (typecheck, lint,
-  format-check, depcheck, lockfile-lint), and an OIDC-trusted-publisher
+  with allowlisted auto-merge, `quality.yml` CI workflow (lint,
+  format-check, depcheck, prod audit, license allowlist, bespoke pnpm
+  lockfile lint, secret scan, zizmor, package-contents audit; typecheck +
+  tests run in `ci.yml`), and an OIDC-trusted-publisher
   `release.yml` workflow plus a package-contents audit script.
 - **Public-flip governance docs.** Top-level `CODE_OF_CONDUCT.md`,
   `CONTRIBUTING.md`, `MAINTAINERS.md`, `RELEASING.md`, `SECURITY.md`,
@@ -101,6 +103,13 @@ surface" covers.
   requirement.
 
 ### Changed (CI)
+
+- **depcheck actually runs in CI.** The changelog claimed it; now the
+  `quality.yml` lint job runs `pnpm run depcheck` (with the depcheck rc
+  keys corrected to the names the CLI reads). The unused `lockfile-lint`
+  devDependency it flagged is removed — the bespoke
+  `scripts/lockfile-lint.mjs` replaced that package long ago because
+  upstream cannot parse `pnpm-lock.yaml`.
 
 - **zizmor now gates.** The workflow audit in `quality.yml` ran with
   `continue-on-error: true` while pre-existing high-severity findings

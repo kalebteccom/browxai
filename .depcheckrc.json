@@ -1,17 +1,8 @@
 {
-  "ignorePatterns": [
-    "dist",
-    "node_modules",
-    "coverage",
-    "artifacts",
-    "docs/.vitepress/cache",
-    "docs/.vitepress/dist",
-    "packages/plugins/*/dist"
-  ],
-  "ignoreMatches": [
+  "ignore-patterns": ["dist", "node_modules", "coverage", "artifacts", "packages/plugins/*/dist", "website/dist"],
+  "ignores": [
     "@types/*",
     "tsx",
-    "vitepress",
     "vitest",
     "@eslint/*",
     "eslint",
@@ -22,8 +13,7 @@
     "lint-staged",
     "@cyclonedx/cyclonedx-npm",
     "license-checker-rseidelsohn",
-    "lockfile-lint",
     "depcheck"
   ],
-  "skipMissing": false
+  "skip-missing": false
 }
