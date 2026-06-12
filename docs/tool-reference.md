@@ -43,7 +43,7 @@ browxai ships a v1 plugin runtime that lets external packages register namespace
   - **`plugins_list()`** → array of `{name, namespace, version, trust, capabilities, dependsOn, status, declaredAt, enabledAt?}`. `status` ∈ `loaded | disabled-by-capability-mismatch | disabled-by-cycle | disabled-by-dep-missing | disabled-by-namespace-conflict | load-error`. Capability `read`.
   - **`plugins_info({name})`** → full manifest dump + transitive dep set + tools registered + their schemas. Capability `read`.
 
-See [`docs/plugin-authoring.md`](./plugin-authoring.md) for the full author guide (manifest fields, capability rules, dep declarations, call-graph enforcement, trust tiers, local-dev workflow, npm publishing, the typed SDK seam) and [`docs/plugins.md`](./plugins.md) for the marketplace index.
+See [`docs/plugin-authoring.md`](./plugin-authoring.md) for the full author guide (manifest fields, capability rules, dep declarations, call-graph enforcement, trust tiers, local-dev workflow, npm publishing, the typed SDK seam), [`docs/plugins.md`](./plugins.md) for the marketplace index + install/sync flows, and [`docs/plugins-first-party.md`](./plugins-first-party.md) for the per-tool reference on the shipped `@browxai/plugin-*` set.
 
 ## Configuration
 
@@ -2331,7 +2331,7 @@ When no plugin matches: `{ ok:false, error:"no canvas adapter registered for <ad
 
 When a plugin matches: the inner plugin tool's own capability is enforced via the plugin call-graph gate, so a `canvas` capability turned on alone is not enough to invoke an adapter operation whose plugin declared a different gate.
 
-The dispatcher ships today; the canvas-app adapter plugins (`@browxai/plugin-figma`, `@browxai/plugin-tldraw`, `@browxai/plugin-excalidraw`) install separately. `canvas_query` is a forward-compatible API: writing an agent loop against `canvas_query({adapter:"figma", op:"…"})` works as soon as the operator installs the matching plugin.
+The dispatcher ships in the host; the canvas-app adapter plugins (`@browxai/plugin-figma`, `@browxai/plugin-tldraw`, `@browxai/plugin-excalidraw`) install separately via `browxai plugin install`. `canvas_query` is a forward-compatible API: writing an agent loop against `canvas_query({adapter:"figma", op:"…"})` works as soon as the operator installs the matching plugin. The full per-adapter op surface (every op, args, return shape, error codes) is documented in [`docs/plugins-first-party.md`](./plugins-first-party.md).
 
 ### Canvas-app automation — BYO vision pattern
 

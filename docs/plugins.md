@@ -2,18 +2,30 @@
 
 This is the operator-facing index of browxai plugins. For **authoring
 a plugin**, see [`docs/plugin-authoring.md`](./plugin-authoring.md).
+For the per-tool reference on the shipped first-party plugins, see
+[`docs/plugins-first-party.md`](./plugins-first-party.md).
 
 The plugin runtime ships as part of browxai's v1.0 foundations.
-The first wave of plugins consumes the runtime; this index will grow
-as the canvas plugins and the diagnostics-report plugin land.
+The first wave of plugins — the reference plugin plus the three
+canvas-app adapters — consumes the runtime today; this index grows as
+further plugins (e.g. the diagnostics-report plugin) land.
 
 ## How to install a plugin
 
+The happy path is an npm install by package name:
+
 ```sh
-# From npm:
-$ browxai plugin install @browxai/plugin-example
-# From a local working directory:
-$ browxai plugin install file:./my-plugin/
+$ browxai plugin install @browxai/plugin-figma
+```
+
+During plugin development (or pre-publish, e.g. working from a checkout
+of this repo before the public flip), install from a local working
+directory instead — same CLI, `file:` source, trust-tagged `local`:
+
+```sh
+# Dev-loop: build the plugin, then install its directory by path.
+$ pnpm build                                            # in the browxai repo
+$ browxai plugin install file:./packages/plugins/figma/
 ```
 
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):
@@ -27,6 +39,52 @@ Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.b
 lifecycle is resolved-once-at-server-start. `get_config({scope:"resolved"})`
 returns the LIVE enabled set; a divergence between live and persisted
 surfaces as the `pluginsPendingRestart` flag.
+
+## `plugins.json` — a complete example
+
+The declarative file at `<workspace>/plugins.json` after installing the
+example plugin plus all three canvas adapters:
+
+```json
+{
+  "plugins": {
+    "@browxai/plugin-example": { "enabled": true },
+    "@browxai/plugin-figma": { "enabled": true },
+    "@browxai/plugin-tldraw": { "enabled": true },
+    "@browxai/plugin-excalidraw": { "enabled": true }
+  }
+}
+```
+
+- `enabled: false` means "declared but skipped at server start" — a
+  way to switch a plugin off without uninstalling it.
+- A `trust` field per entry overrides the trust tier (the CLI writes
+  `"trust": "local"` on `file:` installs automatically).
+- A shorthand array form (`"plugins": ["@browxai/plugin-example", …]`)
+  is also accepted; every entry is treated as enabled.
+
+`browxai plugin install` maintains this file for you; hand-editing is
+supported for the `enabled`/`trust` toggles. After any change, restart
+the server.
+
+### The `sync` + lock flow
+
+Each install/upgrade pins `{version, source, contentSha256}` per plugin
+into `<workspace>/plugins-lock.json`. `browxai plugin sync` re-runs the
+package-manager install inside `<workspace>/plugins/` (reconciling
+`node_modules/` with what was previously installed there) and refreshes
+the lock pin for every plugin declared in `plugins.json`:
+
+```sh
+$ browxai plugin sync
+browxai plugin: syncing 4 declared plugin(s)
+browxai plugin: sync done. Server restart required — …
+```
+
+Use it when the install dir has drifted (a wiped `node_modules/`, a
+workspace restored from backup) or to re-pin after out-of-band changes.
+A `contentSha256` mismatch against the previous pin means the installed
+package's contents changed — audit before restarting the server.
 
 ## Other CLI subcommands
 
@@ -45,7 +103,13 @@ $ browxai plugin sync                       # reconcile installed dir with plugi
 - **`plugins_info({name})`** — full manifest dump + tool registry for
   one plugin. Read-only (`read`).
 
-## Currently published
+## First-party plugins
+
+Four Kalebtec-maintained plugins ship from this repo and publish as
+`@browxai/plugin-*`. **The per-tool reference — every op, its args, its
+return shape, the not-loaded envelopes, and a usage walkthrough — lives
+in [`docs/plugins-first-party.md`](./plugins-first-party.md).** The
+one-line summary:
 
 | Name                                                            | Tier       | Description                                                                                                                                                                                                                                                  |
 | --------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -76,7 +140,7 @@ operator can audit.
 
 The plugin runtime turns browxai from "the best curated agentic-
 browser substrate" into "the ecosystem substrate". The runtime is
-the generic primitive; the canvas plugins and
-the diagnostics-report plugin will be the first real consumers, and
-will demonstrate the inter-plugin composition model
+the generic primitive; the canvas adapter plugins are the first real
+consumers, and the diagnostics-report plugin will follow as the first
+demonstration of the inter-plugin composition model
 (`dependsOn`-declared, call-graph-enforced).

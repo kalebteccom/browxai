@@ -350,3 +350,7 @@ at the manifest level, route every tool through `api.callTool("eval_js",
 return a clear `code:"<adapter>-not-loaded"` error when the host app
 isn't on the page. That shape is the recommended pattern for any new
 canvas-app adapter.
+
+The operator-facing reference for these plugins — every op with args,
+return shape, and error codes, plus a usage walkthrough — is
+[`docs/plugins-first-party.md`](./plugins-first-party.md).
