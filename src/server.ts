@@ -18,10 +18,6 @@ import {
   clearLocaleCdp,
   applyTimezoneCdp,
   clearTimezoneCdp,
-  applyGeolocation,
-  clearGeolocation,
-  applyColorScheme,
-  applyReducedMotion,
   applyUserAgentCdp,
   clearUserAgentCdp,
   applyPermissions,
@@ -284,6 +280,12 @@ import {
   SafariScriptSubstrate,
   type ScriptSubstrate,
 } from "./page/script-substrate.js";
+import {
+  PlaywrightEmulationSubstrate,
+  SafariEmulationSubstrate,
+  type EmulationResult,
+  type EmulationSubstrate,
+} from "./page/emulation-substrate.js";
 import { screenshotSave } from "./page/screenshot-save.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
@@ -1382,6 +1384,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     const safariHandle = e.session.safari?.();
     if (safariHandle) return new SafariScriptSubstrate(safariHandle);
     return new PlaywrightScriptSubstrate(() => e.session.page(), e.session.engine);
+  };
+
+  // The live-emulation capability port (RFC 0003): selected by the engine's
+  // capability, exactly like `actionsFor` / `captureFor`. Playwright engines wrap
+  // the existing `context.setGeolocation` / `page.emulateMedia` live mutators;
+  // safari has no live-emulation surface beyond viewport, so the adapter refuses
+  // these three cleanly. Scoped to the three cross-browser live primitives only —
+  // the CDP-only `set_locale` / `set_timezone` / `set_user_agent` stay engine-
+  // gated, and `set_viewport` lives in the ActionSubstrate. The handlers call
+  // `emulationFor(e).set*(…)` and never branch on engine; the `deviceEmulation`
+  // state mutation + warnings + envelope stay in the handler.
+  const emulationFor = (e: SessionEntry): EmulationSubstrate => {
+    const safariHandle = e.session.safari?.();
+    if (safariHandle) return new SafariEmulationSubstrate(safariHandle);
+    return new PlaywrightEmulationSubstrate(
+      () => e.session.page().context(),
+      () => e.session.page(),
+      e.session.engine,
+    );
   };
 
   // resolve the effective anti-wedge deadline for a call —
@@ -10949,6 +10970,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     ],
   });
 
+  /** Render an EmulationSubstrate refusal as the standard failure envelope (the
+   *  Safari adapter has no live surface for the knob). Carries the adapter's
+   *  `hint` so the agent knows where the override IS available. */
+  const emulationRefusal = (toolName: string, refusal: EmulationResult & { kind: "refusal" }) => ({
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(
+          {
+            ok: false,
+            action: { type: toolName },
+            error: refusal.error,
+            ...(refusal.hint ? { hint: refusal.hint } : {}),
+            tokensEstimate: 0,
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  });
+
   register(
     "set_locale",
     {
@@ -11047,7 +11090,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const isClear = latitude === null || latitude === undefined;
         if (isClear) {
-          await clearGeolocation(e.session.page().context());
+          const r = await emulationFor(e).setGeolocation(null);
+          if (r.kind === "refusal") return emulationRefusal("set_geolocation", r);
           e.deviceEmulation.geolocation = undefined;
           return emulationResult(e, { geolocation: null });
         }
@@ -11058,7 +11102,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           );
         }
         const coords = { latitude, longitude, accuracy };
-        await applyGeolocation(e.session.page().context(), coords);
+        const r = await emulationFor(e).setGeolocation(coords);
+        if (r.kind === "refusal") return emulationRefusal("set_geolocation", r);
         e.deviceEmulation.geolocation = coords;
         const warnings: string[] = [];
         const grantedHere = e.deviceEmulation.permissions.get("") ?? [];
@@ -11094,7 +11139,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const e = await entryFor(session);
       try {
-        await applyColorScheme(e.session.page(), scheme as ColorScheme);
+        const r = await emulationFor(e).setColorScheme(scheme as ColorScheme);
+        if (r.kind === "refusal") return emulationRefusal("set_color_scheme", r);
         e.deviceEmulation.colorScheme =
           scheme === "no-preference" ? undefined : (scheme as ColorScheme);
         return emulationResult(e, { colorScheme: scheme });
@@ -11120,7 +11166,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       try {
         const motion: ReducedMotion = on ? "reduce" : "no-preference";
-        await applyReducedMotion(e.session.page(), motion);
+        const r = await emulationFor(e).setReducedMotion(motion);
+        if (r.kind === "refusal") return emulationRefusal("set_reduced_motion", r);
         e.deviceEmulation.reducedMotion = on ? "reduce" : undefined;
         return emulationResult(e, { reducedMotion: motion });
       } catch (err) {
