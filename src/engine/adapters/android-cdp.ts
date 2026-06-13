@@ -39,7 +39,7 @@
 // sense — the user opens Chrome on their device. So launch returns a structured
 // `android-launch-not-supported`; Android is attach-only.
 
-import type { Browser, CDPSession } from "playwright-core";
+import type { Browser, CDPSession, Page } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
 import type { EngineCapabilities, EngineKind } from "../types.js";
@@ -63,6 +63,7 @@ import {
  *  session layer needs to tear the adb forward down on close. */
 export interface AndroidAttachHandles {
   browser: Browser;
+  page: Page;
   cdp: CDPSession;
   /** The loopback port the device socket was forwarded to. */
   localPort: number;
@@ -132,7 +133,7 @@ export class AndroidCdpAdapter {
       const context = browser.contexts()[0] ?? (await browser.newContext());
       const page = context.pages()[0] ?? (await context.newPage());
       const cdp = await context.newCDPSession(page);
-      return { browser, cdp, localPort, serial, removeForward };
+      return { browser, page, cdp, localPort, serial, removeForward };
     } catch (err) {
       await removeForward();
       throw err;

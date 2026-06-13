@@ -70,9 +70,11 @@ export interface SessionOptions {
   extensionPaths?: readonly string[];
   /** Which browser engine to launch. Defaults to `"chromium"` everywhere — the
    *  default makes every launch byte-identical to the pre-seam behavior.
-   *  chromium, firefox, and webkit are all implemented (each via its adapter);
-   *  a future-declared engine without an adapter throws
-   *  `engine-not-yet-supported` at the launch path (see src/engine/). */
+   *  chromium, firefox, webkit, and android are all implemented (each via its
+   *  adapter); a future-declared engine without an adapter throws
+   *  `engine-not-yet-supported` at the launch path (see src/engine/). `android`
+   *  is attach-only (real Chrome-on-Android over adb + CDP) — managed/ephemeral
+   *  launch refuses with `android-launch-not-supported`. */
   browserType?: EngineKind;
 }
 

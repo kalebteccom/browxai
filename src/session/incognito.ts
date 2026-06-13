@@ -9,6 +9,7 @@
 
 import { log } from "../util/logging.js";
 import {
+  AndroidCdpAdapter,
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
   PlaywrightWebKitAdapter,
@@ -19,6 +20,11 @@ import type { BrowserSession, SessionOptions } from "./types.js";
 
 export async function openIncognitoSession(opts: SessionOptions = {}): Promise<BrowserSession> {
   const engine: EngineKind = opts.browserType ?? "chromium";
+  // android is ATTACH-ONLY — ephemeral launch (spawning a browser we own) is not
+  // a thing on the user's phone (RFC D3/D8). Surface the structured refusal.
+  if (engine === "android") {
+    await new AndroidCdpAdapter().launch();
+  }
   log.info("session.incognito: launching ephemeral browser", {
     headless: !!opts.headless,
     engine,

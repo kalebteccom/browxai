@@ -635,15 +635,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // session is created lazily on the first browser-touching tool call — so
   // list_tools / discovery still don't launch a browser, and every existing
   // caller that omits `session` keeps working unchanged.
-  // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
-  // persistent. This is the default a lazily-created session inherits; an
-  // explicit open_session can override per id (incognito, or a named profile).
-  const serverDefaultMode: SessionMode = opts.attachCdp ? "attached" : "persistent";
   // The engine every session this server opens runs on. Defaults to chromium;
-  // firefox + webkit are also wired (the launch path drives each via its
-  // adapter). A future-declared engine without an adapter is rejected
+  // firefox + webkit + android are also wired (the launch path drives each via
+  // its adapter). A future-declared engine without an adapter is rejected
   // (engine-not-yet-supported) — there is no silent fallback to chromium.
   const serverEngine: EngineKind = opts.browserType ?? "chromium";
+  // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
+  // persistent. android is ATTACH-ONLY (the user's real Chrome-on-Android over
+  // adb + CDP — RFC D3/D8), so it defaults to "attached" with no BROWX_ATTACH_CDP
+  // (the endpoint is DISCOVERED over adb, not configured). This is the default a
+  // lazily-created session inherits; an explicit open_session can override per id.
+  const serverDefaultMode: SessionMode =
+    serverEngine === "android" || opts.attachCdp ? "attached" : "persistent";
   const registry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
@@ -724,7 +727,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       let sess: BrowserSession;
       if (mode === "attached") {
-        if (!opts.attachCdp) {
+        // android attach is endpoint-DISCOVERED over adb (RFC D3/D8) — it does
+        // NOT need BROWX_ATTACH_CDP. The desktop CDP-attach lane still requires it.
+        if (serverEngine !== "android" && !opts.attachCdp) {
           throw new Error(
             `session "${id}": mode "attached" requires the server to be started with BROWX_ATTACH_CDP (per-session attach isn't supported yet)`,
           );

@@ -5,6 +5,7 @@
 import { log } from "../util/logging.js";
 import { resolveWorkspace } from "../util/workspace.js";
 import {
+  AndroidCdpAdapter,
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
   PlaywrightWebKitAdapter,
@@ -17,6 +18,12 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   const workspace = resolveWorkspace();
   const profileDir = opts.profileDir ?? workspace.sub("profile");
   const engine: EngineKind = opts.browserType ?? "chromium";
+  // android is ATTACH-ONLY — managed launch (spawning a browser we own) is not a
+  // thing on the user's phone (RFC D3/D8). Surface the structured refusal rather
+  // than try to launch a chromium process locally.
+  if (engine === "android") {
+    await new AndroidCdpAdapter().launch();
+  }
   log.info("session.managed: launching", { profileDir, headless: !!opts.headless, engine });
 
   // opt-in web-security-off. Off by default (safe-by-default is the
