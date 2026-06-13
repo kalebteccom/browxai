@@ -11,7 +11,8 @@ import type { RefRegistry } from "../page/refs.js";
 import type { SnapshotSubstrate } from "../page/snapshot-substrate.js";
 import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
-import type { NetworkBuffer, WsBuffer } from "../page/network.js";
+import type { SessionNetworkRing, SessionWsRing } from "../page/network.js";
+import type { NetworkSubstrate } from "../page/network-substrate.js";
 import type { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import type { WorkersRegistry } from "../page/workers.js";
 import type { BrowxBridge } from "../helper/bridge.js";
@@ -57,14 +58,24 @@ export interface SessionEntry {
    *  any engine, not only chromium. Selected once at session creation
    *  (`snapshotSubstrateFor`) so the hot path is a captured-handle delegate. */
   snapshotSubstrate: SnapshotSubstrate;
+  /** Engine-agnostic network tap + ActionResult-network-slice source (RFC 0002
+   *  D5). Chromium gets the verbatim CDP substrate (NetworkBuffer / WsBuffer /
+   *  NetworkTap / fetchResponseBody); firefox / webkit get the Playwright context-
+   *  event substrate. The session-wide rings below (`network` / `ws`) ARE this
+   *  substrate's rings; the action window mints its per-action tap from it and
+   *  `network_body` fetches through it — so the network tools + the envelope's
+   *  network slice run on any engine. Selected once at session creation
+   *  (`networkSubstrateFor`) so the hot path is a captured-handle delegate. */
+  networkSubstrate: NetworkSubstrate;
   /** per-session frame ID assignment. `frames_list` mints/looks up
    *  stable `fN` IDs from this registry; snapshot/find/action consult it to
    *  resolve a `frame` arg back to a Playwright `Frame` handle. */
   frames: FrameRegistry;
   console: ConsoleBuffer;
-  network: NetworkBuffer;
-  /** session-wide WebSocket/SSE frame ring. */
-  ws: WsBuffer;
+  /** session-wide HTTP request ring (`networkSubstrate.http`). */
+  network: SessionNetworkRing;
+  /** session-wide WebSocket/SSE frame ring (`networkSubstrate.ws`). */
+  ws: SessionWsRing;
   /** per-session interactive-WS registry (capability `action`). Lazy:
    *  the page-side wrapper is only installed on first `ws_send` /
    *  `ws_intercept`. Holds the active interceptor patterns server-side

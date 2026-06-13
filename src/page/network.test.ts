@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { patterniseUrl, extractTopLevelKeys } from "./network.js";
+import { patterniseUrl, extractTopLevelKeys, cdpTypeFromPlaywright } from "./network.js";
 
 describe("patterniseUrl — url redaction", () => {
   it("strips query strings", () => {
@@ -78,5 +78,40 @@ describe("extractTopLevelKeys — response shape redaction", () => {
     for (let i = 0; i < 30; i++) big[`k${i}`] = i;
     const result = extractTopLevelKeys(big);
     expect(result).toHaveLength(20);
+  });
+});
+
+describe("cdpTypeFromPlaywright — cross-engine resourceType reconciliation (RFC D5)", () => {
+  it("maps Playwright lowercase types onto the CDP-capitalised bucket names", () => {
+    // The names the NOISE_TYPES fold + the byType summary key on must be the CDP
+    // capitalisation so the network_read shape is engine-blind.
+    expect(cdpTypeFromPlaywright("stylesheet")).toBe("Stylesheet");
+    expect(cdpTypeFromPlaywright("image")).toBe("Image");
+    expect(cdpTypeFromPlaywright("font")).toBe("Font");
+    expect(cdpTypeFromPlaywright("media")).toBe("Media");
+    expect(cdpTypeFromPlaywright("manifest")).toBe("Manifest");
+    expect(cdpTypeFromPlaywright("document")).toBe("Document");
+    expect(cdpTypeFromPlaywright("script")).toBe("Script");
+    expect(cdpTypeFromPlaywright("xhr")).toBe("XHR");
+    expect(cdpTypeFromPlaywright("fetch")).toBe("Fetch");
+    expect(cdpTypeFromPlaywright("eventsource")).toBe("EventSource");
+    expect(cdpTypeFromPlaywright("websocket")).toBe("WebSocket");
+  });
+
+  it("folds the noise types to the same capitalised names NOISE_TYPES gates on", () => {
+    // NOISE_TYPES = {Image, Font, Stylesheet, Media, Manifest}. The mapper must
+    // produce exactly those so the off-Chromium noise-fold matches chromium.
+    for (const t of ["image", "font", "stylesheet", "media", "manifest"]) {
+      const mapped = cdpTypeFromPlaywright(t);
+      expect(["Image", "Font", "Stylesheet", "Media", "Manifest"]).toContain(mapped);
+    }
+  });
+
+  it("degrades an unknown / CDP-only type to Other (no Playwright equivalent)", () => {
+    // CDP types like Ping / CSPViolationReport / Preflight have no Playwright form.
+    expect(cdpTypeFromPlaywright("ping")).toBe("Other");
+    expect(cdpTypeFromPlaywright("cspviolationreport")).toBe("Other");
+    expect(cdpTypeFromPlaywright("")).toBe("Other");
+    expect(cdpTypeFromPlaywright("other")).toBe("Other");
   });
 });

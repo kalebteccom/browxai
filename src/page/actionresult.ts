@@ -7,13 +7,13 @@
 // The always-on cheap signals (navigation / structure / console / pageErrors / element)
 // are real. `tree_diff` is a follow-on.
 
-import type { CDPSession, Page } from "playwright-core";
+import type { Page } from "playwright-core";
 import { walk, type A11yNode } from "./a11y.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
+import type { NetworkSubstrate } from "./network-substrate.js";
 import type { RefRegistry } from "./refs.js";
 import { findByRef, serialise } from "./snapshot.js";
 import {
-  NetworkTap,
   type NetworkEntry,
   type NetworkSummary,
   type MutationEntry,
@@ -309,13 +309,14 @@ export interface ActionResult {
 
 export interface ActionContext {
   page: Page;
-  /** Raw CDP handle — present only on chromium. The action window's
-   *  NetworkTap rides it (network slice of the envelope; the Playwright-event
-   *  network tap is P2b). Undefined off Chromium: the network slice is then
-   *  empty and the rest of the envelope (a11y delta, nav, console, dialogs)
-   *  still builds. Optional so the action window — and therefore
-   *  navigate/click/fill — runs on any engine. */
-  cdp?: CDPSession;
+  /** Engine-agnostic network substrate (RFC 0002 D5). The action window mints
+   *  its per-action tap from here (`openActionTap()`): chromium → the verbatim
+   *  CDP NetworkTap; firefox/webkit → the Playwright context-event tap. The
+   *  network slice of the envelope is built off whichever the engine supplied —
+   *  so navigate/click/fill carry a real network slice on every engine, not just
+   *  chromium. Optional so a context with no substrate (defensive — never the
+   *  live path) still builds the rest of the envelope. */
+  network?: NetworkSubstrate;
   /** Engine-agnostic snapshot/a11y substrate (RFC 0002 D4). The pre/post
    *  `snapshotDelta` trees come from here, so the action window builds its
    *  structure diff on chromium (CDP a11y) and firefox (the page-side walker)
@@ -334,9 +335,12 @@ export interface ActionContext {
    *  successful actions append to the recording. Best-effort: errors during
    *  recording never affect the action's outcome. */
   recorder?: import("./recording.js").Recorder;
-  /** session WS/SSE frame ring. When present, frames that arrived during
-   *  the action window are sliced into `ActionResult.network.wsFrames`. */
-  ws?: import("./network.js").WsBuffer;
+  /** session WS/SSE frame ring (the engine's `networkSubstrate.ws`). When
+   *  present, frames that arrived during the action window are sliced into
+   *  `ActionResult.network.wsFrames` via `since()`. Engine-agnostic
+   *  (`SessionWsRing`): the CDP `WsBuffer` and the Playwright `PlaywrightWsBuffer`
+   *  both satisfy it. */
+  ws?: import("./network.js").SessionWsRing;
   /** per-session dialog policy state. When present, dialogs that fired
    *  during the action window are sliced into `ActionResult.dialogs[]`; if
    *  any fired under `raise` mode the action is marked failed with the
@@ -441,10 +445,12 @@ export async function runInActionWindow(
   };
   ctx.page.on("framenavigated", onFrameNav);
 
-  // The CDP NetworkTap supplies the network slice on chromium; off Chromium it
-  // is absent (the Playwright-event network tap is P2b), so the network slice
-  // is empty and the rest of the envelope still builds.
-  const net = ctx.cdp ? new NetworkTap(ctx.cdp, ctx.secrets ?? null) : null;
+  // The per-action network tap comes from the engine's substrate (RFC 0002 D5):
+  // chromium → the CDP NetworkTap; firefox/webkit → the Playwright context-event
+  // tap. Both produce the same `{summary, requests, mutations}` close shape, so
+  // the envelope builder downstream is engine-blind. (`ctx.secrets` was already
+  // wired into the substrate at session creation; the tap inherits it.)
+  const net = ctx.network ? ctx.network.openActionTap() : null;
   if (net) await net.open();
 
   // --- dispatch ---

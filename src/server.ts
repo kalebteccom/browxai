@@ -95,6 +95,7 @@ import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
 import { composeSnapshotForFrame } from "./page/compose.js";
 import { snapshotSubstrateFor } from "./page/snapshot-substrate-select.js";
+import { networkSubstrateFor } from "./page/network-substrate-select.js";
 import { find } from "./page/find.js";
 import { listFrames, resolveFrameById, FrameRegistry, MAIN_FRAME_ID } from "./page/frames.js";
 import { textSearch } from "./page/text_search.js";
@@ -245,7 +246,6 @@ import {
   type PersistentScope,
 } from "./util/config-store.js";
 import { ConsoleBuffer } from "./page/console.js";
-import { NetworkBuffer, WsBuffer, fetchResponseBody } from "./page/network.js";
 import {
   newHarRecorderState,
   buildRecordHarOption,
@@ -834,22 +834,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
-      // The network/WS tap is the CDP substrate (P2 ports it onto Playwright
-      // events). On an engine without CDP (firefox) the buffers are constructed
-      // un-attached — `network_read`/`ws_read` return empty until the substrate
-      // port lands — rather than throwing at session creation. `sess.cdp?.()`
-      // is undefined off-chromium; the buffers no-op their `attach`.
-      const networkBuf = new NetworkBuffer(sess.cdp?.());
-      await networkBuf.attach();
-      const wsBuf = new WsBuffer(sess.cdp?.());
-      await wsBuf.attach();
+      // The network/WS substrate is selected by engine capability (RFC 0002 D5):
+      // chromium (CDP present) gets the verbatim CDP NetworkBuffer/WsBuffer/tap;
+      // firefox/webkit get the Playwright context-event buffers. The session-wide
+      // rings attach once here; the action window mints its per-action tap from
+      // the substrate and `network_body` fetches through it — so the network tools
+      // + the envelope's network slice run on every engine.
+      const networkSub = networkSubstrateFor(sess);
+      await networkSub.attach();
+      const networkBuf = networkSub.http;
+      const wsBuf = networkSub.ws;
       // per-session secrets registry. Empty until `register_secret` is
       // called; the egress sinks below all reference this same instance so
       // a later register-call lights up masking globally for the session.
       const secretsReg = new SecretRegistry();
       consoleBuf.setSecrets(secretsReg);
-      networkBuf.setSecrets(secretsReg);
-      wsBuf.setSecrets(secretsReg);
+      networkSub.setSecrets(secretsReg);
       const br = new BrowxBridge();
       await br.attach(sess.page().context());
       // dialog policy — install per-page on current + future pages.
@@ -1021,6 +1021,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         // signal requireCdp keys on). Captured once here so the hot snapshot/find
         // path is a direct delegate, no per-call allocation.
         snapshotSubstrate: snapshotSubstrateFor(sess),
+        // Engine-agnostic network substrate (RFC 0002 D5). `network` / `ws` below
+        // ARE this substrate's session-wide rings; the action window mints its
+        // per-action tap from it. Captured once here so the hot envelope path is
+        // a captured-handle delegate (no per-call allocation beyond the per-action
+        // tap the CDP path already allocated).
+        networkSubstrate: networkSub,
         frames: new FrameRegistry(),
         console: consoleBuf,
         network: networkBuf,
@@ -1238,11 +1244,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
     page: e.session.page(),
-    // CDP only when the engine has it (chromium). The action window's network
-    // tap rides it; off Chromium it is absent and the network slice is empty,
-    // while the a11y delta / nav / console envelope still builds — so
-    // navigate/click/fill run on firefox.
-    ...(e.session.cdp ? { cdp: e.session.cdp() } : {}),
+    // The action window mints its per-action network tap from this substrate
+    // (RFC 0002 D5): chromium → the CDP NetworkTap; firefox/webkit → the
+    // Playwright context-event tap. So the envelope's network slice is real on
+    // every engine, not just chromium.
+    network: e.networkSubstrate,
     snapshot: e.snapshotSubstrate,
     refs: e.refs,
     console: e.console,
@@ -3323,10 +3329,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // real-value gets substituted with its alias on egress. Base64 bodies
       // pass through unchanged (the literal scan would never match an
       // encoded form; documented in tool-reference.md as a known limitation).
-      const r = await fetchResponseBody(
-        requireCdp(e.session),
+      // Engine-agnostic via the network substrate (RFC 0002 D5): chromium fetches
+      // on demand (CDP Network.getResponseBody); firefox/webkit return the body
+      // captured at response time into the substrate's bounded recent-window cache.
+      const r = await e.networkSubstrate.fetchBody(
         requestId,
-        undefined,
         caps.enabled.has("secrets") ? e.secrets : null,
       );
       return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
@@ -11737,13 +11744,15 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // since they referenced the now-closed CDP session.
     const consoleBuf = new ConsoleBuffer();
     consoleBuf.attach(sess.page());
-    const networkBuf = new NetworkBuffer(requireCdp(sess));
-    await networkBuf.attach();
-    const wsBuf = new WsBuffer(requireCdp(sess));
-    await wsBuf.attach();
+    // Re-select the network substrate on the rebuilt context (extensions are
+    // chromium-only, so this stays the CDP substrate — but routing through the
+    // selector keeps the rebuild engine-agnostic and the entry's substrate live).
+    const networkSub = networkSubstrateFor(sess);
+    await networkSub.attach();
+    const networkBuf = networkSub.http;
+    const wsBuf = networkSub.ws;
     consoleBuf.setSecrets(e.secrets);
-    networkBuf.setSecrets(e.secrets);
-    wsBuf.setSecrets(e.secrets);
+    networkSub.setSecrets(e.secrets);
     const br = new BrowxBridge();
     await br.attach(sess.page().context());
     attachDialogPolicy(sess.page().context(), e.dialog);
@@ -11861,6 +11870,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // here so every caller holding `entry` keeps working.
     e.session = sess;
     e.console = consoleBuf;
+    e.networkSubstrate = networkSub;
     e.network = networkBuf;
     e.ws = wsBuf;
     e.bridge = br;

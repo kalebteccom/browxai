@@ -10,7 +10,7 @@
 // same window.
 
 import { walk } from "./a11y.js";
-import { NetworkTap, type NetworkEntry, type NetworkSummary, type WsFrame } from "./network.js";
+import { type NetworkEntry, type NetworkSummary, type WsFrame } from "./network.js";
 import type { ActionContext } from "./actionresult.js";
 
 /** Roles that signal a page-level transient/notification surface. */
@@ -60,9 +60,10 @@ export async function watchWindow(
   // tap's literal-value sanitisation runs over URLs / mutation
   // responseShape keys during the watch window — same chokepoint the
   // action-window tap uses.
-  // The CDP NetworkTap supplies the network slice on chromium; off Chromium it
-  // is absent (the Playwright-event tap is P2b) and the network block is empty.
-  const net = ctx.cdp ? new NetworkTap(ctx.cdp, ctx.secrets ?? null) : null;
+  // The per-action network tap comes from the engine's substrate (RFC 0002 D5):
+  // chromium → the CDP NetworkTap; firefox/webkit → the Playwright context-event
+  // tap. Same close shape on every engine, so the watch result is engine-blind.
+  const net = ctx.network ? ctx.network.openActionTap() : null;
   if (net) await net.open();
 
   // ref → tracking record across samples.

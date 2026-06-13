@@ -23,7 +23,7 @@
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { join, resolve, sep, basename } from "node:path";
 import type { CDPSession, Page } from "playwright-core";
-import type { NetworkBuffer, NetworkEntry } from "./network.js";
+import type { SessionNetworkRing, NetworkEntry } from "./network.js";
 import { log } from "../util/logging.js";
 
 // ---------- caps & defaults --------------------------------------------------
@@ -324,7 +324,7 @@ export async function fetchBodyBytes(
 export async function assetExport(
   cdp: CDPSession,
   page: Page,
-  buffer: NetworkBuffer,
+  buffer: SessionNetworkRing,
   workspaceRoot: string,
   sessionId: string,
   args: AssetExportArgs,

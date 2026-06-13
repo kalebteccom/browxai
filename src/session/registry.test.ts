@@ -24,6 +24,8 @@ function fakeEntry(id: string): SessionEntry {
 
     snapshotSubstrate: {} as any,
 
+    networkSubstrate: {} as any,
+
     frames: {} as any,
 
     console: {} as any,
