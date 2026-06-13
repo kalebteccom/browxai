@@ -404,7 +404,6 @@ describe("extract() — top-level failure shapes", () => {
 
   it("returns invalid-schema when type is genuinely unsupported (post-v0.2.3 `integer` is now auto-coerced; `null` is still rejected)", async () => {
     const res = await extract(noPage, cdp, refs, {
-      // @ts-expect-error — deliberately invalid
       schema: { type: "null" },
       testAttributes: ["data-testid"],
     });
@@ -657,7 +656,6 @@ describe("applySchemaRelaxations — Proposal A: integer → number auto-coerce"
     // the first page.* touch — which lands as a scope-not-found (not the
     // invalid-schema we used to get). That state-shift IS the proof.
     const res = await extract(noPage, cdp, refs, {
-      // @ts-expect-error — deliberately the v0.2.2-rejected shape
       schema: { type: "integer" },
       testAttributes: ["data-testid"],
     });
@@ -745,7 +743,6 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
       const res = await extract(noPage, cdp, refs, {
         schema: {
           type: "string",
-          // @ts-expect-error — silent-typo case from trial-1 turn 6
           "x-browx-source": { selector: "a", attribute: "href" },
         },
         testAttributes: ["data-testid"],
@@ -769,7 +766,6 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
       const res = await extract(noPage, cdp, refs, {
         schema: {
           type: "string",
-          // @ts-expect-error — silent-typo case from trial-1 turn 6
           "x-browx-source": { selector: "a", attribute: "href" },
         },
         testAttributes: ["data-testid"],
@@ -793,7 +789,6 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
       const res = await extract(noPage, cdp, refs, {
         schema: {
           type: "string",
-          // @ts-expect-error — silent-typo case
           "x-browx-source": { selector: "a", attribute: "href" },
         },
         testAttributes: ["data-testid"],
@@ -814,7 +809,6 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
     process.env.BROWX_EXTRACT_STRICT = "1";
     try {
       const res = await extract(noPage, cdp, refs, {
-        // @ts-expect-error — `integer` is the coerce target, not a typo
         schema: { type: "integer" },
         testAttributes: ["data-testid"],
       });

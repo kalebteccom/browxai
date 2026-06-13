@@ -7,7 +7,6 @@ import {
   canvasWorldToScreen,
   noAdapterError,
   runGestureChain,
-  type GestureChainStep,
 } from "../page/canvas.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
@@ -225,7 +224,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          runGestureChain(e.session.page(), { steps: args.steps as GestureChainStep[] }),
+          runGestureChain(e.session.page(), { steps: args.steps }),
           cfgActionTimeout(),
           "gesture_chain",
         );

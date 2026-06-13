@@ -4,12 +4,7 @@ import { withDeadline } from "../util/deadline.js";
 import { fillForm, type FillFormField } from "../page/fill-form.js";
 import type { ActionTarget } from "../page/locator.js";
 import { RefRegistry } from "../page/refs.js";
-import {
-  plan as planAction,
-  execute as executeAction,
-  PLAN_VERBS,
-  type ActionDescriptor,
-} from "../page/plan.js";
+import { plan as planAction, execute as executeAction, PLAN_VERBS } from "../page/plan.js";
 import { ACTION_OPTS, SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
@@ -284,8 +279,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
       // verb:"click" denied for `action` should report `click` denied, not
       // a generic "execute denied". The verb is parsed off the descriptor
       // before the gate to keep the error attribution clean.
-      const verb = (args.descriptor as { verb?: string } | undefined)?.verb;
-      if (verb && typeof verb === "string") {
+      const verb = args.descriptor.verb;
+      if (verb) {
         const vg = gateCheck(verb);
         if (vg) return vg;
       }
@@ -293,18 +288,18 @@ export function registerFormsRecordingTools(host: ToolHost): void {
       // The descriptor's verb is also subject to the same confirm-hook
       // policy as a direct call to that verb — a `byob_action` policy that
       // blocks `click` also blocks an `execute` of a click descriptor.
-      if (verb && typeof verb === "string") {
+      if (verb) {
         const c = await confirmByobAction(verb, confirmCtxFor(e));
         if (!c.ok) return denyContent(`execute(${verb})`, c);
       }
       const td = actionTimeout(args);
       // Compute the recordingHint off the descriptor's bound ref (same
       // shape `click` / `fill` build it).
-      const ref = (args.descriptor as { ref?: string }).ref;
+      const ref = args.descriptor.ref;
       const recordingHint = ref ? hintFromTarget(e, { ref }) : undefined;
       let outcome;
       try {
-        outcome = await executeAction(ctxFor(e), args.descriptor as ActionDescriptor, {
+        outcome = await executeAction(ctxFor(e), args.descriptor, {
           mode: args.mode,
           maxResultTokens: args.maxResultTokens,
           deadlineMs: td.ms,

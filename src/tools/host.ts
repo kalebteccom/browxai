@@ -53,13 +53,14 @@ export type ResolvedTarget =
  */
 export interface ToolHost {
   /** Register one MCP tool: wires it into the server surface and the in-process
-   *  handler side-table. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  register: <H extends (...a: any[]) => Promise<ToolResponse>>(
+   *  handler side-table. The handler's `args` are typed from the tool's own zod
+   *  `inputSchema` (the exact shape the MCP SDK parses and validates the wire
+   *  payload into before dispatch), so a handler reads a precise object, never
+   *  `any`. Tools with no `inputSchema` receive an empty object. */
+  register: <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    def: { description: string; inputSchema?: any },
-    handler: H,
+    def: { description: string; inputSchema?: S },
+    handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;
 
   /** Resolve a session entry by id (defaulting to the default session). */

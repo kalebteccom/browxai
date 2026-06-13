@@ -112,7 +112,7 @@ export function registerStorageTools(host: ToolHost): void {
         const blob: StorageStateBlob =
           typeof state === "string"
             ? readStorageStateFile(workspace.root, state, "inject_storage_state")
-            : (state as StorageStateBlob);
+            : state;
         const r = await withDeadline(
           injectStorageState(e.session.page().context(), e.session.page(), blob, { mode }),
           cfgActionTimeout(),

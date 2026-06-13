@@ -176,8 +176,12 @@ export interface ExtractSourceHint {
 }
 
 export interface ExtractOptions {
-  /** JSON-schema input. Must be a top-level object or array. */
-  schema: ExtractSchema;
+  /** JSON-schema input. Must be a top-level object or array. Accepts an
+   *  already-typed `ExtractSchema` (internal callers) or a raw wire object
+   *  (the MCP `extract` tool passes the untrusted payload straight through);
+   *  `extract()` validates it via `validateSchema` and returns a structured
+   *  `invalid-schema` failure when it is malformed. */
+  schema: ExtractSchema | Record<string, unknown>;
   /** Scope to a ref's subtree (from a prior snapshot/find). */
   ref?: string;
   /** Scope to a CSS selector match. Mutually exclusive with `ref`. */
@@ -491,7 +495,7 @@ export function applySchemaRelaxations(schema: ExtractSchema, path: string, note
 /** Deep clone the caller-supplied schema before in-place mutation, so we
  *  don't surprise an adopter holding a reference. Uses JSON for the
  *  round-trip — schemas are plain data (no functions, no Dates). */
-export function cloneSchema(schema: ExtractSchema): ExtractSchema {
+export function cloneSchema(schema: unknown): ExtractSchema {
   return JSON.parse(JSON.stringify(schema)) as ExtractSchema;
 }
 

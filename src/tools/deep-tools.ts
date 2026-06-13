@@ -321,7 +321,7 @@ export function registerDeepTools(host: ToolHost): void {
       if (eg) return eg;
       try {
         const r = await runPerfAudit(requireCdp(e.session), workspace.root, e.id, {
-          categories: categories as string[] | undefined,
+          categories: categories,
           durationMs,
           format,
         });

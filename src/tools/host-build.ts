@@ -575,25 +575,33 @@ export function buildHost(deps: HostDeps): ToolHost {
   // record under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl;
   // when off, the recorder is a zero-overhead gate check (no allocations,
   // no file IO).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const register = <H extends (...a: any[]) => Promise<ToolResponse>>(
+  const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    def: { description: string; inputSchema?: any },
-    handler: H,
+    def: { description: string; inputSchema?: S },
+    handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
-    const raw = handler as (args: unknown) => Promise<ToolResponse>;
     const tracked = WEDGE_TRACKED_CAPABILITIES.has(TOOL_CAPABILITY[name] ?? "");
-    const wrapped: (args: unknown) => Promise<ToolResponse> = async (args: unknown) => {
+    const wrapped = async (rawArgs: unknown): Promise<ToolResponse> => {
+      // MCP-wire boundary: the SDK parses + validates the inbound payload against
+      // this tool's `inputSchema` before dispatch, so the dispatched value IS the
+      // handler's declared arg shape. This is the one place that boundary narrows.
+      const args = rawArgs as z.infer<z.ZodObject<S>>;
       const startedAt = Date.now();
-      const inner = tracked ? await noteWedgeOutcome(args, await raw(args)) : await raw(args);
+      const inner = tracked
+        ? await noteWedgeOutcome(args, await handler(args))
+        : await handler(args);
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       return inner;
     };
     toolHandlers[name] = wrapped;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (server.registerTool as any)(name, def, wrapped);
+    // The SDK's `registerTool` generic cannot relate its conditional-typed
+    // callback to a still-generic `S`; widening the config's schema to a concrete
+    // `ZodRawShape` lets that conditional resolve, so `wrapped` (whose args are
+    // narrowed at the wire boundary above and whose result is a CallToolResult)
+    // matches with no assertion.
+    const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = def;
+    server.registerTool(name, sdkConfig, wrapped);
   };
 
   // ---------- action tools ----------

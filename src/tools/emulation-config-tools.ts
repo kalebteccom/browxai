@@ -9,19 +9,13 @@ import {
   applyPermissions,
   clearPermissions,
   BYOB_EMULATION_WARNING,
-  type ColorScheme,
   type ReducedMotion,
 } from "../session/emulation.js";
-import {
-  BYOB_DEVICE_EMU_WARNING,
-  type DeviceApi,
-  type SyntheticDevice,
-} from "../session/device-emu.js";
+import { BYOB_DEVICE_EMU_WARNING, type DeviceApi } from "../session/device-emu.js";
 import type { SessionEntry } from "../session/registry.js";
 import { setTabVisibility } from "../page/visibility.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { EmulationResult } from "../page/emulation-substrate.js";
-import type { ConfigScope, PersistentScope } from "../util/config-store.js";
 import {
   resolveCaptchaProvider,
   submitToProvider,
@@ -165,7 +159,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
         if (g) return g;
         const e = await entryFor(args.session);
         try {
-          const devices = (args.devices as SyntheticDevice[] | undefined) ?? [];
+          const devices = args.devices ?? [];
           const catalog = e.webDeviceEmulation.set(api, devices);
           const warnings: string[] = [];
           if (e.mode === "attached") warnings.push(BYOB_DEVICE_EMU_WARNING);
@@ -443,10 +437,9 @@ export function registerEmulationConfigTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await emulationFor(e).setColorScheme(scheme as ColorScheme);
+        const r = await emulationFor(e).setColorScheme(scheme);
         if (r.kind === "refusal") return emulationRefusal("set_color_scheme", r);
-        e.deviceEmulation.colorScheme =
-          scheme === "no-preference" ? undefined : (scheme as ColorScheme);
+        e.deviceEmulation.colorScheme = scheme === "no-preference" ? undefined : scheme;
         return emulationResult(e, { colorScheme: scheme });
       } catch (err) {
         return emulationError("set_color_scheme", err);
@@ -664,7 +657,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
           };
         }
       } else {
-        body = { scope, config: configStore.getLayer(scope as ConfigScope) };
+        body = { scope, config: configStore.getLayer(scope) };
       }
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
     },
@@ -683,7 +676,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
       },
     },
     async ({ scope, patch }) => {
-      configStore.setLayer(scope as PersistentScope, patch);
+      configStore.setLayer(scope, patch);
       return {
         content: [
           {
@@ -707,7 +700,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
       inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
     },
     async ({ scope }) => {
-      configStore.resetLayer(scope as PersistentScope);
+      configStore.resetLayer(scope);
       return {
         content: [
           {

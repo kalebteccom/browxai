@@ -22,12 +22,9 @@ import {
   resolveWorkspaceFsPath,
   SUPPORTED_FS_PICKER_APIS,
   type FsPickerPolicy,
-  type FsPickerApi,
   type FsPickerFile,
 } from "../session/fs-picker.js";
 import { SUPPORTED_DEVICE_APIS } from "../session/device-emu.js";
-import type { HarStartConfig } from "../page/har.js";
-import type { VideoStartConfig } from "../page/video.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
@@ -224,14 +221,12 @@ export function registerSessionPolicyTools(host: ToolHost): void {
       try {
         parsedDialogPolicy = dialogPolicy ? parseDialogPolicyArg(dialogPolicy) : undefined;
         parsedPermissionPolicy = permissionPolicy
-          ? parsePermissionPolicyArg(permissionPolicy as string | PermissionPolicy)
+          ? parsePermissionPolicyArg(permissionPolicy)
           : undefined;
         parsedNotificationPolicy = notificationPolicy
-          ? parseNotificationPolicyArg(notificationPolicy as string | NotificationPolicy)
+          ? parseNotificationPolicyArg(notificationPolicy)
           : undefined;
-        parsedFsPickerPolicy = fsPickerPolicy
-          ? parseFsPickerPolicyArg(fsPickerPolicy as string | FsPickerPolicy)
-          : undefined;
+        parsedFsPickerPolicy = fsPickerPolicy ? parseFsPickerPolicyArg(fsPickerPolicy) : undefined;
       } catch (err) {
         return {
           content: [
@@ -258,9 +253,9 @@ export function registerSessionPolicyTools(host: ToolHost): void {
           fsPickerPolicy: parsedFsPickerPolicy,
           storageState,
           authState,
-          har: har as HarStartConfig | undefined,
+          har: har,
           hars,
-          recordVideo: recordVideo as VideoStartConfig | undefined,
+          recordVideo: recordVideo,
         });
         const harField = e.har.path
           ? {
@@ -541,9 +536,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
           mode: args.mode,
           ...(args.perPermission
             ? {
-                perPermission: args.perPermission as Partial<
-                  Record<SupportedPermission, "allow" | "deny" | "raise" | "ask-human">
-                >,
+                perPermission: args.perPermission,
               }
             : {}),
         };
@@ -619,9 +612,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
           mode: args.mode,
           ...(args.perAPI
             ? {
-                perAPI: args.perAPI as Partial<
-                  Record<FsPickerApi, "allow" | "deny" | "raise" | "ask-human">
-                >,
+                perAPI: args.perAPI,
               }
             : {}),
         };
@@ -730,7 +721,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
         // its bytes so the page-side `getFile()` resolves without another
         // server round-trip. Save-pickers keep `path` as the WRITE target
         // (no read).
-        const api = args.api as FsPickerApi;
+        const api = args.api;
         const prepared: FsPickerFile[] = (args.files as FsPickerFile[]).map((f) => {
           if (api === "showSaveFilePicker") return f;
           if (f.path === undefined || f.contents !== undefined) return f;
@@ -801,7 +792,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const supported = (permissions as string[]).filter((p): p is SupportedPermission =>
+        const supported = permissions.filter((p): p is SupportedPermission =>
           (SUPPORTED_PERMISSIONS as readonly string[]).includes(p),
         );
         const states = await readPermissionStates(
