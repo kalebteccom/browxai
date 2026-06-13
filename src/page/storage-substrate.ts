@@ -1,20 +1,20 @@
 // The StorageSubstrate interface — the engine-agnostic seam beneath the storage
-// tools (cookies + localStorage/sessionStorage CRUD). It is the storage side of
-// RFC 0003: a tool handler asks a substrate to read or write the cookie jar or
-// web-storage and gets back a universal result; an engine-specific
-// implementation does the work. The handler never names Playwright,
+// tools (cookies + localStorage/sessionStorage + IndexedDB CRUD). It is the storage
+// side of RFC 0003: a tool handler asks a substrate to read or write the cookie jar,
+// web-storage, or an IndexedDB store and gets back a universal result; an engine-
+// specific implementation does the work. The handler never names Playwright,
 // safaridriver, or an engine — it calls `storageFor(e).cookiesList(req)` /
-// `storageFor(e).webStorageGet(kind, req)`, the same shape as
-// `actionsFor(e).click(args)` / `captureFor(e).screenshot(req)`.
+// `storageFor(e).webStorageGet(kind, req)` / `storageFor(e).idbGet(args, tool)`, the
+// same shape as `actionsFor(e).click(args)` / `captureFor(e).screenshot(req)`.
 //
 // Dependency direction (architecture doctrine §1): tool handler → StorageSubstrate
 // (this interface) → implementation → Playwright BrowserContext/Page | safaridriver.
 // Two impls today:
 //   - PlaywrightStorageSubstrate (chromium / firefox / webkit / android): wraps the
 //     existing `cookiesList` / `cookiesSet` over a Playwright BrowserContext and the
-//     existing `webStorage*` helpers over a Playwright Page — byte-identical to the
-//     pre-seam path, so the four engines' keystones stay green unchanged. The native
-//     `urls` cross-domain filter is honoured.
+//     existing `webStorage*` / `idb*` helpers over a Playwright Page — byte-identical
+//     to the pre-seam path, so the four engines' keystones stay green unchanged. The
+//     native `urls` cross-domain filter is honoured.
 //   - SafariStorageSubstrate (safari): wraps the WebDriver Classic cookie endpoints
 //     (`getCookies` / `addCookie`; no Playwright BrowserContext) and the WebDriver
 //     `execute/sync` endpoint for web-storage (page-side JS, which safaridriver CAN
@@ -38,6 +38,14 @@ import {
   webStorageDelete,
   webStorageClear,
 } from "../session/storage.js";
+import {
+  idbListDatabases,
+  idbListStores,
+  idbGet,
+  idbPut,
+  idbDelete,
+  idbClear,
+} from "../session/idb-storage.js";
 
 /** A cookie as returned by a `cookiesList`. The Playwright path returns the full
  *  Playwright cookie object; the Safari path returns the WebDriver cookie shape.
@@ -68,6 +76,44 @@ export interface CookiesListRequest {
 export interface WebStorageEntry {
   key: string;
   value: string;
+}
+
+/** The IDB result shapes — the universal envelopes the idb handlers render. They
+ *  mirror the `idb*` helper return types verbatim so the Playwright path is a
+ *  pass-through and the four engines' keystones stay byte-identical. */
+export interface IdbDatabasesResult {
+  databases: Array<{ name: string; version: number }>;
+  origin: string;
+  supported: boolean;
+}
+export interface IdbStoresResult {
+  stores: string[];
+  dbName: string;
+  version: number;
+  origin: string;
+}
+export type IdbGetResult =
+  | { found: false; dbName: string; storeName: string; key: unknown; origin: string }
+  | {
+      found: true;
+      dbName: string;
+      storeName: string;
+      key: unknown;
+      value: unknown;
+      origin: string;
+    };
+export interface IdbWriteResult {
+  ok: true;
+  dbName: string;
+  storeName: string;
+  key: unknown;
+  origin: string;
+}
+export interface IdbClearResult {
+  ok: true;
+  dbName: string;
+  storeName: string;
+  origin: string;
 }
 
 /** The storage capability port. One instance wraps one session's engine handle;
@@ -101,6 +147,21 @@ export interface StorageSubstrate {
     tool: string,
   ): Promise<{ ok: true; origin: string }>;
   webStorageClear(kind: WebStorageKind, tool: string): Promise<{ ok: true; origin: string }>;
+  idbListDatabases(tool: string): Promise<IdbDatabasesResult>;
+  idbListStores(args: { dbName: string }, tool: string): Promise<IdbStoresResult>;
+  idbGet(
+    args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbGetResult>;
+  idbPut(
+    args: { dbName: string; storeName: string; key: unknown; value: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult>;
+  idbDelete(
+    args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult>;
+  idbClear(args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult>;
 }
 
 /** Playwright engines — delegates cookie ops to the existing `cookiesList` /
@@ -161,6 +222,39 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
   webStorageClear(kind: WebStorageKind, tool: string): Promise<{ ok: true; origin: string }> {
     return webStorageClear(this.page(), kind, tool);
   }
+
+  idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
+    return idbListDatabases(this.page(), tool);
+  }
+
+  idbListStores(args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
+    return idbListStores(this.page(), args, tool);
+  }
+
+  idbGet(
+    args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbGetResult> {
+    return idbGet(this.page(), args, tool);
+  }
+
+  idbPut(
+    args: { dbName: string; storeName: string; key: unknown; value: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult> {
+    return idbPut(this.page(), args, tool);
+  }
+
+  idbDelete(
+    args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult> {
+    return idbDelete(this.page(), args, tool);
+  }
+
+  idbClear(args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult> {
+    return idbClear(this.page(), args, tool);
+  }
 }
 
 /** Web-storage is origin-scoped and page-bound — the page MUST be at the target
@@ -200,7 +294,13 @@ async function safariWebStorageGuard(
  *  error envelopes match. Web-storage is page-side JS, so safaridriver runs it the
  *  same way: on the no-Playwright-Page Safari engine this is a NEW working
  *  capability (the handler previously had no Safari path and threw), surfaced
- *  through the same port so the handler stays engine-blind. RFC 0003. */
+ *  through the same port so the handler stays engine-blind. IndexedDB is the
+ *  exception: its API is promise-based, so the page-side script is an ASYNC IIFE
+ *  that must be awaited — but safaridriver's `execute/sync` returns the moment the
+ *  body returns and never observes the settled promise, and there is no
+ *  async-script client on this handle. So every idb method REFUSES cleanly in the
+ *  adapter (the same shape SafariEmulationSubstrate uses) rather than running a
+ *  script whose result would always be a pending promise. RFC 0003. */
 export class SafariStorageSubstrate implements StorageSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
@@ -306,5 +406,52 @@ export class SafariStorageSubstrate implements StorageSubstrate {
       this.handle.sessionId,
       `return (${expr});`,
     )) as { ok: true; origin: string };
+  }
+
+  idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  idbListStores(_args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  idbGet(
+    _args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbGetResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  idbPut(
+    _args: { dbName: string; storeName: string; key: unknown; value: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  idbDelete(
+    _args: { dbName: string; storeName: string; key: unknown },
+    tool: string,
+  ): Promise<IdbWriteResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  idbClear(_args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult> {
+    return Promise.reject(this.idbRefuse(tool));
+  }
+
+  // IndexedDB's API is promise-based, so its page-side script is an async IIFE that
+  // must be awaited — but safaridriver's `execute/sync` returns the moment the body
+  // returns, never observing the settled promise, and this handle has no
+  // async-script client. Rather than run a script whose result is always a pending
+  // promise, every idb method refuses cleanly here (the SafariEmulationSubstrate
+  // pattern), keeping the engine check out of the handler.
+  private idbRefuse(tool: string): Error {
+    return new Error(
+      `\`${tool}\`: IndexedDB is not available on the Safari engine — its promise-based API ` +
+        `needs an async page-script path that safaridriver's synchronous execute/sync cannot provide. ` +
+        `Use a chromium, firefox, or webkit session for IndexedDB.`,
+    );
   }
 }

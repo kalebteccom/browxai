@@ -8,11 +8,12 @@ import type { SafariSessionHandle } from "../engine/index.js";
 import type { BrowserContext, Page } from "playwright-core";
 
 // The StorageSubstrate port routing/gating. The Playwright impl delegates to the
-// existing `cookiesList` / `cookiesSet` / `webStorage*` helpers (cookies over a
-// BrowserContext, web-storage over a Page — both covered by the per-engine
-// keystones); these cover the Safari adapter's WebDriver cookie path, the
-// in-adapter domain derivation, and the WebDriver `execute/sync` web-storage path
-// that replaced the per-handler `if (e.session.safari?.())` branches (RFC 0003).
+// existing `cookiesList` / `cookiesSet` / `webStorage*` / `idb*` helpers (cookies
+// over a BrowserContext, web-storage + IndexedDB over a Page — all covered by the
+// per-engine keystones); these cover the Safari adapter's WebDriver cookie path, the
+// in-adapter domain derivation, the WebDriver `execute/sync` web-storage path that
+// replaced the per-handler `if (e.session.safari?.())` branches, and the in-adapter
+// IndexedDB refusal (its async API has no synchronous WebDriver path) (RFC 0003).
 
 function safariHandle(opts?: { url?: string; scriptResult?: unknown }): {
   handle: SafariSessionHandle;
@@ -192,6 +193,36 @@ describe("SafariStorageSubstrate", () => {
       /origin-scoped and the page is at "\(unknown\)"/,
     );
   });
+
+  it("refuses every idb method cleanly WITHOUT touching the page (async API, sync driver)", async () => {
+    // IndexedDB's promise-based API needs an async page-script path that
+    // safaridriver's synchronous execute/sync cannot provide, so each idb method
+    // refuses in the adapter rather than running a script whose result is a pending
+    // promise. The refusal names the tool + points at a Playwright engine, and no
+    // cookie/execute/sync call is attempted.
+    const { handle, scripts, added } = safariHandle();
+    const sub = new SafariStorageSubstrate(handle);
+    await expect(sub.idbListDatabases("idb_list_databases")).rejects.toThrow(
+      /`idb_list_databases`: IndexedDB is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
+    );
+    await expect(sub.idbListStores({ dbName: "d" }, "idb_list_stores")).rejects.toThrow(
+      /`idb_list_stores`: IndexedDB is not available on the Safari engine/,
+    );
+    await expect(sub.idbGet({ dbName: "d", storeName: "s", key: "k" }, "idb_get")).rejects.toThrow(
+      /IndexedDB is not available on the Safari engine/,
+    );
+    await expect(
+      sub.idbPut({ dbName: "d", storeName: "s", key: "k", value: 1 }, "idb_put"),
+    ).rejects.toThrow(/IndexedDB is not available on the Safari engine/);
+    await expect(
+      sub.idbDelete({ dbName: "d", storeName: "s", key: "k" }, "idb_delete"),
+    ).rejects.toThrow(/IndexedDB is not available on the Safari engine/);
+    await expect(sub.idbClear({ dbName: "d", storeName: "s" }, "idb_clear")).rejects.toThrow(
+      /IndexedDB is not available on the Safari engine/,
+    );
+    expect(scripts).toEqual([]);
+    expect(added).toEqual([]);
+  });
 });
 
 describe("PlaywrightStorageSubstrate", () => {
@@ -279,6 +310,39 @@ describe("PlaywrightStorageSubstrate", () => {
     const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
     await expect(sub.webStorageList("localStorage", "localstorage_list")).rejects.toThrow(
       /origin-scoped/,
+    );
+    expect(evaluated).toEqual([]);
+  });
+
+  it("delegates idb reads to the helper, evaluating the async IIFE on the Page", async () => {
+    const { context, page, evaluated } = ctxStub({
+      evalResult: { databases: [{ name: "d", version: 1 }], origin: "o", supported: true },
+    });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    const r = await sub.idbListDatabases("idb_list_databases");
+    expect(r).toEqual({ databases: [{ name: "d", version: 1 }], origin: "o", supported: true });
+    // The Playwright path runs the byte-identical pre-seam helper: an async IIFE
+    // driving the W3C IndexedDB API through page.evaluate (no `return` wrapper).
+    expect(evaluated).toHaveLength(1);
+    expect(evaluated[0]).toContain("indexedDB");
+    expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
+  });
+
+  it("delegates idb writes through the helper to page.evaluate", async () => {
+    const { context, page, evaluated } = ctxStub({
+      evalResult: { ok: true, dbName: "d", storeName: "s", key: "k", origin: "o" },
+    });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    const r = await sub.idbPut({ dbName: "d", storeName: "s", key: "k", value: 1 }, "idb_put");
+    expect(r).toEqual({ ok: true, dbName: "d", storeName: "s", key: "k", origin: "o" });
+    expect(evaluated[0]).toContain("readwrite");
+  });
+
+  it("surfaces the idb origin guard on about:blank (no evaluate attempted)", async () => {
+    const { context, page, evaluated } = ctxStub({ url: "about:blank" });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    await expect(sub.idbListStores({ dbName: "d" }, "idb_list_stores")).rejects.toThrow(
+      /IndexedDB is origin-scoped/,
     );
     expect(evaluated).toEqual([]);
   });

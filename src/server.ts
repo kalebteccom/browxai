@@ -194,14 +194,6 @@ import {
   cachesClear,
   cachesDeleteStorage,
 } from "./session/cache-storage.js";
-import {
-  idbListDatabases,
-  idbListStores,
-  idbGet,
-  idbPut,
-  idbDelete,
-  idbClear,
-} from "./session/idb-storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
 import {
@@ -8538,7 +8530,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          idbListDatabases(e.session.page(), "idb_list_databases"),
+          storageFor(e).idbListDatabases("idb_list_databases"),
           cfgActionTimeout(),
           "idb_list_databases",
         );
@@ -8565,7 +8557,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          idbListStores(e.session.page(), { dbName }, "idb_list_stores"),
+          storageFor(e).idbListStores({ dbName }, "idb_list_stores"),
           cfgActionTimeout(),
           "idb_list_stores",
         );
@@ -8596,7 +8588,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          idbGet(e.session.page(), { dbName, storeName, key }, "idb_get"),
+          storageFor(e).idbGet({ dbName, storeName, key }, "idb_get"),
           cfgActionTimeout(),
           "idb_get",
         );
@@ -8656,7 +8648,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           }
         }
         const r = await withDeadline(
-          idbPut(e.session.page(), { dbName, storeName, key, value }, "idb_put"),
+          storageFor(e).idbPut({ dbName, storeName, key, value }, "idb_put"),
           cfgActionTimeout(),
           "idb_put",
         );
@@ -8689,7 +8681,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("idb_delete", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_delete", c);
         const r = await withDeadline(
-          idbDelete(e.session.page(), { dbName, storeName, key }, "idb_delete"),
+          storageFor(e).idbDelete({ dbName, storeName, key }, "idb_delete"),
           cfgActionTimeout(),
           "idb_delete",
         );
@@ -8719,7 +8711,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("idb_clear", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_clear", c);
         const r = await withDeadline(
-          idbClear(e.session.page(), { dbName, storeName }, "idb_clear"),
+          storageFor(e).idbClear({ dbName, storeName }, "idb_clear"),
           cfgActionTimeout(),
           "idb_clear",
         );
