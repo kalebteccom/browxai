@@ -35,9 +35,7 @@ export interface NetworkSubstrateCapableSession {
  *  `requireCdp` and `snapshotSubstrateFor` key on — so a future CDP-bearing engine
  *  routes to the CDP substrate automatically and a non-CDP one to the event path,
  *  with no edit here. */
-export function networkSubstrateFor(
-  session: NetworkSubstrateCapableSession,
-): NetworkSubstrate {
+export function networkSubstrateFor(session: NetworkSubstrateCapableSession): NetworkSubstrate {
   if (session.cdp) return new CdpNetworkSubstrate(session.cdp());
   const page = session.page();
   return new PlaywrightNetworkSubstrate(page.context(), page, session.engine);
