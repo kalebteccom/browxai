@@ -266,7 +266,6 @@ import {
   VIDEO_INLINE_CAP_BYTES,
   type VideoStartConfig,
 } from "./page/video.js";
-import * as actions from "./page/actions.js";
 import {
   PlaywrightActionSubstrate,
   SafariActionSubstrate,
@@ -9127,7 +9126,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const target = asTarget(args, "hover", e.refs);
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.hover(ctxFor(e), {
+        actionsFor(e).hover({
           target,
           mode: args.mode,
           maxResultTokens: args.maxResultTokens,
@@ -9155,7 +9154,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const target = asTarget(args, "select", e.refs);
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.select(ctxFor(e), {
+        actionsFor(e).select({
           target,
           values: args.values,
           mode: args.mode,
@@ -9194,7 +9193,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const td = actionTimeout(args);
       if (args.text !== undefined) {
         return asActionResultText(
-          actions.waitFor(ctxFor(e), {
+          actionsFor(e).waitFor({
             text: args.text,
             timeoutMs: td.ms,
             deadlineMs: td.ms,
@@ -9206,7 +9205,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const target = asTarget(args, "wait_for", e.refs);
       return asActionResultText(
-        actions.waitFor(ctxFor(e), {
+        actionsFor(e).waitFor({
           target,
           timeoutMs: td.ms,
           deadlineMs: td.ms,
@@ -9258,7 +9257,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const target = hasTarget ? asTarget(args, "scroll", e.refs) : undefined;
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.scroll(ctxFor(e), {
+        actionsFor(e).scroll({
           target,
           to: args.to,
           by: args.by,
@@ -9317,7 +9316,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.chooseOption(ctxFor(e), {
+        actionsFor(e).chooseOption({
           target,
           option: args.option,
           exact: args.exact,
@@ -9634,7 +9633,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.goBack(ctxFor(await entryFor(args.session)), {
+        actionsFor(await entryFor(args.session)).goBack({
           mode: args.mode,
           maxResultTokens: args.maxResultTokens,
           deadlineMs: td.ms,
@@ -9655,7 +9654,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.goForward(ctxFor(await entryFor(args.session)), {
+        actionsFor(await entryFor(args.session)).goForward({
           mode: args.mode,
           maxResultTokens: args.maxResultTokens,
           deadlineMs: td.ms,
@@ -10919,7 +10918,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       const td = actionTimeout({ timeoutMs });
       return asActionResultText(
-        actions.setViewport(ctxFor(e), {
+        actionsFor(e).setViewport({
           width,
           height,
           deadlineMs: td.ms,

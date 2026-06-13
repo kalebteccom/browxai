@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SafariActionSubstrate } from "./action-substrate.js";
+import { SafariActionSubstrate, type ActionSubstrate } from "./action-substrate.js";
 import { RefRegistry } from "./refs.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 
@@ -39,7 +39,7 @@ describe("SafariActionSubstrate", () => {
 
   it("gates the actions outside the curated subset cleanly (in the adapter, not the handler)", async () => {
     const { handle } = safariHandle();
-    const sub = new SafariActionSubstrate(handle, new RefRegistry());
+    const sub: ActionSubstrate = new SafariActionSubstrate(handle, new RefRegistry());
     for (const r of [
       await sub.hover({ target: { selector: "#x" } }),
       await sub.select({ target: { selector: "#x" }, values: ["a"] }),
