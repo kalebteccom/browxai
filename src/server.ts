@@ -178,11 +178,6 @@ import {
   cookiesGet,
   cookiesDelete,
   cookiesClear,
-  webStorageGet,
-  webStorageSet,
-  webStorageList,
-  webStorageDelete,
-  webStorageClear,
   authSave,
   authLoad,
   authList,
@@ -1364,14 +1359,20 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   // The storage capability port (RFC 0003): selected by the engine's capability,
   // exactly like `actionsFor` / `captureFor`. Playwright engines wrap the existing
-  // `cookiesList` / `cookiesSet` over the session's BrowserContext; safari (no
-  // Playwright BrowserContext) wraps the WebDriver Classic cookie endpoints and
-  // scopes to the current document in the adapter. The cookie handlers call
-  // `storageFor(e).cookies*(req)` and never branch on engine.
+  // `cookiesList` / `cookiesSet` over the session's BrowserContext and the existing
+  // `webStorage*` helpers over the session's Page; safari (no Playwright Page/
+  // BrowserContext) wraps the WebDriver Classic cookie endpoints and the
+  // `execute/sync` web-storage path, scoping to the current document in the adapter.
+  // The cookie + web-storage handlers call `storageFor(e).cookies*(req)` /
+  // `storageFor(e).webStorage*(kind, …)` and never branch on engine.
   const storageFor = (e: SessionEntry): StorageSubstrate => {
     const safariHandle = e.session.safari?.();
     if (safariHandle) return new SafariStorageSubstrate(safariHandle);
-    return new PlaywrightStorageSubstrate(() => e.session.page().context(), e.session.engine);
+    return new PlaywrightStorageSubstrate(
+      () => e.session.page().context(),
+      () => e.session.page(),
+      e.session.engine,
+    );
   };
 
   // The script capability port (RFC 0003): selected by the engine's capability,
@@ -8065,7 +8066,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         try {
           const e = await entryFor(session);
           const r = await withDeadline(
-            webStorageGet(e.session.page(), kind, { key }, `${prefix}_get`),
+            storageFor(e).webStorageGet(kind, { key }, `${prefix}_get`),
             cfgActionTimeout(),
             `${prefix}_get`,
           );
@@ -8088,7 +8089,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         try {
           const e = await entryFor(session);
           const r = await withDeadline(
-            webStorageList(e.session.page(), kind, `${prefix}_list`),
+            storageFor(e).webStorageList(kind, `${prefix}_list`),
             cfgActionTimeout(),
             `${prefix}_list`,
           );
@@ -8121,7 +8122,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           const c = await confirmByobAction(`${prefix}_set`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_set`, c);
           const r = await withDeadline(
-            webStorageSet(e.session.page(), kind, { key, value }, `${prefix}_set`),
+            storageFor(e).webStorageSet(kind, { key, value }, `${prefix}_set`),
             cfgActionTimeout(),
             `${prefix}_set`,
           );
@@ -8146,7 +8147,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           const c = await confirmByobAction(`${prefix}_delete`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_delete`, c);
           const r = await withDeadline(
-            webStorageDelete(e.session.page(), kind, { key }, `${prefix}_delete`),
+            storageFor(e).webStorageDelete(kind, { key }, `${prefix}_delete`),
             cfgActionTimeout(),
             `${prefix}_delete`,
           );
@@ -8171,7 +8172,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           const c = await confirmByobAction(`${prefix}_clear`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_clear`, c);
           const r = await withDeadline(
-            webStorageClear(e.session.page(), kind, `${prefix}_clear`),
+            storageFor(e).webStorageClear(kind, `${prefix}_clear`),
             cfgActionTimeout(),
             `${prefix}_clear`,
           );
