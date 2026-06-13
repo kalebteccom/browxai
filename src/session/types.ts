@@ -69,8 +69,9 @@ export interface SessionOptions {
    *  internal pipe. Refused on incognito / attached at the tool layer. */
   extensionPaths?: readonly string[];
   /** Which browser engine to launch. Defaults to `"chromium"` everywhere — the
-   *  default makes every launch byte-identical to the pre-seam behavior. Only
-   *  chromium is implemented today; firefox/webkit throw
+   *  default makes every launch byte-identical to the pre-seam behavior.
+   *  chromium, firefox, and webkit are all implemented (each via its adapter);
+   *  a future-declared engine without an adapter throws
    *  `engine-not-yet-supported` at the launch path (see src/engine/). */
   browserType?: EngineKind;
 }

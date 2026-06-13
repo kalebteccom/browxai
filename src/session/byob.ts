@@ -8,6 +8,7 @@ import { log } from "../util/logging.js";
 import {
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
+  PlaywrightWebKitAdapter,
   type EngineKind,
 } from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
@@ -59,6 +60,14 @@ export async function openByobSession(
   const engine: EngineKind = opts.browserType ?? "chromium";
   if (engine === "firefox") {
     await new PlaywrightFirefoxAdapter().attach(url.toString());
+  }
+  if (engine === "webkit") {
+    // WebKit has no CDP/BiDi attach client (Safari has not shipped BiDi as of
+    // June 2026, and safaridriver hard-isolates automation — attach-to-live is
+    // impossible by design, RFC D7). Surface the structured
+    // `webkit-attach-not-supported` error before the CDP-attach body, which is
+    // Chromium-only by nature.
+    await new PlaywrightWebKitAdapter().attach(url.toString());
   }
   log.warn(ATTACH_WARNING);
   log.info("session.byob: attaching", { endpoint: url.toString(), owner: "external", engine });

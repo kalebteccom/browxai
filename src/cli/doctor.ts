@@ -233,9 +233,38 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 8b. Active browser engine. Chromium + Firefox are wired (WebKit lands in a
-  // later phase); the seam lets each engine be an adapter (see src/engine/).
-  // Informational — never fails doctor.
+  // 8a3. WebKit binary (opt-in third engine — `browserType:"webkit"`).
+  // Informational: WebKit is opt-in, so a missing binary never FAILS doctor —
+  // it just tells the operator how to enable the engine. Mirrors the Chromium +
+  // Firefox checks above but against the WebKit build (Playwright's bundled
+  // WebKit — the WebKit-engine correctness lane per RFC D7, NOT Safari).
+  try {
+    const { webkit } = await import("playwright-core");
+    const path = webkit.executablePath();
+    if (path && existsSync(path)) {
+      checks.push({ name: "webkit", ok: true, info: true, detail: `${path}` });
+    } else {
+      checks.push({
+        name: "webkit",
+        ok: true,
+        info: true,
+        detail: 'not installed (opt-in third engine — browserType:"webkit")',
+        fix: "run `npx playwright install webkit` to enable the webkit engine",
+      });
+    }
+  } catch (e) {
+    checks.push({
+      name: "webkit",
+      ok: true,
+      info: true,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "run `npx playwright install webkit` to enable the webkit engine",
+    });
+  }
+
+  // 8b. Active browser engine. Chromium + Firefox + WebKit are wired; the seam
+  // lets each engine be an adapter (see src/engine/). Informational — never
+  // fails doctor.
   checks.push({
     name: "engine",
     ok: true,

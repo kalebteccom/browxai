@@ -7,6 +7,7 @@ import { resolveWorkspace } from "../util/workspace.js";
 import {
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
+  PlaywrightWebKitAdapter,
   firefoxChannelFromEnv,
   type EngineKind,
 } from "../engine/index.js";
@@ -26,9 +27,9 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   // we surface that rather than silently ignore the flag.
   const insecureArgs: string[] = [];
   if (opts.disableWebSecurity) {
-    if (engine === "firefox") {
+    if (engine !== "chromium") {
       log.warn(
-        "⚠  session.managed: disableWebSecurity is not wired on the firefox engine — " +
+        `⚠  session.managed: disableWebSecurity is not wired on the ${engine} engine — ` +
           "the --disable-web-security flag form is Chromium-only. Launching with SOP/CORS ON. " +
           "Use a chromium session if you need web-security-off.",
       );
@@ -84,6 +85,13 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   let cdp;
   if (engine === "firefox") {
     const adapter = new PlaywrightFirefoxAdapter({ channel: firefoxChannelFromEnv() });
+    ({ context, page } = await adapter.launchPersistent({ profileDir, options }));
+  } else if (engine === "webkit") {
+    // WebKit has no CDP escape hatch and takes no Chromium `--` args; the page-
+    // side snapshot walker serves it (selected by CDP-absence, not engine name).
+    // WebKit DOES support launchPersistentContext (measured), so managed mode is
+    // real — no `webkit-persistent-not-supported` refusal on this path.
+    const adapter = new PlaywrightWebKitAdapter();
     ({ context, page } = await adapter.launchPersistent({ profileDir, options }));
   } else {
     const adapter = new PlaywrightChromiumAdapter();

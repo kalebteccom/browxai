@@ -11,6 +11,7 @@ import { log } from "../util/logging.js";
 import {
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
+  PlaywrightWebKitAdapter,
   firefoxChannelFromEnv,
   type EngineKind,
 } from "../engine/index.js";
@@ -27,9 +28,9 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
   // rather than silently apply a flag Firefox doesn't accept.
   const insecureArgs: string[] = [];
   if (opts.disableWebSecurity) {
-    if (engine === "firefox") {
+    if (engine !== "chromium") {
       log.warn(
-        "⚠  session.incognito: disableWebSecurity is not wired on the firefox engine — " +
+        `⚠  session.incognito: disableWebSecurity is not wired on the ${engine} engine — ` +
           "the --disable-web-security flag form is Chromium-only. Launching with SOP/CORS ON.",
       );
     } else {
@@ -68,6 +69,13 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
   let cdp;
   if (engine === "firefox") {
     const adapter = new PlaywrightFirefoxAdapter({ channel: firefoxChannelFromEnv() });
+    ({ browser, context, page } = await adapter.launchEphemeral({
+      launchOptions: { headless: !!opts.headless },
+      contextOptions,
+    }));
+  } else if (engine === "webkit") {
+    // WebKit ephemeral launch + context — no CDP, no Chromium `--` args.
+    const adapter = new PlaywrightWebKitAdapter();
     ({ browser, context, page } = await adapter.launchEphemeral({
       launchOptions: { headless: !!opts.headless },
       contextOptions,

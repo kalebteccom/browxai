@@ -10,18 +10,20 @@ import type { EngineKind } from "./types.js";
 const BROWSER_TYPES: Record<EngineKind, BrowserType> = { chromium, firefox, webkit };
 
 /** Engines wired today. Chromium (P0) + Firefox (P1, Playwright's bundled
- *  Juggler build). WebKit is declared in `EngineKind` and rejected by
- *  `resolveBrowserType` until its adapter lands (RFC 0002 P2). */
-export const IMPLEMENTED_ENGINES: readonly EngineKind[] = ["chromium", "firefox"];
+ *  Juggler build) + WebKit (P2c, Playwright's bundled WebKit build — the WebKit-
+ *  ENGINE correctness lane per RFC D7, NOT Safari). All three `EngineKind`
+ *  members are implemented; the no-silent-no-op selection error remains for any
+ *  future engine declared before its adapter lands. */
+export const IMPLEMENTED_ENGINES: readonly EngineKind[] = ["chromium", "firefox", "webkit"];
 
 export class EngineNotYetSupportedError extends Error {
   readonly engine: EngineKind;
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium and firefox are wired today. WebKit lands as an adapter in a " +
-        "later phase of the multi-engine work (see docs/rfcs/0002-multi-engine-bidi.md). " +
-        'Use browserType:"chromium" (the default) or "firefox".',
+        "chromium, firefox, and webkit are wired today " +
+        "(see docs/rfcs/0002-multi-engine-bidi.md). " +
+        'Use browserType:"chromium" (the default), "firefox", or "webkit".',
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;
@@ -36,6 +38,6 @@ export function resolveBrowserType(engine: EngineKind): BrowserType {
   if (!IMPLEMENTED_ENGINES.includes(engine)) {
     throw new EngineNotYetSupportedError(engine);
   }
-  // chromium + firefox reach here today; the map is shaped for webkit too.
+  // chromium + firefox + webkit all reach here today.
   return BROWSER_TYPES[engine];
 }

@@ -7,6 +7,7 @@ import {
   capabilitiesFor,
   CHROMIUM_CAPABILITIES,
   FIREFOX_CAPABILITIES,
+  WEBKIT_CAPABILITIES,
   requireCdp,
   type EngineKind,
 } from "./index.js";
@@ -16,11 +17,11 @@ describe("engine port — EngineKind + selection", () => {
     expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit"]);
   });
 
-  it("wires chromium + firefox; webkit is still pending", () => {
-    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox"]);
+  it("wires chromium + firefox + webkit (all three RFC engines)", () => {
+    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit"]);
   });
 
-  it.each(["chromium", "firefox"] as const)(
+  it.each(["chromium", "firefox", "webkit"] as const)(
     "resolves %s to a Playwright BrowserType with the expected name",
     (engine) => {
       const bt = resolveBrowserType(engine);
@@ -28,19 +29,16 @@ describe("engine port — EngineKind + selection", () => {
     },
   );
 
-  it("rejects webkit with a structured engine-not-yet-supported error naming the RFC", () => {
-    let caught: unknown;
-    try {
-      resolveBrowserType("webkit");
-    } catch (e) {
-      caught = e;
-    }
-    expect(caught).toBeInstanceOf(EngineNotYetSupportedError);
-    const err = caught as EngineNotYetSupportedError;
+  it("EngineNotYetSupportedError stays structured + RFC-naming for any future engine", () => {
+    // All three EngineKind members are implemented today, so resolveBrowserType
+    // no longer throws for them. The error type remains the no-silent-no-op guard
+    // for a future-declared engine; assert its shape directly (it names the RFC
+    // and the engine, and is never a silent fallback to chromium).
+    const err = new EngineNotYetSupportedError("webkit");
+    expect(err).toBeInstanceOf(EngineNotYetSupportedError);
     expect(err.engine).toBe("webkit");
     expect(err.message).toContain("engine-not-yet-supported");
     expect(err.message).toContain("0002-multi-engine-bidi");
-    // not a silent fallback to chromium — it throws, naming the engine.
     expect(err.message).toContain("webkit");
   });
 });
@@ -78,8 +76,16 @@ describe("engine port — capability declaration", () => {
     expect(caps?.subInterfaces.size).toBe(9);
   });
 
-  it("has no declaration for webkit (its adapter hasn't landed yet)", () => {
-    expect(capabilitiesFor("webkit")).toBeUndefined();
+  it("webkit declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
+    const caps = capabilitiesFor("webkit");
+    expect(caps).toBe(WEBKIT_CAPABILITIES);
+    expect(caps?.engine).toBe("webkit");
+    // WebKit has no CDP at all (measured: newCDPSession throws) — so the
+    // capability-based engine gate auto-refuses the CDP-deep tools on it.
+    expect(caps?.deep).toBe(false);
+    // it still serves the nine cross-browser sub-interfaces (the walker substrate
+    // + Playwright's cross-browser surface).
+    expect(caps?.subInterfaces.size).toBe(9);
   });
 });
 

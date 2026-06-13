@@ -10,6 +10,42 @@ surface" covers.
 
 ### Added
 
+- **WebKit is a real third engine (`browserType:"webkit"`).** A
+  `PlaywrightWebKitAdapter` (`src/engine/adapters/playwright-webkit.ts`) drives
+  Playwright's bundled WebKit build — the WebKit-**engine** correctness lane per
+  RFC 0002 D7, **not** Safari (a real-Safari surface stays a separate, tiered
+  companion product, never a browxai engine adapter). It mirrors the Firefox
+  adapter: managed (`launchPersistentContext`) + ephemeral (`launch` +
+  `newContext`) launch shapes, and **no eager CDP session** — WebKit has no CDP
+  at all (`newCDPSession` throws "CDP session is only available in Chromium"). The
+  three session factories dispatch the webkit path; `webkit` joins
+  `IMPLEMENTED_ENGINES`; `WEBKIT_CAPABILITIES` declares all nine cross-browser
+  sub-interfaces + `deep: false`. Because the engine gate is **capability-based**
+  (it keys on the `deep` capability, not an engine name), declaring `deep: false`
+  **auto-refuses** the ~26 CDP-deep tools (perf / coverage / heap / CPU + network
+  throttle / SW interception / extensions / pdf / live locale-timezone-UA / CDP
+  input dispatch / closed-shadow pierce) on WebKit with the same structured
+  `{error, hint, engine:"webkit"}` envelope Firefox uses — **with no
+  `tool-gate.ts` change** (the open/closed-correct design: a new engine = a new
+  adapter + a capability row, not a gate edit). Both substrates were already
+  engine-agnostic, so WebKit gets `snapshot` / `find` / `navigate` / `click` /
+  `fill` / `text_search` / `extract` / `set_of_marks` / `plan` for free via the
+  P2a page-side walker (selected by CDP-absence, not engine name); the network
+  slice rides P2b's Playwright-event tap when it lands (until then `network_read`
+  / `ws_read` / `network_body` skip, same as Firefox). WebKit BYOB is a structured
+  `webkit-attach-not-supported` refusal (no CDP/BiDi attach client; Safari has not
+  shipped BiDi as of June 2026 — RFC D7). A real-WebKit keystone lane
+  (`test/keystone/webkit.keystone.test.ts`, threaded via
+  `createServer({browserType:"webkit"})`) proves a session opens + tags
+  `engine:"webkit"`, drives the class-A surface (cookies / storageState /
+  screenshot) and a `navigate → snapshot → find → fill → click` flow on real
+  headless WebKit, and asserts structured-refusal for a sample of CDP-deep tools;
+  it skips cleanly when the WebKit binary is absent. `browxai doctor` gains a
+  WebKit-availability check. Chromium + Firefox stay byte-identical (the existing
+  unit + keystone suites are unchanged except additive WebKit rows/columns). See
+  `docs/ai-context/architecture/engine-adapters.md` (the P2c section + the WebKit
+  matrix column) and RFC 0002 (P2c).
+
 - **`snapshot` / `find` / `navigate` / `click` / `fill` (and `text_search` /
   `extract` / `set_of_marks` / `plan`) now run on Firefox.** The snapshot/a11y
   substrate moved behind one `SnapshotSubstrate` interface (RFC 0002 D4, hybrid):

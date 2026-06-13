@@ -11,7 +11,12 @@ export type {
 } from "./types.js";
 export { ENGINE_KINDS } from "./types.js";
 export { resolveBrowserType, EngineNotYetSupportedError, IMPLEMENTED_ENGINES } from "./select.js";
-export { capabilitiesFor, CHROMIUM_CAPABILITIES, FIREFOX_CAPABILITIES } from "./capabilities.js";
+export {
+  capabilitiesFor,
+  CHROMIUM_CAPABILITIES,
+  FIREFOX_CAPABILITIES,
+  WEBKIT_CAPABILITIES,
+} from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { assertEngineSupports, DEEP_TOOLS, type EngineRefusal } from "./tool-gate.js";
 export { PlaywrightChromiumAdapter } from "./adapters/playwright-chromium.js";
@@ -25,3 +30,8 @@ export type {
   FirefoxPersistentLaunchSpec,
   FirefoxEphemeralLaunchSpec,
 } from "./adapters/playwright-firefox.js";
+export { PlaywrightWebKitAdapter } from "./adapters/playwright-webkit.js";
+export type {
+  WebKitPersistentLaunchSpec,
+  WebKitEphemeralLaunchSpec,
+} from "./adapters/playwright-webkit.js";

@@ -316,9 +316,9 @@ export interface StartOptions {
   attachCdp?: string;
   headless?: boolean;
   /** Browser engine for sessions this server launches. Defaults to
-   *  `"chromium"` — the only engine implemented today. firefox/webkit are
-   *  accepted by the type but rejected at the launch path with a clear
-   *  `engine-not-yet-supported` error (see src/engine/). */
+   *  `"chromium"`. chromium, firefox, and webkit are all wired today (see
+   *  src/engine/); a future-declared engine without an adapter is rejected at
+   *  the launch path with a clear `engine-not-yet-supported` error. */
   browserType?: EngineKind;
 }
 
@@ -640,8 +640,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // explicit open_session can override per id (incognito, or a named profile).
   const serverDefaultMode: SessionMode = opts.attachCdp ? "attached" : "persistent";
   // The engine every session this server opens runs on. Defaults to chromium;
-  // firefox/webkit are accepted by the option type but the launch path rejects
-  // them (engine-not-yet-supported) — there is no silent fallback to chromium.
+  // firefox + webkit are also wired (the launch path drives each via its
+  // adapter). A future-declared engine without an adapter is rejected
+  // (engine-not-yet-supported) — there is no silent fallback to chromium.
   const serverEngine: EngineKind = opts.browserType ?? "chromium";
   const registry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {

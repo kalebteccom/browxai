@@ -52,9 +52,25 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
     expect(assertEngineSupports("pdf_save", "firefox")!.hint).toContain("Headless-Chromium-only");
   });
 
-  it("leaves webkit (no declaration yet) to the launch path, not the gate", () => {
-    // No capability declaration → the gate returns null; the launch path is the
-    // one that throws engine-not-yet-supported for webkit.
-    expect(assertEngineSupports("perf_start", "webkit")).toBeNull();
+  it("auto-gates webkit (deep:false) with NO per-engine gate edit — the open/closed proof", () => {
+    // WEBKIT_CAPABILITIES declares deep:false, so the SAME capability-based gate
+    // that refuses firefox refuses webkit — the gate keys on the deep capability,
+    // not an engine name, so a third engine that drops deep is auto-gated with no
+    // tool-gate.ts change. This is the open/closed-correct design the doctrine asks
+    // for: a new engine = a new adapter + a capability row, zero gate edits.
+    for (const tool of DEEP_TOOLS) {
+      const refusal = assertEngineSupports(tool, "webkit");
+      expect(refusal, `${tool} should refuse on webkit`).not.toBeNull();
+      expect(refusal!.error).toContain(tool);
+      expect(refusal!.error).toContain("webkit");
+      expect(refusal!.hint).toContain("chromium");
+      expect(refusal!.hint).toContain("engine-adapters.md");
+    }
+  });
+
+  it("never gates a cross-browser (class-A) tool on webkit either", () => {
+    for (const tool of ["navigate", "click", "fill", "screenshot", "cookies_set", "snapshot"]) {
+      expect(assertEngineSupports(tool, "webkit")).toBeNull();
+    }
   });
 });
