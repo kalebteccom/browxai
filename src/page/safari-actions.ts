@@ -85,6 +85,18 @@ function unaddressable(action: DispatchedAction): ActionResult {
   });
 }
 
+/** A clean refusal for an action family outside Safari's curated subset (hover,
+ *  select, scroll, …). Keeps the gating in the adapter rather than the handler,
+ *  so the tool surface stays engine-blind. */
+export function safariUnsupportedAction(type: DispatchedAction["type"]): ActionResult {
+  return result({ type }, false, {
+    error:
+      `\`${type}\` is not supported on the Safari engine — the curated subset is navigate / click / ` +
+      `fill / press / snapshot / find / screenshot / cookies. Use a chromium, firefox, or webkit ` +
+      `session for the rest.`,
+  });
+}
+
 async function resolveElement(
   handle: SafariSessionHandle,
   selector: string,

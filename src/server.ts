@@ -267,7 +267,11 @@ import {
   type VideoStartConfig,
 } from "./page/video.js";
 import * as actions from "./page/actions.js";
-import { safariNavigate, safariClick, safariFill, safariPress } from "./page/safari-actions.js";
+import {
+  PlaywrightActionSubstrate,
+  SafariActionSubstrate,
+  type ActionSubstrate,
+} from "./page/action-substrate.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
 import type { ActionContext } from "./page/actionresult.js";
@@ -1315,6 +1319,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     // block.
     ...(caps.enabled.has("file-io") ? { downloads: e.downloads } : {}),
   });
+
+  // The action capability port (RFC 0003): selected by the engine's capability,
+  // exactly like `snapshotSubstrateFor` / `networkSubstrateFor`. Playwright engines
+  // wrap `actions.*` over a fresh ActionContext; safari (no Playwright Page) wraps
+  // the WebDriver Classic action path. Handlers call `actionsFor(e).<action>(args)`
+  // and never branch on engine.
+  const actionsFor = (e: SessionEntry): ActionSubstrate => {
+    const safariHandle = e.session.safari?.();
+    if (safariHandle) return new SafariActionSubstrate(safariHandle, e.refs);
+    return new PlaywrightActionSubstrate(() => ctxFor(e), e.session.engine);
+  };
 
   // resolve the effective anti-wedge deadline for a call —
   // per-call `timeoutMs` over config `actionTimeoutMs` over the 5000 default,
@@ -3562,14 +3577,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       const decision = await confirmNavigation(url, confirmCtxFor(e));
       if (!decision.ok) return denyContent("navigate", decision);
-      // safari (P4) has no Playwright Page, so `ctxFor(e)` (→ e.session.page())
-      // would throw. Route navigation through the Safari-native WebDriver Classic
-      // client instead — the curated-subset action path (RFC 0002 D7).
-      const safariHandle = e.session.safari?.();
-      if (safariHandle) return asActionResultText(safariNavigate(safariHandle, url));
       const td = actionTimeout({ timeoutMs });
       return asActionResultText(
-        actions.navigate(ctxFor(e), {
+        actionsFor(e).navigate({
           url,
           mode,
           maxResultTokens,
@@ -3607,12 +3617,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("click", confirmCtxFor(e));
       if (!c.ok) return denyContent("click", c);
       const target = asTarget(args, "click", e.refs);
-      const safariClickHandle = e.session.safari?.();
-      if (safariClickHandle)
-        return asActionResultText(safariClick(safariClickHandle, e.refs, target));
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.click(ctxFor(e), {
+        actionsFor(e).click({
           target,
           button: args.button,
           force: args.force,
@@ -3639,12 +3646,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("fill", confirmCtxFor(e));
       if (!c.ok) return denyContent("fill", c);
       const target = asTarget(args, "fill", e.refs);
-      const safariFillHandle = e.session.safari?.();
-      if (safariFillHandle)
-        return asActionResultText(safariFill(safariFillHandle, e.refs, target, args.value));
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.fill(ctxFor(e), {
+        actionsFor(e).fill({
           target,
           value: args.value,
           mode: args.mode,
@@ -3676,31 +3680,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!conf.ok) return denyContent("press", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? asTarget(args, "press", e.refs) : undefined;
-      const safariPressHandle = e.session.safari?.();
-      if (safariPressHandle) {
-        if (!target) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error:
-                      "page-level `press` (no target) is not supported on the Safari engine — pass a `ref`/`selector` to press a key into a specific element.",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-        return asActionResultText(safariPress(safariPressHandle, e.refs, target, args.key));
-      }
       const td = actionTimeout(args);
       return asActionResultText(
-        actions.press(ctxFor(e), {
+        actionsFor(e).press({
           target,
           key: args.key,
           mode: args.mode,
