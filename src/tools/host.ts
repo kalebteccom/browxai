@@ -136,4 +136,12 @@ export interface ToolHost {
   /** zod, so tool modules build their input schemas with the same instance the
    *  composition root uses. */
   z: typeof z;
+
+  /** The in-process handler side-table — the compound tools (act_and_wait_for_network,
+   *  …) dispatch an inner tool by name through this rather than re-implementing it. */
+  toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>>;
+
+  /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
+   *  to. Read lazily so the host can expose it before the set is populated. */
+  readonly batchAllowedTools: ReadonlySet<string>;
 }

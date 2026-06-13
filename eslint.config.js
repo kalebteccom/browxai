@@ -279,19 +279,20 @@ export default tseslint.config(
       "@typescript-eslint/restrict-template-expressions": "off",
     },
   },
-  // src/server.ts — MCP tool-handler registration. The MCP SDK's
+  // src/server.ts + src/tools/* — MCP tool-handler registration. The MCP SDK's
   // `s.tool(name, schema, handler)` signature requires the handler to
   // return `Promise<ToolResponse>`, so handlers must be declared `async`
   // even when the body is intrinsically synchronous (gate-check + sync
   // file read + JSON.stringify). The honest fixes are either (a) a
   // structural change to the handler-registration shape that accepts
-  // sync handlers (same scope as the frame-handling refactor flagged in
-  // Stage 2c), or (b) wrapping every literal return in `Promise.resolve(...)`
-  // and dropping `async` (18 sites × ~3 returns each = ~54 mechanical
+  // sync handlers, or (b) wrapping every literal return in `Promise.resolve(...)`
+  // and dropping `async` (many sites × ~3 returns each = mechanical
   // changes that add no value to the reader). Off here; every other file
-  // in the tree gates `require-await` as error.
+  // in the tree gates `require-await` as error. The per-family tool modules
+  // own the same register() blocks the composition root used to, so the same
+  // exemption applies.
   {
-    files: ["src/server.ts"],
+    files: ["src/server.ts", "src/tools/*.ts"],
     rules: {
       "@typescript-eslint/require-await": "off",
     },
