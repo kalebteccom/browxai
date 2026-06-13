@@ -120,6 +120,63 @@ not-owned policy is protocol-neutral (per the audit) and reused verbatim; only
 the transport hop (`connectOverCDP` today) is engine-specific and lives in the
 adapter.
 
+## Operator engine selection — `BROWX_ENGINE` / `--engine`
+
+The engine machinery above is internally wired, but `StartOptions.browserType`
+was only set **programmatically** (tests calling `createServer({browserType})`).
+The real entry point — `src/cli.ts` → `createServer` — populated it from nothing,
+so firefox/webkit/android were unreachable when actually **running the MCP
+server**. The operator-selection surface closes that last mile.
+
+**The switch.** `BROWX_ENGINE=<kind>` (env) or `--engine <kind>` (CLI flag) picks
+the engine every session the server opens runs on. Both resolve through one pure
+function, `resolveEngineSelection(argv, env)` (`src/engine/select.ts`):
+
+```
+explicit --engine flag   >   BROWX_ENGINE env   >   default chromium
+```
+
+- `--engine firefox`, `--engine=webkit`, `BROWX_ENGINE=android` — all valid.
+- Resolves to `undefined` when neither is set, so `cli.ts` omits `browserType`
+  and `server.ts` applies its own `?? "chromium"` default — **byte-identical** to
+  the pre-feature path for anyone not setting the var. Default stays chromium.
+- The value is validated against `IMPLEMENTED_ENGINES` (the real list:
+  `chromium, firefox, webkit, android`). An unknown value (`safari`, a typo)
+  throws `UnknownEngineError` — a **structured** message listing the implemented
+  engines (the fix is in the error), naming RFC 0002 for Safari's status, printed
+  to stderr with `exit 2`. Never a stack trace, never a silent fallback to
+  chromium. A bare `--engine` with no value is likewise a loud error.
+- This mirrors the existing inline env/flag idiom (`BROWX_HEADLESS`,
+  `BROWX_ATTACH_CDP`) — lifted into a function only because the precedence +
+  validation are worth unit-testing without a browser
+  (`src/engine/select-operator.test.ts`).
+
+**Composition with the per-engine sub-selectors.** `BROWX_ENGINE` is the
+**top-level** switch; the engine-specific knobs that already shipped compose
+beneath it:
+
+| Compose                                                      | Effect                                                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `BROWX_ENGINE=firefox` + `BROWX_FIREFOX_CHANNEL=moz-firefox` | Firefox engine on the experimental stock-Firefox WebDriver-BiDi channel (P1, `firefoxChannelFromEnv`) instead of bundled Juggler. |
+| `BROWX_ENGINE=android` + `BROWX_ANDROID_SERIAL=<serial>`     | Android engine, disambiguating **which** connected device (P3) when several are USB-attached.                                     |
+
+`BROWX_ENGINE=android` **implies attach-mode** — `server.ts` already defaults the
+android engine to `mode:"attached"` (the endpoint is **discovered over adb**, not
+configured), so **no separate `BROWX_ATTACH_CDP` is needed** (and none applies —
+adb publishes the `localabstract:chrome_devtools_remote` socket). Selecting
+firefox/webkit with no installed binary, or android with no reachable device,
+surfaces the **existing** structured engine error at session open (a missing
+firefox binary, `no-device`, `chrome-socket-unreachable`, …) — the selection path
+just reaches it cleanly; it does not duplicate the check.
+
+**Doctor.** `browxai doctor` resolves the selected engine the **same way** the
+server does (`resolveEngineSelection(process.argv.slice(2))`) and its `engine`
+row reports the **selected** engine (not a hardcoded `chromium`), pointing at the
+matching per-engine availability row above it (`chromium` / `firefox` / `webkit` /
+`android` — those checks always run, so the selected engine's readiness — binary
+present / device reachable — is visible in one glance). An invalid selection
+shows as a ✗ with the same implemented-engines message the server prints.
+
 ## Strangler-fig migration state
 
 | State                                                               | Status |
@@ -128,7 +185,8 @@ adapter.
 | `cdp()` optional; consumers route through `requireCdp`              |   ✅   |
 | `browserType` threaded (default chromium); not-yet-supported error  |   ✅   |
 | Engine dimension on the capability system (chromium = everything)   |   ✅   |
-| Doctor reports the active engine                                    |   ✅   |
+| Operator engine selection (`BROWX_ENGINE` / `--engine`, P3b)        |   ✅   |
+| Doctor reports the SELECTED engine + its availability row           |   ✅   |
 | Firefox Juggler adapter + Firefox keystone lane + engine gating     |   ✅   |
 | Firefox-availability doctor check + `moz-firefox` channel flag      |   ✅   |
 | Snapshot/a11y substrate behind `SnapshotSubstrate` (P2a)            |   ✅   |

@@ -10,6 +10,30 @@ surface" covers.
 
 ### Added
 
+- **Operator engine selection — `BROWX_ENGINE` env var + `--engine <kind>` CLI
+  flag.** The multi-engine machinery (the `BrowserEngine` port + the
+  chromium/firefox/webkit/android adapters) was fully wired but **unreachable
+  when running the MCP server**: `StartOptions.browserType` was only set
+  programmatically (tests via `createServer({browserType})`), and the real entry
+  point (`src/cli.ts` → `createServer`) never populated it. This closes the last
+  mile. `BROWX_ENGINE=<kind>` or `--engine <kind>` picks the engine the server
+  runs on, resolved through one pure function (`resolveEngineSelection`,
+  `src/engine/select.ts`) with precedence **`--engine` flag > `BROWX_ENGINE` env
+  > default `chromium`**. The value is validated against `IMPLEMENTED_ENGINES`
+  (`chromium, firefox, webkit, android`); an unknown value (e.g. `safari`) exits
+  with a **structured** message listing the valid engines and pointing at RFC
+  0002 for Safari status — never a stack trace, never a silent fallback. Default
+  stays chromium, so behavior is **byte-identical** for anyone not setting the
+  var. It composes with the existing per-engine sub-selectors:
+  `BROWX_ENGINE=firefox` + `BROWX_FIREFOX_CHANNEL=moz-firefox` (the experimental
+  BiDi channel), and `BROWX_ENGINE=android` + `BROWX_ANDROID_SERIAL=<serial>`
+  (device disambiguation). `BROWX_ENGINE=android` **implies attach-mode** (the
+  server defaults android to `mode:"attached"`, endpoint discovered over adb — no
+  `BROWX_ATTACH_CDP`). `browxai doctor` now reports the **selected** engine
+  (resolved the same way) and points at that engine's availability row (binary
+  present / device reachable), instead of a hardcoded `chromium`. This makes
+  multi-engine real for operators, not just internally wired (RFC 0002).
+
 - **Android is a real fourth engine (`browserType:"android"`) — real
   Chrome-on-Android attached over adb + CDP.** The surviving full-fidelity
   real-profile BYOB lane (RFC 0002 D3/D8): an `AndroidCdpAdapter`
