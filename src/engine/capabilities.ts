@@ -11,7 +11,10 @@
 // throws on Firefox — measured), so the ~19 CDP-hard tools (audit class B)
 // structured-refuse on it. WebKit (P2c) is the same shape — all nine cross-
 // browser sub-interfaces, `deep: false` (WebKit has no CDP at all — measured:
-// `newCDPSession` throws "CDP session is only available in Chromium").
+// `newCDPSession` throws "CDP session is only available in Chromium"). Android
+// (P3) is the standout: it IS Chromium (attached over adb + CDP), so it declares
+// `deep: true` like desktop Chromium — every tool, including the CDP-deep ones,
+// works, and no new substrate is needed (the CDP substrates serve it verbatim).
 
 import type { EngineCapabilities, EngineKind, EngineSubInterface } from "./types.js";
 
@@ -64,15 +67,35 @@ export const WEBKIT_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** Android (P3 — real Chrome-on-Android attached over adb + CDP, RFC D3/D8). The
+ *  STANDOUT among the non-chromium engines: Android Chrome speaks FULL CDP, so
+ *  this engine exposes the `deep` (raw-CDP) escape hatch just like desktop
+ *  Chromium — `deep: true`. That single fact is why Android needs NO new
+ *  substrate: the CDP capability signal routes it through the EXISTING
+ *  `CdpSnapshotSubstrate` + `CdpNetworkSubstrate` (via `snapshotSubstrateFor` /
+ *  `networkSubstrateFor`, which key on CDP presence), and the capability-based
+ *  engine gate auto-ALLOWS every tool (it refuses only on `deep: false`). So
+ *  unlike firefox/webkit, EVERYTHING works on Android — the CDP-deep tools too
+ *  (perf / coverage / heap / cpu / clock / CDP input dispatch / closed-shadow).
+ *  The only Android-specific limits are launch-shape, not capability: managed /
+ *  ephemeral launch isn't a thing on a phone (the adapter's launch path returns
+ *  a structured `android-launch-not-supported` — Android is attach-only). */
+export const ANDROID_CAPABILITIES: EngineCapabilities = {
+  engine: "android",
+  subInterfaces: new Set(ALL_SUB_INTERFACES),
+  deep: true,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
   webkit: WEBKIT_CAPABILITIES,
+  android: ANDROID_CAPABILITIES,
 };
 
 /** The capability declaration for an engine. Chromium (P0) + Firefox (P1) +
- *  WebKit (P2c) all have declarations; the partial map keeps room for engines
- *  whose adapter hasn't landed yet (returns undefined for those). */
+ *  WebKit (P2c) + Android (P3) all have declarations; the partial map keeps room
+ *  for engines whose adapter hasn't landed yet (returns undefined for those). */
 export function capabilitiesFor(engine: EngineKind): EngineCapabilities | undefined {
   return DECLARATIONS[engine];
 }

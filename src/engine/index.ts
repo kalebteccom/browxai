@@ -16,6 +16,7 @@ export {
   CHROMIUM_CAPABILITIES,
   FIREFOX_CAPABILITIES,
   WEBKIT_CAPABILITIES,
+  ANDROID_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { assertEngineSupports, DEEP_TOOLS, type EngineRefusal } from "./tool-gate.js";
@@ -35,3 +36,23 @@ export type {
   WebKitPersistentLaunchSpec,
   WebKitEphemeralLaunchSpec,
 } from "./adapters/playwright-webkit.js";
+export { AndroidCdpAdapter } from "./adapters/android-cdp.js";
+export type { AndroidAttachHandles, AndroidAdapterDeps } from "./adapters/android-cdp.js";
+export {
+  CHROME_ANDROID_SOCKET,
+  AdbNotInstalledError,
+  NoAndroidDeviceError,
+  ChromeSocketUnreachableError,
+  devicesArgs,
+  forwardArgs,
+  forwardRemoveArgs,
+  parseDevices,
+  selectDevice,
+  devToolsBaseUrl,
+  versionUrl,
+  extractWsUrl,
+  pickFreePort,
+  defaultAdbRunner,
+  defaultFetcher,
+} from "./adapters/adb.js";
+export type { AdbDevice, AdbRunner, Fetcher } from "./adapters/adb.js";
