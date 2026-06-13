@@ -7,14 +7,17 @@ session layer (and the tools above it) depend on the port; the port depends on
 an adapter; the adapter depends on Playwright. Dependencies point inward — never
 back out toward Playwright/CDP from a tool.
 
-It implements **P0 + P1** of [`docs/rfcs/0002-multi-engine-bidi.md`](../../rfcs/0002-multi-engine-bidi.md)
+It implements **P0 + P1 + P2 + the Android lane of P3** of
+[`docs/rfcs/0002-multi-engine-bidi.md`](../../rfcs/0002-multi-engine-bidi.md)
 (decision D1: strangler-fig, minimal-first, shaped for growth; D2/D3/D6 for the
-Firefox lane) against the file:line evidence in
+Firefox lane; D4/D5 for the substrates; D7 for WebKit; D3/D8 for Android) against
+the file:line evidence in
 [`references/03-browxai-coupling-audit.md`](../../rfcs/references/03-browxai-coupling-audit.md).
 P0 extracted the port + the Chromium adapter (zero behavior change); P1 landed
-Firefox as the second engine + the engine-dimension capability gate. Read both
-for the rulings and the coupling map; this doc is the contract for the code that
-landed.
+Firefox as the second engine + the engine-dimension capability gate; P2a/b/c
+landed the snapshot + network substrates and WebKit; P3 landed Android (real
+Chrome-on-Android over adb + CDP — the `deep: true` standout). Read both for the
+rulings and the coupling map; this doc is the contract for the code that landed.
 
 ## Why the seam is proven (not speculative)
 
@@ -30,7 +33,7 @@ rewrite.
 ## The port (`src/engine/`)
 
 ```
-EngineKind = "chromium" | "firefox" | "webkit"   // engines the RFC commits to
+EngineKind = "chromium" | "firefox" | "webkit" | "android"   // engines the RFC commits to
 
 BrowserEngine (port)                              // capability-segregated
 ├── Lifecycle    launch / attach / contexts / close
@@ -63,12 +66,14 @@ the handles above.
 | --------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `types.ts`                        | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.            |
 | `select.ts`                       | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.          |
-| `capabilities.ts`                 | Per-engine capability declarations. Chromium declares everything; Firefox + WebKit drop `deep`. |
+| `capabilities.ts`                 | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`. |
 | `session-cdp.ts`                  | `requireCdp(session)` — asserts the now-optional `cdp()` is present.                            |
 | `tool-gate.ts`                    | `assertEngineSupports(tool, engine)` — the engine-dimension refusal for the CDP-deep tools.     |
 | `adapters/playwright-chromium.ts` | `PlaywrightChromiumAdapter` — wraps today's Chromium/CDP launch verbatim.                       |
 | `adapters/playwright-firefox.ts`  | `PlaywrightFirefoxAdapter` — Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).    |
 | `adapters/playwright-webkit.ts`   | `PlaywrightWebKitAdapter` — bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).      |
+| `adapters/android-cdp.ts`         | `AndroidCdpAdapter` — real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8). |
+| `adapters/adb.ts`                  | adb plumbing — device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors. |
 
 ## The capability dimension
 
@@ -129,7 +134,8 @@ adapter.
 | Snapshot/a11y substrate behind `SnapshotSubstrate` (P2a)           |   ✅   |
 | Firefox network tap on Playwright events (P2b)                     |   ✅   |
 | playwright-webkit adapter (P2c) + WebKit keystone lane             |   ✅   |
-| stock-Firefox `moz-firefox` BiDi adapter; Android adb+CDP adapter  |   P3   |
+| Android adb+CDP adapter (P3) + device-gated keystone + doctor check |   ✅   |
+| stock-Firefox `moz-firefox` BiDi adapter (P3, remaining)           |   P3   |
 | real-Safari lane; Safari-BiDi engine row when upstream ships       |   P4   |
 
 The proof the seam is correct is that **all existing Chromium tests pass
@@ -344,6 +350,99 @@ WebKit engine build; the reserved `webkit-persistent-not-supported` reason is
 surfaced only if a future Playwright/WebKit build drops persistent-context
 support.
 
+## P3: Android (the fourth engine — real Chrome-on-Android over adb + CDP)
+
+`adapters/android-cdp.ts` (`AndroidCdpAdapter`) attaches to the user's **real
+Chrome-on-Android** over `adb` + CDP (RFC 0002 D3/D8). This is the surviving
+full-fidelity real-profile BYOB lane — the **one place** attach-to-a-real-profile
+still works post-Chrome-136 (see the Chrome-136 finding below).
+
+**The standout: Android is `deep: true`.** Unlike firefox/webkit, Android Chrome
+speaks **full CDP**, so `ANDROID_CAPABILITIES` declares all nine cross-browser
+sub-interfaces **plus `deep`**. Three consequences, all of which mean **no new
+substrate code**:
+
+- the substrate selectors (`snapshotSubstrateFor` / `networkSubstrateFor`) key on
+  CDP presence, so Android falls into the **same `CdpSnapshotSubstrate` /
+  `CdpNetworkSubstrate` path as desktop Chromium** — verbatim, automatically;
+- the capability-based engine gate **auto-ALLOWS every tool** (it refuses only on
+  `deep: false`), so the CDP-deep tools (perf / coverage / heap / cpu / clock /
+  CDP input / closed-shadow) **all work** on Android — the exact tools
+  firefox/webkit refuse;
+- the eager CDP session is minted on attach, exactly like the Chromium adapter.
+
+So Android is the **smallest, lowest-risk adapter**: the only genuinely new code
+is the adb plumbing (`adapters/adb.ts`), not a substrate.
+
+**connectOverCDP, not `playwright._android`.** Both reach the same CDP. We prefer
+`chromium.connectOverCDP(<ws-from-adb-forwarded-socket>)` because it returns the
+exact `Browser` + `newCDPSession` handles the desktop BYOB path already wires
+(`attachOverCdp` in `playwright-chromium.ts`), so the substrate selectors, the
+network tap, the a11y substrate, and teardown all work **unchanged**.
+`playwright._android` is a separate experimental **device** API
+(`_android.devices()` → `AndroidDevice`) that owns its own adb orchestration and
+returns a device-shaped object, not the `Browser`/`CDPSession` pair the rest of
+browxai is built on — adopting it would fork the session model. We keep the adb
+orchestration explicit in `adb.ts` (the most existing-code reuse) and resolve
+`android` to the `chromium` `BrowserType` for the transport hop. (Measured against
+Playwright 1.60: `chromium.connectOverCDP` is a function; `_android` is the
+device API, not a `connectOverCDP` substitute.)
+
+**The attach path** (`AndroidCdpAdapter.attach`):
+
+1. `adb [-s <serial>] devices` → parse → select the ready device
+   (`BROWX_ANDROID_SERIAL` picks one when several are connected);
+2. `adb [-s <serial>] forward tcp:<freePort> localabstract:chrome_devtools_remote`
+   (the abstract-namespace socket Chrome-on-Android publishes; the forward is
+   **loopback** by construction → byob.ts's loopback / not-owned policy applies);
+3. `GET http://127.0.0.1:<freePort>/json/version` → `webSocketDebuggerUrl`;
+4. `chromium.connectOverCDP(wsUrl)` → the real device's Chrome.
+
+On any failure after the forward is established, the forward is removed before the
+error propagates (no leaked adb forwards). Session close detaches CDP **and**
+removes the adb forward; it never closes the browser (not-owned — it's the user's
+phone Chrome).
+
+**LAUNCH is attach-only.** Managed / ephemeral launch means "spawn a browser
+process we own", which is not a thing on a phone the user controls. The adapter's
+`launch()` returns a structured `android-launch-not-supported`; the managed +
+incognito factories surface it before trying to launch a local chromium.
+
+**Structured errors (no crashes).** `adb.ts` names every requirement:
+`adb-missing` (platform-tools not on PATH), `no-device` (none connected, or all
+unauthorized/offline — names the on-device RSA-prompt / re-plug fix),
+`ambiguous-device` (several ready → set `BROWX_ANDROID_SERIAL`),
+`chrome-socket-unreachable` (Chrome closed / web-debugging off).
+
+**Chrome-136 finding (the audit's open input — investigated + closed).** The
+Chrome-136 anti-infostealer block that killed desktop daily-profile attach
+targets the **desktop `--remote-debugging-port` / `--remote-debugging-pipe`
+switches** when combined with the **default `--user-data-dir`** (the switches now
+require a non-standard data dir). Android does **not** use that switch at all: the
+DevTools endpoint is published by the OS as an abstract-namespace unix socket
+(`localabstract:chrome_devtools_remote`), reachable only after the user enables
+USB debugging + on-device USB web-debugging — a fundamentally different,
+user-gated, Google-sanctioned mechanism. **The Chrome-136 block does NOT apply to
+the Android localabstract path**, so the full-fidelity BYOB-to-the-real-profile
+win survives on Android. Sources: `developer.chrome.com/blog/remote-debugging-port`
+(desktop-only, no Android mention) and
+`developer.chrome.com/docs/devtools/remote-debugging` (the Android adb path is
+gated by USB debugging, not a profile flag).
+
+**Doctor** gains an Android-availability check (informational — never fails
+doctor): it reports how far the adb + CDP chain reaches (adb present → device
+ready → Chrome socket reachable), forwarding the socket + probing `/json/version`
++ removing the forward, without opening a session.
+
+**Device-gated keystone** (`test/keystone/android.keystone.test.ts`): the **same
+honest device-gate** the firefox/webkit keystones use for their binaries — it
+`describe.skip`s cleanly when no Android device is connected (so the lane is green
+in CI / on this machine), and when a device IS present it attaches, asserts the
+engine tag is `android`, runs navigate → snapshot → find on the real device, AND
+runs a deep tool (`coverage_start`) to prove `deep: true` (the exact tool
+firefox/webkit refuse). It is **not** a silently-passing mock — mocks cannot prove
+the adb forward → `/json/version` → `connectOverCDP` chain reaches a real phone.
+
 ### Per-engine capability matrix (RFC task #24)
 
 Tool family × engine. **works** = runs through the cross-browser surface;
@@ -351,32 +450,37 @@ Tool family × engine. **works** = runs through the cross-browser surface;
 P2a moved the snapshot/a11y read + action core to **works** on Firefox; P2b moved
 the network/WS tap + response-body fetch to **works** on Firefox; P2c brought
 WebKit online with the **same** surface as Firefox (both ride the engine-agnostic
-walker + network substrates + the capability-based gate).
+walker + network substrates + the capability-based gate). **P3 brought Android
+online as the STANDOUT: every row is `works`, including the deep rows** — Android
+Chrome speaks full CDP (`deep: true`), so the CDP substrates serve it verbatim and
+the gate auto-allows everything. The only Android-specific limit is launch-shape:
+managed/ephemeral launch refuses (`android-launch-not-supported`) — Android is
+attach-only.
 
-| Tool family                                                           | Chromium |         Firefox (Juggler)         |             WebKit             |
-| --------------------------------------------------------------------- | :------: | :-------------------------------: | :----------------------------: |
-| Session lifecycle (open/close/list); engine tag                       |  works   |               works               |             works              |
-| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |               works               |             works              |
-| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |               works               |             works              |
-| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |               works               |             works              |
-| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |               works               |             works              |
-| HAR / video / route mocking / WS-interactive / canvas                 |  works   |               works               |             works              |
-| `navigate` / `click` / `fill` / `snapshot` / `find` (a11y substrate)  |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |
-| `text_search` / `extract` / `screenshot_marks` / `plan` (a11y)        |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |
-| `network_read` / `ws_read` / `network_body` (hybrid tap)              |  works   |  **works** (P2b — PW-event tap)   | **works** (P2b/P2c — PW-event) |
-| `shadow_trees` — closed-shadow pierce (CDP `DOM.getDocument`)         |  works   |             **gated**             |           **gated**            |
-| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |             **gated**             |           **gated**            |
-| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |             **gated**             |           **gated**            |
-| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |             **gated**             |           **gated**            |
-| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |             **gated**             |           **gated**            |
-| `network_emulate` (link throttle)                                     |  works   |    **gated** (refuse-pending)     |   **gated** (refuse-pending)   |
-| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |             **gated**             |           **gated**            |
-| extensions (`extensions_*`) — Chromium launch flags                   |  works   |             **gated**             |           **gated**            |
-| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   | **gated** (Firefox-specific hint) |           **gated**            |
-| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |   **gated** (bake at creation)    |           **gated**            |
-| `set_user_agent` — live CDP UA override                               |  works   | **gated** (no live PW UA setter)  |           **gated**            |
-| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |             **gated**             |           **gated**            |
-| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |  moot (API absent off-Chromium)   |              moot              |
+| Tool family                                                           | Chromium |         Firefox (Juggler)         |             WebKit             |        Android (adb+CDP)        |
+| --------------------------------------------------------------------- | :------: | :-------------------------------: | :----------------------------: | :-----------------------------: |
+| Session lifecycle (open/close/list); engine tag                       |  works   |               works               |             works              |    works (attach-only)          |
+| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |               works               |             works              |             works               |
+| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |               works               |             works              |             works               |
+| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |               works               |             works              |             works               |
+| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |               works               |             works              |             works               |
+| HAR / video / route mocking / WS-interactive / canvas                 |  works   |               works               |             works              |             works               |
+| `navigate` / `click` / `fill` / `snapshot` / `find` (a11y substrate)  |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |  **works** (CDP substrate)      |
+| `text_search` / `extract` / `screenshot_marks` / `plan` (a11y)        |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |  **works** (CDP substrate)      |
+| `network_read` / `ws_read` / `network_body` (hybrid tap)              |  works   |  **works** (P2b — PW-event tap)   | **works** (P2b/P2c — PW-event) |  **works** (CDP tap, verbatim)  |
+| `shadow_trees` — closed-shadow pierce (CDP `DOM.getDocument`)         |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| `network_emulate` (link throttle)                                     |  works   |    **gated** (refuse-pending)     |   **gated** (refuse-pending)   |  **works** (full CDP)           |
+| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
+| extensions (`extensions_*`) — Chromium launch flags                   |  works   |             **gated**             |           **gated**            |  n/a (attach-only — launch flags)|
+| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   | **gated** (Firefox-specific hint) |           **gated**            |  works (CDP `Page.printToPDF`)  |
+| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |   **gated** (bake at creation)    |           **gated**            |  **works** (full CDP)           |
+| `set_user_agent` — live CDP UA override                               |  works   | **gated** (no live PW UA setter)  |           **gated**            |  **works** (full CDP)           |
+| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |             **gated**             |           **gated**            |  **works** (full CDP — real touch)|
+| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |  moot (API absent off-Chromium)   |              moot              |  moot (real device hardware)    |
 
 `perf_insights` / `heap_retainers` / `memory_diff` are pure file parsers over a
 Chromium-produced trace/heapsnapshot — they are **not** engine-gated (the data
@@ -388,7 +492,15 @@ subresource record + `network_body` resolving its requestId) and a sample of the
 **gated** rows. The WebKit column is identical to Firefox by construction: WebKit
 rides the **same** engine-agnostic walker + network substrates and the same
 capability-based gate (`deep: false`), so no per-tool work was needed to bring it
-online — only the adapter + the capability row.
+online — only the adapter + the capability row. **The Android column is the
+inverse of WebKit's: it is identical to _Chromium_ by construction** — Android
+declares `deep: true`, so the CDP substrates + the capability-based gate route it
+through the exact Chromium path with no per-tool work, only the adapter + the adb
+plumbing + the capability row. The device-gated keystone asserts the engine tag,
+navigate → snapshot → find, AND a deep tool (`coverage_start`) running — the proof
+of `deep: true` — on a real connected device (skips cleanly otherwise). The
+attach-only `n/a` for `extensions_*` is launch-shape, not a CDP limit: extension
+loading is a Chromium **launch-flag** concern, and Android is attach-only.
 
 ## Related
 
