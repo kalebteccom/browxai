@@ -808,7 +808,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // `start_har` / `stop_har` can refuse cleanly (the native path can't be
       // toggled mid-session — Playwright finalizes it on context.close()).
       const harState = newHarRecorderState();
-      if (creationRecordHarResolved) {
+      // safari (P4) is the first non-Playwright engine: it has no Playwright Page,
+      // so the Playwright-bound bookkeeping below (HAR/video recorders, console/
+      // network/bridge/policy attaches, device emulation, the CDP page-event
+      // reapply) is guarded `!== "safari"` — always-true for the other engines, so
+      // their path is byte-identical. Safari's session context uses the snapshot
+      // substrate + the no-op network substrate; the rest of its tools either route
+      // through the Safari-native handle or self-gate via the page()-throw.
+      if (creationRecordHarResolved && sess.engine !== "safari") {
         harState.active = true;
         harState.nativeRecord = true;
         harState.path = creationRecordHarResolved.path;
@@ -822,7 +829,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // finalized when the context closes (Playwright constraint) —
       // teardown calls `page.video().saveAs(targetPath)`.
       const videoState = newVideoRecorderState();
-      if (creationRecordVideoResolved) {
+      if (creationRecordVideoResolved && sess.engine !== "safari") {
         videoState.active = true;
         videoState.targetPath = creationRecordVideoResolved.targetPath;
         videoState.stagingDir = creationRecordVideoResolved.stagingDir;
@@ -834,11 +841,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // to live network — the safer default. Replay is honoured on every
       // session mode (incl. attached: the consumer's Chrome receives the
       // route handler scoped to its context; warning emitted up-stream).
-      if (creationReplayHars && creationReplayHars.length) {
+      if (creationReplayHars && creationReplayHars.length && sess.engine !== "safari") {
         await applyHarReplay(sess.page().context(), creationReplayHars);
       }
       const consoleBuf = new ConsoleBuffer();
-      consoleBuf.attach(sess.page());
+      // Safari console arrives via BiDi log.entryAdded (Inc 4); until then it is an
+      // unattached (empty) buffer rather than a page-attached one.
+      if (sess.engine !== "safari") consoleBuf.attach(sess.page());
       // The network/WS substrate is selected by engine capability (RFC 0002 D5):
       // chromium (CDP present) gets the verbatim CDP NetworkBuffer/WsBuffer/tap;
       // firefox/webkit get the Playwright context-event buffers. The session-wide
@@ -856,13 +865,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       consoleBuf.setSecrets(secretsReg);
       networkSub.setSecrets(secretsReg);
       const br = new BrowxBridge();
-      await br.attach(sess.page().context());
+      if (sess.engine !== "safari") await br.attach(sess.page().context());
       // dialog policy — install per-page on current + future pages.
       // Default `raise` (deterministic anti-deadlock). `spec.dialogPolicy`
       // is already a normalised `DialogPolicy` object; the string parsing
       // happens at the open_session tool layer.
       const dialogState = new DialogPolicyState(spec?.dialogPolicy ?? { mode: "raise" });
-      attachDialogPolicy(sess.page().context(), dialogState);
+      if (sess.engine !== "safari") attachDialogPolicy(sess.page().context(), dialogState);
       // permission policy — install per-context binding + init-script wrappers,
       // plus the CDP baseline (Browser.setPermission per supported name).
       // Default `raise` (deterministic anti-deadlock); same posture as
@@ -873,26 +882,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const permissionState = new PermissionPolicyState(
         spec?.permissionPolicy ?? { mode: "raise" },
       );
-      await attachPermissionPolicy(
-        sess.page().context(),
-        permissionState,
-        async (permission, origin) => {
-          log.info(
-            `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
-          );
-          try {
-            const sig = await br.awaitSignal("respond", 300_000);
-            const data = sig.data as { kind?: string; value?: unknown } | null;
-            if (data && data.kind === "confirm" && data.value === true) return "allow";
-            return "deny";
-          } catch {
-            return "deny";
-          }
-        },
-      );
-      await applyPermissionCdpBaseline(sess.page().context(), permissionState).catch(
-        () => undefined,
-      );
+      if (sess.engine !== "safari") {
+        await attachPermissionPolicy(
+          sess.page().context(),
+          permissionState,
+          async (permission, origin) => {
+            log.info(
+              `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
+            );
+            try {
+              const sig = await br.awaitSignal("respond", 300_000);
+              const data = sig.data as { kind?: string; value?: unknown } | null;
+              if (data && data.kind === "confirm" && data.value === true) return "allow";
+              return "deny";
+            } catch {
+              return "deny";
+            }
+          },
+        );
+        await applyPermissionCdpBaseline(sess.page().context(), permissionState).catch(
+          () => undefined,
+        );
+      }
       // Notification-construction policy — install per-context wrapper +
       // binding around `new Notification(...)`. Default `allow` preserves
       // browser default (constructor proceeds; OS displays per its settings)
@@ -905,19 +916,20 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const notificationState = new NotificationPolicyState(
         spec?.notificationPolicy ?? { mode: "allow" },
       );
-      await attachNotificationPolicy(sess.page().context(), notificationState, async (n) => {
-        log.info(
-          `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
-        );
-        try {
-          const sig = await br.awaitSignal("respond", 300_000);
-          const data = sig.data as { kind?: string; value?: unknown } | null;
-          if (data && data.kind === "confirm" && data.value === true) return "allow";
-          return "deny";
-        } catch {
-          return "deny";
-        }
-      });
+      if (sess.engine !== "safari")
+        await attachNotificationPolicy(sess.page().context(), notificationState, async (n) => {
+          log.info(
+            `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+          );
+          try {
+            const sig = await br.awaitSignal("respond", 300_000);
+            const data = sig.data as { kind?: string; value?: unknown } | null;
+            if (data && data.kind === "confirm" && data.value === true) return "allow";
+            return "deny";
+          } catch {
+            return "deny";
+          }
+        });
       // File System Access picker policy — install per-context binding +
       // init-script stubs. Default `raise` (deterministic anti-deadlock:
       // without a policy installed, modern web editors that call
@@ -929,30 +941,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // and the path is validated against `workspace.root` at
       // `fs_picker_respond` time.
       const fsPickerState = new FsPickerPolicyState(spec?.fsPickerPolicy ?? { mode: "raise" });
-      await attachFsPickerPolicy(
-        sess.page().context(),
-        fsPickerState,
-        workspace.root,
-        async (api, suggestedName) => {
-          log.info(
-            `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
-          );
-          try {
-            const sig = await br.awaitSignal("respond", 300_000);
-            const data = sig.data as { kind?: string; value?: unknown } | null;
-            if (
-              data &&
-              data.kind === "fs_picker_respond" &&
-              Array.isArray((data.value as { files?: unknown })?.files)
-            ) {
-              return (data.value as { files: FsPickerFile[] }).files;
+      if (sess.engine !== "safari")
+        await attachFsPickerPolicy(
+          sess.page().context(),
+          fsPickerState,
+          workspace.root,
+          async (api, suggestedName) => {
+            log.info(
+              `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+            );
+            try {
+              const sig = await br.awaitSignal("respond", 300_000);
+              const data = sig.data as { kind?: string; value?: unknown } | null;
+              if (
+                data &&
+                data.kind === "fs_picker_respond" &&
+                Array.isArray((data.value as { files?: unknown })?.files)
+              ) {
+                return (data.value as { files: FsPickerFile[] }).files;
+              }
+              return null;
+            } catch {
+              return null;
             }
-            return null;
-          } catch {
-            return null;
-          }
-        },
-      ).catch(() => undefined);
+          },
+        ).catch(() => undefined);
       // Per-session download capture. Storage dir is workspace-rooted +
       // per-session — kept off the public profile dir so cleaning up captured
       // artefacts is a single rmdir without touching the profile. The
@@ -961,7 +974,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // discards Playwright's temp file.
       const downloadsDir = workspace.sub(`.downloads/${id}`);
       const downloadsReg = new DownloadsRegistry(downloadsDir);
-      attachDownloadCapture(sess.page().context(), downloadsReg);
+      if (sess.engine !== "safari") attachDownloadCapture(sess.page().context(), downloadsReg);
       // Per-session artifact KV. Storage dir is workspace-rooted +
       // per-session; the dir itself is created lazily on first save, and
       // wiped on session teardown (see `teardown` below). Capacity-bounded
@@ -971,12 +984,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // resolve overlay selectors fresh per session so a
       // `set_config({hideOverlaySelectors})` applies to the next
       // open_session without a server restart. Empty list → no-op.
-      await applyOverlayHide(sess.page().context(), configStore.resolve().hideOverlaySelectors);
+      if (sess.engine !== "safari")
+        await applyOverlayHide(sess.page().context(), configStore.resolve().hideOverlaySelectors);
       // Per-context stealth init-script patches (capability `stealth`).
       // Off by default; when on, overrides navigator.webdriver / plugins /
       // languages / window.chrome on every page before page scripts run.
       // Loud-warned at boot — see the `stealth` warning above.
-      if (caps.enabled.has("stealth")) {
+      if (caps.enabled.has("stealth") && sess.engine !== "safari") {
         await applyStealth(sess.page().context()).catch((err) => {
           log.warn(
             `stealth: failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
@@ -998,23 +1012,27 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // on. `emulate_bluetooth` / `emulate_usb` / `emulate_hid` populate the
       // catalog at runtime.
       const webDeviceEmulation = new WebDeviceEmulationState(caps.enabled.has("device-emulation"));
-      await attachDeviceEmulation(sess.page().context(), webDeviceEmulation).catch(() => undefined);
-      sess
-        .page()
-        .context()
-        .on("page", (newPage) => {
-          // Best-effort: a new tab fires here. Create its own CDP session to
-          // route locale/timezone/UA overrides. Errors swallowed — re-apply
-          // never breaks a navigation.
-          (async () => {
-            try {
-              const newCdp = await sess.page().context().newCDPSession(newPage);
-              await reapplyEmulation(sess.page().context(), newPage, newCdp, deviceEmulation);
-            } catch {
-              /* best-effort */
-            }
-          })().catch(() => undefined);
-        });
+      if (sess.engine !== "safari") {
+        await attachDeviceEmulation(sess.page().context(), webDeviceEmulation).catch(
+          () => undefined,
+        );
+        sess
+          .page()
+          .context()
+          .on("page", (newPage) => {
+            // Best-effort: a new tab fires here. Create its own CDP session to
+            // route locale/timezone/UA overrides. Errors swallowed — re-apply
+            // never breaks a navigation.
+            (async () => {
+              try {
+                const newCdp = await sess.page().context().newCDPSession(newPage);
+                await reapplyEmulation(sess.page().context(), newPage, newCdp, deviceEmulation);
+              } catch {
+                /* best-effort */
+              }
+            })().catch(() => undefined);
+          });
+      }
       return {
         id,
         mode,
@@ -1051,7 +1069,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           // when `action` is on (the gate the three interactive tools sit
           // under) so a read-only server gets zero overhead.
           const reg = new WsInteractiveRegistry();
-          if (caps.enabled.has("action")) {
+          if (caps.enabled.has("action") && sess.engine !== "safari") {
             await reg.install(sess.page()).catch(() => undefined);
           }
           return reg;
@@ -1065,7 +1083,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           // deferred to first `workers_list` / `sw_intercept_fetch` to keep
           // workerless sessions zero-overhead.
           const reg = new WorkersRegistry();
-          if (caps.enabled.has("read")) {
+          if (caps.enabled.has("read") && sess.engine !== "safari") {
             await reg.installPageWrapper(sess.page()).catch(() => undefined);
           }
           return reg;
@@ -1099,11 +1117,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // Stop any in-flight perf trace BEFORE closing CDP — otherwise the
       // attached Chrome (BYOB) keeps the trace buffer pinned. Best-effort:
       // a stuck Tracing.end won't block teardown (perf state bounds the wait).
-      await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
+      if (e.session.engine !== "safari")
+        await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // also release any in-flight Profiler/CSS coverage on
       // the attached target so a BYOB Chrome doesn't keep coverage state
       // pinned past detach.
-      await e.coverage.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
+      if (e.session.engine !== "safari")
+        await e.coverage.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // workers registry CDP listeners. Detach before CDP closes
       // so we don't race the parent session shutdown.
       try {
