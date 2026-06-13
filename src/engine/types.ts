@@ -11,13 +11,16 @@
 
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
 
-/** The browser engines the RFC commits to. Chromium is the only one wired in
- *  P0; `firefox` / `webkit` are declared so the selection + capability surface
- *  is shaped for them, and the launch path rejects them with a clear,
- *  RFC-naming error rather than a silent no-op. */
-export type EngineKind = "chromium" | "firefox" | "webkit";
+/** The browser engines the RFC commits to. chromium / firefox / webkit are the
+ *  desktop engines (P0-P2c). `android` (P3) is real Chrome-on-Android attached
+ *  over adb + CDP — it IS Chromium, so it reuses the CDP substrates verbatim and
+ *  declares `deep: true` (every tool, including the CDP-deep ones, works). It is
+ *  a DISTINCT kind, not `chromium`, because its launch model is attach-only
+ *  (adb socket discovery → `connectOverCDP`) and managed/ephemeral launch on a
+ *  phone is not a thing the desktop adapters' shape covers (RFC 0002 D3/D8). */
+export type EngineKind = "chromium" | "firefox" | "webkit" | "android";
 
-export const ENGINE_KINDS: readonly EngineKind[] = ["chromium", "firefox", "webkit"];
+export const ENGINE_KINDS: readonly EngineKind[] = ["chromium", "firefox", "webkit", "android"];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which
  *  ones it supports via `EngineCapabilities`; a tool that needs `deep` (CDP) is
