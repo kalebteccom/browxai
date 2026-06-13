@@ -2,6 +2,8 @@ import type { z } from "zod";
 
 import type { SessionEntry } from "../session/registry.js";
 import type { RefRegistry } from "../page/refs.js";
+import type { ActionContext } from "../page/actionresult.js";
+import type { Workspace } from "../util/workspace.js";
 import type { CapabilityConfig } from "../util/capabilities.js";
 import type { BrowxConfig } from "../util/config.js";
 import type { ConfigStore } from "../util/config-store.js";
@@ -69,6 +71,13 @@ export interface ToolHost {
 
   /** Build the confirm-hook context for a session entry. */
   confirmCtxFor: (e: SessionEntry) => ConfirmContext;
+
+  /** Build the action/observe context for a session entry (page + substrates +
+   *  per-session buffers + policies), as the read/observe + compound tools need. */
+  ctxFor: (e: SessionEntry) => ActionContext;
+
+  /** Resolved workspace (root dir for file-io-bound captures and archives). */
+  workspace: Workspace;
 
   /** Confirm-hook rejection content for a denied decision. */
   denyContent: (toolName: string, decision: { reason: string }) => ToolResponse;
