@@ -18,7 +18,17 @@ import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
-import { IMPLEMENTED_ENGINES } from "../engine/index.js";
+import {
+  IMPLEMENTED_ENGINES,
+  AndroidCdpAdapter,
+  defaultAdbRunner,
+  defaultFetcher,
+  pickFreePort,
+  forwardArgs,
+  forwardRemoveArgs,
+  versionUrl,
+  extractWsUrl,
+} from "../engine/index.js";
 
 export interface Check {
   name: string;
@@ -262,9 +272,19 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 8b. Active browser engine. Chromium + Firefox + WebKit are wired; the seam
-  // lets each engine be an adapter (see src/engine/). Informational — never
-  // fails doctor.
+  // 8a4. Android availability (opt-in fourth engine — `browserType:"android"`).
+  // The full-fidelity real-profile BYOB lane: real Chrome-on-Android over adb +
+  // CDP (RFC D3/D8). Informational — Android is opt-in + needs a physically
+  // connected device, so a missing adb / no device / closed Chrome NEVER fails
+  // doctor; it just reports how far the chain reaches (adb present → device ready
+  // → Chrome socket reachable). Probes without opening a session: lists devices,
+  // and if one is ready, forwards the socket + probes /json/version, then removes
+  // the forward.
+  checks.push(await androidCheck());
+
+  // 8b. Active browser engine. Chromium + Firefox + WebKit + Android are wired;
+  // the seam lets each engine be an adapter (see src/engine/). Informational —
+  // never fails doctor.
   checks.push({
     name: "engine",
     ok: true,
@@ -305,6 +325,60 @@ export async function runDoctor(): Promise<number> {
   }
   process.stdout.write(`\n${allOk ? "all checks passed" : "fix the ✗ items above"}\n`);
   return allOk ? 0 : 1;
+}
+
+// Android availability — how far the adb + CDP chain reaches, without opening a
+// session. adb present? → a device ready? → the Chrome DevTools socket
+// reachable? Always informational (Android is opt-in + device-gated). The probe
+// forwards the socket to a transient loopback port, GETs /json/version, then
+// removes the forward — no session, no leaked forward.
+async function androidCheck(): Promise<Check> {
+  const name = "android";
+  const adapter = new AndroidCdpAdapter();
+  let serial: string;
+  try {
+    serial = await adapter.discoverDevice(process.env.BROWX_ANDROID_SERIAL?.trim() || undefined);
+  } catch (e) {
+    // adb-missing / no-device / ambiguous — report the structured message's first
+    // clause; never fails doctor.
+    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
+      fix: "connect an Android phone over USB, enable USB debugging, open Chrome — see RFC 0002 D8",
+    };
+  }
+  // Device ready — try to reach the Chrome socket so the operator knows whether
+  // Chrome is open + web-debugging is on.
+  let localPort = 0;
+  try {
+    localPort = await pickFreePort();
+    await defaultAdbRunner(forwardArgs(localPort, serial));
+    const body = await defaultFetcher(versionUrl(localPort));
+    extractWsUrl(body);
+    const browser = (body as { Browser?: string }).Browser ?? "unknown";
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: `device ${serial} ready, Chrome reachable (${browser}) — browserType:"android" attach-ready`,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: `device ${serial} ready but Chrome socket not reachable: ${msg}`,
+      fix: "open Chrome on the device + enable USB web-debugging (chrome://inspect should list its tabs)",
+    };
+  } finally {
+    if (localPort) {
+      await defaultAdbRunner(forwardRemoveArgs(localPort, serial)).catch(() => undefined);
+    }
+  }
 }
 
 async function probeCdp(
