@@ -110,9 +110,9 @@ describe("selectDevice — ready-device resolution", () => {
   });
 
   it("throws no-device when the requested serial is not ready", () => {
-    expect(() =>
-      selectDevice([{ serial: "A", state: "unauthorized" }], "A"),
-    ).toThrow(NoAndroidDeviceError);
+    expect(() => selectDevice([{ serial: "A", state: "unauthorized" }], "A")).toThrow(
+      NoAndroidDeviceError,
+    );
   });
 
   it("throws a structured ambiguity error when several are ready + no serial", () => {

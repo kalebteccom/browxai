@@ -28,7 +28,10 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
     // refusal so the contrast is explicit: android allows, firefox+webkit refuse.
     for (const tool of DEEP_TOOLS) {
       expect(assertEngineSupports(tool, "android"), `${tool} must run on android`).toBeNull();
-      expect(assertEngineSupports(tool, "firefox"), `${tool} must refuse on firefox`).not.toBeNull();
+      expect(
+        assertEngineSupports(tool, "firefox"),
+        `${tool} must refuse on firefox`,
+      ).not.toBeNull();
       expect(assertEngineSupports(tool, "webkit"), `${tool} must refuse on webkit`).not.toBeNull();
     }
   });

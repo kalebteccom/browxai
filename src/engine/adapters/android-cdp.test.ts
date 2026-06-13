@@ -113,9 +113,7 @@ describe("AndroidCdpAdapter — attach orchestration (mocked adb + fetch)", () =
   });
 
   it("honours an explicit serial through discovery + forward", async () => {
-    const { runAdb, calls } = recordingRunner(
-      "List of devices attached\nA\tdevice\nB\tdevice\n",
-    );
+    const { runAdb, calls } = recordingRunner("List of devices attached\nA\tdevice\nB\tdevice\n");
     const fetchJson = vi.fn(async () => {
       throw new Error("stop-before-connect");
     });

@@ -62,18 +62,18 @@ the handles above.
 
 ### Files
 
-| File                              | Role                                                                                            |
-| --------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `types.ts`                        | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.            |
-| `select.ts`                       | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.          |
+| File                              | Role                                                                                                                    |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`                        | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.                                    |
+| `select.ts`                       | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.                                  |
 | `capabilities.ts`                 | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`. |
-| `session-cdp.ts`                  | `requireCdp(session)` — asserts the now-optional `cdp()` is present.                            |
-| `tool-gate.ts`                    | `assertEngineSupports(tool, engine)` — the engine-dimension refusal for the CDP-deep tools.     |
-| `adapters/playwright-chromium.ts` | `PlaywrightChromiumAdapter` — wraps today's Chromium/CDP launch verbatim.                       |
-| `adapters/playwright-firefox.ts`  | `PlaywrightFirefoxAdapter` — Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).    |
-| `adapters/playwright-webkit.ts`   | `PlaywrightWebKitAdapter` — bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).      |
-| `adapters/android-cdp.ts`         | `AndroidCdpAdapter` — real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8). |
-| `adapters/adb.ts`                  | adb plumbing — device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors. |
+| `session-cdp.ts`                  | `requireCdp(session)` — asserts the now-optional `cdp()` is present.                                                    |
+| `tool-gate.ts`                    | `assertEngineSupports(tool, engine)` — the engine-dimension refusal for the CDP-deep tools.                             |
+| `adapters/playwright-chromium.ts` | `PlaywrightChromiumAdapter` — wraps today's Chromium/CDP launch verbatim.                                               |
+| `adapters/playwright-firefox.ts`  | `PlaywrightFirefoxAdapter` — Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                            |
+| `adapters/playwright-webkit.ts`   | `PlaywrightWebKitAdapter` — bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                              |
+| `adapters/android-cdp.ts`         | `AndroidCdpAdapter` — real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                     |
+| `adapters/adb.ts`                 | adb plumbing — device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.    |
 
 ## The capability dimension
 
@@ -122,21 +122,21 @@ adapter.
 
 ## Strangler-fig migration state
 
-| State                                                              | Status |
-| ------------------------------------------------------------------ | :----: |
-| Port defined; chromium behavior extracted into an adapter          |   ✅   |
-| `cdp()` optional; consumers route through `requireCdp`             |   ✅   |
-| `browserType` threaded (default chromium); not-yet-supported error |   ✅   |
-| Engine dimension on the capability system (chromium = everything)  |   ✅   |
-| Doctor reports the active engine                                   |   ✅   |
-| Firefox Juggler adapter + Firefox keystone lane + engine gating    |   ✅   |
-| Firefox-availability doctor check + `moz-firefox` channel flag     |   ✅   |
-| Snapshot/a11y substrate behind `SnapshotSubstrate` (P2a)           |   ✅   |
-| Firefox network tap on Playwright events (P2b)                     |   ✅   |
-| playwright-webkit adapter (P2c) + WebKit keystone lane             |   ✅   |
+| State                                                               | Status |
+| ------------------------------------------------------------------- | :----: |
+| Port defined; chromium behavior extracted into an adapter           |   ✅   |
+| `cdp()` optional; consumers route through `requireCdp`              |   ✅   |
+| `browserType` threaded (default chromium); not-yet-supported error  |   ✅   |
+| Engine dimension on the capability system (chromium = everything)   |   ✅   |
+| Doctor reports the active engine                                    |   ✅   |
+| Firefox Juggler adapter + Firefox keystone lane + engine gating     |   ✅   |
+| Firefox-availability doctor check + `moz-firefox` channel flag      |   ✅   |
+| Snapshot/a11y substrate behind `SnapshotSubstrate` (P2a)            |   ✅   |
+| Firefox network tap on Playwright events (P2b)                      |   ✅   |
+| playwright-webkit adapter (P2c) + WebKit keystone lane              |   ✅   |
 | Android adb+CDP adapter (P3) + device-gated keystone + doctor check |   ✅   |
-| stock-Firefox `moz-firefox` BiDi adapter (P3, remaining)           |   P3   |
-| real-Safari lane; Safari-BiDi engine row when upstream ships       |   P4   |
+| stock-Firefox `moz-firefox` BiDi adapter (P3, remaining)            |   P3   |
+| real-Safari lane; Safari-BiDi engine row when upstream ships        |   P4   |
 
 The proof the seam is correct is that **all existing Chromium tests pass
 unchanged** — the unit suite and the Chromium keystone lane. The seam was added
@@ -432,7 +432,8 @@ gated by USB debugging, not a profile flag).
 **Doctor** gains an Android-availability check (informational — never fails
 doctor): it reports how far the adb + CDP chain reaches (adb present → device
 ready → Chrome socket reachable), forwarding the socket + probing `/json/version`
-+ removing the forward, without opening a session.
+
+- removing the forward, without opening a session.
 
 **Device-gated keystone** (`test/keystone/android.keystone.test.ts`): the **same
 honest device-gate** the firefox/webkit keystones use for their binaries — it
@@ -457,30 +458,30 @@ the gate auto-allows everything. The only Android-specific limit is launch-shape
 managed/ephemeral launch refuses (`android-launch-not-supported`) — Android is
 attach-only.
 
-| Tool family                                                           | Chromium |         Firefox (Juggler)         |             WebKit             |        Android (adb+CDP)        |
-| --------------------------------------------------------------------- | :------: | :-------------------------------: | :----------------------------: | :-----------------------------: |
-| Session lifecycle (open/close/list); engine tag                       |  works   |               works               |             works              |    works (attach-only)          |
-| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |               works               |             works              |             works               |
-| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |               works               |             works              |             works               |
-| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |               works               |             works              |             works               |
-| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |               works               |             works              |             works               |
-| HAR / video / route mocking / WS-interactive / canvas                 |  works   |               works               |             works              |             works               |
-| `navigate` / `click` / `fill` / `snapshot` / `find` (a11y substrate)  |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |  **works** (CDP substrate)      |
-| `text_search` / `extract` / `screenshot_marks` / `plan` (a11y)        |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |  **works** (CDP substrate)      |
-| `network_read` / `ws_read` / `network_body` (hybrid tap)              |  works   |  **works** (P2b — PW-event tap)   | **works** (P2b/P2c — PW-event) |  **works** (CDP tap, verbatim)  |
-| `shadow_trees` — closed-shadow pierce (CDP `DOM.getDocument`)         |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| `network_emulate` (link throttle)                                     |  works   |    **gated** (refuse-pending)     |   **gated** (refuse-pending)   |  **works** (full CDP)           |
-| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |             **gated**             |           **gated**            |  **works** (full CDP)           |
-| extensions (`extensions_*`) — Chromium launch flags                   |  works   |             **gated**             |           **gated**            |  n/a (attach-only — launch flags)|
-| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   | **gated** (Firefox-specific hint) |           **gated**            |  works (CDP `Page.printToPDF`)  |
-| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |   **gated** (bake at creation)    |           **gated**            |  **works** (full CDP)           |
-| `set_user_agent` — live CDP UA override                               |  works   | **gated** (no live PW UA setter)  |           **gated**            |  **works** (full CDP)           |
-| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |             **gated**             |           **gated**            |  **works** (full CDP — real touch)|
-| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |  moot (API absent off-Chromium)   |              moot              |  moot (real device hardware)    |
+| Tool family                                                           | Chromium |         Firefox (Juggler)         |             WebKit             |         Android (adb+CDP)         |
+| --------------------------------------------------------------------- | :------: | :-------------------------------: | :----------------------------: | :-------------------------------: |
+| Session lifecycle (open/close/list); engine tag                       |  works   |               works               |             works              |        works (attach-only)        |
+| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |               works               |             works              |               works               |
+| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |               works               |             works              |               works               |
+| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |               works               |             works              |               works               |
+| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |               works               |             works              |               works               |
+| HAR / video / route mocking / WS-interactive / canvas                 |  works   |               works               |             works              |               works               |
+| `navigate` / `click` / `fill` / `snapshot` / `find` (a11y substrate)  |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |     **works** (CDP substrate)     |
+| `text_search` / `extract` / `screenshot_marks` / `plan` (a11y)        |  works   |     **works** (P2a — walker)      |    **works** (P2c — walker)    |     **works** (CDP substrate)     |
+| `network_read` / `ws_read` / `network_body` (hybrid tap)              |  works   |  **works** (P2b — PW-event tap)   | **works** (P2b/P2c — PW-event) |   **works** (CDP tap, verbatim)   |
+| `shadow_trees` — closed-shadow pierce (CDP `DOM.getDocument`)         |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| `network_emulate` (link throttle)                                     |  works   |    **gated** (refuse-pending)     |   **gated** (refuse-pending)   |       **works** (full CDP)        |
+| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |             **gated**             |           **gated**            |       **works** (full CDP)        |
+| extensions (`extensions_*`) — Chromium launch flags                   |  works   |             **gated**             |           **gated**            | n/a (attach-only — launch flags)  |
+| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   | **gated** (Firefox-specific hint) |           **gated**            |   works (CDP `Page.printToPDF`)   |
+| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |   **gated** (bake at creation)    |           **gated**            |       **works** (full CDP)        |
+| `set_user_agent` — live CDP UA override                               |  works   | **gated** (no live PW UA setter)  |           **gated**            |       **works** (full CDP)        |
+| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |             **gated**             |           **gated**            | **works** (full CDP — real touch) |
+| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |  moot (API absent off-Chromium)   |              moot              |    moot (real device hardware)    |
 
 `perf_insights` / `heap_retainers` / `memory_diff` are pure file parsers over a
 Chromium-produced trace/heapsnapshot — they are **not** engine-gated (the data

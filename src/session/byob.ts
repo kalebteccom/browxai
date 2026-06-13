@@ -110,16 +110,17 @@ const ANDROID_ATTACH_WARNING = [
  *  loopback by construction (adb forwards to 127.0.0.1), so the same not-owned
  *  policy applies; close additionally removes the adb forward. Full CDP, so the
  *  session carries `cdp()` and the substrates pick the CDP path automatically. */
-async function openAndroidByobSession(opts: SessionOptions): Promise<BrowserSession> {
+async function openAndroidByobSession(): Promise<BrowserSession> {
   log.warn(ANDROID_ATTACH_WARNING);
   const adapter = new AndroidCdpAdapter();
   const serial = process.env.BROWX_ANDROID_SERIAL?.trim() || undefined;
-  const { page, cdp, localPort, serial: usedSerial, removeForward } = await adapter.attach({
-    serial,
-  });
+  // Keep the handles object intact (don't destructure `removeForward` — it is the
+  // adapter's bound teardown, called below).
+  const handles = await adapter.attach({ serial });
+  const { page, cdp } = handles;
   log.info("session.byob: attached to Chrome-on-Android", {
-    serial: usedSerial,
-    localPort,
+    serial: handles.serial,
+    localPort: handles.localPort,
     engine: "android",
   });
   await ensureViewport(cdp);
@@ -137,7 +138,7 @@ async function openAndroidByobSession(opts: SessionOptions): Promise<BrowserSess
       closed = true;
       log.info("session.byob: detaching Chrome-on-Android (device stays open — not-owned)");
       await cdp.detach().catch(() => undefined);
-      await removeForward();
+      await handles.removeForward();
       // Do NOT call browser.close() — not-owned (it's the user's phone Chrome).
     },
   };
@@ -150,7 +151,7 @@ export async function openByobSession(
   // Android attach is endpoint-DISCOVERED (adb), not URL-configured — it does not
   // take BROWX_ATTACH_CDP. Route it before the loopback-URL assertion below.
   if (engine === "android") {
-    return openAndroidByobSession(opts);
+    return openAndroidByobSession();
   }
   if (!opts.attachCdp) {
     throw new Error(
