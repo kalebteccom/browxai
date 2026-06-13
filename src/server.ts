@@ -267,7 +267,7 @@ import {
   type VideoStartConfig,
 } from "./page/video.js";
 import * as actions from "./page/actions.js";
-import { safariNavigate } from "./page/safari-actions.js";
+import { safariNavigate, safariClick, safariFill, safariPress } from "./page/safari-actions.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
 import type { ActionContext } from "./page/actionresult.js";
@@ -2680,6 +2680,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         };
       }
       const e = await entryFor(args.session);
+      const safariShotHandle = e.session.safari?.();
+      if (safariShotHandle) {
+        // safaridriver captures the whole document as PNG; the element-scoped /
+        // `path` / `jpeg` variants need a Playwright Page Safari lacks.
+        if (args.ref || args.selector || args.named || args.path !== undefined) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    ok: false,
+                    error:
+                      "the Safari engine supports only the default inline PNG screenshot — element-scoped (`ref`/`selector`/`named`) and `path` captures need a chromium/firefox/webkit session.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+        const b64 = await safariShotHandle.webDriver.screenshot(safariShotHandle.sessionId);
+        return { content: [{ type: "image" as const, data: b64, mimeType: "image/png" }] };
+      }
       const page = e.session.page();
       const fmt: "png" | "jpeg" = args.format ?? "png";
       const mimeType = fmt === "jpeg" ? "image/jpeg" : "image/png";
@@ -3460,9 +3485,16 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         : undefined;
       const warn =
         td.warning && clickWarn ? `${td.warning} ${clickWarn}` : (td.warning ?? clickWarn);
+      // safari has no Playwright Page — evaluate over the WebDriver Classic
+      // `execute/sync` endpoint instead (the expression is wrapped in `return (…)`).
+      const evalExpr = (): Promise<unknown> => {
+        const sh = s.safari?.();
+        if (sh) return sh.webDriver.executeScript(sh.sessionId, `return (${expr});`);
+        return s.page().evaluate(expr);
+      };
       try {
         if (returnType === "void") {
-          await withDeadline(s.page().evaluate(expr), td.ms, "eval_js").catch(() => undefined);
+          await withDeadline(evalExpr(), td.ms, "eval_js").catch(() => undefined);
           return {
             content: [
               {
@@ -3476,7 +3508,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             ],
           };
         }
-        const value = await withDeadline(s.page().evaluate(expr), td.ms, "eval_js");
+        const value = await withDeadline(evalExpr(), td.ms, "eval_js");
         return {
           content: [
             {
@@ -3575,6 +3607,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("click", confirmCtxFor(e));
       if (!c.ok) return denyContent("click", c);
       const target = asTarget(args, "click", e.refs);
+      const safariClickHandle = e.session.safari?.();
+      if (safariClickHandle)
+        return asActionResultText(safariClick(safariClickHandle, e.refs, target));
       const td = actionTimeout(args);
       return asActionResultText(
         actions.click(ctxFor(e), {
@@ -3604,6 +3639,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const c = await confirmByobAction("fill", confirmCtxFor(e));
       if (!c.ok) return denyContent("fill", c);
       const target = asTarget(args, "fill", e.refs);
+      const safariFillHandle = e.session.safari?.();
+      if (safariFillHandle)
+        return asActionResultText(safariFill(safariFillHandle, e.refs, target, args.value));
       const td = actionTimeout(args);
       return asActionResultText(
         actions.fill(ctxFor(e), {
@@ -3638,6 +3676,28 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (!conf.ok) return denyContent("press", conf);
       const hasTarget = !!(args.ref || args.selector || args.named);
       const target = hasTarget ? asTarget(args, "press", e.refs) : undefined;
+      const safariPressHandle = e.session.safari?.();
+      if (safariPressHandle) {
+        if (!target) {
+          return {
+            content: [
+              {
+                type: "text" as const,
+                text: JSON.stringify(
+                  {
+                    ok: false,
+                    error:
+                      "page-level `press` (no target) is not supported on the Safari engine — pass a `ref`/`selector` to press a key into a specific element.",
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+        return asActionResultText(safariPress(safariPressHandle, e.refs, target, args.key));
+      }
       const td = actionTimeout(args);
       return asActionResultText(
         actions.press(ctxFor(e), {
@@ -7857,6 +7917,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const safariCookieHandle = e.session.safari?.();
+        if (safariCookieHandle) {
+          // safaridriver returns the cookie jar for the current document; the
+          // Playwright `urls` cross-domain filter is not available over WebDriver.
+          const jar = await safariCookieHandle.webDriver.getCookies(safariCookieHandle.sessionId);
+          return okText({ ok: true, count: jar.length, cookies: jar });
+        }
         const r = await withDeadline(
           cookiesList(e.session.page().context(), { urls }),
           cfgActionTimeout(),
@@ -7902,6 +7969,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const e = await entryFor(session);
         const c = await confirmByobAction("cookies_set", confirmCtxFor(e));
         if (!c.ok) return denyContent("cookies_set", c);
+        const safariCookieSetHandle = e.session.safari?.();
+        if (safariCookieSetHandle) {
+          // WebDriver Add Cookie scopes to the current document's domain — derive
+          // it from `url` when given (else the explicit `domain`). The session
+          // must already be navigated to that domain.
+          let derivedDomain = domain;
+          if (!derivedDomain && url) {
+            try {
+              derivedDomain = new URL(url).hostname;
+            } catch {
+              derivedDomain = undefined;
+            }
+          }
+          await safariCookieSetHandle.webDriver.addCookie(safariCookieSetHandle.sessionId, {
+            name,
+            value,
+            path: path ?? "/",
+            ...(derivedDomain ? { domain: derivedDomain } : {}),
+            ...(typeof expires === "number" ? { expiry: Math.floor(expires) } : {}),
+            ...(httpOnly !== undefined ? { httpOnly } : {}),
+            ...(secure !== undefined ? { secure } : {}),
+            ...(sameSite ? { sameSite } : {}),
+          });
+          return okText({ ok: true, name });
+        }
         const r = await withDeadline(
           cookiesSet(e.session.page().context(), {
             name,

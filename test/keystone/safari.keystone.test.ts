@@ -189,4 +189,63 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "drives the action subset on real Safari (fill → click → eval → screenshot → cookies)",
+    async () => {
+      const session = SESSION;
+      await callJson("open_session", { session, mode: "persistent" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      // fill — WebDriver element clear + sendKeys; the post-fill value is read
+      // back via Get Element Property.
+      const filled = await callJson<{ ok: boolean; element?: { value?: string } }>("fill", {
+        session,
+        selector: '[data-testid="task-input"]',
+        value: "safari-action-keystone",
+      });
+      expect(filled.ok, `fill: ${JSON.stringify(filled)}`).toBe(true);
+      expect(filled.element?.value).toBe("safari-action-keystone");
+
+      // click — a REAL WebDriver elementClick (trusted; fires app handlers). The
+      // fixture flips #saved to "Saved OK"; text_search (substrate-sourced)
+      // confirms the app-side effect.
+      const clicked = await callJson<{ ok: boolean }>("click", {
+        session,
+        selector: '[data-testid="save-btn"]',
+      });
+      expect(clicked.ok, `click: ${JSON.stringify(clicked)}`).toBe(true);
+      const saved = await callJson<{ count: number }>("text_search", {
+        session,
+        text: "Saved OK",
+        exact: true,
+        includeHidden: true,
+      });
+      expect(saved.count).toBeGreaterThanOrEqual(1);
+
+      // screenshot — full-document PNG via WebDriver, returned as an image item.
+      const shot = await handlers.screenshot!({ session });
+      const image = shot.content.find(
+        (c): c is { type: "image"; data: string; mimeType: string } =>
+          (c as { type: string }).type === "image",
+      );
+      expect(image, "screenshot returns an image item on safari").toBeTruthy();
+      expect(image!.data.length).toBeGreaterThan(0);
+
+      // cookies — set on the current document's domain, then read the jar back.
+      const set = await callJson<{ ok: boolean }>("cookies_set", {
+        session,
+        name: "safari_ks",
+        value: "present",
+        url: fixture.url,
+      });
+      expect(set.ok, `cookies_set: ${JSON.stringify(set)}`).toBe(true);
+      const list = await callJson<{ cookies: Array<{ name: string; value: string }> }>(
+        "cookies_list",
+        { session },
+      );
+      expect(list.cookies.some((c) => c.name === "safari_ks" && c.value === "present")).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });

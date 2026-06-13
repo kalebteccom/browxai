@@ -183,6 +183,18 @@ export class SafariWebDriverClient {
     return (await this.send("GET", `/session/${sessionId}/element/${elementId}/text`)) as string;
   }
 
+  /** Get Element Property — the LIVE DOM property (e.g. an input's current
+   *  `value`), as opposed to the static HTML attribute. Used to read back what a
+   *  fill landed. Returns null when the property is absent. */
+  async elementProperty(
+    sessionId: string,
+    elementId: string,
+    name: string,
+  ): Promise<string | null> {
+    const v = await this.send("GET", `/session/${sessionId}/element/${elementId}/property/${name}`);
+    return typeof v === "string" ? v : null;
+  }
+
   async getCookies(sessionId: string): Promise<WebDriverCookie[]> {
     return (await this.send("GET", `/session/${sessionId}/cookie`)) as WebDriverCookie[];
   }
