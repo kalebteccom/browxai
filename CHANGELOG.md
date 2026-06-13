@@ -10,6 +10,38 @@ surface" covers.
 
 ### Added
 
+- **Firefox is a real second engine (`browserType:"firefox"`).** A
+  `PlaywrightFirefoxAdapter` over Playwright's bundled Juggler Firefox lands
+  behind the `BrowserEngine` port — the proof the engine port generalizes to a
+  second engine. Managed + incognito Firefox sessions launch real Firefox; the
+  seam tags each session `engine:"firefox"` (surfaced by `list_sessions`).
+  Firefox declares the nine cross-browser sub-interfaces but **no `deep` (CDP)
+  escape hatch**, so the ~19 CDP-hard tools (perf / coverage / heap / CPU+
+  network throttle / SW-fetch interception / extensions / pdf / live
+  locale·timezone·UA / CDP touch+wheel) **structured-refuse on Firefox** with a
+  hint naming the engine and the per-engine matrix — the same refusal-with-hint
+  pattern `pdf_save`-on-BYOB uses, never an opaque mid-call crash. Three tools
+  were re-classified empirically (measured against the installed Playwright):
+  `pdf_save` gates with a Firefox-specific hint (`page.pdf()` is
+  Headless-Chromium-only), `network_emulate` gates `refuse-pending` (spec'd over
+  BiDi, unimplemented), and `set_user_agent` gates with a hint pointing at
+  context-creation UA (Playwright has no live UA setter off Chromium). Firefox
+  BYOB-attach surfaces a structured `firefox-attach-not-supported` error per RFC
+  D3 (Firefox attach is a glass-box BiDi launch, not CDP-attach; the
+  `BROWX_ATTACH_BIDI` name is reserved). The experimental stock-Firefox
+  `moz-firefox` WebDriver-BiDi channel rides behind `BROWX_FIREFOX_CHANNEL`
+  (un-gated by the keystone; the bundled-Juggler lane is the tested one).
+  `browxai doctor` gains a Firefox-availability check. A real-Firefox keystone
+  lane (`test/keystone/firefox.keystone.test.ts`, threaded via
+  `createServer({browserType:"firefox"})`) exercises the CDP-free class-A
+  surface (cookies / storageState / screenshot) and asserts the structured
+  refusal for a sample of CDP-deep tools. The Chromium unit + keystone suites
+  are unchanged. The CDP-fed action/snapshot/network envelope substrate moves
+  onto Playwright-portable mechanisms in a later phase, un-gating the rest of
+  the class-A surface on Firefox. See
+  `docs/ai-context/architecture/engine-adapters.md` (Firefox section + the
+  per-engine capability matrix).
+
 - **`BrowserEngine` engine-adapter seam (zero behavior change).** A driver
   port under `src/engine/` decouples the session layer from Chromium: an
   `EngineKind` (`chromium` | `firefox` | `webkit`), a capability-segregated
