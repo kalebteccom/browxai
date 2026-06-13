@@ -3,7 +3,14 @@
 // default (images, fonts, stylesheets, media, beacons); they're still counted in
 // the summary's `byType.other` bucket if you want the totals back.
 
-import type { BrowserContext, CDPSession, Page, Request, Response, WebSocket } from "playwright-core";
+import type {
+  BrowserContext,
+  CDPSession,
+  Page,
+  Request,
+  Response,
+  WebSocket,
+} from "playwright-core";
 import { sanitizeUrl, sanitizeUrlsInText, patternisePath } from "../util/url-sanitizer.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
@@ -733,7 +740,10 @@ async function probeMutationPlaywright(
  *  twin of `NetworkTap`. Same lifecycle (`open()` before dispatch, `close()`
  *  after settle) and same `{summary, requests, mutations}` return shape. */
 export class PlaywrightNetworkTap {
-  private pending = new Map<Request, { method: string; url: string; type: string; startedAt: number }>();
+  private pending = new Map<
+    Request,
+    { method: string; url: string; type: string; startedAt: number }
+  >();
   private finished: NetworkEntry[] = [];
   private mutationPromises: Array<Promise<MutationEntry | null>> = [];
   private listeners: Array<() => void> = [];
@@ -960,7 +970,12 @@ export class PlaywrightNetworkBuffer {
     const isText = Buffer.from(utf8, "utf-8").equals(cached.buf);
     if (isText) {
       const out = secrets ? secrets.applyMaskInText(utf8) : utf8;
-      return { ok: true, body: out, base64Encoded: false, ...(cached.truncated ? { truncated: true } : {}) };
+      return {
+        ok: true,
+        body: out,
+        base64Encoded: false,
+        ...(cached.truncated ? { truncated: true } : {}),
+      };
     }
     return {
       ok: true,
