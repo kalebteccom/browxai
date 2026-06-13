@@ -4,7 +4,7 @@
 // no close, no storage reset on shutdown).
 
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
-import type { EngineKind } from "../engine/index.js";
+import type { EngineKind, SafariSessionHandle } from "../engine/index.js";
 
 export type SessionMode = "managed" | "byob";
 
@@ -90,6 +90,13 @@ export interface BrowserSession {
    *  Consumers that need the handle route through `requireCdp()` (src/engine/),
    *  which asserts presence with a structured, engine-naming error. */
   cdp?(): CDPSession;
+  /** The Safari-native handle — present ONLY on the `safari` engine (RFC 0002
+   *  P4), the first engine with no Playwright `Page`. On a Safari session,
+   *  `page()` THROWS (`safari-no-playwright-page`); consumers that can run on
+   *  Safari (snapshot/find/navigate/screenshot/cookies via this handle's
+   *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the
+   *  capability gate refuses the rest up front. Absent on every other engine. */
+  safari?(): SafariSessionHandle;
   close(): Promise<void>;
 }
 

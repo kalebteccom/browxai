@@ -11,28 +11,44 @@
 // substrate, never via `requireCdp` + an engine branch.
 
 import type { Page } from "playwright-core";
+import type { SafariSessionHandle } from "../engine/index.js";
 import {
   CdpSnapshotSubstrate,
   PlaywrightSnapshotSubstrate,
   type SnapshotSubstrate,
 } from "./snapshot-substrate.js";
+import { SafariClassicSnapshotSubstrate } from "./snapshot-substrate-safari.js";
 
 /** The minimal session shape this selector needs — the optional CDP accessor
- *  (present only on chromium) + the engine tag + the page handle. The full
- *  BrowserSession satisfies it; the narrow shape keeps the engine/session
- *  interfaces out of this page-layer module. */
+ *  (present only on chromium) + the engine tag + the page handle + the optional
+ *  Safari-native handle (present only on the `safari` engine, which has no
+ *  Playwright Page). The full BrowserSession satisfies it; the narrow shape keeps
+ *  the engine/session interfaces out of this page-layer module. */
 export interface SubstrateCapableSession {
   readonly engine: string;
   page(): Page;
   cdp?(): import("playwright-core").CDPSession;
+  safari?(): SafariSessionHandle;
 }
 
-/** Build the SnapshotSubstrate for a session. Chromium (CDP present) → the
- *  byte-identical CDP substrate; any engine without CDP → the Playwright walker.
- *  The presence of `cdp` is the capability signal — the same one `requireCdp`
- *  keys on — so a future CDP-bearing engine would route to the CDP substrate
- *  automatically and a non-CDP one to the walker, with no edit here. */
+/** Build the SnapshotSubstrate for a session. Selection is by capability, never a
+ *  scattered engine-name check:
+ *   - Safari (no Playwright Page, no CDP) → the WebDriver-Classic DOM-walk
+ *     substrate, fed by the Safari handle's `execute/sync` (RFC 0002 P4).
+ *   - Chromium / Android (CDP present) → the byte-identical CDP substrate.
+ *   - Firefox / WebKit (Playwright Page, no CDP) → the page-side walker.
+ *  A future CDP-bearing engine routes to the CDP substrate automatically; a
+ *  non-CDP Playwright one to the walker — no edit here. Safari is the one engine
+ *  whose `page()` throws, so it MUST be handled before the Playwright branch. */
 export function snapshotSubstrateFor(session: SubstrateCapableSession): SnapshotSubstrate {
+  if (session.engine === "safari" && session.safari) {
+    const handle = session.safari();
+    return new SafariClassicSnapshotSubstrate({
+      exec: (scriptBody, args) =>
+        handle.webDriver.executeScript(handle.sessionId, scriptBody, args),
+      currentUrl: () => handle.webDriver.currentUrl(handle.sessionId),
+    });
+  }
   if (session.cdp) return new CdpSnapshotSubstrate(session.cdp());
   return new PlaywrightSnapshotSubstrate(session.page(), session.engine);
 }
