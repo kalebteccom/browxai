@@ -74,8 +74,11 @@ async function main(): Promise<void> {
   // Warm the page once so the first navigation's compile cost doesn't skew run A.
   await page.goto(`${fixture.url}/perf-audit-page`, { waitUntil: "domcontentloaded" });
 
-  const cdpRun = await timeTap("CDP NetworkTap (chromium path)", page, fixture.url, () =>
-    new NetworkTap(cdp, null),
+  const cdpRun = await timeTap(
+    "CDP NetworkTap (chromium path)",
+    page,
+    fixture.url,
+    () => new NetworkTap(cdp, null),
   );
   const pwRun = await timeTap(
     "Playwright-event tap (firefox/webkit path)",
@@ -84,21 +87,17 @@ async function main(): Promise<void> {
     () => new PlaywrightNetworkTap(context, null),
   );
 
-  // eslint-disable-next-line no-console
   console.log("\n=== Envelope network-tap benchmark (real Chromium) ===");
-  // eslint-disable-next-line no-console
   console.log(
     `iterations=${ITERATIONS} (warmup=${WARMUP}), settle=${SETTLE_MS}ms, action=goto(perf-audit-page)\n`,
   );
   for (const r of [cdpRun, pwRun]) {
-    // eslint-disable-next-line no-console
     console.log(
       `${r.label.padEnd(44)}  mean=${String(r.meanMs).padStart(7)}ms  p50=${String(r.p50).padStart(7)}ms  p95=${String(r.p95).padStart(7)}ms  reqsSeen≈${r.totalSeen}`,
     );
   }
   const deltaMean = round(pwRun.meanMs - cdpRun.meanMs);
   const deltaPct = round((deltaMean / cdpRun.meanMs) * 100);
-  // eslint-disable-next-line no-console
   console.log(
     `\nΔ mean (event − CDP) = ${deltaMean}ms (${deltaPct}%). Both dominated by goto+settle (~${SETTLE_MS}ms);` +
       ` the tap open/close overhead is the sub-ms residual.\n`,
@@ -124,7 +123,6 @@ async function main(): Promise<void> {
     await tap.close();
     pwOverhead += performance.now() - t;
   }
-  // eslint-disable-next-line no-console
   console.log(
     `pure tap open()+close() overhead (no nav, ${N} iters):\n` +
       `  CDP NetworkTap          ${round(cdpOverhead / N)}ms/action\n` +
@@ -136,7 +134,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => {
-  // eslint-disable-next-line no-console
   console.error(e);
   process.exit(1);
 });

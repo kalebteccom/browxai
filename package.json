@@ -51,6 +51,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:keystone": "vitest run --config vitest.keystone.config.ts",
+    "bench:network": "tsx scripts/bench-network-envelope.ts",
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
     "install-browser": "playwright-core install chromium",

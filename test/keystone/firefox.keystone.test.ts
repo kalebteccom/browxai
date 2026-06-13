@@ -371,9 +371,17 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
       // must be present; the summary must count what the ring saw.
       const net = await callJson<{
         summary: { total: number; byType: Record<string, number>; failed: number };
-        requests: Array<{ method: string; url: string; status?: number; type: string; requestId?: string }>;
+        requests: Array<{
+          method: string;
+          url: string;
+          status?: number;
+          type: string;
+          requestId?: string;
+        }>;
       }>("network_read", { session });
-      expect(net.summary.total, "the perf-audit page fired subresource requests").toBeGreaterThan(0);
+      expect(net.summary.total, "the perf-audit page fired subresource requests").toBeGreaterThan(
+        0,
+      );
       // The Script subresource (/perf-dead.js) is interesting (not noise-folded),
       // so it lands in `requests` with a resolved status + a substrate-minted
       // requestId. This proves the cross-engine resourceType reconciliation
