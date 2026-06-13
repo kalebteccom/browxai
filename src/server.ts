@@ -846,9 +846,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         await applyHarReplay(sess.page().context(), creationReplayHars);
       }
       const consoleBuf = new ConsoleBuffer();
-      // Safari console arrives via BiDi log.entryAdded (Inc 4); until then it is an
-      // unattached (empty) buffer rather than a page-attached one.
-      if (sess.engine !== "safari") consoleBuf.attach(sess.page());
+      // Safari has no Playwright Page, so its console arrives over the BiDi
+      // `log.entryAdded` stream (RFC 0002 P4) — subscribed here at session creation
+      // so load-time logs are caught. Strictly optional: when BiDi did not
+      // negotiate (no experimental cap), the buffer stays empty (console_read still
+      // works, returning nothing). Every other engine attaches to the page.
+      if (sess.engine !== "safari") {
+        consoleBuf.attach(sess.page());
+      } else {
+        const safariConsoleHandle = sess.safari?.();
+        if (safariConsoleHandle?.bidi) {
+          const bidi = safariConsoleHandle.bidi;
+          await bidi.subscribe(["log.entryAdded"]).catch(() => undefined);
+          bidi.on("log.entryAdded", (p) => {
+            const level = typeof p.level === "string" ? p.level : "info";
+            const text = typeof p.text === "string" ? p.text : "";
+            consoleBuf.ingest(level, text);
+          });
+        }
+      }
       // The network/WS substrate is selected by engine capability (RFC 0002 D5):
       // chromium (CDP present) gets the verbatim CDP NetworkBuffer/WsBuffer/tap;
       // firefox/webkit get the Playwright context-event buffers. The session-wide

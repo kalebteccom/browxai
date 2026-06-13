@@ -43,6 +43,18 @@ export class ConsoleBuffer {
     });
   }
 
+  /** Ingest a console entry from a NON-Playwright source — the safari engine has
+   *  no Playwright Page, so its console arrives via the BiDi `log.entryAdded`
+   *  stream (RFC 0002 P4). Mirrors the `page.on("console")` push so
+   *  `recent()` / `warningCountSince()` / `errorsSince()` work identically. The
+   *  BiDi level (`debug`/`info`/`warn`/`error`) is mapped to the console `type`
+   *  vocabulary (`warn` → `warning`) the readers key on. */
+  ingest(level: string, text: string): void {
+    const type = level === "warn" ? "warning" : level;
+    this.msgs.push({ ts: Date.now(), type, text });
+    if (this.msgs.length > this.cap) this.msgs.shift();
+  }
+
   /** Compose the two egress layers: URL-sanitise first (regex on URL shape),
    *  then secrets-mask (literal real-value substitution). They don't fight —
    *  the URL sanitiser already redacted `?token=…`; the literal scan still
