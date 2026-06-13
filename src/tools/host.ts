@@ -8,7 +8,9 @@ import type { Workspace } from "../util/workspace.js";
 import type { CapabilityConfig } from "../util/capabilities.js";
 import type { BrowxConfig } from "../util/config.js";
 import type { ConfigStore } from "../util/config-store.js";
-import type { ConfirmContext } from "../policy/confirm.js";
+import type { ConfirmContext, ApprovalStore } from "../policy/confirm.js";
+import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
+import type { PluginRecord } from "../plugin/types.js";
 import type { ActionSubstrate } from "../page/action-substrate.js";
 import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import type { StorageSubstrate } from "../page/storage-substrate.js";
@@ -153,4 +155,16 @@ export interface ToolHost {
   /** The diagnostics JSONL recorder — the note/search/report family reads and
    *  writes the agent-feedback store through it. */
   diagnostics: DiagnosticsRecorder;
+
+  /** The session-independent pre-approval store — the approve_actions /
+   *  list_approvals tools grant and list confirm-scope pre-approvals through it. */
+  approvals: ApprovalStore;
+
+  /** The credentials provider resolved once at server start — the get_totp /
+   *  get_credential tools shell out through it (off-by-default `credentials`). */
+  credentialsResolved: { provider: CredentialProvider; config: CredentialsConfig };
+
+  /** The loaded-plugin records — get_config reports the live enabled-plugin set
+   *  from them. A getter: the records are assigned after the host is built. */
+  readonly pluginRecords: ReadonlyArray<PluginRecord>;
 }
