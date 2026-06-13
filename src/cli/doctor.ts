@@ -205,8 +205,36 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 8b. Active browser engine. Chromium is the only engine wired today; the
-  // seam exists so a second engine lands as an adapter (see src/engine/).
+  // 8a2. Firefox binary (opt-in second engine — `browserType:"firefox"`).
+  // Informational: Firefox is opt-in, so a missing binary never FAILS doctor —
+  // it just tells the operator how to enable the engine. Mirrors the Chromium
+  // check above but against the Firefox build (Playwright's bundled Juggler).
+  try {
+    const { firefox } = await import("playwright-core");
+    const path = firefox.executablePath();
+    if (path && existsSync(path)) {
+      checks.push({ name: "firefox", ok: true, info: true, detail: `${path}` });
+    } else {
+      checks.push({
+        name: "firefox",
+        ok: true,
+        info: true,
+        detail: 'not installed (opt-in second engine — browserType:"firefox")',
+        fix: "run `npx playwright install firefox` to enable the firefox engine",
+      });
+    }
+  } catch (e) {
+    checks.push({
+      name: "firefox",
+      ok: true,
+      info: true,
+      detail: e instanceof Error ? e.message : String(e),
+      fix: "run `npx playwright install firefox` to enable the firefox engine",
+    });
+  }
+
+  // 8b. Active browser engine. Chromium + Firefox are wired (WebKit lands in a
+  // later phase); the seam lets each engine be an adapter (see src/engine/).
   // Informational — never fails doctor.
   checks.push({
     name: "engine",

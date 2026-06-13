@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename as pathBasename, sep as pathSep } from "node:path";
 import { openManagedSession } from "./session/managed.js";
 import { openByobSession } from "./session/byob.js";
-import { requireCdp, type EngineKind } from "./engine/index.js";
+import { requireCdp, assertEngineSupports, type EngineKind } from "./engine/index.js";
 import { openIncognitoSession } from "./session/incognito.js";
 import { resolveDevice } from "./session/device.js";
 import {
@@ -832,9 +832,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const consoleBuf = new ConsoleBuffer();
       consoleBuf.attach(sess.page());
-      const networkBuf = new NetworkBuffer(requireCdp(sess));
+      // The network/WS tap is the CDP substrate (P2 ports it onto Playwright
+      // events). On an engine without CDP (firefox) the buffers are constructed
+      // un-attached — `network_read`/`ws_read` return empty until the substrate
+      // port lands — rather than throwing at session creation. `sess.cdp?.()`
+      // is undefined off-chromium; the buffers no-op their `attach`.
+      const networkBuf = new NetworkBuffer(sess.cdp?.());
       await networkBuf.attach();
-      const wsBuf = new WsBuffer(requireCdp(sess));
+      const wsBuf = new WsBuffer(sess.cdp?.());
       await wsBuf.attach();
       // per-session secrets registry. Empty until `register_secret` is
       // called; the egress sinks below all reference this same instance so
@@ -1138,6 +1143,40 @@ export async function createServer(opts: StartOptions = {}): Promise<{
               activeCapabilities: [...caps.enabled],
               hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (or the `capabilities` config), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a patch that omits this capability silently overrides the env var — include every capability you want, not just this one; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
             },
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  };
+
+  /** Engine-dimension early-return shape — the headline of the multi-engine
+   *  work. Composes with `gateCheck` (capability dimension): after the tool's
+   *  capability is confirmed active and the session is resolved, this refuses a
+   *  CDP-deep tool (audit class B + the live-CDP class-C tools) on an engine
+   *  that declares no `deep` escape hatch (firefox), with a structured hint —
+   *  the same refusal-with-hint pattern `pdf_save`-on-BYOB uses. Returns null
+   *  when the engine supports the tool (the fast path on chromium and for every
+   *  cross-browser tool).
+   *
+   *    const eg = engineGate("perf_start", e); if (eg) return eg;
+   */
+  const engineGate = (toolName: string, e: SessionEntry) => {
+    const refusal = assertEngineSupports(toolName, e.session.engine);
+    if (!refusal) return null;
+    const body = {
+      ok: false,
+      error: refusal.error,
+      engine: e.session.engine,
+      hint: refusal.hint,
+    };
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
             null,
             2,
           ),
@@ -3763,6 +3802,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("mouse_wheel");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("mouse_wheel", e);
+      if (eg) return eg;
       try {
         const r = await withDeadline(
           mouseWheel(requireCdp(e.session), { coords, deltaX, deltaY }),
@@ -3830,6 +3871,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const g = gateCheck(act);
         if (g) return g;
         const e = await entryFor(session);
+        const eg = engineGate(act, e);
+        if (eg) return eg;
         try {
           const r = await withDeadline(
             touchAction(requireCdp(e.session), act.slice(6) as "start" | "move" | "end", {
@@ -3901,6 +3944,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("gesture_pinch");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("gesture_pinch", e);
+      if (eg) return eg;
       try {
         const r = await withDeadline(
           gesturePinch(requireCdp(e.session), { coords, scale, steps, startOffset }),
@@ -3969,6 +4014,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("gesture_swipe");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("gesture_swipe", e);
+      if (eg) return eg;
       try {
         const r = await withDeadline(
           gestureSwipe(requireCdp(e.session), { from, to, durationMs, steps, identifier }),
@@ -4437,6 +4484,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("sw_intercept_fetch");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("sw_intercept_fetch", e);
+      if (eg) return eg;
       try {
         const r = await e.workers.addFetchIntercept(requireCdp(e.session), { pattern, response });
         const body = { ok: true, ...r, tokensEstimate: 0 };
@@ -4471,6 +4520,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("sw_unintercept_fetch");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("sw_unintercept_fetch", e);
+      if (eg) return eg;
       try {
         const r = await e.workers.removeFetchIntercept(
           requireCdp(e.session),
@@ -4537,6 +4588,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("network_emulate");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("network_emulate", e);
+      if (eg) return eg;
       try {
         const { state, reset } = await e.emulation.applyNetwork(
           requireCdp(e.session),
@@ -4591,6 +4644,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("cpu_emulate");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("cpu_emulate", e);
+      if (eg) return eg;
       try {
         const { state, reset } = await e.emulation.applyCpu(
           requireCdp(e.session),
@@ -4643,6 +4698,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("perf_start");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("perf_start", e);
+      if (eg) return eg;
       try {
         const r = await e.perf.start(requireCdp(e.session), { categories });
         const body: Record<string, unknown> = {
@@ -4693,6 +4750,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("perf_stop");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("perf_stop", e);
+      if (eg) return eg;
       try {
         const r = await e.perf.stop(requireCdp(e.session));
         if (r.notRunning) {
@@ -4855,6 +4914,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("perf_audit");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("perf_audit", e);
+      if (eg) return eg;
       try {
         const r = await runPerfAudit(requireCdp(e.session), workspace.root, e.id, {
           categories: categories as string[] | undefined,
@@ -4905,6 +4966,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("coverage_start");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("coverage_start", e);
+      if (eg) return eg;
       try {
         const r = await e.coverage.start(requireCdp(e.session));
         const body: Record<string, unknown> = {
@@ -4949,6 +5012,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("coverage_stop");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("coverage_stop", e);
+      if (eg) return eg;
       try {
         const r = await e.coverage.stop(requireCdp(e.session));
         if (r.notRunning) {
@@ -5008,6 +5073,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("layout_thrash_trace");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("layout_thrash_trace", e);
+      if (eg) return eg;
       try {
         const r = await runLayoutThrashTrace(requireCdp(e.session), workspace.root, e.id, {
           durationMs,
@@ -5108,6 +5175,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("heap_snapshot");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("heap_snapshot", e);
+      if (eg) return eg;
       try {
         const snapshotJson = await takeHeapSnapshot(requireCdp(e.session));
         const targetPath = path ?? defaultHeapSnapshotPath(workspace.root, e.id);
@@ -5247,6 +5316,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("clock");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("clock", e);
+      if (eg) return eg;
       try {
         const {
           state,
@@ -6708,6 +6779,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("pdf_save");
       if (g) return g;
       const e = await entryFor(args.session);
+      const eg = engineGate("pdf_save", e);
+      if (eg) return eg;
       try {
         const refused = assertPdfSupported({ mode: e.mode });
         if (refused) {
@@ -10732,6 +10805,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("set_locale");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("set_locale", e);
+      if (eg) return eg;
       try {
         if (locale === null || locale === undefined) {
           await clearLocaleCdp(requireCdp(e.session));
@@ -10766,6 +10841,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("set_timezone");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("set_timezone", e);
+      if (eg) return eg;
       try {
         if (timezoneId === null || timezoneId === undefined) {
           await clearTimezoneCdp(requireCdp(e.session));
@@ -10908,6 +10985,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("set_user_agent");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("set_user_agent", e);
+      if (eg) return eg;
       try {
         if (userAgent === null || userAgent === undefined) {
           await clearUserAgentCdp(requireCdp(e.session));
@@ -11810,6 +11889,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("extensions_install");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("extensions_install", e);
+      if (eg) return eg;
       const refused = extensionRefusal(e, "extensions_install");
       if (refused) return refused;
       let resolved: string;
@@ -11863,6 +11944,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("extensions_list");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("extensions_list", e);
+      if (eg) return eg;
       const refused = extensionRefusal(e, "extensions_list");
       if (refused) return refused;
       return extensionEnvelope(e, {});
@@ -11883,6 +11966,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("extensions_reload");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("extensions_reload", e);
+      if (eg) return eg;
       const refused = extensionRefusal(e, "extensions_reload");
       if (refused) return refused;
       const target = e.extensions.loaded.find((x) => x.id === id);
@@ -11942,6 +12027,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("extensions_trigger");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("extensions_trigger", e);
+      if (eg) return eg;
       const refused = extensionRefusal(e, "extensions_trigger");
       if (refused) return refused;
       const target = e.extensions.loaded.find((x) => x.id === id);
@@ -12040,6 +12127,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("extensions_uninstall");
       if (g) return g;
       const e = await entryFor(session);
+      const eg = engineGate("extensions_uninstall", e);
+      if (eg) return eg;
       const refused = extensionRefusal(e, "extensions_uninstall");
       if (refused) return refused;
       let removed;
