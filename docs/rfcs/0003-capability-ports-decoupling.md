@@ -6,9 +6,13 @@
 
 This extends [RFC 0002](0002-multi-engine-bidi.md): that RFC introduced the `BrowserEngine` port + the `SnapshotSubstrate` / `NetworkSubstrate` capability ports and proved the strangler-fig migration with five engines. This RFC generalises that **proven** pattern to **every** capability family so no tool handler — and ultimately no module above the engine seam — names Playwright, CDP, or an engine.
 
-## The problem (measured)
+## SRP decomposition — RESOLVED (2026-06-13)
 
-`src/server.ts` is 13,247 lines and is supposed to be **registry composition only** (per code-quality.md §SRP). It is not:
+The line-count half of the problem below is **fixed**: `src/server.ts` is now **382 lines** — a pure composition root (resolve config/policy → `buildSessionRegistry` → `buildHost` → `register*Tools(host)` → `wirePluginRuntime` → return). All ~190 `register()` blocks moved into per-family modules under `src/tools/*` (read-observe, action, gesture-network, deep, capture-report, canvas, storage, forms-recording, session-policy, emulation-config, input, extensions-batch), each taking a single `ToolHost` seam (`src/tools/host.ts`) that bundles the shared closures; the host closures themselves moved to `buildHost` (`src/tools/host-build.ts`), the session factory to `buildSessionRegistry` (`src/tools/session-registry.ts`), and the plugin runtime to `wirePluginRuntime` (`src/tools/plugin-runtime.ts`). Pure structural refactor — 1834 unit tests + the five-engine keystones (incl. real Safari) stayed green at every step. The engine-blindness work below (capability ports) is the orthogonal, already-landed half.
+
+## The problem (measured — original framing)
+
+`src/server.ts` was 13,247 lines and is supposed to be **registry composition only** (per code-quality.md §SRP). It was not:
 
 - **135** direct `sess.page()` / `.context()` calls in tool handlers — every one a hard dependency on a Playwright `Page`.
 - **15** `ctxFor(e)` sites build an `ActionContext { page, … }` and hand it to `actions.*` — the action path is Playwright-typed end to end.
