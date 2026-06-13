@@ -18,11 +18,11 @@ describe("engine port — EngineKind + selection", () => {
     expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
-  it("wires chromium + firefox + webkit + android; safari is declared but not yet operator-reachable", () => {
-    // safari (P4) is in ENGINE_KINDS + has a capability declaration + an adapter,
-    // but is intentionally NOT in IMPLEMENTED_ENGINES until the no-Playwright-Page
-    // session seam lands — so `--engine safari` still gives a structured refusal.
-    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android"]);
+  it("wires all five engines including safari (operator-reachable, P4)", () => {
+    // safari (P4) is the first non-Playwright engine: driven over safaridriver,
+    // no Playwright Page (page() throws), reachable via `--engine safari` /
+    // BROWX_ENGINE=safari through the no-Playwright-Page session seam.
+    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
   it.each(["chromium", "firefox", "webkit"] as const)(

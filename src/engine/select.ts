@@ -24,14 +24,17 @@ const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
 /** Engines wired today. Chromium (P0) + Firefox (P1, Playwright's bundled
  *  Juggler build) + WebKit (P2c, Playwright's bundled WebKit build — the WebKit-
  *  ENGINE correctness lane per RFC D7, NOT Safari) + Android (P3, real Chrome-on-
- *  Android attached over adb + CDP per RFC D3/D8 — full CDP, `deep: true`). All
- *  four `EngineKind` members are implemented; the no-silent-no-op selection error
- *  remains for any future engine declared before its adapter lands. */
+ *  Android attached over adb + CDP per RFC D3/D8 — full CDP, `deep: true`) +
+ *  Safari (P4, REAL Safari.app over safaridriver — the first non-Playwright engine,
+ *  no Playwright Page, curated subset). All five `EngineKind` members are
+ *  implemented; the no-silent-no-op selection error remains for any future engine
+ *  declared before its adapter lands. */
 export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "chromium",
   "firefox",
   "webkit",
   "android",
+  "safari",
 ];
 
 export class EngineNotYetSupportedError extends Error {
@@ -39,9 +42,9 @@ export class EngineNotYetSupportedError extends Error {
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium, firefox, webkit, and android are wired today " +
+        "chromium, firefox, webkit, android, and safari are wired today " +
         "(see docs/rfcs/0002-multi-engine-bidi.md). " +
-        'Use browserType:"chromium" (the default), "firefox", "webkit", or "android".',
+        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", or "safari".',
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;
@@ -71,16 +74,14 @@ export function resolveBrowserType(engine: EngineKind): BrowserType {
  *  the top-level `BROWX_ENGINE` / `--engine` validation error. Distinct from
  *  `EngineNotYetSupportedError` (which guards a *declared-but-unadaptered*
  *  `EngineKind` at the launch path): this one fires on an arbitrary operator
- *  string (`safari`, a typo, …) that is not even a known engine, BEFORE the
- *  server starts. The message lists the implemented engines so the fix is in
- *  the error, and names RFC 0002 for Safari's tracked-but-not-shipped status. */
+ *  string (a typo, an unsupported browser, …) that is not even a known engine,
+ *  BEFORE the server starts. The message lists the implemented engines so the fix
+ *  is in the error. */
 export class UnknownEngineError extends Error {
   readonly value: string;
   constructor(value: string) {
-    const note = value.toLowerCase() === "safari" ? " (see RFC 0002 for Safari status)" : "";
     super(
-      `engine "${value}" is not available; implemented engines: ` +
-        `${IMPLEMENTED_ENGINES.join(", ")}${note}`,
+      `engine "${value}" is not available; implemented engines: ${IMPLEMENTED_ENGINES.join(", ")}`,
     );
     this.name = "UnknownEngineError";
     this.value = value;

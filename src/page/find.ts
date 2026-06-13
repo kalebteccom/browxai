@@ -172,7 +172,11 @@ const CONTAINER_ROLES = new Set([
  * Candidates with score 0 are dropped. Top `maxCandidates` (default 5) returned.
  */
 export async function find(
-  page: Page,
+  // `null` on the safari engine — it has no Playwright Page, so the locator-based
+  // enrichment (disambiguation / bbox / actionability) is skipped and candidates
+  // are ranked from the substrate tree alone (RFC 0002 P4). Every other engine
+  // passes a real Page.
+  page: Page | null,
   substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: FindOptions,
@@ -210,7 +214,7 @@ export async function find(
   // The locator-resolution root: page for main-frame finds, frame for
   // frame-scoped finds. Probes (disambiguation, bbox fallback, actionable)
   // use this root so they exercise the correct DOM tree.
-  const locatorRoot: Page | Frame = opts.frame ?? page;
+  const locatorRoot: Page | Frame | null = opts.frame ?? page;
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
@@ -272,8 +276,9 @@ export async function find(
   const candidates: FindCandidate[] = await Promise.all(
     top.map(async ({ node, score }) => {
       const { hint: bareHint, tier, stability } = buildSelectorHint(node);
-      // disambiguate when the bare hint matches multiple DOM nodes.
-      const hint = await disambiguateHint(locatorRoot, bareHint);
+      // disambiguate when the bare hint matches multiple DOM nodes (needs a
+      // locator root; on safari there is none, so use the bare hint as-is).
+      const hint = locatorRoot ? await disambiguateHint(locatorRoot, bareHint) : bareHint;
       // For frame-scoped finds, skip the CDP visible-rect path entirely
       // (its backendDOMNodeIds are rooted at the top target and don't
       // resolve into OOPIFs). Same-origin frames technically could be
@@ -287,9 +292,14 @@ export async function find(
       // DOM-walk node → fall back to Playwright's locator box before we let a
       // bad signal classify a visible element off-screen (which `visibleOnly`
       // would then drop entirely).
-      if (bbox === null)
+      if (bbox === null && locatorRoot)
         bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
-      const actionable = await probeActionable(locatorRoot, hint, bbox);
+      // No locator root (safari) → actionability can't be locator-probed, but the
+      // DOM-walk PAGE_SCRIPT already filtered to VISIBLE interactive elements
+      // (getBoundingClientRect non-zero + visibility/display checks), so the node
+      // is known-visible. Report `true` rather than fabricate a "covered"/"disabled"
+      // signal we can't measure. bbox stays null (no protocol rect on safari).
+      const actionable = locatorRoot ? await probeActionable(locatorRoot, hint, bbox) : true;
       return {
         ref: node.ref,
         role: node.role,

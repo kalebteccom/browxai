@@ -13,29 +13,28 @@ import {
 } from "./index.js";
 
 describe("validateEngine — operator string → EngineKind", () => {
-  it.each(["chromium", "firefox", "webkit", "android"] as const)(
+  it.each(["chromium", "firefox", "webkit", "android", "safari"] as const)(
     "accepts the implemented engine %s",
     (engine) => {
       expect(validateEngine(engine)).toBe(engine);
     },
   );
 
-  it("rejects an unimplemented-but-named engine (safari) with the RFC pointer", () => {
-    expect(() => validateEngine("safari")).toThrow(UnknownEngineError);
+  it("rejects an unknown engine name with the implemented-engine list", () => {
+    expect(() => validateEngine("opera")).toThrow(UnknownEngineError);
     try {
-      validateEngine("safari");
+      validateEngine("opera");
     } catch (e) {
       const err = e as UnknownEngineError;
-      expect(err.message).toContain('engine "safari" is not available');
-      expect(err.message).toContain("chromium, firefox, webkit, android");
-      expect(err.message).toContain("RFC 0002");
-      expect(err.value).toBe("safari");
+      expect(err.message).toContain('engine "opera" is not available');
+      expect(err.message).toContain("chromium, firefox, webkit, android, safari");
+      expect(err.value).toBe("opera");
     }
   });
 
   it("rejects a typo with the implemented-engine list (the fix is in the error)", () => {
     expect(() => validateEngine("chrome")).toThrowError(
-      /engine "chrome" is not available; implemented engines: chromium, firefox, webkit, android/,
+      /engine "chrome" is not available; implemented engines: chromium, firefox, webkit, android, safari/,
     );
   });
 
@@ -82,13 +81,11 @@ describe("resolveEngineSelection — precedence flag > env > default", () => {
   });
 
   it("validates the env value — an unknown BROWX_ENGINE errors with the list", () => {
-    expect(() => resolveEngineSelection([], { BROWX_ENGINE: "safari" })).toThrow(
-      UnknownEngineError,
-    );
+    expect(() => resolveEngineSelection([], { BROWX_ENGINE: "opera" })).toThrow(UnknownEngineError);
   });
 
   it("validates the flag value — an unknown --engine errors with the list", () => {
-    expect(() => resolveEngineSelection(["--engine", "safari"], {})).toThrow(UnknownEngineError);
+    expect(() => resolveEngineSelection(["--engine", "opera"], {})).toThrow(UnknownEngineError);
   });
 
   it("a bare trailing --engine (no value) is a loud mistake, not a silent no-op", () => {

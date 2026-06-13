@@ -267,6 +267,7 @@ import {
   type VideoStartConfig,
 } from "./page/video.js";
 import * as actions from "./page/actions.js";
+import { safariNavigate } from "./page/safari-actions.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
 import type { ActionContext } from "./page/actionresult.js";
@@ -1670,15 +1671,31 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         };
       }
       const { tree, stats, warnings } = composed;
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-      const url = isMainFrame ? s.page().url() : targetFrame!.url();
-      const title = isMainFrame
-        ? await s
-            .page()
-            .title()
-            .catch(() => "")
-        : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-          targetFrame!.name() || "";
+      // The header url/title. safari has no Playwright Page — read them from the
+      // Safari-native WebDriver Classic client instead (RFC 0002 P4).
+      let url: string;
+      let title: string;
+      const safariHandleForHeader = s.safari?.();
+      if (safariHandleForHeader) {
+        url = await safariHandleForHeader.webDriver
+          .currentUrl(safariHandleForHeader.sessionId)
+          .catch(() => "");
+        title = await safariHandleForHeader.webDriver
+          .executeScript(safariHandleForHeader.sessionId, "return document.title")
+          .then((t) => (typeof t === "string" ? t : ""))
+          .catch(() => "");
+      } else if (isMainFrame) {
+        url = s.page().url();
+        title = await s
+          .page()
+          .title()
+          .catch(() => "");
+      } else {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+        url = targetFrame!.url();
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+        title = targetFrame!.name() || "";
+      }
       // scope to subtree if requested.
       let root = tree;
       const scopeWarnings: string[] = [];
@@ -1788,7 +1805,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         result = await withDeadline(
           find(
-            s.page(),
+            // safari has no Playwright Page — find ranks from the substrate tree
+            // (no locator-based bbox/actionability enrichment). RFC 0002 P4.
+            s.safari ? null : s.page(),
             e.snapshotSubstrate,
             e.refs,
             {
@@ -3495,6 +3514,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       const decision = await confirmNavigation(url, confirmCtxFor(e));
       if (!decision.ok) return denyContent("navigate", decision);
+      // safari (P4) has no Playwright Page, so `ctxFor(e)` (→ e.session.page())
+      // would throw. Route navigation through the Safari-native WebDriver Classic
+      // client instead — the curated-subset action path (RFC 0002 D7).
+      const safariHandle = e.session.safari?.();
+      if (safariHandle) return asActionResultText(safariNavigate(safariHandle, url));
       const td = actionTimeout({ timeoutMs });
       return asActionResultText(
         actions.navigate(ctxFor(e), {
@@ -9970,6 +9994,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
                 },
               }
             : {};
+        // safari has no Playwright Page — read the opened URL from its WebDriver
+        // Classic client instead (RFC 0002 P4).
+        const safariOpened = e.session.safari?.();
+        const openedUrl = safariOpened
+          ? await safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "")
+          : e.session.page().url();
         return {
           content: [
             {
@@ -9979,7 +10009,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
                   ok: true,
                   session: e.id,
                   mode: e.mode,
-                  url: e.session.page().url(),
+                  url: openedUrl,
                   openedAt: new Date(e.openedAt).toISOString(),
                   ...harField,
                   ...replayField,
