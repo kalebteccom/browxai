@@ -9,17 +9,14 @@
 // gate (deep:false).
 //
 // SCOPE (the curated subset — RFC D7; 200-tool parity on Safari is impossible):
-//   RUNS on Safari:
+//   RUNS on Safari (each via its capability port — engine-blind handlers):
 //     - open_session(persistent) + list_sessions.engine === "safari"
-//     - navigate            (safariNavigate → WebDriver Classic POST url)
-//     - snapshot            (SafariClassicSnapshotSubstrate — DOM-walk over
-//                            execute/sync; real refs, [from-dom])
-//     - find                (ranks a target from the substrate tree)
+//     - navigate / click / fill (ActionSubstrate → WebDriver Classic)
+//     - snapshot / find         (SnapshotSubstrate — DOM-walk over execute/sync)
+//     - screenshot              (CaptureSubstrate — full-document PNG)
+//     - cookies_set / cookies_list (StorageSubstrate — WebDriver cookie jar)
 //   ASSERTS-REFUSAL on Safari (deep:false — the CDP-deep family):
 //     - perf_start / heap_snapshot  (engine gate, engine:"safari")
-//   GATED (page()-throw, first landing — the action substrate is a follow-up):
-//     - click / fill        (route through the Playwright action envelope, which
-//                            needs a Page Safari lacks)
 //
 // NON-BYOB: every safari session is an isolated automation window (no cookies/
 // storage/history from the real profile). There is NO headless Safari — this
@@ -207,22 +204,29 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
       expect(filled.ok, `fill: ${JSON.stringify(filled)}`).toBe(true);
       expect(filled.element?.value).toBe("safari-action-keystone");
 
-      // click — dispatched on the resolved element over execute/sync (the W3C
-      // Element Click endpoint does not reliably fire safaridriver's page click
-      // handlers). The fixture flips #saved to "Saved OK"; text_search
-      // (substrate-sourced) confirms the app-side effect.
+      // click — a REAL WebDriver elementClick (trusted; fires app handlers). The
+      // fixture flips #saved to "Saved OK". The app-side re-render is async, and
+      // `wait_for` isn't on Safari's curated subset, so poll text_search briefly
+      // rather than assert on a single immediate read (avoids a render-timing flake).
       const clicked = await callJson<{ ok: boolean }>("click", {
         session,
         selector: '[data-testid="save-btn"]',
       });
       expect(clicked.ok, `click: ${JSON.stringify(clicked)}`).toBe(true);
-      const saved = await callJson<{ count: number }>("text_search", {
-        session,
-        text: "Saved OK",
-        exact: true,
-        includeHidden: true,
-      });
-      expect(saved.count).toBeGreaterThanOrEqual(1);
+      let savedCount = 0;
+      for (let attempt = 0; attempt < 10 && savedCount === 0; attempt++) {
+        const saved = await callJson<{ count: number }>("text_search", {
+          session,
+          text: "Saved OK",
+          exact: true,
+          includeHidden: true,
+        });
+        savedCount = saved.count;
+        if (savedCount === 0) await new Promise((r) => setTimeout(r, 150));
+      }
+      expect(savedCount, 'click effect "Saved OK" should appear (polled)').toBeGreaterThanOrEqual(
+        1,
+      );
 
       // screenshot — full-document PNG via WebDriver, returned as an image item.
       const shot = await handlers.screenshot!({ session });
