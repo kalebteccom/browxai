@@ -7,7 +7,8 @@ import type { ActionContext } from "../page/actionresult.js";
 import type { Workspace } from "../util/workspace.js";
 import type { CapabilityConfig } from "../util/capabilities.js";
 import type { BrowxConfig } from "../util/config.js";
-import type { ConfigStore } from "../util/config-store.js";
+import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
+import type { StartOptions } from "../server.js";
 import type { ConfirmContext, ApprovalStore } from "../policy/confirm.js";
 import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
 import type { PluginRecord } from "../plugin/types.js";
@@ -135,6 +136,15 @@ export interface ToolHost {
 
   /** Layered config store — the live source for re-resolvable settings. */
   configStore: ConfigStore;
+
+  /** The once-resolved config snapshot taken at server start — the
+   *  extension-rebuild path reads creation-time launch defaults (headless,
+   *  device, viewport) from it. */
+  resolvedConfig: ResolvedConfig;
+
+  /** The server start options — the extension-rebuild path reads the
+   *  operator's `headless` override from them. */
+  startOptions: StartOptions;
 
   /** zod, so tool modules build their input schemas with the same instance the
    *  composition root uses. */
