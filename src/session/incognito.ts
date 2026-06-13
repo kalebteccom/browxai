@@ -8,7 +8,12 @@
 // consumer-cwd write; incognito additionally leaves no Chrome profile behind.
 
 import { log } from "../util/logging.js";
-import { PlaywrightChromiumAdapter, type EngineKind } from "../engine/index.js";
+import {
+  PlaywrightChromiumAdapter,
+  PlaywrightFirefoxAdapter,
+  firefoxChannelFromEnv,
+  type EngineKind,
+} from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 export async function openIncognitoSession(opts: SessionOptions = {}): Promise<BrowserSession> {
@@ -17,45 +22,69 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     headless: !!opts.headless,
     engine,
   });
-  // opt-in web-security-off (off by default; loud per-launch warning).
+  // opt-in web-security-off (off by default; loud per-launch warning). The
+  // --disable-* flag form is Chromium-only; on the firefox engine we warn
+  // rather than silently apply a flag Firefox doesn't accept.
   const insecureArgs: string[] = [];
   if (opts.disableWebSecurity) {
-    insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
-    log.warn(
-      "⚠  session.incognito: disableWebSecurity is ON — launching with --disable-web-security. " +
-        "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
-    );
+    if (engine === "firefox") {
+      log.warn(
+        "⚠  session.incognito: disableWebSecurity is not wired on the firefox engine — " +
+          "the --disable-web-security flag form is Chromium-only. Launching with SOP/CORS ON.",
+      );
+    } else {
+      insecureArgs.push("--disable-web-security", "--disable-site-isolation-trials");
+      log.warn(
+        "⚠  session.incognito: disableWebSecurity is ON — launching with --disable-web-security. " +
+          "SOP/CORS is OFF for the whole browser session. Use only against test/dev targets.",
+      );
+    }
   }
-  const adapter = new PlaywrightChromiumAdapter();
-  const { browser, context, page, cdp } = await adapter.launchEphemeral({
-    launchOptions: {
-      headless: !!opts.headless,
-      // No lowered-security flags unless the gated flag is explicitly on.
-      ...(insecureArgs.length ? { args: insecureArgs } : {}),
-    },
-    contextOptions: {
-      ...(opts.device ?? {}),
-      // Accept downloads at the context level so the per-session
-      // `DownloadsRegistry` (off-by-default) can intercept them on demand.
-      // The registry discards artefacts when capture is off — `acceptDownloads`
-      // being true is purely the prerequisite for Playwright to emit the
-      // `download` event that the registry's listener hangs off.
-      acceptDownloads: true,
-      // Seed the ephemeral context with a storage state if one was supplied
-      // (the Playwright-native primitive for "open a fresh browser already
-      // logged in as X"). No-op when unset.
-      ...(opts.storageState ? { storageState: opts.storageState } : {}),
-      // HAR recording at context creation (native Playwright primitive).
-      // Finalized on context.close(). No-op when unset.
-      ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
-      // Video recording at context creation (native Playwright primitive).
-      // Finalized on context.close(). The dir is workspace-rooted by
-      // construction; the registry's teardown calls
-      // `page.video().saveAs(targetPath)` for a deterministic filename.
-      ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
-    },
-  });
+  const contextOptions = {
+    ...(opts.device ?? {}),
+    // Accept downloads at the context level so the per-session
+    // `DownloadsRegistry` (off-by-default) can intercept them on demand.
+    // The registry discards artefacts when capture is off — `acceptDownloads`
+    // being true is purely the prerequisite for Playwright to emit the
+    // `download` event that the registry's listener hangs off.
+    acceptDownloads: true,
+    // Seed the ephemeral context with a storage state if one was supplied
+    // (the Playwright-native primitive for "open a fresh browser already
+    // logged in as X"). No-op when unset.
+    ...(opts.storageState ? { storageState: opts.storageState } : {}),
+    // HAR recording at context creation (native Playwright primitive).
+    // Finalized on context.close(). No-op when unset.
+    ...(opts.recordHar ? { recordHar: opts.recordHar } : {}),
+    // Video recording at context creation (native Playwright primitive).
+    // Finalized on context.close(). The dir is workspace-rooted by
+    // construction; the registry's teardown calls
+    // `page.video().saveAs(targetPath)` for a deterministic filename.
+    ...(opts.recordVideo ? { recordVideo: opts.recordVideo } : {}),
+  };
 
+  let browser;
+  let context;
+  let page;
+  let cdp;
+  if (engine === "firefox") {
+    const adapter = new PlaywrightFirefoxAdapter({ channel: firefoxChannelFromEnv() });
+    ({ browser, context, page } = await adapter.launchEphemeral({
+      launchOptions: { headless: !!opts.headless },
+      contextOptions,
+    }));
+  } else {
+    const adapter = new PlaywrightChromiumAdapter();
+    ({ browser, context, page, cdp } = await adapter.launchEphemeral({
+      launchOptions: {
+        headless: !!opts.headless,
+        // No lowered-security flags unless the gated flag is explicitly on.
+        ...(insecureArgs.length ? { args: insecureArgs } : {}),
+      },
+      contextOptions,
+    }));
+  }
+
+  const cdpHandle = cdp;
   let closed = false;
   return {
     mode: "managed", // BrowserSession.mode is the coarse owned/not-owned axis;
@@ -63,13 +92,13 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
     ownsBrowser: true,
     engine,
     page: () => page,
-    // chromium always mints a CDP session; `cdp` is non-undefined here.
-    cdp: () => cdp,
+    // chromium mints a CDP session; firefox has none (`cdp` stays absent).
+    ...(cdpHandle ? { cdp: () => cdpHandle } : {}),
     close: async () => {
       if (closed) return;
       closed = true;
       log.info("session.incognito: closing (ephemeral context + browser discarded)");
-      await cdp.detach().catch(() => undefined);
+      if (cdpHandle) await cdpHandle.detach().catch(() => undefined);
       await context.close().catch(() => undefined);
       await browser?.close().catch(() => undefined);
     },

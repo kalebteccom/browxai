@@ -253,7 +253,11 @@ export class WsBuffer {
   private secrets: SecretRegistry | null = null;
 
   constructor(
-    private cdp: CDPSession,
+    // CDP is the WS-tap substrate today (P2 ports it onto Playwright
+    // `page.on('websocket')`). On an engine without CDP (Firefox) the buffer
+    // is constructed but never attaches — reads return empty until the
+    // substrate port lands, rather than throwing at session creation.
+    private cdp: CDPSession | undefined,
     private cap = 500,
     private maxPayload = 2000,
   ) {}
@@ -273,7 +277,7 @@ export class WsBuffer {
   }
 
   async attach(): Promise<void> {
-    if (this.enabled) return;
+    if (this.enabled || !this.cdp) return;
     await this.cdp.send("Network.enable").catch(() => undefined); // idempotent w/ NetworkBuffer
     this.enabled = true;
     this.cdp.on("Network.webSocketCreated", (e: { requestId: string; url: string }) => {
@@ -491,7 +495,11 @@ export class NetworkBuffer {
   private secrets: SecretRegistry | null = null;
 
   constructor(
-    private cdp: CDPSession,
+    // CDP is the network-tap substrate today (P2 ports it onto Playwright
+    // request/response events). On an engine without CDP (Firefox) the buffer
+    // is constructed but never attaches — `recent`/`since` reads return empty
+    // until the substrate port lands, rather than throwing at session creation.
+    private cdp: CDPSession | undefined,
     private cap = 500,
   ) {}
 
@@ -500,7 +508,7 @@ export class NetworkBuffer {
   }
 
   async attach(): Promise<void> {
-    if (this.enabled) return;
+    if (this.enabled || !this.cdp) return;
     await this.cdp.send("Network.enable");
     this.enabled = true;
     this.cdp.on(

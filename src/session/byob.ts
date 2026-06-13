@@ -5,7 +5,11 @@
 // browser or reset its storage — that's the consumer's Chrome, not ours.
 
 import { log } from "../util/logging.js";
-import { PlaywrightChromiumAdapter, type EngineKind } from "../engine/index.js";
+import {
+  PlaywrightChromiumAdapter,
+  PlaywrightFirefoxAdapter,
+  type EngineKind,
+} from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
@@ -46,9 +50,16 @@ export async function openByobSession(
   opts: SessionOptions & { attachCdp: string },
 ): Promise<BrowserSession> {
   const url = assertLoopback(opts.attachCdp);
-  // The attach transport is CDP today (the only engine wired); the loopback /
-  // not-owned policy above + below is protocol-neutral and reused verbatim.
+  // The loopback / not-owned policy above + below is protocol-neutral and reused
+  // verbatim; only the transport hop (CDP-attach) is engine-specific. The
+  // Firefox attach model is a glass-box LAUNCH over BiDi, not CDP-attach (RFC
+  // D3) — and Playwright has no `connectOverBiDi` for a user's running Firefox.
+  // Surface the structured `firefox-attach-not-supported` error (no silent
+  // fail) before the CDP-attach body, which is Chromium-only by nature.
   const engine: EngineKind = opts.browserType ?? "chromium";
+  if (engine === "firefox") {
+    await new PlaywrightFirefoxAdapter().attach(url.toString());
+  }
   log.warn(ATTACH_WARNING);
   log.info("session.byob: attaching", { endpoint: url.toString(), owner: "external", engine });
 
