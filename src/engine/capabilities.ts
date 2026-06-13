@@ -86,11 +86,37 @@ export const ANDROID_CAPABILITIES: EngineCapabilities = {
   deep: true,
 };
 
+/** Safari (P4 — real Safari.app over safaridriver, the FIRST non-Playwright,
+ *  non-CDP engine; RFC D7 + reference 06). A curated SUBSET, not the full port:
+ *  Classic owns input/capture(screenshot)/cookies + navigation + exec; experimental
+ *  BiDi owns script + browsingContext nav/lifecycle/viewport + the console/nav
+ *  events. NETWORK is omitted entirely — Safari has no protocol-level network tap
+ *  or interception at all (worse than firefox/webkit, which get the Playwright-event
+ *  substrate), so the network tools must REFUSE on Safari, not skip. EMULATION is
+ *  omitted too — only `browsingContext.setViewport` works; the rest of the emulation
+ *  surface (geolocation/locale/timezone/UA/network-conditions/CPU/clock) is absent,
+ *  so it gates uniformly. `deep: false` (no CDP) gates the ~26 CDP-deep tools via the
+ *  existing caps.deep gate with no per-engine edit. */
+export const SAFARI_CAPABILITIES: EngineCapabilities = {
+  engine: "safari",
+  subInterfaces: new Set<EngineSubInterface>([
+    "lifecycle",
+    "navigation",
+    "snapshot",
+    "input",
+    "storage",
+    "script",
+    "capture",
+  ]),
+  deep: false,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
   webkit: WEBKIT_CAPABILITIES,
   android: ANDROID_CAPABILITIES,
+  safari: SAFARI_CAPABILITIES,
 };
 
 /** The capability declaration for an engine. Chromium (P0) + Firefox (P1) +

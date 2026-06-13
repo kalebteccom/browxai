@@ -18,9 +18,20 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
  *  a DISTINCT kind, not `chromium`, because its launch model is attach-only
  *  (adb socket discovery → `connectOverCDP`) and managed/ephemeral launch on a
  *  phone is not a thing the desktop adapters' shape covers (RFC 0002 D3/D8). */
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android";
+// `safari` (P4) is the FIRST non-Playwright engine: real Safari.app driven over
+// safaridriver (WebDriver Classic workhorse + experimental BiDi for console/nav
+// events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
+// CDP, so its session is Safari-native — see the no-Playwright-Page seam in
+// docs/rfcs/references/07-safari-adapter-implementation-plan.md.
+export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari";
 
-export const ENGINE_KINDS: readonly EngineKind[] = ["chromium", "firefox", "webkit", "android"];
+export const ENGINE_KINDS: readonly EngineKind[] = [
+  "chromium",
+  "firefox",
+  "webkit",
+  "android",
+  "safari",
+];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which
  *  ones it supports via `EngineCapabilities`; a tool that needs `deep` (CDP) is

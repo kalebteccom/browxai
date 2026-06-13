@@ -10,7 +10,11 @@ import type { EngineKind } from "./types.js";
 // `android` resolves to Playwright's `chromium` BrowserType — Chrome-on-Android
 // speaks full CDP, so the adapter attaches with `chromium.connectOverCDP(wsUrl)`
 // over an adb-forwarded socket, reusing the exact Chromium transport (RFC D8).
-const BROWSER_TYPES: Record<EngineKind, BrowserType> = {
+// `safari` has NO entry: it is the first non-Playwright engine (driven over
+// safaridriver, not a Playwright BrowserType), so `resolveBrowserType` is never
+// the path for it — the SafaridriverHybridAdapter owns its own transport. The map
+// is `Partial` to make that explicit at the type level.
+const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
   chromium,
   firefox,
   webkit,
@@ -54,7 +58,13 @@ export function resolveBrowserType(engine: EngineKind): BrowserType {
   }
   // chromium + firefox + webkit + android all reach here today (android maps to
   // the chromium BrowserType — it attaches to real Chrome-on-Android over CDP).
-  return BROWSER_TYPES[engine];
+  // safari has no Playwright BrowserType (it is driven over safaridriver), so it
+  // is not in BROWSER_TYPES — the guard keeps this total without a fake mapping.
+  const browserType = BROWSER_TYPES[engine];
+  if (!browserType) {
+    throw new EngineNotYetSupportedError(engine);
+  }
+  return browserType;
 }
 
 /** Raised when the operator names an engine that browxai does not implement —

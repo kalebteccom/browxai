@@ -14,11 +14,14 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the four RFC engines", () => {
-    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android"]);
+  it("commits to the five RFC engines (safari is declared, P4)", () => {
+    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
-  it("wires chromium + firefox + webkit + android (all four RFC engines)", () => {
+  it("wires chromium + firefox + webkit + android; safari is declared but not yet operator-reachable", () => {
+    // safari (P4) is in ENGINE_KINDS + has a capability declaration + an adapter,
+    // but is intentionally NOT in IMPLEMENTED_ENGINES until the no-Playwright-Page
+    // session seam lands — so `--engine safari` still gives a structured refusal.
     expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android"]);
   });
 
