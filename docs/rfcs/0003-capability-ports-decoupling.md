@@ -1,7 +1,7 @@
 # RFC 0003 — Engine-blind tool surface via capability ports
 
 **Date:** 2026-06-13
-**Status:** Draft (Phase 0 — design). **Author:** Claude (architecture).
+**Status:** Draft — **P1 (`ActionSubstrate`) LANDED & gate-green** (1785 unit + the 5-engine keystones; server.ts no longer imports the Playwright `actions` module — the whole action capability is behind the port, and the `if (engine === "safari")` action branches are deleted). P2–P5 remain. **Author:** Claude (architecture).
 **Trigger:** Owner directive — the MCP server (`src/server.ts`) and the page tools are hard-coupled to Playwright `Page` / CDP and now carry per-engine `if (engine === "safari")` branches. Make the whole tool surface depend on **capability ports**, not on a concrete engine. Apply SOLID across the project, conforming to [`docs/ai-context/agent-process/code-quality.md`](../ai-context/agent-process/code-quality.md) and [`docs/ai-context/architecture/architecture-principles.md`](../ai-context/architecture/architecture-principles.md).
 
 This extends [RFC 0002](0002-multi-engine-bidi.md): that RFC introduced the `BrowserEngine` port + the `SnapshotSubstrate` / `NetworkSubstrate` capability ports and proved the strangler-fig migration with five engines. This RFC generalises that **proven** pattern to **every** capability family so no tool handler — and ultimately no module above the engine seam — names Playwright, CDP, or an engine.
