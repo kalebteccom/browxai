@@ -1,7 +1,7 @@
 // Engine selection. The launch path resolves an `EngineKind` to a Playwright
-// browser-type and rejects the not-yet-implemented engines with a structured,
-// RFC-naming error — the doctrine's no-silent-no-op rule: an unsupported engine
-// must fail loudly, naming where the work is tracked, not quietly fall back to
+// browser-type and rejects the not-yet-implemented engines with a structured
+// error — the doctrine's no-silent-no-op rule: an unsupported engine must fail
+// loudly, naming the engines that are available, not quietly fall back to
 // Chromium.
 
 import { chromium, firefox, webkit, type BrowserType } from "playwright-core";
@@ -9,7 +9,7 @@ import type { EngineKind } from "./types.js";
 
 // `android` resolves to Playwright's `chromium` BrowserType — Chrome-on-Android
 // speaks full CDP, so the adapter attaches with `chromium.connectOverCDP(wsUrl)`
-// over an adb-forwarded socket, reusing the exact Chromium transport (RFC D8).
+// over an adb-forwarded socket, reusing the exact Chromium transport.
 // `safari` has NO entry: it is the first non-Playwright engine (driven over
 // safaridriver, not a Playwright BrowserType), so `resolveBrowserType` is never
 // the path for it — the SafaridriverHybridAdapter owns its own transport. The map
@@ -21,14 +21,13 @@ const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
   android: chromium,
 };
 
-/** Engines wired today. Chromium (P0) + Firefox (P1, Playwright's bundled
- *  Juggler build) + WebKit (P2c, Playwright's bundled WebKit build — the WebKit-
- *  ENGINE correctness lane per RFC D7, NOT Safari) + Android (P3, real Chrome-on-
- *  Android attached over adb + CDP per RFC D3/D8 — full CDP, `deep: true`) +
- *  Safari (P4, REAL Safari.app over safaridriver — the first non-Playwright engine,
- *  no Playwright Page, curated subset). All five `EngineKind` members are
- *  implemented; the no-silent-no-op selection error remains for any future engine
- *  declared before its adapter lands. */
+/** Engines wired today. Chromium + Firefox (Playwright's bundled Juggler build)
+ *  + WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness
+ *  lane, NOT Safari) + Android (real Chrome-on-Android attached over adb + CDP —
+ *  full CDP, `deep: true`) + Safari (REAL Safari.app over safaridriver — the
+ *  first non-Playwright engine, no Playwright Page, curated subset). All five
+ *  `EngineKind` members are implemented; the no-silent-no-op selection error
+ *  remains for any future engine declared before its adapter lands. */
 export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "chromium",
   "firefox",
@@ -42,8 +41,7 @@ export class EngineNotYetSupportedError extends Error {
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium, firefox, webkit, android, and safari are wired today " +
-        "(see docs/rfcs/0002-multi-engine-bidi.md). " +
+        "chromium, firefox, webkit, android, and safari are wired today. " +
         'Use browserType:"chromium" (the default), "firefox", "webkit", "android", or "safari".',
     );
     this.name = "EngineNotYetSupportedError";
@@ -54,7 +52,7 @@ export class EngineNotYetSupportedError extends Error {
 /** Map an `EngineKind` to the Playwright `BrowserType` that drives it. Throws
  *  `EngineNotYetSupportedError` for engines without an adapter yet. The mapping
  *  is `playwright[browserType]` — the same surface every Playwright client
- *  selects on; only chromium is reachable in P0. */
+ *  selects on. */
 export function resolveBrowserType(engine: EngineKind): BrowserType {
   if (!IMPLEMENTED_ENGINES.includes(engine)) {
     throw new EngineNotYetSupportedError(engine);

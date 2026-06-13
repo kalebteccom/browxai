@@ -32,7 +32,6 @@ describe("AndroidCdpAdapter — launch refusal (attach-only)", () => {
     const adapter = new AndroidCdpAdapter();
     await expect(adapter.launch()).rejects.toThrow(/android-launch-not-supported/);
     await expect(adapter.launch()).rejects.toThrow(/attach/i);
-    await expect(adapter.launch()).rejects.toThrow(/0002-multi-engine-bidi/);
   });
 });
 

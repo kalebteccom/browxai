@@ -34,10 +34,10 @@ import { UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
-/** The network slice when there is no CDP tap (off Chromium — the Playwright-
- *  event network tap is P2b). Matches `NetworkTap.close()`'s shape so the
- *  envelope builder downstream is engine-blind: zero requests, zero mutations.
- *  Frozen so it is never mutated by a downstream consumer. */
+/** The network slice when there is no CDP tap (off Chromium, where the
+ *  Playwright-event network tap is used instead). Matches `NetworkTap.close()`'s
+ *  shape so the envelope builder downstream is engine-blind: zero requests, zero
+ *  mutations. Frozen so it is never mutated by a downstream consumer. */
 const EMPTY_NETWORK: {
   summary: NetworkSummary;
   requests: NetworkEntry[];
@@ -309,7 +309,7 @@ export interface ActionResult {
 
 export interface ActionContext {
   page: Page;
-  /** Engine-agnostic network substrate (RFC 0002 D5). The action window mints
+  /** Engine-agnostic network substrate. The action window mints
    *  its per-action tap from here (`openActionTap()`): chromium → the verbatim
    *  CDP NetworkTap; firefox/webkit → the Playwright context-event tap. The
    *  network slice of the envelope is built off whichever the engine supplied —
@@ -317,7 +317,7 @@ export interface ActionContext {
    *  chromium. Optional so a context with no substrate (defensive — never the
    *  live path) still builds the rest of the envelope. */
   network?: NetworkSubstrate;
-  /** Engine-agnostic snapshot/a11y substrate (RFC 0002 D4). The pre/post
+  /** Engine-agnostic snapshot/a11y substrate. The pre/post
    *  `snapshotDelta` trees come from here, so the action window builds its
    *  structure diff on chromium (CDP a11y) and firefox (the page-side walker)
    *  alike. */
@@ -445,7 +445,7 @@ export async function runInActionWindow(
   };
   ctx.page.on("framenavigated", onFrameNav);
 
-  // The per-action network tap comes from the engine's substrate (RFC 0002 D5):
+  // The per-action network tap comes from the engine's substrate:
   // chromium → the CDP NetworkTap; firefox/webkit → the Playwright context-event
   // tap. Both produce the same `{summary, requests, mutations}` close shape, so
   // the envelope builder downstream is engine-blind. (`ctx.secrets` was already

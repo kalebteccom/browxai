@@ -12,7 +12,7 @@ import type { BrowserContext, Page } from "playwright-core";
 // verbatim (covered by the per-engine keystones); these cover the live-mutation
 // delegation + the Safari adapter's structured refusal that replaced the
 // (previously absent) per-handler engine branch — Safari has no live-emulation
-// surface beyond viewport (RFC 0003).
+// surface beyond viewport.
 
 function safariHandle(): SafariSessionHandle {
   return { sessionId: "S", webDriver: {} } as unknown as SafariSessionHandle;

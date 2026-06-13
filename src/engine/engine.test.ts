@@ -14,7 +14,7 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the five RFC engines (safari is declared, P4)", () => {
+  it("commits to the five engines (safari is declared)", () => {
     expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
@@ -49,7 +49,6 @@ describe("engine port — EngineKind + selection", () => {
     expect(err).toBeInstanceOf(EngineNotYetSupportedError);
     expect(err.engine).toBe("webkit");
     expect(err.message).toContain("engine-not-yet-supported");
-    expect(err.message).toContain("0002-multi-engine-bidi");
     expect(err.message).toContain("webkit");
   });
 });
@@ -103,7 +102,7 @@ describe("engine port — capability declaration", () => {
     const caps = capabilitiesFor("android");
     expect(caps).toBe(ANDROID_CAPABILITIES);
     expect(caps?.engine).toBe("android");
-    // The headline of P3: real Chrome-on-Android speaks full CDP, so unlike
+    // The headline behavior: real Chrome-on-Android speaks full CDP, so unlike
     // firefox/webkit it exposes the deep escape hatch — every tool works, and the
     // existing CDP substrates serve it verbatim (no new substrate).
     expect(caps?.deep).toBe(true);
@@ -121,6 +120,5 @@ describe("engine port — cdp() as a capability via requireCdp", () => {
   it("throws a structured, engine-naming error when cdp() is absent", () => {
     const session = { engine: "firefox" as EngineKind };
     expect(() => requireCdp(session)).toThrowError(/engine "firefox" has no CDP escape hatch/);
-    expect(() => requireCdp(session)).toThrowError(/0002-multi-engine-bidi/);
   });
 });

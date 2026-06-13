@@ -1,17 +1,17 @@
-// The ENGINE-dimension tool gate — the headline of P1. It composes with the
+// The ENGINE-dimension tool gate. It composes with the
 // per-tool capability system in util/capabilities.ts (which answers "is this
 // tool's CAPABILITY in the active set?") by answering a second, orthogonal
 // question: "can the ENGINE backing this session run this tool at all?"
 //
-// The classification is the coupling audit's class B (the ~19 CDP-hard tools)
-// plus the class-C tools whose Playwright Firefox lane has no live equivalent.
-// All of them need the raw-CDP escape hatch (audit §1.5–§1.13). On an engine
-// that declares `deep: false` (Firefox — measured: `newCDPSession` throws) they
-// structured-refuse with a hint naming the engine + the RFC, exactly like the
+// The classification covers the ~19 CDP-hard tools plus the tools whose
+// Playwright Firefox lane has no live equivalent. All of them need the raw-CDP
+// escape hatch. On an engine that declares `deep: false` (Firefox — measured:
+// `newCDPSession` throws) they structured-refuse with a hint naming the engine,
+// exactly like the
 // `pdf_save`-on-BYOB and `extensions`-on-incognito refusals already shipped —
 // not by letting `requireCdp` throw an opaque error mid-call.
 //
-// Three tools the critic re-resolved per the spec facts (RFC D6), reflected in
+// Three tools the critic re-resolved per the spec facts, reflected in
 // the per-engine reason map below:
 //   - pdf_save        → `browsingContext.print` exists, but Playwright's
 //                       `page.pdf()` throws off-Chromium (measured: "PDF
@@ -26,15 +26,15 @@
 //                       `context.setUserAgent` / `page.setUserAgent` are
 //                       undefined) and the current impl uses CDP
 //                       `Network.setUserAgentOverride` → gated on Firefox, with a
-//                       hint pointing at context-creation UA + the P3 BiDi lane.
+//                       hint pointing at context-creation UA + the BiDi lane.
 
 import type { EngineKind } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
 
 /** Tools that require the raw-CDP (`deep`) escape hatch and therefore cannot run
- *  on an engine that declares `deep: false`. The set is the coupling audit's
- *  class B plus the live-CDP-mutation class-C tools with no Playwright-Firefox
- *  fallback. Each maps to the per-engine reason surfaced in the refusal hint. */
+ *  on an engine that declares `deep: false`. The set is the CDP-hard tools plus
+ *  the live-CDP-mutation tools with no Playwright-Firefox fallback. Each maps to
+ *  the per-engine reason surfaced in the refusal hint. */
 export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
   // perf / tracing (CDP `Tracing.*`) — Chrome trace-event format, engine-specific
   "perf_start",
@@ -81,14 +81,14 @@ export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
   "gesture_swipe",
   // closed-shadow piercing — CDP `DOM.getDocument({pierce:true})` is the only
   // automation-protocol path into closed shadow roots; no off-Chromium
-  // equivalent (RFC 0002 D4 — the one true feature-level loss). The open-shadow
+  // equivalent (the one true feature-level loss). The open-shadow
   // half is portable, but the tool's headline (closed-shadow introspection) is
   // CDP-bound, so the whole tool gates off Chromium.
   "shadow_trees",
 ]);
 
 /** Per-tool reason fragment appended to the refusal hint. Most tools share the
- *  generic "needs raw CDP" reason; the three the critic re-resolved (D6) carry a
+ *  generic "needs raw CDP" reason; the three the critic re-resolved carry a
  *  more specific note so the agent knows the per-engine path (or its absence). */
 const TOOL_REASON: Readonly<Record<string, string>> = {
   network_emulate:
@@ -99,7 +99,7 @@ const TOOL_REASON: Readonly<Record<string, string>> = {
     "Playwright has no live user-agent setter off Chromium (the current path uses " +
     "CDP `Network.setUserAgentOverride`). Bake the UA at session creation instead: " +
     '`open_session({ device: { userAgent: "…" } })`. Live BiDi UA override ' +
-    "(`emulation.setUserAgentOverride`) arrives with the stock-Firefox BiDi lane (RFC P3).",
+    "(`emulation.setUserAgentOverride`) arrives with the stock-Firefox BiDi lane.",
   pdf_save:
     "Playwright `page.pdf()` is Headless-Chromium-only and throws on Firefox " +
     "(`browsingContext.print` over BiDi is the eventual path). Open a chromium session to print.",
@@ -114,7 +114,7 @@ const TOOL_REASON: Readonly<Record<string, string>> = {
 const GENERIC_REASON =
   "This tool needs the raw-CDP escape hatch (perf / coverage / heap / CPU+network " +
   "throttle / SW interception / virtual clock / extensions / CDP input dispatch), which " +
-  "exists only on chromium. The class-B coupling-audit tools are gated, not ported, per engine.";
+  "exists only on chromium. These tools are gated, not ported, per engine.";
 
 /** The structured refusal envelope an engine-gated tool returns. Mirrors
  *  `assertPdfSupported`'s `{error, hint} | null` shape so handlers splice it in
@@ -140,7 +140,6 @@ export function assertEngineSupports(tool: string, engine: EngineKind): EngineRe
     hint:
       `${reason} ` +
       `Re-run on a chromium session (browserType:"chromium", the default), or check the ` +
-      `per-engine capability matrix in docs/ai-context/architecture/engine-adapters.md ` +
-      `(RFC 0002 D6).`,
+      `per-engine capability matrix in docs/ai-context/architecture/engine-adapters.md.`,
   };
 }

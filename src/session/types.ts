@@ -90,8 +90,8 @@ export interface BrowserSession {
    *  Consumers that need the handle route through `requireCdp()` (src/engine/),
    *  which asserts presence with a structured, engine-naming error. */
   cdp?(): CDPSession;
-  /** The Safari-native handle — present ONLY on the `safari` engine (RFC 0002
-   *  P4), the first engine with no Playwright `Page`. On a Safari session,
+  /** The Safari-native handle — present ONLY on the `safari` engine, the first
+   *  engine with no Playwright `Page`. On a Safari session,
    *  `page()` THROWS (`safari-no-playwright-page`); consumers that can run on
    *  Safari (snapshot/find/navigate/screenshot/cookies via this handle's
    *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the

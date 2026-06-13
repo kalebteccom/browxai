@@ -21,16 +21,16 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   const profileDir = opts.profileDir ?? workspace.sub("profile");
   const engine: EngineKind = opts.browserType ?? "chromium";
   // android is ATTACH-ONLY — managed launch (spawning a browser we own) is not a
-  // thing on the user's phone (RFC D3/D8). Surface the structured refusal rather
+  // thing on the user's phone. Surface the structured refusal rather
   // than try to launch a chromium process locally.
   if (engine === "android") {
     await new AndroidCdpAdapter().launch();
   }
-  // safari (P4) is the first non-Playwright engine — real Safari.app over
+  // safari is the first non-Playwright engine — real Safari.app over
   // safaridriver in an isolated automation window. Managed mode IS the safari
   // model (no headless Safari, no separate-context incognito), so it returns here
   // with a Safari-native session whose page() throws; Safari-capable tools route
-  // through session.safari() (RFC 0002 D7/P4). The Playwright launch path below is
+  // through session.safari(). The Playwright launch path below is
   // never reached for safari.
   if (engine === "safari") {
     const handle = await new SafaridriverHybridAdapter().launchManaged();

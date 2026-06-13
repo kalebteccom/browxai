@@ -4,7 +4,7 @@ import { openIncognitoSession } from "./incognito.js";
 import { openByobSession } from "./byob.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 
-// The no-Playwright-Page session seam (RFC 0002 P4): buildSafariSession wraps a
+// The no-Playwright-Page session seam: buildSafariSession wraps a
 // Safari adapter handle as a BrowserSession whose page() throws; and the
 // non-managed factories refuse safari (it is managed/isolated-only). All without
 // safaridriver.

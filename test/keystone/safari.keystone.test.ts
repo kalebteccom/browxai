@@ -1,5 +1,5 @@
 // Safari keystone — the proof the engine port generalizes to a real FIFTH engine
-// and the FIRST non-Playwright one (RFC 0002 D7, P4). It drives REAL Safari.app
+// and the FIRST non-Playwright one. It drives REAL Safari.app
 // over safaridriver end-to-end through the actual MCP tool handlers. This is the
 // regression gate for the no-Playwright-Page seam: mocked unit tests pass
 // regardless, so only a real-Safari run proves the adapter launches safaridriver,
@@ -8,7 +8,7 @@
 // Safari-native client, and the deep tools structured-refuse via the capability
 // gate (deep:false).
 //
-// SCOPE (the curated subset — RFC D7; 200-tool parity on Safari is impossible):
+// SCOPE (the curated subset — 200-tool parity on Safari is impossible):
 //   RUNS on Safari (each via its capability port — engine-blind handlers):
 //     - open_session(persistent) + list_sessions.engine === "safari"
 //     - navigate / click / fill (ActionSubstrate → WebDriver Classic)

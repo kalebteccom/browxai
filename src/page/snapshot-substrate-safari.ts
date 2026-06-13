@@ -1,10 +1,10 @@
 // SafariClassicSnapshotSubstrate — the SnapshotSubstrate implementation for the
-// real-Safari engine (RFC 0002 P4). Safari has neither CDP (the Chromium/Android
+// real-Safari engine. Safari has neither CDP (the Chromium/Android
 // substrate) nor a Playwright Page/Frame (the firefox/webkit walker), so it gets
 // a THIRD substrate: the SAME page-side DOM-walk PAGE_SCRIPT, shipped through
 // WebDriver Classic `execute/sync` instead of CDP `Runtime.evaluate` or
-// Playwright `frame.evaluate`. The spike (docs/rfcs/references/07-…-plan.md §4)
-// confirmed the script returns the identical `DomWalkEntry` shape under
+// Playwright `frame.evaluate`. The page-side DOM-walk script
+// returns the identical `DomWalkEntry` shape under
 // `execute/sync`, so this substrate mints the SAME content-hashed refs and emits
 // the SAME tree shape as PlaywrightSnapshotSubstrate — refs are stable across
 // substrates exactly like firefox/webkit.
@@ -37,7 +37,7 @@ export interface SafariSnapshotIO {
  *  (synthetic `WebArea` root + DOM-walk leaves), with the same documented
  *  fidelity tradeoff: refs + find-ranking signal (role/name/[testid]) are present;
  *  the deep CDP a11y nesting and closed-shadow piercing are not (no off-Chromium
- *  protocol reaches them — RFC D4). */
+ *  protocol reaches them). */
 export class SafariClassicSnapshotSubstrate implements SnapshotSubstrate {
   readonly engine = "safari";
   constructor(private readonly io: SafariSnapshotIO) {}

@@ -1,7 +1,7 @@
 // The SnapshotSubstrate interface — the engine-agnostic seam beneath the
 // snapshot / find / extract / text_search / set-of-marks / watch tools and the
-// pre/post ActionResult a11y deltas. It is the substrate side of RFC 0002 D4
-// (hybrid snapshot/a11y substrate): the tools ask a substrate for "the a11y+DOM
+// pre/post ActionResult a11y deltas. It is the substrate side of the hybrid
+// snapshot/a11y design: the tools ask a substrate for "the a11y+DOM
 // tree to mint refs from"; an engine-specific implementation answers.
 //
 // Dependency direction (architecture doctrine §1): tools → SnapshotSubstrate
@@ -10,7 +10,7 @@
 // substrate construction, so the per-call surface carries no engine type. That
 // is what un-couples snapshot/find from CDP and lets them run on Firefox.
 //
-// Two implementations behind it (hybrid per D4):
+// Two implementations behind it (hybrid):
 //   - CdpSnapshotSubstrate (chromium): delegates to composeSnapshot /
 //     getA11yTree VERBATIM — the existing CDP `Accessibility.getFullAXTree` +
 //     `Runtime.evaluate` DOM-walk path, byte-identical output, so the 67+
@@ -21,7 +21,7 @@
 //     frame. It mints the SAME content-hashed ref shape (role/name/testId/
 //     cssPath via elementKey), so refs are stable across substrates.
 //
-// Why the walker, not ariaSnapshot() (RFC D4 open input #3, benchmarked):
+// Why the walker, not ariaSnapshot() (benchmarked):
 // `locator.ariaSnapshot()` carries NO test attributes (data-testid/…), so it
 // produces 0 testId-bearing nodes on a testid-tagged page — find() scores +5 on
 // a testId hit and elementKey hashes testId into the ref, so an ariaSnapshot
@@ -97,7 +97,7 @@ export class CdpSnapshotSubstrate implements SnapshotSubstrate {
  *  but find()/text_search()/extract() walk the tree flat anyway, and the ref
  *  inputs (role/name/testId/cssPath) — the find-ranking + ref-minting signal —
  *  are all present. This is the documented, benchmarked fidelity tradeoff of
- *  RFC D4's hybrid: chromium keeps the deep AX tree; firefox gets the
+ *  the hybrid approach: chromium keeps the deep AX tree; firefox gets the
  *  walker-grade tree that carries the agentic signal. */
 export class PlaywrightSnapshotSubstrate implements SnapshotSubstrate {
   readonly engine: string;
@@ -117,7 +117,7 @@ export class PlaywrightSnapshotSubstrate implements SnapshotSubstrate {
     // The main frame's walk — same PAGE_SCRIPT, same `frame.evaluate` entry as
     // the child-frame path. `pierce` recurses open shadow roots; closed-shadow
     // CDP piercing is chromium-only (no off-Chromium protocol reaches closed
-    // roots — RFC D4 / coupling audit §1.1), so we degrade to open and warn.
+    // roots), so we degrade to open and warn.
     const entries = await runDomWalkOnFrame(this.page.mainFrame(), {
       testAttributes,
       pierce: opts.pierce,

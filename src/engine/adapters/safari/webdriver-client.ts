@@ -1,6 +1,6 @@
 // SafariWebDriverClient — the WebDriver-Classic HTTP client beneath the
-// SafaridriverHybridAdapter (RFC 0002 P4). Classic is the COMPLETE workhorse for
-// real Safari: the live probe (docs/rfcs/references/06-safari-bidi-probe.md)
+// SafaridriverHybridAdapter. Classic is the COMPLETE workhorse for
+// real Safari: a live probe against the shipping safaridriver
 // confirmed navigate / screenshot / findElement / element click+value+text /
 // cookies / executeScript all work on the shipping safaridriver, whereas the
 // experimental BiDi layer (SafariBidiClient) is the additive bidirectional half

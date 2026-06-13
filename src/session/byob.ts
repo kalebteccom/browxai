@@ -96,7 +96,7 @@ async function ensureViewport(cdp: CDPSession): Promise<void> {
 const ANDROID_ATTACH_WARNING = [
   "================================================================",
   "  browxai is attaching to your REAL Chrome-on-Android over adb + CDP.",
-  "  This is the full-fidelity BYOB lane (RFC 0002 D3/D8): the device's",
+  "  This is the full-fidelity BYOB lane: the device's",
   "  Chrome is treated as NOT-OWNED — on shutdown browxai detaches and",
   "  removes the adb forward, but never closes the browser or resets its",
   "  storage. The phone holds your real profile: every cookie, password,",
@@ -156,8 +156,8 @@ export async function openByobSession(
   }
   // safari cannot attach to a live browser at all — safaridriver hard-isolates
   // each session into a clean ephemeral automation window, and the webinspectord
-  // XPC surface that would allow attach is closed to third parties (RFC 0002 D7,
-  // references/05-safari-xpc.md). Refuse before the attachCdp requirement, like
+  // XPC surface that would allow attach is closed to third parties
+  // (references/05-safari-xpc.md). Refuse before the attachCdp requirement, like
   // android, with the adapter's structured `safari-attach-not-supported`.
   if (engine === "safari") {
     await new SafaridriverHybridAdapter().attach();
@@ -165,15 +165,14 @@ export async function openByobSession(
   if (!opts.attachCdp) {
     throw new Error(
       "session.byob: the CDP-attach lane requires BROWX_ATTACH_CDP (a loopback CDP endpoint). " +
-        'For the android engine use browserType:"android" (endpoint discovered over adb). ' +
-        "See docs/rfcs/0002-multi-engine-bidi.md.",
+        'For the android engine use browserType:"android" (endpoint discovered over adb).',
     );
   }
   const url = assertLoopback(opts.attachCdp);
   // The loopback / not-owned policy above + below is protocol-neutral and reused
   // verbatim; only the transport hop (CDP-attach) is engine-specific. The
-  // Firefox attach model is a glass-box LAUNCH over BiDi, not CDP-attach (RFC
-  // D3) — and Playwright has no `connectOverBiDi` for a user's running Firefox.
+  // Firefox attach model is a glass-box LAUNCH over BiDi, not CDP-attach
+  // — and Playwright has no `connectOverBiDi` for a user's running Firefox.
   // Surface the structured `firefox-attach-not-supported` error (no silent
   // fail) before the CDP-attach body, which is Chromium-only by nature.
   if (engine === "firefox") {
@@ -182,7 +181,7 @@ export async function openByobSession(
   if (engine === "webkit") {
     // Playwright's WebKit build has no CDP/BiDi attach client, and real Safari
     // attach is impossible regardless: safaridriver hard-isolates automation into
-    // an ephemeral window (attach-to-live is impossible by design, RFC D7) — and
+    // an ephemeral window (attach-to-live is impossible by design) — and
     // although Safari 26.5 DOES now ship partial WebDriver BiDi behind the
     // `safari:experimentalWebSocketUrl` cap (references/06-safari-bidi-probe.md),
     // that BiDi is still session-isolated, not an attach-to-the-real-profile door.

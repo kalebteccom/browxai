@@ -1,6 +1,6 @@
 // The EmulationSubstrate interface — the engine-agnostic seam beneath the live
 // device-emulation tools (`set_geolocation` / `set_color_scheme` /
-// `set_reduced_motion`). It is the emulation side of RFC 0003: a tool handler
+// `set_reduced_motion`). It is the engine-agnostic emulation seam: a tool handler
 // asks a substrate to mutate ONE live-emulation knob and gets back a universal
 // result; an engine-specific implementation does the work. The handler never
 // names Playwright, safaridriver, or an engine — it calls
@@ -29,7 +29,7 @@
 //     surface beyond viewport, so all three refuse cleanly IN THE ADAPTER (the
 //     gating lives here, not as an `if (e.session.safari?.())` branch in the
 //     handlers — these handlers had no Safari branch and threw at `page()` /
-//     `context()` before this seam). RFC 0003.
+//     `context()` before this seam).
 
 import type { BrowserContext, Page } from "playwright-core";
 import type { SafariSessionHandle } from "../engine/index.js";
@@ -104,7 +104,7 @@ export class PlaywrightEmulationSubstrate implements EmulationSubstrate {
  *  Classic) has no geolocation / `prefers-color-scheme` / `prefers-reduced-motion`
  *  mutator, so all three refuse cleanly here — the gating is in the adapter, not
  *  the handler. These handlers had NO Safari branch pre-seam (they threw at
- *  `page()` / `context()`); the structured refusal replaces that crash. RFC 0003. */
+ *  `page()` / `context()`); the structured refusal replaces that crash. */
 export class SafariEmulationSubstrate implements EmulationSubstrate {
   readonly engine = "safari";
   constructor(_handle: SafariSessionHandle) {}

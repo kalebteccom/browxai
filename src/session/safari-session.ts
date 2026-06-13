@@ -1,4 +1,4 @@
-// The Safari BrowserSession — the no-Playwright-Page seam (RFC 0002 P4). Safari
+// The Safari BrowserSession — the no-Playwright-Page seam. Safari
 // is the first engine with neither a Playwright Page nor CDP, so its session
 // wraps the adapter's Safari-native handle (WebDriver Classic + optional BiDi)
 // and makes `page()` a structured THROW rather than returning a fake Page. Tools
@@ -19,7 +19,7 @@ export const NO_PLAYWRIGHT_PAGE =
   "safari-no-playwright-page: the safari engine has no Playwright Page (it is driven over " +
   "safaridriver, not Playwright). Tools that run on Safari route through the Safari-native handle " +
   "(session.safari()) — snapshot/find via the substrate, navigate/click/fill/screenshot/cookies via " +
-  "its WebDriver Classic client; everything else is capability-gated. See docs/rfcs/0002-multi-engine-bidi.md.";
+  "its WebDriver Classic client; everything else is capability-gated.";
 
 /** Wrap a live Safari adapter handle as a `BrowserSession`. `page()` throws
  *  (`NO_PLAYWRIGHT_PAGE`); `safari()` exposes the native handle; `close()` tears

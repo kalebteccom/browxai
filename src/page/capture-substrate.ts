@@ -1,6 +1,6 @@
 // The CaptureSubstrate interface — the engine-agnostic seam beneath the capture
-// tools (screenshot today; pdf / video later). It is the capture side of RFC
-// 0003: the `screenshot` handler asks a substrate to capture and gets back a
+// tools (screenshot today; pdf / video later). It is the capture side of the
+// engine-decoupling seam: the `screenshot` handler asks a substrate to capture and gets back a
 // universal `CaptureResult`; an engine-specific implementation does the work. The
 // handler never names Playwright, safaridriver, or an engine — it calls
 // `captureFor(e).screenshot(args)`, the same shape as `actionsFor(e).click(args)`
@@ -17,7 +17,7 @@
 //     PNG; safaridriver has no Playwright Page). The element-scoped / `path` / jpeg
 //     variants refuse cleanly IN THE ADAPTER as they did in the handler's deleted
 //     `if (safariShotHandle)` branch — so the gating lives here, not as an engine
-//     check in the handler. RFC 0003.
+//     check in the handler.
 
 import type { Locator, Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
@@ -200,8 +200,7 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
  *  document as PNG; the element-scoped / `path` variants need a Playwright Page
  *  Safari lacks, so they refuse cleanly here (the gating is in the adapter, not
  *  the handler). The `format`/`scale`/`fullPage`/`describe` args are inert as they
- *  were before the seam — the WebDriver client always returns a full-document PNG.
- *  RFC 0003. */
+ *  were before the seam — the WebDriver client always returns a full-document PNG. */
 export class SafariCaptureSubstrate implements CaptureSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}

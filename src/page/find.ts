@@ -174,7 +174,7 @@ const CONTAINER_ROLES = new Set([
 export async function find(
   // `null` on the safari engine — it has no Playwright Page, so the locator-based
   // enrichment (disambiguation / bbox / actionability) is skipped and candidates
-  // are ranked from the substrate tree alone (RFC 0002 P4). Every other engine
+  // are ranked from the substrate tree alone. Every other engine
   // passes a real Page.
   page: Page | null,
   substrate: SnapshotSubstrate,

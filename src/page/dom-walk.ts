@@ -139,10 +139,10 @@ export async function runDomWalkOnFrame(
  * Transport-agnostic DOM walk. Runs the SAME `PAGE_SCRIPT` via an injected
  * `exec` that takes a function BODY + an args array and returns the value —
  * exactly the WebDriver-Classic `execute/sync` shape (`{script, args}`). This is
- * the seam the Safari snapshot substrate (RFC 0002 P4) uses: Safari has neither
+ * the seam the Safari snapshot substrate uses: Safari has neither
  * CDP nor a Playwright Frame, but `safaridriver`'s `execute/sync` runs the script
- * identically (spike-confirmed — the returned `DomWalkEntry` shape matches
- * `frame.evaluate` byte-for-byte; see docs/rfcs/references/07-safari-adapter-implementation-plan.md §4).
+ * identically (the returned `DomWalkEntry` shape matches
+ * `frame.evaluate` byte-for-byte).
  * `PAGE_SCRIPT` stays encapsulated here; callers pass only the transport.
  */
 export async function runDomWalkViaExecute(

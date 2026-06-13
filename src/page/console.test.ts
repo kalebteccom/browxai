@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ConsoleBuffer } from "./console.js";
 
 // ConsoleBuffer.ingest is the non-Playwright console feed — the safari engine
-// pumps its BiDi log.entryAdded stream through it (RFC 0002 P4). These cover the
+// pumps its BiDi log.entryAdded stream through it. These cover the
 // level→type mapping + the read surface the tools consume.
 
 describe("ConsoleBuffer.ingest (the safari BiDi feed)", () => {

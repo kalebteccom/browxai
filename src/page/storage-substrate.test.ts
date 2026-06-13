@@ -14,7 +14,7 @@ import type { BrowserContext, Page } from "playwright-core";
 // WebDriver cookie path, the in-adapter domain derivation, the WebDriver
 // `execute/sync` web-storage path that replaced the per-handler
 // `if (e.session.safari?.())` branches, and the in-adapter IndexedDB + Cache API
-// refusals (both async APIs have no synchronous WebDriver path) (RFC 0003).
+// refusals (both async APIs have no synchronous WebDriver path).
 
 function safariHandle(opts?: { url?: string; scriptResult?: unknown }): {
   handle: SafariSessionHandle;

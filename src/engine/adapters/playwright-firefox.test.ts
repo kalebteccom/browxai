@@ -9,8 +9,8 @@ import { FIREFOX_CAPABILITIES } from "../capabilities.js";
 // The launch/attach methods drive a real browser and are exercised by the
 // Firefox keystone lane (real-Firefox). Here we assert the adapter's pure
 // declarative surface — that it tags itself firefox, declares NO deep escape
-// hatch, refuses CDP-attach structurally per RFC D3, and resolves the
-// experimental moz-firefox BiDi channel flag.
+// hatch, refuses CDP-attach structurally (Firefox speaks BiDi/Juggler, not
+// CDP), and resolves the experimental moz-firefox BiDi channel flag.
 describe("PlaywrightFirefoxAdapter — declarative surface", () => {
   it("identifies as the firefox engine", () => {
     expect(new PlaywrightFirefoxAdapter().engine).toBe("firefox");
@@ -29,16 +29,16 @@ describe("PlaywrightFirefoxAdapter — declarative surface", () => {
     expect(typeof adapter.launchEphemeral).toBe("function");
   });
 
-  it("refuses CDP-attach structurally (firefox-attach-not-supported, RFC D3)", async () => {
+  it("refuses CDP-attach structurally (firefox-attach-not-supported)", async () => {
     const adapter = new PlaywrightFirefoxAdapter();
     await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(
       /firefox-attach-not-supported/,
     );
-    await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(/0002-multi-engine-bidi/);
+    await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(/WebDriver BiDi/);
   });
 });
 
-describe("firefoxChannelFromEnv — the moz-firefox BiDi flag (RFC D2 two-track)", () => {
+describe("firefoxChannelFromEnv — the moz-firefox BiDi flag (Juggler vs BiDi two-track)", () => {
   it("returns undefined for the default Juggler lane (flag unset)", () => {
     expect(firefoxChannelFromEnv({})).toBeUndefined();
     expect(firefoxChannelFromEnv({ BROWX_FIREFOX_CHANNEL: "" })).toBeUndefined();

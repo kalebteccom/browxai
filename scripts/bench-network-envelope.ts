@@ -1,5 +1,4 @@
-// Envelope-perf benchmark (RFC 0002 D5 / open input #4 — the explicit P2b
-// "measure the hot path" requirement). It times the per-action ActionResult
+// Envelope-perf benchmark that measures the hot path. It times the per-action ActionResult
 // network tap two ways on REAL Chromium:
 //
 //   (A) CDP NetworkTap            — the chromium path (kept on chromium)

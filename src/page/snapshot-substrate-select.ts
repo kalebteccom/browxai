@@ -1,9 +1,9 @@
 // Substrate selection — maps a live session to its SnapshotSubstrate. This is
 // the seam where the engine's snapshot strategy is chosen: chromium (CDP) gets
 // the verbatim CDP substrate; an engine with no CDP escape hatch (firefox /
-// webkit) gets the page-side Playwright walker. Per RFC 0002 D4 the choice is
-// the engine's, declared by whether it exposes the raw-CDP handle — not an
-// engine-name check scattered through the tools.
+// webkit) gets the page-side Playwright walker. The choice is the engine's,
+// declared by whether it exposes the raw-CDP handle — not an engine-name check
+// scattered through the tools.
 //
 // The session layer wires one substrate per entry at creation (server.ts) so the
 // per-call path is a captured-handle delegate with no per-call allocation (the
@@ -34,7 +34,7 @@ export interface SubstrateCapableSession {
 /** Build the SnapshotSubstrate for a session. Selection is by capability, never a
  *  scattered engine-name check:
  *   - Safari (no Playwright Page, no CDP) → the WebDriver-Classic DOM-walk
- *     substrate, fed by the Safari handle's `execute/sync` (RFC 0002 P4).
+ *     substrate, fed by the Safari handle's `execute/sync`.
  *   - Chromium / Android (CDP present) → the byte-identical CDP substrate.
  *   - Firefox / WebKit (Playwright Page, no CDP) → the page-side walker.
  *  A future CDP-bearing engine routes to the CDP substrate automatically; a

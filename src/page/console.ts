@@ -45,7 +45,7 @@ export class ConsoleBuffer {
 
   /** Ingest a console entry from a NON-Playwright source — the safari engine has
    *  no Playwright Page, so its console arrives via the BiDi `log.entryAdded`
-   *  stream (RFC 0002 P4). Mirrors the `page.on("console")` push so
+   *  stream. Mirrors the `page.on("console")` push so
    *  `recent()` / `warningCountSince()` / `errorsSince()` work identically. The
    *  BiDi level (`debug`/`info`/`warn`/`error`) is mapped to the console `type`
    *  vocabulary (`warn` → `warning`) the readers key on. */

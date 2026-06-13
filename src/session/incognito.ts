@@ -21,7 +21,7 @@ import type { BrowserSession, SessionOptions } from "./types.js";
 export async function openIncognitoSession(opts: SessionOptions = {}): Promise<BrowserSession> {
   const engine: EngineKind = opts.browserType ?? "chromium";
   // android is ATTACH-ONLY — ephemeral launch (spawning a browser we own) is not
-  // a thing on the user's phone (RFC D3/D8). Surface the structured refusal.
+  // a thing on the user's phone. Surface the structured refusal.
   if (engine === "android") {
     await new AndroidCdpAdapter().launch();
   }
@@ -29,13 +29,13 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
   // (safaridriver already isolates each session — no cookies/storage from a real
   // profile). Incognito (a separate in-browser context) is a Playwright concept
   // safaridriver has no equivalent for, so refuse rather than silently launch a
-  // managed window the caller didn't ask for (RFC 0002 D7/P4).
+  // managed window the caller didn't ask for.
   if (engine === "safari") {
     throw new Error(
       "safari-incognito-not-supported: the safari engine runs isolated automation windows via the " +
         "default managed session (safaridriver isolates each session by construction). Incognito (a " +
         "separate browser context) is a Playwright concept safaridriver has no equivalent for. Open a " +
-        "managed session instead. See docs/rfcs/0002-multi-engine-bidi.md.",
+        "managed session instead.",
     );
   }
   log.info("session.incognito: launching ephemeral browser", {

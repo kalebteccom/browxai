@@ -1,7 +1,7 @@
 // The ScriptSubstrate interface — the engine-agnostic seam beneath page-side JS
-// evaluation (`eval_js` today; `exposeBinding` / `addInitScript` later). It is the
-// script side of RFC 0003: the `eval_js` handler asks a substrate to evaluate an
-// expression and gets back the page-controlled value; an engine-specific
+// evaluation (`eval_js` today; `exposeBinding` / `addInitScript` later). It keeps
+// engine specifics out of the handler: the `eval_js` handler asks a substrate to
+// evaluate an expression and gets back the page-controlled value; an engine-specific
 // implementation does the work. The handler never names Playwright, safaridriver,
 // or an engine — it calls `scriptFor(e).evaluate(expr)`, the same shape as
 // `actionsFor(e).click(args)` / `captureFor(e).screenshot(args)`.
@@ -15,7 +15,7 @@
 //     WebDriver Classic `execute/sync` endpoint, wrapping the expression in
 //     `return (…)` (an expression, not a statement body) exactly as the handler's
 //     deleted `if (sh)` branch did — so the engine specifics live here, not as an
-//     engine check in the handler. RFC 0003.
+//     engine check in the handler.
 
 import type { Page } from "playwright-core";
 import type { SafariSessionHandle } from "../engine/index.js";
@@ -51,7 +51,7 @@ export class PlaywrightScriptSubstrate implements ScriptSubstrate {
 /** Safari — the WebDriver-Classic eval path. safaridriver has no Playwright Page;
  *  `execute/sync` takes a function BODY, so the bare expression is wrapped in
  *  `return (…)` to evaluate it and return its value — the verbatim wrapping from the
- *  handler's deleted Safari branch. RFC 0003. */
+ *  handler's deleted Safari branch. */
 export class SafariScriptSubstrate implements ScriptSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}

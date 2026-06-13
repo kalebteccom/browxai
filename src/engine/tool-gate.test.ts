@@ -21,7 +21,7 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
   });
 
   it("allows EVERY deep tool on android too — deep:true, the standout (it IS Chromium)", () => {
-    // The P3 headline through the gate: Android Chrome speaks full CDP and
+    // The headline through the gate: Android Chrome speaks full CDP and
     // declares deep:true, so the SAME capability-based gate that refuses
     // firefox/webkit allows every CDP-deep tool on android — no per-engine edit,
     // the gate keys on the deep capability. Asserted alongside the firefox/webkit

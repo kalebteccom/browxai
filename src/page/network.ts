@@ -106,7 +106,7 @@ function isBeacon(url: string): boolean {
 /** Map Playwright's `request.resourceType()` (lowercase, a slightly coarser
  *  taxonomy) onto the CDP-capitalised type names the CDP tap emits, so the
  *  noise-fold (`NOISE_TYPES`) + `byType` summary buckets are identical in shape
- *  across engines. The "resourceType nuance" the coupling audit flagged: a few
+ *  across engines. The resourceType nuance to be aware of: a few
  *  CDP types (`Ping`, `CSPViolationReport`, `Preflight`, …) have no Playwright
  *  equivalent and fold into `Other`; `xhr`/`fetch` both map to their CDP forms.
  *  This is the only place engine resourceType skew is reconciled. */
@@ -329,8 +329,9 @@ export class WsBuffer {
   private secrets: SecretRegistry | null = null;
 
   constructor(
-    // CDP is the WS-tap substrate today (P2 ports it onto Playwright
-    // `page.on('websocket')`). On an engine without CDP (Firefox) the buffer
+    // CDP is the WS-tap substrate today; a later change will port it onto
+    // Playwright's `page.on('websocket')` so non-CDP engines are supported.
+    // On an engine without CDP (Firefox) the buffer
     // is constructed but never attaches — reads return empty until the
     // substrate port lands, rather than throwing at session creation.
     private cdp: CDPSession | undefined,
@@ -571,8 +572,9 @@ export class NetworkBuffer {
   private secrets: SecretRegistry | null = null;
 
   constructor(
-    // CDP is the network-tap substrate today (P2 ports it onto Playwright
-    // request/response events). On an engine without CDP (Firefox) the buffer
+    // CDP is the network-tap substrate today; a later change will port it onto
+    // Playwright's request/response events so non-CDP engines are supported.
+    // On an engine without CDP (Firefox) the buffer
     // is constructed but never attaches — `recent`/`since` reads return empty
     // until the substrate port lands, rather than throwing at session creation.
     private cdp: CDPSession | undefined,
@@ -679,7 +681,7 @@ export class NetworkBuffer {
 }
 
 // ===========================================================================
-// Playwright-event network tap (RFC 0002 D5) — the portable off-Chromium path.
+// Playwright-event network tap — the portable off-Chromium path.
 //
 // Firefox/WebKit have no CDP `Network.*` domain (Firefox removed CDP in v141),
 // so the network slice rides Playwright's cross-browser context events instead:

@@ -1,7 +1,7 @@
 // The ActionSubstrate interface — the engine-agnostic seam beneath the action
 // tools (navigate / click / fill / press / hover / select / scroll / …). It is
-// the action side of RFC 0003: a tool handler asks a substrate to perform an
-// action and gets back the universal `ActionResult`; an engine-specific
+// the action side of the engine-agnostic seam: a tool handler asks a substrate
+// to perform an action and gets back the universal `ActionResult`; an engine-specific
 // implementation does the work. The handler never names Playwright, CDP, or an
 // engine — it calls `actionsFor(e).click(args)`, the same shape as
 // `snapshotSubstrateFor(e.session).compose(...)`.
@@ -100,7 +100,7 @@ export class PlaywrightActionSubstrate implements ActionSubstrate {
 
 /** Safari — the WebDriver-Classic action path. The curated subset is real;
  *  everything else refuses cleanly here (the gating is in the adapter, not the
- *  handler). RFC 0002 D7 / RFC 0003. */
+ *  handler). */
 export class SafariActionSubstrate implements ActionSubstrate {
   readonly engine = "safari";
   constructor(

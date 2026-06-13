@@ -1,7 +1,7 @@
-// SafaridriverHybridAdapter — the FIFTH BrowserEngine adapter (RFC 0002 P4) and
+// SafaridriverHybridAdapter — the FIFTH BrowserEngine adapter and
 // the FIRST non-Playwright one. It drives real Safari.app over safaridriver in
-// non-BYOB isolated automation windows, hybridising two protocols (per the live
-// probe, docs/rfcs/references/06-safari-bidi-probe.md):
+// non-BYOB isolated automation windows, hybridising two protocols (confirmed
+// against a live Safari automation probe):
 //   - WebDriver CLASSIC (SafariWebDriverClient) — the complete workhorse:
 //     navigation, element find/click/sendKeys, screenshot, cookies, executeScript
 //     (the seam the Safari snapshot substrate ships browxai's DOM-walk through).
@@ -14,8 +14,7 @@
 // Unlike the other four adapters this returns NO Playwright `Page` and NO CDP —
 // Safari has neither. The session it yields is Safari-native (a `SafariSessionHandle`);
 // the session-layer seam that lets the rest of the server consume it (the
-// no-Playwright-Page contract) is a later increment — see
-// docs/rfcs/references/07-safari-adapter-implementation-plan.md §3/§6. This module
+// no-Playwright-Page contract) is a later increment. This module
 // is the lifecycle + transport orchestration, fully unit-tested with mocks; the
 // real IO is covered by the Safari-gated keystone.
 //
@@ -155,7 +154,7 @@ export class SafaridriverHybridAdapter {
 
   /** Attach is NOT supported: safaridriver hard-isolates automation into a clean
    *  ephemeral window and cannot attach to the user's live, logged-in Safari (the
-   *  XPC surface is categorically closed — RFC D7 / reference 05). Structured
+   *  XPC surface is categorically closed to third parties). Structured
    *  refusal, never a vague failure. */
   attach(): Promise<never> {
     return Promise.reject(
@@ -163,8 +162,7 @@ export class SafaridriverHybridAdapter {
         "safari-attach-not-supported: real Safari automation is non-BYOB by construction — " +
           "safaridriver hard-isolates each session into a clean ephemeral automation window (no " +
           "cookies/localStorage/Keychain/history from the real profile), and the webinspectord XPC " +
-          "surface that would allow attach is closed to third parties (RFC 0002 D7, " +
-          "docs/rfcs/references/05-safari-xpc.md). Use a managed session.",
+          "surface that would allow attach is closed to third parties. Use a managed session.",
       ),
     );
   }

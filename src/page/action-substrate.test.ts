@@ -6,7 +6,7 @@ import type { SafariSessionHandle } from "../engine/index.js";
 // The ActionSubstrate port routing/gating. PlaywrightActionSubstrate is trivial
 // delegation to actions.* (covered by the per-engine keystones); these cover the
 // Safari adapter's curated-subset routing + the in-adapter gating that replaced
-// the per-handler `if (engine === "safari")` branches (RFC 0003).
+// the per-handler `if (engine === "safari")` branches.
 
 function safariHandle(): { handle: SafariSessionHandle; navigated: string[] } {
   const navigated: string[] = [];

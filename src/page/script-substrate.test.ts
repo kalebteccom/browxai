@@ -10,7 +10,7 @@ import type { Page } from "playwright-core";
 // The ScriptSubstrate port routing. PlaywrightScriptSubstrate is `page.evaluate`
 // verbatim (covered by the per-engine keystones); these cover the Safari adapter's
 // `execute/sync` path + the `return (…)` expression wrapping that replaced the
-// per-handler `if (sh)` branch in `eval_js` (RFC 0003). The deadline race + error
+// per-handler `if (sh)` branch in `eval_js`. The deadline race + error
 // envelope live in the handler, not the substrate, so they are not exercised here.
 
 function safariHandle(): {

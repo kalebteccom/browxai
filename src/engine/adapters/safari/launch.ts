@@ -1,4 +1,4 @@
-// safaridriver process lifecycle for the SafaridriverHybridAdapter (RFC 0002 P4)
+// safaridriver process lifecycle for the SafaridriverHybridAdapter
 // — spawn the driver, poll it to readiness, and own its teardown. Split into a
 // platform/binary precheck + the spawn/poll, with the IO seams (spawn, the
 // readiness probe, the sleep) injected so the orchestration unit-tests WITHOUT a
@@ -10,8 +10,7 @@
 // is launched as `safaridriver -p <httpPort> --bidi <bidiPort>`: the HTTP port
 // serves WebDriver Classic + session creation; `--bidi` enables BiDi for hosted
 // sessions (the actual ws:// socket is allocated dynamically and reported in the
-// granted caps — see docs/rfcs/references/06-safari-bidi-probe.md, NOT bound to
-// the passed port value).
+// granted caps, NOT bound to the passed port value).
 
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
@@ -37,7 +36,7 @@ export class SafariUnavailableError extends Error {
   constructor(reason: string) {
     super(
       `safari-unavailable: ${reason}. Real Safari automation needs macOS with safaridriver ` +
-        `(${SAFARIDRIVER_PATH}). See docs/rfcs/references/07-safari-adapter-implementation-plan.md.`,
+        `(${SAFARIDRIVER_PATH}).`,
     );
     this.name = "SafariUnavailableError";
   }

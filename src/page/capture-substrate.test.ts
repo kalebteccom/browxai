@@ -12,7 +12,7 @@ import type { RefRegistry } from "./refs.js";
 // existing `page.screenshot` / `locator.screenshot` logic verbatim (covered by the
 // per-engine keystones); these cover the Safari adapter's full-document PNG path +
 // the in-adapter gating that replaced the per-handler `if (safariShotHandle)`
-// branch (RFC 0003).
+// branch.
 
 function safariHandle(): { handle: SafariSessionHandle; shots: string[] } {
   const shots: string[] = [];

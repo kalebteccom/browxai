@@ -1,7 +1,7 @@
 // The StorageSubstrate interface — the engine-agnostic seam beneath the storage
 // tools (cookies + localStorage/sessionStorage + IndexedDB + Cache API CRUD). It is
-// the storage side of RFC 0003: a tool handler asks a substrate to read or write the
-// cookie jar, web-storage, an IndexedDB store, or the Cache API and gets back a
+// the storage side of the engine-agnostic port layer: a tool handler asks a substrate
+// to read or write the cookie jar, web-storage, an IndexedDB store, or the Cache API and gets back a
 // universal result; an engine-specific implementation does the work. The handler
 // never names Playwright, safaridriver, or an engine — it calls
 // `storageFor(e).cookiesList(req)` / `storageFor(e).webStorageGet(kind, req)` /
@@ -430,7 +430,7 @@ async function safariWebStorageGuard(
  *  cleanly in the adapter — rejecting with a structured Error the handler's
  *  `errText` renders (the pre-seam handlers threw at `page()`, so a reject keeps
  *  that contract) — rather than running a script whose result would always be a
- *  pending promise. RFC 0003. */
+ *  pending promise. */
 export class SafariStorageSubstrate implements StorageSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}

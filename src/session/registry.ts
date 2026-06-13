@@ -50,7 +50,7 @@ export interface SessionEntry {
   mode: SessionMode;
   session: BrowserSession;
   refs: RefRegistry;
-  /** Engine-agnostic snapshot/a11y tree source (RFC 0002 D4). Chromium gets the
+  /** Engine-agnostic snapshot/a11y tree source. Chromium gets the
    *  verbatim CDP substrate (Accessibility.getFullAXTree + DOM-walk); firefox /
    *  webkit get the page-side Playwright walker. The snapshot / find / extract /
    *  text_search / set-of-marks tools and the action-window pre/post deltas mint
@@ -58,8 +58,8 @@ export interface SessionEntry {
    *  any engine, not only chromium. Selected once at session creation
    *  (`snapshotSubstrateFor`) so the hot path is a captured-handle delegate. */
   snapshotSubstrate: SnapshotSubstrate;
-  /** Engine-agnostic network tap + ActionResult-network-slice source (RFC 0002
-   *  D5). Chromium gets the verbatim CDP substrate (NetworkBuffer / WsBuffer /
+  /** Engine-agnostic network tap + ActionResult-network-slice source.
+   *  Chromium gets the verbatim CDP substrate (NetworkBuffer / WsBuffer /
    *  NetworkTap / fetchResponseBody); firefox / webkit get the Playwright context-
    *  event substrate. The session-wide rings below (`network` / `ws`) ARE this
    *  substrate's rings; the action window mints its per-action tap from it and

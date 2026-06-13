@@ -1,23 +1,23 @@
 // The NetworkSubstrate interface — the engine-agnostic seam beneath the network
 // tools (network_read / ws_read / network_body) and the per-action ActionResult
-// network slice. It is the network side of RFC 0002 D5 (hybrid network substrate,
-// Playwright events as the portable layer): the tools + the action window ask a
+// network slice. It is the network side of the hybrid network substrate, with
+// Playwright events as the portable layer: the tools + the action window ask a
 // substrate for "the session network ring", "the WS/SSE ring", "a per-action tap",
 // and "a response body"; an engine-specific implementation answers.
 //
-// Dependency direction (architecture doctrine §1): tools / action-window →
+// Dependency direction: tools / action-window →
 // NetworkSubstrate (this interface) → implementation → CDP / Playwright events. A
 // tool never reaches a CDPSession or a raw context event through this seam; the
 // engine handle is captured at substrate construction, so the per-call surface
 // carries no engine type. That is what un-couples the network slice from CDP and
 // lets network_read / ws_read / network_body run on Firefox.
 //
-// Two implementations behind it (hybrid per D5):
+// Two implementations behind it (hybrid):
 //   - CdpNetworkSubstrate (chromium): owns the EXISTING NetworkBuffer / WsBuffer /
 //     NetworkTap / fetchResponseBody CDP path VERBATIM — byte-identical buffers
 //     and per-action tap, so the chromium keystones + unit tests stay green
 //     unchanged. The CDP path is kept on chromium deliberately: the envelope is
-//     browxai's hottest path and the benchmark (RFC open input #4) put the CDP
+//     browxai's hottest path and benchmarking put the CDP
 //     tap at parity with the event tap on chromium, so there is no reason to move
 //     chromium off the substrate it already has.
 //   - PlaywrightNetworkSubstrate (firefox / webkit): the Playwright context
@@ -187,11 +187,11 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
   }
 }
 
-/** Safari substrate — a NO-OP (RFC 0002 D7/P4). Real Safari has NO protocol-level
+/** Safari substrate — a NO-OP. Real Safari has NO protocol-level
  *  network observation or interception at all: safaridriver's WebDriver Classic
  *  has no network tap, and Safari's experimental BiDi ships only
- *  `network.setCacheBehavior` (the `network` observation domain is absent —
- *  docs/rfcs/references/06-safari-bidi-probe.md). So the network tools are
+ *  `network.setCacheBehavior` (the `network` observation domain is absent). So
+ *  the network tools are
  *  capability-gated on Safari and the action-window network slice is empty. This
  *  empty substrate keeps the session-creation + envelope code engine-blind: the
  *  rings are always empty, the per-action tap reports zero traffic, and
@@ -235,7 +235,7 @@ export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
       ok: false,
       error:
         "network_body is not available on the safari engine — Safari exposes no protocol-level " +
-        "network observation (RFC 0002 D7/P4). Use a chromium/firefox/webkit session for network bodies.",
+        "network observation. Use a chromium/firefox/webkit session for network bodies.",
     });
   }
 }

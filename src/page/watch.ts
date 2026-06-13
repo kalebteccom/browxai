@@ -60,7 +60,7 @@ export async function watchWindow(
   // tap's literal-value sanitisation runs over URLs / mutation
   // responseShape keys during the watch window — same chokepoint the
   // action-window tap uses.
-  // The per-action network tap comes from the engine's substrate (RFC 0002 D5):
+  // The per-action network tap comes from the engine's substrate:
   // chromium → the CDP NetworkTap; firefox/webkit → the Playwright context-event
   // tap. Same close shape on every engine, so the watch result is engine-blind.
   const net = ctx.network ? ctx.network.openActionTap() : null;

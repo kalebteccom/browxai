@@ -1,6 +1,6 @@
 // SafariBidiClient — the WebDriver-BiDi WebSocket client beneath the
-// SafaridriverHybridAdapter (RFC 0002 P4). This is the ADDITIVE half of the
-// hybrid: the live probe (docs/rfcs/references/06-safari-bidi-probe.md) found
+// SafaridriverHybridAdapter. This is the ADDITIVE half of the
+// hybrid: live probing found
 // Safari 26.5 opens a real BiDi socket ONLY behind the vendor cap
 // `safari:experimentalWebSocketUrl:true`, and that socket serves a PARTIAL but
 // real surface — `script` (evaluate/callFunction/getRealms/addPreloadScript),

@@ -7,8 +7,9 @@
 // are byte-identical to the pre-seam factories.
 //
 // The browser-type is resolved through `resolveBrowserType("chromium")` so the
-// selection seam is exercised by the only engine wired in P0; firefox/webkit
-// route through the same resolver and hit `EngineNotYetSupportedError`.
+// selection seam is exercised by the only engine currently wired up;
+// firefox/webkit route through the same resolver and hit
+// `EngineNotYetSupportedError`.
 
 import type {
   Browser,
@@ -80,8 +81,8 @@ export class PlaywrightChromiumAdapter {
   }
 
   /** BYOB attach over CDP — wraps `connectOverCDP` + the eager `newCDPSession`.
-   *  The loopback / not-owned policy stays in byob.ts (protocol-neutral per the
-   *  coupling audit); only this transport hop is engine-specific. Mirrors
+   *  The loopback / not-owned policy stays in byob.ts because it is
+   *  protocol-neutral; only this transport hop is engine-specific. Mirrors
    *  openByobSession's pre-seam connect body verbatim. */
   async attachOverCdp(endpoint: string): Promise<ChromiumLaunchHandles> {
     const browserType = resolveBrowserType(this.engine);

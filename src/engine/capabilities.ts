@@ -6,13 +6,13 @@
 //
 // Chromium declares EVERYTHING — every sub-interface plus `deep` — so no tool
 // is newly gated; that is what makes the chromium path byte-identical.
-// Firefox (P1) declares the cross-browser sub-interfaces but `deep: false`: the
+// Firefox declares the cross-browser sub-interfaces but `deep: false`: the
 // Juggler build over Playwright has no raw-CDP escape hatch (`newCDPSession`
-// throws on Firefox — measured), so the ~19 CDP-hard tools (audit class B)
-// structured-refuse on it. WebKit (P2c) is the same shape — all nine cross-
+// throws on Firefox — measured), so the ~19 CDP-hard tools
+// structured-refuse on it. WebKit is the same shape — all nine cross-
 // browser sub-interfaces, `deep: false` (WebKit has no CDP at all — measured:
 // `newCDPSession` throws "CDP session is only available in Chromium"). Android
-// (P3) is the standout: it IS Chromium (attached over adb + CDP), so it declares
+// is the standout: it IS Chromium (attached over adb + CDP), so it declares
 // `deep: true` like desktop Chromium — every tool, including the CDP-deep ones,
 // works, and no new substrate is needed (the CDP substrates serve it verbatim).
 
@@ -31,19 +31,19 @@ const ALL_SUB_INTERFACES: readonly EngineSubInterface[] = [
 ];
 
 /** Chromium supports the whole port surface, including the CDP escape hatch.
- *  Declaring everything is what makes P0 byte-identical: the engine dimension
- *  is present but gates nothing. */
+ *  Declaring everything is what makes the chromium path byte-identical: the
+ *  engine dimension is present but gates nothing. */
 export const CHROMIUM_CAPABILITIES: EngineCapabilities = {
   engine: "chromium",
   subInterfaces: new Set(ALL_SUB_INTERFACES),
   deep: true,
 };
 
-/** Firefox (Playwright's bundled Juggler build, the P1 default lane). It serves
- *  the same cross-browser sub-interfaces as Chromium — Playwright abstracts
- *  navigation, input, storage, script, emulation, capture, and the snapshot /
- *  network substrates (the latter two move onto Playwright-portable mechanisms
- *  in P2) — but exposes NO `deep` (raw-CDP) escape hatch. `deep: false` is what
+/** Firefox (Playwright's bundled Juggler build, the default cross-browser lane).
+ *  It serves the same cross-browser sub-interfaces as Chromium — Playwright
+ *  abstracts navigation, input, storage, script, emulation, capture, and the
+ *  snapshot / network substrates (the latter two move onto Playwright-portable
+ *  mechanisms) — but exposes NO `deep` (raw-CDP) escape hatch. `deep: false` is what
  *  the engine gate keys on to refuse the ~19 CDP-hard tools (perf / coverage /
  *  heap / CPU throttle / SW interception / extensions / pdf) with a hint. */
 export const FIREFOX_CAPABILITIES: EngineCapabilities = {
@@ -52,12 +52,12 @@ export const FIREFOX_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
-/** WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness lane
- *  per RFC D7, NOT Safari). It serves the same nine cross-browser sub-interfaces
+/** WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness lane,
+ *  NOT Safari). It serves the same nine cross-browser sub-interfaces
  *  as Chromium/Firefox (Playwright abstracts navigation, input, storage, script,
  *  emulation, capture, and the snapshot substrate — the page-side walker serves
  *  WebKit just as it serves Firefox; the network substrate ports onto Playwright
- *  events in P2b) — but exposes NO `deep` (raw-CDP) escape hatch. WebKit has no
+ *  events) — but exposes NO `deep` (raw-CDP) escape hatch. WebKit has no
  *  CDP at all (measured: `newCDPSession` throws "CDP session is only available in
  *  Chromium"), so `deep: false` is what the CAPABILITY-based engine gate keys on
  *  to refuse the ~26 CDP-deep tools with a hint — no per-engine gate edit. */
@@ -67,7 +67,7 @@ export const WEBKIT_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
-/** Android (P3 — real Chrome-on-Android attached over adb + CDP, RFC D3/D8). The
+/** Android (real Chrome-on-Android attached over adb + CDP). The
  *  STANDOUT among the non-chromium engines: Android Chrome speaks FULL CDP, so
  *  this engine exposes the `deep` (raw-CDP) escape hatch just like desktop
  *  Chromium — `deep: true`. That single fact is why Android needs NO new
@@ -86,8 +86,8 @@ export const ANDROID_CAPABILITIES: EngineCapabilities = {
   deep: true,
 };
 
-/** Safari (P4 — real Safari.app over safaridriver, the FIRST non-Playwright,
- *  non-CDP engine; RFC D7 + reference 06). A curated SUBSET, not the full port:
+/** Safari (real Safari.app over safaridriver, the FIRST non-Playwright,
+ *  non-CDP engine). A curated SUBSET, not the full port:
  *  Classic owns input/capture(screenshot)/cookies + navigation + exec; experimental
  *  BiDi owns script + browsingContext nav/lifecycle/viewport + the console/nav
  *  events. NETWORK is omitted entirely — Safari has no protocol-level network tap
@@ -119,8 +119,8 @@ const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   safari: SAFARI_CAPABILITIES,
 };
 
-/** The capability declaration for an engine. Chromium (P0) + Firefox (P1) +
- *  WebKit (P2c) + Android (P3) all have declarations; the partial map keeps room
+/** The capability declaration for an engine. Chromium + Firefox + WebKit +
+ *  Android all have declarations; the partial map keeps room
  *  for engines whose adapter hasn't landed yet (returns undefined for those). */
 export function capabilitiesFor(engine: EngineKind): EngineCapabilities | undefined {
   return DECLARATIONS[engine];
