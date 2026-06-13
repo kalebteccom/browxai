@@ -151,7 +151,7 @@ const SUBTREE_DISCOVERY_FN = (el: Element): SubtreeDiscovery => {
     return out;
   }
   const resources: DiscoveredResource[] = [];
-  const seen: Record<string, true> = Object.create(null);
+  const seen = Object.create(null) as Record<string, true>;
   function push(raw: string | null | undefined, kind: DiscoveredResource["kind"]): void {
     if (!raw) return;
     const a = abs(raw);

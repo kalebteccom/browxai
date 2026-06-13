@@ -34,6 +34,10 @@ import { UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
 
+/** A top-level a11y region tracked across the action window for the
+ *  appeared/removed structure diff. Keyed by `ref` in the region maps. */
+type Region = { role: string; name?: string; ref: string };
+
 /** The network slice when there is no CDP tap (off Chromium, where the
  *  Playwright-event network tap is used instead). Matches `NetworkTap.close()`'s
  *  shape so the envelope builder downstream is engine-blind: zero requests, zero
@@ -433,7 +437,7 @@ export async function runInActionWindow(
   const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
   const tBefore = Date.now();
   const preTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
-  const preRegions = preTree ? topLevelRegions(preTree) : new Map();
+  const preRegions = preTree ? topLevelRegions(preTree) : new Map<string, Region>();
 
   // Track main-frame full-load. Playwright's `framenavigated` is cross-browser
   // and fires on the same main-frame nav the CDP `Page.frameNavigated` did, so
@@ -492,7 +496,7 @@ export async function runInActionWindow(
   ctx.page.off("framenavigated", onFrameNav);
   const urlAfter = ctx.page.url();
   const postTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
-  const postRegions = postTree ? topLevelRegions(postTree) : new Map();
+  const postRegions = postTree ? topLevelRegions(postTree) : new Map<string, Region>();
   const network = net ? await net.close() : EMPTY_NETWORK;
 
   // dialog capture — every alert/confirm/prompt that fired in the action
@@ -783,12 +787,10 @@ export async function runInActionWindow(
   };
 }
 
-function topLevelRegions(
-  tree: A11yNode,
-): Map<string, { role: string; name?: string; ref: string }> {
+function topLevelRegions(tree: A11yNode): Map<string, Region> {
   // "Top-level regions" = nodes whose role indicates a page-level appearance
   // (dialog, alert, alertdialog, status, banner, etc.) anywhere in the tree.
-  const out = new Map<string, { role: string; name?: string; ref: string }>();
+  const out = new Map<string, Region>();
   const interesting = new Set([
     "dialog",
     "alertdialog",
@@ -811,15 +813,15 @@ function topLevelRegions(
 }
 
 function diffRegions(
-  pre: Map<string, { role: string; name?: string; ref: string }>,
-  post: Map<string, { role: string; name?: string; ref: string }>,
+  pre: Map<string, Region>,
+  post: Map<string, Region>,
 ): {
-  appeared: Array<{ role: string; name?: string; ref: string }>;
-  removed: Array<{ role: string; name?: string; ref: string }>;
+  appeared: Region[];
+  removed: Region[];
   newTabs: Array<{ url: string; title: string }>;
 } {
-  const appeared: Array<{ role: string; name?: string; ref: string }> = [];
-  const removed: Array<{ role: string; name?: string; ref: string }> = [];
+  const appeared: Region[] = [];
+  const removed: Region[] = [];
   for (const [ref, r] of post) if (!pre.has(ref)) appeared.push(r);
   for (const [ref, r] of pre) if (!post.has(ref)) removed.push(r);
   return { appeared, removed, newTabs: [] };

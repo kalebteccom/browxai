@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // `drop_files` — synthesize an HTML5 drag-drop of one or more files onto a
 // page element.
 //
@@ -188,25 +189,54 @@ export interface DropEvalResult {
  * MCP surface.
  */
 
+/** The subset of `Element` the page-side drop synthesis actually touches. A
+ *  real DOM `Element` satisfies this, and the unit-test fake supplies the
+ *  same two members, so we narrow the opaque `el` handle to this shape rather
+ *  than asserting a full `Element`. */
+interface DropTarget {
+  dispatchEvent(ev: Event): boolean;
+  readonly tagName?: string;
+}
+
+function isDropTarget(v: unknown): v is DropTarget {
+  return (
+    typeof v === "object" && v !== null && typeof (v as DropTarget).dispatchEvent === "function"
+  );
+}
+
 export const dropFilesPageScript = function dropFilesInPage(args: {
-  // `el` is a DOM Element resolved by page.$eval / page.evaluateHandle on the
-  // browser side; the precise Element subtype isn't representable from Node
-  // typings without dragging in DOM lib globals here, so `any` is intentional.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  el: any;
+  // `el` is the DOM element resolved by Locator.evaluate on the browser side
+  // (ref/selector mode), or `null` for coords mode (re-resolved in-page via
+  // elementFromPoint). It crosses the Node->page boundary as an opaque handle
+  // (and unit tests pass a structural fake), so it arrives as `unknown` and is
+  // narrowed to the `DropTarget` shape via the runtime guard below.
+  el: unknown;
   payload: DropPayload;
 }): DropEvalResult {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const g: any = globalThis as any;
-  const W = g.window ?? g;
-  const D = g.document ?? W.document;
+  // The script runs in the page (or a worker / jsdom shim in tests), so the
+  // host environment may expose globals on `window` or directly on
+  // `globalThis`. We model that surface precisely rather than reaching
+  // through `any`: every member is the real DOM type, just possibly absent in
+  // a stripped-down shim, hence each is optional.
+  interface HostGlobals {
+    window?: Window & typeof globalThis;
+    document?: Document;
+    atob?: (data: string) => string;
+    Uint8Array?: Uint8ArrayConstructor;
+    File?: typeof File;
+    DataTransfer?: typeof DataTransfer;
+    DragEvent?: typeof DragEvent;
+    Event?: typeof Event;
+  }
+  const g: HostGlobals = globalThis;
+  const W: HostGlobals = g.window ?? g;
+  const D: Document | undefined = g.document ?? W.document;
   if (!W || !D) return { eventsFired: [], dropDispatched: false, error: "no window/document" };
 
   // 1. Resolve the target element. For ref/selector mode the caller passed
   //    `el` directly via Locator.evaluate; for coords mode `el` is null
   //    and we look it up via elementFromPoint.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let target: any = args.el;
+  let target: DropTarget | null = isDropTarget(args.el) ? args.el : null;
   if (args.payload.byCoords || !target) {
     target = D.elementFromPoint(args.payload.clientX, args.payload.clientY);
   }
@@ -216,69 +246,81 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
       dropDispatched: false,
       error: "no target element at the requested point",
     };
+  // Bind a non-null alias so the closure below sees a narrowed element type.
+  const targetEl: DropTarget = target;
 
   // 2. Materialise File objects from base64 payloads. `atob` is universal,
   //    Uint8Array → File is the canonical drop-zone construction.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const fileObjs: any[] = [];
+  const fileObjs: File[] = [];
 
-  const atob: (s: string) => string = W.atob ? W.atob.bind(W) : g.atob;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const U8: any = W.Uint8Array ?? g.Uint8Array;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const FileCtor: any = W.File ?? g.File;
+  const rawAtob: ((data: string) => string) | undefined = W.atob ?? g.atob;
+  // `atob` is a universal global (browser + Node); the captured lookups above
+  // only matter for unusual page contexts. Bind to `W` when present, else fall
+  // back to the ambient global — the same function the original `g.atob` path
+  // resolved to (never a silent identity map).
+  const atobFn: (s: string) => string = rawAtob ? rawAtob.bind(W) : atob;
+  const U8: Uint8ArrayConstructor = W.Uint8Array ?? g.Uint8Array ?? Uint8Array;
+  const FileCtor: typeof File | undefined = W.File ?? g.File;
   for (let i = 0; i < args.payload.files.length; i++) {
     const f = args.payload.files[i]!;
-    const bin = atob(f.base64);
+    const bin = atobFn(f.base64);
     const len = bin.length;
     const u8 = new U8(len);
     for (let j = 0; j < len; j++) u8[j] = bin.charCodeAt(j) & 0xff;
-    fileObjs.push(new FileCtor([u8], f.name, { type: f.mimeType }));
+    if (FileCtor) fileObjs.push(new FileCtor([u8], f.name, { type: f.mimeType }));
   }
 
   // 3. Build the DataTransfer. `new DataTransfer()` is the public API
   //    listeners read `event.dataTransfer.files` from. `items.add(file)`
   //    implicitly registers the "Files" type, which apps gate on (React-
   //    DnD's NativeTypes.FILE, e.g.).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const DTCtor: any = W.DataTransfer ?? g.DataTransfer;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dt: any = new DTCtor();
-  for (const file of fileObjs) {
-    if (dt.items && typeof dt.items.add === "function") {
-      dt.items.add(file);
-    } else {
-      // Older shims expose `files` as a settable FileList-like. Fall back
-      // by reassigning via Object.defineProperty so the value is enumerable
-      // and `length`/index access both work — best-effort for ancient
-      // browsers; modern Chromium hits the `items.add` path above.
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const arr: any[] = Array.from(dt.files || []);
-        arr.push(file);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fakeList: any = arr;
-        fakeList.item = (idx: number) => arr[idx] ?? null;
-        Object.defineProperty(dt, "files", { value: fakeList, configurable: true });
-      } catch {
-        /* swallow — items.add path covers Chromium */
+  const DTCtor: typeof DataTransfer | undefined = W.DataTransfer ?? g.DataTransfer;
+  // A jsdom/older-shim DataTransfer may not implement `items.add`, so model
+  // the members we actually touch as optional on top of the spec shape.
+  type LooseDataTransfer = DataTransfer & {
+    items?: { add?: (file: File) => unknown };
+  };
+  const dt: LooseDataTransfer | undefined = DTCtor ? new DTCtor() : undefined;
+  if (dt) {
+    for (const file of fileObjs) {
+      if (dt.items && typeof dt.items.add === "function") {
+        dt.items.add(file);
+      } else {
+        // Older shims expose `files` as a settable FileList-like. Fall back
+        // by reassigning via Object.defineProperty so the value is enumerable
+        // and `length`/index access both work — best-effort for ancient
+        // browsers; modern Chromium hits the `items.add` path above.
+        try {
+          const arr: File[] = Array.from(dt.files);
+          arr.push(file);
+          const fakeList: File[] & { item?: (idx: number) => File | null } = arr;
+          fakeList.item = (idx: number): File | null => arr[idx] ?? null;
+          Object.defineProperty(dt, "files", { value: fakeList, configurable: true });
+        } catch {
+          /* swallow — items.add path covers Chromium */
+        }
       }
     }
   }
 
   const eventsFired: string[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const DragEv: any = W.DragEvent ?? g.DragEvent;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const Ev: any = W.Event ?? g.Event;
+  const DragEv: typeof DragEvent | undefined = W.DragEvent ?? g.DragEvent;
+  const Ev: typeof Event = W.Event ?? g.Event ?? Event;
+  // The constructed event may be a DragEvent or a plain Event with
+  // `dataTransfer` / `clientX` / `clientY` patched on through descriptors.
+  type SynthEvent = Event & {
+    dataTransfer?: DataTransfer | null;
+    clientX?: number;
+    clientY?: number;
+  };
   const fireOne = (kind: "dragenter" | "dragover" | "drop"): void => {
     // DragEvent is preferred (carries `dataTransfer` natively); some
     // older browsers (jsdom in tests) don't expose it as a constructor.
     // Fall back to a regular Event with dataTransfer assigned through a
     // property descriptor — every real Chromium hits the DragEvent path.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let ev: any;
+    let ev: SynthEvent;
     try {
+      if (!DragEv) throw new Error("no DragEvent");
       ev = new DragEv(kind, {
         bubbles: true,
         cancelable: true,
@@ -288,16 +330,15 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
         dataTransfer: dt,
       });
     } catch {
-      ev = new Ev(kind, { bubbles: true, cancelable: true, composed: true });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e: any = ev;
+      const base: SynthEvent = new Ev(kind, { bubbles: true, cancelable: true, composed: true });
+      ev = base;
       try {
-        Object.defineProperty(e, "dataTransfer", { value: dt, configurable: true });
+        Object.defineProperty(base, "dataTransfer", { value: dt, configurable: true });
       } catch {
         /* best-effort */
       }
-      e.clientX = args.payload.clientX;
-      e.clientY = args.payload.clientY;
+      base.clientX = args.payload.clientX;
+      base.clientY = args.payload.clientY;
     }
     // Modern Chromium DragEvent may have a read-only dataTransfer that
     // ignores the constructor option. Defensive: if it didn't take, force
@@ -309,7 +350,7 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
     } catch {
       /* best-effort */
     }
-    target.dispatchEvent(ev);
+    targetEl.dispatchEvent(ev);
     eventsFired.push(kind);
   };
 
@@ -384,24 +425,24 @@ export async function dropFiles(
     resolved.kind === "coords"
       ? await page.evaluate(
           (a: { payload: DropPayload; src: string }) => {
+            // The source string evaluates to the page-side function; type the
+            // factory the `Function` constructor returns and the function it
+            // yields precisely, so neither call is an unsafe `Function` call.
+            type PageScript = (x: { el: Element | null; payload: DropPayload }) => DropEvalResult;
             // eslint-disable-next-line @typescript-eslint/no-implied-eval
-            const fn = new Function("return (" + a.src + ");")() as (x: {
-              el: unknown;
-              payload: DropPayload;
-            }) => DropEvalResult;
+            const factory = new Function("return (" + a.src + ");") as () => PageScript;
+            const fn: PageScript = factory();
             return fn({ el: null, payload: a.payload });
           },
           { payload, src: scriptSource },
         )
       : await resolved.loc.evaluate(
           // Locator.evaluate signature: (element, arg).
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (el: any, a: { payload: DropPayload; src: string }) => {
+          (el: Element, a: { payload: DropPayload; src: string }) => {
+            type PageScript = (x: { el: Element | null; payload: DropPayload }) => DropEvalResult;
             // eslint-disable-next-line @typescript-eslint/no-implied-eval
-            const fn = new Function("return (" + a.src + ");")() as (x: {
-              el: unknown;
-              payload: DropPayload;
-            }) => DropEvalResult;
+            const factory = new Function("return (" + a.src + ");") as () => PageScript;
+            const fn: PageScript = factory();
             return fn({ el, payload: a.payload });
           },
           { payload, src: scriptSource },

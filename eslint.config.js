@@ -204,22 +204,16 @@ export default tseslint.config(
       "@typescript-eslint/only-throw-error": "error",
       "@typescript-eslint/unbound-method": "error",
 
-      // Stage 2d: DEFERRED to a follow-up structural refactor. The right fix
-      // is a typed wrapper layer for the MCP boundary — Zod-validate every
-      // tools/call payload at intake (so the handler body sees a typed
-      // object, not `unknown` JSON.parse output) AND a typed wrapper for
-      // page.evaluate() returns (so DOM-side results don't pollute Node-side
-      // typing with `any`). 1262 warnings in this codebase resolve when
-      // those wrappers land — primarily concentrated in src/server.ts
-      // (905, gated on the same src/server.ts frame-handling refactor
-      // flagged in Stage 2c) and src/page/*.ts (357, gated on the
-      // page.evaluate() wrapper). Re-enable as `error` once both wrappers
-      // are in place.
-      "@typescript-eslint/no-unsafe-assignment": "off",
-      "@typescript-eslint/no-unsafe-member-access": "off",
-      "@typescript-eslint/no-unsafe-call": "off",
-      "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-unsafe-return": "off",
+      // Full no-unsafe enforcement. The MCP tools/call boundary is typed (each
+      // handler's args are inferred from its own zod `inputSchema`, the exact
+      // shape the SDK parses the wire payload into) and the page-evaluate
+      // returns are typed at their call sites, so untyped external data no
+      // longer flows as `any` through production code.
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
 
       // Stage 2c: re-enabled after per-call audit. Catches load-bearing `as T`
       // and `!` assertions; necessary ones get a per-line disable + WHY.

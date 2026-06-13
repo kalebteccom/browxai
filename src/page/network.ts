@@ -483,7 +483,7 @@ async function probeMutation(
     if (!trimmed) return mutationWithoutShape(method, url, status, durationMs);
     if (trimmed[0] !== "{" && trimmed[0] !== "[")
       return mutationWithoutShape(method, url, status, durationMs);
-    const parsed = JSON.parse(trimmed);
+    const parsed: unknown = JSON.parse(trimmed);
     const responseShape = extractTopLevelKeys(parsed);
     const entry: MutationEntry = {
       method,
@@ -722,7 +722,7 @@ async function probeMutationPlaywright(
     if (!trimmed) return mutationWithoutShape(method, url, status, durationMs);
     if (trimmed[0] !== "{" && trimmed[0] !== "[")
       return mutationWithoutShape(method, url, status, durationMs);
-    const parsed = JSON.parse(trimmed);
+    const parsed: unknown = JSON.parse(trimmed);
     const responseShape = extractTopLevelKeys(parsed);
     const entry: MutationEntry = {
       method,

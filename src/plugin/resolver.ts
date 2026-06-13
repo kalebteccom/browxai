@@ -15,6 +15,12 @@ import { ZodError } from "zod";
 import { log } from "../util/logging.js";
 import { parseManifestField, type ResolvedManifest, type TrustTier } from "./manifest.js";
 
+/** Per-entry overrides in the object form of `plugins.json`. */
+export interface PluginEntryOverride {
+  readonly enabled?: boolean;
+  readonly trust?: TrustTier;
+}
+
 /**
  * `plugins.json` declaration. Two equivalent shapes accepted for
  * ergonomics:
@@ -34,9 +40,7 @@ import { parseManifestField, type ResolvedManifest, type TrustTier } from "./man
  * to disable a plugin without uninstalling it.
  */
 export interface PluginsJsonFile {
-  readonly plugins:
-    | ReadonlyArray<string>
-    | Readonly<Record<string, { enabled?: boolean; trust?: TrustTier }>>;
+  readonly plugins: ReadonlyArray<string> | Readonly<Record<string, PluginEntryOverride>>;
 }
 
 export interface DeclaredPlugin {
@@ -46,6 +50,18 @@ export interface DeclaredPlugin {
   readonly enabled: boolean;
   /** Optional operator-supplied trust override. */
   readonly trust?: TrustTier;
+}
+
+/**
+ * The subset of an installed plugin's `package.json` we read off disk.
+ * `browxai` stays `unknown` because the field is validated separately
+ * via {@link parseManifestField}; the other fields are optional strings.
+ */
+interface PackageJsonManifest {
+  readonly name?: string;
+  readonly version?: string;
+  readonly description?: string;
+  readonly browxai?: unknown;
 }
 
 /** Workspace path conventions — single source of truth. The workspace
@@ -95,7 +111,12 @@ export function readDeclaration(paths: PluginPaths): ReadonlyArray<DeclaredPlugi
   if (!raw || typeof raw !== "object") return [];
   const decl = (raw as PluginsJsonFile).plugins;
   if (!decl) return [];
-  if (Array.isArray(decl)) {
+  // `isArrayForm` narrows the union to its array member here and —
+  // crucially — subtracts that member in the `else` branch. The built-in
+  // `Array.isArray` only guards `any[]`, which can't subtract the
+  // `readonly string[]` branch, leaving the `Object.entries` values below
+  // typed as `any`.
+  if (isArrayForm(decl)) {
     return decl
       .filter((s): s is string => typeof s === "string" && s.length > 0)
       .map((name) => ({ name, enabled: true }));
@@ -140,9 +161,9 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
   if (!existsSync(pkgJsonPath)) {
     return { kind: "not-installed", name: decl.name };
   }
-  let raw: { name?: string; version?: string; description?: string; browxai?: unknown };
+  let raw: PackageJsonManifest;
   try {
-    raw = JSON.parse(readFileSync(pkgJsonPath, "utf8"));
+    raw = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as PackageJsonManifest;
   } catch (e) {
     return {
       kind: "invalid-manifest",
@@ -208,4 +229,14 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
 function inferTrustFromName(name: string): TrustTier {
   if (name.startsWith("@browxai/")) return "kalebtec";
   return "community";
+}
+
+/**
+ * Narrows the `plugins.json` value to its array form. Unlike the built-in
+ * `Array.isArray` (which only guards `any[]`), this predicate is keyed to
+ * the declared union, so the `else` branch correctly leaves only the
+ * object form — keeping `Object.entries` strongly typed.
+ */
+function isArrayForm(decl: PluginsJsonFile["plugins"]): decl is ReadonlyArray<string> {
+  return Array.isArray(decl);
 }

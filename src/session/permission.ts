@@ -644,18 +644,17 @@ export async function readPermissionStates(
   for (const n of names) {
     try {
       const state = await page
-        .evaluate(async (perm: string) => {
+        .evaluate(async (perm: string): Promise<string> => {
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const navAny = (globalThis as any).navigator;
-            if (!navAny?.permissions?.query) return "unknown";
-            const res = await navAny.permissions.query({ name: perm });
-            return res?.state ?? "unknown";
+            const perms: Permissions | undefined = globalThis.navigator?.permissions;
+            if (!perms?.query) return "unknown";
+            const res: PermissionStatus = await perms.query({ name: perm as PermissionName });
+            return res.state;
           } catch {
             return "unknown";
           }
         }, n)
-        .catch(() => "unknown");
+        .catch((): string => "unknown");
       out[n] = state === "granted" || state === "denied" || state === "prompt" ? state : "unknown";
     } catch {
       out[n] = "unknown";

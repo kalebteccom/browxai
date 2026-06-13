@@ -129,8 +129,7 @@ export class WsInteractiveRegistry {
     const { wsId, message } = args;
     const r = await page.evaluate(
       ({ id, msg }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = (globalThis as any).__browxWs as BrowxWsApi | undefined;
+        const w = globalThis.__browxWs;
         if (!w) return { ok: false, error: "__browxWs not installed (init-script race?)" };
         return w.send(id, msg);
       },
@@ -155,8 +154,7 @@ export class WsInteractiveRegistry {
     });
     await page.evaluate(
       ({ pattern, mode, replacement }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = (globalThis as any).__browxWs as BrowxWsApi | undefined;
+        const w = globalThis.__browxWs;
         if (!w) return;
         w.intercept(pattern, mode, replacement);
       },
@@ -182,8 +180,7 @@ export class WsInteractiveRegistry {
     }
     await page.evaluate(
       ({ pattern }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = (globalThis as any).__browxWs as BrowxWsApi | undefined;
+        const w = globalThis.__browxWs;
         if (!w) return;
         if (pattern === null) w.unintercept(undefined);
         else w.unintercept(pattern);
@@ -203,12 +200,11 @@ export class WsInteractiveRegistry {
    *  isn't installed (`install` is the lazy installer; this method is
    *  for `ws_send` discoverability and shouldn't itself force install). */
   async listSockets(page: Page): Promise<Array<{ wsId: string; url: string; readyState: number }>> {
-    const r = (await page.evaluate(() => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = (globalThis as any).__browxWs as BrowxWsApi | undefined;
+    const r = await page.evaluate((): Array<{ wsId: string; url: string; readyState: number }> => {
+      const w = globalThis.__browxWs;
       if (!w) return [];
       return w.list();
-    })) as Array<{ wsId: string; url: string; readyState: number }>;
+    });
     return r;
   }
 }
@@ -220,6 +216,14 @@ interface BrowxWsApi {
   intercept(pattern: string, mode: WsInterceptMode, replacement?: string | null): void;
   unintercept(pattern?: string): void;
   list(): Array<{ wsId: string; url: string; readyState: number }>;
+}
+
+// The wrapper script installs `__browxWs` on the page-side global. Typing it on
+// `globalThis` gives the `evaluate` callbacks a precise handle (`BrowxWsApi |
+// undefined`) instead of an `any` member access. `undefined` models the
+// init-script race the callbacks already guard against.
+declare global {
+  var __browxWs: BrowxWsApi | undefined;
 }
 
 // ---------------------------------------------------------------------------

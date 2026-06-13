@@ -19,6 +19,77 @@ import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.j
 // by the inner op too (not just the outer race in runInActionWindow).
 const DEFAULT_TIMEOUT_MS = 5_000;
 
+// ---------- page-side (DOM) structural types ----------
+// These functions are stringified and executed in the browser, where TS's DOM
+// lib is intentionally NOT in scope (tsconfig `lib: ["ES2022"]`). Rather than
+// fall back to `any`, we describe the precise structural shape of the DOM
+// surface each in-page script actually touches and narrow `unknown` runtime
+// values into it via real `typeof`/`in` guards. Behaviour is unchanged — these
+// are erased at runtime.
+
+/** Minimal structural view of an element exposing scroll geometry/mutators. */
+interface ScrollContainerEl {
+  scrollTop: number;
+  scrollLeft: number;
+  readonly scrollHeight: number;
+  readonly scrollWidth: number;
+  readonly clientHeight: number;
+  readonly clientWidth: number;
+  scrollBy: (x: number, y: number) => void;
+}
+
+/** Minimal structural view of the scrolling element read by the geometry probes. */
+interface ScrollingEl {
+  readonly scrollTop: number;
+  readonly scrollLeft: number;
+  readonly scrollHeight: number;
+  readonly scrollWidth: number;
+  readonly clientHeight: number;
+  readonly clientWidth: number;
+}
+
+/** Minimal structural view of `document` as used by the in-page scripts. */
+interface DocumentLike {
+  readonly documentElement?: ScrollingEl;
+  readonly scrollingElement?: ScrollingEl | null;
+  readonly activeElement?: FocusableEl | null;
+  elementFromPoint: (x: number, y: number) => HitEl | null;
+}
+
+/** Minimal structural view of `window`/`globalThis` as used by the scroll script. */
+interface WindowLike {
+  readonly document?: DocumentLike;
+  readonly scrollX: number;
+  readonly scrollY: number;
+  scrollTo: (x: number, y: number) => void;
+  scrollBy: (x: number, y: number) => void;
+}
+
+/** Element shape read by `captureHit` (document.elementFromPoint result). */
+interface HitEl {
+  readonly tagName?: string;
+  getAttribute?: (k: string) => string | null;
+  readonly textContent?: string | null;
+  readonly parentElement?: { readonly innerText?: string } | null;
+}
+
+/** Element shape read by `captureFocusedRef` (document.activeElement). */
+interface FocusableEl {
+  readonly id?: string;
+  getAttribute?: (k: string) => string | null;
+  readonly tagName?: string;
+  readonly textContent?: string | null;
+}
+
+/** Ancestor element shape walked by `probeAncestorsScript`. */
+interface AncestorEl {
+  readonly parentElement?: AncestorEl | null;
+  readonly tagName?: string;
+  getAttribute?: (k: string) => string | null;
+  readonly dataset?: Record<string, string | undefined>;
+  readonly innerText?: string;
+}
+
 export interface ClickArgs extends ActionWindowOptions {
   target: ActionTarget;
   button?: "left" | "right" | "middle";
@@ -324,8 +395,7 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     if (mode.kind === "container") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
       await loc.evaluate(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (el: any, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
+        (el: ScrollContainerEl, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
           if (a.to === "top") el.scrollTop = 0;
           else if (a.to === "bottom") el.scrollTop = el.scrollHeight;
           else if (a.to === "left") el.scrollLeft = 0;
@@ -341,8 +411,8 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     // window
     await ctx.page.evaluate(
       (a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = globalThis as any;
+        const g: unknown = globalThis;
+        const w = g as WindowLike;
         const doc = w.document?.documentElement;
         if (a.to === "top") w.scrollTo(w.scrollX, 0);
         else if (a.to === "bottom") w.scrollTo(w.scrollX, doc ? doc.scrollHeight : 1e9);
@@ -362,10 +432,10 @@ type ScrollGeometry = NonNullable<ElementProbe["scroll"]>;
 async function windowScrollGeometry(page: Page): Promise<ScrollGeometry | undefined> {
   return page
     .evaluate((): ScrollGeometry | undefined => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = globalThis as any;
+      const g: unknown = globalThis;
+      const w = g as WindowLike;
       const d = w.document;
-      const s = d?.scrollingElement || d?.documentElement;
+      const s: ScrollingEl | null | undefined = d?.scrollingElement || d?.documentElement;
       if (!s) return undefined;
       const x = w.scrollX ?? s.scrollLeft ?? 0;
       const y = w.scrollY ?? s.scrollTop ?? 0;
@@ -387,8 +457,7 @@ async function windowScrollGeometry(page: Page): Promise<ScrollGeometry | undefi
 async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometry | undefined> {
   return loc
     .evaluate((el: unknown): ScrollGeometry | undefined => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e = el as any;
+      const e = el as ScrollingEl | null | undefined;
       if (!e) return undefined;
       const y = e.scrollTop ?? 0;
       return {
@@ -468,8 +537,10 @@ export async function chooseOption(
     // Open the control if not already expanded. `aria-expanded` is the strongest
     // signal; absence isn't proof it's closed, so we still click if false-or-missing.
     const isExpanded = await trigger
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .evaluate((el: any) => el.getAttribute && el.getAttribute("aria-expanded") === "true")
+      .evaluate(
+        (el: { getAttribute?: (k: string) => string | null }) =>
+          !!el.getAttribute && el.getAttribute("aria-expanded") === "true",
+      )
       .catch(() => false);
     if (!isExpanded) {
       await trigger.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
@@ -794,18 +865,17 @@ export async function probe(
  * object when nothing matches.
  *
  * Defined as a plain function (not an arrow) so Playwright can stringify it
- * across the CDP boundary cleanly. `el: any` because we run in DOM context
- * where TS's DOM lib isn't loaded; the runtime check is what matters.
+ * across the CDP boundary cleanly. `el` is typed `unknown` and narrowed to a
+ * precise structural `AncestorEl` shape — TS's DOM lib isn't loaded in this
+ * context, and the leading runtime check is what makes the narrowing sound.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
+const probeAncestorsScript = function probeAncestors(el: unknown): PreProbeData {
   if (!el || typeof el !== "object") return {};
   const OWNER_ROLES = new Set(["combobox", "listbox", "radiogroup", "group", "menu", "tablist"]);
   const ROW_ROLES = new Set(["row", "listitem", "article"]);
   const ROW_TAGS = new Set(["tr", "li"]);
   const out: PreProbeData = {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let cur: any = el.parentElement;
+  let cur: AncestorEl | null | undefined = (el as AncestorEl).parentElement;
   for (let i = 0; i < 6 && cur && cur.tagName !== "BODY" && cur.tagName !== "HTML"; i++) {
     const role: string | null = cur.getAttribute ? cur.getAttribute("role") : null;
     const ds = cur.dataset || {};
@@ -815,17 +885,17 @@ const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
     if (!out.ownerText) {
       const isFieldOwner = (role && OWNER_ROLES.has(role)) || (hasTestAttr && (role || ariaLabel));
       if (isFieldOwner) {
-        const txt = ((cur.innerText || "") as string).trim();
+        const txt = (cur.innerText || "").trim();
         if (txt) out.ownerText = txt.length > 200 ? txt.slice(0, 199) + "…" : txt;
         if (ariaLabel) out.ownerLabel = ariaLabel;
       }
     }
 
     if (!out.container) {
-      const tag = cur.tagName ? (cur.tagName as string).toLowerCase() : "";
+      const tag = cur.tagName ? cur.tagName.toLowerCase() : "";
       if ((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag)) {
         const kind = role && ROW_ROLES.has(role) ? role : tag;
-        const rowText = ((cur.innerText || "") as string).trim().replace(/\s+/g, " ");
+        const rowText = (cur.innerText || "").trim().replace(/\s+/g, " ");
         const capped = rowText.length > 200 ? rowText.slice(0, 199) + "…" : rowText;
         // rowKey = first non-empty text node within the container.
         let rowKey: string | undefined;
@@ -852,13 +922,14 @@ const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
 
 /** Coordinate-action evidence helper: read `document.elementFromPoint` at (x,y)
  *  with role/text/ancestor context. Returns null when nothing's there.
- *  Uses `any` for the in-page DOM side — TS's DOM lib isn't loaded here. */
+ *  The in-page DOM side is described by precise structural types (`WindowLike`
+ *  / `DocumentLike` / `HitEl`) since TS's DOM lib isn't loaded here. */
 async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | null> {
   return page
     .evaluate(
       ({ x, y }: { x: number; y: number }): HitPoint | null => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const doc: any = (globalThis as any).document;
+        const g: unknown = globalThis;
+        const doc = (g as WindowLike).document;
         if (!doc) return null;
         const el = doc.elementFromPoint(x, y);
         if (!el) return null;
@@ -866,10 +937,10 @@ async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | 
         const role: string | undefined = el.getAttribute
           ? el.getAttribute("role") || undefined
           : undefined;
-        const text = ((el.textContent || "") as string).trim().replace(/\s+/g, " ").slice(0, 120);
+        const text = (el.textContent || "").trim().replace(/\s+/g, " ").slice(0, 120);
         const parent = el.parentElement;
         const ancestorText = parent
-          ? ((parent.innerText || "") as string).trim().replace(/\s+/g, " ").slice(0, 200)
+          ? (parent.innerText || "").trim().replace(/\s+/g, " ").slice(0, 200)
           : undefined;
         const out: HitPoint = { tag };
         if (role) out.role = role;
@@ -888,8 +959,8 @@ async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | 
 async function captureFocusedRef(page: Page): Promise<string | null> {
   return page
     .evaluate((): string | null => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc: any = (globalThis as any).document;
+      const g: unknown = globalThis;
+      const doc = (g as WindowLike).document;
       if (!doc) return null;
       const a = doc.activeElement;
       if (!a) return null;
@@ -902,7 +973,7 @@ async function captureFocusedRef(page: Page): Promise<string | null> {
           ""
         : "";
       const tag: string = (a.tagName || "").toLowerCase();
-      const txt = ((a.textContent || "") as string).trim().slice(0, 60);
+      const txt = (a.textContent || "").trim().slice(0, 60);
       return `${tag}#${id}@${role}[${testid}]:${txt}`;
     })
     .catch(() => null);

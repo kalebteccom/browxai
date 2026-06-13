@@ -96,8 +96,13 @@ export class BrowxBridge {
     }
     this.waiters = [];
     const setOptOut = () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = (globalThis as any).window;
+      // Runs in page context; the page-side `window` (and our opt-out flag)
+      // isn't on the Node-side `globalThis` type, so read it via `Reflect.get`
+      // and narrow the result to the precise shape we know it has.
+      interface OptOutWindow {
+        __browx_no_binding?: boolean;
+      }
+      const w = Reflect.get(globalThis, "window") as OptOutWindow | undefined;
       if (w) w.__browx_no_binding = true;
     };
     for (const ctx of this.contexts) {

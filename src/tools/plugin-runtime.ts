@@ -145,8 +145,13 @@ export async function wirePluginRuntime(
       return out;
     };
     toolHandlers[name] = wrapped;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (server.registerTool as any)(name, def, wrapped);
+    // The SDK's `registerTool` generic cannot relate its conditional-typed
+    // callback to the plugin def's `Record<string, z.ZodTypeAny>` schema;
+    // widening the config's schema to a concrete `z.ZodRawShape` lets that
+    // conditional resolve, so `wrapped` (args narrowed to `unknown`, result a
+    // `CallToolResult`) matches with no assertion. Mirrors `host-build.ts`.
+    const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = def;
+    server.registerTool(name, sdkConfig, wrapped);
   };
 
   try {

@@ -132,8 +132,10 @@ export async function cachesGet(
     `for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]); ` +
     `var b64 = btoa(bin); ` +
     `return { found: true, kind: "binary", contentBase64: b64, byteLength: bytes.length, contentType: ct, status: res.status, headers: headers, cacheName: ${JSON.stringify(args.cacheName)}, url: ${JSON.stringify(args.url)}, origin: location.origin }; })()`;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await page.evaluate(expr)) as any;
+  return await page.evaluate<
+    | { found: false; cacheName: string; url: string; origin: string }
+    | (CacheEntryBody & { found: true; cacheName: string; url: string; origin: string })
+  >(expr);
 }
 
 // ---- writes ----------------------------------------------------------------

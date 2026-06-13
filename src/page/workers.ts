@@ -202,6 +202,13 @@ interface BrowxWorkersApi {
   drain(id?: string): Array<{ workerId: string; data: string; at: number }>;
 }
 
+// The page-side wrapper (`WORKERS_PAGE_SCRIPT`) installs `__browxWorkers` on
+// the page's global. Declare it so the `page.evaluate` callbacks below — which
+// run in that DOM context — read it with a precise type instead of `any`.
+declare global {
+  var __browxWorkers: BrowxWorkersApi | undefined;
+}
+
 interface SwAttachment {
   /** CDP `targetId` from `Target.attachedToTarget`. */
   targetId: string;
@@ -408,11 +415,10 @@ export class WorkersRegistry {
     const out: WorkerListing[] = [];
     if (filter === "all" || filter === "web") {
       try {
-        const ws = (await page.evaluate(() => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const w = (globalThis as any).__browxWorkers as BrowxWorkersApi | undefined;
+        const ws = await page.evaluate(() => {
+          const w = globalThis.__browxWorkers;
           return w ? w.list() : [];
-        })) as Array<{ workerId: string; url: string }>;
+        });
         for (const e of ws) out.push({ workerId: e.workerId, type: "web", url: e.url });
       } catch {
         /* page navigation race — empty is fine */
@@ -437,8 +443,7 @@ export class WorkersRegistry {
       await this.installPageWrapper(page);
       const r = await page.evaluate(
         ({ id, msg }) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const w = (globalThis as any).__browxWorkers as BrowxWorkersApi | undefined;
+          const w = globalThis.__browxWorkers;
           if (!w) return { ok: false, error: "__browxWorkers not installed (init-script race?)" };
           return w.post(id, msg);
         },
@@ -467,13 +472,15 @@ export class WorkersRegistry {
       // API; we use the parent CDP's Runtime.evaluate routed via the
       // sessionId field (flatten mode).
       const payload = JSON.stringify(args.message);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const sendOpts: any = {
+      const sendOpts: { expression: string; returnByValue: boolean } = {
         expression: `self.dispatchEvent(new MessageEvent('message', { data: ${payload} })); true;`,
         returnByValue: true,
       };
       try {
-        await cdp.send("Runtime.evaluate", { ...sendOpts, sessionId });
+        // `sessionId` is a flatten-mode routing field absent from the generated
+        // `evaluateParameters` type; spread it the same way the Fetch handlers
+        // above do so the literal isn't excess-property-checked.
+        await cdp.send("Runtime.evaluate", { ...sendOpts, ...(sessionId ? { sessionId } : {}) });
         return { ok: true, workerId: args.workerId };
       } catch (err) {
         return {
@@ -496,15 +503,14 @@ export class WorkersRegistry {
     // Web Worker messages — drain from the page ring.
     if (!args.workerId || args.workerId.startsWith("ww-")) {
       try {
-        const drained = (await page.evaluate(
+        const drained = await page.evaluate(
           ({ id }) => {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const w = (globalThis as any).__browxWorkers as BrowxWorkersApi | undefined;
+            const w = globalThis.__browxWorkers;
             if (!w) return [];
             return w.drain(id ?? undefined);
           },
           { id: args.workerId ?? null },
-        )) as Array<{ workerId: string; data: string; at: number }>;
+        );
         for (const m of drained) out.push({ workerId: m.workerId, data: m.data, at: m.at });
       } catch {
         /* race — empty is fine */

@@ -16,6 +16,7 @@
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer as createNetServer, type Server } from "node:net";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../server.js";
 import { SocketTransport } from "../sdk/socket-transport.js";
 import { log } from "../util/logging.js";
@@ -90,11 +91,10 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
       try {
         const mcp = new McpServer({ name: "browxai", version: "0.2.3" });
         for (const [name, handler] of Object.entries(browxai.handlers)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (mcp.registerTool as any)(
+          mcp.registerTool(
             name,
             { description: `browxai/${name}`, inputSchema: {} },
-            async (args: unknown) => handler(args),
+            async (args: unknown): Promise<CallToolResult> => handler(args),
           );
         }
         const transport = new SocketTransport(socket);

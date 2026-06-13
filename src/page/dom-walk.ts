@@ -120,16 +120,22 @@ export async function runDomWalkOnFrame(
         attrs: string[];
         cap: number;
         openShadow: boolean;
-      }) =>
+      }): DomWalkEntry[] => {
+        // The page-side `Function` constructor produces an untyped callable;
+        // annotate its precise call signature (the PAGE_SCRIPT IIFE returns
+        // `DomWalkEntry[]`) so the invocation result is typed, not `any`.
         // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        new Function("attrs", "cap", "openShadow", `return (${script})(attrs, cap, openShadow)`)(
-          attrs,
-          cap,
-          openShadow,
-        ),
+        const run = new Function(
+          "attrs",
+          "cap",
+          "openShadow",
+          `return (${script})(attrs, cap, openShadow)`,
+        ) as (attrs: string[], cap: number, openShadow: boolean) => DomWalkEntry[];
+        return run(attrs, cap, openShadow);
+      },
       { script: PAGE_SCRIPT, attrs: testAttrs, cap: max, openShadow: walkOpen },
     );
-    return (raw as DomWalkEntry[]) ?? [];
+    return raw ?? [];
   } catch {
     return [];
   }

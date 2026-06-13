@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 // computed-style + box probe.
 //
 // Layout-break and control-state bugs (a flex row losing a child →
@@ -54,16 +55,18 @@ export async function inspectElement(loc: Locator, extra: string[] = []): Promis
     if ((await loc.count()) === 0) return { found: false };
     const keys = [...DEFAULT_STYLE_KEYS, ...extra];
     return await loc
-      .evaluate((el: unknown, styleKeys: string[]): InspectResult => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const e = el as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const g = globalThis as any;
-        const cs = g.getComputedStyle(e);
+      .evaluate((e: Element, styleKeys: string[]): InspectResult => {
+        // CSS property names read back from a computed style as strings; this
+        // selects just the string-valued members of CSSStyleDeclaration so the
+        // dynamic `cs[k]` read is a `string` (not one of its method members).
+        type StringStyleKey = {
+          [K in keyof CSSStyleDeclaration]: CSSStyleDeclaration[K] extends string ? K : never;
+        }[keyof CSSStyleDeclaration];
+        const cs = getComputedStyle(e);
         const styles: Record<string, string> = {};
         for (const k of styleKeys) {
           try {
-            styles[k] = String(cs[k]);
+            styles[k] = String(cs[k as StringStyleKey]);
           } catch {
             /* unknown prop — skip */
           }
@@ -89,7 +92,7 @@ export async function inspectElement(loc: Locator, extra: string[] = []): Promis
           childCount: e.childElementCount,
         };
       }, keys)
-      .catch(() => ({ found: false }));
+      .catch((): InspectResult => ({ found: false }));
   } catch {
     return { found: false };
   }

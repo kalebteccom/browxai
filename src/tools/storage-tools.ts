@@ -907,7 +907,7 @@ export function registerStorageTools(host: ToolHost): void {
           const first = value[0];
           if (first === "{" || first === "[") {
             try {
-              const parsed = JSON.parse(value);
+              const parsed: unknown = JSON.parse(value);
               if (parsed !== null && typeof parsed === "object") {
                 warnings.push(
                   "idb_put: `value` arrived as a JSON-encoded STRING (e.g. `'{\"k\":1}'`). " +
