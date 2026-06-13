@@ -1,6 +1,7 @@
 import type { z } from "zod";
 
-import type { SessionEntry } from "../session/registry.js";
+import type { SessionEntry, SessionRegistry } from "../session/registry.js";
+import type { DiagnosticsRecorder } from "../util/diagnostics.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ActionContext } from "../page/actionresult.js";
 import type { Workspace } from "../util/workspace.js";
@@ -144,4 +145,12 @@ export interface ToolHost {
   /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
    *  to. Read lazily so the host can expose it before the set is populated. */
   readonly batchAllowedTools: ReadonlySet<string>;
+
+  /** The session registry — the live source of truth for which sessions are open
+   *  (the QA-evidence report bundles its `list()`). */
+  registry: SessionRegistry;
+
+  /** The diagnostics JSONL recorder — the note/search/report family reads and
+   *  writes the agent-feedback store through it. */
+  diagnostics: DiagnosticsRecorder;
 }
