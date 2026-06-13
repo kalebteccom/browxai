@@ -1,7 +1,7 @@
 {
   "name": "browxai",
   "version": "0.7.0",
-  "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
+  "description": "MCP-native, model-agnostic, agentic-first, multi-engine browser-control server.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",
   "type": "module",

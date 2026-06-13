@@ -10,15 +10,20 @@
 **An MCP-native, model-agnostic, agentic-first browser-control server for AI agents.**
 
 browxai gives an AI agent a curated, token-efficient browser surface over the
-Model Context Protocol — Playwright/CDP under the hood, a tool surface designed
-for agents rather than for human developers, and headless/CI-capable.
+Model Context Protocol — a tool surface designed for agents rather than for human
+developers, and headless/CI-capable. It is **engine-agnostic**: the same tool
+surface drives Chromium, Firefox, and WebKit, real Chrome-on-Android, and real
+Safari, each over the automation protocol that fits it (CDP, WebDriver BiDi,
+safaridriver) behind one capability-port seam, so a tool never knows which engine
+it is running on.
 
-It is deliberately **not** a wrapper over `@playwright/mcp`: browxai owns its
-own Playwright/CDP transport so it can own the full session lifecycle —
-managed profiles, attach-to-an-existing-Chrome (BYOB), authenticated
-sessions, headed and headless — and shape an agent-first surface around it.
+It is deliberately **not** a wrapper over `@playwright/mcp`: browxai owns its own
+multi-engine transport so it can own the full session lifecycle — managed
+profiles, attach-to-an-existing browser (BYOB), authenticated sessions, headed and
+headless — and shape an agent-first surface around it.
 
 - **Model-agnostic** — any MCP client (Claude, Codex, …), not locked to one model.
+- **Engine-agnostic** — Chromium / Firefox / WebKit / Android Chrome / Safari behind one capability-port architecture; pick with `--engine` / `BROWX_ENGINE`. The default is Chromium, so nothing changes for existing setups.
 - **Token-efficient** — `snapshot()` is a compact accessibility tree + DOM-walk, not a DOM dump; results are scoped/paginated/budgeted.
 - **Safe by default** — capability-gated tools, an origin allow/blocklist, confirmation hooks, a hard anti-wedge deadline on every call. Dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking) is off by default.
 

@@ -43,6 +43,7 @@ headed, with the default capability set (`read`, `navigation`, `action`,
 | `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`). Never `cwd`.                                          |
 | `BROWX_HEADLESS`     | `1` launches headless.                                                                                         |
 | `BROWX_CAPABILITIES` | Comma-separated capability set. Add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
+| `BROWX_ENGINE`       | Browser engine: `chromium` (default), `firefox`, `webkit`, `android`, or `safari`. Also `--engine <kind>`.     |
 | `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB).                                                  |
 
 See the [tool reference](/reference/tool-reference/) for the full configuration
