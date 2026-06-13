@@ -177,4 +177,12 @@ export interface ToolHost {
   /** The loaded-plugin records — get_config reports the live enabled-plugin set
    *  from them. A getter: the records are assigned after the host is built. */
   readonly pluginRecords: ReadonlyArray<PluginRecord>;
+
+  /** Record one dispatch on the session's metrics counter — the plugin runtime
+   *  reuses it so plugin-tool calls roll up into the same per-session metrics. */
+  noteMetrics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
+
+  /** Record one dispatched call into the diagnostics JSONL store — the plugin
+   *  runtime reuses it so plugin-tool calls land in the same store. */
+  noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
 }
