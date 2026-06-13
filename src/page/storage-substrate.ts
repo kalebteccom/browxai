@@ -1,10 +1,11 @@
 // The StorageSubstrate interface — the engine-agnostic seam beneath the storage
-// tools (cookies + localStorage/sessionStorage + IndexedDB CRUD). It is the storage
-// side of RFC 0003: a tool handler asks a substrate to read or write the cookie jar,
-// web-storage, or an IndexedDB store and gets back a universal result; an engine-
-// specific implementation does the work. The handler never names Playwright,
-// safaridriver, or an engine — it calls `storageFor(e).cookiesList(req)` /
-// `storageFor(e).webStorageGet(kind, req)` / `storageFor(e).idbGet(args, tool)`, the
+// tools (cookies + localStorage/sessionStorage + IndexedDB + Cache API CRUD). It is
+// the storage side of RFC 0003: a tool handler asks a substrate to read or write the
+// cookie jar, web-storage, an IndexedDB store, or the Cache API and gets back a
+// universal result; an engine-specific implementation does the work. The handler
+// never names Playwright, safaridriver, or an engine — it calls
+// `storageFor(e).cookiesList(req)` / `storageFor(e).webStorageGet(kind, req)` /
+// `storageFor(e).idbGet(args, tool)` / `storageFor(e).cachesList(args, tool)`, the
 // same shape as `actionsFor(e).click(args)` / `captureFor(e).screenshot(req)`.
 //
 // Dependency direction (architecture doctrine §1): tool handler → StorageSubstrate
@@ -46,6 +47,16 @@ import {
   idbDelete,
   idbClear,
 } from "../session/idb-storage.js";
+import {
+  cachesListStorages,
+  cachesList,
+  cachesGet,
+  cachesPut,
+  cachesDelete,
+  cachesClear,
+  cachesDeleteStorage,
+  type CacheEntryBody,
+} from "../session/cache-storage.js";
 
 /** A cookie as returned by a `cookiesList`. The Playwright path returns the full
  *  Playwright cookie object; the Safari path returns the WebDriver cookie shape.
@@ -116,6 +127,49 @@ export interface IdbClearResult {
   origin: string;
 }
 
+/** The Cache API result shapes — the universal envelopes the caches handlers
+ *  render. They mirror the `caches*` helper return types verbatim so the
+ *  Playwright path is a pass-through and the four engines' keystones stay
+ *  byte-identical. `CachesGetResult` reuses the helper's `CacheEntryBody` so the
+ *  text/binary split is shared, not re-declared. */
+export interface CachesListStoragesResult {
+  names: string[];
+  origin: string;
+}
+export interface CachesListResult {
+  entries: Array<{ url: string; method: string }>;
+  origin: string;
+  cacheName: string;
+}
+export type CachesGetResult =
+  | { found: false; cacheName: string; url: string; origin: string }
+  | (CacheEntryBody & { found: true; cacheName: string; url: string; origin: string });
+export interface CachesPutResult {
+  ok: true;
+  cacheName: string;
+  url: string;
+  origin: string;
+}
+export interface CachesDeleteResult {
+  ok: true;
+  existed: boolean;
+  cacheName: string;
+  url: string;
+  origin: string;
+}
+export interface CachesClearResult {
+  ok: true;
+  cleared: number;
+  cacheName: string;
+  origin: string;
+}
+export interface CachesDeleteStorageResult {
+  ok: true;
+  existed: boolean;
+  cacheName: string;
+  origin: string;
+}
+
 /** The storage capability port. One instance wraps one session's engine handle;
  *  the methods carry no engine type, so the handlers above this seam are
  *  engine-blind. Mirrors the ActionSubstrate / CaptureSubstrate shape. The
@@ -162,6 +216,31 @@ export interface StorageSubstrate {
     tool: string,
   ): Promise<IdbWriteResult>;
   idbClear(args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult>;
+  cachesListStorages(tool: string): Promise<CachesListStoragesResult>;
+  cachesList(
+    args: { cacheName: string; urlPattern?: string },
+    tool: string,
+  ): Promise<CachesListResult>;
+  cachesGet(args: { cacheName: string; url: string }, tool: string): Promise<CachesGetResult>;
+  cachesPut(
+    args: {
+      cacheName: string;
+      url: string;
+      response: {
+        status?: number;
+        headers?: Record<string, string>;
+        body?: string;
+        contentBase64?: string;
+      };
+    },
+    tool: string,
+  ): Promise<CachesPutResult>;
+  cachesDelete(args: { cacheName: string; url: string }, tool: string): Promise<CachesDeleteResult>;
+  cachesClear(args: { cacheName: string }, tool: string): Promise<CachesClearResult>;
+  cachesDeleteStorage(
+    args: { cacheName: string },
+    tool: string,
+  ): Promise<CachesDeleteStorageResult>;
 }
 
 /** Playwright engines — delegates cookie ops to the existing `cookiesList` /
@@ -255,6 +334,55 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
   idbClear(args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult> {
     return idbClear(this.page(), args, tool);
   }
+
+  cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
+    return cachesListStorages(this.page(), tool);
+  }
+
+  cachesList(
+    args: { cacheName: string; urlPattern?: string },
+    tool: string,
+  ): Promise<CachesListResult> {
+    return cachesList(this.page(), args, tool);
+  }
+
+  cachesGet(args: { cacheName: string; url: string }, tool: string): Promise<CachesGetResult> {
+    return cachesGet(this.page(), args, tool);
+  }
+
+  cachesPut(
+    args: {
+      cacheName: string;
+      url: string;
+      response: {
+        status?: number;
+        headers?: Record<string, string>;
+        body?: string;
+        contentBase64?: string;
+      };
+    },
+    tool: string,
+  ): Promise<CachesPutResult> {
+    return cachesPut(this.page(), args, tool);
+  }
+
+  cachesDelete(
+    args: { cacheName: string; url: string },
+    tool: string,
+  ): Promise<CachesDeleteResult> {
+    return cachesDelete(this.page(), args, tool);
+  }
+
+  cachesClear(args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
+    return cachesClear(this.page(), args, tool);
+  }
+
+  cachesDeleteStorage(
+    args: { cacheName: string },
+    tool: string,
+  ): Promise<CachesDeleteStorageResult> {
+    return cachesDeleteStorage(this.page(), args, tool);
+  }
 }
 
 /** Web-storage is origin-scoped and page-bound — the page MUST be at the target
@@ -294,13 +422,13 @@ async function safariWebStorageGuard(
  *  error envelopes match. Web-storage is page-side JS, so safaridriver runs it the
  *  same way: on the no-Playwright-Page Safari engine this is a NEW working
  *  capability (the handler previously had no Safari path and threw), surfaced
- *  through the same port so the handler stays engine-blind. IndexedDB is the
- *  exception: its API is promise-based, so the page-side script is an ASYNC IIFE
- *  that must be awaited — but safaridriver's `execute/sync` returns the moment the
- *  body returns and never observes the settled promise, and there is no
- *  async-script client on this handle. So every idb method REFUSES cleanly in the
- *  adapter (the same shape SafariEmulationSubstrate uses) rather than running a
- *  script whose result would always be a pending promise. RFC 0003. */
+ *  through the same port so the handler stays engine-blind. IndexedDB and the
+ *  Cache API are the exception: both APIs are promise-based, so the page-side script
+ *  is an ASYNC IIFE that must be awaited — but safaridriver's `execute/sync` returns
+ *  the moment the body returns and never observes the settled promise, and there is
+ *  no async-script client on this handle. So every idb and caches method REFUSES
+ *  cleanly in the adapter (the same shape SafariEmulationSubstrate uses) rather than
+ *  running a script whose result would always be a pending promise. RFC 0003. */
 export class SafariStorageSubstrate implements StorageSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
@@ -441,6 +569,55 @@ export class SafariStorageSubstrate implements StorageSubstrate {
     return Promise.reject(this.idbRefuse(tool));
   }
 
+  cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesList(
+    _args: { cacheName: string; urlPattern?: string },
+    tool: string,
+  ): Promise<CachesListResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesGet(_args: { cacheName: string; url: string }, tool: string): Promise<CachesGetResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesPut(
+    _args: {
+      cacheName: string;
+      url: string;
+      response: {
+        status?: number;
+        headers?: Record<string, string>;
+        body?: string;
+        contentBase64?: string;
+      };
+    },
+    tool: string,
+  ): Promise<CachesPutResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesDelete(
+    _args: { cacheName: string; url: string },
+    tool: string,
+  ): Promise<CachesDeleteResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesClear(_args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
+  cachesDeleteStorage(
+    _args: { cacheName: string },
+    tool: string,
+  ): Promise<CachesDeleteStorageResult> {
+    return Promise.reject(this.cachesRefuse(tool));
+  }
+
   // IndexedDB's API is promise-based, so its page-side script is an async IIFE that
   // must be awaited — but safaridriver's `execute/sync` returns the moment the body
   // returns, never observing the settled promise, and this handle has no
@@ -452,6 +629,18 @@ export class SafariStorageSubstrate implements StorageSubstrate {
       `\`${tool}\`: IndexedDB is not available on the Safari engine — its promise-based API ` +
         `needs an async page-script path that safaridriver's synchronous execute/sync cannot provide. ` +
         `Use a chromium, firefox, or webkit session for IndexedDB.`,
+    );
+  }
+
+  // The Cache API is promise-based exactly like IndexedDB — its page-side script is
+  // an async IIFE that safaridriver's synchronous execute/sync cannot await, and this
+  // handle has no async-script client. Same clean in-adapter refusal, keeping the
+  // engine check out of the handler.
+  private cachesRefuse(tool: string): Error {
+    return new Error(
+      `\`${tool}\`: the Cache API is not available on the Safari engine — its promise-based API ` +
+        `needs an async page-script path that safaridriver's synchronous execute/sync cannot provide. ` +
+        `Use a chromium, firefox, or webkit session for the Cache API.`,
     );
   }
 }

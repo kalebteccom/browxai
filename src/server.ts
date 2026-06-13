@@ -185,15 +185,6 @@ import {
   type StorageStateBlob,
   resolveWorkspacePath,
 } from "./session/storage.js";
-import {
-  cachesListStorages,
-  cachesList,
-  cachesGet,
-  cachesPut,
-  cachesDelete,
-  cachesClear,
-  cachesDeleteStorage,
-} from "./session/cache-storage.js";
 import { sanitizeUrl } from "./util/url-sanitizer.js";
 import { SecretRegistry } from "./util/secrets.js";
 import {
@@ -8313,7 +8304,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          cachesListStorages(e.session.page(), "caches_list_storages"),
+          storageFor(e).cachesListStorages("caches_list_storages"),
           cfgActionTimeout(),
           "caches_list_storages",
         );
@@ -8344,7 +8335,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          cachesList(e.session.page(), { cacheName, urlPattern }, "caches_list"),
+          storageFor(e).cachesList({ cacheName, urlPattern }, "caches_list"),
           cfgActionTimeout(),
           "caches_list",
         );
@@ -8372,7 +8363,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          cachesGet(e.session.page(), { cacheName, url }, "caches_get"),
+          storageFor(e).cachesGet({ cacheName, url }, "caches_get"),
           cfgActionTimeout(),
           "caches_get",
         );
@@ -8416,7 +8407,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("caches_put", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_put", c);
         const r = await withDeadline(
-          cachesPut(e.session.page(), { cacheName, url, response }, "caches_put"),
+          storageFor(e).cachesPut({ cacheName, url, response }, "caches_put"),
           cfgActionTimeout(),
           "caches_put",
         );
@@ -8446,7 +8437,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("caches_delete", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_delete", c);
         const r = await withDeadline(
-          cachesDelete(e.session.page(), { cacheName, url }, "caches_delete"),
+          storageFor(e).cachesDelete({ cacheName, url }, "caches_delete"),
           cfgActionTimeout(),
           "caches_delete",
         );
@@ -8475,7 +8466,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("caches_clear", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_clear", c);
         const r = await withDeadline(
-          cachesClear(e.session.page(), { cacheName }, "caches_clear"),
+          storageFor(e).cachesClear({ cacheName }, "caches_clear"),
           cfgActionTimeout(),
           "caches_clear",
         );
@@ -8504,7 +8495,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const c = await confirmByobAction("caches_delete_storage", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_delete_storage", c);
         const r = await withDeadline(
-          cachesDeleteStorage(e.session.page(), { cacheName }, "caches_delete_storage"),
+          storageFor(e).cachesDeleteStorage({ cacheName }, "caches_delete_storage"),
           cfgActionTimeout(),
           "caches_delete_storage",
         );

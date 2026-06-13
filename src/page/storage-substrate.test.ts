@@ -8,12 +8,13 @@ import type { SafariSessionHandle } from "../engine/index.js";
 import type { BrowserContext, Page } from "playwright-core";
 
 // The StorageSubstrate port routing/gating. The Playwright impl delegates to the
-// existing `cookiesList` / `cookiesSet` / `webStorage*` / `idb*` helpers (cookies
-// over a BrowserContext, web-storage + IndexedDB over a Page — all covered by the
-// per-engine keystones); these cover the Safari adapter's WebDriver cookie path, the
-// in-adapter domain derivation, the WebDriver `execute/sync` web-storage path that
-// replaced the per-handler `if (e.session.safari?.())` branches, and the in-adapter
-// IndexedDB refusal (its async API has no synchronous WebDriver path) (RFC 0003).
+// existing `cookiesList` / `cookiesSet` / `webStorage*` / `idb*` / `caches*` helpers
+// (cookies over a BrowserContext, web-storage + IndexedDB + Cache API over a Page —
+// all covered by the per-engine keystones); these cover the Safari adapter's
+// WebDriver cookie path, the in-adapter domain derivation, the WebDriver
+// `execute/sync` web-storage path that replaced the per-handler
+// `if (e.session.safari?.())` branches, and the in-adapter IndexedDB + Cache API
+// refusals (both async APIs have no synchronous WebDriver path) (RFC 0003).
 
 function safariHandle(opts?: { url?: string; scriptResult?: unknown }): {
   handle: SafariSessionHandle;
@@ -223,6 +224,39 @@ describe("SafariStorageSubstrate", () => {
     expect(scripts).toEqual([]);
     expect(added).toEqual([]);
   });
+
+  it("refuses every caches method cleanly WITHOUT touching the page (async API, sync driver)", async () => {
+    // The Cache API is promise-based exactly like IndexedDB, so its page-side script
+    // is an async IIFE safaridriver's synchronous execute/sync cannot await; each
+    // caches method refuses in the adapter rather than running a script whose result
+    // is a pending promise. The refusal names the tool + points at a Playwright
+    // engine, and no execute/sync call is attempted.
+    const { handle, scripts, added } = safariHandle();
+    const sub = new SafariStorageSubstrate(handle);
+    await expect(sub.cachesListStorages("caches_list_storages")).rejects.toThrow(
+      /`caches_list_storages`: the Cache API is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
+    );
+    await expect(sub.cachesList({ cacheName: "c" }, "caches_list")).rejects.toThrow(
+      /`caches_list`: the Cache API is not available on the Safari engine/,
+    );
+    await expect(sub.cachesGet({ cacheName: "c", url: "u" }, "caches_get")).rejects.toThrow(
+      /the Cache API is not available on the Safari engine/,
+    );
+    await expect(
+      sub.cachesPut({ cacheName: "c", url: "u", response: { body: "b" } }, "caches_put"),
+    ).rejects.toThrow(/the Cache API is not available on the Safari engine/);
+    await expect(sub.cachesDelete({ cacheName: "c", url: "u" }, "caches_delete")).rejects.toThrow(
+      /the Cache API is not available on the Safari engine/,
+    );
+    await expect(sub.cachesClear({ cacheName: "c" }, "caches_clear")).rejects.toThrow(
+      /the Cache API is not available on the Safari engine/,
+    );
+    await expect(
+      sub.cachesDeleteStorage({ cacheName: "c" }, "caches_delete_storage"),
+    ).rejects.toThrow(/the Cache API is not available on the Safari engine/);
+    expect(scripts).toEqual([]);
+    expect(added).toEqual([]);
+  });
 });
 
 describe("PlaywrightStorageSubstrate", () => {
@@ -343,6 +377,42 @@ describe("PlaywrightStorageSubstrate", () => {
     const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
     await expect(sub.idbListStores({ dbName: "d" }, "idb_list_stores")).rejects.toThrow(
       /IndexedDB is origin-scoped/,
+    );
+    expect(evaluated).toEqual([]);
+  });
+
+  it("delegates caches reads to the helper, evaluating the async IIFE on the Page", async () => {
+    const { context, page, evaluated } = ctxStub({
+      evalResult: { names: ["v1"], origin: "https://example.com" },
+    });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    const r = await sub.cachesListStorages("caches_list_storages");
+    expect(r).toEqual({ names: ["v1"], origin: "https://example.com" });
+    // The Playwright path runs the byte-identical pre-seam helper: an async IIFE
+    // driving the W3C Cache API through page.evaluate (no `return` wrapper).
+    expect(evaluated).toHaveLength(1);
+    expect(evaluated[0]).toContain("caches");
+    expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
+  });
+
+  it("delegates caches writes through the helper to page.evaluate", async () => {
+    const { context, page, evaluated } = ctxStub({
+      evalResult: { ok: true, cacheName: "c", url: "u", origin: "o" },
+    });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    const r = await sub.cachesPut(
+      { cacheName: "c", url: "u", response: { body: "b" } },
+      "caches_put",
+    );
+    expect(r).toEqual({ ok: true, cacheName: "c", url: "u", origin: "o" });
+    expect(evaluated[0]).toContain(".open(");
+  });
+
+  it("surfaces the caches origin guard on about:blank (no evaluate attempted)", async () => {
+    const { context, page, evaluated } = ctxStub({ url: "about:blank" });
+    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
+    await expect(sub.cachesList({ cacheName: "c" }, "caches_list")).rejects.toThrow(
+      /Cache API is origin-scoped/,
     );
     expect(evaluated).toEqual([]);
   });
