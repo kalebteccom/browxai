@@ -427,8 +427,10 @@ async function safariWebStorageGuard(
  *  is an ASYNC IIFE that must be awaited — but safaridriver's `execute/sync` returns
  *  the moment the body returns and never observes the settled promise, and there is
  *  no async-script client on this handle. So every idb and caches method REFUSES
- *  cleanly in the adapter (the same shape SafariEmulationSubstrate uses) rather than
- *  running a script whose result would always be a pending promise. RFC 0003. */
+ *  cleanly in the adapter — rejecting with a structured Error the handler's
+ *  `errText` renders (the pre-seam handlers threw at `page()`, so a reject keeps
+ *  that contract) — rather than running a script whose result would always be a
+ *  pending promise. RFC 0003. */
 export class SafariStorageSubstrate implements StorageSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
@@ -622,8 +624,9 @@ export class SafariStorageSubstrate implements StorageSubstrate {
   // must be awaited — but safaridriver's `execute/sync` returns the moment the body
   // returns, never observing the settled promise, and this handle has no
   // async-script client. Rather than run a script whose result is always a pending
-  // promise, every idb method refuses cleanly here (the SafariEmulationSubstrate
-  // pattern), keeping the engine check out of the handler.
+  // promise, every idb method refuses cleanly here by rejecting with this Error
+  // (the handler's `errText` renders it — the pre-seam handlers threw at `page()`,
+  // so a reject preserves that contract), keeping the engine check out of the handler.
   private idbRefuse(tool: string): Error {
     return new Error(
       `\`${tool}\`: IndexedDB is not available on the Safari engine — its promise-based API ` +
