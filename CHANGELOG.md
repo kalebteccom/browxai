@@ -10,6 +10,37 @@ surface" covers.
 
 ### Added
 
+- **`network_read` / `ws_read` / `network_body` (and the per-action network
+  slice of every `ActionResult`) now run on Firefox and WebKit.** The network/WS
+  tap + response-body fetch moved behind one `NetworkSubstrate` interface (RFC
+  0002 D5, hybrid): `CdpNetworkSubstrate` keeps the existing CDP `NetworkBuffer` /
+  `WsBuffer` / `NetworkTap` / `fetchResponseBody` path on Chromium **verbatim**
+  (byte-identical — the Chromium keystones + unit tests pass unchanged), and
+  `PlaywrightNetworkSubstrate` drives `context.on('request'|'response'|...)` for
+  HTTP, `page.on('websocket')` for WS frames, and a response-time body cache for
+  `network_body` on Firefox/WebKit. Both produce the same `NetworkEntry` /
+  `NetworkSummary` / `MutationEntry` / `WsFrame` shapes (same noise-fold, same
+  secrets masking via the shared egress chokepoint), so every consumer above the
+  seam is engine-blind. The substrate is selected by the engine's CDP capability
+  (`networkSubstrateFor`, mirroring `snapshotSubstrateFor`), not an engine-name
+  check, and captured once per session — the session-wide rings ARE the
+  substrate's rings. The hybrid keeps Chromium on CDP on benchmark evidence
+  (`scripts/bench-network-envelope.ts`): the per-action envelope measured CDP
+  228.40 ms vs Playwright-event 228.45 ms (Δ 0.02 %, within noise), pure tap
+  overhead 0.22 ms vs 0.32 ms — the event path adds no measurable hot-path cost,
+  but there is no upside to swapping Chromium's byte-identical CDP path, so the
+  event path is firefox/webkit-only. Off-Chromium fidelity tradeoffs are
+  documented, not regressions: resourceType taxonomy is reconciled onto the CDP
+  bucket names (`cdpTypeFromPlaywright`), timing is wall-clock, response bodies
+  are captured at response time into a bounded LRU (no after-the-fact CDP fetch),
+  and SSE degrades (no discrete Playwright event). `sw_intercept_fetch` stays
+  CDP-gated off Chromium (Fetch.\* on the SW target has no Playwright-event
+  equivalent). The Firefox keystone gains a `network_read` assertion on real
+  Firefox (a real Script subresource record + a substrate-minted requestId) plus
+  a `network_body` capability-gate check. See
+  `docs/ai-context/architecture/engine-adapters.md` (P2b substrate section + the
+  updated per-engine matrix).
+
 - **WebKit is a real third engine (`browserType:"webkit"`).** A
   `PlaywrightWebKitAdapter` (`src/engine/adapters/playwright-webkit.ts`) drives
   Playwright's bundled WebKit build — the WebKit-**engine** correctness lane per
@@ -30,9 +61,10 @@ surface" covers.
   adapter + a capability row, not a gate edit). Both substrates were already
   engine-agnostic, so WebKit gets `snapshot` / `find` / `navigate` / `click` /
   `fill` / `text_search` / `extract` / `set_of_marks` / `plan` for free via the
-  P2a page-side walker (selected by CDP-absence, not engine name); the network
-  slice rides P2b's Playwright-event tap when it lands (until then `network_read`
-  / `ws_read` / `network_body` skip, same as Firefox). WebKit BYOB is a structured
+  P2a page-side walker (selected by CDP-absence, not engine name), and
+  `network_read` / `ws_read` / `network_body` + the action envelope's network
+  slice via the P2b Playwright-event substrate (selected the same way) — same as
+  Firefox, with no substrate code change. WebKit BYOB is a structured
   `webkit-attach-not-supported` refusal (no CDP/BiDi attach client; Safari has not
   shipped BiDi as of June 2026 — RFC D7). A real-WebKit keystone lane
   (`test/keystone/webkit.keystone.test.ts`, threaded via
