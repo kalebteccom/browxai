@@ -9,9 +9,11 @@ import {
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
   PlaywrightWebKitAdapter,
+  SafaridriverHybridAdapter,
   firefoxChannelFromEnv,
   type EngineKind,
 } from "../engine/index.js";
+import { buildSafariSession } from "./safari-session.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 export async function openManagedSession(opts: SessionOptions = {}): Promise<BrowserSession> {
@@ -23,6 +25,20 @@ export async function openManagedSession(opts: SessionOptions = {}): Promise<Bro
   // than try to launch a chromium process locally.
   if (engine === "android") {
     await new AndroidCdpAdapter().launch();
+  }
+  // safari (P4) is the first non-Playwright engine — real Safari.app over
+  // safaridriver in an isolated automation window. Managed mode IS the safari
+  // model (no headless Safari, no separate-context incognito), so it returns here
+  // with a Safari-native session whose page() throws; Safari-capable tools route
+  // through session.safari() (RFC 0002 D7/P4). The Playwright launch path below is
+  // never reached for safari.
+  if (engine === "safari") {
+    const handle = await new SafaridriverHybridAdapter().launchManaged();
+    log.info("session.managed: safari session ready", {
+      sessionId: handle.sessionId,
+      hasBidi: handle.hasBidi,
+    });
+    return buildSafariSession(handle);
   }
   log.info("session.managed: launching", { profileDir, headless: !!opts.headless, engine });
 

@@ -25,6 +25,19 @@ export async function openIncognitoSession(opts: SessionOptions = {}): Promise<B
   if (engine === "android") {
     await new AndroidCdpAdapter().launch();
   }
+  // safari runs ISOLATED automation windows via the default managed session
+  // (safaridriver already isolates each session — no cookies/storage from a real
+  // profile). Incognito (a separate in-browser context) is a Playwright concept
+  // safaridriver has no equivalent for, so refuse rather than silently launch a
+  // managed window the caller didn't ask for (RFC 0002 D7/P4).
+  if (engine === "safari") {
+    throw new Error(
+      "safari-incognito-not-supported: the safari engine runs isolated automation windows via the " +
+        "default managed session (safaridriver isolates each session by construction). Incognito (a " +
+        "separate browser context) is a Playwright concept safaridriver has no equivalent for. Open a " +
+        "managed session instead. See docs/rfcs/0002-multi-engine-bidi.md.",
+    );
+  }
   log.info("session.incognito: launching ephemeral browser", {
     headless: !!opts.headless,
     engine,

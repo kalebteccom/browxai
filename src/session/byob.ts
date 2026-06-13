@@ -11,6 +11,7 @@ import {
   PlaywrightChromiumAdapter,
   PlaywrightFirefoxAdapter,
   PlaywrightWebKitAdapter,
+  SafaridriverHybridAdapter,
   type EngineKind,
 } from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
@@ -153,6 +154,14 @@ export async function openByobSession(
   if (engine === "android") {
     return openAndroidByobSession();
   }
+  // safari cannot attach to a live browser at all — safaridriver hard-isolates
+  // each session into a clean ephemeral automation window, and the webinspectord
+  // XPC surface that would allow attach is closed to third parties (RFC 0002 D7,
+  // references/05-safari-xpc.md). Refuse before the attachCdp requirement, like
+  // android, with the adapter's structured `safari-attach-not-supported`.
+  if (engine === "safari") {
+    await new SafaridriverHybridAdapter().attach();
+  }
   if (!opts.attachCdp) {
     throw new Error(
       "session.byob: the CDP-attach lane requires BROWX_ATTACH_CDP (a loopback CDP endpoint). " +
@@ -171,11 +180,14 @@ export async function openByobSession(
     await new PlaywrightFirefoxAdapter().attach(url.toString());
   }
   if (engine === "webkit") {
-    // WebKit has no CDP/BiDi attach client (Safari has not shipped BiDi as of
-    // June 2026, and safaridriver hard-isolates automation — attach-to-live is
-    // impossible by design, RFC D7). Surface the structured
-    // `webkit-attach-not-supported` error before the CDP-attach body, which is
-    // Chromium-only by nature.
+    // Playwright's WebKit build has no CDP/BiDi attach client, and real Safari
+    // attach is impossible regardless: safaridriver hard-isolates automation into
+    // an ephemeral window (attach-to-live is impossible by design, RFC D7) — and
+    // although Safari 26.5 DOES now ship partial WebDriver BiDi behind the
+    // `safari:experimentalWebSocketUrl` cap (references/06-safari-bidi-probe.md),
+    // that BiDi is still session-isolated, not an attach-to-the-real-profile door.
+    // Surface the structured `webkit-attach-not-supported` error before the
+    // CDP-attach body, which is Chromium-only by nature.
     await new PlaywrightWebKitAdapter().attach(url.toString());
   }
   log.warn(ATTACH_WARNING);
