@@ -5,7 +5,8 @@
 import type { CDPSession, Frame, Page } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { composeSnapshot, composeSnapshotForFrame } from "./compose.js";
+import { composeSnapshotForFrame } from "./compose.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 import type { FeedbackMemory } from "./learning.js";
@@ -172,9 +173,15 @@ const CONTAINER_ROLES = new Set([
  */
 export async function find(
   page: Page,
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: FindOptions,
+  /** Raw CDP handle for the visible-rect bbox fast path — present only on
+   *  chromium (where a11y nodes carry `backendDOMNodeId`). Off Chromium the
+   *  walker mints no `backendDOMNodeId`, so this is unused and the portable
+   *  `locatorBoundingBox` fallback computes the box. Optional so the engine
+   *  type never enters the find tool path. */
+  cdp?: CDPSession,
 ): Promise<FindResult> {
   // Use the composed tree (a11y + DOM-walk fallback) so we can find candidates that
   // only exist on the DOM-walk side — the  #7 win on heavy-SPA targets.
@@ -189,7 +196,7 @@ export async function find(
       ? await composeSnapshotForFrame(opts.frame, refs, opts.testAttributes, opts.frameId, {
           pierce: opts.pierce,
         })
-      : await composeSnapshot(cdp, refs, opts.testAttributes, { pierce: opts.pierce });
+      : await substrate.compose(refs, opts.testAttributes, { pierce: opts.pierce });
   const { tree } = composed;
   if (!tree) {
     // Same byte-identical-back-compat reasoning as the success path:
@@ -273,7 +280,7 @@ export async function find(
       // probed via CDP with the right node-id juggling but the
       // locator-bounding-box path is portable and identical-behaviour.
       let bbox =
-        opts.frame === undefined && node.backendDOMNodeId !== undefined
+        opts.frame === undefined && cdp !== undefined && node.backendDOMNodeId !== undefined
           ? await visibleRect(cdp, node.backendDOMNodeId)
           : null;
       // attached/BYOB: the CDP rect path can spuriously null out a rendered

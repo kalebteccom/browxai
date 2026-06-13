@@ -10,6 +10,33 @@ surface" covers.
 
 ### Added
 
+- **`snapshot` / `find` / `navigate` / `click` / `fill` (and `text_search` /
+  `extract` / `set_of_marks` / `plan`) now run on Firefox.** The snapshot/a11y
+  substrate moved behind one `SnapshotSubstrate` interface (RFC 0002 D4, hybrid):
+  `CdpSnapshotSubstrate` keeps the existing CDP `Accessibility.getFullAXTree` +
+  DOM-walk path on Chromium **verbatim** (byte-identical — the 71 Chromium
+  keystones + 1663 unit tests pass unchanged), and `PlaywrightSnapshotSubstrate`
+  drives a page-side ARIA/DOM walker over `frame.evaluate` on Firefox/WebKit. The
+  walker mints the **same** content-hashed refs (stable across substrates and
+  re-snapshots), so a `find` candidate's ref survives the next `snapshot`
+  regardless of engine. The substrate is selected by the engine's CDP capability
+  (`snapshotSubstrateFor`), not an engine-name check, and captured once per
+  session so the hot snapshot/find path is a direct delegate (no per-call
+  allocation; the dispatch hop is sub-nanosecond, ~7 orders of magnitude below
+  the CDP/DOM-walk roundtrip it wraps). The action window builds its pre/post
+  `snapshotDelta` from the substrate and detects navigation via the cross-browser
+  `page.on('framenavigated')`, so `navigate` / `click` / `fill` produce a real
+  `ActionResult` envelope on Firefox (the **network slice is empty** there until
+  the Playwright-event network tap lands — P2b). The walker was chosen over
+  `locator.ariaSnapshot()` on benchmark evidence: ariaSnapshot carries no test
+  attributes (0 testId nodes vs the walker's 9 on a testid-tagged fixture, 0/5 vs
+  4/5 find targets, ~10× slower). `shadow_trees` (closed-shadow piercing) stays
+  CDP-gated on Firefox — no off-Chromium protocol reaches closed shadow roots.
+  The Firefox keystone gains a `navigate → snapshot → find → fill → click` flow
+  on real Firefox proving stable refs + a ranked target + acted-on effect. See
+  `docs/ai-context/architecture/engine-adapters.md` (P2a substrate section + the
+  updated per-engine matrix).
+
 - **Firefox is a real second engine (`browserType:"firefox"`).** A
   `PlaywrightFirefoxAdapter` over Playwright's bundled Juggler Firefox lands
   behind the `BrowserEngine` port — the proof the engine port generalizes to a

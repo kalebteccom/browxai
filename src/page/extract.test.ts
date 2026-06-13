@@ -42,6 +42,21 @@ const noPage = new Proxy(
   },
 ) as unknown as Page;
 
+/** Substrate stub returning an empty tree — mirrors the "the page couldn't be
+ *  reached → null a11y tree" outcome the old `composeSnapshot`-throws path
+ *  produced (it caught the error internally and returned `{tree:null}`). Used by
+ *  the tests that exercise extract()'s post-validate, empty-snapshot branch
+ *  (which surfaces as scope-not-found) without standing up a real engine. */
+const emptySubstrate = {
+  engine: "test",
+  compose: async () => ({
+    tree: null,
+    stats: { a11yInteractive: 0, domWalkEntries: 0, domWalkNew: 0, domWalkCombined: 0 },
+    warnings: [],
+  }),
+  a11yTree: async () => null,
+} as unknown as Parameters<typeof extract>[1];
+
 describe("validateSchema", () => {
   it("accepts a well-formed object schema", () => {
     expect(
@@ -322,7 +337,7 @@ describe("extract() — top-level failure shapes", () => {
   // and `mode` before touching the page, so we can pass an obviously-broken
   // `cdp`/`refs` and still exercise the early-return paths.
 
-  const cdp = noPage as unknown as Parameters<typeof extract>[1];
+  const cdp = emptySubstrate;
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
   it('retired `mode:"llm-assisted"` is tolerated — warn + fall through to deterministic (v0.3.2)', async () => {
@@ -632,7 +647,7 @@ describe("applySchemaRelaxations — Proposal A: integer → number auto-coerce"
   });
 
   it("extract() now returns ok:true on a top-level `integer` schema (flips v0.2.2's invalid-schema)", async () => {
-    const cdp = noPage as unknown as Parameters<typeof extract>[1];
+    const cdp = emptySubstrate;
     const refs = noPage as unknown as Parameters<typeof extract>[2];
     // We can't run the full extract() against noPage (composeSnapshot would
     // throw), but the validate path is the contractual flip-point: before
@@ -720,7 +735,7 @@ describe("applySchemaRelaxations — Proposal B: `selector` on array aliases `co
 });
 
 describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", () => {
-  const cdp = noPage as unknown as Parameters<typeof extract>[1];
+  const cdp = emptySubstrate;
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
   it("env unset → unknown-hint-key keeps v0.2.2 partialMisses-only behavior (no rejection from this path)", async () => {

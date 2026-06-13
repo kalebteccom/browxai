@@ -22,7 +22,7 @@ import type { CDPSession, Page } from "playwright-core";
 import { buildSelectorHint, type FindCandidate } from "./find.js";
 import type { RefRegistry } from "./refs.js";
 import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
-import { composeSnapshot } from "./compose.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { walk, type A11yNode } from "./a11y.js";
 
 export type LabelMode = "index" | "ref" | "role";
@@ -99,10 +99,14 @@ function hasBbox(
  */
 export async function resolveCandidates(
   page: Page,
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   testAttributes: string[],
   candidates: MarkCandidate[],
+  /** CDP handle for the visible-rect bbox fast path — chromium only. Off
+   *  Chromium the walker has no `backendDOMNodeId`, so bbox computes via the
+   *  portable `locatorBoundingBox` fallback. */
+  cdp?: CDPSession,
 ): Promise<{ entries: MarkEntry[]; warnings: string[] }> {
   const warnings: string[] = [];
   const entries: MarkEntry[] = [];
@@ -120,7 +124,7 @@ export async function resolveCandidates(
     // with ancestor-overflow + viewport intersection applied — so calibration
     // bbox == screenshot-marks bbox for the same ref.
     try {
-      const { tree } = await composeSnapshot(cdp, refs, testAttributes);
+      const { tree } = await substrate.compose(refs, testAttributes);
       if (tree) {
         const m = new Map<string, A11yNode>();
         for (const { node } of walk(tree)) {
@@ -169,7 +173,7 @@ export async function resolveCandidates(
     // matching DOM, and Playwright's `boundingBox()` auto-waits 30 s before
     // returning null on a non-matching selector. Cap the fallback at 1 s.
     let bbox: VisibleRect | null =
-      looked.backendDOMNodeId !== undefined
+      cdp !== undefined && looked.backendDOMNodeId !== undefined
         ? await visibleRect(cdp, looked.backendDOMNodeId)
         : null;
     if (bbox === null) {
@@ -294,18 +298,21 @@ function buildRemoveScript(overlayId: string): string {
  */
 export async function screenshotMarks(
   page: Page,
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: SetOfMarksOptions,
+  /** CDP handle for the visible-rect bbox fast path — chromium only. */
+  cdp?: CDPSession,
 ): Promise<SetOfMarksResult> {
   const testAttributes = opts.testAttributes ?? [];
   const label: LabelMode = opts.label ?? "index";
   const { entries, warnings } = await resolveCandidates(
     page,
-    cdp,
+    substrate,
     refs,
     testAttributes,
     opts.candidates,
+    cdp,
   );
 
   // Only paint entries that have a bbox to paint.

@@ -26,6 +26,7 @@
 import { randomUUID } from "node:crypto";
 import type { CDPSession, Page } from "playwright-core";
 import { find, type FindCandidate } from "./find.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import type { RefRegistry } from "./refs.js";
 import type { ActionContext, ActionResult } from "./actionresult.js";
 import * as actions from "./actions.js";
@@ -230,9 +231,11 @@ export function estimateDescriptorTokens(d: ActionDescriptor): number {
  */
 export async function plan(
   page: Page,
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: PlanOptions,
+  /** CDP handle for find()'s visible-rect bbox fast path — chromium only. */
+  cdp?: CDPSession,
 ): Promise<PlanOutcome> {
   const argError = validateVerbArgs(opts.verb, opts.verbArgs);
   if (argError) {
@@ -240,16 +243,22 @@ export async function plan(
   }
   const ttlMs = clampTtl(opts.ttlMs);
 
-  const result = await find(page, cdp, refs, {
-    query: opts.query,
-    testAttributes: opts.testAttributes,
-    contextRef: opts.contextRef,
-    confidenceFloor: opts.confidenceFloor,
-    fallbackHints: opts.fallbackHints,
-    // bound the candidate list so evidence.alternatives stays small (we
-    // only ever return the top + up to 4 alts).
-    maxCandidates: 5,
-  });
+  const result = await find(
+    page,
+    substrate,
+    refs,
+    {
+      query: opts.query,
+      testAttributes: opts.testAttributes,
+      contextRef: opts.contextRef,
+      confidenceFloor: opts.confidenceFloor,
+      fallbackHints: opts.fallbackHints,
+      // bound the candidate list so evidence.alternatives stays small (we
+      // only ever return the top + up to 4 alts).
+      maxCandidates: 5,
+    },
+    cdp,
+  );
 
   if (result.candidates.length === 0) {
     return {

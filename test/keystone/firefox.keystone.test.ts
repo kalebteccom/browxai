@@ -6,22 +6,30 @@
 // the adapter launches, the seam tags the session firefox, the CDP-free class-A
 // tools work, and the CDP-deep tools structured-refuse.
 //
-// SCOPE (RFC 0002 P1 — the network/a11y CDP substrate is P2):
+// SCOPE (RFC 0002 — P1 landed Firefox + the engine gate; P2a landed the
+// snapshot/a11y substrate behind an interface, un-gating the read + action core):
 //   RUNS on Firefox (class-A, CDP-free — they ride Playwright's cross-browser
 //   surface directly, not the CDP envelope/substrate):
 //     - open_session(firefox) + list_sessions.engine === "firefox"
 //     - cookies_set / cookies_list   (context-level cookie jar)
 //     - dump_storage_state            (context.storageState)
 //     - screenshot                    (page.screenshot)
+//   RUNS on Firefox (P2a — the snapshot/a11y substrate now has a Playwright
+//   page-side walker behind the SnapshotSubstrate interface, so these mint refs
+//   + build their ActionResult envelope off Playwright, not CDP):
+//     - navigate                      (page.goto + framenavigated nav detection)
+//     - snapshot                      (the walker tree — real refs, [from-dom])
+//     - find                          (ranks a target, locatorBoundingBox bbox)
+//     - click / fill                  (action window over the walker a11y delta;
+//                                      the network slice is empty — that is P2b)
+//     - text_search                   (walker-sourced tree)
 //   ASSERTS-REFUSAL on Firefox (CDP-deep — audit class B + live-CDP class C):
 //     - perf_start / coverage_start / heap_snapshot / cpu_emulate
 //     - pdf_save / set_user_agent / network_emulate
-//   SKIPS on Firefox (P2 — needs the snapshot/network CDP substrate ported, so
-//   their ActionResult envelope can be built off Playwright events instead of
-//   the CDP tap):
-//     - navigate / snapshot / find / click / fill / network_read  (the
-//       ActionResult envelope + a11y substrate are CDP-fed today; see the
-//       per-engine matrix in engine-adapters.md)
+//     - shadow_trees  (closed-shadow pierce is CDP-only — RFC D4)
+//   SKIPS on Firefox (P2b — needs the network CDP tap ported onto Playwright
+//   events before the network slice of the envelope is populated):
+//     - network_read / ws_read / network_body
 //
 // The per-engine expectation matrix lives in
 // docs/ai-context/architecture/engine-adapters.md (the capability matrix table).
@@ -65,6 +73,14 @@ async function callJson<T = Record<string, unknown>>(
   const res = await fn(args);
   const text = (res.content[0] as { text: string }).text;
   return JSON.parse(text) as T;
+}
+
+// snapshot returns plain text (header + serialised tree), not JSON.
+async function callText(name: string, args: Record<string, unknown>): Promise<string> {
+  const fn = handlers[name];
+  if (!fn) throw new Error(`firefox keystone: no handler "${name}"`);
+  const res = await fn(args);
+  return (res.content[0] as { text: string }).text;
 }
 
 beforeAll(async () => {
@@ -221,6 +237,106 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
         offline: true,
       });
       expect(net.hint).toContain("refuse-pending");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "P2a — snapshot/find/navigate/click/fill run on real Firefox via the page-side substrate",
+    async () => {
+      // The headline of P2a: the snapshot/a11y substrate now has a Playwright
+      // walker behind the SnapshotSubstrate interface, so the read + action
+      // core that was CDP-gated on Firefox in P1 works on real Firefox. This is
+      // the proof mocks cannot give (evaluate-serialization only fails on a real
+      // engine — the page-side-function discipline). Mirrors the chromium
+      // headless keystone's snapshot → find → fill flow against the same fixture.
+      const session = "ff-substrate";
+      await callJson("open_session", { session, mode: "incognito" });
+
+      // (0) navigate — page.goto + the Playwright `framenavigated` nav detector
+      // (replacing the chromium-only CDP `Page.frameNavigated`). The action
+      // window builds its envelope with an EMPTY network slice (the CDP tap is
+      // P2b) but a real a11y delta from the walker.
+      const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
+        session,
+        url: `${fixture.url}/`,
+      });
+      expect(nav.ok).toBe(true);
+
+      // (1) snapshot — the page-side walker actually ran against a real Firefox
+      // page and surfaced the DOM-walk testIds. [from-dom] is the substrate
+      // marker (Firefox has no CDP a11y tree; the walker is the source).
+      const snap = await callText("snapshot", { session });
+      expect(snap).toContain('[data-testid="save-btn"]');
+      expect(snap).toContain('[data-testid="record-grid"]');
+      expect(snap).toContain("[from-dom]");
+
+      // (2) snapshot refs are STABLE across calls — the content-hashed ref for
+      // the same element survives a re-snapshot (the cross-substrate ref-
+      // identity guarantee: elementKey hashes role/name/path/testId, not CDP
+      // node ids). Extract the save-btn ref from both passes and compare.
+      const refOf = (text: string, testId: string): string | undefined =>
+        text.match(new RegExp(`\\[ref=(e\\d+)\\][^\\n]*\\[data-testid="${testId}"\\]`))?.[1] ??
+        text.match(new RegExp(`\\[data-testid="${testId}"\\][^\\n]*\\[ref=(e\\d+)\\]`))?.[1];
+      const saveRef1 = refOf(snap, "save-btn");
+      expect(saveRef1, "save-btn ref present in snapshot").toBeTruthy();
+      const snap2 = await callText("snapshot", { session });
+      const saveRef2 = refOf(snap2, "save-btn");
+      expect(saveRef2, "save-btn ref stable across re-snapshot").toBe(saveRef1);
+
+      // (3) find — ranks the Save button as a tier-1, high-stability, actionable
+      // candidate. bbox comes from the portable `locatorBoundingBox` (the walker
+      // mints no backendDOMNodeId, so the CDP visible-rect path is skipped and
+      // the Playwright fallback computes the box) — proof the bbox story works
+      // off Chromium.
+      const found = await callJson<{
+        candidates: Array<{
+          selectorHint: string;
+          stability: string;
+          actionable: unknown;
+          selectorTier: number;
+          bbox: unknown;
+          clipped: boolean;
+        }>;
+      }>("find", { session, query: "the Save button", visibleOnly: true });
+      const saveCand = found.candidates.find((c) => c.selectorHint.includes("save-btn"));
+      expect(saveCand, "save-btn candidate ranked by find on firefox").toBeTruthy();
+      expect(saveCand!.stability).toBe("high");
+      expect(saveCand!.selectorTier).toBe(1);
+      expect(saveCand!.actionable).toBe(true);
+      expect(saveCand!.clipped).toBe(false);
+      expect(saveCand!.bbox).not.toBeNull();
+
+      // (4) fill — the action window dispatches via the Playwright locator and
+      // builds the post-state probe from the walker a11y delta. The post-write
+      // DOM value proves the action landed on real Firefox.
+      const filled = await callJson<{
+        ok: boolean;
+        element?: { stillAttached: boolean; value?: string | null };
+      }>("fill", {
+        session,
+        selector: '[data-testid="task-input"]',
+        value: "firefox-substrate-keystone",
+      });
+      expect(filled.ok).toBe(true);
+      expect(filled.element?.stillAttached).toBe(true);
+      expect(filled.element?.value).toBe("firefox-substrate-keystone");
+
+      // (5) click — drives the Save button; the fixture flips #saved
+      // "Unsaved" → "Saved OK". text_search (also substrate-sourced) confirms
+      // the app-side effect, proving the click acted through the action window.
+      const clicked = await callJson<{ ok: boolean }>("click", {
+        session,
+        selector: '[data-testid="save-btn"]',
+      });
+      expect(clicked.ok).toBe(true);
+      const saved = await callJson<{ count: number }>("text_search", {
+        session,
+        text: "Saved OK",
+        exact: true,
+        includeHidden: true,
+      });
+      expect(saved.count).toBeGreaterThanOrEqual(1);
     },
     KEYSTONE_TIMEOUT,
   );

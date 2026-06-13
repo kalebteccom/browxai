@@ -124,7 +124,9 @@ adapter.
 | Doctor reports the active engine                                   |   ✅   |
 | Firefox Juggler adapter + Firefox keystone lane + engine gating    |   ✅   |
 | Firefox-availability doctor check + `moz-firefox` channel flag     |   ✅   |
-| playwright-webkit adapter; snapshot/network hybrid substrates      |   P2   |
+| Snapshot/a11y substrate behind `SnapshotSubstrate` (P2a)           |   ✅   |
+| Firefox network tap on Playwright events (P2b)                     |   P2   |
+| playwright-webkit adapter (P2c)                                    |   P2   |
 | stock-Firefox `moz-firefox` BiDi adapter; Android adb+CDP adapter  |   P3   |
 | real-Safari lane; Safari-BiDi engine row when upstream ships       |   P4   |
 
@@ -167,42 +169,109 @@ for a user's running Firefox. The Firefox attach model is a glass-box BiDi
 **launch** of the real profile (`--remote-debugging-port`, profile-lock-bound),
 not a CDP-attach; `BROWX_ATTACH_BIDI` is the reserved name.
 
+## P2a: the snapshot/a11y substrate (RFC D4 — hybrid behind one interface)
+
+The read core (`snapshot` / `find` / `extract` / `text_search` / `set-of-marks` /
+`plan`) and the action-window pre/post `snapshotDelta` mint refs from **one**
+`SnapshotSubstrate` interface (`src/page/snapshot-substrate.ts`), not a raw
+`CDPSession`. This is what un-gates `navigate` / `click` / `fill` / `snapshot` /
+`find` on Firefox. The seam is dependency direction made concrete: tools →
+`SnapshotSubstrate` → implementation → CDP / Playwright. The engine handle is
+captured at substrate construction, so the per-call method surface carries no
+engine type — that is the line that decouples the read/action core from CDP.
+
+Two methods, derived from what the tools actually call (no speculative members):
+
+| Method                            | Callers                                                                                  |
+| --------------------------------- | ---------------------------------------------------------------------------------------- |
+| `compose(refs, testAttrs, opts?)` | snapshot / find / extract / text_search / set-of-marks / plan / shadow_trees ref-resolve |
+| `a11yTree(refs, testAttrs)`       | the action window's pre/post `snapshotDelta`; `watch`'s region sampling                  |
+
+Two implementations (hybrid per D4):
+
+- **`CdpSnapshotSubstrate` (chromium)** — delegates to `composeSnapshot` /
+  `getA11yTree` **verbatim** over the captured `CDPSession`. Byte-identical to
+  the pre-seam path: the 71 chromium keystones + 1663 unit tests pass unchanged.
+- **`PlaywrightSnapshotSubstrate` (firefox / webkit)** — the page-side ARIA/DOM
+  walker over `frame.evaluate` (main world), the SAME `PAGE_SCRIPT` the already-
+  portable `composeSnapshotForFrame` runs, generalized to the main frame. It
+  mints the SAME content-hashed ref (`elementKey` over role/name/path/testId), so
+  a ref is stable across substrates and across re-snapshots.
+
+Selection is the engine's, declared by whether it exposes the raw-CDP handle
+(`snapshotSubstrateFor(session)` — `src/page/snapshot-substrate-select.ts`): CDP
+present → the CDP substrate; absent → the walker. No engine-name check scattered
+through the tools. Wired once per session entry (`SessionEntry.snapshotSubstrate`)
+so the hot snapshot/find path is a captured-handle delegate — a sub-nanosecond
+dispatch hop, ~7 orders of magnitude below the millisecond CDP/DOM-walk roundtrip
+it wraps; no per-call allocation (doctrine: hot path measured, not guessed).
+
+**Why the walker, not `locator.ariaSnapshot()` (RFC D4 open input #3 —
+benchmarked):** `ariaSnapshot()` carries no test attributes, so on a testid-
+tagged page it produced 0 testId-bearing nodes vs the walker's 9, hit 0/5 find
+targets vs the walker's 4/5, and ran ~10× slower (104 ms vs 10 ms). `find` scores
++5 on a testId hit and `elementKey` hashes testId into the ref, so an ariaSnapshot
+substrate degrades both ranking and ref stability. The walker also emits exactly
+the `DomWalkEntry` shape the existing merge path consumes, so the Firefox tree is
+byte-shape-identical to the chromium DOM-walk leaves.
+
+**The off-Chromium fidelity tradeoff (documented, not a regression):** Firefox has
+no `Accessibility.getFullAXTree`, so the walker tree is a synthetic `WebArea` root
+with the interactive / test-attr-bearing elements as leaf children — the same
+flat shape `composeSnapshotForFrame` produces. The deep AX structural nesting
+chromium emits is not present, but `find` / `text_search` / `extract` walk flat
+and the ref-minting + ranking signal (role / name / testId / cssPath) is all
+there. bbox off-Chromium rides the portable `locatorBoundingBox` fallback (the
+walker mints no `backendDOMNodeId`, so the CDP visible-rect path is skipped). The
+one true loss is closed-shadow piercing (`shadow_trees`), which needs CDP
+`DOM.getDocument({pierce:true})` — gated off Chromium.
+
+**Network is P2b:** the action window's network slice rides the CDP `NetworkTap`,
+which is absent off Chromium — so the network block is empty and `network_read` /
+`ws_read` / `network_body` stay gated/skipped on Firefox until the Playwright-
+event tap lands. The a11y delta, navigation (`page.on('framenavigated')`,
+cross-browser), console, dialogs, and element probe all build on every engine.
+
 ### Per-engine capability matrix (RFC task #24)
 
 Tool family × engine. **works** = runs through the cross-browser surface;
 **gated** = structured-refused with a hint (the engine lacks the substrate);
-**P2** = will work once the snapshot/network CDP substrate ports onto Playwright
-events. WebKit's adapter is P2 (column shown for the shape only).
+**P2b** = will work once the network CDP tap ports onto Playwright events; **P2**
+in the WebKit column = lands with the playwright-webkit adapter (P2c). P2a (this
+landing) moved the snapshot/a11y read + action core to **works** on Firefox.
 
-| Tool family                                                           | Chromium |           Firefox (Juggler)            | WebKit |
-| --------------------------------------------------------------------- | :------: | :------------------------------------: | :----: |
-| Session lifecycle (open/close/list); engine tag                       |  works   |                 works                  |   P2   |
-| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |                 works                  |   P2   |
-| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |                 works                  |   P2   |
-| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |                 works                  |   P2   |
-| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |                 works                  |   P2   |
-| HAR / video / route mocking / WS-interactive / canvas                 |  works   |                 works                  |   P2   |
-| `navigate` / `click` / `fill` / `snapshot` / `find` (CDP envelope)    |  works   | **P2** (a11y + network substrate port) |   P2   |
-| `network_read` / `ws_read` / `network_body` (CDP tap)                 |  works   |     **P2** (Playwright-event tap)      |   P2   |
-| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |               **gated**                |   P2   |
-| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |               **gated**                |   P2   |
-| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |               **gated**                |   P2   |
-| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |               **gated**                |   P2   |
-| `network_emulate` (link throttle)                                     |  works   |       **gated** (refuse-pending)       |   P2   |
-| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |               **gated**                |   P2   |
-| extensions (`extensions_*`) — Chromium launch flags                   |  works   |               **gated**                |   P2   |
-| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   |   **gated** (Firefox-specific hint)    |   P2   |
-| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |      **gated** (bake at creation)      |   P2   |
-| `set_user_agent` — live CDP UA override                               |  works   |    **gated** (no live PW UA setter)    |   P2   |
-| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |               **gated**                |   P2   |
-| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |     moot (API absent off-Chromium)     |  moot  |
+| Tool family                                                           | Chromium |         Firefox (Juggler)         | WebKit |
+| --------------------------------------------------------------------- | :------: | :-------------------------------: | :----: |
+| Session lifecycle (open/close/list); engine tag                       |  works   |               works               |   P2   |
+| Storage — cookies / localStorage / sessionStorage / IDB / caches      |  works   |               works               |   P2   |
+| `dump_storage_state` / `inject_storage_state` / `auth_*`              |  works   |               works               |   P2   |
+| `screenshot` / `screenshot_region` / `screenshot_schedule`            |  works   |               works               |   P2   |
+| `set_geolocation` / `set_color_scheme` / `set_reduced_motion`         |  works   |               works               |   P2   |
+| HAR / video / route mocking / WS-interactive / canvas                 |  works   |               works               |   P2   |
+| `navigate` / `click` / `fill` / `snapshot` / `find` (a11y substrate)  |  works   |     **works** (P2a — walker)      |   P2   |
+| `text_search` / `extract` / `screenshot_marks` / `plan` (a11y)        |  works   |     **works** (P2a — walker)      |   P2   |
+| `network_read` / `ws_read` / `network_body` (CDP tap)                 |  works   |  **P2b** (Playwright-event tap)   |   P2   |
+| `shadow_trees` — closed-shadow pierce (CDP `DOM.getDocument`)         |  works   |             **gated**             |   P2   |
+| perf (`perf_*`, `layout_thrash_trace`) — CDP `Tracing.*`              |  works   |             **gated**             |   P2   |
+| coverage (`coverage_*`) — CDP `Profiler`/`CSS`                        |  works   |             **gated**             |   P2   |
+| heap (`heap_snapshot` / `heap_retainers`) — CDP `HeapProfiler`        |  works   |             **gated**             |   P2   |
+| `cpu_emulate` (CDP CPU throttle); `clock` (virtual time)              |  works   |             **gated**             |   P2   |
+| `network_emulate` (link throttle)                                     |  works   |    **gated** (refuse-pending)     |   P2   |
+| SW fetch interception (`sw_intercept_fetch` / `sw_unintercept_fetch`) |  works   |             **gated**             |   P2   |
+| extensions (`extensions_*`) — Chromium launch flags                   |  works   |             **gated**             |   P2   |
+| `pdf_save` — `page.pdf()` (Headless-Chromium-only)                    |  works   | **gated** (Firefox-specific hint) |   P2   |
+| `set_locale` / `set_timezone` — live CDP `Emulation.*`                |  works   |   **gated** (bake at creation)    |   P2   |
+| `set_user_agent` — live CDP UA override                               |  works   | **gated** (no live PW UA setter)  |   P2   |
+| touch / multi-touch / `mouse_wheel` — CDP `Input.dispatch*`           |  works   |             **gated**             |   P2   |
+| device emulation (`emulate_bluetooth`/`usb`/`hid`) — platform API     |  works   |  moot (API absent off-Chromium)   |  moot  |
 
 `perf_insights` / `heap_retainers` / `memory_diff` are pure file parsers over a
 Chromium-produced trace/heapsnapshot — they are **not** engine-gated (the data
 already exists; an agent can parse it from any session). The Firefox keystone
-asserts the **works** rows (cookies / storageState / screenshot) and a sample of
-the **gated** rows on real Firefox; the **P2** rows skip on Firefox until the
-substrate ports.
+asserts the **works** rows (cookies / storageState / screenshot; and — P2a —
+navigate → snapshot → find → fill → click via the walker substrate) and a sample
+of the **gated** rows on real Firefox; the **P2b** rows skip on Firefox until the
+network tap ports onto Playwright events.
 
 ## Related
 

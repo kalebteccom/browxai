@@ -9,7 +9,7 @@
 // Console / network / WS are time-stamped buffers already — sliced over the
 // same window.
 
-import { getA11yTree, walk } from "./a11y.js";
+import { walk } from "./a11y.js";
 import { NetworkTap, type NetworkEntry, type NetworkSummary, type WsFrame } from "./network.js";
 import type { ActionContext } from "./actionresult.js";
 
@@ -60,15 +60,17 @@ export async function watchWindow(
   // tap's literal-value sanitisation runs over URLs / mutation
   // responseShape keys during the watch window — same chokepoint the
   // action-window tap uses.
-  const net = new NetworkTap(ctx.cdp, ctx.secrets ?? null);
-  await net.open();
+  // The CDP NetworkTap supplies the network slice on chromium; off Chromium it
+  // is absent (the Playwright-event tap is P2b) and the network block is empty.
+  const net = ctx.cdp ? new NetworkTap(ctx.cdp, ctx.secrets ?? null) : null;
+  if (net) await net.open();
 
   // ref → tracking record across samples.
   const seen = new Map<string, { role: string; name?: string; firstMs: number; lastMs: number }>();
   let samples = 0;
 
   const sampleOnce = async (): Promise<void> => {
-    const tree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
+    const tree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
     if (!tree) return;
     const nowMs = Date.now() - tStart;
     samples++;
@@ -90,7 +92,9 @@ export async function watchWindow(
   }
   const endMs = Date.now() - tStart;
 
-  const network = await net.close();
+  const network: { summary: NetworkSummary; requests: NetworkEntry[] } = net
+    ? await net.close()
+    : { summary: { total: 0, byType: {}, failed: 0 }, requests: [] };
   const errors = ctx.console.errorsSince(tStart);
   const pageErrors = ctx.console.pageErrorsSince(tStart);
   const warnings = ctx.console.warningCountSince(tStart);

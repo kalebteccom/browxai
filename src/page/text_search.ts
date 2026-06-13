@@ -8,7 +8,7 @@
 import type { CDPSession } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { composeSnapshot } from "./compose.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 
@@ -42,11 +42,15 @@ export interface TextSearchResult {
 }
 
 export async function textSearch(
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: TextSearchOptions,
+  /** Raw CDP handle for the visible-rect bbox fast path — chromium only.
+   *  Off Chromium the walker mints no `backendDOMNodeId`, so this is unused and
+   *  hidden/visible classification rides the bbox being null (clipped). */
+  cdp?: CDPSession,
 ): Promise<TextSearchResult> {
-  const { tree } = await composeSnapshot(cdp, refs, opts.testAttributes);
+  const { tree } = await substrate.compose(refs, opts.testAttributes);
   if (!tree) return { count: 0, matches: [], warnings: [] };
 
   const warnings: string[] = [];
@@ -65,7 +69,9 @@ export async function textSearch(
   for (const node of candidates) {
     if (matches.length >= max) break;
     const bbox =
-      node.backendDOMNodeId !== undefined ? await visibleRect(cdp, node.backendDOMNodeId) : null;
+      cdp !== undefined && node.backendDOMNodeId !== undefined
+        ? await visibleRect(cdp, node.backendDOMNodeId)
+        : null;
     const visible = bbox !== null;
     if (!visible && !includeHidden) continue;
     const match: TextSearchMatch = {

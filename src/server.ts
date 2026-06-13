@@ -93,7 +93,8 @@ import {
 } from "./session/device-emu.js";
 import { RefRegistry } from "./page/refs.js";
 import { findByRef, serialise } from "./page/snapshot.js";
-import { composeSnapshot, composeSnapshotForFrame } from "./page/compose.js";
+import { composeSnapshotForFrame } from "./page/compose.js";
+import { snapshotSubstrateFor } from "./page/snapshot-substrate-select.js";
 import { find } from "./page/find.js";
 import { listFrames, resolveFrameById, FrameRegistry, MAIN_FRAME_ID } from "./page/frames.js";
 import { textSearch } from "./page/text_search.js";
@@ -1013,6 +1014,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         mode,
         session: sess,
         refs: new RefRegistry(),
+        // Engine-agnostic snapshot/a11y substrate (RFC 0002 D4). chromium → the
+        // verbatim CDP substrate; firefox/webkit → the page-side walker. Selected
+        // by the engine's CDP capability, not an engine-name check (the same
+        // signal requireCdp keys on). Captured once here so the hot snapshot/find
+        // path is a direct delegate, no per-call allocation.
+        snapshotSubstrate: snapshotSubstrateFor(sess),
         frames: new FrameRegistry(),
         console: consoleBuf,
         network: networkBuf,
@@ -1230,7 +1237,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
     page: e.session.page(),
-    cdp: requireCdp(e.session),
+    // CDP only when the engine has it (chromium). The action window's network
+    // tap rides it; off Chromium it is absent and the network slice is empty,
+    // while the a11y delta / nav / console envelope still builds — so
+    // navigate/click/fill run on firefox.
+    ...(e.session.cdp ? { cdp: e.session.cdp() } : {}),
+    snapshot: e.snapshotSubstrate,
     refs: e.refs,
     console: e.console,
     pages: () => e.session.page().context().pages(),
@@ -1585,8 +1597,11 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           };
         }
       }
-      // getFullAXTree / DOM-walk via CDP have no timeout — a wedged
-      // renderer would stall the read. Race against the config deadline.
+      // The main-frame tree comes from the session's snapshot substrate (CDP on
+      // chromium, the page-side walker on firefox/webkit — RFC 0002 D4); the
+      // child-frame path already runs the portable frame.evaluate walker
+      // regardless of engine. Neither has an inherent timeout — a wedged
+      // renderer would stall the read — so race against the config deadline.
       // `targetFrame!` below: when `!isMainFrame`, `targetFrame` is non-null
       // (set above, with early-return on miss). TS can't correlate the
       // `isMainFrame` discriminant with `targetFrame` nullability across the
@@ -1598,7 +1613,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       try {
         composed = await withDeadline(
           isMainFrame
-            ? composeSnapshot(requireCdp(s), e.refs, config.testAttributes, {
+            ? e.snapshotSubstrate.compose(e.refs, config.testAttributes, {
                 pierce: includeShadow,
               })
             : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
@@ -1740,19 +1755,30 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let result;
       try {
         result = await withDeadline(
-          find(s.page(), requireCdp(s), e.refs, {
-            query,
-            maxCandidates,
-            confidenceFloor,
-            contextRef,
-            visibleOnly,
-            pierce,
-            testAttributes: config.testAttributes,
-            feedback: e.feedback,
-            // capability-aware fallback hints — only name a tool the agent can call.
-            fallbackHints: { coords: caps.enabled.has("action"), evalJs: caps.enabled.has("eval") },
-            ...(targetFrame ? { frame: targetFrame, frameId: frame! } : {}),
-          }),
+          find(
+            s.page(),
+            e.snapshotSubstrate,
+            e.refs,
+            {
+              query,
+              maxCandidates,
+              confidenceFloor,
+              contextRef,
+              visibleOnly,
+              pierce,
+              testAttributes: config.testAttributes,
+              feedback: e.feedback,
+              // capability-aware fallback hints — only name a tool the agent can call.
+              fallbackHints: {
+                coords: caps.enabled.has("action"),
+                evalJs: caps.enabled.has("eval"),
+              },
+              ...(targetFrame ? { frame: targetFrame, frameId: frame! } : {}),
+            },
+            // CDP bbox fast path on chromium; undefined off-Chromium (the
+            // walker has no backendDOMNodeId, so locatorBoundingBox computes it).
+            s.cdp ? s.cdp() : undefined,
+          ),
           cfgActionTimeout(),
           "find",
         );
@@ -1845,14 +1871,19 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let result;
       try {
         result = await withDeadline(
-          textSearch(requireCdp(e.session), e.refs, {
-            text,
-            exact,
-            scope,
-            includeHidden,
-            maxMatches,
-            testAttributes: config.testAttributes,
-          }),
+          textSearch(
+            e.snapshotSubstrate,
+            e.refs,
+            {
+              text,
+              exact,
+              scope,
+              includeHidden,
+              maxMatches,
+              testAttributes: config.testAttributes,
+            },
+            e.session.cdp ? e.session.cdp() : undefined,
+          ),
           cfgActionTimeout(),
           "text_search",
         );
@@ -1908,6 +1939,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const g = gateCheck("shadow_trees");
       if (g) return g;
       const e = await entryFor(session);
+      // shadow_trees is CDP-deep: closed-shadow piercing needs CDP
+      // `DOM.getDocument({pierce:true})`, which has no off-Chromium protocol
+      // equivalent (RFC 0002 D4 / coupling audit §1.1 — closed-shadow is the
+      // one true feature-level loss). Gate it on engines without CDP.
+      const eg = engineGate("shadow_trees", e);
+      if (eg) return eg;
       const s = e.session;
       const warnings: string[] = [];
       const cap = maxHosts ?? 200;
@@ -1920,7 +1957,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (ref) {
         try {
           const composed = await withDeadline(
-            composeSnapshot(requireCdp(s), e.refs, config.testAttributes),
+            e.snapshotSubstrate.compose(e.refs, config.testAttributes),
             cfgActionTimeout(),
             "shadow_trees",
           );
@@ -2087,7 +2124,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const s = e.session;
       try {
         const result = await withDeadline(
-          extract(s.page(), requireCdp(s), e.refs, {
+          extract(s.page(), e.snapshotSubstrate, e.refs, {
             schema: args.schema,
             ref: args.ref,
             scope: args.scope,
@@ -5710,11 +5747,17 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const candidates = args.candidates as unknown as MarkCandidate[];
       try {
         const result = await withDeadline(
-          screenshotMarks(e.session.page(), requireCdp(e.session), e.refs, {
-            candidates,
-            label: args.label,
-            testAttributes: config.testAttributes,
-          }),
+          screenshotMarks(
+            e.session.page(),
+            e.snapshotSubstrate,
+            e.refs,
+            {
+              candidates,
+              label: args.label,
+              testAttributes: config.testAttributes,
+            },
+            e.session.cdp ? e.session.cdp() : undefined,
+          ),
           cfgActionTimeout(),
           "screenshot_marks",
         );
@@ -9316,16 +9359,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       let outcome;
       try {
         outcome = await withDeadline(
-          planAction(e.session.page(), requireCdp(e.session), e.refs, {
-            query: args.query,
-            verb: args.verb,
-            verbArgs: args.verbArgs,
-            contextRef: args.contextRef,
-            confidenceFloor: args.confidenceFloor,
-            ttlMs: args.ttlMs,
-            testAttributes: config.testAttributes,
-            fallbackHints: { coords: caps.enabled.has("action"), evalJs: caps.enabled.has("eval") },
-          }),
+          planAction(
+            e.session.page(),
+            e.snapshotSubstrate,
+            e.refs,
+            {
+              query: args.query,
+              verb: args.verb,
+              verbArgs: args.verbArgs,
+              contextRef: args.contextRef,
+              confidenceFloor: args.confidenceFloor,
+              ttlMs: args.ttlMs,
+              testAttributes: config.testAttributes,
+              fallbackHints: {
+                coords: caps.enabled.has("action"),
+                evalJs: caps.enabled.has("eval"),
+              },
+            },
+            e.session.cdp ? e.session.cdp() : undefined,
+          ),
           cfgActionTimeout(),
           "plan",
         );
@@ -11812,6 +11864,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     e.ws = wsBuf;
     e.bridge = br;
     e.refs = new RefRegistry();
+    // The rebuild minted a fresh CDP session on the new context; re-derive the
+    // snapshot substrate so it captures the live handle (extensions are
+    // chromium-only, so this stays the CDP substrate).
+    e.snapshotSubstrate = snapshotSubstrateFor(sess);
     // Interactive-WS state is page-side; the rebuild destroyed the wrapper
     // and any active interceptors with it. Discard the server-side mirror
     // so it doesn't claim live interceptors that no longer exist, then

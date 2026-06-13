@@ -79,6 +79,12 @@ export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
   "touch_end",
   "gesture_pinch",
   "gesture_swipe",
+  // closed-shadow piercing — CDP `DOM.getDocument({pierce:true})` is the only
+  // automation-protocol path into closed shadow roots; no off-Chromium
+  // equivalent (RFC 0002 D4 — the one true feature-level loss). The open-shadow
+  // half is portable, but the tool's headline (closed-shadow introspection) is
+  // CDP-bound, so the whole tool gates off Chromium.
+  "shadow_trees",
 ]);
 
 /** Per-tool reason fragment appended to the refusal hint. Most tools share the

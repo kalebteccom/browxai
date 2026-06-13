@@ -43,10 +43,10 @@
 // Refs used during extraction land in `evidence.refsUsed` so the caller
 // can audit / cache / pin (`name_ref`) the elements the result drew from.
 
-import type { CDPSession, Locator, Page } from "playwright-core";
+import type { Locator, Page } from "playwright-core";
 import { walk, type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
-import { composeSnapshot } from "./compose.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { findByRef } from "./snapshot.js";
 import { estimateTokens } from "../util/tokens.js";
 
@@ -234,7 +234,7 @@ export type ExtractResult =
 /** Entry point — runs the composed snapshot, scopes it, walks the schema. */
 export async function extract(
   page: Page,
-  cdp: CDPSession,
+  substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: ExtractOptions,
 ): Promise<ExtractResult> {
@@ -289,7 +289,7 @@ export async function extract(
       actual: "both provided",
     });
   }
-  const composed = await composeSnapshot(cdp, refs, opts.testAttributes);
+  const composed = await substrate.compose(refs, opts.testAttributes);
   const tree = composed.tree;
   if (!tree) {
     return fail({

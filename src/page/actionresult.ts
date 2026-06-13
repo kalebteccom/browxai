@@ -8,7 +8,8 @@
 // are real. `tree_diff` is a follow-on.
 
 import type { CDPSession, Page } from "playwright-core";
-import { getA11yTree, walk, type A11yNode } from "./a11y.js";
+import { walk, type A11yNode } from "./a11y.js";
+import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import type { RefRegistry } from "./refs.js";
 import { findByRef, serialise } from "./snapshot.js";
 import {
@@ -32,6 +33,20 @@ import type { FsPickerPolicyState, FsPickerRecord } from "../session/fs-picker.j
 import { UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
 
 export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
+
+/** The network slice when there is no CDP tap (off Chromium — the Playwright-
+ *  event network tap is P2b). Matches `NetworkTap.close()`'s shape so the
+ *  envelope builder downstream is engine-blind: zero requests, zero mutations.
+ *  Frozen so it is never mutated by a downstream consumer. */
+const EMPTY_NETWORK: {
+  summary: NetworkSummary;
+  requests: NetworkEntry[];
+  mutations: MutationEntry[];
+} = Object.freeze({
+  summary: { total: 0, byType: {}, failed: 0 },
+  requests: [],
+  mutations: [],
+});
 
 /**
  * Internal record of the action being dispatched, attached to every
@@ -294,7 +309,18 @@ export interface ActionResult {
 
 export interface ActionContext {
   page: Page;
-  cdp: CDPSession;
+  /** Raw CDP handle — present only on chromium. The action window's
+   *  NetworkTap rides it (network slice of the envelope; the Playwright-event
+   *  network tap is P2b). Undefined off Chromium: the network slice is then
+   *  empty and the rest of the envelope (a11y delta, nav, console, dialogs)
+   *  still builds. Optional so the action window — and therefore
+   *  navigate/click/fill — runs on any engine. */
+  cdp?: CDPSession;
+  /** Engine-agnostic snapshot/a11y substrate (RFC 0002 D4). The pre/post
+   *  `snapshotDelta` trees come from here, so the action window builds its
+   *  structure diff on chromium (CDP a11y) and firefox (the page-side walker)
+   *  alike. */
+  snapshot: SnapshotSubstrate;
   refs: RefRegistry;
   console: ConsoleBuffer;
   pages: () => Page[]; // for newTabs detection (Playwright BrowserContext.pages())
@@ -402,19 +428,24 @@ export async function runInActionWindow(
   const urlBefore = ctx.page.url();
   const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
   const tBefore = Date.now();
-  const preTree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
+  const preTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
   const preRegions = preTree ? topLevelRegions(preTree) : new Map();
 
-  // Track full-load via Page.frameNavigated on the main frame.
+  // Track main-frame full-load. Playwright's `framenavigated` is cross-browser
+  // and fires on the same main-frame nav the CDP `Page.frameNavigated` did, so
+  // navigation detection works on every engine (the CDP `Page.enable` + raw
+  // listener it replaced was Chromium-only).
   let frameNavigatedMain = false;
-  const onFrameNav = (e: { frame: { parentId?: string } }) => {
-    if (!e.frame.parentId) frameNavigatedMain = true;
+  const onFrameNav = (frame: import("playwright-core").Frame) => {
+    if (frame === ctx.page.mainFrame()) frameNavigatedMain = true;
   };
-  ctx.cdp.on("Page.frameNavigated" as never, onFrameNav as never);
-  await ctx.cdp.send("Page.enable").catch(() => undefined);
+  ctx.page.on("framenavigated", onFrameNav);
 
-  const net = new NetworkTap(ctx.cdp, ctx.secrets ?? null);
-  await net.open();
+  // The CDP NetworkTap supplies the network slice on chromium; off Chromium it
+  // is absent (the Playwright-event network tap is P2b), so the network slice
+  // is empty and the rest of the envelope still builds.
+  const net = ctx.cdp ? new NetworkTap(ctx.cdp, ctx.secrets ?? null) : null;
+  if (net) await net.open();
 
   // --- dispatch ---
   let ok = true;
@@ -452,11 +483,11 @@ export async function runInActionWindow(
   }
 
   // --- post-state ---
-  ctx.cdp.off("Page.frameNavigated" as never, onFrameNav as never);
+  ctx.page.off("framenavigated", onFrameNav);
   const urlAfter = ctx.page.url();
-  const postTree = await getA11yTree(ctx.cdp, ctx.refs, ctx.testAttributes).catch(() => null);
+  const postTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map();
-  const network = await net.close();
+  const network = net ? await net.close() : EMPTY_NETWORK;
 
   // dialog capture — every alert/confirm/prompt that fired in the action
   // window is sliced off the per-session buffer (DialogPolicyState). If the

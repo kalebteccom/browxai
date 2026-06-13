@@ -22,6 +22,8 @@ function fakeEntry(id: string): SessionEntry {
 
     refs: { __tag: `refs-${id}` } as any,
 
+    snapshotSubstrate: {} as any,
+
     frames: {} as any,
 
     console: {} as any,

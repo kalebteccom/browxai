@@ -8,6 +8,7 @@
 
 import type { BrowserSession } from "./types.js";
 import type { RefRegistry } from "../page/refs.js";
+import type { SnapshotSubstrate } from "../page/snapshot-substrate.js";
 import type { FrameRegistry } from "../page/frames.js";
 import type { ConsoleBuffer } from "../page/console.js";
 import type { NetworkBuffer, WsBuffer } from "../page/network.js";
@@ -48,6 +49,14 @@ export interface SessionEntry {
   mode: SessionMode;
   session: BrowserSession;
   refs: RefRegistry;
+  /** Engine-agnostic snapshot/a11y tree source (RFC 0002 D4). Chromium gets the
+   *  verbatim CDP substrate (Accessibility.getFullAXTree + DOM-walk); firefox /
+   *  webkit get the page-side Playwright walker. The snapshot / find / extract /
+   *  text_search / set-of-marks tools and the action-window pre/post deltas mint
+   *  refs through this seam instead of reaching a raw CDPSession — so they run on
+   *  any engine, not only chromium. Selected once at session creation
+   *  (`snapshotSubstrateFor`) so the hot path is a captured-handle delegate. */
+  snapshotSubstrate: SnapshotSubstrate;
   /** per-session frame ID assignment. `frames_list` mints/looks up
    *  stable `fN` IDs from this registry; snapshot/find/action consult it to
    *  resolve a `frame` arg back to a Playwright `Frame` handle. */
