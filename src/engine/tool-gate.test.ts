@@ -20,6 +20,19 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
     }
   });
 
+  it("allows EVERY deep tool on android too — deep:true, the standout (it IS Chromium)", () => {
+    // The P3 headline through the gate: Android Chrome speaks full CDP and
+    // declares deep:true, so the SAME capability-based gate that refuses
+    // firefox/webkit allows every CDP-deep tool on android — no per-engine edit,
+    // the gate keys on the deep capability. Asserted alongside the firefox/webkit
+    // refusal so the contrast is explicit: android allows, firefox+webkit refuse.
+    for (const tool of DEEP_TOOLS) {
+      expect(assertEngineSupports(tool, "android"), `${tool} must run on android`).toBeNull();
+      expect(assertEngineSupports(tool, "firefox"), `${tool} must refuse on firefox`).not.toBeNull();
+      expect(assertEngineSupports(tool, "webkit"), `${tool} must refuse on webkit`).not.toBeNull();
+    }
+  });
+
   it("never gates a cross-browser (class-A) tool on any engine", () => {
     for (const tool of ["navigate", "click", "fill", "screenshot", "cookies_set", "snapshot"]) {
       expect(assertEngineSupports(tool, "firefox")).toBeNull();

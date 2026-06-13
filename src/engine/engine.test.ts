@@ -8,17 +8,18 @@ import {
   CHROMIUM_CAPABILITIES,
   FIREFOX_CAPABILITIES,
   WEBKIT_CAPABILITIES,
+  ANDROID_CAPABILITIES,
   requireCdp,
   type EngineKind,
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the three RFC engines", () => {
-    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit"]);
+  it("commits to the four RFC engines", () => {
+    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android"]);
   });
 
-  it("wires chromium + firefox + webkit (all three RFC engines)", () => {
-    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit"]);
+  it("wires chromium + firefox + webkit + android (all four RFC engines)", () => {
+    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android"]);
   });
 
   it.each(["chromium", "firefox", "webkit"] as const)(
@@ -28,6 +29,13 @@ describe("engine port — EngineKind + selection", () => {
       expect(bt.name()).toBe(engine);
     },
   );
+
+  it("resolves android to the chromium BrowserType — it IS Chromium over CDP", () => {
+    // Android Chrome speaks full CDP, so the adapter attaches with
+    // chromium.connectOverCDP over an adb-forwarded socket — the chromium
+    // BrowserType is the transport.
+    expect(resolveBrowserType("android").name()).toBe("chromium");
+  });
 
   it("EngineNotYetSupportedError stays structured + RFC-naming for any future engine", () => {
     // All three EngineKind members are implemented today, so resolveBrowserType
@@ -85,6 +93,17 @@ describe("engine port — capability declaration", () => {
     expect(caps?.deep).toBe(false);
     // it still serves the nine cross-browser sub-interfaces (the walker substrate
     // + Playwright's cross-browser surface).
+    expect(caps?.subInterfaces.size).toBe(9);
+  });
+
+  it("android declares EVERYTHING incl. deep:true — the standout (it IS Chromium)", () => {
+    const caps = capabilitiesFor("android");
+    expect(caps).toBe(ANDROID_CAPABILITIES);
+    expect(caps?.engine).toBe("android");
+    // The headline of P3: real Chrome-on-Android speaks full CDP, so unlike
+    // firefox/webkit it exposes the deep escape hatch — every tool works, and the
+    // existing CDP substrates serve it verbatim (no new substrate).
+    expect(caps?.deep).toBe(true);
     expect(caps?.subInterfaces.size).toBe(9);
   });
 });
