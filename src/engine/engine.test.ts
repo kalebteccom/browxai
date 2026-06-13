@@ -6,6 +6,7 @@ import {
   resolveBrowserType,
   capabilitiesFor,
   CHROMIUM_CAPABILITIES,
+  FIREFOX_CAPABILITIES,
   requireCdp,
   type EngineKind,
 } from "./index.js";
@@ -15,33 +16,33 @@ describe("engine port — EngineKind + selection", () => {
     expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit"]);
   });
 
-  it("wires only chromium in P0", () => {
-    expect(IMPLEMENTED_ENGINES).toEqual(["chromium"]);
+  it("wires chromium + firefox; webkit is still pending", () => {
+    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox"]);
   });
 
-  it("resolves chromium to a Playwright BrowserType with the expected name", () => {
-    const bt = resolveBrowserType("chromium");
-    expect(bt.name()).toBe("chromium");
-  });
-
-  it.each(["firefox", "webkit"] as const)(
-    "rejects %s with a structured engine-not-yet-supported error naming the RFC",
+  it.each(["chromium", "firefox"] as const)(
+    "resolves %s to a Playwright BrowserType with the expected name",
     (engine) => {
-      let caught: unknown;
-      try {
-        resolveBrowserType(engine);
-      } catch (e) {
-        caught = e;
-      }
-      expect(caught).toBeInstanceOf(EngineNotYetSupportedError);
-      const err = caught as EngineNotYetSupportedError;
-      expect(err.engine).toBe(engine);
-      expect(err.message).toContain("engine-not-yet-supported");
-      expect(err.message).toContain("0002-multi-engine-bidi");
-      // not a silent fallback to chromium — it throws.
-      expect(err.message).toContain(engine);
+      const bt = resolveBrowserType(engine);
+      expect(bt.name()).toBe(engine);
     },
   );
+
+  it("rejects webkit with a structured engine-not-yet-supported error naming the RFC", () => {
+    let caught: unknown;
+    try {
+      resolveBrowserType("webkit");
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(EngineNotYetSupportedError);
+    const err = caught as EngineNotYetSupportedError;
+    expect(err.engine).toBe("webkit");
+    expect(err.message).toContain("engine-not-yet-supported");
+    expect(err.message).toContain("0002-multi-engine-bidi");
+    // not a silent fallback to chromium — it throws, naming the engine.
+    expect(err.message).toContain("webkit");
+  });
 });
 
 describe("engine port — capability declaration", () => {
@@ -50,7 +51,7 @@ describe("engine port — capability declaration", () => {
     expect(caps).toBe(CHROMIUM_CAPABILITIES);
     expect(caps?.engine).toBe("chromium");
     expect(caps?.deep).toBe(true);
-    // all nine sub-interfaces — nothing newly gated in P0.
+    // all nine sub-interfaces — nothing newly gated on chromium.
     expect(caps?.subInterfaces.size).toBe(9);
     for (const sub of [
       "lifecycle",
@@ -67,10 +68,18 @@ describe("engine port — capability declaration", () => {
     }
   });
 
-  it("has no declaration for the not-yet-implemented engines", () => {
-    for (const engine of ["firefox", "webkit"] as const) {
-      expect(capabilitiesFor(engine)).toBeUndefined();
-    }
+  it("firefox declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
+    const caps = capabilitiesFor("firefox");
+    expect(caps).toBe(FIREFOX_CAPABILITIES);
+    expect(caps?.engine).toBe("firefox");
+    // the headline of the capability gate: firefox has no raw-CDP escape hatch.
+    expect(caps?.deep).toBe(false);
+    // it still serves the nine cross-browser sub-interfaces.
+    expect(caps?.subInterfaces.size).toBe(9);
+  });
+
+  it("has no declaration for webkit (its adapter hasn't landed yet)", () => {
+    expect(capabilitiesFor("webkit")).toBeUndefined();
   });
 });
 

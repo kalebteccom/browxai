@@ -9,19 +9,19 @@ import type { EngineKind } from "./types.js";
 
 const BROWSER_TYPES: Record<EngineKind, BrowserType> = { chromium, firefox, webkit };
 
-/** Engines wired in P0. Chromium only; firefox/webkit are declared in
- *  `EngineKind` and rejected by `resolveBrowserType` until their adapters land
- *  (RFC 0002 P1+). */
-export const IMPLEMENTED_ENGINES: readonly EngineKind[] = ["chromium"];
+/** Engines wired today. Chromium (P0) + Firefox (P1, Playwright's bundled
+ *  Juggler build). WebKit is declared in `EngineKind` and rejected by
+ *  `resolveBrowserType` until its adapter lands (RFC 0002 P2). */
+export const IMPLEMENTED_ENGINES: readonly EngineKind[] = ["chromium", "firefox"];
 
 export class EngineNotYetSupportedError extends Error {
   readonly engine: EngineKind;
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "only chromium is wired today. Firefox and WebKit land as adapters in a " +
+        "chromium and firefox are wired today. WebKit lands as an adapter in a " +
         "later phase of the multi-engine work (see docs/rfcs/0002-multi-engine-bidi.md). " +
-        'Use browserType:"chromium" (the default).',
+        'Use browserType:"chromium" (the default) or "firefox".',
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;
@@ -36,6 +36,6 @@ export function resolveBrowserType(engine: EngineKind): BrowserType {
   if (!IMPLEMENTED_ENGINES.includes(engine)) {
     throw new EngineNotYetSupportedError(engine);
   }
-  // Only chromium reaches here today; the map is shaped for firefox/webkit.
+  // chromium + firefox reach here today; the map is shaped for webkit too.
   return BROWSER_TYPES[engine];
 }
