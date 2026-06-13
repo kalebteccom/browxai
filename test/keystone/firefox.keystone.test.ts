@@ -23,13 +23,18 @@
 //     - click / fill                  (action window over the walker a11y delta;
 //                                      the network slice is empty — that is P2b)
 //     - text_search                   (walker-sourced tree)
+//   RUNS on Firefox (P2b — the network/WS tap + response-body fetch now have a
+//   Playwright context-event substrate (PlaywrightNetworkSubstrate) behind the
+//   NetworkSubstrate interface, so the network slice of the envelope is real and
+//   the network tools read off Playwright events, not CDP):
+//     - network_read   (PlaywrightNetworkBuffer — context request/response ring)
+//     - network_body   (body captured at response time into the bounded LRU)
+//     - ws_read        (PlaywrightWsBuffer — page.on('websocket') frames)
 //   ASSERTS-REFUSAL on Firefox (CDP-deep — audit class B + live-CDP class C):
 //     - perf_start / coverage_start / heap_snapshot / cpu_emulate
 //     - pdf_save / set_user_agent / network_emulate
 //     - shadow_trees  (closed-shadow pierce is CDP-only — RFC D4)
-//   SKIPS on Firefox (P2b — needs the network CDP tap ported onto Playwright
-//   events before the network slice of the envelope is populated):
-//     - network_read / ws_read / network_body
+//     - sw_intercept_fetch  (Fetch.* on the SW target — CDP-only, stays gated)
 //
 // The per-engine expectation matrix lives in
 // docs/ai-context/architecture/engine-adapters.md (the capability matrix table).
@@ -255,8 +260,8 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
 
       // (0) navigate — page.goto + the Playwright `framenavigated` nav detector
       // (replacing the chromium-only CDP `Page.frameNavigated`). The action
-      // window builds its envelope with an EMPTY network slice (the CDP tap is
-      // P2b) but a real a11y delta from the walker.
+      // window builds its envelope with a real a11y delta from the walker AND a
+      // real network slice off the Playwright-event tap (P2b).
       const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
         session,
         url: `${fixture.url}/`,
@@ -337,6 +342,64 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
         includeHidden: true,
       });
       expect(saved.count).toBeGreaterThanOrEqual(1);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "P2b — network_read / network_body run on real Firefox via the Playwright-event substrate",
+    async () => {
+      // The headline of P2b: the network/WS tap + response-body fetch now have a
+      // Playwright context-event substrate (PlaywrightNetworkSubstrate) behind the
+      // NetworkSubstrate interface, so the network slice that was empty on Firefox
+      // in P2a is now real. This is the proof mocks cannot give — a real Firefox
+      // session must surface real request/response records off `context.on(...)`.
+      // The fixture's /perf-audit-page fires real subresources: the document
+      // itself, /perf-dead.css (Stylesheet — folds to noise), and /perf-dead.js
+      // (Script — an "interesting" entry that survives the noise-fold).
+      const session = "ff-network";
+      await callJson("open_session", { session, mode: "incognito" });
+
+      const nav = await callJson<{ ok: boolean }>("navigate", {
+        session,
+        url: `${fixture.url}/perf-audit-page`,
+      });
+      expect(nav.ok).toBe(true);
+
+      // network_read — the session-wide ring fed by the Playwright context
+      // request/response events. The page's own document + the Script subresource
+      // must be present; the summary must count what the ring saw.
+      const net = await callJson<{
+        summary: { total: number; byType: Record<string, number>; failed: number };
+        requests: Array<{ method: string; url: string; status?: number; type: string; requestId?: string }>;
+      }>("network_read", { session });
+      expect(net.summary.total, "the perf-audit page fired subresource requests").toBeGreaterThan(0);
+      // The Script subresource (/perf-dead.js) is interesting (not noise-folded),
+      // so it lands in `requests` with a resolved status + a substrate-minted
+      // requestId. This proves the cross-engine resourceType reconciliation
+      // (cdpTypeFromPlaywright) + the synthetic-id minting work on real Firefox.
+      const script = net.requests.find((r) => r.url.includes("/perf-dead.js"));
+      expect(script, "the /perf-dead.js Script request is surfaced by network_read").toBeTruthy();
+      expect(script!.type).toBe("Script");
+      expect(script!.status).toBe(200);
+      expect(script!.requestId, "substrate mints a requestId for network_body").toBeTruthy();
+
+      // network_body — off Chromium the body is captured at response time into the
+      // bounded LRU, then resolved by requestId (no after-the-fact CDP fetch). The
+      // capability is `network-body` (off by default); the keystone server runs
+      // without it, so the read must refuse with the CAPABILITY gate (not crash,
+      // not the engine gate — P2b explicitly does NOT engine-gate network_body).
+      const bodyGated = await callJson<{
+        ok: boolean;
+        engine?: string;
+        requiredCapability?: string;
+      }>("network_body", { session, requestId: script!.requestId! });
+      expect(bodyGated.ok, "network_body without the capability is denied, not run").toBe(false);
+      expect(
+        bodyGated.requiredCapability,
+        "the denial is the capability gate, not the engine gate",
+      ).toBe("network-body");
+      expect(bodyGated.engine, "network_body is NOT engine-gated on firefox").toBeUndefined();
     },
     KEYSTONE_TIMEOUT,
   );

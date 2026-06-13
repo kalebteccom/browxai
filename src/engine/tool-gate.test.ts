@@ -27,6 +27,21 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
     }
   });
 
+  it("does not engine-gate the network tools on firefox (P2b — Playwright substrate)", () => {
+    // P2b ported the network/WS tap + body fetch onto Playwright context events
+    // (PlaywrightNetworkSubstrate), so these read off the portable event surface,
+    // not CDP. They must NOT be in DEEP_TOOLS and must not refuse on firefox.
+    for (const tool of ["network_read", "ws_read", "network_body"]) {
+      expect(DEEP_TOOLS.has(tool), `${tool} must not be in DEEP_TOOLS`).toBe(false);
+      expect(assertEngineSupports(tool, "firefox"), `${tool} must run on firefox`).toBeNull();
+      expect(assertEngineSupports(tool, "chromium")).toBeNull();
+    }
+    // The service-worker fetch interceptor stays CDP-only (Fetch.* on the SW
+    // target) — it remains gated on firefox after P2b.
+    expect(DEEP_TOOLS.has("sw_intercept_fetch"), "sw_intercept_fetch stays gated").toBe(true);
+    expect(assertEngineSupports("sw_intercept_fetch", "firefox")).not.toBeNull();
+  });
+
   it("covers the audit class-B CDP-hard families", () => {
     for (const tool of [
       "perf_start",
