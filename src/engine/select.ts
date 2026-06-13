@@ -56,3 +56,78 @@ export function resolveBrowserType(engine: EngineKind): BrowserType {
   // the chromium BrowserType — it attaches to real Chrome-on-Android over CDP).
   return BROWSER_TYPES[engine];
 }
+
+/** Raised when the operator names an engine that browxai does not implement —
+ *  the top-level `BROWX_ENGINE` / `--engine` validation error. Distinct from
+ *  `EngineNotYetSupportedError` (which guards a *declared-but-unadaptered*
+ *  `EngineKind` at the launch path): this one fires on an arbitrary operator
+ *  string (`safari`, a typo, …) that is not even a known engine, BEFORE the
+ *  server starts. The message lists the implemented engines so the fix is in
+ *  the error, and names RFC 0002 for Safari's tracked-but-not-shipped status. */
+export class UnknownEngineError extends Error {
+  readonly value: string;
+  constructor(value: string) {
+    const note = value.toLowerCase() === "safari" ? " (see RFC 0002 for Safari status)" : "";
+    super(
+      `engine "${value}" is not available; implemented engines: ` +
+        `${IMPLEMENTED_ENGINES.join(", ")}${note}`,
+    );
+    this.name = "UnknownEngineError";
+    this.value = value;
+  }
+}
+
+/** Validate an operator-supplied engine string against `IMPLEMENTED_ENGINES`.
+ *  Returns the value narrowed to `EngineKind` on success; throws
+ *  `UnknownEngineError` (structured, listing the valid engines) otherwise. The
+ *  comparison is exact + case-sensitive: engine kinds are lowercase tokens, and
+ *  silently accepting `Firefox`/`FIREFOX` would mask a misconfiguration. */
+export function validateEngine(value: string): EngineKind {
+  if ((IMPLEMENTED_ENGINES as readonly string[]).includes(value)) {
+    return value as EngineKind;
+  }
+  throw new UnknownEngineError(value);
+}
+
+/** Resolve the operator's engine selection for the MCP server. Precedence:
+ *  an explicit `--engine <kind>` CLI flag wins over the `BROWX_ENGINE` env var,
+ *  which wins over the default `chromium`. Both inputs are validated against
+ *  `IMPLEMENTED_ENGINES`; an unknown value throws `UnknownEngineError`. Returns
+ *  `undefined` when neither is set, so the caller can omit `browserType` and let
+ *  `server.ts` apply its own default (byte-identical to never passing the option).
+ *
+ *  Pure over (argv, env) so it unit-tests without a browser. Mirrors the inline
+ *  env/flag idiom the rest of cli.ts uses (BROWX_HEADLESS, BROWX_ATTACH_CDP),
+ *  lifted into a function only because it carries validation + precedence worth
+ *  testing in isolation. */
+export function resolveEngineSelection(
+  argv: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): EngineKind | undefined {
+  const flag = readEngineFlag(argv);
+  if (flag !== undefined) return validateEngine(flag);
+  const fromEnv = env.BROWX_ENGINE?.trim();
+  if (fromEnv) return validateEngine(fromEnv);
+  return undefined;
+}
+
+/** Extract the `--engine <kind>` / `--engine=<kind>` value from an argv slice,
+ *  or undefined when the flag is absent. A bare trailing `--engine` with no
+ *  value throws (an obvious operator mistake, not a silent no-op). */
+function readEngineFlag(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === undefined) continue;
+    if (arg === "--engine") {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("--")) {
+        throw new Error("--engine requires a value, e.g. `--engine firefox`. See BROWX_ENGINE.");
+      }
+      return next;
+    }
+    if (arg.startsWith("--engine=")) {
+      return arg.slice("--engine=".length);
+    }
+  }
+  return undefined;
+}

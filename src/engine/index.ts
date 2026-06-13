@@ -10,7 +10,14 @@ export type {
   EngineLaunchHandles,
 } from "./types.js";
 export { ENGINE_KINDS } from "./types.js";
-export { resolveBrowserType, EngineNotYetSupportedError, IMPLEMENTED_ENGINES } from "./select.js";
+export {
+  resolveBrowserType,
+  EngineNotYetSupportedError,
+  IMPLEMENTED_ENGINES,
+  UnknownEngineError,
+  validateEngine,
+  resolveEngineSelection,
+} from "./select.js";
 export {
   capabilitiesFor,
   CHROMIUM_CAPABILITIES,

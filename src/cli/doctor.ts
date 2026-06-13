@@ -28,6 +28,9 @@ import {
   forwardRemoveArgs,
   versionUrl,
   extractWsUrl,
+  resolveEngineSelection,
+  UnknownEngineError,
+  type EngineKind,
 } from "../engine/index.js";
 
 export interface Check {
@@ -282,15 +285,50 @@ export async function runDoctor(): Promise<number> {
   // the forward.
   checks.push(await androidCheck());
 
-  // 8b. Active browser engine. Chromium + Firefox + WebKit + Android are wired;
-  // the seam lets each engine be an adapter (see src/engine/). Informational —
-  // never fails doctor.
-  checks.push({
-    name: "engine",
-    ok: true,
-    info: true,
-    detail: `chromium (implemented: ${IMPLEMENTED_ENGINES.join(", ")})`,
-  });
+  // 8b. SELECTED browser engine. Resolves the operator's choice exactly as the
+  // MCP server does: explicit `--engine <kind>` > `BROWX_ENGINE` env > default
+  // chromium (see src/engine/select.ts). Reports which engine the server WOULD
+  // run on, and points at the per-engine availability row above (chromium /
+  // firefox / webkit / android — those checks always run) so the operator can see
+  // the selected engine's readiness in one glance. Chromium + Firefox + WebKit +
+  // Android are wired; the seam lets each engine be an adapter (see src/engine/).
+  // An invalid selection is reported here (and never fails doctor — it's the same
+  // structured "implemented engines: …" message the server prints, surfaced as a
+  // ✗ so the operator sees it). Informational otherwise.
+  let selectedEngine: EngineKind = "chromium";
+  let engineSelectionError: string | undefined;
+  try {
+    selectedEngine = resolveEngineSelection(process.argv.slice(2)) ?? "chromium";
+  } catch (e) {
+    engineSelectionError =
+      e instanceof UnknownEngineError ? e.message : e instanceof Error ? e.message : String(e);
+  }
+  if (engineSelectionError) {
+    checks.push({
+      name: "engine",
+      ok: false,
+      detail: engineSelectionError,
+      fix: `set BROWX_ENGINE (or --engine) to one of: ${IMPLEMENTED_ENGINES.join(", ")}`,
+    });
+  } else {
+    const explicit =
+      !!process.env.BROWX_ENGINE?.trim() ||
+      process.argv.slice(2).some((a) => a === "--engine" || a.startsWith("--engine="));
+    // The availability row matching the selected engine ran above (chromium ✓,
+    // firefox/webkit/android −). Name it so doctor's engine line is self-contained.
+    const readinessRow =
+      selectedEngine === "chromium"
+        ? "see `chromium` row above"
+        : `see \`${selectedEngine}\` row above`;
+    checks.push({
+      name: "engine",
+      ok: true,
+      info: true,
+      detail:
+        `${selectedEngine}${explicit ? "" : " (default)"} — ${readinessRow}; ` +
+        `implemented: ${IMPLEMENTED_ENGINES.join(", ")}`,
+    });
+  }
 
   // 9. Plugins — declaration / install drift / lock health / manifest
   // sanity. Pure inspection of the same files the runtime's resolution

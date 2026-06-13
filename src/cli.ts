@@ -13,6 +13,7 @@ import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { PACKAGE_VERSION } from "./util/version.js";
+import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
 
 const USAGE = `Usage: browxai [subcommand]
 
@@ -28,6 +29,10 @@ const USAGE = `Usage: browxai [subcommand]
   browxai plugin <sub>          install / remove / list / info / upgrade / sync
                                 plugins. All ops are workspace-rooted.
 
+  --engine <kind>               browser engine for the MCP server: chromium
+                                (default) | firefox | webkit | android. Overrides
+                                BROWX_ENGINE. android implies attach-mode (real
+                                Chrome-on-Android over adb — no BROWX_ATTACH_CDP).
   --version, -v                 print the browxai version
   --help, -h                    print this usage text
 
@@ -67,6 +72,11 @@ async function main(): Promise<void> {
     case undefined:
       break; // fall through to MCP server
     default:
+      // `--engine <kind>` / `--engine=<kind>` is a SERVER-mode flag, not a
+      // subcommand — when it appears first (`browxai --engine firefox`) it lands
+      // in `subcommand`, so fall through to the MCP server path (which parses the
+      // full argv for it) instead of treating it as unknown.
+      if (subcommand === "--engine" || subcommand.startsWith("--engine=")) break;
       // Unknown subcommand — print help and exit non-zero (don't silently start the
       // MCP server, since stdout is the MCP wire and we'd corrupt any caller's expectation).
       process.stderr.write(
@@ -80,16 +90,35 @@ async function main(): Promise<void> {
   const config = resolveConfig();
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
   const headless = process.env.BROWX_HEADLESS === "1";
+  // Engine selection: explicit `--engine <kind>` > `BROWX_ENGINE` env > default
+  // chromium (left to server.ts when this resolves undefined — byte-identical to
+  // never passing browserType). An unknown engine fails loudly here, before the
+  // server starts, with a structured message listing the implemented engines —
+  // never a stack trace, never a silent fallback to chromium.
+  let browserType;
+  try {
+    browserType = resolveEngineSelection(process.argv.slice(2));
+  } catch (err) {
+    if (
+      err instanceof UnknownEngineError ||
+      (err instanceof Error && err.message.includes("--engine"))
+    ) {
+      process.stderr.write(`${err.message}\n`);
+      process.exit(2);
+    }
+    throw err;
+  }
 
   log.info("browxai: starting", {
     workspace: workspace.root,
     mode: attachCdp ? "byob" : "managed",
     attachCdp,
     headless,
+    engine: browserType ?? "chromium",
     testAttributes: config.testAttributes,
   });
 
-  const server = await createServer({ attachCdp, headless });
+  const server = await createServer({ attachCdp, headless, browserType });
 
   const shutdown = async (signal: string): Promise<void> => {
     log.info(`browxai: shutdown (${signal})`);
