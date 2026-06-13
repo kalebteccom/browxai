@@ -124,6 +124,9 @@ export default tseslint.config(
       "website/**",
       "**/*.generated.*",
       ".claude/**",
+      // Reproducible probe artifacts — standalone Node scripts (console output,
+      // exploratory locals); they are reference material, not source.
+      "docs/rfcs/references/safari-probe/**",
     ],
   },
   js.configs.recommended,
