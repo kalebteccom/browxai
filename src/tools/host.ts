@@ -76,6 +76,14 @@ export interface ToolHost {
   /** Wrap an ActionResult promise as the standard `{ content: [text] }` envelope. */
   asActionResultText: (p: Promise<unknown>) => Promise<ToolResponse>;
 
+  /** JSON envelope builder for the non-action (JSON-returning) families: stringify
+   *  the body with an appended `tokensEstimate`. Every such family — storage,
+   *  cookies, auth, caches, … — returns through this so callers see one shape. */
+  okText: (body: Record<string, unknown>) => ToolResponse;
+
+  /** The `ok:false` rejection counterpart of `okText`, same envelope shape. */
+  errText: (tool: string, err: unknown) => ToolResponse;
+
   /** Narrow wire target args to a resolved `ActionTarget`; throws on ambiguity /
    *  unbound name / missing target. */
   asTarget: (args: RawTargetArgs, toolName: string, refs: RefRegistry) => ResolvedTarget;

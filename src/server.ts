@@ -304,6 +304,9 @@ import { runFlakeCheck } from "./util/flake-check.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import type { ToolHost, ToolResponse } from "./tools/host.js";
 import { registerActionTools } from "./tools/action-tools.js";
+// Shared input-schema fragments live in a leaf module so the per-family tool
+// modules and this composition root depend on them without an import cycle.
+import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/schemas.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -319,68 +322,9 @@ export interface StartOptions {
   browserType?: EngineKind;
 }
 
-const SNAPSHOT_MODE = z.enum(["scoped_snapshot", "tree_diff", "full", "none"]).optional();
-
-// every browser-touching tool accepts an optional `session` id.
-// Omitting it resolves to the lazily-created "default" session — byte-identical
-// to pre-2.5 single-session behaviour. Distinct ids get fully isolated state
-// (own RefRegistry, own BrowserContext / cookie jar, own buffers).
-export const SESSION_ARG = {
-  session: z
-    .string()
-    .optional()
-    .describe(
-      'Session id (default "default"). Each id is an isolated browser context (own cookie jar, own refs). Open non-default sessions with open_session; list with list_sessions.',
-    ),
-};
-
-// per-call anti-wedge override. Default comes from config
-// `actionTimeoutMs` (5000). The wording deliberately deters large values.
-export const TIMEOUT_ARG = {
-  timeoutMs: z
-    .number()
-    .int()
-    .positive()
-    .max(3_600_000)
-    .optional()
-    .describe(
-      "Anti-wedge hard deadline for this call (ms). Default 5000 (config `actionTimeoutMs`). " +
-        "An action needing >5s is almost always a no-op or a wedged page op. When a call " +
-        "times out, the fix is to retry it ONCE or — if timeouts keep recurring — discard " +
-        "the session (`close_session` then `open_session`), NOT a bigger timeout: raising " +
-        "this never recovers a wedged session. Raise it ONLY for one specific known-slow " +
-        "call, never as a blanket. Values approaching the 3600000 (1h) ceiling are " +
-        "essentially always a mistake; over-ceiling is clamped + warned.",
-    ),
-};
-export const ACTION_OPTS = {
-  mode: SNAPSHOT_MODE,
-  maxResultTokens: z.number().int().positive().max(20_000).optional(),
-  ...TIMEOUT_ARG,
-  ...SESSION_ARG,
-};
-
-// `target` accepts ref *or* selector *or* named *or* coords. Validated at
-// handler time. `contextRef` optionally scopes a `selector` to a prior ref's
-// subtree. `coords` is the escape hatch for visually-located targets (canvas,
-// custom-painted UIs, dismiss-empty-space) — only click/hover honour it.
-export const REF_OR_SELECTOR = {
-  ref: z.string().optional().describe("Stable [eN] ref from snapshot()/find()"),
-  selector: z.string().optional().describe("CSS / selectorHint fallback"),
-  named: z.string().optional().describe("Mnemonic name previously bound with name_ref"),
-  contextRef: z
-    .string()
-    .optional()
-    .describe(
-      "Resolve `selector` within the subtree of this ref (from a prior snapshot/find). Lets you say 'the X *inside* this row/card/panel' without baking positional :nth chains into the selector. Ignored when `ref` or `named` is used.",
-    ),
-  coords: z
-    .object({ x: z.number(), y: z.number() })
-    .optional()
-    .describe(
-      "Page-coordinate target {x,y} (CSS pixels, viewport-relative). Escape hatch for canvas / custom-painted UIs / dismiss-empty-space cases that ref/selector resolution can't address. Honoured by `click` and `hover` only; ignored elsewhere.",
-    ),
-};
+// Re-exported (imported at the top with the other tool modules) to preserve the
+// existing public surface — the definitions now live in `tools/schemas`.
+export { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR };
 
 /** structured one-liner alongside an element screenshot. Skips
  *  vision-reading when the agent only needs to confirm "yes the button is there." */
@@ -639,7 +583,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const serverEngine: EngineKind = opts.browserType ?? "chromium";
   // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
   // persistent. android is ATTACH-ONLY (the user's real Chrome-on-Android over
-  // adb + CDP — RFC D3/D8), so it defaults to "attached" with no BROWX_ATTACH_CDP
+  // adb + CDP), so it defaults to "attached" with no BROWX_ATTACH_CDP
   // (the endpoint is DISCOVERED over adb, not configured). This is the default a
   // lazily-created session inherits; an explicit open_session can override per id.
   const serverDefaultMode: SessionMode =
@@ -724,7 +668,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       let sess: BrowserSession;
       if (mode === "attached") {
-        // android attach is endpoint-DISCOVERED over adb (RFC D3/D8) — it does
+        // android attach is endpoint-DISCOVERED over adb — it does
         // NOT need BROWX_ATTACH_CDP. The desktop CDP-attach lane still requires it.
         if (serverEngine !== "android" && !opts.attachCdp) {
           throw new Error(
@@ -805,7 +749,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // `start_har` / `stop_har` can refuse cleanly (the native path can't be
       // toggled mid-session — Playwright finalizes it on context.close()).
       const harState = newHarRecorderState();
-      // safari (P4) is the first non-Playwright engine: it has no Playwright Page,
+      // safari is the first non-Playwright engine: it has no Playwright Page,
       // so the Playwright-bound bookkeeping below (HAR/video recorders, console/
       // network/bridge/policy attaches, device emulation, the CDP page-event
       // reapply) is guarded `!== "safari"` — always-true for the other engines, so
@@ -843,7 +787,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const consoleBuf = new ConsoleBuffer();
       // Safari has no Playwright Page, so its console arrives over the BiDi
-      // `log.entryAdded` stream (RFC 0002 P4) — subscribed here at session creation
+      // `log.entryAdded` stream — subscribed here at session creation
       // so load-time logs are caught. Strictly optional: when BiDi did not
       // negotiate (no experimental cap), the buffer stays empty (console_read still
       // works, returning nothing). Every other engine attaches to the page.
@@ -861,7 +805,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           });
         }
       }
-      // The network/WS substrate is selected by engine capability (RFC 0002 D5):
+      // The network/WS substrate is selected by engine capability:
       // chromium (CDP present) gets the verbatim CDP NetworkBuffer/WsBuffer/tap;
       // firefox/webkit get the Playwright context-event buffers. The session-wide
       // rings attach once here; the action window mints its per-action tap from
@@ -1051,13 +995,13 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         mode,
         session: sess,
         refs: new RefRegistry(),
-        // Engine-agnostic snapshot/a11y substrate (RFC 0002 D4). chromium → the
+        // Engine-agnostic snapshot/a11y substrate. chromium → the
         // verbatim CDP substrate; firefox/webkit → the page-side walker. Selected
         // by the engine's CDP capability, not an engine-name check (the same
         // signal requireCdp keys on). Captured once here so the hot snapshot/find
         // path is a direct delegate, no per-call allocation.
         snapshotSubstrate: snapshotSubstrateFor(sess),
-        // Engine-agnostic network substrate (RFC 0002 D5). `network` / `ws` below
+        // Engine-agnostic network substrate. `network` / `ws` below
         // ARE this substrate's session-wide rings; the action window mints its
         // per-action tap from it. Captured once here so the hot envelope path is
         // a captured-handle delegate (no per-call allocation beyond the per-action
@@ -1283,7 +1227,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const ctxFor = (e: SessionEntry): ActionContext => ({
     page: e.session.page(),
     // The action window mints its per-action network tap from this substrate
-    // (RFC 0002 D5): chromium → the CDP NetworkTap; firefox/webkit → the
+    // by engine capability: chromium → the CDP NetworkTap; firefox/webkit → the
     // Playwright context-event tap. So the envelope's network slice is real on
     // every engine, not just chromium.
     network: e.networkSubstrate,
@@ -1312,7 +1256,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     ...(caps.enabled.has("file-io") ? { downloads: e.downloads } : {}),
   });
 
-  // The action capability port (RFC 0003): selected by the engine's capability,
+  // The action capability port: selected by the engine's capability,
   // exactly like `snapshotSubstrateFor` / `networkSubstrateFor`. Playwright engines
   // wrap `actions.*` over a fresh ActionContext; safari (no Playwright Page) wraps
   // the WebDriver Classic action path. Handlers call `actionsFor(e).<action>(args)`
@@ -1323,7 +1267,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     return new PlaywrightActionSubstrate(() => ctxFor(e), e.session.engine);
   };
 
-  // The capture capability port (RFC 0003): selected by the engine's capability,
+  // The capture capability port: selected by the engine's capability,
   // exactly like `actionsFor` / `snapshotSubstrateFor`. Playwright engines wrap the
   // existing `page.screenshot` / `locator.screenshot` logic (jpeg, scale, fullPage,
   // element-scoped, the `path` disk-write envelope, the `describe` caption); safari
@@ -1339,7 +1283,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     });
   };
 
-  // The storage capability port (RFC 0003): selected by the engine's capability,
+  // The storage capability port: selected by the engine's capability,
   // exactly like `actionsFor` / `captureFor`. Playwright engines wrap the existing
   // `cookiesList` / `cookiesSet` over the session's BrowserContext and the existing
   // `webStorage*` helpers over the session's Page; safari (no Playwright Page/
@@ -1357,7 +1301,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     );
   };
 
-  // The script capability port (RFC 0003): selected by the engine's capability,
+  // The script capability port: selected by the engine's capability,
   // exactly like `actionsFor` / `captureFor`. Playwright engines wrap
   // `page.evaluate`; safari (no Playwright Page) wraps the WebDriver Classic
   // `execute/sync` endpoint with the `return (…)` expression wrapping. The
@@ -1369,7 +1313,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     return new PlaywrightScriptSubstrate(() => e.session.page(), e.session.engine);
   };
 
-  // The live-emulation capability port (RFC 0003): selected by the engine's
+  // The live-emulation capability port: selected by the engine's
   // capability, exactly like `actionsFor` / `captureFor`. Playwright engines wrap
   // the existing `context.setGeolocation` / `page.emulateMedia` live mutators;
   // safari has no live-emulation surface beyond viewport, so the adapter refuses
@@ -1718,7 +1662,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         }
       }
       // The main-frame tree comes from the session's snapshot substrate (CDP on
-      // chromium, the page-side walker on firefox/webkit — RFC 0002 D4); the
+      // chromium, the page-side walker on firefox/webkit); the
       // child-frame path already runs the portable frame.evaluate walker
       // regardless of engine. Neither has an inherent timeout — a wedged
       // renderer would stall the read — so race against the config deadline.
@@ -1759,7 +1703,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       }
       const { tree, stats, warnings } = composed;
       // The header url/title. safari has no Playwright Page — read them from the
-      // Safari-native WebDriver Classic client instead (RFC 0002 P4).
+      // Safari-native WebDriver Classic client instead.
       let url: string;
       let title: string;
       const safariHandleForHeader = s.safari?.();
@@ -1893,7 +1837,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         result = await withDeadline(
           find(
             // safari has no Playwright Page — find ranks from the substrate tree
-            // (no locator-based bbox/actionability enrichment). RFC 0002 P4.
+            // (no locator-based bbox/actionability enrichment).
             s.safari ? null : s.page(),
             e.snapshotSubstrate,
             e.refs,
@@ -2079,8 +2023,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       const e = await entryFor(session);
       // shadow_trees is CDP-deep: closed-shadow piercing needs CDP
       // `DOM.getDocument({pierce:true})`, which has no off-Chromium protocol
-      // equivalent (RFC 0002 D4 / coupling audit §1.1 — closed-shadow is the
-      // one true feature-level loss). Gate it on engines without CDP.
+      // equivalent (closed-shadow is the one true feature-level loss).
+      // Gate it on engines without CDP.
       const eg = engineGate("shadow_trees", e);
       if (eg) return eg;
       const s = e.session;
@@ -3429,7 +3373,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       // real-value gets substituted with its alias on egress. Base64 bodies
       // pass through unchanged (the literal scan would never match an
       // encoded form; documented in tool-reference.md as a known limitation).
-      // Engine-agnostic via the network substrate (RFC 0002 D5): chromium fetches
+      // Engine-agnostic via the network substrate: chromium fetches
       // on demand (CDP Network.getResponseBody); firefox/webkit return the body
       // captured at response time into the substrate's bounded recent-window cache.
       const r = await e.networkSubstrate.fetchBody(
@@ -3557,6 +3501,25 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
   };
 
+  /** JSON envelope for the non-action families: stringify with `tokensEstimate`. */
+  const okText = (
+    body: Record<string, unknown>,
+  ): { content: Array<{ type: "text"; text: string }> } => {
+    const json = JSON.stringify(body);
+    const tokensEstimate = estimateTokens(json);
+    return {
+      content: [
+        { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
+      ],
+    };
+  };
+  /** Same shape for an `ok:false` rejection so callers see a uniform envelope. */
+  const errText = (
+    tool: string,
+    err: unknown,
+  ): { content: Array<{ type: "text"; text: string }> } =>
+    okText({ ok: false, tool, error: err instanceof Error ? err.message : String(err) });
+
   // The composition seam: bundle the shared state + helper closures into one
   // host and hand it to each per-family tool module. createServer stays the
   // registry composition root; the register() blocks live under src/tools/.
@@ -3568,6 +3531,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     confirmCtxFor,
     denyContent,
     asActionResultText,
+    okText,
+    errText,
     asTarget,
     hintFromTarget,
     actionTimeout,
@@ -7445,24 +7410,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // For now the dump ships unmasked — adopters should treat it as sensitive.
   // ===========================================================================
 
-  /** Envelope helper for the storage tools: JSON-stringify with `tokensEstimate`. */
-  const okText = (
-    body: Record<string, unknown>,
-  ): { content: Array<{ type: "text"; text: string }> } => {
-    const json = JSON.stringify(body);
-    const tokensEstimate = estimateTokens(json);
-    return {
-      content: [
-        { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate }, null, 2) },
-      ],
-    };
-  };
-  /** Same shape for an `ok:false` rejection so callers see a uniform envelope. */
-  const errText = (
-    tool: string,
-    err: unknown,
-  ): { content: Array<{ type: "text"; text: string }> } =>
-    okText({ ok: false, tool, error: err instanceof Error ? err.message : String(err) });
+  // `okText` / `errText` (the JSON envelope helpers these storage tools use) are
+  // defined above with the host seam — every non-action family needs them, so
+  // they live on the host (see `host.okText` / `host.errText`).
 
   // ---- layer 1 ----------------------------------------------------------------
   register(
@@ -9493,7 +9443,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
               }
             : {};
         // safari has no Playwright Page — read the opened URL from its WebDriver
-        // Classic client instead (RFC 0002 P4).
+        // Classic client instead.
         const safariOpened = e.session.safari?.();
         const openedUrl = safariOpened
           ? await safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "")

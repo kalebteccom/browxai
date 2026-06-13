@@ -2,7 +2,7 @@ import { confirmNavigation, confirmByobAction } from "../policy/confirm.js";
 import { withDeadline } from "../util/deadline.js";
 import { runShortcut } from "../page/shortcut.js";
 import { drag, doubleClick } from "../page/gestures.js";
-import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "../server.js";
+import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
 /**
@@ -139,7 +139,6 @@ export function registerActionTools(host: ToolHost): void {
           key: args.key,
           mode: args.mode,
           maxResultTokens: args.maxResultTokens,
-          recordingHint: target ? host.hintFromTarget(e, target) : undefined,
           deadlineMs: td.ms,
           deadlineWarning: td.warning,
         }),
