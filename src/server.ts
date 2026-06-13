@@ -271,6 +271,12 @@ import {
   SafariActionSubstrate,
   type ActionSubstrate,
 } from "./page/action-substrate.js";
+import {
+  PlaywrightCaptureSubstrate,
+  SafariCaptureSubstrate,
+  type CaptureSubstrate,
+} from "./page/capture-substrate.js";
+import { screenshotSave } from "./page/screenshot-save.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
 import type { ActionContext } from "./page/actionresult.js";
@@ -1328,6 +1334,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     const safariHandle = e.session.safari?.();
     if (safariHandle) return new SafariActionSubstrate(safariHandle, e.refs);
     return new PlaywrightActionSubstrate(() => ctxFor(e), e.session.engine);
+  };
+
+  // The capture capability port (RFC 0003): selected by the engine's capability,
+  // exactly like `actionsFor` / `snapshotSubstrateFor`. Playwright engines wrap the
+  // existing `page.screenshot` / `locator.screenshot` logic (jpeg, scale, fullPage,
+  // element-scoped, the `path` disk-write envelope, the `describe` caption); safari
+  // (no Playwright Page) wraps `webDriver.screenshot` and refuses the variants it
+  // can't honour in the adapter. The `screenshot` handler calls
+  // `captureFor(e).screenshot(req)` and never branches on engine.
+  const captureFor = (e: SessionEntry): CaptureSubstrate => {
+    const safariHandle = e.session.safari?.();
+    if (safariHandle) return new SafariCaptureSubstrate(safariHandle);
+    return new PlaywrightCaptureSubstrate(() => e.session.page(), e.refs, {
+      describeTarget,
+      save: (buf, args) => screenshotSave(buf, workspace.root, args),
+    });
   };
 
   // resolve the effective anti-wedge deadline for a call —
@@ -2694,48 +2716,40 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         };
       }
       const e = await entryFor(args.session);
-      const safariShotHandle = e.session.safari?.();
-      if (safariShotHandle) {
-        // safaridriver captures the whole document as PNG; the element-scoped /
-        // `path` / `jpeg` variants need a Playwright Page Safari lacks.
-        if (args.ref || args.selector || args.named || args.path !== undefined) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error:
-                      "the Safari engine supports only the default inline PNG screenshot — element-scoped (`ref`/`selector`/`named`) and `path` captures need a chromium/firefox/webkit session.",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-        const b64 = await safariShotHandle.webDriver.screenshot(safariShotHandle.sessionId);
-        return { content: [{ type: "image" as const, data: b64, mimeType: "image/png" }] };
-      }
-      const page = e.session.page();
-      const fmt: "png" | "jpeg" = args.format ?? "png";
-      const mimeType = fmt === "jpeg" ? "image/jpeg" : "image/png";
-      const fullPage = args.fullPage ?? false;
+      // Pass the `asTarget` chokepoint to the port as a DEFERRED resolver, not an
+      // eager result: an adapter calls it only after its own refusals pass, so a
+      // malformed target (multi-target / unbound `named`) still surfaces as the
+      // engine or `fullPage` refusal it sat behind pre-seam instead of preempting
+      // them with a throw. `resolveTarget` absent ⇒ a viewport/`fullPage` capture.
       const elementScoped = !!(args.ref || args.selector || args.named);
-      if (fullPage && elementScoped) {
+      const resolveTarget = elementScoped
+        ? () =>
+            asTarget(args, "screenshot", e.refs) as
+              | { ref: string }
+              | { selector: string; contextRef?: string }
+        : undefined;
+      const cap = await captureFor(e).screenshot({
+        format: args.format ?? "png",
+        quality: args.quality,
+        scale: args.scale,
+        fullPage: args.fullPage ?? false,
+        describe: args.describe ?? false,
+        resolveTarget,
+        path: args.path,
+      });
+      if (cap.kind === "refusal") {
+        const body: Record<string, unknown> = { ok: false, error: cap.error };
+        if (cap.hint) body.hint = cap.hint;
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+      }
+      if (cap.kind === "save-error") {
+        const body = { ok: false, error: cap.error };
         return {
           content: [
             {
               type: "text" as const,
               text: JSON.stringify(
-                {
-                  ok: false,
-                  error:
-                    "screenshot: `fullPage:true` is mutually exclusive with `ref`/`selector`/`named` — element-scoped captures are already bounded by the element's box",
-                  hint: "Drop `fullPage` for an element capture, or drop the target for a whole-document capture.",
-                },
+                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
                 null,
                 2,
               ),
@@ -2743,82 +2757,34 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           ],
         };
       }
-      const screenshotOpts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = {
-        type: fmt,
-      };
-      if (fmt === "jpeg") screenshotOpts.quality = args.quality ?? 80;
-      if (args.scale) screenshotOpts.scale = args.scale;
-      let buf: Buffer;
-      let caption = "";
-      if (elementScoped) {
-        const { locatorFor } = await import("./page/locator.js");
-        const target = asTarget(args, "screenshot", e.refs);
-        const loc = locatorFor(page, e.refs, target);
-        // Locator.screenshot doesn't accept `scale`; pass type/quality only there.
-        const locOpts: { type: "png" | "jpeg"; quality?: number } = { type: fmt };
-        if (fmt === "jpeg") locOpts.quality = args.quality ?? 80;
-        buf = await loc.screenshot(locOpts);
-        if (args.describe) caption = await describeTarget(loc, e.refs, target);
-      } else {
-        buf = await page.screenshot({ fullPage, ...screenshotOpts });
-        if (args.describe) caption = `${fullPage ? "fullPage" : "viewport"} (${page.url()})`;
-      }
-      // `path` mode: write bytes to a workspace-rooted file and return a JSON
-      // envelope instead of inline base64. Capability already checked above.
-      if (args.path !== undefined) {
-        try {
-          const { screenshotSave } = await import("./page/screenshot-save.js");
-          const r = screenshotSave(buf, workspace.root, {
-            path: args.path,
-            format: fmt,
-            fullPage,
-          });
-          const body: Record<string, unknown> = { ...r };
-          if (caption) body.caption = caption;
-          const json = JSON.stringify(body);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-              },
-            ],
-          };
-        } catch (err) {
-          const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
+      // `path` mode: the bytes were written to disk → return the JSON envelope
+      // (with the optional describe caption folded in) instead of inline base64.
+      if (cap.kind === "saved") {
+        const body: Record<string, unknown> = { ...cap.result };
+        if (cap.caption) body.caption = cap.caption;
+        const json = JSON.stringify(body);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
+            },
+          ],
+        };
       }
       const content: Array<
         { type: "image"; data: string; mimeType: string } | { type: "text"; text: string }
-      > = [{ type: "image", data: buf.toString("base64"), mimeType }];
-      if (caption) content.unshift({ type: "text", text: caption });
+      > = [{ type: "image", data: cap.data, mimeType: cap.mimeType }];
+      if (cap.caption) content.unshift({ type: "text", text: cap.caption });
       // Secrets sink — best-effort. PNG/JPEG bytes are NOT searched (no OCR
       // server-side); instead, sweep the page's text content for any
       // registered real-value and prepend a warning when one might be
       // visible. Pixel-level redaction (region-blur of matched bounding
       // boxes) is deferred — see docs/tool-reference.md for the typed seam.
-      if (caps.enabled.has("secrets") && e.secrets.size() > 0) {
-        // Read the document's visible text (innerText falls back to "" on
-        // failure — the page may be navigating). Bounded so a giant page
-        // doesn't make the scan O(n^2-pathological).
-        const pageText: string = await page
-          .evaluate(() => {
-            const w = globalThis as unknown as { document?: { body?: { innerText?: string } } };
-            return (w.document?.body?.innerText ?? "").slice(0, 200_000);
-          })
-          .catch(() => "");
+      // `pageText` is present only on the Playwright path (Safari has no Page to
+      // evaluate — the same boundary the deleted safari branch sat behind).
+      if (cap.pageText && caps.enabled.has("secrets") && e.secrets.size() > 0) {
+        const pageText = await cap.pageText();
         const probe = e.secrets.containsAnySecret(pageText);
         if (probe.hit) {
           content.unshift({
