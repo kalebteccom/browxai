@@ -12,7 +12,7 @@
 // CDP path already made. No new per-action cost on chromium (architecture doctrine
 // §3 — the envelope is the hottest path; measured, see RFC D5).
 
-import type { BrowserContext, CDPSession, Page } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import {
   CdpNetworkSubstrate,
   PlaywrightNetworkSubstrate,
