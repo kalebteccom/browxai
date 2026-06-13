@@ -10,6 +10,47 @@ surface" covers.
 
 ### Added
 
+- **Android is a real fourth engine (`browserType:"android"`) — real
+  Chrome-on-Android attached over adb + CDP.** The surviving full-fidelity
+  real-profile BYOB lane (RFC 0002 D3/D8): an `AndroidCdpAdapter`
+  (`src/engine/adapters/android-cdp.ts`) attaches to the user's **real** Chrome
+  on a USB-connected device with `chromium.connectOverCDP(<ws-from-adb-forwarded-socket>)`.
+  We use **`connectOverCDP`, not Playwright's `_android` device API** — it returns
+  the exact `Browser`/`CDPSession` the desktop BYOB path already wires, so the
+  session model, the snapshot/network substrates, and teardown all work unchanged
+  (the most existing-code reuse). The attach path is the adb plumbing
+  (`src/engine/adapters/adb.ts`): list/parse devices, select the ready one
+  (`BROWX_ANDROID_SERIAL` disambiguates several), `adb forward tcp:<port>
+  localabstract:chrome_devtools_remote`, `GET /json/version` →
+  `webSocketDebuggerUrl`, then `connectOverCDP` — with `forward --remove` cleanup
+  on close and on any post-forward failure (no leaked forwards). **The standout:
+  Android Chrome speaks FULL CDP, so `ANDROID_CAPABILITIES` declares `deep: true`**
+  — unlike Firefox/WebKit, the existing `CdpSnapshotSubstrate` /
+  `CdpNetworkSubstrate` serve it **verbatim** (selected by CDP presence, no new
+  substrate), and the capability-based engine gate **auto-allows every tool,
+  including the CDP-deep ones** (perf / coverage / heap / cpu / clock / CDP input /
+  closed-shadow) with zero gate edits. Android is **attach-only**: managed /
+  ephemeral launch returns a structured `android-launch-not-supported` (the user
+  opens Chrome on their phone; the server defaults the android engine to
+  `mode:"attached"`, endpoint discovered over adb — no `BROWX_ATTACH_CDP`). adb
+  failures are structured, not crashes: `adb-missing`, `no-device` (names the
+  on-device RSA-prompt / re-plug fix), `ambiguous-device`,
+  `chrome-socket-unreachable`. **Chrome-136 finding:** the Chrome-136
+  default-profile-attach block is desktop-`--remote-debugging-port`-only; Android
+  publishes its DevTools endpoint on the OS `localabstract` socket gated by USB
+  debugging, **not** that switch — so the block does NOT apply and the
+  real-profile BYOB win survives on Android. A `browxai doctor` android check
+  reports how far the adb + CDP chain reaches (informational — never fails
+  doctor). A **device-gated keystone** (`test/keystone/android.keystone.test.ts`)
+  attaches to a real device, asserts the engine tag, navigate → snapshot → find,
+  AND a deep tool (`coverage_start`) running — the proof of `deep: true` — and
+  **skips cleanly when no device is connected** (the same honest gate the
+  Firefox/WebKit keystones use for their binaries). Chromium + Firefox + WebKit
+  unit + keystone suites unchanged. See
+  `docs/ai-context/architecture/engine-adapters.md` (the P3 Android section + the
+  per-engine matrix's Android column — every row `works`, including the deep
+  rows).
+
 - **`network_read` / `ws_read` / `network_body` (and the per-action network
   slice of every `ActionResult`) now run on Firefox and WebKit.** The network/WS
   tap + response-body fetch moved behind one `NetworkSubstrate` interface (RFC
