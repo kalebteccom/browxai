@@ -16,6 +16,7 @@ import type { CDPSession, Page } from "playwright-core";
 import {
   CdpNetworkSubstrate,
   PlaywrightNetworkSubstrate,
+  SafariNoopNetworkSubstrate,
   type NetworkSubstrate,
 } from "./network-substrate.js";
 
@@ -36,6 +37,10 @@ export interface NetworkSubstrateCapableSession {
  *  routes to the CDP substrate automatically and a non-CDP one to the event path,
  *  with no edit here. */
 export function networkSubstrateFor(session: NetworkSubstrateCapableSession): NetworkSubstrate {
+  // Safari has no network substrate at all (no CDP tap, no BiDi network domain) —
+  // and no Playwright Page to feed the event path — so it gets the empty no-op
+  // substrate; the network tools are capability-gated. Handled before page().
+  if (session.engine === "safari") return new SafariNoopNetworkSubstrate();
   if (session.cdp) return new CdpNetworkSubstrate(session.cdp());
   const page = session.page();
   return new PlaywrightNetworkSubstrate(page.context(), page, session.engine);
