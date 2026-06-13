@@ -250,6 +250,21 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
         { session },
       );
       expect(list.cookies.some((c) => c.name === "safari_ks" && c.value === "present")).toBe(true);
+
+      // localStorage — page-side JS over WebDriver execute/sync (StorageSubstrate;
+      // a real working capability on the no-Page Safari engine). Round-trip proves
+      // the execute/sync web-storage path against real Safari, not just a mock.
+      const lsSet = await callJson<{ ok: boolean }>("localstorage_set", {
+        session,
+        key: "ks_key",
+        value: "ks_val",
+      });
+      expect(lsSet.ok, `localstorage_set: ${JSON.stringify(lsSet)}`).toBe(true);
+      const lsGet = await callJson<{ value: string | null }>("localstorage_get", {
+        session,
+        key: "ks_key",
+      });
+      expect(lsGet.value).toBe("ks_val");
     },
     KEYSTONE_TIMEOUT,
   );

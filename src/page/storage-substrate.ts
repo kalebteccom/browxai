@@ -197,8 +197,10 @@ async function safariWebStorageGuard(
  *  domain. The web-storage methods run the SAME page-side IIFE the Playwright helper
  *  evaluates, wrapped in `return (…)` (an expression, not a statement body) the way
  *  `execute/sync` expects — the validation + origin guard mirror the helper so the
- *  error envelopes match. This is the pre-seam Safari behaviour, moved into the
- *  adapter so the handler stays engine-blind. RFC 0003. */
+ *  error envelopes match. Web-storage is page-side JS, so safaridriver runs it the
+ *  same way: on the no-Playwright-Page Safari engine this is a NEW working
+ *  capability (the handler previously had no Safari path and threw), surfaced
+ *  through the same port so the handler stays engine-blind. RFC 0003. */
 export class SafariStorageSubstrate implements StorageSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
