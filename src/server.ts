@@ -279,6 +279,11 @@ import {
   SafariStorageSubstrate,
   type StorageSubstrate,
 } from "./page/storage-substrate.js";
+import {
+  PlaywrightScriptSubstrate,
+  SafariScriptSubstrate,
+  type ScriptSubstrate,
+} from "./page/script-substrate.js";
 import { screenshotSave } from "./page/screenshot-save.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
@@ -1365,6 +1370,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     const safariHandle = e.session.safari?.();
     if (safariHandle) return new SafariStorageSubstrate(safariHandle);
     return new PlaywrightStorageSubstrate(() => e.session.page().context(), e.session.engine);
+  };
+
+  // The script capability port (RFC 0003): selected by the engine's capability,
+  // exactly like `actionsFor` / `captureFor`. Playwright engines wrap
+  // `page.evaluate`; safari (no Playwright Page) wraps the WebDriver Classic
+  // `execute/sync` endpoint with the `return (…)` expression wrapping. The
+  // `eval_js` handler calls `scriptFor(e).evaluate(expr)` and never branches on
+  // engine — the deadline race + error envelope stay in the handler.
+  const scriptFor = (e: SessionEntry): ScriptSubstrate => {
+    const safariHandle = e.session.safari?.();
+    if (safariHandle) return new SafariScriptSubstrate(safariHandle);
+    return new PlaywrightScriptSubstrate(() => e.session.page(), e.session.engine);
   };
 
   // resolve the effective anti-wedge deadline for a call —
@@ -3468,7 +3485,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     async ({ expr, returnType, timeoutMs, session }) => {
       const g = gateCheck("eval_js");
       if (g) return g;
-      const s = (await entryFor(session)).session;
+      const e = await entryFor(session);
       // page.evaluate has NO Playwright timeout — a never-resolving expr
       // would wedge forever. Race it against the anti-wedge deadline.
       const td = actionTimeout({ timeoutMs });
@@ -3480,16 +3497,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         : undefined;
       const warn =
         td.warning && clickWarn ? `${td.warning} ${clickWarn}` : (td.warning ?? clickWarn);
-      // safari has no Playwright Page — evaluate over the WebDriver Classic
-      // `execute/sync` endpoint instead (the expression is wrapped in `return (…)`).
-      const evalExpr = (): Promise<unknown> => {
-        const sh = s.safari?.();
-        if (sh) return sh.webDriver.executeScript(sh.sessionId, `return (${expr});`);
-        return s.page().evaluate(expr);
-      };
       try {
         if (returnType === "void") {
-          await withDeadline(evalExpr(), td.ms, "eval_js").catch(() => undefined);
+          await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js").catch(() => undefined);
           return {
             content: [
               {
@@ -3503,7 +3513,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             ],
           };
         }
-        const value = await withDeadline(evalExpr(), td.ms, "eval_js");
+        const value = await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js");
         return {
           content: [
             {
@@ -3516,7 +3526,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
             },
           ],
         };
-      } catch (e) {
+      } catch (err) {
         return {
           content: [
             {
@@ -3524,7 +3534,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
               text: JSON.stringify(
                 {
                   ok: false,
-                  error: e instanceof Error ? e.message : String(e),
+                  error: err instanceof Error ? err.message : String(err),
                   ...(warn ? { warning: warn } : {}),
                 },
                 null,
