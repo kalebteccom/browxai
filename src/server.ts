@@ -180,8 +180,6 @@ import {
   injectStorageState,
   readStorageStateFile,
   cookiesGet,
-  cookiesList,
-  cookiesSet,
   cookiesDelete,
   cookiesClear,
   webStorageGet,
@@ -276,6 +274,11 @@ import {
   SafariCaptureSubstrate,
   type CaptureSubstrate,
 } from "./page/capture-substrate.js";
+import {
+  PlaywrightStorageSubstrate,
+  SafariStorageSubstrate,
+  type StorageSubstrate,
+} from "./page/storage-substrate.js";
 import { screenshotSave } from "./page/screenshot-save.js";
 import { fillForm, type FillFormField } from "./page/fill-form.js";
 import type { ActionTarget } from "./page/locator.js";
@@ -1350,6 +1353,18 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       describeTarget,
       save: (buf, args) => screenshotSave(buf, workspace.root, args),
     });
+  };
+
+  // The storage capability port (RFC 0003): selected by the engine's capability,
+  // exactly like `actionsFor` / `captureFor`. Playwright engines wrap the existing
+  // `cookiesList` / `cookiesSet` over the session's BrowserContext; safari (no
+  // Playwright BrowserContext) wraps the WebDriver Classic cookie endpoints and
+  // scopes to the current document in the adapter. The cookie handlers call
+  // `storageFor(e).cookies*(req)` and never branch on engine.
+  const storageFor = (e: SessionEntry): StorageSubstrate => {
+    const safariHandle = e.session.safari?.();
+    if (safariHandle) return new SafariStorageSubstrate(safariHandle);
+    return new PlaywrightStorageSubstrate(() => e.session.page().context(), e.session.engine);
   };
 
   // resolve the effective anti-wedge deadline for a call —
@@ -7864,15 +7879,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       if (g) return g;
       try {
         const e = await entryFor(session);
-        const safariCookieHandle = e.session.safari?.();
-        if (safariCookieHandle) {
-          // safaridriver returns the cookie jar for the current document; the
-          // Playwright `urls` cross-domain filter is not available over WebDriver.
-          const jar = await safariCookieHandle.webDriver.getCookies(safariCookieHandle.sessionId);
-          return okText({ ok: true, count: jar.length, cookies: jar });
-        }
         const r = await withDeadline(
-          cookiesList(e.session.page().context(), { urls }),
+          storageFor(e).cookiesList({ urls }),
           cfgActionTimeout(),
           "cookies_list",
         );
@@ -7916,33 +7924,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
         const e = await entryFor(session);
         const c = await confirmByobAction("cookies_set", confirmCtxFor(e));
         if (!c.ok) return denyContent("cookies_set", c);
-        const safariCookieSetHandle = e.session.safari?.();
-        if (safariCookieSetHandle) {
-          // WebDriver Add Cookie scopes to the current document's domain — derive
-          // it from `url` when given (else the explicit `domain`). The session
-          // must already be navigated to that domain.
-          let derivedDomain = domain;
-          if (!derivedDomain && url) {
-            try {
-              derivedDomain = new URL(url).hostname;
-            } catch {
-              derivedDomain = undefined;
-            }
-          }
-          await safariCookieSetHandle.webDriver.addCookie(safariCookieSetHandle.sessionId, {
-            name,
-            value,
-            path: path ?? "/",
-            ...(derivedDomain ? { domain: derivedDomain } : {}),
-            ...(typeof expires === "number" ? { expiry: Math.floor(expires) } : {}),
-            ...(httpOnly !== undefined ? { httpOnly } : {}),
-            ...(secure !== undefined ? { secure } : {}),
-            ...(sameSite ? { sameSite } : {}),
-          });
-          return okText({ ok: true, name });
-        }
         const r = await withDeadline(
-          cookiesSet(e.session.page().context(), {
+          storageFor(e).cookiesSet({
             name,
             value,
             url,
@@ -7956,7 +7939,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
           cfgActionTimeout(),
           "cookies_set",
         );
-        return okText({ ok: r.ok, name });
+        return okText({ ok: r.ok, name: r.name });
       } catch (err) {
         return errText("cookies_set", err);
       }

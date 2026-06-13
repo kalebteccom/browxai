@@ -207,9 +207,10 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
       expect(filled.ok, `fill: ${JSON.stringify(filled)}`).toBe(true);
       expect(filled.element?.value).toBe("safari-action-keystone");
 
-      // click — a REAL WebDriver elementClick (trusted; fires app handlers). The
-      // fixture flips #saved to "Saved OK"; text_search (substrate-sourced)
-      // confirms the app-side effect.
+      // click — dispatched on the resolved element over execute/sync (the W3C
+      // Element Click endpoint does not reliably fire safaridriver's page click
+      // handlers). The fixture flips #saved to "Saved OK"; text_search
+      // (substrate-sourced) confirms the app-side effect.
       const clicked = await callJson<{ ok: boolean }>("click", {
         session,
         selector: '[data-testid="save-btn"]',

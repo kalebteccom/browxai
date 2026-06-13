@@ -162,8 +162,15 @@ export class SafariWebDriverClient {
     return v.map((e) => e[ELEMENT_KEY] ?? e["ELEMENT"]).filter((id): id is string => Boolean(id));
   }
 
+  // Click the element via execute/sync rather than the W3C `/element/{id}/click`
+  // endpoint: on the shipping safaridriver the protocol Element Click does not
+  // reliably dispatch the page's `click` handlers (a button's `onclick` never
+  // fires), whereas a script-driven `arguments[0].click()` does — the same
+  // execute/sync seam the snapshot substrate is spike-confirmed on (reference 07).
+  // The resolved element id is passed as a web-element reference so the exact
+  // element this client found is the one clicked.
   async elementClick(sessionId: string, elementId: string): Promise<void> {
-    await this.send("POST", `/session/${sessionId}/element/${elementId}/click`, {});
+    await this.executeScript(sessionId, "arguments[0].click();", [{ [ELEMENT_KEY]: elementId }]);
   }
 
   async elementClear(sessionId: string, elementId: string): Promise<void> {
