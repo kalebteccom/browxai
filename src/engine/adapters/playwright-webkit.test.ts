@@ -16,7 +16,7 @@ describe("PlaywrightWebKitAdapter — declarative surface", () => {
     const adapter = new PlaywrightWebKitAdapter();
     expect(adapter.capabilities).toBe(WEBKIT_CAPABILITIES);
     expect(adapter.capabilities.deep).toBe(false);
-    expect(adapter.capabilities.subInterfaces.size).toBe(9);
+    expect(adapter.capabilities.subInterfaces.size).toBe(10); // +page (RFC 0004 D5)
   });
 
   it("exposes the two managed launch shapes the session factories delegate to", () => {

@@ -123,6 +123,12 @@ const ENGINE_SELECT_ALLOWLIST = [
   /src\/engine\/adapters\//,
   /src\/page\/snapshot-substrate-select\.ts$/,
   /src\/page\/network-substrate-select\.ts$/,
+  // launch-options.ts is the engine-launch layer (called only by the
+  // adapters/<engine>.engine.ts modules): the `engine !== "chromium"` branch
+  // chooses the Chromium-only `--disable-web-security` flag form vs the Firefox
+  // prefs path — launch-shaping that is legitimately engine-aware, the same role
+  // as the select / adapter files. (RFC 0004 P1.)
+  /src\/session\/launch-options\.ts$/,
 ];
 
 const noEngineLiteralBranches = {
@@ -417,23 +423,42 @@ export default tseslint.config(
       "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
     },
   },
-  // RFC 0004 P0 — the two new architecture guardrails are scoped to NEW
-  // violations only: they are turned OFF on exactly the known-debt files P1
-  // (no-engine-literal-branches) and P2 (no-inlined-capability-checks) remove.
-  // This is the §7 meta-rule's only sanctioned escape valve — a reviewable config
-  // allowlist, never an inline `eslint-disable` at the violation site. Each entry
-  // shrinks as its phase lands; the rule promotes to whole-tree when the list is
-  // empty. A NEW literal / inlined gate in ANY file not listed here still errors.
+  // RFC 0004 P1 — `no-engine-literal-branches` is now whole-tree clean: the four
+  // session-layer dispatch files (session-registry / managed / incognito / byob)
+  // were relocated behind the EngineRegistry, so they leave this list. What
+  // remains are the two NON-dispatch engine references the rule still flags but
+  // which are legitimately engine-aware (and have no dispatch chain to relocate):
+  //   - server.ts:291  — `serverEngine === "android"` selects the default session
+  //     MODE (android is attach-only), not an engine launch branch.
+  //   - cli/doctor.ts:320 — `selectedEngine === "chromium"` is a diagnostic check
+  //     in the doctor report, not a dispatch.
+  // Kept allowlisted (with this rationale) per the §7 meta-rule's reviewable-config
+  // escape valve — never an inline disable. A NEW engine-literal dispatch in any
+  // other file still errors.
+  {
+    files: ["src/server.ts", "src/cli/doctor.ts"],
+    rules: {
+      "browxai-local/no-engine-literal-branches": "off",
+    },
+  },
+  // RFC 0004 P2 — inlined capability-check debt (P2 colocates the gate at
+  // host.register; until then these legitimately read the capability set).
+  // playwright-post-wire.ts joins this list: the session-creation capability reads
+  // (`caps.enabled.has("stealth"/"action"/"read")` — whether to install the
+  // stealth / ws-interactive / workers page wrappers at session creation) moved
+  // here verbatim from session-registry.ts, which was already allowlisted for this
+  // rule. They are NOT tool-handler gate checks (the `no-inlined-capability-checks`
+  // target) — they are creation-time wiring decisions — so they ride the same
+  // allowlist their origin file did.
   {
     files: [
-      // engine-literal debt (P1 EngineRegistry relocates these):
-      "src/tools/session-registry.ts",
-      "src/session/managed.ts",
-      "src/session/incognito.ts",
-      "src/session/byob.ts",
       "src/server.ts",
-      "src/cli/doctor.ts",
-      // inlined capability-check debt (P2 colocates the gate at host.register):
+      "src/session/playwright-post-wire.ts",
+      // session-registry retains its creation-time capability read
+      // (`new WebDeviceEmulationState(caps.enabled.has("device-emulation"))`) — a
+      // wiring decision, not a tool-handler gate; it rode this allowlist pre-P1 and
+      // is a P2 concern (the engine-literal P1 promotion left it on this list).
+      "src/tools/session-registry.ts",
       "src/tools/read-observe-tools.ts",
       "src/tools/emulation-config-tools.ts",
       "src/tools/extensions-batch-tools.ts",
@@ -443,7 +468,6 @@ export default tseslint.config(
       "src/sdk/registry.ts",
     ],
     rules: {
-      "browxai-local/no-engine-literal-branches": "off",
       "browxai-local/no-inlined-capability-checks": "off",
     },
   },

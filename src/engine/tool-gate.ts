@@ -30,6 +30,7 @@
 
 import type { EngineKind } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
+import { engineCapabilities } from "./capability-registry.js";
 
 /** Tools that require the raw-CDP (`deep`) escape hatch and therefore cannot run
  *  on an engine that declares `deep: false`. The set is the CDP-hard tools plus
@@ -130,7 +131,12 @@ export interface EngineRefusal {
  *  read, no allocation on the supported path. */
 export function assertEngineSupports(tool: string, engine: EngineKind): EngineRefusal | null {
   if (!DEEP_TOOLS.has(tool)) return null;
-  const caps = capabilitiesFor(engine);
+  // Prefer the EngineRegistry's capability record (RFC 0004 P1) — it is the source
+  // of truth post-D1 and is what gates an engine registered ONLY at runtime (e.g.
+  // the synthetic contract-test engine, whose `deep:false` is declared at
+  // registration, not in the central `capabilitiesFor` table). Fall back to the
+  // central declaration for any engine queried before its registration runs.
+  const caps = engineCapabilities(engine) ?? capabilitiesFor(engine);
   // An engine with the deep escape hatch (chromium) runs everything; an engine
   // whose declaration hasn't landed yet is left to the launch path to reject.
   if (!caps || caps.deep) return null;

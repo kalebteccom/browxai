@@ -17,7 +17,7 @@ describe("PlaywrightChromiumAdapter — declarative surface", () => {
     const adapter = new PlaywrightChromiumAdapter();
     expect(adapter.capabilities).toBe(CHROMIUM_CAPABILITIES);
     expect(adapter.capabilities.deep).toBe(true);
-    expect(adapter.capabilities.subInterfaces.size).toBe(9);
+    expect(adapter.capabilities.subInterfaces.size).toBe(10); // +page (RFC 0004 D5)
   });
 
   it("exposes the three launch shapes the session factories delegate to", () => {

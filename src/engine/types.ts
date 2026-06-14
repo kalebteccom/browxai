@@ -57,7 +57,14 @@ export type EngineSubInterface =
   | "storage"
   | "script"
   | "emulation"
-  | "capture";
+  | "capture"
+  // The Playwright-`Page` capability (RFC 0004 D5). Present iff the engine backs
+  // a session with a real Playwright `Page` (chromium / firefox / webkit /
+  // android); ABSENT on safari (no-Playwright-Page). Declaring page-availability
+  // is what closes the Safari LSP leak: a no-Page engine omits this sub-interface
+  // and its post-wire skips every Playwright-only step, so no caller reaches the
+  // `page()`-throws fallback — replacing the 17 scattered `!== "safari"` guards.
+  | "page";
 
 /** Declares what an adapter supports. Composes with the existing per-tool
  *  capability system (util/capabilities.ts) — this is the ENGINE dimension.

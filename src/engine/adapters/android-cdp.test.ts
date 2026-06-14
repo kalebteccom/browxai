@@ -22,7 +22,7 @@ describe("AndroidCdpAdapter — declarative surface", () => {
     // The headline: Android Chrome speaks full CDP, so unlike firefox/webkit it
     // declares deep:true — every tool works, no new substrate.
     expect(adapter.capabilities.deep).toBe(true);
-    expect(adapter.capabilities.subInterfaces.size).toBe(9);
+    expect(adapter.capabilities.subInterfaces.size).toBe(10); // +page (RFC 0004 D5)
     expect(adapter.capabilities.engine).toBe("android");
   });
 });

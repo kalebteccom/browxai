@@ -15,6 +15,7 @@
 // moment registry.ts lands.
 
 import { describe, it, expect } from "vitest";
+import type { Page } from "playwright-core";
 import type { EngineCapabilities, EngineKind } from "../../src/engine/index.js";
 import type { BrowserSession } from "../../src/session/types.js";
 import { createServer } from "../../src/server.js";
@@ -25,10 +26,34 @@ import { createServer } from "../../src/server.js";
 // activated body below is meant to be the ONLY new line a 6th engine needs.
 const SYNTH = "synthetic" as EngineKind;
 
+/** A minimal Playwright-`Page`-shaped fake the in-memory engine returns. The core
+ *  snapshot/find path reads `url()` / `title()` (the snapshot header) and probes
+ *  `locator(...)` (find's disambiguation/bbox/actionability — all best-effort,
+ *  try/caught). The locator stub rejects every probe so find falls back to the
+ *  bare hint + null bbox, exactly as the no-Playwright-Page path does. */
+function fakePage(): Page {
+  const refuse = () => Promise.reject(new Error("synthetic engine: no real locator"));
+  const locator = () => ({
+    count: refuse,
+    isEnabled: refuse,
+    isVisible: refuse,
+    boundingBox: refuse,
+    first() {
+      return this;
+    },
+  });
+  return {
+    url: () => "about:blank",
+    title: () => Promise.resolve("synthetic"),
+    locator,
+  } as unknown as Page;
+}
+
 class InMemoryBrowserSession implements BrowserSession {
   readonly mode = "managed" as const; // SessionMode = "managed" | "byob" (session/types.ts:9)
   readonly ownsBrowser = true;
   readonly engine = SYNTH;
+  private readonly fake = fakePage();
   // Carried as an EXTRA field (not a BrowserSession member) so the registration
   // can read `.capabilities`; deep:false ⇒ no CDP escape hatch.
   readonly capabilities: EngineCapabilities = {
@@ -36,21 +61,20 @@ class InMemoryBrowserSession implements BrowserSession {
     subInterfaces: new Set(["lifecycle", "navigation", "snapshot", "input"]),
     deep: false, // no CDP — proves the gate refuses deep tools without a per-engine edit
   };
-  // page() backs onto an in-memory fake DOM the contract drives; cdp()/safari()
-  // are absent (deep:false), so requireCdp() must structured-refuse.
-  page(): never {
-    // The in-memory fake Page lands with the activated (P1) body; pre-P1 this
-    // class is never instantiated (the describe is .todo), so the stub is inert.
-    throw new Error("InMemoryBrowserSession.page(): fake Page lands with the P1 activation");
+  // page() backs onto an in-memory fake the contract drives (the snapshot header +
+  // find's best-effort locator probes); cdp()/safari() are absent (deep:false), so
+  // requireCdp() must structured-refuse and the snapshot/action substrates are the
+  // engine's in-memory ones (see _synthetic-engine.ts).
+  page(): Page {
+    return this.fake;
   }
   async close(): Promise<void> {}
 }
 
-// In P0 this lands `.todo` (the `registerEngine` it dynamically imports does not
-// exist until D1/P1), so P0 stays gate-green — and because the import is dynamic
-// and inside the test body, P0 does not even resolve the missing module; it
-// activates and goes green in P1.
-describe.todo("L1 — a new engine adapter plugs in with zero core edits", () => {
+// Activated in P1: the `registerEngine` it dynamically imports now exists. The
+// dynamic import inside the body keeps the static graph resolvable in any earlier
+// phase; here it resolves the real registry module.
+describe("L1 — a new engine adapter plugs in with zero core edits", () => {
   it("registers via registerEngine and drives navigate/snapshot/find/click", async () => {
     // Dynamic import: resolves only when this test runs (P1), never at P0 collection.
     const { registerEngine } = await import("../../src/engine/registry.js"); // lands D1/P1
@@ -63,8 +87,10 @@ describe.todo("L1 — a new engine adapter plugs in with zero core edits", () =>
       kind: SYNTH,
       capabilities: new InMemoryBrowserSession().capabilities,
       makeAdapter: async () => new InMemoryBrowserSession(), // Promise<BrowserSession>
-      makeSubstrates: () => inMemorySubstrateBundle(), // all 7 SubstrateBundle fields, in-memory
-      postWire: () => {}, // the synthetic engine needs no extra bookkeeping
+      // `deps` is the composition root's per-server SubstrateDeps; the in-memory
+      // substrates need no host config, so the synthetic engine ignores them.
+      makeSubstrates: (deps) => inMemorySubstrateBundle(deps), // all 7 SubstrateBundle fields, in-memory
+      postWire: () => {}, // the synthetic engine needs no extra bookkeeping (ignores deps)
     });
 
     // Select the synthetic engine the only way the surface allows: at the SERVER
@@ -73,7 +99,16 @@ describe.todo("L1 — a new engine adapter plugs in with zero core edits", () =>
     const server = await createServer({ headless: true, browserType: SYNTH });
     const open = await server.handlers.open_session({ session: "synth-a" });
     const session = JSON.parse((open.content[0] as { text: string }).text);
-    expect(session.engine).toBe(SYNTH); // the tag is reported correctly
+    expect(session.ok).toBe(true); // the synthetic session opened with zero core edits
+    // The engine tag is reported correctly through the real surface that carries it
+    // (`list_sessions` reports `engine` per row — open_session's envelope omits it).
+    const listed = JSON.parse(
+      (await server.handlers.list_sessions({})).content[0]!.text as string,
+    );
+    const row = (listed.sessions as Array<{ id: string; engine: string }>).find(
+      (r) => r.id === "synth-a",
+    );
+    expect(row?.engine).toBe(SYNTH); // the tag is reported correctly
 
     // Core tools must be engine-agnostic — they reach the substrates, never a raw
     // page() branch. If any handler leaked `engine === "chromium"`, the synthetic

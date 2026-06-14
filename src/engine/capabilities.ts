@@ -18,6 +18,10 @@
 
 import type { EngineCapabilities, EngineKind, EngineSubInterface } from "./types.js";
 
+// The full Playwright-backed sub-interface set — every cross-browser
+// sub-interface PLUS `page` (RFC 0004 D5: chromium / firefox / webkit / android
+// all back a real Playwright `Page`). Safari declares its own subset below and
+// omits `page` (no-Playwright-Page), which is what its post-wire keys off.
 const ALL_SUB_INTERFACES: readonly EngineSubInterface[] = [
   "lifecycle",
   "navigation",
@@ -28,6 +32,7 @@ const ALL_SUB_INTERFACES: readonly EngineSubInterface[] = [
   "script",
   "emulation",
   "capture",
+  "page",
 ];
 
 /** Chromium supports the whole port surface, including the CDP escape hatch.

@@ -18,31 +18,12 @@ import {
   type DiagnosticsRecord,
 } from "../util/diagnostics.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
-import {
-  PlaywrightActionSubstrate,
-  SafariActionSubstrate,
-  type ActionSubstrate,
-} from "../page/action-substrate.js";
-import {
-  PlaywrightCaptureSubstrate,
-  SafariCaptureSubstrate,
-  type CaptureSubstrate,
-} from "../page/capture-substrate.js";
-import {
-  PlaywrightStorageSubstrate,
-  SafariStorageSubstrate,
-  type StorageSubstrate,
-} from "../page/storage-substrate.js";
-import {
-  PlaywrightScriptSubstrate,
-  SafariScriptSubstrate,
-  type ScriptSubstrate,
-} from "../page/script-substrate.js";
-import {
-  PlaywrightEmulationSubstrate,
-  SafariEmulationSubstrate,
-  type EmulationSubstrate,
-} from "../page/emulation-substrate.js";
+import { type ActionSubstrate } from "../page/action-substrate.js";
+import { type CaptureSubstrate } from "../page/capture-substrate.js";
+import { type StorageSubstrate } from "../page/storage-substrate.js";
+import { type ScriptSubstrate } from "../page/script-substrate.js";
+import { type EmulationSubstrate } from "../page/emulation-substrate.js";
+import { engineEntry, type SubstrateBundle, type SubstrateDeps } from "../engine/registry.js";
 import { screenshotSave } from "../page/screenshot-save.js";
 import type { ActionContext } from "../page/actionresult.js";
 import {
@@ -280,81 +261,32 @@ export function buildHost(deps: HostDeps): ToolHost {
     ...(caps.enabled.has("file-io") ? { downloads: e.downloads } : {}),
   });
 
-  // The action capability port: selected by the engine's capability,
-  // exactly like `snapshotSubstrateFor` / `networkSubstrateFor`. Playwright engines
-  // wrap `actions.*` over a fresh ActionContext; safari (no Playwright Page) wraps
-  // the WebDriver Classic action path. Handlers call `actionsFor(e).<action>(args)`
-  // and never branch on engine.
-  const actionsFor = (e: SessionEntry): ActionSubstrate => {
-    const safariHandle = e.session.safari?.();
-    if (safariHandle) return new SafariActionSubstrate(safariHandle, e.refs);
-    return new PlaywrightActionSubstrate(() => ctxFor(e), e.session.engine);
+  // The five capability ports (actions / capture / storage / script / emulation)
+  // are now folded into the engine's `SubstrateBundle` (RFC 0004 D1): the
+  // Safari-vs-Playwright choice each selector used to make inline is the engine's
+  // own concern, declared once in its `makeSubstrates(deps)`. The Playwright bundle
+  // needs the host config the old `actionsFor`/`captureFor` closures closed over
+  // (`ctxFor` for the ActionContext; `describeTarget` + the screenshot `save` sink
+  // for capture). These deps close over THIS server's boundary — `ctxFor` carries
+  // the server's originPolicy / config.testAttributes / caps gating, `save` writes
+  // under the server's `workspace.root` — so the composition root threads its OWN
+  // per-server set at the `makeSubstrates(deps)` call site (a closure-owned local,
+  // NEVER a module-global, so a second `createServer()` in the same process can
+  // never overwrite this server's substrate deps). The five host ports then resolve
+  // through the bundle keyed on `e.session.engine`, byte-identical to the pre-fold
+  // closures.
+  const serverSubstrateDeps: SubstrateDeps = {
+    ctxFor,
+    describeTarget,
+    save: (buf, args) => screenshotSave(buf, workspace.root, args),
   };
-
-  // The capture capability port: selected by the engine's capability,
-  // exactly like `actionsFor` / `snapshotSubstrateFor`. Playwright engines wrap the
-  // existing `page.screenshot` / `locator.screenshot` logic (jpeg, scale, fullPage,
-  // element-scoped, the `path` disk-write envelope, the `describe` caption); safari
-  // (no Playwright Page) wraps `webDriver.screenshot` and refuses the variants it
-  // can't honour in the adapter. The `screenshot` handler calls
-  // `captureFor(e).screenshot(req)` and never branches on engine.
-  const captureFor = (e: SessionEntry): CaptureSubstrate => {
-    const safariHandle = e.session.safari?.();
-    if (safariHandle) return new SafariCaptureSubstrate(safariHandle);
-    return new PlaywrightCaptureSubstrate(() => e.session.page(), e.refs, {
-      describeTarget,
-      save: (buf, args) => screenshotSave(buf, workspace.root, args),
-    });
-  };
-
-  // The storage capability port: selected by the engine's capability,
-  // exactly like `actionsFor` / `captureFor`. Playwright engines wrap the existing
-  // `cookiesList` / `cookiesSet` over the session's BrowserContext and the existing
-  // `webStorage*` helpers over the session's Page; safari (no Playwright Page/
-  // BrowserContext) wraps the WebDriver Classic cookie endpoints and the
-  // `execute/sync` web-storage path, scoping to the current document in the adapter.
-  // The cookie + web-storage handlers call `storageFor(e).cookies*(req)` /
-  // `storageFor(e).webStorage*(kind, …)` and never branch on engine.
-  const storageFor = (e: SessionEntry): StorageSubstrate => {
-    const safariHandle = e.session.safari?.();
-    if (safariHandle) return new SafariStorageSubstrate(safariHandle);
-    return new PlaywrightStorageSubstrate(
-      () => e.session.page().context(),
-      () => e.session.page(),
-      e.session.engine,
-    );
-  };
-
-  // The script capability port: selected by the engine's capability,
-  // exactly like `actionsFor` / `captureFor`. Playwright engines wrap
-  // `page.evaluate`; safari (no Playwright Page) wraps the WebDriver Classic
-  // `execute/sync` endpoint with the `return (…)` expression wrapping. The
-  // `eval_js` handler calls `scriptFor(e).evaluate(expr)` and never branches on
-  // engine — the deadline race + error envelope stay in the handler.
-  const scriptFor = (e: SessionEntry): ScriptSubstrate => {
-    const safariHandle = e.session.safari?.();
-    if (safariHandle) return new SafariScriptSubstrate(safariHandle);
-    return new PlaywrightScriptSubstrate(() => e.session.page(), e.session.engine);
-  };
-
-  // The live-emulation capability port: selected by the engine's
-  // capability, exactly like `actionsFor` / `captureFor`. Playwright engines wrap
-  // the existing `context.setGeolocation` / `page.emulateMedia` live mutators;
-  // safari has no live-emulation surface beyond viewport, so the adapter refuses
-  // these three cleanly. Scoped to the three cross-browser live primitives only —
-  // the CDP-only `set_locale` / `set_timezone` / `set_user_agent` stay engine-
-  // gated, and `set_viewport` lives in the ActionSubstrate. The handlers call
-  // `emulationFor(e).set*(…)` and never branch on engine; the `deviceEmulation`
-  // state mutation + warnings + envelope stay in the handler.
-  const emulationFor = (e: SessionEntry): EmulationSubstrate => {
-    const safariHandle = e.session.safari?.();
-    if (safariHandle) return new SafariEmulationSubstrate(safariHandle);
-    return new PlaywrightEmulationSubstrate(
-      () => e.session.page().context(),
-      () => e.session.page(),
-      e.session.engine,
-    );
-  };
+  const substratesFor = (e: SessionEntry): SubstrateBundle =>
+    engineEntry(e.session.engine).makeSubstrates(serverSubstrateDeps);
+  const actionsFor = (e: SessionEntry): ActionSubstrate => substratesFor(e).actions(e);
+  const captureFor = (e: SessionEntry): CaptureSubstrate => substratesFor(e).capture(e);
+  const storageFor = (e: SessionEntry): StorageSubstrate => substratesFor(e).storage(e);
+  const scriptFor = (e: SessionEntry): ScriptSubstrate => substratesFor(e).script(e);
+  const emulationFor = (e: SessionEntry): EmulationSubstrate => substratesFor(e).emulation(e);
 
   // resolve the effective anti-wedge deadline for a call —
   // per-call `timeoutMs` over config `actionTimeoutMs` over the 5000 default,

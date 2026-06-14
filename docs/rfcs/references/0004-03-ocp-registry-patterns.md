@@ -142,12 +142,36 @@ export interface EngineEntry {
   makeAdapter(opts: SessionOptions): Promise<BrowserSession>;
   /** Build the per-capability substrate selectors for a session of this engine.
    *  Subsumes host-build.ts:288-357 — the Safari-vs-Playwright choice is now the
-   *  engine's own concern, expressed once. */
-  makeSubstrates(): SubstrateBundle;
+   *  engine's own concern, expressed once. The composition root passes its OWN
+   *  per-server `SubstrateDeps` (ctxFor/describeTarget/save). */
+  makeSubstrates(deps: SubstrateDeps): SubstrateBundle;
   /** Post-creation bookkeeping this engine wants. Subsumes the 17 `sess.engine
    *  !== "safari"` guards in session-registry.ts — a Playwright engine attaches
-   *  console/HAR/video/policies/downloads; Safari attaches its minimal set. */
-  postWire(entry: SessionEntry): void;
+   *  console/HAR/video/policies/downloads; Safari attaches its minimal set. The
+   *  composition root passes its OWN per-server `PostWireDeps` (caps/configStore/
+   *  workspace). */
+  postWire(entry: SessionEntry, deps: PostWireDeps): void | Promise<void>;
+}
+
+/** The per-server deps `makeSubstrates`/`postWire` receive. These carry SERVER-SCOPED
+ *  security boundaries — `ctxFor` closes over the server's originPolicy /
+ *  config.testAttributes / caps gating; `save` writes under the server's
+ *  `workspace.root`; `caps` is the server's capability gate. They are threaded
+ *  EXPLICITLY at the `makeSubstrates(deps)` / `postWire(entry, deps)` call site
+ *  (the composition root owns its own set), NOT held as a module-global — precisely
+ *  to preserve per-server isolation. The in-process SDK transport composes one
+ *  server per transport, so a module-global would let a second server overwrite the
+ *  first's boundary (last-write-wins) and cross-contaminate its sessions' caps /
+ *  sandbox-root / origin-policy. */
+export interface SubstrateDeps {
+  ctxFor: (e: SessionEntry) => ActionContext; // carries originPolicy / testAttributes / caps
+  describeTarget: (loc: Locator, refs: RefRegistry, target: ActionTarget) => Promise<string>;
+  save: (buf: Buffer, args: ScreenshotSaveArgs) => ScreenshotSaveResult; // server workspace.root
+}
+export interface PostWireDeps {
+  caps: CapabilityConfig; // the server's capability gate (action/stealth/…)
+  configStore: ConfigStore;
+  workspace: Workspace; // the server's sandbox write-root
 }
 
 const REGISTRY = new Map<EngineKind, EngineEntry>();

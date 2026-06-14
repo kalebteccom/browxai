@@ -76,6 +76,15 @@ export interface SessionOptions {
    *  is attach-only (real Chrome-on-Android over adb + CDP) — managed/ephemeral
    *  launch refuses with `android-launch-not-supported`. */
   browserType?: EngineKind;
+  /** The launch mode the EngineRegistry's `makeAdapter` builds for. The three
+   *  session factories (managed / incognito / byob) thread this through so the
+   *  per-engine launch/attach branching collapses into one registry lookup —
+   *  the factory keeps the MODE concern (option-building), the engine entry owns
+   *  the per-engine launch. Defaults to `"managed"` (a bare `makeAdapter(opts)`
+   *  with no `launchMode` is the managed launch, matching the 0004-03 §1 safari
+   *  example). Internal: never set from the wire — `open_session` carries
+   *  `mode`, which the factory maps to this. */
+  launchMode?: "managed" | "incognito" | "byob";
 }
 
 export interface BrowserSession {

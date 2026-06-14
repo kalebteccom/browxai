@@ -52,18 +52,20 @@ describe("L5 — every adapter honors its declared port contract", () => {
     }
   });
 
-  // ILLUSTRATIVE / post-D5: the `"page"` sub-interface and the `hasPagePort`
-  // reader it uses do not exist until D5 adds page-availability to the capability
-  // model, so this lands `.todo` (P0 stays gate-green) and activates with D5.
-  describe.todo("[post-D5] page-availability is DECLARED, never a throwing page()", () => {
-    // Reads the D5-introduced `"page"` sub-interface; present ⇔ the engine returns
-    // a real Playwright Page. (Pre-D5 there is no such member — hence `.todo`.)
-    const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page" as never);
+  // D5 (RFC 0004 P1): page-availability is now a DECLARED capability — the `"page"`
+  // sub-interface is present iff the engine backs a real Playwright Page. This is
+  // the seam that closes the Safari LSP leak: a no-Page engine omits `"page"`, its
+  // post-wire skips every Playwright-only step, and no caller reaches the
+  // `page()`-throws fallback. Activated now that the sub-interface exists.
+  describe("[D5] page-availability is DECLARED, never a throwing page()", () => {
+    // Reads the D5 `"page"` sub-interface; present ⇔ the engine returns a real
+    // Playwright Page.
+    const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page");
     it.each(ENGINE_KINDS)("[%s] declares page-availability matching reality", (engine) => {
       const caps = capabilitiesFor(engine)!;
-      // Ground truth: only Safari has no Playwright Page. Post-D5 a `"page"` sub-
-      // interface is present iff the engine returns a real Page; this fails if a
-      // non-Safari engine loses its Page or Safari ever claims one.
+      // Ground truth: only Safari has no Playwright Page. The `"page"` sub-interface
+      // is present iff the engine returns a real Page; this fails if a non-Safari
+      // engine loses its Page or Safari ever claims one.
       const hasPlaywrightPage = engine !== "safari";
       expect(hasPagePort(caps)).toBe(hasPlaywrightPage);
     });

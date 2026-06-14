@@ -160,7 +160,7 @@ Every cell above is traceable to a finding in [`0004-01-current-state-audit.md`]
 
 - `src/tools/session-registry.ts` — the worst offender. It carries the *session-mode* dispatch (`session-registry.ts:177–243`: the `if (mode === "attached") … else if (mode === "incognito") … else …` chain over `openByobSession`/`openIncognitoSession`/`openManagedSession` — the engine-factory dispatch itself lives in `managed.ts`/`incognito.ts`/`byob.ts`, not here) **and** the scattered Safari guards: `sess.engine !== "safari"` recurs at `:266`, `:280`, `:292`, `:301`, `:332`, `:338`, `:349`, `:383`, `:408`, … (HAR/video/replay-HAR attach, console attach, browser-bridge attach, dialog-policy attach, confirm/fs-picker bridge wiring) — the 17-guard cluster the audit names. These become `EngineRegistry.postWire(sess, …)` calls keyed off `sess.engine`, with each engine's record owning its own post-creation steps.
 - `src/session/managed.ts` (162 LOC), `src/session/incognito.ts` (133), `src/session/byob.ts` (216) — the three session factories. Their per-engine launch/attach branching collapses to a registry lookup (`registry.get(engine).makeAdapter(opts)`); the factories keep only their *mode* concern (persistent vs ephemeral vs attach), not the *engine* concern.
-- `src/tools/host-build.ts` — the five substrate selectors `actionsFor` (`:288`), `captureFor` (`:301`), `storageFor` (`:318`), `scriptFor`, `emulationFor`. These already use capability detection (`e.session.safari?.()`) rather than name literals in the current tree — they are the *good* pattern — but the 5× identical `if (safariHandle) return new SafariXSubstrate(…); return new PlaywrightXSubstrate(…)` shape (the page-core audit's "5-line boilerplate repeated 5 identical times") folds into `EngineRegistry.makeSubstrates()` (whose seven fields are `(e) => Substrate` selectors), so a new engine supplies one substrate-bundle factory instead of editing five closures.
+- `src/tools/host-build.ts` — the five substrate selectors `actionsFor` (`:288`), `captureFor` (`:301`), `storageFor` (`:318`), `scriptFor`, `emulationFor`. These already use capability detection (`e.session.safari?.()`) rather than name literals in the current tree — they are the *good* pattern — but the 5× identical `if (safariHandle) return new SafariXSubstrate(…); return new PlaywrightXSubstrate(…)` shape (the page-core audit's "5-line boilerplate repeated 5 identical times") folds into `EngineRegistry.makeSubstrates(deps)` (whose seven fields are `(e) => Substrate` selectors; the composition root threads its OWN per-server `SubstrateDeps` in, never a module-global), so a new engine supplies one substrate-bundle factory instead of editing five closures.
 - `src/engine/tool-gate.ts` — `assertEngineSupports` (`:131`) and `DEEP_TOOLS` (`:38`) stay (they are already capability-keyed, not engine-name-keyed — RFC 0002 proved this when WebKit auto-gated with zero `tool-gate.ts` edits, keying on `deep:false` rather than an engine name). P1 only routes the gate through the registry's capability record so the synthetic engine in the contract test is gated correctly. The `EngineCapabilities` shape it reads (`engine`, the `subInterfaces: ReadonlySet<EngineSubInterface>` over the nine sub-interfaces `lifecycle`/`navigation`/`snapshot`/`input`/`network`/`storage`/`script`/`emulation`/`capture`, and the `deep` flag — `types.ts:68–72`) is exactly what each `EngineEntry.capabilities` supplies, so the registry is a strict superset of today's capability declaration, not a parallel system.
 
 **Files created.**
@@ -183,10 +183,16 @@ Every cell above is traceable to a finding in [`0004-01-current-state-audit.md`]
     readonly kind: EngineKind;
     readonly capabilities: EngineCapabilities;
     makeAdapter(opts: SessionOptions): Promise<BrowserSession>;
-    makeSubstrates(): SubstrateBundle;
+    /** The composition root passes its OWN per-server `SubstrateDeps`
+     *  (ctxFor/describeTarget/save) — threaded explicitly, NOT a module-global, to
+     *  preserve per-server isolation (originPolicy/workspace/caps). */
+    makeSubstrates(deps: SubstrateDeps): SubstrateBundle;
     /** Post-creation wiring previously scattered as `sess.engine !== "safari"`
-     *  guards across session-registry.ts — now owned by the engine that needs it. */
-    postWire(entry: SessionEntry): void;
+     *  guards across session-registry.ts — now owned by the engine that needs it.
+     *  The composition root passes its OWN per-server `PostWireDeps`
+     *  (caps/configStore/workspace) — threaded explicitly, NOT a module-global, so a
+     *  second server in the same process can't cross-wire this server's sessions. */
+    postWire(entry: SessionEntry, deps: PostWireDeps): void | Promise<void>;
   }
 
   const REGISTRY = new Map<EngineKind, EngineEntry>();
@@ -215,12 +221,14 @@ if (sess.engine !== "safari") {
 After (P1 — the engine owns its own post-wire; the registry has no engine literals):
 
 ```ts
-// session-registry.ts (P1) — one call, engine-agnostic
+// session-registry.ts (P1) — one call, engine-agnostic. The per-server deps are
+// passed explicitly (caps/configStore/workspace), never a module-global, so a
+// second server in this process can't cross-wire this session.
 import { engineEntry } from "../engine/registry.js";
 
 // `entry` is the assembled SessionEntry; the engine reads sess/bridge/policy
-// buffers from it — postWire(entry: SessionEntry): void, per the 0004-03 contract.
-engineEntry(sess.engine).postWire(entry);
+// buffers from it — postWire(entry, deps), per the 0004-03 contract.
+engineEntry(sess.engine).postWire(entry, serverPostWireDeps);
 
 // safari.engine.ts — the no-Page engine simply omits the Playwright-only steps
 registerEngine({
@@ -228,8 +236,8 @@ registerEngine({
   capabilities: SAFARI_CAPABILITIES,              // engine/capabilities.ts, deep:false
   makeAdapter: async (opts) =>
     buildSafariSession(await new SafaridriverHybridAdapter().launchManaged()), // managed.ts:36-41 — the real flow, → Promise<BrowserSession>
-  makeSubstrates: () => safariSubstrateBundle(),
-  postWire: (entry) => {
+  makeSubstrates: (deps) => safariSubstrateBundle(deps), // ignores the Playwright deps it doesn't use
+  postWire: (entry, deps) => {
     // BiDi log.entryAdded console bridge (the safari `bidi` branch from :305),
     // read off entry.session — and nothing Playwright-only. The throw in
     // safari-session.ts:35 is never reached.

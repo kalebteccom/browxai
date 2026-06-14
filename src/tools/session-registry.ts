@@ -1,9 +1,16 @@
 import { openManagedSession } from "../session/managed.js";
 import { openByobSession } from "../session/byob.js";
 import { requireCdp, type EngineKind } from "../engine/index.js";
+import {
+  engineEntry,
+  byobAttachNeedsEndpoint,
+  type SubstrateDeps,
+  type PostWireDeps,
+} from "../engine/registry.js";
+import "../engine/register-engines.js";
 import { openIncognitoSession } from "../session/incognito.js";
 import { resolveDevice } from "../session/device.js";
-import { newEmulationState, reapplyAll as reapplyEmulation } from "../session/emulation.js";
+import { newEmulationState } from "../session/emulation.js";
 import type { BrowserSession } from "../session/types.js";
 import {
   SessionRegistry,
@@ -14,25 +21,12 @@ import {
 import { newExtensionRegistry } from "../session/extensions.js";
 import { WedgeTracker } from "../session/wedge.js";
 import { SessionMetrics } from "../session/metrics.js";
-import { DialogPolicyState, attachDialogPolicy } from "../session/dialog.js";
-import {
-  PermissionPolicyState,
-  attachPermissionPolicy,
-  applyCdpBaseline as applyPermissionCdpBaseline,
-} from "../session/permission.js";
-import { NotificationPolicyState, attachNotificationPolicy } from "../session/notification.js";
-import {
-  FsPickerPolicyState,
-  attachFsPickerPolicy,
-  type FsPickerFile,
-} from "../session/fs-picker.js";
-import {
-  DeviceEmulationState as WebDeviceEmulationState,
-  attachDeviceEmulation,
-} from "../session/device-emu.js";
+import { DialogPolicyState } from "../session/dialog.js";
+import { PermissionPolicyState } from "../session/permission.js";
+import { NotificationPolicyState } from "../session/notification.js";
+import { FsPickerPolicyState } from "../session/fs-picker.js";
+import { DeviceEmulationState as WebDeviceEmulationState } from "../session/device-emu.js";
 import { RefRegistry } from "../page/refs.js";
-import { snapshotSubstrateFor } from "../page/snapshot-substrate-select.js";
-import { networkSubstrateFor } from "../page/network-substrate-select.js";
 import { FrameRegistry } from "../page/frames.js";
 import { RouteRegistry } from "../page/routes.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
@@ -43,7 +37,7 @@ import { SeededRandomRegistry } from "../page/seed-random.js";
 import { PerfTracingState } from "../page/perf.js";
 import { CoverageTrackerState } from "../page/coverage.js";
 import { RegionRegistry } from "../page/regions.js";
-import { DownloadsRegistry, attachDownloadCapture } from "../page/downloads.js";
+import { DownloadsRegistry } from "../page/downloads.js";
 import { ArtifactsRegistry } from "../session/artifacts.js";
 import { readStorageStateFile, authLoad, type StorageStateBlob } from "../session/storage.js";
 import { SecretRegistry } from "../util/secrets.js";
@@ -61,8 +55,6 @@ import {
   finalizeVideoOnClose,
 } from "../page/video.js";
 import { BrowxBridge } from "../helper/bridge.js";
-import { applyOverlayHide } from "../helper/overlay-hide.js";
-import { applyStealth } from "../helper/stealth.js";
 import { Recorder } from "../page/recording.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
@@ -95,6 +87,40 @@ export interface SessionRegistryDeps {
 export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry {
   const { opts, resolvedConfig, configStore, caps, workspace, serverEngine, serverDefaultMode } =
     deps;
+  // This server's OWN post-wire deps (caps / configStore / workspace) — threaded
+  // explicitly into `engineEntry(...).postWire(entry, serverPostWireDeps)` per
+  // session, never a module-global. A module-global would let a SECOND server in
+  // the same process (the in-process SDK transport composes one server per
+  // transport) overwrite this server's caps gate + workspace sandbox-root, so its
+  // post-wire could install another server's action-gated wrappers / stealth
+  // scripts on THIS server's sessions. The closure-owned local makes that
+  // impossible: every session this registry opens wires with exactly these deps.
+  const serverPostWireDeps: PostWireDeps = { caps, configStore, workspace };
+  // The substrate deps the registry needs to resolve a session's snapshot/network
+  // substrates. The registry only ever reads the bundle's `snapshot`/`network`
+  // selectors (the action/capture selectors — the only ones that consult
+  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`, which
+  // owns those host locals). snapshot/network read only `e.session`, so the action/
+  // capture deps here are deliberately unreachable on this path; making them throw
+  // documents that the registry must never drive an action/capture substrate.
+  const registrySubstrateDeps: SubstrateDeps = {
+    ctxFor: () => {
+      throw new Error(
+        "session-registry: ctxFor must not be reached — the registry resolves only the " +
+          "snapshot/network substrates (action/capture are host-build's concern).",
+      );
+    },
+    describeTarget: () => {
+      throw new Error(
+        "session-registry: describeTarget must not be reached (capture is host-build's concern).",
+      );
+    },
+    save: () => {
+      throw new Error(
+        "session-registry: save must not be reached (capture is host-build's concern).",
+      );
+    },
+  };
   return new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
@@ -175,9 +201,11 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       }
       let sess: BrowserSession;
       if (mode === "attached") {
-        // android attach is endpoint-DISCOVERED over adb — it does
-        // NOT need BROWX_ATTACH_CDP. The desktop CDP-attach lane still requires it.
-        if (serverEngine !== "android" && !opts.attachCdp) {
+        // android attach is endpoint-DISCOVERED over adb — it does NOT need
+        // BROWX_ATTACH_CDP; the desktop CDP-attach lane still requires it. The
+        // android-specific fact lives in the engine layer (`byobAttachNeedsEndpoint`),
+        // so this precondition stays engine-agnostic (no `=== "android"` literal).
+        if (byobAttachNeedsEndpoint(serverEngine) && !opts.attachCdp) {
           throw new Error(
             `session "${id}": mode "attached" requires the server to be started with BROWX_ATTACH_CDP (per-session attach isn't supported yet)`,
           );
@@ -256,14 +284,26 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // `start_har` / `stop_har` can refuse cleanly (the native path can't be
       // toggled mid-session — Playwright finalizes it on context.close()).
       const harState = newHarRecorderState();
-      // safari is the first non-Playwright engine: it has no Playwright Page,
-      // so the Playwright-bound bookkeeping below (HAR/video recorders, console/
-      // network/bridge/policy attaches, device emulation, the CDP page-event
-      // reapply) is guarded `!== "safari"` — always-true for the other engines, so
-      // their path is byte-identical. Safari's session context uses the snapshot
-      // substrate + the no-op network substrate; the rest of its tools either route
-      // through the Safari-native handle or self-gate via the page()-throw.
-      if (creationRecordHarResolved && sess.engine !== "safari") {
+      // The per-engine substrate bundle — the EngineRegistry resolves it once per
+      // session (RFC 0004 D1). The seven selectors (actions/capture/storage/script/
+      // emulation/snapshot/network) are the engine's own concern; here we use the
+      // snapshot/network pair to wire the session's substrates. A `{ session }`
+      // partial is enough for those two (they read only `e.session`); the substrate
+      // deps are this server's own (action/capture deps unreachable on this path).
+      const substrates = engineEntry(sess.engine).makeSubstrates(registrySubstrateDeps);
+      const substrateSeed = { session: sess } as SessionEntry;
+      // safari is the first non-Playwright engine: it has no Playwright Page, no
+      // Playwright BrowserContext. The few creation-config steps below that need
+      // the per-session creation locals (HAR/video state init, HAR replay) stay in
+      // the factory, keyed on the engine's Playwright-Page capability (`!sess.safari`
+      // — a capability check, not an engine-name branch). The full post-creation
+      // attach set (console / bridge / dialog / permission / notification /
+      // fs-picker / downloads / overlay / stealth / device-emulation / ws-interactive
+      // / workers) has been RELOCATED into the engine's `postWire` (called after the
+      // entry is assembled), so the 17 scattered `!== "safari"` guards collapse into
+      // one engine-agnostic call — byte-identical, only owned by the engine now.
+      const hasPlaywrightPage = !sess.safari;
+      if (creationRecordHarResolved && hasPlaywrightPage) {
         harState.active = true;
         harState.nativeRecord = true;
         harState.path = creationRecordHarResolved.path;
@@ -277,7 +317,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // finalized when the context closes (Playwright constraint) —
       // teardown calls `page.video().saveAs(targetPath)`.
       const videoState = newVideoRecorderState();
-      if (creationRecordVideoResolved && sess.engine !== "safari") {
+      if (creationRecordVideoResolved && hasPlaywrightPage) {
         videoState.active = true;
         videoState.targetPath = creationRecordVideoResolved.targetPath;
         videoState.stagingDir = creationRecordVideoResolved.stagingDir;
@@ -289,36 +329,20 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // to live network — the safer default. Replay is honoured on every
       // session mode (incl. attached: the consumer's Chrome receives the
       // route handler scoped to its context; warning emitted up-stream).
-      if (creationReplayHars && creationReplayHars.length && sess.engine !== "safari") {
+      if (creationReplayHars && creationReplayHars.length && hasPlaywrightPage) {
         await applyHarReplay(sess.page().context(), creationReplayHars);
       }
+      // per-session console buffer. The page/BiDi attach is the engine's job —
+      // it runs in `postWire` (Playwright: `console.attach(page)`; Safari: the
+      // BiDi `log.entryAdded` bridge), so the buffer is built here and wired below.
       const consoleBuf = new ConsoleBuffer();
-      // Safari has no Playwright Page, so its console arrives over the BiDi
-      // `log.entryAdded` stream — subscribed here at session creation
-      // so load-time logs are caught. Strictly optional: when BiDi did not
-      // negotiate (no experimental cap), the buffer stays empty (console_read still
-      // works, returning nothing). Every other engine attaches to the page.
-      if (sess.engine !== "safari") {
-        consoleBuf.attach(sess.page());
-      } else {
-        const safariConsoleHandle = sess.safari?.();
-        if (safariConsoleHandle?.bidi) {
-          const bidi = safariConsoleHandle.bidi;
-          await bidi.subscribe(["log.entryAdded"]).catch(() => undefined);
-          bidi.on("log.entryAdded", (p) => {
-            const level = typeof p.level === "string" ? p.level : "info";
-            const text = typeof p.text === "string" ? p.text : "";
-            consoleBuf.ingest(level, text);
-          });
-        }
-      }
-      // The network/WS substrate is selected by engine capability:
+      // The network/WS substrate is selected by engine capability via the bundle:
       // chromium (CDP present) gets the verbatim CDP NetworkBuffer/WsBuffer/tap;
-      // firefox/webkit get the Playwright context-event buffers. The session-wide
-      // rings attach once here; the action window mints its per-action tap from
-      // the substrate and `network_body` fetches through it — so the network tools
-      // + the envelope's network slice run on every engine.
-      const networkSub = networkSubstrateFor(sess);
+      // firefox/webkit get the Playwright context-event buffers; safari the no-op.
+      // The session-wide rings attach once here; the action window mints its
+      // per-action tap from the substrate and `network_body` fetches through it —
+      // so the network tools + the envelope's network slice run on every engine.
+      const networkSub = substrates.network(substrateSeed);
       await networkSub.attach();
       const networkBuf = networkSub.http;
       const wsBuf = networkSub.ws;
@@ -329,190 +353,56 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       consoleBuf.setSecrets(secretsReg);
       networkSub.setSecrets(secretsReg);
       const br = new BrowxBridge();
-      if (sess.engine !== "safari") await br.attach(sess.page().context());
-      // dialog policy — install per-page on current + future pages.
-      // Default `raise` (deterministic anti-deadlock). `spec.dialogPolicy`
-      // is already a normalised `DialogPolicy` object; the string parsing
-      // happens at the open_session tool layer.
+      // dialog / permission / notification / fs-picker policy STATES are built
+      // here from the spec (the string parsing happened at the open_session tool
+      // layer); their per-context ATTACH lives in the engine's `postWire`.
       const dialogState = new DialogPolicyState(spec?.dialogPolicy ?? { mode: "raise" });
-      if (sess.engine !== "safari") attachDialogPolicy(sess.page().context(), dialogState);
-      // permission policy — install per-context binding + init-script wrappers,
-      // plus the CDP baseline (Browser.setPermission per supported name).
-      // Default `raise` (deterministic anti-deadlock); same posture as
-      // `dialogState`. The ask-human handler routes through the bridge —
-      // `__browx.confirm(true|false)` from page-side DevTools releases the
-      // wait, same mechanism as `await_human({kind:"confirm"})`. Best-effort:
-      // attach failures still leave the CDP baseline below in place.
       const permissionState = new PermissionPolicyState(
         spec?.permissionPolicy ?? { mode: "raise" },
       );
-      if (sess.engine !== "safari") {
-        await attachPermissionPolicy(
-          sess.page().context(),
-          permissionState,
-          async (permission, origin) => {
-            log.info(
-              `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
-            );
-            try {
-              const sig = await br.awaitSignal("respond", 300_000);
-              const data = sig.data as { kind?: string; value?: unknown } | null;
-              if (data && data.kind === "confirm" && data.value === true) return "allow";
-              return "deny";
-            } catch {
-              return "deny";
-            }
-          },
-        );
-        await applyPermissionCdpBaseline(sess.page().context(), permissionState).catch(
-          () => undefined,
-        );
-      }
-      // Notification-construction policy — install per-context wrapper +
-      // binding around `new Notification(...)`. Default `allow` preserves
-      // browser default (constructor proceeds; OS displays per its settings)
-      // while still surfacing every call on ActionResult.notifications[].
-      // Distinct policy from `permissionPolicy.notifications` — that one
-      // governs the permission *request* (`Notification.requestPermission`),
-      // this one governs the *constructor* (`new Notification()`); they
-      // compose. Best-effort: install failures still leave the browser-default
-      // path in place (the wrapper falls through when the binding is missing).
       const notificationState = new NotificationPolicyState(
         spec?.notificationPolicy ?? { mode: "allow" },
       );
-      if (sess.engine !== "safari")
-        await attachNotificationPolicy(sess.page().context(), notificationState, async (n) => {
-          log.info(
-            `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
-          );
-          try {
-            const sig = await br.awaitSignal("respond", 300_000);
-            const data = sig.data as { kind?: string; value?: unknown } | null;
-            if (data && data.kind === "confirm" && data.value === true) return "allow";
-            return "deny";
-          } catch {
-            return "deny";
-          }
-        });
-      // File System Access picker policy — install per-context binding +
-      // init-script stubs. Default `raise` (deterministic anti-deadlock:
-      // without a policy installed, modern web editors that call
-      // `showSaveFilePicker` etc. block every subsequent browser event on
-      // the OS file chooser that headless can't drive). The ask-human
-      // handler routes through the bridge — `__browx.respond(<files>)` from
-      // page-side DevTools releases the wait; falsy answer → deny. The
-      // server-side write target for `createWritable()` is workspace-rooted
-      // and the path is validated against `workspace.root` at
-      // `fs_picker_respond` time.
       const fsPickerState = new FsPickerPolicyState(spec?.fsPickerPolicy ?? { mode: "raise" });
-      if (sess.engine !== "safari")
-        await attachFsPickerPolicy(
-          sess.page().context(),
-          fsPickerState,
-          workspace.root,
-          async (api, suggestedName) => {
-            log.info(
-              `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
-            );
-            try {
-              const sig = await br.awaitSignal("respond", 300_000);
-              const data = sig.data as { kind?: string; value?: unknown } | null;
-              if (
-                data &&
-                data.kind === "fs_picker_respond" &&
-                Array.isArray((data.value as { files?: unknown })?.files)
-              ) {
-                return (data.value as { files: FsPickerFile[] }).files;
-              }
-              return null;
-            } catch {
-              return null;
-            }
-          },
-        ).catch(() => undefined);
       // Per-session download capture. Storage dir is workspace-rooted +
       // per-session — kept off the public profile dir so cleaning up captured
       // artefacts is a single rmdir without touching the profile. The
       // registry is off by default; the `downloads_capture` MCP tool toggles
-      // it. Always attach the context listener — when capture is off it just
-      // discards Playwright's temp file.
+      // it. The context listener attach lives in the engine's `postWire`.
       const downloadsDir = workspace.sub(`.downloads/${id}`);
       const downloadsReg = new DownloadsRegistry(downloadsDir);
-      if (sess.engine !== "safari") attachDownloadCapture(sess.page().context(), downloadsReg);
       // Per-session artifact KV. Storage dir is workspace-rooted +
       // per-session; the dir itself is created lazily on first save, and
       // wiped on session teardown (see `teardown` below). Capacity-bounded
       // — 200 entries / 50 MiB, oldest-write evicted.
       const artifactsDir = workspace.sub(`.artifacts/${id}`);
       const artifactsReg = new ArtifactsRegistry(artifactsDir);
-      // resolve overlay selectors fresh per session so a
-      // `set_config({hideOverlaySelectors})` applies to the next
-      // open_session without a server restart. Empty list → no-op.
-      if (sess.engine !== "safari")
-        await applyOverlayHide(sess.page().context(), configStore.resolve().hideOverlaySelectors);
-      // Per-context stealth init-script patches (capability `stealth`).
-      // Off by default; when on, overrides navigator.webdriver / plugins /
-      // languages / window.chrome on every page before page scripts run.
-      // Loud-warned at boot — see the `stealth` warning above.
-      if (caps.enabled.has("stealth") && sess.engine !== "safari") {
-        await applyStealth(sess.page().context()).catch((err) => {
-          log.warn(
-            `stealth: failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
-          );
-        });
-      }
       // Fresh per-primitive device-emulation state (locale, timezone,
       // geolocation, colour scheme, reduced motion, user-agent, permissions).
       // Re-applied on every new page in this context so a mid-session-opened
-      // tab inherits the overrides (locale/timezone/UA via CDP, geolocation/
-      // colour-scheme/reduced-motion/permissions via Playwright).
+      // tab inherits the overrides — the page-event re-apply attach lives in the
+      // engine's `postWire`.
       const deviceEmulation = newEmulationState();
       // Per-session Web Bluetooth / WebUSB / WebHID synthetic-device catalogs
-      // (capability `device-emulation`). The init-script wrappers install
-      // unconditionally — even capability-off, so a page calling
-      // `navigator.bluetooth.requestDevice()` on headless Chromium sees the
-      // user-dismissed-picker shape rather than a hung promise — but the
-      // check binding short-circuits to `refused` when the capability isn't
-      // on. `emulate_bluetooth` / `emulate_usb` / `emulate_hid` populate the
-      // catalog at runtime.
+      // (capability `device-emulation`). The init-script wrappers install in
+      // `postWire`; the catalog is off by default until the emulate_* tools
+      // populate it.
       const webDeviceEmulation = new WebDeviceEmulationState(caps.enabled.has("device-emulation"));
-      if (sess.engine !== "safari") {
-        await attachDeviceEmulation(sess.page().context(), webDeviceEmulation).catch(
-          () => undefined,
-        );
-        sess
-          .page()
-          .context()
-          .on("page", (newPage) => {
-            // Best-effort: a new tab fires here. Create its own CDP session to
-            // route locale/timezone/UA overrides. Errors swallowed — re-apply
-            // never breaks a navigation.
-            (async () => {
-              try {
-                const newCdp = await sess.page().context().newCDPSession(newPage);
-                await reapplyEmulation(sess.page().context(), newPage, newCdp, deviceEmulation);
-              } catch {
-                /* best-effort */
-              }
-            })().catch(() => undefined);
-          });
-      }
-      return {
+      const entry: SessionEntry = {
         id,
         mode,
         session: sess,
         refs: new RefRegistry(),
-        // Engine-agnostic snapshot/a11y substrate. chromium → the
-        // verbatim CDP substrate; firefox/webkit → the page-side walker. Selected
-        // by the engine's CDP capability, not an engine-name check (the same
-        // signal requireCdp keys on). Captured once here so the hot snapshot/find
-        // path is a direct delegate, no per-call allocation.
-        snapshotSubstrate: snapshotSubstrateFor(sess),
-        // Engine-agnostic network substrate. `network` / `ws` below
-        // ARE this substrate's session-wide rings; the action window mints its
-        // per-action tap from it. Captured once here so the hot envelope path is
-        // a captured-handle delegate (no per-call allocation beyond the per-action
-        // tap the CDP path already allocated).
+        // Engine-agnostic snapshot/a11y substrate, resolved from the engine's
+        // bundle (chromium → the verbatim CDP substrate; firefox/webkit → the
+        // page-side walker; safari → the WebDriver-Classic DOM-walk). Selected by
+        // the engine's capability, never an engine-name check. Captured once here
+        // so the hot snapshot/find path is a direct delegate, no per-call allocation.
+        snapshotSubstrate: substrates.snapshot(substrateSeed),
+        // Engine-agnostic network substrate (also from the bundle). `network` / `ws`
+        // below ARE this substrate's session-wide rings; the action window mints its
+        // per-action tap from it. Captured once here so the hot envelope path is a
+        // captured-handle delegate.
         networkSubstrate: networkSub,
         frames: new FrameRegistry(),
         console: consoleBuf,
@@ -523,35 +413,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         feedback: new FeedbackMemory(),
         clipboard: new ClipboardBuffer(),
         routes: new RouteRegistry(),
-        wsInteractive: await (async () => {
-          // Install the page-side WS wrapper EAGERLY at session creation —
-          // before any navigation — so a page that constructs `new WebSocket(...)`
-          // during initial document parse hits the wrapped constructor. A
-          // lazy install (deferred to first ws_send / ws_intercept) misses
-          // sockets opened by the existing document, since `addInitScript`
-          // only fires on the next nav. Capability-gated: only install
-          // when `action` is on (the gate the three interactive tools sit
-          // under) so a read-only server gets zero overhead.
-          const reg = new WsInteractiveRegistry();
-          if (caps.enabled.has("action") && sess.engine !== "safari") {
-            await reg.install(sess.page()).catch(() => undefined);
-          }
-          return reg;
-        })(),
-        workers: await (async () => {
-          // workers visibility. Same eager-install posture as
-          // wsInteractive — `addInitScript` only fires on the NEXT nav, so we
-          // need the wrapper live before any document parse. The page-side
-          // wrapper is a thin Worker constructor proxy (cheap), so it
-          // installs whenever `read` is enabled. SW CDP listener install is
-          // deferred to first `workers_list` / `sw_intercept_fetch` to keep
-          // workerless sessions zero-overhead.
-          const reg = new WorkersRegistry();
-          if (caps.enabled.has("read") && sess.engine !== "safari") {
-            await reg.installPageWrapper(sess.page()).catch(() => undefined);
-          }
-          return reg;
-        })(),
+        // The page-side WS-interactive + workers wrappers install EAGERLY — but
+        // that install is a Playwright-Page concern, so it has moved into the
+        // engine's `postWire` (capability-gated on `action` / `read`). Here we
+        // build the empty registries; `postWire` installs the page wrappers before
+        // the session is handed to a tool call (byte-identical eager-install timing).
+        wsInteractive: new WsInteractiveRegistry(),
+        workers: new WorkersRegistry(),
         regions: new RegionRegistry(),
         emulation: new EmulationRegistry(),
         clock: new ClockRegistry(),
@@ -576,17 +444,30 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
       };
+      // Post-creation wiring — the engine owns its own bookkeeping (RFC 0004 D1).
+      // The four Playwright engines attach the full console/bridge/policy/download/
+      // stealth/device-emulation/ws-interactive/workers set + await it; safari
+      // attaches only its BiDi console bridge; a no-Page engine attaches nothing.
+      // This is the one call the 17 scattered `!== "safari"` guards collapsed into.
+      // The per-server deps are passed explicitly (never a module-global) so a
+      // second server in this process can never wire THIS session with its caps or
+      // sandbox root.
+      await engineEntry(sess.engine).postWire(entry, serverPostWireDeps);
+      return entry;
     },
     async (e): Promise<void> => {
       // Stop any in-flight perf trace BEFORE closing CDP — otherwise the
       // attached Chrome (BYOB) keeps the trace buffer pinned. Best-effort:
       // a stuck Tracing.end won't block teardown (perf state bounds the wait).
-      if (e.session.engine !== "safari")
+      // Keyed on the Playwright-Page capability (`!e.session.safari`), not an
+      // engine-name branch — Safari has no CDP, so `requireCdp` would refuse.
+      const teardownHasCdp = !e.session.safari;
+      if (teardownHasCdp)
         await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // also release any in-flight Profiler/CSS coverage on
       // the attached target so a BYOB Chrome doesn't keep coverage state
       // pinned past detach.
-      if (e.session.engine !== "safari")
+      if (teardownHasCdp)
         await e.coverage.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // workers registry CDP listeners. Detach before CDP closes
       // so we don't race the parent session shutdown.
