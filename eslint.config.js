@@ -105,10 +105,147 @@ const noPageEvalStringifiedArrow = {
   },
 };
 
+// RFC 0004 L1 (the closed core). Custom rule: ban branching on an EngineKind
+// string literal — `engine === "safari"`, `session.engine !== "chromium"`,
+// `case "webkit":` — outside the engine-select layer. Engine dispatch belongs in
+// the EngineRegistry (post-D1) and the capability-driven substrate selectors, not
+// scattered through handlers; a sixth engine must be a new adapter behind the
+// port, never an edit to 5-8 existing files. Mirrors the existing custom-rule
+// idiom (meta.type "problem", schema [], create(context) visitor).
+const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
+
+// Files whose single responsibility IS engine selection — engine literals are the
+// point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
+// are FILES (anchored with `\.ts$`); adapters/ is a DIRECTORY (prefix). The two
+// substrate selectors already key on `session.engine === "safari"` by design.
+const ENGINE_SELECT_ALLOWLIST = [
+  /src\/engine\/(registry|select|capabilities)\.ts$/,
+  /src\/engine\/adapters\//,
+  /src\/page\/snapshot-substrate-select\.ts$/,
+  /src\/page\/network-substrate-select\.ts$/,
+];
+
+const noEngineLiteralBranches = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow branching on an EngineKind string literal outside the engine-select layer. " +
+        "Engine dispatch belongs in the EngineRegistry / substrate selectors, not in handlers.",
+    },
+    schema: [],
+    messages: {
+      engineLiteral:
+        'Engine dispatch on the literal "{{ engine }}" does not belong here. A handler must be ' +
+        "engine-agnostic: route through the capability substrates (actionsFor / captureFor / " +
+        "snapshotSubstrateFor / networkSubstrateFor) or the EngineRegistry, never an " +
+        '`engine === "{{ engine }}"` branch. See architecture-principles.md §4 and RFC 0004 L1.',
+    },
+  },
+  create(context) {
+    const filename = context.filename ?? context.getFilename();
+    if (ENGINE_SELECT_ALLOWLIST.some((re) => re.test(filename))) return {};
+
+    const flagIfEngineLiteral = (node, literalNode) => {
+      if (
+        literalNode &&
+        literalNode.type === "Literal" &&
+        typeof literalNode.value === "string" &&
+        ENGINE_KINDS.includes(literalNode.value)
+      ) {
+        context.report({
+          node,
+          messageId: "engineLiteral",
+          data: { engine: literalNode.value },
+        });
+      }
+    };
+
+    return {
+      // `x === "safari"`, `x !== "firefox"`
+      BinaryExpression(node) {
+        if (node.operator !== "===" && node.operator !== "!==") return;
+        flagIfEngineLiteral(node, node.right);
+        flagIfEngineLiteral(node, node.left);
+      },
+      // `case "webkit":`
+      SwitchCase(node) {
+        flagIfEngineLiteral(node, node.test);
+      },
+    };
+  },
+};
+
+// RFC 0004 L3 (one reason to change) at the gate. Custom rule: ban inlined
+// capability-gate logic — `caps.enabled.has(...)`, `capabilities.includes(...)`,
+// and direct reads of the TOOL_CAPABILITY map — outside the gate's home files.
+// The security decision is centralized in ToolHost.gateCheck / engineGate; a
+// handler that scatters its own gate logic breaks SRP and the audit surface. The
+// rule keys on the member-chain ROOT being `caps`/`capabilities` (so `host.caps…`,
+// rooted at `host`, is untouched) and on the `TOOL_CAPABILITY` identifier.
+const GATE_OWNER_ALLOWLIST = [
+  /src\/tools\/host(-build)?\.ts$/,
+  /src\/util\/capabilities\.ts$/,
+  /src\/engine\/tool-gate\.ts$/,
+];
+
+const noInlinedCapabilityChecks = {
+  meta: {
+    type: "problem",
+    docs: {
+      description:
+        "Disallow inlined capability-gate logic in handlers. Route through " +
+        "ToolHost.gateCheck (capability dimension) / ToolHost.engineGate (engine dimension).",
+    },
+    schema: [],
+    messages: {
+      inlined:
+        "Inlined capability check ('{{ snippet }}'). The gate is centralized: call " +
+        "`const g = gateCheck(toolName); if (g) return g;` (or `engineGate` for the engine " +
+        "dimension) at the top of the handler. Scattered gate logic breaks SRP and the audit " +
+        "surface. See code-quality.md SOLID §, RFC 0004 L3.",
+    },
+  },
+  create(context) {
+    const filename = context.filename ?? context.getFilename();
+    if (GATE_OWNER_ALLOWLIST.some((re) => re.test(filename))) return {};
+
+    const CAP_OBJECTS = new Set(["caps", "capabilities"]);
+    const CAP_METHODS = new Set(["has", "includes"]);
+
+    return {
+      // caps.enabled.has(...) / capabilities.includes(...)
+      CallExpression(node) {
+        const callee = node.callee;
+        if (callee.type !== "MemberExpression") return;
+        if (!callee.property || !CAP_METHODS.has(callee.property.name)) return;
+        // Walk the member chain to its root.
+        let root = callee.object;
+        while (root.type === "MemberExpression") root = root.object;
+        if (root.type === "Identifier" && CAP_OBJECTS.has(root.name)) {
+          context.report({
+            node,
+            messageId: "inlined",
+            data: { snippet: context.sourceCode.getText(node).slice(0, 48) },
+          });
+        }
+      },
+      // direct read of the TOOL_CAPABILITY map outside the gate owners
+      Identifier(node) {
+        if (node.name === "TOOL_CAPABILITY") {
+          context.report({ node, messageId: "inlined", data: { snippet: "TOOL_CAPABILITY" } });
+        }
+      },
+    };
+  },
+};
+
 const browxaiLocal = {
   rules: {
     "no-tracker-ids-in-comments": noTrackerIdsInComments,
     "no-page-eval-stringified-arrow": noPageEvalStringifiedArrow,
+    "no-engine-literal-branches": noEngineLiteralBranches, // L1
+    "no-inlined-capability-checks": noInlinedCapabilityChecks, // L3 (gate centralization)
   },
 };
 
@@ -147,6 +284,12 @@ export default tseslint.config(
       "import-x/no-duplicates": "error",
       "browxai-local/no-tracker-ids-in-comments": "error",
       "browxai-local/no-page-eval-stringified-arrow": "error",
+      // RFC 0004 architecture guardrails. P0 lands them at `error` but
+      // scoped to NEW violations only — the known-debt files P1/P2 clean up
+      // are turned OFF in a dedicated override block below. A new literal /
+      // inlined gate in any other file errors immediately.
+      "browxai-local/no-engine-literal-branches": "error", // -> whole-tree clean in P1
+      "browxai-local/no-inlined-capability-checks": "error", // -> whole-tree clean in P2
     },
   },
   // Type-aware TS rules — scoped to .ts/.tsx, with projectService so
@@ -241,6 +384,67 @@ export default tseslint.config(
       // browxai-specific custom rules — error from day one.
       "browxai-local/no-tracker-ids-in-comments": "error",
       "browxai-local/no-page-eval-stringified-arrow": "error",
+      // RFC 0004 architecture guardrails (L1 / L3). `error` everywhere, with the
+      // known-debt files (which P1/P2 clean up) turned OFF in the dedicated
+      // override block below — so a NEW engine literal or inlined gate errors
+      // anywhere outside that allowlist, while existing debt does not block the
+      // gate. Promote to whole-tree (drop the override) in P1 / P2.
+      "browxai-local/no-engine-literal-branches": "error",
+      "browxai-local/no-inlined-capability-checks": "error",
+    },
+  },
+  // RFC 0004 D11 — the size / complexity budgets (L3). Sized from the CURRENT
+  // HEALTHY modules (input-tools.ts 212, canvas-tools.ts 444, tool-gate.ts 145),
+  // not the god-modules — so they are a ratchet that holds AFTER the D3 split,
+  // not an aspiration. They ship `warn` in P0 (visible, non-blocking; the
+  // `pnpm lint` script is bare `eslint .`, so warns never fail the gate) and
+  // promote to `error` in P3 once the split brings the offenders under budget.
+  {
+    files: ["src/tools/*-tools.ts", "src/page/**/*.ts"],
+    rules: {
+      "max-lines": ["warn", { max: 450, skipBlankLines: true, skipComments: true }],
+      "max-lines-per-function": ["warn", { max: 70, skipBlankLines: true, skipComments: true }],
+      complexity: ["warn", { max: 15 }],
+      "max-params": ["warn", { max: 5 }],
+    },
+  },
+  // The composition root gets the hardest, and only `error`, budget in P0: it is
+  // already at 382 LOC and the architecture treats it as composition-only, so the
+  // 400-line ceiling trips immediately on any business-logic creep. (RFC 0004 §4.)
+  {
+    files: ["src/server.ts"],
+    rules: {
+      "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // RFC 0004 P0 — the two new architecture guardrails are scoped to NEW
+  // violations only: they are turned OFF on exactly the known-debt files P1
+  // (no-engine-literal-branches) and P2 (no-inlined-capability-checks) remove.
+  // This is the §7 meta-rule's only sanctioned escape valve — a reviewable config
+  // allowlist, never an inline `eslint-disable` at the violation site. Each entry
+  // shrinks as its phase lands; the rule promotes to whole-tree when the list is
+  // empty. A NEW literal / inlined gate in ANY file not listed here still errors.
+  {
+    files: [
+      // engine-literal debt (P1 EngineRegistry relocates these):
+      "src/tools/session-registry.ts",
+      "src/session/managed.ts",
+      "src/session/incognito.ts",
+      "src/session/byob.ts",
+      "src/server.ts",
+      "src/cli/doctor.ts",
+      // inlined capability-check debt (P2 colocates the gate at host.register):
+      "src/tools/read-observe-tools.ts",
+      "src/tools/emulation-config-tools.ts",
+      "src/tools/extensions-batch-tools.ts",
+      "src/tools/forms-recording-tools.ts",
+      "src/tools/plugin-runtime.ts",
+      "src/sdk/client.ts",
+      "src/sdk/registry.ts",
+    ],
+    rules: {
+      "browxai-local/no-engine-literal-branches": "off",
+      "browxai-local/no-inlined-capability-checks": "off",
     },
   },
   // Page-side code (runs inside the browser via page.evaluate(fn, args)).
@@ -271,6 +475,13 @@ export default tseslint.config(
       // gates as error.
       "@typescript-eslint/no-base-to-string": "off",
       "@typescript-eslint/restrict-template-expressions": "off",
+      // The RFC 0004 architecture guardrails target the HANDLER / production
+      // layer — tests legitimately read TOOL_CAPABILITY, drive `caps.has(...)`,
+      // and parametrize over EngineKind literals (the fitness suite itself does
+      // exactly this to FREEZE those surfaces). Off in tests; production gates as
+      // error.
+      "browxai-local/no-engine-literal-branches": "off",
+      "browxai-local/no-inlined-capability-checks": "off",
     },
   },
   // src/server.ts + src/tools/* — MCP tool-handler registration. The MCP SDK's

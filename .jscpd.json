@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/kucherenko/jscpd/master/packages/jscpd/schema.json",
+  "comment": "RFC 0004 D11 duplication budget. P0 = REPORTING-ONLY: no `threshold`, so jscpd prints the duplication report (the five-policy + five-substrate-selector clones D4 removes) but NEVER exits non-zero — it cannot fail the gate while those clones still exist. P3 promotes to `jscpd:strict` (--threshold 1) once D4 has collapsed the clones, so the threshold lands the moment the tree can pass it.",
+  "path": ["src"],
+  "minTokens": 70,
+  "reporters": ["consoleFull"],
+  "ignore": ["**/*.test.ts", "**/*.generated.*"],
+  "gitignore": true,
+  "absolute": true
+}
