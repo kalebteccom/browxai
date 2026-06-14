@@ -30,7 +30,7 @@ This is not a new methodology for browxai — it is the methodology that made th
 
 RFC 0004 takes the third step: where 0002 proved *behavior* with keystones and 0003 proved *decoupling* with the substrate ports, 0004 proves *the architecture itself* with fitness functions — and lands those fitness functions first, in P0, exactly as 0002 landed its port first in its own P0. The pattern catalogue those refactors target is [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md); the executable invariants are [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md); the standard each phase enforces is [`0004-02-maintainability-standard.md`](0004-02-maintainability-standard.md).
 
-The single most reusable lesson from those two RFCs is the *byte-identity discipline*: RFC 0002's P2a/P2b kept the Chromium CDP path **verbatim** (`CdpSnapshotSubstrate` / `CdpNetworkSubstrate` are the old code moved behind an interface unchanged — "byte-identical, 71 Chromium keystones + 1663 unit tests unchanged") and routed only the *new* off-Chromium engines through the new path. RFC 0004 generalizes that rule to *every* phase: the mechanism being replaced (the `if`-chain, the hand-list, the god-module) is moved behind the new mechanism without altering what it produces; the proof is that the *output set is identical* (the same adapter instances, the same derived map, the same registered tool names), checked by a fitness test that pins the prior output as its oracle.
+The single most reusable lesson from those two RFCs is the *byte-identity discipline*: RFC 0002's P2a/P2b kept the Chromium CDP path **verbatim** (`CdpSnapshotSubstrate` / `CdpNetworkSubstrate` are the old code moved behind an interface unchanged — "byte-identical, 71 Chromium keystones + the unit suite unchanged" — 1663 was RFC 0002's historical unit count; the suite is 1834 today) and routed only the *new* off-Chromium engines through the new path. RFC 0004 generalizes that rule to *every* phase: the mechanism being replaced (the `if`-chain, the hand-list, the god-module) is moved behind the new mechanism without altering what it produces; the proof is that the *output set is identical* (the same adapter instances, the same derived map, the same registered tool names), checked by a fitness test that pins the prior output as its oracle.
 
 ### 1.3 The behavior-preservation taxonomy
 
@@ -38,7 +38,7 @@ Because "byte-identical" is the load-bearing claim of every phase, the plan clas
 
 - **Dispatch-relocation** (P1 engine registry, P4 switch→registry): the change swaps *how* a handler/adapter is selected, not *which* one is selected for a given input. Proof: a fitness test asserting the registry resolves the same target the `if`/`switch` did, plus the relevant keystone confirming the resolved target still drives a real session identically.
 - **Map-derivation** (P2): the change replaces a hand-written list with a derived one. Proof: a *derived-equals-frozen* assertion against the P0 snapshot — the strongest available oracle, because it is the exact pre-change data.
-- **Registration-move** (P3 god-module splits): the change moves `register(name, …)` calls between files without touching them. Proof: the registered-tool-name set is unchanged (a fast-lane assertion against `coreToolNames`, the snapshot `createServer` already takes at `server.ts:359`), plus per-family unit + keystone lanes.
+- **Registration-move** (P3 god-module splits): the change moves `register(name, …)` calls between files without touching them. Proof: the registered-tool-name set is unchanged (a fast-lane assertion against `coreToolNames`, the snapshot in `src/tools/plugin-runtime.ts:60-64`), plus per-family unit + keystone lanes.
 - **Extraction-substitution** (P3 `PolicyRecordBuffer`/`actionTool`/`EgressSanitiser`, the `sample.ts`/`network.ts`/`extract.ts` dedup): the change replaces N copies with one shared abstraction. Proof: the existing per-instance unit tests (five policy tests, the action family's tests, the secrets-masking tests) run green against the shared abstraction — if the abstraction diverged from any copy, its test fails.
 - **Assertion-addition** (P5 `invariant()`): the change adds checks that must be *no-ops on valid inputs*. Proof: the full unit + five-engine keystone suites run with no invariant firing, plus a property test for any bound (perf-audit token budget) that previously had none.
 
@@ -115,7 +115,7 @@ The hard ordering constraint is **P0 → P1 → {P2, P3} → {P4, P5}**. P2 and 
 | **P2** | D2, D7 | hand-maintained central lists (policy-util, tools-and-seam); `DEEP_TOOLS` checklist drift (engine-adapters); SDK tool-types hand-mirror (plugin-sdk) | completeness tests `frozen → derived`; SDK tool-types codegen drift test |
 | **P3** | D3, D4 | god-modules `read-observe`/`capture-report`/`emulation-config`/`deep-tools` (tools-and-seam); `ToolHost`/`SessionEntry` god-objects; the 5 policy classes, the 7-step action pattern, egress masking, `sample.ts`/`network.ts`/`extract.ts` duplication (session, policy-util, page-features) | `max-lines` / `max-lines-per-function` / `complexity` budgets; interface-member budget; `jscpd` duplication budget |
 | **P4** | D6, D10 | CLI/transport/analyser/mode switches (plugin-sdk, page-features, session); the layering the doctrine asserts but no machine checks (harness-and-docs) | `dependency-cruiser` layering rules `warn → error` |
-| **P5** | (L7, L8 enforcers under D8/D9; D12 doc landing) | unbounded-resource + missing-invariant findings (page-features perf token-budget; the rings/deadlines/depth caps); the doc/discoverability gaps (harness-and-docs) | bounded-resource lint rule; assertion-density check on the load-bearing modules |
+| **P5** | (L7, L8 enforcers under D8/D9; D12 doc landing) | unbounded-resource + missing-invariant findings (page-features perf token-budget; the rings/deadlines/depth caps); the doc/discoverability gaps (harness-and-docs) | bounded-resource budget tests (the lint rule stays advisory `warn`); assertion-density check on the load-bearing modules |
 
 Every cell above is traceable to a finding in [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md) and a target pattern in [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md).
 
@@ -128,7 +128,7 @@ Every cell above is traceable to a finding in [`0004-01-current-state-audit.md`]
 **Files created.**
 
 - `test/architecture/**` — the fitness-function harness, a first-class part of `pnpm test` (static AST/graph/string analysis, no browser, fast lane). Initial suite:
-  - `ocp-engine-contract.test.ts` — instantiates a synthetic 6th engine (a `MockEngineKind` fake conforming to `EngineCapabilities` from `src/engine/types.ts:68`) and asserts the core tool surface resolves against it; **expected to FAIL today** (it documents the gap that P1 closes — it is the executable form of the parent RFC's headline claim).
+  - `ocp-engine-contract.test.ts` — instantiates a synthetic 6th engine (a `MockEngineKind` fake conforming to `EngineCapabilities` from `src/engine/types.ts:68`) and asserts the core tool surface resolves against it. It lands in P0 as `.todo`/`.skip` (the `EngineRegistry` it drives does not exist until P1), so **P0 stays gate-green** — the test is the executable form of the parent RFC's headline claim, written ahead of the registry it asserts. It is *activated and goes green in P1* the moment the registry lands; a red (not skipped) form would block the P0 gate, which the guardrail-first discipline forbids.
   - `tool-capability-completeness.test.ts` — asserts every registered tool name has a `TOOL_CAPABILITY` entry (`src/util/capabilities.ts:87`); passes today by *freezing* the 181-entry map against the live registration set, catching the audit's "silent fallback to `human`" gap (policy-util guardrail-gap #1).
   - `batch-allow-completeness.test.ts` — freezes `BATCH_ALLOWED_TOOLS` (`src/tools/host-build.ts:640–712`) against the registered set.
   - `deep-tools-engine-matrix.test.ts` — asserts every `DEEP_TOOLS` member (`src/engine/tool-gate.ts:38`) is refused on the non-deep engines and allowed on the deep ones, via `assertEngineSupports` (`tool-gate.ts:131`) — closing the engine-adapters guardrail-gap "no suite validates every `DEEP_TOOLS` entry is unavailable on Firefox/WebKit."
@@ -158,36 +158,42 @@ Every cell above is traceable to a finding in [`0004-01-current-state-audit.md`]
 
 **Files edited (grounded in the audit).**
 
-- `src/tools/session-registry.ts` — the worst offender. It carries the factory dispatch (`session-registry.ts:177–243`: the `if (mode === "attached") … else if (mode === "incognito") … else …` chain over `openByobSession`/`openIncognitoSession`/`openManagedSession`) **and** the scattered Safari guards: `sess.engine !== "safari"` recurs at `:266`, `:280`, `:292`, `:301`, `:332`, `:338`, `:349`, `:383`, `:408` (HAR/video/replay-HAR attach, console attach, browser-bridge attach, dialog-policy attach, confirm/fs-picker bridge wiring) — the 18-guard cluster the audit names. These become `EngineRegistry.postWire(sess, …)` calls keyed off `sess.engine`, with each engine's record owning its own post-creation steps.
+- `src/tools/session-registry.ts` — the worst offender. It carries the *session-mode* dispatch (`session-registry.ts:177–243`: the `if (mode === "attached") … else if (mode === "incognito") … else …` chain over `openByobSession`/`openIncognitoSession`/`openManagedSession` — the engine-factory dispatch itself lives in `managed.ts`/`incognito.ts`/`byob.ts`, not here) **and** the scattered Safari guards: `sess.engine !== "safari"` recurs at `:266`, `:280`, `:292`, `:301`, `:332`, `:338`, `:349`, `:383`, `:408`, … (HAR/video/replay-HAR attach, console attach, browser-bridge attach, dialog-policy attach, confirm/fs-picker bridge wiring) — the 17-guard cluster the audit names. These become `EngineRegistry.postWire(sess, …)` calls keyed off `sess.engine`, with each engine's record owning its own post-creation steps.
 - `src/session/managed.ts` (162 LOC), `src/session/incognito.ts` (133), `src/session/byob.ts` (216) — the three session factories. Their per-engine launch/attach branching collapses to a registry lookup (`registry.get(engine).makeAdapter(opts)`); the factories keep only their *mode* concern (persistent vs ephemeral vs attach), not the *engine* concern.
-- `src/tools/host-build.ts` — the five substrate selectors `actionsFor` (`:288`), `captureFor` (`:301`), `storageFor` (`:318`), `scriptFor`, `emulationFor`. These already use capability detection (`e.session.safari?.()`) rather than name literals in the current tree — they are the *good* pattern — but the 5× identical `if (safariHandle) return new SafariXSubstrate(…); return new PlaywrightXSubstrate(…)` shape (the page-core audit's "5-line boilerplate repeated 5 identical times") folds into `EngineRegistry.makeSubstrates(session)`, so a new engine supplies one substrate-bundle factory instead of editing five closures.
-- `src/engine/tool-gate.ts` — `assertEngineSupports` (`:131`) and `DEEP_TOOLS` (`:38`) stay (they are already capability-keyed, not engine-name-keyed — RFC 0002 proved this when WebKit auto-gated with zero `tool-gate.ts` edits, keying on `deep:false` rather than an engine name). P1 only routes the gate through the registry's capability record so the synthetic engine in the contract test is gated correctly. The `EngineCapabilities` shape it reads (`engine`, the `subInterfaces: ReadonlySet<EngineSubInterface>` over the nine sub-interfaces `lifecycle`/`navigation`/`snapshot`/`input`/`network`/`storage`/`script`/`emulation`/`capture`, and the `deep` flag — `types.ts:68–72`) is exactly what each `EngineRecord.capabilities` supplies, so the registry is a strict superset of today's capability declaration, not a parallel system.
+- `src/tools/host-build.ts` — the five substrate selectors `actionsFor` (`:288`), `captureFor` (`:301`), `storageFor` (`:318`), `scriptFor`, `emulationFor`. These already use capability detection (`e.session.safari?.()`) rather than name literals in the current tree — they are the *good* pattern — but the 5× identical `if (safariHandle) return new SafariXSubstrate(…); return new PlaywrightXSubstrate(…)` shape (the page-core audit's "5-line boilerplate repeated 5 identical times") folds into `EngineRegistry.makeSubstrates()` (whose seven fields are `(e) => Substrate` selectors), so a new engine supplies one substrate-bundle factory instead of editing five closures.
+- `src/engine/tool-gate.ts` — `assertEngineSupports` (`:131`) and `DEEP_TOOLS` (`:38`) stay (they are already capability-keyed, not engine-name-keyed — RFC 0002 proved this when WebKit auto-gated with zero `tool-gate.ts` edits, keying on `deep:false` rather than an engine name). P1 only routes the gate through the registry's capability record so the synthetic engine in the contract test is gated correctly. The `EngineCapabilities` shape it reads (`engine`, the `subInterfaces: ReadonlySet<EngineSubInterface>` over the nine sub-interfaces `lifecycle`/`navigation`/`snapshot`/`input`/`network`/`storage`/`script`/`emulation`/`capture`, and the `deep` flag — `types.ts:68–72`) is exactly what each `EngineEntry.capabilities` supplies, so the registry is a strict superset of today's capability declaration, not a parallel system.
 
 **Files created.**
 
 - `src/engine/registry.ts` — the `EngineRegistry`. Each engine registers, in *one* place, a record:
 
   ```ts
-  import type { EngineKind, EngineCapabilities, EngineSession } from "./types.js";
+  import type { EngineKind, EngineCapabilities } from "./types.js";
+  import type { SessionOptions, BrowserSession } from "../session/types.js";
+  import type { SessionEntry } from "../session/registry.js";
+  // (SessionEntry is declared in ../session/registry.js, not ../session/types.js;
+  //  SubstrateBundle is defined alongside this interface — see 0004-03 §1.)
 
   /** One engine's entire integration surface, declared in one file. Adding an
    *  engine = a new module that calls `registerEngine(record)` once; no edit to
-   *  any session factory, the session registry, or host-build. */
-  export interface EngineRecord {
+   *  any session factory, the session registry, or host-build. This is the single
+   *  EngineEntry shape the whole suite standardizes on (0004-03 §1) — using the
+   *  real session types, not placeholders. */
+  export interface EngineEntry {
     readonly kind: EngineKind;
-    readonly capabilities: EngineCapabilities;        // src/engine/types.ts:68
-    readonly makeAdapter: (opts: AdapterOptions) => Promise<EngineSession>;
-    readonly makeSubstrates: (session: EngineSession) => SubstrateBundle;
+    readonly capabilities: EngineCapabilities;
+    makeAdapter(opts: SessionOptions): Promise<BrowserSession>;
+    makeSubstrates(): SubstrateBundle;
     /** Post-creation wiring previously scattered as `sess.engine !== "safari"`
      *  guards across session-registry.ts — now owned by the engine that needs it. */
-    readonly postWire: (ctx: PostWireContext) => Promise<void>;
+    postWire(entry: SessionEntry): void;
   }
 
-  const REGISTRY = new Map<EngineKind, EngineRecord>();
-  export function registerEngine(r: EngineRecord): void { REGISTRY.set(r.kind, r); }
-  export function engineRecord(kind: EngineKind): EngineRecord {
+  const REGISTRY = new Map<EngineKind, EngineEntry>();
+  export function registerEngine(r: EngineEntry): void { REGISTRY.set(r.kind, r); }
+  export function engineEntry(kind: EngineKind): EngineEntry {
     const r = REGISTRY.get(kind);
-    if (!r) throw new Error(`no EngineRecord registered for engine "${kind}"`);
+    if (!r) throw new Error(`no EngineEntry registered for engine "${kind}"`);
     return r;
   }
   ```
@@ -210,30 +216,34 @@ After (P1 — the engine owns its own post-wire; the registry has no engine lite
 
 ```ts
 // session-registry.ts (P1) — one call, engine-agnostic
-import { engineRecord } from "../engine/registry.js";
+import { engineEntry } from "../engine/registry.js";
 
-await engineRecord(sess.engine).postWire({ sess, br, dialogState, /* … */ });
+// `entry` is the assembled SessionEntry; the engine reads sess/bridge/policy
+// buffers from it — postWire(entry: SessionEntry): void, per the 0004-03 contract.
+engineEntry(sess.engine).postWire(entry);
 
 // safari.engine.ts — the no-Page engine simply omits the Playwright-only steps
 registerEngine({
   kind: "safari",
   capabilities: SAFARI_CAPABILITIES,              // engine/capabilities.ts, deep:false
-  makeAdapter: (opts) => openSafariSession(opts),
-  makeSubstrates: (s) => safariSubstrateBundle(s),
-  postWire: async ({ sess }) => {
-    // BiDi log.entryAdded console bridge (the safari `bidi` branch from :305) —
-    // and nothing Playwright-only. The throw in safari-session.ts:34 is never reached.
+  makeAdapter: async (opts) =>
+    buildSafariSession(await new SafaridriverHybridAdapter().launchManaged()), // managed.ts:36-41 — the real flow, → Promise<BrowserSession>
+  makeSubstrates: () => safariSubstrateBundle(),
+  postWire: (entry) => {
+    // BiDi log.entryAdded console bridge (the safari `bidi` branch from :305),
+    // read off entry.session — and nothing Playwright-only. The throw in
+    // safari-session.ts:35 is never reached.
   },
 });
 ```
 
 The other four engines register the full Playwright `postWire`; the `!== "safari"` guard vanishes because the *absence* of a step is now an engine's own declaration, not a caller's branch.
 
-**The Safari LSP fix (D5).** `src/session/safari-session.ts` makes `page()` throw `NO_PLAYWRIGHT_PAGE` unconditionally (`safari-session.ts:34–35`) — the Liskov violation that forced the 18 guards. Resolution per D5: callers reach the page only through the substrate ports (already the design intent post-RFC-0003); the residual direct `page()` reads are the bug. P1 makes the no-Page nature a *declared capability* on the engine record (the `subInterfaces` set already exists on `EngineCapabilities`, `types.ts:71`), and moves the 18 guards into `safari.engine.ts`'s `postWire` (which simply omits the Playwright-only steps). The `port-conformance.test.ts` from P0 then forbids any *new* unconditional-throw port method.
+**The Safari LSP fix (D5).** `src/session/safari-session.ts` makes `page()` throw `NO_PLAYWRIGHT_PAGE` unconditionally (`safari-session.ts:35`) — the Liskov violation that forced the 17 guards. Resolution per D5: callers reach the page only through the substrate ports (already the design intent post-RFC-0003); the residual direct `page()` reads are the bug. P1 makes the no-Page nature a *declared capability* on the engine record (the `subInterfaces` set already exists on `EngineCapabilities`, `types.ts:71`), and moves the 17 guards into `safari.engine.ts`'s `postWire` (which simply omits the Playwright-only steps). The `port-conformance.test.ts` from P0 then forbids any *new* unconditional-throw port method.
 
 **Why this order.** First because it is the single highest-leverage refactor (it closes the most findings across the most subsystems: engine-adapters, session, tools-and-seam, page-core). Second because P2's metadata derivation and P3's substrate-selector fold both *key off* the registry record — P1 must supply it. Third because it is the one whose behavior-preservation is most directly proven by an existing asset (the five engine keystones), so doing it early maximizes confidence for the phases that follow.
 
-**Gate promotions this phase.** `no-engine-literal-branches` goes from new-violations-only to **whole-tree `error`** (the existing literals are now gone). The `port-conformance.test.ts` goes from documenting-the-gap to **green and enforcing**. The `ocp-engine-contract.test.ts` (the engine-adapter-contract keystone) flips from **FAIL → PASS** — the synthetic 6th engine now works with zero core edits. That flip is the phase's headline deliverable.
+**Gate promotions this phase.** `no-engine-literal-branches` goes from new-violations-only to **whole-tree `error`** (the existing literals are now gone). The `port-conformance.test.ts` goes from documenting-the-gap to **green and enforcing**. The `ocp-engine-contract.test.ts` (the engine-adapter-contract keystone) flips from **`.todo`/`.skip` → active and PASS** — the synthetic 6th engine now works with zero core edits. That flip is the phase's headline deliverable.
 
 **Behavior-preservation.** The five real engine keystones are byte-identical proof: `headless.keystone.test.ts` (Chromium), `firefox.keystone.test.ts`, `webkit.keystone.test.ts`, `android.keystone.test.ts`, `safari.keystone.test.ts` must pass unchanged. The registry is a pure indirection over the *same* adapter instances and the *same* post-wire steps — only the *dispatch mechanism* changes, so each engine's observable session is identical. The unit suite (session-registry, factory, gate tests) is the fast-lane backstop.
 
@@ -267,7 +277,7 @@ The other four engines register the full Playwright `postWire`; the `!== "safari
 
   The host accumulates the metadata into a derivation table as each `registerXxxTools(host)` module runs.
 - `src/util/capabilities.ts` — `TOOL_CAPABILITY` (`:87`, 181 entries) becomes **derived** from the registrations rather than hand-listed; the type union `Capability` (`:17`, the 17-member closed vocabulary `read`/`navigation`/`action`/`human`/`eval`/`byob-attach`/`file-io`/`network-body`/`clipboard`/`secrets`/`extensions`/`stealth`/`captcha`/`credentials`/`device-emulation`/`diagnostics`/`canvas`) and `ALL_CAPABILITIES` (`:36`) stay as the closed vocabulary — the *names* are still declared once in the type system; only the *per-tool assignment* moves to the registration site. The orphan-capability and missing-entry gaps (policy-util guardrail-gaps #1, #2 — "a tool registered but missing from the map silently defaults to `human`"; "a capability in `ALL_CAPABILITIES` unused and orphaned") become impossible by construction: the derived map *is* the registration set, and a fitness test asserts every `ALL_CAPABILITIES` member is referenced by at least one registration.
-- `src/tools/host-build.ts` — `BATCH_ALLOWED_TOOLS` (`:640–712`) is derived from `def.batchable`, not the 72-line literal `Set`.
+- `src/tools/host-build.ts` — `BATCH_ALLOWED_TOOLS` (`:640–712`) is derived from `def.batchable`, not the 71-entry literal `Set`.
 - `src/engine/tool-gate.ts` — `DEEP_TOOLS` (`:38`) is derived from `def.deep`; this closes the engine-adapters finding "the gate is a manually-maintained checklist with zero automated regression prevention" — a new CDP-dependent tool now self-declares and auto-gates.
 - `src/sdk/tool-types.ts` (673 LOC) — deleted as a hand-maintained file; replaced by a generated artifact (D7).
 - The per-family modules' `register` calls (`src/tools/read-observe-tools.ts`, `action-tools.ts`, `deep-tools.ts`, …) gain the inline `{ capability, batchable, deep }` at each registration site. This is mechanical and colocated — the metadata lives next to the tool, which is the whole point.
@@ -303,7 +313,7 @@ Each split keeps the same `registerXxxTools(host)` shape and the same `register`
 
 **Files edited — object segregation (D3, ISP).**
 
-- `src/tools/host.ts` — `ToolHost` (the 75-member interface, `host.ts:54+`) is segregated into composable sub-ports a handler depends on à la carte. The members already cluster by role in the source (`register`/`gateCheck`/`engineGate`/`denyContent`; `entryFor`/`ctxFor`/`confirmCtxFor`; `actionsFor`/`asTarget`/`actionTimeout`/`asActionResultText`; `captureFor`; `storageFor`/`scriptFor`/`emulationFor`), so the split is a regrouping, not a redesign:
+- `src/tools/host.ts` — `ToolHost` (the 35-member interface, `host.ts:54-189`) is segregated into composable sub-ports a handler depends on à la carte. The members already cluster by role in the source (`register`/`gateCheck`/`engineGate`/`denyContent`; `entryFor`/`ctxFor`/`confirmCtxFor`; `actionsFor`/`asTarget`/`actionTimeout`/`asActionResultText`; `captureFor`; `storageFor`/`scriptFor`/`emulationFor`), so the split is a regrouping, not a redesign:
 
   ```ts
   /** A handler asks for exactly the sub-port it calls. `ToolHost` stays as the
@@ -326,7 +336,7 @@ Each split keeps the same `registerXxxTools(host)` shape and the same `register`
   ```
 
   A `register*Tools(host: ActionHost & SessionHost)` signature then *compiles a guarantee* that the action family touches nothing else — the ISP win the tools-and-seam `topRefactors` "port interfaces" names, and the dependency-cruiser "ToolHost split" rule (L4) enforces it.
-- `src/tools/session-registry.ts` + the session types — `SessionEntry` (the 50+-field god object) is segregated into the role-bundles its consumers use (engine-core vs policy vs feature concerns), per the session `topRefactors` #2 — tools depend on the sub-object, not the fat record.
+- `src/tools/session-registry.ts` + the session types — `SessionEntry` (the 40-field god object) is segregated into the role-bundles its consumers use (engine-core vs policy vs feature concerns), per the session `topRefactors` #2 — tools depend on the sub-object, not the fat record.
 
 **Files edited / created — family extractions (D4, DRY).**
 
@@ -343,7 +353,7 @@ Each split keeps the same `registerXxxTools(host)` shape and the same `register`
 
 **Behavior-preservation.** Splitting a module that only *registers* tools is behavior-neutral by construction — the same `register(name, …)` calls run, just from more files; the full unit suite plus the five engine keystones confirm every tool still registers and behaves identically. The `PolicyRecordBuffer<T>` extraction is proven by the existing per-policy unit tests (dialog/permission/notification/fs-picker/device-emu) running green against the composed base. `actionTool()` is proven by the action-family unit + keystone (`headless`) tests. `EgressSanitiser` is proven by the secrets-masking + URL-sanitiser unit tests now exercising the single chokepoint. `sample.ts` is proven by `sample` unit tests asserting element and window paths produce identical series for shared metrics.
 
-**Risk + rollback.** Risk: a god-module split accidentally changes registration *order*, perturbing the `coreToolNames` snapshot taken in `createServer` (`server.ts:359`). Mitigated by preserving the source order of `register` calls across the split and asserting the registered-name set is unchanged (a fast-lane test). Risk: the `EgressSanitiser` chokepoint misses a sink. Mitigated because the masking unit tests + the page-features guardrail (which P5 makes a lint rule) flag an unmasked egress. Rollback: each split is its own commit (one god-module per commit); each extraction is its own commit; any single one reverts independently.
+**Risk + rollback.** Risk: a god-module split accidentally changes registration *order*, perturbing the `coreToolNames` snapshot (`src/tools/plugin-runtime.ts:60-64`). Mitigated by preserving the source order of `register` calls across the split and asserting the registered-name set is unchanged (a fast-lane test). Risk: the `EgressSanitiser` chokepoint misses a sink. Mitigated because the masking unit tests + the page-features guardrail (which P5 makes a lint rule) flag an unmasked egress. Rollback: each split is its own commit (one god-module per commit); each extraction is its own commit; any single one reverts independently.
 
 **Rough effort.** ~5–7 days total (tools-and-seam "split god modules" at 4–5 days; the `PolicyRecordBuffer` + `actionTool` + `EgressSanitiser` extractions at ~1–2 days each, overlapping). The largest phase by LOC touched, the lowest-risk per-LOC (registration-only moves).
 
@@ -405,7 +415,7 @@ Each split keeps the same `registerXxxTools(host)` shape and the same `register`
 
 **Why this order.** Last because it is the *capstone*: the assertion/bounded-resource pass touches modules that P1–P4 have already settled (asserting invariants on a registry that does not exist yet is premature), and the doc landing must describe the *final* state of all guardrails — `fitness-functions.md` is only accurate once P0–P4's checks are all in place and promoted.
 
-**Gate promotions this phase.** The bounded-resource lint rule and the assertion-density check go to `error` on the load-bearing modules. With this, *every* law L1–L10 has a green enforcer — the standard is fully mechanized, which is the parent RFC's definition of done.
+**Gate promotions this phase.** The assertion-density check and the bounded-resource *budget tests* (the property tests pinning each named bound) go to `error` on the load-bearing modules. The bounded-resource *lint rule* stays **advisory (`warn`)** — it is a heuristic that cannot prove termination (the halting problem), so it prompts a human decision at the loop rather than blocking the build; this matches its disposition in [`0004-05`](0004-05-fitness-functions-and-guardrails.md) §1.3. With the density check and the bound budgets green, *every* law L1–L10 has a green enforcer — the standard is fully mechanized, which is the parent RFC's definition of done.
 
 **Behavior-preservation.** Adding `invariant()` calls is behavior-preserving by definition when the invariants hold (they assert what the code already guarantees); the full unit + five-engine keystone suites confirm none fire spuriously. The perf-audit bound is proven by a property test asserting termination and the `≤ 2.5× budget` ceiling on adversarial inputs. The doc/skill changes touch no `src/` runtime.
 
@@ -425,7 +435,7 @@ This couples each phase to its guardrail tightly:
 - The completeness tests cannot become *derived* assertions until P2 derives the maps — so they are *frozen* (still useful: they catch a hand-edit that desyncs the map from the registration set) in P0 and promoted in P2.
 - The size/complexity/duplication budgets cannot go `error` until P3 splits the god-modules and extracts the families — so they report at `warn` from P0 (calibrated from healthy modules like `tool-gate.ts` at 145 LOC) and promote in P3.
 - The dependency-cruiser layering rules cannot go `error` until the tree is clean of cross-layer imports — so they warn from P0 and promote in P4.
-- The bounded-resource and assertion-density rules land and promote together in P5, on the modules the prior phases have already settled.
+- The assertion-density check and the bounded-resource budget tests land and promote together in P5, on the modules the prior phases have already settled; the bounded-resource *lint rule* stays advisory (`warn`) — it is heuristic, not a proof.
 
 The L-meta rule (parent RFC §8) governs every promoted gate thereafter: a guardrail may only be relaxed via an RFC amendment with rationale — never an inline `eslint-disable` or a `.skip()`. This is the same norm the just-landed `no-unsafe-*` enforcement already established, generalized to the architecture layer.
 
@@ -435,12 +445,12 @@ The L-meta rule (parent RFC §8) governs every promoted gate thereafter: a guard
 
 | Phase | Done when |
 |-------|-----------|
-| **P0** | `test/architecture/**` runs in the fast lane; dependency-cruiser + budgets + `jscpd` report at `warn`; completeness/traceability tests pass by freezing the current maps; the two custom lint rules fail on *new* violations only; `ocp-engine-contract.test.ts` exists and *fails* (documenting the gap); all unit + five engine keystones unchanged. |
+| **P0** | `test/architecture/**` runs in the fast lane; dependency-cruiser + budgets + `jscpd` report at `warn`; completeness/traceability tests pass by freezing the current maps; the two custom lint rules fail on *new* violations only; `ocp-engine-contract.test.ts` exists as `.todo`/`.skip` (documenting the gap without failing the gate); all unit + five engine keystones unchanged — **P0 is gate-green**. |
 | **P1** | `EngineRegistry` owns all engine dispatch + post-wire; zero `if (engine === …)` / `sess.engine !== "safari"` branches remain in `session-registry.ts`/`managed.ts`/`incognito.ts`/`byob.ts`/`host-build.ts`; `no-engine-literal-branches` at whole-tree `error`; `port-conformance.test.ts` green; **`ocp-engine-contract.test.ts` flips to PASS** (a synthetic 6th engine works with zero core edits); the Safari `page()` throw is contained in `safari.engine.ts` `postWire`; five engine keystones unchanged. |
 | **P2** | `host.register` carries `{capability, batchable, deep}`; `TOOL_CAPABILITY`/`BATCH_ALLOWED_TOOLS`/`DEEP_TOOLS` are *derived* and element-identical to the P0 freeze; `sdk/tool-types.ts` is generated with a drift test at `error`; completeness tests promoted `frozen → derived`; five engine keystones unchanged. |
 | **P3** | No tool module exceeds the ~400-LOC budget (`read-observe`/`capture-report`/`emulation-config`/`deep-tools` all split); `ToolHost`/`SessionEntry` segregated into role sub-ports; `PolicyRecordBuffer<T>`/`actionTool()`/`EgressSanitiser` extracted and consumed everywhere; size/complexity/interface-member/`jscpd` budgets at `error` with zero violations; registered-tool-name set unchanged; unit + five engine keystones unchanged. |
 | **P4** | CLI/plugin-CLI/transport/perf-analyser/config-layer/session-mode switches are add-only registries; dependency-cruiser layering rules at `error`; `no-extensibility-switch.test.ts` at `error`; CLI/SDK/perf-audit/config behavior unchanged (keystones + unit). |
-| **P5** | `invariant()` lands on the load-bearing modules with the density check at `error`; the perf-audit token-budget and the rings/deadlines/depth-caps have tested bounds with the bounded-resource rule at `error`; `fitness-functions.md` indexes every guardrail; `code-quality.md` + `architecture-principles.md` + `repo-map.md` + the RFC index updated; the `architecture-fitness-auditor` skill exists; unit + five engine keystones unchanged. |
+| **P5** | `invariant()` lands on the load-bearing modules with the density check at `error`; the perf-audit token-budget and the rings/deadlines/depth-caps have tested bounds with the bounded-resource *budget tests* at `error` (the bounded-resource *lint rule* stays advisory `warn`); `fitness-functions.md` indexes every guardrail; `code-quality.md` + `architecture-principles.md` + `repo-map.md` + the RFC index updated; the `architecture-fitness-auditor` skill exists; unit + five engine keystones unchanged. |
 
 ### 4.2 Overall DoD
 
@@ -449,7 +459,7 @@ The RFC is *done* when **every law L1–L10 has a green enforcer and the whole a
 - All fitness functions in `test/architecture/**` green at `error` — including the **engine-adapter-contract keystone** (the synthetic 6th engine resolves the core tool surface with zero edits to any session factory, the session registry, `host-build`, or the tool-gate).
 - The size / complexity / duplication / interface-member budgets at `error` with **zero violations** — every god-module split, every god-object segregated, every copy-paste family collapsed.
 - The dependency-cruiser layering rules at `error` — the core depends inward; no `sdk`/`cli`/transport/engine-adapter leak.
-- The `no-engine-literal-branches`, `no-inlined-capability-checks`, `no-extensibility-switch`, bounded-resource, and assertion-density rules at `error` (whole-tree).
+- The `no-engine-literal-branches`, `no-inlined-capability-checks`, `no-extensibility-switch`, and assertion-density rules at `error` (whole-tree); the bounded-resource budget tests at `error` and the bounded-resource lint rule at advisory `warn`.
 - The SDK tool-types codegen drift test at `error`.
 - **The 1834 unit tests + the five engine keystones (`headless`/`firefox`/`webkit`/`android`/`safari`) unchanged** across every phase — the regression spine that proves behavior was preserved end to end.
 - The standard is *discoverable and exercised*: `fitness-functions.md`, the `code-quality.md` enforcement section, the extended `architecture-principles.md` checklist, and the `architecture-fitness-auditor` skill are all in place (D12).
@@ -466,7 +476,7 @@ Per the parent RFC §3 non-goals, restated as the execution boundary so no phase
 - **No rewrite of the capability substrates.** The RFC 0003 ports (`ActionSubstrate`, `CaptureSubstrate`, `StorageSubstrate`, `ScriptSubstrate`, `EmulationSubstrate`, `SnapshotSubstrate`, `NetworkSubstrate`) are the right contract. P1 folds the five *selectors* into `makeSubstrates`; the substrate *implementations* are untouched.
 - **No rewrite of the plugin runtime.** `PluginApi` (`registerTool`/`callTool`/`log`) is a proven dependency-inverted port (architecture-principles §1) and protocol-clean (the coupling audit confirms it holds no page/CDP handle). P2 unifies how core *and* plugin tools register metadata, but does not re-architect the runtime.
 - **No behavior change.** Every phase is byte-identical per engine, proven by the five engine keystones + the unit suite on every commit. The Chromium CDP path stays verbatim (the same discipline RFC 0002 P2a/P2b held — Chromium byte-identical, only off-Chromium routed anew).
-- **No speculative ports.** Per architecture-principles §1's proven-seam test, every registry this plan introduces has *multiple real implementations today* — 5 engines, 70+ batchable tools, 9 perf analysers, 3 transports, 5 CLI commands, 4 config layers. Where there is a single implementation today, the concrete code stays and the seam is added later. We import the *practices* (Power-of-Ten, fitness functions, levelization), never a generic framework.
+- **No speculative ports.** Per architecture-principles §1's proven-seam test, every registry this plan introduces has *multiple real implementations today* — 5 engines, 70+ batchable tools, 8 perf analysers, 3 transports, 5 CLI commands, 4 config layers. Where there is a single implementation today, the concrete code stays and the seam is added later. We import the *practices* (Power-of-Ten, fitness functions, levelization), never a generic framework.
 
 ---
 

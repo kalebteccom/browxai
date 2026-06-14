@@ -49,7 +49,7 @@ The doctrine document states the seams (§1, §4) and lists a §7 review checkli
 > | **L1 — Closed core** | No module above the engine seam names an engine, a transport, or a concrete adapter. Extension is add-only. | `no-engine-literal-branches` lint rule (handlers) + the `engine-adapter-contract` keystone (a synthetic 6th engine that must work with zero core edits). |
 > | **L2 — Single source of truth** | No fact is written twice. Capability, batchability, deep-ness, tool-types are **declared once** at the unit and **derived**. | Completeness fitness tests (every registered tool ∈ derived capability map; tool-types ≡ schemas) + tool-types codegen. |
 > | **L3 — One reason to change** | One module, one responsibility. Hard budgets: a tool module ≤ ~400 LOC, `server.ts` ≤ 400, a function ≤ ~70 LOC / complexity ≤ ~15. | `eslint` `max-lines` / `complexity` / `max-lines-per-function` budgets + the composition-root guard. |
-> | **L4 — Segregated contracts** | No god-object. Consumers depend on the narrow port they use, not a 75-member bag. | Interface-member budget + dependency-cruiser "host split" rule. |
+> | **L4 — Segregated contracts** | No god-object. Consumers depend on the narrow port they use, not a 35-member bag. | Interface-member budget + dependency-cruiser "host split" rule. |
 > | **L5 — Substitutable adapters** | Every adapter honors its port's full contract or **declares the gap as a capability**; no adapter throws where the port promises a value. | The port-conformance contract test, run against every adapter including a synthetic one. |
 > | **L6 — Validate at the edge, trust within** | Untyped data is narrowed at the boundary (MCP wire, config, CDP/Playwright edge) and fully typed thereafter. | The five `no-unsafe-*` rules (now `error`) + `no-explicit-any` + the boundary-narrowing test. |
 > | **L7 — Bounded everything** | Every loop, buffer, ring, recursion, and wait has an explicit, tested bound. | The bounded-resource lint rule + budget tests on rings / deadlines / depth caps. |
@@ -115,8 +115,8 @@ Insert this section immediately **after** "SOLID, applied to modern TypeScript" 
 > |---|----------------------|-----|-------------------|---------|
 > | 1 | **No engine literals in handlers.** No `engine === "<literal>"` branch above the engine seam; dispatch lives in substrates / the engine registry, never a handler. | L1 | `no-engine-literal-branches` custom ESLint rule (whitelists the substrate-select files) | `pnpm lint` |
 > | 2 | **No inlined capability gates.** A handler routes capability checks through `ToolHost.gateCheck()`; it never inlines `capabilities.includes(...)`. | L1/SRP | `no-inlined-capability-checks` custom ESLint rule (scoped to `src/page/**`) | `pnpm lint` |
-> | 3 | **`server.ts` is composition-only.** No business logic; under the 400-line ceiling; imports `src/tools/*`, never `src/page/*` directly. | L3 | `max-lines` budget on `server.ts` + the composition-root dependency-cruiser rule | `pnpm lint` + `pnpm depgraph` |
-> | 4 | **Dependency layering holds.** `server.ts`/`tools/*` ⊥ `sdk/*`; `page/*` ⊥ concrete adapter/transport; `sdk/*` ⊥ handler internals; nothing but the bin imports `cli/*`. | L4/L10/DIP | `dependency-cruiser` forbidden-import rules | `pnpm depgraph` |
+> | 3 | **`server.ts` is composition-only.** No business logic; under the 400-line ceiling; imports `src/tools/*`, never `src/page/*` directly. | L3 | `max-lines` budget on `server.ts` + the composition-root dependency-cruiser rule | `pnpm lint` + `pnpm depcruise` |
+> | 4 | **Dependency layering holds.** `server.ts`/`tools/*` ⊥ `sdk/*`; `page/*` ⊥ concrete adapter/transport; `sdk/*` ⊥ handler internals; nothing but the bin imports `cli/*`. | L4/L10/DIP | `dependency-cruiser` forbidden-import rules | `pnpm depcruise` |
 > | 5 | **Engines are pluggable (OCP).** A synthetic 6th engine works through core tools with zero edits to `src/session/*` or `src/tools/*`. | L1 | `engine-adapter-contract` keystone + `capabilities-ocp` unit fitness test | `pnpm test:arch` (and `pnpm test:keystone` for the contract lane) |
 > | 6 | **Central lists are derived.** Every registered tool has a capability; SDK tool-types match the schemas; every `EngineKind` has a `CAPABILITIES` row. | L2/L9 | completeness + traceability fitness tests | `pnpm test:arch` |
 > | 7 | **Budgets, not vibes.** File-size / function-length / complexity / interface-member / duplication budgets. | L3/L4/L7 | `eslint` budget rules + `jscpd` duplication budget | `pnpm lint` |
@@ -166,8 +166,8 @@ This is the single map the parent RFC's D12 calls "the index of executable invar
 > | `engine-capability-completeness` | Every member of `EngineKind` has a `CAPABILITIES` const with the expected `EngineSubInterface` keys. A new engine missing its row fails fast instead of crashing the gate. | `test/architecture/engine-capability-completeness.test.ts` | `pnpm test:arch` | L2/L9 · [D1](../../rfcs/0004-architecture-hardening.md) |
 > | `sdk-types-match-schemas` | The committed `sdk/tool-types.ts` equals the codegen output from the live registrations — hand-mirroring drift fails. | `test/architecture/sdk-types-drift.test.ts` | `pnpm test:arch` | L2 · [D7](../../rfcs/0004-architecture-hardening.md) |
 > | `port-conformance` | Every substrate adapter (action / capture / storage / script / emulation), including a synthetic one, honors its port — no method throws unconditionally where the port promises a value. | `test/architecture/port-conformance.test.ts` | `pnpm test:arch` | L5 · [D5](../../rfcs/0004-architecture-hardening.md) |
-> | `dependency-layering` | The forbidden-import graph holds (`tools/*` ⊥ `sdk/*`; `page/*` ⊥ adapter/transport; `sdk/*` ⊥ handler internals; only the bin imports `cli/*`). | `.dependency-cruiser.cjs` | `pnpm depgraph` | L4/L10 · [D10](../../rfcs/0004-architecture-hardening.md) |
-> | `composition-root-guard` | `server.ts` ≤ 400 lines and imports no `src/page/*` directly (must go through `src/tools/*`). | `eslint.config.js` (`max-lines` override) + `.dependency-cruiser.cjs` | `pnpm lint` + `pnpm depgraph` | L3 · [D11](../../rfcs/0004-architecture-hardening.md) |
+> | `dependency-layering` | The forbidden-import graph holds (`tools/*` ⊥ `sdk/*`; `page/*` ⊥ adapter/transport; `sdk/*` ⊥ handler internals; only the bin imports `cli/*`). | `.dependency-cruiser.cjs` | `pnpm depcruise` | L4/L10 · [D10](../../rfcs/0004-architecture-hardening.md) |
+> | `composition-root-guard` | `server.ts` ≤ 400 lines and imports no `src/page/*` directly (must go through `src/tools/*`). | `eslint.config.js` (`max-lines` override) + `.dependency-cruiser.cjs` | `pnpm lint` + `pnpm depcruise` | L3 · [D11](../../rfcs/0004-architecture-hardening.md) |
 > | `module-budgets` | No tool module exceeds the size budget; no function exceeds length/complexity; no interface exceeds the member budget; no duplication beyond the `jscpd` threshold. | `eslint.config.js` budgets + `jscpd.json` | `pnpm lint` | L3/L4/L7 · [D11](../../rfcs/0004-architecture-hardening.md) |
 > | `no-engine-literal-branches` | No handler branches on an engine literal outside the whitelisted substrate-select files. | `eslint.config.js` (custom rule) | `pnpm lint` | L1 · [D1](../../rfcs/0004-architecture-hardening.md) |
 > | `no-inlined-capability-checks` | No handler inlines a capability check around the shared gate. | `eslint.config.js` (custom rule) | `pnpm lint` | L1 · [D2](../../rfcs/0004-architecture-hardening.md) |
@@ -208,7 +208,7 @@ This is the single map the parent RFC's D12 calls "the index of executable invar
 >   and [`references/0004-05-fitness-functions-and-guardrails.md`](../../rfcs/references/0004-05-fitness-functions-and-guardrails.md)
 >   — the design record and the executable specs.
 
-> Note on commands: `pnpm test:arch` (the fast architecture lane) and `pnpm depgraph`
+> Note on commands: `pnpm test:arch` (the fast architecture lane) and `pnpm depcruise`
 > (dependency-cruiser) are introduced by [RFC 0004](../../rfcs/0004-architecture-hardening.md)
 > P0 alongside the suite; before then, the lane runs under `pnpm test` and the graph
 > under the cruiser binary directly. The script names are fixed here so the docs and
@@ -256,7 +256,7 @@ Insert a new subsection (between `### src/cli/` and `### src/page/`, the registr
 > `registerXxxTools(host)` line in `server.ts` — composition stays one line longer,
 > the existing families are untouched.
 >
-> `ToolHost` is a god-object today (75 members) and the engine-selected substrate
+> `ToolHost` is a god-object today (35 members) and the engine-selected substrate
 > selectors live in `host-build.ts` — both are targets of RFC 0004's segregation
 > work ([D3](../../rfcs/0004-architecture-hardening.md),
 > [D1](../../rfcs/0004-architecture-hardening.md)). Until that lands, the host's
@@ -296,7 +296,7 @@ And append a pointer to the map's footer (or create one if absent):
 
 Two edits to the RFC index. First, add the 0004 row to the Status table:
 
-> | [0004](0004-architecture-hardening.md) | Architecture hardening — a safety-critical maintainability standard (SOLID/OCP refactor + fitness-function guardrails + AI-doc/harness enforcement) | Draft — proposal; evidence + specs in [references/](references/) (`0004-01`…`0004-08`). |
+> | [0004](0004-architecture-hardening.md) | Architecture hardening — a safety-critical maintainability standard (SOLID/OCP refactor + fitness-function guardrails + AI-doc/harness enforcement) | Draft — proposal; evidence + specs in [references/](references/) (`0004-01`…`0004-09`). |
 
 Second, the audit found `references/03-browxai-coupling-audit.md` cites `src/server.ts` at **12,889 lines, all 198 tool registrations** — a measurement that predates the `src/tools/` decomposition; `server.ts` is now ~382 lines and the registrations live in `src/tools/*-tools.ts`. We do not rewrite a historical reference (it is a faithful capture at its commit), but we add a correction pointer so a future reader is not misled. Add a note under the Status table:
 
@@ -351,7 +351,7 @@ The current line reads *"Current agents: `tool-author`, … `tracker-id-auditor`
 >   enforce it.
 > - **`server.ts` is composition-only**, under 400 lines, importing `src/tools/*` not
 >   `src/page/*`. The dependency-cruiser layering gate enforces it.
-> - **Run the lane.** `pnpm test:arch` (fast, static) plus `pnpm depgraph`
+> - **Run the lane.** `pnpm test:arch` (fast, static) plus `pnpm depcruise`
 >   (dependency layering) are part of the quality gate for any boundary change.
 >
 > The single index of every check is
@@ -359,12 +359,12 @@ The current line reads *"Current agents: `tool-author`, … `tracker-id-auditor`
 > A guardrail is relaxed only via an RFC amendment, never an inline disable. The
 > PR-time `architecture-fitness-auditor` agent re-runs the suite against the diff.
 
-### 7.3 Add `pnpm test:arch` and `pnpm depgraph` to the quality-gate note
+### 7.3 Add `pnpm test:arch` and `pnpm depcruise` to the quality-gate note
 
 The "Quality gate contract" block lists the six gate commands. The architecture lane runs inside `pnpm test`, so the six-command list need not grow — but add a one-line clarification under it so an agent knows the lane exists:
 
 > The architecture fitness lane (`pnpm test:arch`) and the dependency graph
-> (`pnpm depgraph`) run inside `pnpm test` / `pnpm lint`; run them directly for fast
+> (`pnpm depcruise`) run inside `pnpm test` / `pnpm lint`; run them directly for fast
 > feedback on a boundary change. See
 > [`docs/ai-context/architecture/fitness-functions.md`](docs/ai-context/architecture/fitness-functions.md).
 
@@ -394,7 +394,7 @@ checks is `docs/ai-context/architecture/fitness-functions.md`.
 
 ## Workflow
 
-1. **Run the lane.** `pnpm test:arch` (the static fitness suite) and `pnpm depgraph`
+1. **Run the lane.** `pnpm test:arch` (the static fitness suite) and `pnpm depcruise`
    (dependency-cruiser layering). On the engine seam, also `pnpm test:keystone`
    filtered to `engine-adapter-contract`.
 2. **Run the budgets.** `pnpm lint` — surface any `max-lines` / `complexity` /
@@ -416,7 +416,7 @@ checks is `docs/ai-context/architecture/fitness-functions.md`.
 
 ## Success criteria
 
-- `pnpm test:arch` and `pnpm depgraph` are green on the diff.
+- `pnpm test:arch` and `pnpm depcruise` are green on the diff.
 - No new engine-literal branch above the seam; no new inlined gate.
 - Every new tool/engine is declared once and derived — no central-list hand-edit.
 - `server.ts` stays composition-only and under budget.
@@ -485,11 +485,11 @@ The builder→reviewer loop, with the fitness gate made explicit:
 builder (worktree, one phase)
   └─ implements add-only against the seam
   └─ local gate: pnpm typecheck && pnpm test && pnpm lint && pnpm build
-  └─ fitness floor: pnpm test:arch && pnpm depgraph    ← must be green to hand off
+  └─ fitness floor: pnpm test:arch && pnpm depcruise    ← must be green to hand off
         │
         ▼
 reviewer (reads diff + runs the gate against the merge base)
-  └─ architecture-fitness-auditor: pnpm test:arch, pnpm depgraph, budgets
+  └─ architecture-fitness-auditor: pnpm test:arch, pnpm depcruise, budgets
   └─ maps any red to the violated law (L1–L10) and the add-only fix
   └─ BLOCKS the merge on a red fitness function — no "fix in a follow-up"
         │

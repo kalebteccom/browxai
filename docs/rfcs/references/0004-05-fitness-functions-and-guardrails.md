@@ -25,11 +25,11 @@ A note on the existing flat-config shape this extends: `eslint.config.js` alread
 
 ## 1. Custom ESLint rules (L-lint)
 
-Four new rules join `no-tracker-ids-in-comments` and `no-page-eval-stringified-arrow`. They enforce L1 (closed core), the SRP gate-centralization half of L3, and L7 (bounded everything) at the cheapest possible layer. All ship `warn` in P0 (scoped to *new* violations against today's tree), promoted to `error` in the phase that lands the matching refactor (P1 for engine-literal, P2 for capability-gate, P3 for the budgets), per RFC 0004 §6.
+Three new custom rules join `no-tracker-ids-in-comments` and `no-page-eval-stringified-arrow`: `no-engine-literal-branches` (L1), `no-inlined-capability-checks` (the SRP gate-centralization half of L3), and `bounded-resource` (L7, best-effort). The size/complexity budgets in §1.5 ride the built-in ESLint rules, not custom code. The two custom OCP/SRP rules ship `warn` in P0 (scoped to *new* violations against today's tree), promoted to `error` in the phase that lands the matching refactor (P1 for engine-literal, P2 for capability-gate); the `bounded-resource` rule is advisory and stays `warn`, per RFC 0004 §6.
 
 ### 1.1 `no-engine-literal-branches` — enforces L1 (the closed core)
 
-The single most important rule. The audit's headline defect (T1) is that engine *wiring* is hardcoded `if (engine === "literal")` across three session factories, the 18 scattered Safari guards in `session-registry.ts`, and the substrate selectors — so a sixth engine requires editing 5–8 existing files. The flagship claim *"new engine = new adapter behind the existing port"* (architecture-principles §4) is false today, and the audit found **no lint rule prevents a future handler author from inlining the same anti-pattern** (`harness-and-docs` finding, [`0004-01`](0004-01-current-state-audit.md)).
+The single most important rule. The audit's headline defect (T1) is that engine *wiring* is hardcoded `if (engine === "literal")` across three session factories, the 17 scattered Safari guards in `session-registry.ts`, and the substrate selectors — so a sixth engine requires editing 5–8 existing files. The flagship claim *"new engine = new adapter behind the existing port"* (architecture-principles §4) is false today, and the audit found **no lint rule prevents a future handler author from inlining the same anti-pattern** (`harness-and-docs` finding, [`0004-01`](0004-01-current-state-audit.md)).
 
 This rule flags a string comparison against a known `EngineKind` literal (`"chromium" | "firefox" | "webkit" | "android" | "safari"`, from `src/engine/types.ts:25`) — `engine === "safari"`, `session.engine !== "chromium"`, `e.session.engine === "firefox"`, and the `switch (engine) { case "firefox": }` form — **outside an allowlist of files whose job is engine selection.** The allowlist is the substrate selectors and the (post-D1) `EngineRegistry`, the only legitimate homes for engine dispatch:
 
@@ -43,8 +43,13 @@ const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
 // + the capability-driven substrate selectors; today it names the selectors
 // that already key on `session.engine === "safari"` by design
 // (snapshot-substrate-select.ts:44, network-substrate-select.ts:44).
+// NOTE: select.ts and capabilities.ts are FILES, registry.ts is the post-D1 file,
+// and adapters/ is a directory — so the file homes need `\.ts$` anchors and only
+// adapters/ is a directory prefix. A bare `(registry|select|capabilities|adapters)\/`
+// would match none of the real .ts files and silently fail to allowlist them.
 const ENGINE_SELECT_ALLOWLIST = [
-  /src\/engine\/(registry|select|capabilities|adapters)\//,
+  /src\/engine\/(registry|select|capabilities)\.ts$/, // the engine-select FILES
+  /src\/engine\/adapters\//, //                          the adapters DIRECTORY
   /src\/page\/snapshot-substrate-select\.ts$/,
   /src\/page\/network-substrate-select\.ts$/,
 ];
@@ -172,9 +177,9 @@ const noInlinedCapabilityChecks = {
 
 ### 1.3 `bounded-resource` — enforces L7 (bounded everything), best-effort
 
-L7 — *"every loop, buffer, ring, recursion, and wait has an explicit, tested bound"* — is the Power-of-Ten "bounded loops" rule adapted to TypeScript. The audit surfaced two concrete unbounded-resource hazards: `perf-audit.ts`'s `enforceSummaryBudget` runs nested `while` loops re-estimating tokens with "no hard safety bound" and an O(N²) risk (`page-features` finding, `perf-audit.ts:524-583`), and the ring buffers / `NetworkBuffer` slurps elsewhere.
+L7 — *"every loop, buffer, ring, recursion, and wait has an explicit, tested bound"* — is the Power-of-Ten "bounded loops" rule adapted to TypeScript. The two concrete gaps the audit surfaced are exactly the two genuinely-unbounded sites (the network/console rings are *not* among them — they already cap at 500, `network.ts:338`): `perf-audit.ts`'s `enforceSummaryBudget` runs nested `while` loops re-estimating tokens with "no hard safety bound" and an O(N²) risk (`page-features` finding, `perf-audit.ts:524-583`), and the a11y tree-walk's *undeclared depth* — the `walk` generator (`src/page/a11y.ts:205-211`) is iterative but carries no declared depth cap, so a pathological tree is bounded only by memory (02 §4.2).
 
-A linter cannot prove termination (halting problem), so this rule is honestly **best-effort and advisory** — it ships `warn`, never `error`, and exists to *force a human decision at the loop*, not to verify the bound. It flags a `while`/`for`/`do-while` whose test is not an obvious counter comparison (`i < N`, `i < arr.length`) AND that has no `cap`/`bound`/`limit`/`max` comment within two lines — the same "make the author state the bound" posture as the tracker-id rule:
+A linter cannot prove termination (halting problem), so this rule is honestly **best-effort and advisory** — it ships `warn`, never `error`, and exists to *force a human decision at the loop*, not to verify the bound. It flags a `while` / `for` (classic) / `for…of` / `do-while` loop that lacks **both** an obvious counter-comparison test (`i < N`, `i < arr.length`) **and** a `cap`/`bound`/`limit`/`max` comment within two lines — so a counted `for (let i = 0; i < n; i++)` passes, while `for (;;)`, `for (; cond;)`, and an uncommented `for…of`/`while` are flagged. Same "make the author state the bound" posture as the tracker-id rule:
 
 ```js
 const noBoundComment = /\b(cap|bound|bounded|limit|max|guard)\b/i;
@@ -184,7 +189,7 @@ const boundedResource = {
     type: "suggestion",
     docs: {
       description:
-        "Flag potentially-unbounded loops (while/for-of without an explicit counter bound) " +
+        "Flag potentially-unbounded loops (while / for / for-of / do-while without an explicit counter bound) " +
         "that lack a nearby cap/bound comment. Best-effort: prompts the author to state the bound.",
     },
     schema: [],
@@ -213,12 +218,19 @@ const boundedResource = {
       if (hasNearbyBoundComment(node)) return; // author declared the bound
       context.report({ node, messageId: "unbounded" });
     };
-    return { WhileStatement: check, DoWhileStatement: check, ForOfStatement: check };
+    // ForStatement covers the classic `for (;;)` / `for (; cond;)` — the most common
+    // unbounded loop; `check` reads its `.test` (null for `for(;;)` ⇒ flagged).
+    return {
+      WhileStatement: check,
+      DoWhileStatement: check,
+      ForStatement: check,
+      ForOfStatement: check,
+    };
   },
 };
 ```
 
-### 1.4 Wiring the four rules
+### 1.4 Wiring the three new rules
 
 The local plugin object gains the new rules; the two rule blocks turn them on. The shape is identical to the existing `browxai-local` registration:
 
@@ -266,13 +278,14 @@ The numeric rationale is in §4. The `max-lines-per-function` budget also has an
 
 ## 2. The fitness-test suite (L-fit) — `test/architecture/**`
 
-Plain vitest, static analysis, fast lane. The suite is the executable form of L2 (single source of truth), L5 (substitutable adapters), L9 (traceability), and the OCP heart of D9. It imports the **real** registration values (`TOOL_CAPABILITY`, `DEEP_TOOLS`, `BATCH_ALLOWED_TOOLS`, `ENGINE_KINDS`, `capabilitiesFor`) and the real `createServer` handler table, and asserts the invariants the audit found unguarded.
+Plain vitest, static analysis, fast lane. The suite is the executable form of L2 (single source of truth), L5 (substitutable adapters), L9 (traceability), and the OCP heart of D9. It imports the **real** exported registration values (`TOOL_CAPABILITY`, `DEEP_TOOLS`, `ENGINE_KINDS`, `capabilitiesFor`) and reads the real `createServer` handler table. Note `BATCH_ALLOWED_TOOLS` is **not** exported — it is a local `const` (`src/tools/host-build.ts:640-712`, 71 entries) surfaced only via the `ToolHost.batchAllowedTools` member (`host.ts:160`), so the batch test reads it off a built host, never by import. The suite asserts the invariants the audit found unguarded.
 
 A scaffolding helper every test reuses — read the registered surface once, statically, by building a server with no browser opens:
 
 ```ts
 // test/architecture/_surface.ts — the static surface under test
 import { createServer } from "../../src/server.js";
+import { buildHost } from "../../src/tools/host-build.js";
 
 /** Build the server far enough to enumerate the registered handler table.
  *  createServer wires every registerXxxTools(host) module at construction and
@@ -281,6 +294,20 @@ import { createServer } from "../../src/server.js";
 export async function registeredToolNames(): Promise<string[]> {
   const server = await createServer({ headless: true });
   return Object.keys(server.handlers);
+}
+
+/** The batch allow-set, read OFF a built ToolHost. `BATCH_ALLOWED_TOOLS` is a
+ *  local `const` (`host-build.ts:640-712`) — NOT exported — surfaced only via the
+ *  `ToolHost.batchAllowedTools` member (`host.ts:160`). The host is `buildHost(deps)`
+ *  (`host-build.ts:116`); `makeTestHostDeps()` is a *test fixture this suite adds*
+ *  (it assembles the same headless `HostDeps` `createServer` builds, no browser open),
+ *  so the set is inspectable statically. This is the only sanctioned read of the batch
+ *  set — never an import of the const. */
+export async function batchAllowedTools(): Promise<ReadonlySet<string>> {
+  // makeTestHostDeps: a fixture the architecture-test suite defines (not an existing
+  // export) — it mints a headless HostDeps so buildHost runs without opening a browser.
+  const host = buildHost(await makeTestHostDeps());
+  return host.batchAllowedTools;
 }
 ```
 
@@ -299,15 +326,14 @@ import { registeredToolNames } from "./_surface.js";
 describe("L2 — every registered tool declares a capability", () => {
   it("no tool silently falls back to the human default", async () => {
     const names = await registeredToolNames();
-    // The 17 coordination primitives that legitimately default to human
-    // (open/close/list_session(s), batch, *_config, approvals, plugins_*,
-    // workers_list, worker_message*, sw_*intercept_fetch) — see 0004-01.
+    // The 10 control-plane coordination primitives that legitimately have NO
+    // browser capability and default to human: session lifecycle, batch
+    // orchestration, config, and the approval workflow. (Deliberately NOT the
+    // read/action tools — see the note after this block for why.)
     const HUMAN_DEFAULT_ALLOWLIST = new Set<string>([
       "open_session", "close_session", "close_sessions", "list_sessions",
       "batch", "get_config", "set_config", "reset_config",
-      "approve_actions", "list_approvals", "plugins_list", "plugins_info",
-      "workers_list", "worker_message_send", "worker_messages_read",
-      "sw_intercept_fetch", "sw_unintercept_fetch",
+      "approve_actions", "list_approvals",
     ]);
     const undeclared = names.filter(
       (n) => !(n in TOOL_CAPABILITY) && !HUMAN_DEFAULT_ALLOWLIST.has(n),
@@ -322,6 +348,8 @@ describe("L2 — every registered tool declares a capability", () => {
   });
 });
 ```
+
+**This test earns its keep on first run.** Written against today's surface it immediately flags **seven** live tools that carry their capability _in the description_ but have **no `TOOL_CAPABILITY` row**, so `isToolEnabled` (`capabilities.ts:574` — `if (!cap) return true`) silently passes them through the human default — the exact L9 silent-weaker-gate failure: `plugins_list`, `plugins_info`, `workers_list`, `worker_messages_read` (all declare _"gates under `read`"_ / _"Capability: `read`"_ at `plugin-runtime.ts:216,246` / `gesture-network-tools.ts:504,578`) and `worker_message_send`, `sw_intercept_fetch`, `sw_unintercept_fetch` (all declare _"Capability: `action`"_ at `gesture-network-tools.ts:538,615,662`). They are **not** human-default coordination primitives and are deliberately absent from the allowlist above; P0 closes the gap by adding their four `read` + three `action` rows, after which the freeze holds green (D2 later _derives_ each row from the capability the description already declares, so the miss cannot recur). The fitness function found a real, security-relevant gate gap the moment it existed — which is the whole argument for writing it.
 
 **Every batchable tool is in the batch set; every deep tool is gated; every `EngineKind` has a `CAPABILITIES` row.** Three more invariants, each a one-liner over a real exported value:
 
@@ -347,6 +375,56 @@ describe("L2 — derived sets stay in sync with the surface", () => {
 });
 ```
 
+**The batch allow-set is complete and real** (the `batch-allow-completeness.test.ts` 0004-04 P0 requires — *"freezes `BATCH_ALLOWED_TOOLS` against the registered set"*). Every name in the 71-entry batch set must be a registered tool (no ghost), and the set is read off a built host, not imported — because the const is not exported:
+
+```ts
+// test/architecture/batch-allow-completeness.test.ts
+import { describe, it, expect } from "vitest";
+import { registeredToolNames, batchAllowedTools } from "./_surface.js";
+
+describe("L2 — the batch allow-set is real and frozen", () => {
+  it("every batchable tool is a registered tool (no ghost in the 71-entry set)", async () => {
+    const names = new Set(await registeredToolNames());
+    const batch = await batchAllowedTools(); // ToolHost.batchAllowedTools — host.ts:160
+    const ghosts = [...batch].filter((t) => !names.has(t));
+    expect(ghosts, `BATCH_ALLOWED_TOOLS names with no registered tool: ${ghosts.join(", ")}`).toEqual([]);
+  });
+
+  it("the batch set is frozen at its current size (P0 snapshot)", async () => {
+    // 71 today (`host-build.ts:640-712`). The freeze bites: any 72nd entry, or a
+    // dropped one, fails until the change is reviewed. Post-D2 this becomes the
+    // derivation check (every `{ batchable: true }` registration ⇔ membership).
+    expect((await batchAllowedTools()).size).toBe(71);
+  });
+});
+```
+
+**Every deep tool refuses off the non-deep engines and runs on the deep ones** (the `deep-tools-engine-matrix.test.ts` 0004-04 P0 requires — closing the engine-adapters gap *"no suite validates every `DEEP_TOOLS` entry is unavailable on Firefox/WebKit"*). This is the engine dimension the DEEP_TOOLS-ghost test above does not cover; it drives the real `assertEngineSupports` (`tool-gate.ts:131`) across the full `EngineKind × DEEP_TOOLS` matrix:
+
+```ts
+// test/architecture/deep-tools-engine-matrix.test.ts
+import { describe, it, expect } from "vitest";
+import { assertEngineSupports, DEEP_TOOLS, ENGINE_KINDS, capabilitiesFor } from "../../src/engine/index.js";
+
+describe("L2/L5 — every deep tool is gated by engine capability, not engine name", () => {
+  // 31 deep tools (`tool-gate.ts:38-88`) × 5 engines. A deep engine (declares
+  // `deep: true` — chromium, android) runs every deep tool; a non-deep engine
+  // (firefox, webkit, safari) structured-refuses each one via assertEngineSupports.
+  it.each(ENGINE_KINDS)("[%s] gates all 31 deep tools by its declared `deep`", (engine) => {
+    const deep = capabilitiesFor(engine)?.deep ?? false;
+    for (const tool of DEEP_TOOLS) {
+      const refusal = assertEngineSupports(tool, engine);
+      if (deep) {
+        expect(refusal, `${tool} should run on deep engine ${engine}`).toBeNull();
+      } else {
+        expect(refusal, `${tool} should refuse on non-deep engine ${engine}`).not.toBeNull();
+        expect(refusal!.error).toBe(`tool "${tool}" is not supported on the "${engine}" engine`);
+      }
+    }
+  });
+});
+```
+
 Post-D2, the batch and deep checks invert: instead of "every entry in the hand-list is real," they become "every tool that registered `{ batchable: true }` appears in the derived `batchAllowedTools` set, and nothing else does" — proving the *derivation*, which is what makes the hand-list disappearable. The `ToolHost.batchAllowedTools` member (`host.ts:160`) already exposes the set read-only, so the derived-set test reads it off a built host with no new plumbing.
 
 **Tool-types ≡ schemas (post-codegen):** covered by the codegen-drift test in §5, which is L2 applied to `sdk/tool-types.ts`.
@@ -362,7 +440,11 @@ Two tests. Together they are *the* fitness function for the open-closed claim: t
 import { describe, it, expect } from "vitest";
 import { isToolEnabled, type CapabilityConfig } from "../../src/util/capabilities.js";
 
-describe("OCP — a capability gate is extensible without source edits", () => {
+// ILLUSTRATIVE / post-D2: `isToolEnabled(tool, caps)` is 2-arg today
+// (`src/util/capabilities.ts:574`). The 3-arg override form below is the D2
+// surface change; until D2 lands this test is `.todo`/`.skip` so P0 stays
+// gate-green. It pins the contract the derived gate must satisfy.
+describe.todo("OCP — a capability gate is extensible without source edits (post-D2)", () => {
   // A synthetic tool→capability binding injected at the call site, NOT added to
   // the TOOL_CAPABILITY source map. Post-D2 this is exactly how a real tool
   // self-declares; today it proves the gate reads its decision from data.
@@ -387,16 +469,25 @@ describe("OCP — a capability gate is extensible without source edits", () => {
 });
 ```
 
-> The third argument to `isToolEnabled` (an override map) is part of the D2 surface change — `isToolEnabled(tool, caps, overrides?)` lets the binding be supplied by the registration rather than only read from the module-global `TOOL_CAPABILITY`. This is the seam that makes the gate data-driven; the test pins the contract before the refactor, so D2 ships against a green check.
+> The third argument to `isToolEnabled` is **post-D2 and illustrative** — the signature today is the 2-arg `isToolEnabled(tool, caps)` (`src/util/capabilities.ts:574`). The override-map form `isToolEnabled(tool, caps, overrides?)` is the D2 surface change that lets the binding be supplied by the registration rather than only read from the module-global `TOOL_CAPABILITY`. Because the 3-arg form does not exist until D2, the test above lands `.todo`/`.skip` in P0 (keeping P0 gate-green) and activates green when D2 introduces the override seam.
 
-**The engine-adapter-contract keystone** (audit: *"add test/keystone/engine-adapter-contract.keystone.test.ts that mocks a new engine via a mock BrowserEngine adapter, registers it in the session WITHOUT editing src/session/*.ts, runs core tools (navigate, snapshot, find, click), asserts the mock engine's session.engine tag is reported correctly… This is the fitness function for OCP"*). This is **the** keystone of the whole RFC. It is the executable form of L1: a synthetic in-memory `EngineSession` that satisfies the port (`src/engine/types.ts:89-98`), registered through the post-D1 `EngineRegistry`, must drive the engine-agnostic core with **zero core edits** and report its `session.engine` tag correctly.
+**The engine-adapter-contract keystone** (audit: *"add test/keystone/engine-adapter-contract.keystone.test.ts that mocks a new engine via a mock BrowserEngine adapter, registers it in the session WITHOUT editing src/session/*.ts, runs core tools (navigate, snapshot, find, click), asserts the mock engine's session.engine tag is reported correctly… This is the fitness function for OCP"*). This is **the** keystone of the whole RFC. It is the executable form of L1: a synthetic in-memory `BrowserSession` (`src/session/types.ts` — the type `makeAdapter` returns) that declares `deep: false` capabilities, registered through the post-D1 `EngineRegistry`, must drive the engine-agnostic core with **zero core edits** and report its `session.engine` tag correctly.
 
 ```ts
 // test/keystone/engine-adapter-contract.keystone.test.ts
 import { describe, it, expect } from "vitest";
-import type { EngineSession, EngineCapabilities, EngineKind } from "../../src/engine/index.js";
-import { EngineRegistry } from "../../src/engine/registry.js"; // lands in D1
+import type { EngineCapabilities, EngineKind } from "../../src/engine/index.js";
+import type { BrowserSession } from "../../src/session/types.js";
 import { createServer } from "../../src/server.js";
+// NOTE: `registerEngine` (src/engine/registry.ts) does NOT exist until D1/P1.
+// A top-level `import { registerEngine } from "../../src/engine/registry.js"`
+// would fail MODULE RESOLUTION even under `describe.todo` (todo skips execution,
+// not the static import graph), breaking the P0 gate. So the registry is pulled
+// in via a DYNAMIC import *inside* the activated test body below — it only
+// resolves once the file is un-`.todo`'d in P1, after registry.ts lands.
+// Engine selection is the SERVER-level concern: `createServer({ browserType })`
+// (`src/server.ts:284`), NOT a per-session `open_session` arg — `open_session`'s
+// schema carries `session`/`mode`/`profile`/…, never `browserType`.
 
 // A 6th engine that exists ONLY in this test file. If adding it requires editing
 // any src/session/*.ts or src/tools/host-build.ts file, this test cannot be
@@ -404,33 +495,48 @@ import { createServer } from "../../src/server.js";
 // that the registration below is the ONLY new line.
 const SYNTH: EngineKind = "synthetic" as EngineKind;
 
-class InMemoryEngineSession implements EngineSession {
+class InMemoryBrowserSession implements BrowserSession {
+  readonly mode = "managed" as const; // SessionMode = "managed" | "byob" (session/types.ts:9)
+  readonly ownsBrowser = true;
   readonly engine = SYNTH;
+  // Carried as an EXTRA field (not a BrowserSession member) so the registration
+  // below can read `.capabilities`; deep:false ⇒ no CDP escape hatch.
   readonly capabilities: EngineCapabilities = {
     engine: SYNTH,
     subInterfaces: new Set(["lifecycle", "navigation", "snapshot", "input"]),
     deep: false, // no CDP — proves the gate refuses deep tools without a per-engine edit
   };
-  // page()/context() back onto an in-memory fake DOM the contract drives;
-  // cdp() is absent (deep:false), so requireCdp() must structured-refuse.
+  // page() backs onto an in-memory fake DOM the contract drives; cdp()/safari()
+  // are absent (deep:false + has a Page), so requireCdp() must structured-refuse.
   page() { return this.fakePage; }
-  context() { return this.fakeContext; }
   async close() {}
-  /* …fakePage/fakeContext: a minimal Playwright-Page-shaped stub… */
+  /* …fakePage: a minimal Playwright-Page-shaped stub… */
 }
 
-describe("L1 — a new engine adapter plugs in with zero core edits", () => {
-  it("registers via EngineRegistry and drives navigate/snapshot/find/click", async () => {
+// In P0 this lands `.todo`/`.skip` (the `registerEngine` it dynamically imports
+// does not exist until D1/P1), so P0 stays gate-green — and because the import is
+// dynamic and inside the test body, P0 does not even resolve the missing module;
+// it activates and goes green in P1.
+describe.todo("L1 — a new engine adapter plugs in with zero core edits", () => {
+  it("registers via registerEngine and drives navigate/snapshot/find/click", async () => {
+    // Dynamic import: resolves only when this test runs (P1), never at P0 collection.
+    const { registerEngine } = await import("../../src/engine/registry.js"); // lands D1/P1
     // The ONE line that adds an engine. No edit to managed.ts / incognito.ts /
-    // byob.ts / session-registry.ts / host-build.ts.
-    EngineRegistry.register({
+    // byob.ts / session-registry.ts / host-build.ts. This is the documented
+    // registry API (0004-03 §1 / 0004-04 P1), not an `EngineRegistry.register` method.
+    registerEngine({
       kind: SYNTH,
-      capabilities: new InMemoryEngineSession().capabilities,
-      makeSession: () => new InMemoryEngineSession(),
-    });
+      capabilities: new InMemoryBrowserSession().capabilities,
+      makeAdapter: async () => new InMemoryBrowserSession(), // Promise<BrowserSession> per the contract
+      makeSubstrates: () => inMemorySubstrateBundle(), // all 7 SubstrateBundle fields, in-memory
+      postWire: () => {}, // the synthetic engine needs no extra bookkeeping
+    }); // the complete unified EngineEntry shape (0004-03 §1)
 
-    const server = await createServer({ headless: true });
-    const open = await server.handlers.open_session({ browserType: SYNTH });
+    // Select the synthetic engine the only way the surface allows: at the SERVER
+    // level (`createServer`'s `opts.browserType`, server.ts:284). `open_session`
+    // has no `browserType` — the engine is the server's, the session inherits it.
+    const server = await createServer({ headless: true, browserType: SYNTH });
+    const open = await server.handlers.open_session({ session: "synth-a" });
     const session = JSON.parse((open.content[0] as { text: string }).text);
     expect(session.engine).toBe(SYNTH); // the tag is reported correctly
 
@@ -457,32 +563,55 @@ The refusal assertion reuses the *exact* shape `engineGate` emits today (`host-b
 
 ### 2c. Port-conformance contract test — enforces L5
 
-L5 — *"no adapter throws where the port promises a value"* — is the Safari LSP leak (D5): `BrowserSession.page()` throws unconditionally on Safari (`src/session/types.ts:93-99`), forcing the 18 scattered guards in `session-registry.ts`. The contract test runs **one shared suite against every adapter, including the synthetic one**, and forbids a port method that throws unconditionally — catching the Safari LSP class at the seam instead of via 18 defensive `engine !== "safari"` guards downstream:
+L5 — *"no adapter throws where the port promises a value"* — is the Safari LSP leak (D5): `BrowserSession.page(): Page` is documented as throwing at `src/session/types.ts:95` and the actual throw is at `src/session/safari-session.ts:35`, forcing the 17 scattered guards in `session-registry.ts`. The contract test runs **one shared suite against every adapter, including the synthetic one**, and forbids a port method that throws unconditionally — catching the Safari LSP class at the seam instead of via 17 defensive `engine !== "safari"` guards downstream:
 
 ```ts
 // test/architecture/port-conformance.test.ts
 import { describe, it, expect } from "vitest";
 import { capabilitiesFor, ENGINE_KINDS } from "../../src/engine/index.js";
+import type { EngineCapabilities } from "../../src/engine/index.js";
 
 // A port method is either (a) implemented and returns a value, or (b) DECLARED
-// absent via capabilities — never present-but-unconditionally-throwing. The
-// Safari page()-throws design (types.ts:93) is exactly (c), the forbidden state.
+// absent via capabilities — never present-but-unconditionally-throwing. The Safari
+// page() design (documented as throwing at types.ts:95; the actual throw is at
+// safari-session.ts:35) is exactly (c), the forbidden state.
+//
+// NOTE on page-availability: TODAY `EngineCapabilities.subInterfaces` is the set
+// `lifecycle|navigation|snapshot|input|network|storage|script|emulation|capture`
+// (the `EngineSubInterface` union at `src/engine/types.ts:51-60`) — there is NO
+// `page` member, and NO `hasPagePort`
+// helper exists. Page-availability is the seam D5 *introduces*: post-D5 a `"page"`
+// sub-interface is present iff the engine returns a real Playwright Page, and the
+// `hasPagePort` helper below reads exactly that. Because the `"page"` sub-interface
+// and the helper land with D5, the declaration-≡-reality assertion lives in a
+// `describe.todo` block (P0 stays green); the unconditional-throw guarantee, which
+// needs neither, is an active test from P0.
 describe("L5 — every adapter honors its declared port contract", () => {
-  it.each(ENGINE_KINDS)("[%s] declares page-availability instead of throwing", (engine) => {
+  it.each(ENGINE_KINDS)("[%s] has a capability declaration with the universal sub-interfaces", (engine) => {
     const caps = capabilitiesFor(engine);
     expect(caps, `${engine} has no capability declaration`).toBeDefined();
-
-    // The contract: if an engine cannot return a Playwright Page, it must NOT
-    // declare a sub-interface that promises one AND keep a throwing page().
-    // Post-D5, page() is a capability the engine declares (present ⇔ has-page);
-    // Safari declares the no-Page seam (safari() handle) instead. This test
-    // pins that the *declaration* matches reality so callers narrow, not guard.
-    const hasPlaywrightPage = engine !== "safari";
     expect(caps!.subInterfaces.has("snapshot")).toBe(true); // snapshot is universal
     // No engine may claim `deep` without a real CDP handle:
     if (caps!.deep) {
       expect(["chromium", "android"]).toContain(engine);
     }
+  });
+
+  // ILLUSTRATIVE / post-D5: the `"page"` sub-interface and the `hasPagePort` reader
+  // it uses do not exist until D5 adds page-availability to the capability model, so
+  // this lands `.todo` (P0 gate-green) and activates with D5.
+  describe.todo("[post-D5] page-availability is DECLARED, never a throwing page()", () => {
+    // Reads the D5-introduced `"page"` sub-interface; present ⇔ the engine returns
+    // a real Playwright Page. (Pre-D5 there is no such member — hence `.todo`.)
+    const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page" as never);
+    it.each(ENGINE_KINDS)("[%s] declares page-availability matching reality", (engine) => {
+      const caps = capabilitiesFor(engine)!;
+      // Ground truth: only Safari has no Playwright Page. Post-D5 a `"page"` sub-
+      // interface is present iff the engine returns a real Page; this fails if a
+      // non-Safari engine loses its Page or Safari ever claims one.
+      const hasPlaywrightPage = engine !== "safari";
+      expect(hasPagePort(caps)).toBe(hasPlaywrightPage); // the declaration ≡ reality
+    });
   });
 
   it("forbids a port method that throws unconditionally (the Safari LSP class)", async () => {
@@ -496,7 +625,7 @@ describe("L5 — every adapter honors its declared port contract", () => {
 });
 ```
 
-This is the test that makes D5's fix verifiable: once `page()` is a declared capability and the 18 guards collapse into the `EngineRegistry.postWire`, the conformance suite is what keeps a future non-Playwright engine (Appium, BiDi-only) from re-introducing the throwing-method pattern.
+This is the test that makes D5's fix verifiable: once `page()` is a declared capability and the 17 guards collapse into the `EngineRegistry.postWire`, the conformance suite is what keeps a future non-Playwright engine (Appium, BiDi-only) from re-introducing the throwing-method pattern.
 
 ### 2d. Assertion-density + bounded-resource budget on load-bearing modules — L7 / L8
 
@@ -613,11 +742,11 @@ Budgets are the ratchet that keeps L3/L4/L7 true after the refactor. **Every num
 | Budget | Value | Sized from | Enforced by | Promotes |
 |--------|-------|-----------|-------------|----------|
 | `server.ts` lines | **≤ 400** (hard) | current `server.ts` = **382** (verified) | `max-lines` error, scoped to `src/server.ts` | already `error` (P0) |
-| tool module lines | **≤ 450** | `action-tools.ts` / `input-tools.ts` (healthy, sub-450); the four god-modules (1965 / 1514 / 1107 / 1033) are the debt | `max-lines` warn → error | P3 |
+| tool module lines | **≤ 450** | `input-tools.ts` (**212**) / `canvas-tools.ts` (**444**) (healthy, ≤ 450, verified); the four god-modules (1965 / 1514 / 1107 / 1033) — plus several mid-size modules the ratchet also pressures, e.g. `action-tools.ts` (632), `host-build.ts` (760), `storage-tools.ts` (1360) — are the debt | `max-lines` warn → error | P3 |
 | function lines | **≤ 70** | the action-window helpers + gate closures sit well under | `max-lines-per-function` | P3 |
 | cyclomatic complexity | **≤ 15** | the substrate selectors + `assertEngineSupports` (`tool-gate.ts:131`) are ~3–6 | `complexity` | P3 |
 | function params | **≤ 5** | the `register` signature is 3 (`host-build.ts:578`); handlers take one `args` | `max-params` | P3 |
-| `ToolHost` members | **≤ 40** (budget); **target ≤ ~12 per sub-port** | current `ToolHost` = **75 members** (`host.ts:54-189`) — the ISP debt | the interface-member fitness test (below) | P3 (after D3 segregation into `GateHost`/`SessionHost`/`ActionHost`) |
+| `ToolHost` members | **≤ 35** (freeze the real current count, ratcheting down); **post-split target ≤ ~12 per sub-port** | current `ToolHost` = **35 members** (`host.ts:54-189`) — the ISP debt | the interface-member fitness test (below) | P3 (after D3 segregation into `GateHost`/`SessionHost`/`ActionHost`) |
 | duplication | **≤ 1% / ≥ 0 new clones** | the five policy classes + five substrate selectors are the cloned families (D4) | `jscpd` threshold | P3 |
 
 `server.ts ≤ 400` is the hardest number and it is the *only* budget that ships `error` in P0 — because `server.ts` is already at 382 and the composition-root invariant (D11, architecture-principles §4, repo-map.md) is the one the audit flagged as having "NO file-size budget" despite being load-bearing. The 18-line headroom is deliberately tight: any business-logic creep into the composition root trips the ceiling immediately.
@@ -631,18 +760,29 @@ import { readFileSync } from "node:fs";
 import { parse } from "@typescript-eslint/typescript-estree";
 
 describe("L4 — no god-interface", () => {
-  it("ToolHost stays within the segregation budget", () => {
+  it("ToolHost stays at its frozen ceiling and ratchets down", () => {
     const ast = parse(readFileSync("src/tools/host.ts", "utf8"));
     const toolHost = findInterface(ast, "ToolHost");
-    // 75 today (the ISP debt). Budget freezes the ceiling; D3 splits it into
-    // composable sub-ports (GateHost/SessionHost/ActionHost/…) each ≤ ~12.
-    expect(toolHost.members.length).toBeLessThanOrEqual(75); // P0 freeze
-    // expect(toolHost.members.length).toBeLessThanOrEqual(40); // P3 after split
+    // 35 today (the ISP debt). P0 freezes the ceiling at the REAL current count —
+    // a "≤ 40" ceiling would be vacuous because the real value (35) already passes
+    // it, so it would catch no regression. The freeze bites: any 36th member fails.
+    expect(toolHost.members.length).toBeLessThanOrEqual(35); // P0 freeze at the real value
   });
+
+  // After D3 segregation the meaningful budget is per SUB-PORT, not the composed
+  // ToolHost intersection (which stays the sum of its parts). Each sub-port is the
+  // narrow contract a handler depends on, so it is the unit that must stay small.
+  it.each(["GateHost", "SessionHost", "ActionHost", "EnvelopeHost"])(
+    "[%s] sub-port stays ≤ 12 members",
+    (name) => {
+      const ast = parse(readFileSync("src/tools/host-ports.ts", "utf8")); // lands in D3/P3
+      expect(findInterface(ast, name).members.length).toBeLessThanOrEqual(12);
+    },
+  );
 });
 ```
 
-The **`jscpd` duplication** budget runs `jscpd src --threshold 1 --min-tokens 70 --reporters consoleFull` in CI; it fails on >1% duplication, which the five-identical-policy-classes (`dialog.ts`/`permission.ts`/`notification.ts`/`fs-picker.ts`/`device-emu.ts`, audit `session` finding) and five-identical-substrate-selectors (`host-build.ts:288-357`) trip today — they are exactly the D4 `PolicyBuffer<T>` / `EngineRegistry` extractions. Threshold lands generous in P0 (frozen at current duplication) and tightens to 1% in P3 as the clones collapse.
+The **`jscpd` duplication** budget targets the clones the five-identical-policy-classes (`dialog.ts`/`permission.ts`/`notification.ts`/`fs-picker.ts`/`device-emu.ts`, audit `session` finding) and five-identical-substrate-selectors (`host-build.ts:288-357`) create — they are exactly the D4 `PolicyBuffer<T>` / `EngineRegistry` extractions. In **P0 it is reporting-only** (`pnpm jscpd`, no `--threshold` ⇒ it prints the duplication report but never exits non-zero, so it cannot fail the gate while those clones still exist — consistent with 0004-04 P0 "jscpd as reporting-only"). It **promotes in P3** to `pnpm jscpd:strict` (`--threshold 1`), failing on >1% duplication, once D4 has collapsed the clones — so the threshold lands the moment the tree can pass it, never before.
 
 ---
 
@@ -651,19 +791,26 @@ The **`jscpd` duplication** budget runs `jscpd src --threshold 1 --min-tokens 70
 `src/sdk/tool-types.ts` is **673 LOC** (verified) that hand-mirror the zod schemas its own header admits are the source of truth — guaranteed drift, the audit's "no codegen test validates tool-types.ts matches server zod schemas." The fix is a build-time generator that reads the registrations (post-D2 they carry their schemas) and emits the types, plus a fitness test that fails if the committed file diverges from the regenerated one:
 
 ```ts
-// scripts/gen-tool-types.ts — reads the registered schemas, emits sdk/tool-types.ts
-import { createServer } from "../src/server.js";
-import { writeFileSync } from "node:fs";
+// scripts/gen-tool-types.ts — reads the tool REGISTRATIONS (not a server method),
+// emits sdk/tool-types.ts. `createServer` returns only { start, shutdown, handlers }
+// (server.ts:370-381) — there is no `server.registeredSchemas()`; the generator
+// reads the registration side-table the host accumulates instead.
+// `collectRegistrations` is a NEW export D7 adds to host-build.ts (it does not exist
+// today) — it builds a headless host and returns the ToolMeta+schema side-table the
+// D2 metadata-at-registration work accumulates. The generator depends on D2/D7, not
+// on any current API.
+import { collectRegistrations } from "../src/tools/host-build.js"; // D7-introduced
 import { zodToTs } from "./zod-to-ts.js"; // schema → TS type string
 
 export async function generateToolTypes(): Promise<string> {
-  const server = await createServer({ headless: true });
   // Post-D2, each registration carries its zod inputSchema (host.register's
-  // `S extends z.ZodRawShape`, host.ts:60-64). The generator infers the same
+  // `S extends z.ZodRawShape`, host.ts:60-64) alongside its ToolMeta. The generator
+  // walks the registrations (the source of truth) and infers the same
   // `z.infer<z.ZodObject<S>>` the handler already receives — one inference,
-  // generated, not hand-mirrored.
+  // generated, not hand-mirrored, and not read from a server method that does not exist.
+  const registrations = await collectRegistrations({ headless: true }); // ReadonlyMap<string, { schema; meta }>
   const lines = ["// GENERATED by scripts/gen-tool-types.ts — do not edit.", ""];
-  for (const [name, schema] of server.registeredSchemas()) {
+  for (const [name, { schema }] of registrations) {
     lines.push(`export type ${pascal(name)}Args = ${zodToTs(schema)};`);
   }
   return lines.join("\n") + "\n";
@@ -704,8 +851,11 @@ New `package.json` scripts:
     "test:arch": "vitest run test/architecture",
     // layering — runs in the quality `lint` job alongside eslint
     "depcruise": "depcruise --config .dependency-cruiser.cjs src",
-    // duplication budget
-    "jscpd": "jscpd src --threshold 1 --min-tokens 70 --reporters consoleFull",
+    // duplication budget — P0 reports only (no threshold ⇒ exit 0 even on the
+    // existing clones, per 0004-04 P0 "jscpd as reporting-only"); the strict
+    // `jscpd:strict` is what P3 promotes to once D4 removes the clones.
+    "jscpd": "jscpd src --min-tokens 70 --reporters consoleFull",
+    "jscpd:strict": "jscpd src --threshold 1 --min-tokens 70 --reporters consoleFull",
     // tool-types codegen (manual regen; the drift test gates it in CI)
     "gen:tool-types": "tsx scripts/gen-tool-types.ts",
     // optional: mutation testing on the gate, to prove the fitness tests BITE
@@ -718,8 +868,15 @@ New `package.json` scripts:
 
 ```yaml
 # .github/workflows/quality.yml — lint job, after `- run: pnpm lint`
-- run: pnpm depcruise        # layering / DIP (L-graph)
-- run: pnpm jscpd            # duplication budget (D11)
+# P0: both are REPORTING-ONLY. depcruise rules ship `severity: "warn"` (§3) and
+# `pnpm jscpd` carries no `--threshold` (no non-zero exit), so neither fails the
+# `lint` job — consistent with 0004-04 P0 ("dependency-cruiser + budgets + jscpd
+# report at warn"). They become blocking in P4 (depcruise → error) and P3
+# (`jscpd:strict` with `--threshold 1`) once the registries/extractions land.
+- run: pnpm depcruise        # layering / DIP (L-graph) — warn in P0, error in P4
+- run: pnpm jscpd            # duplication budget (D11) — report-only in P0
+# P3, after D4 removes the five-policy + five-selector clones, swap to:
+# - run: pnpm jscpd:strict   # --threshold 1 — fails on >1% duplication
 ```
 
 The engine-adapter-contract keystone (§2b) joins `test/keystone/**` and rides the existing `keystone` job in `ci.yml` — that job already runs `pnpm build` then `pnpm test:keystone`, so the new contract test is picked up by the glob with no workflow edit.

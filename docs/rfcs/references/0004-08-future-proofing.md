@@ -19,7 +19,7 @@ The two conditions are inseparable. Add-only seams without fitness functions dec
 
 **The proven-seam test still gates every future below.** For each anticipated pressure, the question is not "could we build the abstraction now?" but "is the second implementation *real or committed*?" Where it is (a sixth engine on the RFC 0002 roadmap, a fourth transport, a third canvas adapter), the seam is built and the future is add-only *today*. Where it is not (a raw-BiDi client, multi-tenancy), [§8](#8-what-we-deliberately-do-not-build-yet) keeps the concrete code and defers the seam — on purpose, with a trigger condition written down.
 
-A note on terminology used throughout: an **EngineDefinition** is the per-engine record the [D1](../0004-architecture-hardening.md#d1) `EngineRegistry` keys on (`{ kind, capabilities, makeAdapter, makeSubstrates, postWire }`, specified in full in [0004-03](0004-03-ocp-registry-patterns.md)); the **engine-adapter-contract keystone** is the [L1](../0004-architecture-hardening.md#4-the-standard-in-ten-laws) fitness function that instantiates a synthetic sixth engine and asserts it works with **zero core edits**. Both are the load-bearing machinery of this reference.
+A note on terminology used throughout: an **EngineEntry** is the per-engine record the [D1](../0004-architecture-hardening.md#d1) `EngineRegistry` keys on (`{ kind, capabilities, makeAdapter, makeSubstrates, postWire }`, specified in full in [0004-03](0004-03-ocp-registry-patterns.md)); the **engine-adapter-contract keystone** is the [L1](../0004-architecture-hardening.md#4-the-standard-in-ten-laws) fitness function that instantiates a synthetic sixth engine and asserts it works with **zero core edits**. Both are the load-bearing machinery of this reference.
 
 ---
 
@@ -35,29 +35,40 @@ A note on terminology used throughout: an **EngineDefinition** is the per-engine
 | **Appium-bridged mobile contexts** | RFC 0002 D8 — native/hybrid app contexts, *product call* | Appium server → per-platform driver | `false` | a new context substrate |
 | **WebDriver-classic engines** | beyond the roadmap — any classic-only driver | WebDriver Classic | `false` | a classic substrate |
 
-**How the hardened seam absorbs it add-only.** Today, RFC 0002's own headline claim — *"a new engine = a new adapter"* ([architecture-principles §4](../../ai-context/architecture/architecture-principles.md)) — is **false at the wiring level**, which is the central finding of [0004-01](0004-01-current-state-audit.md). The engine-adapters audit ([0004-01], engine-adapters subsystem) costed a sixth engine at **5–6 file edits plus 17+ inline guards**:
+**How the hardened seam absorbs it add-only.** Today, RFC 0002's own headline claim — *"a new engine = a new adapter"* ([architecture-principles §4](../../ai-context/architecture/architecture-principles.md)) — is **false at the wiring level**, which is the central finding of [0004-01](0004-01-current-state-audit.md). The engine-adapters audit ([0004-01], engine-adapters subsystem) costed a sixth engine at **5–6 file edits plus 17 inline guards**:
 
-> *Add a 6th engine: edit `src/session/managed.ts` (add if-else branch for launch), `src/session/incognito.ts`, `src/session/byob.ts`, `src/tools/session-registry.ts` (add 17+ guards for post-creation bookkeeping if non-Playwright), `src/engine/select.ts`, `src/engine/capabilities.ts`. Verdict: poor.*
+> *Add a 6th engine: edit `src/session/managed.ts` (add if-else branch for launch), `src/session/incognito.ts`, `src/session/byob.ts`, `src/tools/session-registry.ts` (add 17 guards for post-creation bookkeeping if non-Playwright), `src/engine/select.ts`, `src/engine/capabilities.ts`. Verdict: poor.*
 
-After [D1](../0004-architecture-hardening.md#d1), the sixth engine is **one new file plus one registration line**. The triplicated factory chains, the 18 scattered Safari guards in `session-registry`, and the five `*For(e)` substrate selectors collapse into a single `EngineRegistry`; the factories, selectors, and `postWire` become data-driven lookups keyed by `session.engine`. The `EngineDefinition` is the whole contract a new engine satisfies:
+After [D1](../0004-architecture-hardening.md#d1), the sixth engine is **one new file plus one registration line**. The triplicated factory chains, the 17 scattered Safari guards in `session-registry`, and the five `*For(e)` substrate selectors collapse into a single `EngineRegistry`; the factories, selectors, and `postWire` become data-driven lookups keyed by `session.engine`. The `EngineEntry` is the whole contract a new engine satisfies:
 
 ```ts
-// What a sixth engine costs after D1 — one file, one registration.
+// What a sixth engine costs after D1 — one new file + one registration line.
+// The BIDI_FIREFOX_* / bidi-* symbols below are this engine's OWN new artifacts
+// (its adapter, capability row, and substrates) — illustrative names a real
+// BiDi-Firefox engine would introduce, not existing src/ today. The one type-level
+// touch is the `kind` member on the EngineKind union (types.ts:25): the type-level
+// half of the single sanctioned engine-name declaration (0004-02 §3 L1), not a
+// scattered `if (engine === …)` — which is what L1 actually forbids.
 // src/engine/registry/bidi-firefox.ts
-import type { EngineDefinition } from "./engine-registry.js";
+import type { EngineEntry } from "./engine-registry.js";
 import { BIDI_FIREFOX_CAPABILITIES } from "../capabilities.js";
-import { BidiFirefoxAdapter } from "../adapters/bidi-firefox.js";
+import { connectBidiFirefox } from "../adapters/bidi-firefox.js";
 import { bidiSnapshotSubstrate, bidiNetworkSubstrate } from "../../page/bidi-substrates.js";
+import { playwrightDeepFalseSubstrates } from "../../page/substrate-bundles.js";
 
-export const bidiFirefox: EngineDefinition = {
-  kind: "bidi-firefox",
+export const bidiFirefox: EngineEntry = {
+  kind: "bidi-firefox", // one new member on the EngineKind union (types.ts:25)
   capabilities: BIDI_FIREFOX_CAPABILITIES, // declares subInterfaces + deep:false ONCE
-  makeAdapter: (opts) => new BidiFirefoxAdapter(opts),
-  makeSubstrates: (session) => ({
-    snapshot: bidiSnapshotSubstrate(session),
-    network: bidiNetworkSubstrate(session),
+  makeAdapter: (opts) => connectBidiFirefox(opts), // Promise<BrowserSession>, mirrors buildSafariSession
+  makeSubstrates: () => ({
+    // The full 7-field SubstrateBundle (0004-03 §1): the cross-engine deep:false
+    // substrates (page-side walker + Playwright-event) for actions/capture/storage/
+    // script/emulation, overridden with the BiDi-specific snapshot/network.
+    ...playwrightDeepFalseSubstrates("bidi-firefox"),
+    snapshot: (e) => bidiSnapshotSubstrate(e),
+    network: (e) => bidiNetworkSubstrate(e),
   }),
-  // The 18 Safari guards become per-definition postWire — bookkeeping the engine
+  // The 17 Safari guards become per-definition postWire — bookkeeping the engine
   // needs (or skips) is declared by the engine, not branched on by the registry.
   postWire: (entry) => { /* attach console/HAR/video iff the engine has a Page */ },
 };
@@ -65,11 +76,11 @@ export const bidiFirefox: EngineDefinition = {
 registerEngine(bidiFirefox);
 ```
 
-Every existing engine-specific surface that the audit flagged keys on a **capability**, not an engine name, and therefore needs *zero* edits:
+Post-[D1](../0004-architecture-hardening.md#d1), every engine-specific surface that the audit flagged keys on a **capability**, not an engine name — so a sixth engine needs *zero* edits to the gate and the selectors. The one residual that [D1](../0004-architecture-hardening.md#d1) closes is named explicitly below: the two `*-substrate-select.ts` files still branch on `engine === "safari"` *today* (`snapshot-substrate-select.ts:44`, `network-substrate-select.ts:44`), and D1 folds that branch into `EngineEntry.makeSubstrates`. With that fold done:
 
-- The **tool gate** refuses CDP-deep tools on `deep: false` engines, never on an engine literal. RFC 0002 P2c proved this: WebKit landed and `DEEP_TOOLS` (`src/engine/tool-gate.ts:38-88`) was **not edited** — the gate keys on `capabilities.deep`, so a new `deep: false` engine auto-gates the ~26 CDP-deep tools. ([D2](../0004-architecture-hardening.md#d2) finishes the job by moving the `DEEP_TOOLS` set itself from a hand-list to a derived map — see [§5](#5-extension-pressure-new-capability-classes).)
-- The **substrate selectors** route by CDP presence (`snapshotSubstrateFor` / `networkSubstrateFor`), so a `deep: true` engine (Android proved this) reuses `CdpSnapshotSubstrate`/`CdpNetworkSubstrate` verbatim and a `deep: false` engine reuses the page-side walker + Playwright-event substrate — both with no selector edit once the five engine-name branches at `src/page/snapshot-substrate-select.ts:43-54` and `src/page/network-substrate-select.ts:40-48` fold into the `EngineDefinition.makeSubstrates`.
-- The **no-Page seam** ([D5](../0004-architecture-hardening.md#d5)) makes `page()` a *declared capability* (`EngineSession.page` present only when the engine has one), so the real-Safari adapter — which has no Playwright `Page` (`src/engine/adapters/safaridriver-hybrid.ts`, the `SafariSessionHandle` whose `page()` throws today, the LSP violation at `src/engine/types.ts:89-98`) — slots in without leaking 18 defensive guards. The raw-BiDi and Appium adapters inherit this for free: they too declare which sub-interfaces they have via `EngineCapabilities` (`src/engine/capabilities.ts`), and callers narrow rather than branch.
+- The **tool gate** refuses CDP-deep tools on `deep: false` engines, never on an engine literal. RFC 0002 P2c proved this: WebKit landed and `DEEP_TOOLS` (`src/engine/tool-gate.ts:38-88`) was **not edited** — the gate keys on `capabilities.deep`, so a new `deep: false` engine auto-gates the 31 CDP-deep tools. ([D2](../0004-architecture-hardening.md#d2) finishes the job by moving the `DEEP_TOOLS` set itself from a hand-list to a derived map — see [§5](#5-extension-pressure-new-capability-classes).)
+- The **substrate selectors** route by CDP presence (`snapshotSubstrateFor` / `networkSubstrateFor`), so a `deep: true` engine (Android proved this) reuses `CdpSnapshotSubstrate`/`CdpNetworkSubstrate` verbatim and a `deep: false` engine reuses the page-side walker + Playwright-event substrate — both with no selector edit once the two `engine === "safari"` branches at `src/page/snapshot-substrate-select.ts:44` and `src/page/network-substrate-select.ts:44` fold into the `EngineEntry.makeSubstrates` (the five `host-build.ts` substrate selectors already key on the `safari?.()` capability probe, not an engine literal — they need no fold).
+- The **no-Page seam** ([D5](../0004-architecture-hardening.md#d5)) makes `page()` a *declared capability* (`session.page` present only when the engine has one), so the real-Safari adapter — which has no Playwright `Page` (`src/engine/adapters/safaridriver-hybrid.ts`'s `SafariSessionHandle` exposes *no* `page()` at all; the LSP violation is the `page()` on `BrowserSession`, documented as throwing at `src/session/types.ts:95` and actually throwing at `src/session/safari-session.ts:35`) — slots in without leaking 17 defensive guards. The raw-BiDi and Appium adapters inherit this for free: they too declare which sub-interfaces they have via `EngineCapabilities` (`src/engine/capabilities.ts`), and callers narrow rather than branch.
 
 The reason a sixth engine needs no gate edit is that *capability declaration* already carries the whole works-vs-gated story as data. The five live engines declare their surface in `src/engine/capabilities.ts`, and the keystone asserts the gate honors it — a matrix the sixth engine extends by adding one row, never by editing a consumer:
 
@@ -88,7 +99,7 @@ The asymmetry in the last row is the proof that the seam is capability-driven, n
 - `no-engine-literal-branches` (the [L1](../0004-architecture-hardening.md#4-the-standard-in-ten-laws) lint rule, [0004-05]) fails any `if (session.engine === "…")` / `=== 'safari'` outside the registry — directly closing guardrail-gap #0 from the harness-and-docs audit (*"No ESLint rule prevents engine literal dispatch inside handlers"*).
 - The **engine↔capability↔keystone traceability test** ([L9](../0004-architecture-hardening.md#4-the-standard-in-ten-laws), [0004-05]) asserts every `EngineKind` member has a `capabilitiesFor` declaration and a keystone lane — closing guardrail-gap #2 (*"No unit test validates that all engines in EngineKind have a corresponding CAPABILITIES entry"*) and gap #9 (the per-engine works-vs-gated matrix). A seventh engine added without its capability row or its keystone lane is a red test, in the same change.
 
-The net: the engine axis — the single highest-volume axis of future change for a *multi-engine* browser-control server — becomes the cheapest. The roadmap's stock-Firefox, real-Safari, raw-BiDi, and Appium adapters are each, post-[D1](../0004-architecture-hardening.md#d1), one `EngineDefinition` and one keystone lane.
+The net: the engine axis — the single highest-volume axis of future change for a *multi-engine* browser-control server — becomes the cheapest. The roadmap's stock-Firefox, real-Safari, raw-BiDi, and Appium adapters are each, post-[D1](../0004-architecture-hardening.md#d1), one `EngineEntry` and one keystone lane.
 
 ---
 
@@ -106,12 +117,14 @@ The colocation is what makes a third-party plugin a *first-class* participant ra
 ```ts
 // A third-party plugin tool after D2 — metadata-at-registration; the host derives
 // the gates. No central list edited; the plugin auto-participates.
+import { z } from "zod"; // PluginApi exposes no `.z`; a plugin imports zod itself
+
 export function register(api: PluginApi): void {
   api.registerTool(
     "acme.export_invoice",
     {
       description: "Export the focused invoice as a signed PDF.",
-      inputSchema: { invoiceId: api.z.string() },
+      inputSchema: { invoiceId: z.string() },
       capability: "file-io", // ← declared once; the DERIVED TOOL_CAPABILITY map picks it up
       batchable: true, //        ← derived BATCH_ALLOWED_TOOLS picks it up
       deep: false, //            ← gated on no engine it does not need CDP for
@@ -207,7 +220,7 @@ Future-proofing's failure mode is the *mirror image* of unenforced drift: specul
 
 | Deferred seam | Why not now | Trigger that makes it proven |
 |---|---|---|
-| **Raw-BiDi client** (reimplementing the Locator surface) | RFC 0002 D1 is explicit: *"Do not build a raw-BiDi client that reimplements the Locator surface — the audit is explicit that this is 'a second product, not an adaptation.'"* No second real implementation today. | A committed stock-Firefox-BiDi or BYOB-Firefox attach that *cannot* ride Playwright — then the `BidiFirefoxAdapter` lands as one `EngineDefinition` ([§2](#2-extension-pressure-more-engines)). |
+| **Raw-BiDi client** (reimplementing the Locator surface) | RFC 0002 D1 is explicit: *"Do not build a raw-BiDi client that reimplements the Locator surface — the audit is explicit that this is 'a second product, not an adaptation.'"* No second real implementation today. | A committed stock-Firefox-BiDi or BYOB-Firefox attach that *cannot* ride Playwright — then the `BidiFirefoxAdapter` lands as one `EngineEntry` ([§2](#2-extension-pressure-more-engines)). |
 | **Multi-tenancy / cross-host distributed sessions** | One session-locality model today (in-process registry); no second deployment shape. Building tenant isolation now is the speculative port the doctrine forbids. | A second real tenant or a daemon serving remote clients ([§6](#6-extension-pressure-scale-concurrency-and-multi-tenancy)). The bounded-resource + determinism laws are already the fitness functions that will gate it safely. |
 | **Vision/OCR adapter** | BYO-vision is a *boundary*, not a gap ([architecture-principles §1](../../ai-context/architecture/architecture-principles.md)). Bundling OCR speculatively imports a model dependency the core refuses. | A real first-party vision tool with a committed need — then it lands as a gated capability slot ([§5](#5-extension-pressure-new-capability-classes)), not a bundled provider. |
 | **Appium native-app contexts** | RFC 0002 D8 / open input #5: native-app contexts are *"a product call the owner makes."* Mobile *browsers* are proven (Android via adb+CDP, landed); native contexts are not. | The owner's product call + a real native-context need. |
@@ -221,7 +234,7 @@ The discipline is the same one that makes the *positive* futures cheap: build th
 
 A future-proof architecture must trend **strictly more maintainable over time**, never less. RFC 0004's budgets ([D11](../0004-architecture-hardening.md#d11): *"Budgets, not vibes"*) are sized from the *current healthy* modules — but the god-modules are paid down over the phases ([0004-04]), and as a split lands the budget that allowed the god-module **must tighten** to lock in the gain. This is the **maintainability ratchet**: a one-way mechanism that lets the budget step *down* (tighter) as debt is paid, and *physically forbids* it stepping back up.
 
-**Worked example — the tool-module budget.** The god-modules today are `read-observe-tools.ts` (1965 LOC, 20 tools), `capture-report-tools.ts` (1514), `emulation-config-tools.ts` (1107), `deep-tools.ts` (1033) ([0004-01], [D3](../0004-architecture-hardening.md#d3)). The [L3](../0004-architecture-hardening.md#4-the-standard-in-ten-laws) tool-module budget lands at **450 LOC** in P0 as a *warn* (above the god-modules, so nothing is forced yet — it freezes the bleeding). After [D3](../0004-architecture-hardening.md#d3) splits them to one-family-per-module in P3, the healthy modules sit well under 350; the budget then **steps from 450 → 350** as `error`. The same step happens to `server.ts` (the composition root, 382 LOC today — already healthy, budgeted at a hard 400 ceiling) and to the function-length / complexity / interface-member budgets ([L3](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)/[L4](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)) as `ToolHost` (75 members, `src/tools/host.ts:54`) and `SessionEntry` (50+ fields, `src/session/registry.ts:48`) are segregated into à-la-carte sub-ports.
+**Worked example — the tool-module budget.** The god-modules today are `read-observe-tools.ts` (1965 LOC, 20 tools), `capture-report-tools.ts` (1514), `emulation-config-tools.ts` (1107), `deep-tools.ts` (1033) ([0004-01], [D3](../0004-architecture-hardening.md#d3)). The [L3](../0004-architecture-hardening.md#4-the-standard-in-ten-laws) tool-module budget lands at **450 LOC** in P0 as a *warn* — **below** all four god-modules (which blow through it by 2–4×), so it is non-blocking *only* because it is `warn`: it makes the debt visible without forcing the split before [D3](../0004-architecture-hardening.md#d3) is ready. After [D3](../0004-architecture-hardening.md#d3) splits them to one-family-per-module in P3, the healthy modules sit well under 350; the budget then **steps from 450 → 350** as `error`. The same step happens to `server.ts` (the composition root, 382 LOC today — already healthy, budgeted at a hard 400 ceiling) and to the function-length / complexity / interface-member budgets ([L3](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)/[L4](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)) as `ToolHost` (35 members, `src/tools/host.ts:54-189`) and `SessionEntry` (40 fields, `src/session/registry.ts:48`) are segregated into à-la-carte sub-ports.
 
 **The ratchet is itself a fitness function.** The danger is that a future budget step is *loosened* — an agent under deadline bumps `max-lines` back to 450 to land a fat module. The ratchet test asserts the budget only moves one way:
 
@@ -248,7 +261,7 @@ The consequence is the architectural claim this RFC exists to make good on: **th
 
 browxai is future-proof not because RFC 0004 predicts its features, but because:
 
-1. **The expected axes of change are add-only** — a sixth engine ([§2](#2-extension-pressure-more-engines)) is one `EngineDefinition`; a third canvas plugin ([§3](#3-extension-pressure-plugin-ecosystem-growth)) is one `register(api)`; a fourth transport ([§4](#4-extension-pressure-new-transports)) is one `TransportFactory` entry; a new capability class ([§5](#5-extension-pressure-new-capability-classes)) is one gated declaration; a new content type or config layer ([§7](#7-extension-pressure-new-contentresult-types-harness-adapters-config-layers)) is one derived-map entry — each at a known extension point, none editing the core.
+1. **The expected axes of change are add-only** — a sixth engine ([§2](#2-extension-pressure-more-engines)) is one `EngineEntry`; a third canvas plugin ([§3](#3-extension-pressure-plugin-ecosystem-growth)) is one `register(api)`; a fourth transport ([§4](#4-extension-pressure-new-transports)) is one `TransportFactory` entry; a new capability class ([§5](#5-extension-pressure-new-capability-classes)) is one gated declaration; a new content type or config layer ([§7](#7-extension-pressure-new-contentresult-types-harness-adapters-config-layers)) is one derived-map entry — each at a known extension point, none editing the core.
 2. **A fitness function guards every one of those axes** — the engine-adapter-contract keystone, the traceability tests, the derived-map completeness tests, the bounded-resource and determinism gates, the dependency-cruiser layering — so the architecture *evolves safely*, with mechanical proof that each extension preserves the invariant it must.
 3. **The proven-seam test gates the speculative futures out** ([§8](#8-what-we-deliberately-do-not-build-yet)) — no raw-BiDi client, no multi-tenancy, no vision adapter until the second implementation is real — so the architecture stays the *simplest design that honors the proven seams*, never the maximal one.
 4. **The maintainability ratchet ([§9](#9-the-maintainability-ratchet)) makes the trend strictly one-way** — every paid-down god-module locks in a tighter budget, so the codebase grows more maintainable as it grows larger.
@@ -260,7 +273,7 @@ That is what "future-proof" means under this doctrine: not a guess about what la
 ## Related
 
 - [`0004-architecture-hardening.md`](../0004-architecture-hardening.md) — the parent RFC: the thesis, the ten laws ([L1](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)–[L10](../0004-architecture-hardening.md#4-the-standard-in-ten-laws)), and the twelve decisions ([D1](../0004-architecture-hardening.md#d1)–[D12](../0004-architecture-hardening.md#d12)) this reference's futures rest on.
-- [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md) — the `EngineRegistry` / `EngineDefinition`, metadata-at-registration, derived-map, and `TransportFactory` patterns each future above lands on.
+- [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md) — the `EngineRegistry` / `EngineEntry`, metadata-at-registration, derived-map, and `TransportFactory` patterns each future above lands on.
 - [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md) — the executable form of every fitness function cited here (engine-adapter-contract keystone, traceability tests, completeness tests, the bounded-resource and ratchet checks).
 - [`0004-07-prior-art-and-references.md`](0004-07-prior-art-and-references.md) — *Building Evolutionary Architectures* and the fitness-function literature this stance imports.
 - [`../0002-multi-engine-bidi.md`](../0002-multi-engine-bidi.md) — the engine roadmap (stock-Firefox P3, real-Safari P4, raw-BiDi/Appium beyond) that §2 absorbs add-only.
