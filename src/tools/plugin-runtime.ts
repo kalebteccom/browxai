@@ -18,6 +18,17 @@ export interface PluginRuntimeDeps {
   noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
 }
 
+/** The capability each plugin-info MCP tool gates under (both `read` — they are
+ *  pure-read introspection over the loaded-plugin set). The SINGLE SOURCE for
+ *  these two rows: `wirePluginRuntime`'s `register` calls read it (colocated
+ *  metadata, RFC 0004 P2), and the metadata-collector bootstrap
+ *  (`tool-metadata.ts`) reads it to derive the rows WITHOUT running the async
+ *  plugin loader. Keyed by tool name. */
+export const PLUGIN_INFO_TOOL_CAPABILITY: Readonly<Record<string, Capability>> = {
+  plugins_list: "read",
+  plugins_info: "read",
+};
+
 /**
  * Plugin runtime wiring — the LAST step of `createServer`, run after every core
  * `register*Tools(host)` call so the `coreToolNames` snapshot below counts the
@@ -37,7 +48,7 @@ export async function wirePluginRuntime(
   host: ToolHost,
   deps: PluginRuntimeDeps,
 ): Promise<ReadonlyArray<PluginRecord>> {
-  const { register, caps, workspace, resolvedConfig, toolHandlers, z } = host;
+  const { register, gateCheck, caps, workspace, resolvedConfig, toolHandlers, z } = host;
   const { server, noteMetrics, noteDiagnostics } = deps;
 
   let pluginRecords: ReadonlyArray<PluginRecord> = [];
@@ -214,9 +225,16 @@ export async function wirePluginRuntime(
     {
       description:
         "List every declared browxai plugin and its load status. Each entry carries `{name, namespace, version, trust, capabilities, dependsOn, status, declaredAt, enabledAt?, statusReason?, tools, transitiveDeps}`. `status` is one of `loaded` (live), `disabled-by-capability-mismatch` (plugin declares a capability not in the server's active set), `disabled-by-cycle` (caught at startup — server start would have aborted, so this status only appears in test surfaces), `disabled-by-dep-missing` (a `dependsOn` target isn't installed or fails the version range), `disabled-by-namespace-conflict` (two plugins claimed the same namespace), or `load-error` (manifest invalid, entry module threw, etc.). Read-only — gates under `read`. The plugin runtime is RESOLVED ONCE AT SERVER START; this tool reports the live state, not what `plugins.json` currently declares (use `get_config({scope:'resolved'}).plugins` for that, plus the `pluginsPendingRestart` flag).",
+      capability: PLUGIN_INFO_TOOL_CAPABILITY.plugins_list,
       inputSchema: {},
     },
     async () => {
+      // D3 (RFC 0004 P2): enforce the declared `read` capability at the handler,
+      // mirroring the gesture-network per-handler idiom. Without this a direct
+      // server dispatch under BROWX_CAPABILITIES=human would EXECUTE this tool
+      // despite its derived `read` row (the row alone doesn't gate the handler).
+      const g = gateCheck("plugins_list");
+      if (g) return g;
       const body = {
         ok: true,
         apiVersion: RUNTIME_API_VERSION,
@@ -244,6 +262,7 @@ export async function wirePluginRuntime(
     {
       description:
         "Full manifest + tool registry dump for ONE plugin. Returns `{name, version, namespace, trust, capabilities, dependsOn, transitiveDeps, status, tools: [{name, description, inputSchema?}]}` so an operator can audit what a plugin contributes to the running surface. Read-only — gates under `read`.",
+      capability: PLUGIN_INFO_TOOL_CAPABILITY.plugins_info,
       inputSchema: {
         name: z
           .string()
@@ -251,6 +270,10 @@ export async function wirePluginRuntime(
       },
     },
     async ({ name }: { name: string }) => {
+      // D3 (RFC 0004 P2): enforce the declared `read` capability at the handler
+      // (see plugins_list above).
+      const g = gateCheck("plugins_info");
+      if (g) return g;
       const p = pluginRecords.find((r) => r.manifest.name === name);
       if (!p) {
         return {

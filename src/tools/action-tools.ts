@@ -19,6 +19,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "navigate",
     {
+      capability: "navigation",
+      batchable: true,
       description:
         "Navigate the page to a URL. Returns an ActionResult: navigation + structure changes + console/network slice + post-snapshot.",
       inputSchema: { url: z.string().describe("Absolute URL"), ...ACTION_OPTS },
@@ -45,6 +47,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "click",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). `force:true` skips Playwright's actionability checks (visibility / stability / receives-events / hit-test) — escape hatch for perpetually-busy SPAs where rAF loops + frequent re-renders make the stability check thrash forever; use only on targets you've verified clickable via snapshot/find first. Returns an ActionResult.",
       inputSchema: {
@@ -88,6 +92,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "fill",
     {
+      capability: "action",
+      batchable: true,
       description: "Type into an input by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, value: z.string(), ...ACTION_OPTS },
     },
@@ -116,6 +122,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "press",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Press a key. If a `ref`/`selector` is given, presses on that element; else on the page.",
       inputSchema: {
@@ -149,6 +157,7 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "shortcut",
     {
+      capability: "action",
       description:
         'Dispatch a keyboard chord ("Control+C") or an ordered sequence (["Control+A","Control+C"]) and return handled-observability: the active element, which keydown/copy/cut/paste listeners fired, and whether the app called preventDefault — so you can prove the app actually handled the shortcut, not just that keys were sent. Optional `ref`/`selector` is focused first; else page-level. Copy/cut/paste integrate the per-session clipboard ONLY when the off-by-default `clipboard` capability is enabled: each session has its own clipboard buffer, and the shared OS clipboard is written only transactionally at the copy/cut (capture selection) or paste (inject this session\'s buffer) moment — never ambiently, never read into a session (no cross-session/human clipboard bleed). Observability works without the capability.',
       inputSchema: {
@@ -234,6 +243,7 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "drag",
     {
+      capability: "action",
       description:
         "Drag from one target to another: press at `from`, move to `to` over `steps` points, release. Each of `from`/`to` is `{ref}|{selector}|{coords}` (element targets press the box centre). `preflight:true` instead probes the `from` point and returns what's under it (top hit element + `resizeRisk` when a resize-handle cursor is present) WITHOUT dragging — check it first so a narrow item's edge doesn't get resized instead of moved. For timeline scrub/trim, drag-reorder, slider, lasso.",
       inputSchema: {
@@ -307,6 +317,7 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "double_click",
     {
+      capability: "action",
       description: "Double-click a target (`{ref}|{selector}|{coords}`).",
       inputSchema: {
         target: gestureTarget().describe("{ref}|{selector}|{coords}."),
@@ -344,6 +355,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "hover",
     {
+      capability: "action",
+      batchable: true,
       description: "Hover over an element by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, ...ACTION_OPTS },
     },
@@ -371,6 +384,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "select",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Select option(s) on a <select> by `ref` or `selector`. Returns an ActionResult.",
       inputSchema: { ...REF_OR_SELECTOR, values: z.array(z.string()), ...ACTION_OPTS },
@@ -400,6 +415,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "wait_for",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Wait until an element is visible (`ref`/`selector`/`named`/`coords`), or until visible `text` appears anywhere on the page (SPA-readiness gating after a reload/nav). Pass exactly one of a target or `text`. Bounded by design — it CANNOT hang: `timeoutMs` is both the max wait and the anti-wedge deadline (default 5000, 1h hard cap). `ok:false` means the wait expired — on a healthy page that's a real negative (the element/text never appeared); if snapshot/navigate are also timing out it's a wedge symptom, so discard the session rather than re-issuing the wait. No arbitrary-JS predicate mode by design (that's `eval_js`, gated behind the `eval` capability). Returns an ActionResult.",
       inputSchema: {
@@ -451,6 +468,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "scroll",
     {
+      capability: "navigation",
+      batchable: true,
       description:
         "Scroll the page or a scroll container. One general primitive:\n" +
         "  - No target → scroll the window. Pass `to: top|bottom|left|right` or `by: {x,y}` (CSS px; +y = down).\n" +
@@ -505,6 +524,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "choose_option",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Pick an option in a combobox / listbox / menu by visible text. Generic primitive for custom controls that aren't native `<select>` (so the `select` tool can't drive them). The `target` is the trigger control (the combobox itself); `option` is the visible text of the option to commit. Opens the control if not already expanded, waits for a visible listbox/menu/portal, clicks the resolved option element (no type-and-press-Enter), returns the probe on the trigger — `ownerControl.displayTextAfter` shows the committed selection.",
       inputSchema: {
@@ -563,6 +584,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "go_back",
     {
+      capability: "navigation",
+      batchable: true,
       description: "Navigate back in history. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
@@ -584,6 +607,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "go_forward",
     {
+      capability: "navigation",
+      batchable: true,
       description: "Navigate forward in history. Returns an ActionResult.",
       inputSchema: { ...ACTION_OPTS },
     },
@@ -605,6 +630,8 @@ export function registerActionTools(host: ToolHost): void {
   host.register(
     "set_viewport",
     {
+      capability: "navigation",
+      batchable: true,
       description:
         "resize a session's viewport mid-flight (responsive-breakpoint testing). `page.setViewportSize` re-lays-out and commonly triggers responsive re-render / lazy-load — returns an ActionResult so `structure` / `snapshotDelta` / `network` show what changed. Only the *size* changes live; full device emulation (isMobile/touch/UA/DPR) is creation-time — set it via `open_session({ device })`.",
       inputSchema: {

@@ -21,6 +21,8 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "mouse_wheel",
     {
+      capability: "action",
+      deep: true,
       description:
         "Coordinate-space wheel event — dispatched via CDP at `coords` (viewport CSS px) regardless of the current pointer position. For canvas, virtualised lists, and map tiles that listen for `wheel` and ignore element-level scroll. `deltaX`/`deltaY` are CSS px (DOM `WheelEvent` convention: positive `deltaY` scrolls content up); at least one must be non-zero.",
       inputSchema: {
@@ -65,6 +67,8 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "gesture_pinch",
     {
+      capability: "action",
+      deep: true,
       description:
         "Two-finger pinch in/out centred on `coords`. Two touch points start at `coords ± startOffset` (default 40 CSS px) and converge or diverge linearly so the final separation = `startOffset × scale`. `scale < 1` is pinch-in (zoom out); `scale > 1` is pinch-out (zoom in). Linear interpolation across `steps` (default 12, clamped 1–100) — pinch handlers read inter-frame deltas; a velocity-detecting curve can misfire fling heuristics, linear is the safe default. Dispatches via CDP touch pipeline; touch does not fire mouse events automatically.",
       inputSchema: {
@@ -134,6 +138,8 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "gesture_swipe",
     {
+      capability: "action",
+      deep: true,
       description:
         "Single-finger swipe from `from` to `to` via the touch pipeline. Distinct from `drag` (mouse pipeline) — mobile carousels, pull-to-refresh, swipeable list items wire touch handlers that ignore mouse events. `durationMs` (default 200 — fast flick; 500+ reads as deliberate scroll) is split across `steps` (default 16, clamped 1–200) touchMove dispatches. Smoothed via an ease-out curve (`1 - (1 - t)²`) — matches the natural deceleration most fling-detect heuristics are tuned for (Hammer.js, native scroll inertia, react-spring physics).",
       inputSchema: {
@@ -217,6 +223,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "route",
     {
+      capability: "action",
       description:
         "Intercept requests matching `urlPattern` (Playwright glob) and fulfil every match with one canned response. For substituting a backend response in QA. Per-session; discarded with the session or via `unroute`.",
       inputSchema: {
@@ -272,6 +279,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "route_queue",
     {
+      capability: "action",
       description:
         "Intercept `urlPattern` and fulfil *successive* matches from `responses[]` (one per request, in order); once exhausted, matches fall through to the real network. Each response carries its own `delayMs` — give response #1 a long delay and #2 a short one to make backend responses **arrive out of request order** (the race-condition QA case). Per-session.",
       inputSchema: {
@@ -318,6 +326,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "unroute",
     {
+      capability: "action",
       description:
         "Remove a route registered by `route`/`route_queue` (by `urlPattern`[+`method`]), or — with no `urlPattern` — every route this session registered.",
       inputSchema: {
@@ -369,6 +378,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "ws_send",
     {
+      capability: "action",
       description:
         "Send a payload on a live page-side WebSocket. `wsId` is the id surfaced by the page-side `__browxWs.list()` registry (the wrapper assigns `ws-1`, `ws-2`, … as the page opens sockets) — call `ws_read` first to identify the endpoint URL, then `eval_js` `JSON.stringify(window.__browxWs.list())` to map URL → wsId, OR drive a deterministic test where the order of socket creation is known. Calls the real (unwrapped) `WebSocket.prototype.send`, so app-level message listeners do NOT observe a fake event — only the server sees the outbound frame. Returns `{ok:true, wsId, url, bytes}` on success, or `{ok:false, error}` if the id is unknown or the socket isn't OPEN. Capability: `action`.",
       inputSchema: {
@@ -403,6 +413,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "ws_intercept",
     {
+      capability: "action",
       description:
         'Install a route-style interceptor for INBOUND WebSocket frames. `pattern` is a glob matched against `socket.url` (the route family\'s intent: `*` = single segment, `**` = any). `response` controls what the page sees: `"drop"` — silently discard the frame (app handlers don\'t run); `"echo"` — mirror the inbound payload back to the server (the app still receives it locally); `{data:"<string>"}` — replace the inbound payload with `data` (app handlers see the replacement). The interceptor evaluates on every matching frame until removed via `ws_unintercept`; re-adding the same pattern replaces the prior entry. Per-session; lost on session close or session rebuild. Capability: `action`.',
       inputSchema: {
@@ -449,6 +460,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "ws_unintercept",
     {
+      capability: "action",
       description:
         "Remove a `ws_intercept` interceptor (by exact `pattern`), or — with no `pattern` — every interceptor this session installed. Capability: `action`.",
       inputSchema: {
@@ -500,6 +512,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "workers_list",
     {
+      capability: "read",
       description:
         'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Worker `state` is one of `stopped`/`starting`/`running`/`stopping`. Capability: `read`.',
       inputSchema: {
@@ -534,6 +547,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "worker_message_send",
     {
+      capability: "action",
       description:
         "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate` on the SW's attached session. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
       inputSchema: {
@@ -574,6 +588,7 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "worker_messages_read",
     {
+      capability: "read",
       description:
         "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. Each call drains (removes) the returned messages — re-reads return only what arrived since. The page-side ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Capability: `read`.",
       inputSchema: {
@@ -611,6 +626,8 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "sw_intercept_fetch",
     {
+      capability: "action",
+      deep: true,
       description:
         "Register a fetch interceptor for Service-Worker-handled requests. `pattern` is a glob matched against the intercepted request URL (`*` = single path segment, `**` = any — same shape as `route` / `ws_intercept`). `response` is the canned reply: `{status?, body?, contentType?, headers?}` (defaults: 200, empty body, `application/json`). Fires only when the SW's `fetch` handler actually runs — i.e. the SW chose to intercept the request — which separates SW-mediated traffic from page-direct traffic. Re-add of the same pattern replaces the prior entry. Per-session; lost on session close. Capability: `action`.",
       inputSchema: {
@@ -658,6 +675,8 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "sw_unintercept_fetch",
     {
+      capability: "action",
+      deep: true,
       description:
         "Remove a `sw_intercept_fetch` interceptor (by exact `pattern`), or — with no `pattern` — every SW fetch interceptor this session installed. Capability: `action`.",
       inputSchema: {
@@ -697,6 +716,9 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "network_emulate",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Throttle the session's network conditions (or simulate offline) via CDP `Network.emulateNetworkConditions`. For flaky-mobile / offline / slow-link repros on a real backend; **composes** with `route_queue` — each route's `delayMs` stacks ON TOP of the emulated `latencyMs`. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it on a renderer swap). Empty input (or `{offline:false}` with no other fields) resets to no throttle. **BYOB:** the override applies to the attached Chrome and stays in effect even after browxai detaches, until the human resets DevTools or closes the page (a `warning` field surfaces this).",
       inputSchema: {
@@ -780,6 +802,9 @@ export function registerGestureNetworkTools(host: ToolHost): void {
   register(
     "cpu_emulate",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Slow the renderer to simulate a low-end device via CDP `Emulation.setCPUThrottlingRate`. `throttleRate: 1` = no throttle (and is the reset path); `2` = 2× slowdown; `4`–`6` = mid-to-low-end mobile. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it). Empty input resets to `1`. Independent of `network_emulate` — apply both for a full low-end-device repro. **BYOB:** the throttle stays in effect on the attached Chrome until reset or page close (`warning` surfaces this).",
       inputSchema: {

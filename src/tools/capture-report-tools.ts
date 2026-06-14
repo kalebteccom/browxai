@@ -68,6 +68,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "screenshot_region",
     {
+      capability: "read",
       description:
         "PNG screenshot of an arbitrary viewport rectangle (not an element) — for virtualised timelines / canvas / unlabelled positioned regions where an element-cropped shot doesn't apply.",
       inputSchema: {
@@ -114,6 +115,8 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "screenshot_marks",
     {
+      capability: "read",
+      batchable: true,
       description:
         'Composed PNG with numbered bounding boxes painted over caller-supplied candidates — the set-of-marks primitive multimodal agents reach for when they want to ground a vision read against a small palette of stable refs ("click 2" instead of estimating a coordinate). Each candidate is either a bare `{ref}` (looked up against the current snapshot for its bbox) OR a full `find()` candidate row passed through (`{ref, role, name, testId, bbox}` — fast path, no extra tree walk). `label:"index"` (default) paints 1..N positions paired with an `{index→ref}` mapping; `label:"ref"` paints the existing `eN` directly; `label:"role"` paints the role for visual grounding. The numbering scheme SHARES the existing `name_ref` / `eN` namespace — no parallel ID space — so `mapping["2"] === "e7"` and the agent can address either way. Pure compose on top of `find()` / `snapshot()` (no new browser interaction beyond a transient in-page overlay removed before return). Candidates with `bbox:null` (clipped / off-screen) are kept in `marks` with `painted:false` so the mapping stays complete. Read-only (`read`).',
       inputSchema: {
@@ -188,6 +191,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "name_region",
     {
+      capability: "human",
       description:
         "Bind a viewport rectangle to a mnemonic so a sub-agent can re-select the same media segment / timeline row without re-deriving coordinates (drift). Resolve it later with `region`. Per-session.",
       inputSchema: {
@@ -214,6 +218,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "region",
     {
+      capability: "human",
       description:
         "Resolve a `name_region` mnemonic to its `{ box, center }`. Pass `center` to a coords-based action (`click({coords})`) to act on the bound region.",
       inputSchema: { name: z.string(), ...SESSION_ARG },
@@ -247,6 +252,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "cross_session_sample",
     {
+      capability: "read",
       description:
         "Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`.",
       inputSchema: {
@@ -325,6 +331,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "export_session_report",
     {
+      capability: "read",
       description:
         "Bundle a session's current QA evidence into one JSON object — url, console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
       inputSchema: {
@@ -361,6 +368,8 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "session_metrics",
     {
+      capability: "read",
+      batchable: true,
       description:
         "Per-session cumulative tool-call metrics — counts, latency, `tokensEstimate` sum, capability denials, and per-tool error counts. Piggybacks on the existing per-call envelope data (no new instrumentation, no disk writes). Pairs with `export_session_report` (which bundles the session's QA EVIDENCE — url, console errors, recent network summary, named regions, live sessions); this one rolls up DISPATCH EVIDENCE so a consumer can audit which tools the agent leaned on, how token-expensive each got, and whether the agent kept hitting a capability gate that's off. Read-only (capability `read`). → `{ ok, session, callsByTool, durationMsByTool, errorsByTool, tokensEstimateSum, capabilityDenials, sessionStartedAt, sessionDurationMs, tokensEstimate }`.",
       inputSchema: { ...SESSION_ARG },
@@ -386,6 +395,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "diagnostics_note",
     {
+      capability: "diagnostics",
       description:
         "Agent self-feedback. File a structured insight against the diagnostics JSONL store: a missing primitive, a workaround that worked, a perf concern, or an ergonomic friction the curated tool surface didn't cover. `ref` optionally points at a prior tool call (a record id or `tool:ts` shorthand). The recorder is engaged by the same `diagnostics` capability — registering a note while the capability is OFF returns a structured refusal (so a polling agent on a server with diagnostics off doesn't silently lose feedback). Default category `other`, default severity `info`. Capability: `diagnostics`.",
       inputSchema: {
@@ -458,6 +468,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "diagnostics_search",
     {
+      capability: "read",
       description:
         "Read-side query over the diagnostics JSONL store. Returns matching records — calls + notes — up to `limit` (default 100, max 1000). `since` filters by ts (ISO); `tool` filters by tool name (exact match); `category` filters notes only; `sessionId` filters by session. The recorder is gated on the `diagnostics` capability; this query reads whatever lives on disk, so a server with diagnostics OFF but a non-empty workspace history can still surface prior runs. Read-only (capability `read`). → `{ ok, records, count, truncated }`.",
       inputSchema: {
@@ -534,6 +545,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "diagnostics_report",
     {
+      capability: "read",
       description:
         "Analysis primitive over the diagnostics JSONL store. `summary` (default) returns per-tool counts + p50/p95 durations, the top 10 eval_js patterns by count + their taxonomy classification, capability-denial counts, note counts by category, and a `missingPrimitiveHypotheses` list — eval_js taxonomy buckets with high count flagged as candidates for a curated primitive (heuristic: non-`custom` taxonomy with count ≥ 3 OR `custom` pattern with count ≥ 5). `full` returns the same + a per-record stream capped at 500 records (`truncated:true` when exceeded). Optional `since` (ISO) windowing + `sessionId` filter. Read-only (capability `read`).",
       inputSchema: {
@@ -598,6 +610,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "export_playwright_script",
     {
+      capability: "read",
       description:
         "Lower a session's recorded action trace into a runnable `@playwright/test` spec file. Adjacent to `export_session_report` (which bundles QA evidence) and to `end_recording` (which emits the site-docs flow-file YAML); this one emits a `.spec.ts` source a code-as-action consumer can run as the seed for a skill-compilation loop. Each recorded step lowers to ONE Playwright call using the BEST stable `selectorHint` captured at the time of the call (tier-1 attribute → `page.locator(...)`, tier-2 role+name → `getByRole({name})`, role-only / tier-5 → `getByRole()` with a `// TODO: fragile selector` comment). Coords-mode actions are not recorded so the export never has to lower a non-replayable target. Requires an ACTIVE recording (call `start_recording` first); inspect-style — does NOT end the recording. With `path`, ALSO writes to a workspace-rooted `.spec.ts` file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Read-only (capability `read`). Returns `{ ok, name, source, path?, stats:{steps,handled,unhandled,fragile}, tokensEstimate }`.",
       inputSchema: {
@@ -692,6 +705,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "upload_file",
     {
+      capability: "file-io",
       description:
         "Set a file on a file `<input>` (works on hidden inputs) via Playwright `setInputFiles` — the first-class alternative to injecting `File`/`DataTransfer` through `eval_js`. Target the input by `ref`/`selector`. File source is exactly one of: `content` (base64 inline — no filesystem read; pass `name`/`mimeType`) OR `path` (resolved **inside `$BROWX_WORKSPACE` only** — a path escaping the workspace is rejected; stage the file there). Gated by the off-by-default **`file-io`** capability.",
       inputSchema: {
@@ -780,6 +794,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "drop_files",
     {
+      capability: "file-io",
       description:
         "Synthesize an HTML5 file drag-drop on a page element — the first-class alternative to driving DataTransfer through `eval_js` for drop-zone uploaders that don't expose an `<input type=file>` (modern SaaS file pickers). Target via the standard target shapes (`ref`/`selector`/`named`/`coords`). `files[]` carries one or more file entries; each entry is exactly one of: `{path, name?, mimeType?}` (workspace-rooted file — escape-rejected, same posture as `upload_file`'s `path`) OR `{contents, name, mimeType?}` (base64 inline — no filesystem read). Builds an in-page `DataTransfer` populated with `File` objects and dispatches `dragenter` → `dragover` → `drop` on the target with realistic `clientX`/`clientY` (element box centre for ref/selector; literal coords). Drops every file in a single sequence — passing multiple entries simulates the multi-file drop most uploaders support natively. → `{ ok, target, files: [{name, mode, bytes, mimeType}], totalBytes, fileCount, eventsFired, dropDispatched, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
       inputSchema: {
@@ -864,6 +879,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "downloads_capture",
     {
+      capability: "file-io",
       description:
         "Per-session download capture — toggle interception of Playwright `download` events. When `on:true`, every download fired during a subsequent action is persisted to `$BROWX_WORKSPACE/.downloads/<sessionId>/<prefix>-<sanitised-name>` and surfaced on `ActionResult.downloads[{id, suggestedFilename, mimeType, sizeBytes, path}]`. When `on:false` (the default) the artifact is silently discarded so a session that never opted in leaves no on-disk trace. The page-supplied filename is sanitised (no path separators / NULs / leading dots / control bytes; length-capped) before composing the on-disk name — workspace-escape rejected. Read captured bytes with `download_get({id})`. Gated by the off-by-default **`file-io`** capability — same posture as `upload_file`. → `{ ok, captureOn, storageDir, captured: [{id, suggestedFilename, sizeBytes, path, mimeType?}], tokensEstimate }`. Pass `clear:true` alongside `on:false` to ALSO delete every captured file on disk.",
       inputSchema: {
@@ -947,6 +963,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "download_get",
     {
+      capability: "file-io",
       description:
         "Return the bytes (base64) of a previously-captured download. Pass the `id` from `ActionResult.downloads[]` (or `downloads_capture({on:true}).captured[]`). Set `pathOnly:true` to skip the base64 payload and return just the workspace-rooted path metadata (useful for very large artifacts an agent only needs to forward to another tool by path). → `{ ok, id, suggestedFilename, mimeType?, sizeBytes, path, content?: base64, tokensEstimate }`. Gated by the off-by-default **`file-io`** capability.",
       inputSchema: {
@@ -1009,6 +1026,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "asset_export",
     {
+      capability: "file-io",
       description:
         'Filter every resource the session has loaded (the always-on `NetworkBuffer` ring) and persist matching responses to a workspace-rooted directory — the first-class alternative to scraping `<img src>` / `<link href>` then re-fetching each one through `eval_js`. Filter shape: `{mime?: string[], urlPattern?: string, minBytes?: number, maxBytes?: number, status?: number[]}`. `mime` is substring match against the captured response `Content-Type` (case-insensitive, any one match wins; e.g. `["image/", "video/"]`). `urlPattern` is a RegExp source matched case-insensitively against the URL (e.g. `"\\\\.(woff2?|ttf|otf)$"`). `minBytes`/`maxBytes` bound the encoded response size when known. `status` defaults to 2xx (200..299). Filenames are derived from the URL path basename, **sanitised** (no path separators / NULs / leading dots / control bytes; length-capped), and collision-resolved with `-N` suffix. `intoDir` defaults to `$BROWX_WORKSPACE/assets/<sessionId>-<ISO>/`; an explicit value is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected). Per-call caps: `maxCount` (default 10000) + `maxBytes` (default 500 MiB) bound runaway exports — callers can raise both up to hard ceilings. **CORS caveat**: when the response body has been discarded by the renderer (bodies are short-lived) the tool falls back to an in-page `fetch()` against the original URL — cross-origin URLs without permissive CORS headers land in `droppedCount`, never a crash. → `{ ok, intoDir, totalCount, matchedCount, persistedCount, droppedCount, manifest: [{url, mime?, status?, sizeBytes, savedAs}], warnings, tokensEstimate }`. The manifest is also written to `<intoDir>/_manifest.json`. `tokensEstimate` sizes the result envelope (the manifest blob), NOT the exported files. Gated by the off-by-default **`file-io`** capability — same posture as `download_get`.',
       inputSchema: {
@@ -1118,6 +1136,8 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "pdf_save",
     {
+      capability: "action",
+      deep: true,
       description:
         "Print the current page to a workspace-rooted PDF via Playwright `page.pdf()` (CDP `Page.printToPDF`). The first-class alternative to screenshot-and-OCR or driving the browser's print-to-file dialog with `shortcut`. → `{ ok, path, bytes, format, scale, printBackground }`. Defaults: `format:\"A4\"`, `scale:1`, `printBackground:false` (matches browser-print's default — opt in when background colour/imagery matters). Output `path` is resolved INSIDE `$BROWX_WORKSPACE` (a path escaping the workspace is rejected); omit it for a default `pdfs/<sessionId>-<ts>.pdf`. **Refuses on `attached`/BYOB sessions** — `page.pdf()` drives Chromium's PrintToPDF and would mutate the human's window state; open a managed (`persistent`/`incognito`) session and re-run there. Capability `action`.",
       inputSchema: {
@@ -1211,6 +1231,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "page_archive",
     {
+      capability: "file-io",
       description:
         "Save the current page as a self-contained archive. Two formats: `directory` (default) writes `<path>/index.html` + `<path>/assets/` sidecar with every linked resource (images, fonts, scripts, stylesheets, CSS background-images surfaced via getComputedStyle); HTML refs rewritten to relative `assets/...` paths. `single-file` writes one HTML at `<path>` with every resource inlined as a `data:` URI (browsers struggle past ~150 MB — large pages should prefer `directory`). `path` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `archives/<sessionId>-<ISO>` (directory) or `archives/<sessionId>-<ISO>.html` (single-file). `maxSizeMb` caps the total archive (default 200) — resources past the budget land in `droppedCount`. Resource fetching runs `await fetch(url)` IN-page (subject to the page's CSP `connect-src` — cross-origin blocks are caught, dropped, and counted). → `{ ok, format, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. **Secrets-masking caveat**: the archive is intentionally UNMASKED — running the egress masking layer would corrupt inline JSON/CSS/binary bytes; treat the archive as sensitive (same posture as `dump_storage_state`). Caller must navigate + settle the page BEFORE calling; `page_archive` does not inject its own wait. Capability `file-io`.",
       inputSchema: {
@@ -1288,6 +1309,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "element_export",
     {
+      capability: "file-io",
       description:
         "Save a specific element subtree as a self-contained snippet — outerHTML + page-wide stylesheets + every linked resource the subtree references. Two formats: `directory` (default) writes `<intoDir>/element.html` + `<intoDir>/assets/` sidecar with images / fonts / scripts / stylesheets / CSS background-images (rewriting internal refs to relative `assets/...` paths); `single-file` writes one self-contained HTML at `<intoDir>` with resources inlined as `data:` URIs (browsers struggle past ~150 MB — large subtrees should prefer `directory`). `ref` must come from a prior `snapshot()` / `find()`; ref-not-found is a structured error, not a silent miss. `intoDir` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `elements/<sessionId>-<ISO>-<ref>` (directory) or `elements/<sessionId>-<ISO>-<ref>.html` (single-file). `maxSizeMb` caps the total export (default 50, smaller than `page_archive`'s 200 — a snippet is meant to be a slice). Cross-origin stylesheets the page can't read are reported in `warnings[]` (the snippet may render differently than the source page). → `{ ok, format, ref, path, sizeBytes, resourceCount, droppedCount, warnings[] }`. **Secrets-masking caveat**: the export is intentionally UNMASKED — running the egress masking layer would corrupt the file; treat the export as sensitive (same posture as `page_archive` / `dump_storage_state`). Capability `file-io`.",
       inputSchema: {
@@ -1370,6 +1392,7 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "dom_export",
     {
+      capability: "file-io",
       description:
         "Full DOM dump to a workspace-rooted file. Two formats: `html` (default) writes `document.documentElement.outerHTML` after the agent's prior stabilization — note the platform serializer does NOT include shadow-DOM content (open OR closed), even for elements that have one. `jsonl` writes one JSON object per line (`{tag, role?, attrs, text?, ref?, depth}`) via a depth-first walk that DOES descend open shadow roots when `includeShadow:true` (default). Closed shadow roots are inaccessible by web-platform design — the tree behind them is genuinely unreachable from this dump, surfaced in `warnings[]` when custom elements are present. `path` is resolved INSIDE `$BROWX_WORKSPACE` (escape rejected); omit for `dom-dumps/<sessionId>-<ISO>.{html|jsonl}`. → `{ ok, format, path, sizeBytes, nodeCount, shadowRootCount, warnings[] }`. **Secrets-masking caveat**: the dump is intentionally UNMASKED — running the egress masking layer would corrupt inline JSON / CSS / binary bytes; treat the dump as sensitive (same posture as `page_archive` / `dump_storage_state`). Caller must navigate + settle the page BEFORE calling. Capability `file-io`.",
       inputSchema: {
@@ -1444,6 +1467,8 @@ export function registerCaptureReportTools(host: ToolHost): void {
   register(
     "overflow_detect",
     {
+      capability: "read",
+      batchable: true,
       description:
         'Diagnose page-layout overflow — the silent UI-breakage primitive (clipped buttons, ellipsis-truncated labels, horizontal-scrollbar-on-mobile bugs). Walks the DOM and reports one finding per offending element across four detector types: `layout` (`scrollWidth/Height > clientWidth/Height` on an element with `overflow:auto|scroll` — scrollbar present but content overruns), `clipped` (same dimensions but `overflow:hidden|clip` — content invisible with no scrollbar to recover, the highest-value finding), `text-ellipsis` (`text-overflow:ellipsis` with `scrollWidth > clientWidth` — surfaces `visibleText` heuristic + `fullText` truth), `viewport-horizontal` (singleton: `documentElement.scrollWidth > clientWidth` — the body horizontal-scrollbar mobile bug; evidence carries the overrun amount + the widest overrunning descendant when cheaply identifiable). EPSILON = 1 CSS px tolerates sub-pixel rounding noise. `scope:"document"` (default) walks every element; `scope:"viewport"` skips elements fully off-screen. `types:[...]` filters which detectors fire (default = all four; empty array also treated as default). `limit` caps findings (default 50, max 500; over-cap sets `truncated:true`). Walk bounded at 10000 elements — a hit surfaces a `warnings[]` entry suggesting `scope:viewport` for a narrower pass. Each finding: `{selector, bbox: {x,y,w,h} | null, type, evidence}`. Selector synthesis tiers: `[data-testid]` > `[role][aria-label]` > nth-of-type CSS path (≤5 levels) > `tag.classes` (≤3); capped at 200 chars (longer falls through to bare tag with `evidence.selectorTruncated`). Read-only (capability `read`).',
       inputSchema: {

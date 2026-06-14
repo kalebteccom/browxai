@@ -32,61 +32,152 @@ import type { EngineKind } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
 import { engineCapabilities } from "./capability-registry.js";
 
+const DEEP_TOOLS_SET = new Set<string>();
+
+/** Record that a tool needs the raw-CDP (`deep`) escape hatch, from its colocated
+ *  `host.register({ deep: true })` metadata (RFC 0004 P2). The only writer of the
+ *  derived `DEEP_TOOLS` set. Idempotent. */
+export function declareDeepTool(tool: string): void {
+  DEEP_TOOLS_SET.add(tool);
+}
+
+/** Lazy-collection seam (RFC 0004 P2), mirroring `installToolMetadataCollector`
+ *  in capabilities.ts: the tools layer installs a collector that runs the
+ *  registration metadata once and populates this set. `tool-gate.ts` (engine
+ *  layer) cannot import the tools layer, so the dependency is inverted here. */
+let deepToolsCollector: (() => void) | undefined;
+let deepToolsLoaded = false;
+/** True while the collector is mid-run — a re-entrant `DEEP_TOOLS` read during
+ *  collection tolerates the partial set without tripping the fail-safe. */
+let deepToolsCollecting = false;
+export function installDeepToolsCollector(collect: () => void): void {
+  deepToolsCollector = collect;
+  deepToolsLoaded = false;
+}
+function ensureDeepToolsLoaded(): void {
+  if (deepToolsLoaded || deepToolsCollector === undefined) return;
+  deepToolsLoaded = true;
+  deepToolsCollecting = true;
+  try {
+    deepToolsCollector();
+  } finally {
+    deepToolsCollecting = false;
+  }
+}
+
+/**
+ * D1 fail-safe (RFC 0004 P2, SECURITY-CRITICAL): the ENGINE gate must NEVER fail
+ * OPEN. `assertEngineSupports` reads `DEEP_TOOLS.has(tool)` — an empty,
+ * unbootstrapped set makes EVERY deep tool look cross-browser, so
+ * `assertEngineSupports("perf_start", "firefox")` returns null (un-gated) when
+ * the tools-layer bootstrap never ran. Rather than silently un-gate, throw a
+ * structured error. The guaranteed bootstrap (`tool-metadata.ts`, reached by
+ * every real entry point) keeps this from firing in production; this is the
+ * backstop. Suppressed only during collection (the collector's own read sees a
+ * partial set legitimately).
+ */
+function assertEngineGateBootstrapped(): void {
+  if (DEEP_TOOLS_SET.size > 0 || deepToolsCollecting) return;
+  throw new Error(
+    "browxai engine gate read before the tool-metadata bootstrap ran: the derived " +
+      "DEEP_TOOLS set is empty and no collector was installed. Refusing to fail OPEN " +
+      "(which would let every CDP-deep tool run on a non-deep engine). Import the package " +
+      'entry ("browxai") or call createServer before reading the engine gate. (RFC 0004 P2 / D1.)',
+  );
+}
+
 /** Tools that require the raw-CDP (`deep`) escape hatch and therefore cannot run
- *  on an engine that declares `deep: false`. The set is the CDP-hard tools plus
- *  the live-CDP-mutation tools with no Playwright-Firefox fallback. Each maps to
- *  the per-engine reason surfaced in the refusal hint. */
-export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
-  // perf / tracing (CDP `Tracing.*`) — Chrome trace-event format, engine-specific
-  "perf_start",
-  "perf_stop",
-  "perf_insights",
-  "perf_audit",
-  "layout_thrash_trace",
-  // coverage (CDP `Profiler.*` / `CSS.*RuleUsageTracking`) — V8/Blink-specific
-  "coverage_start",
-  "coverage_stop",
-  // heap (CDP `HeapProfiler.*`) — V8 `.heapsnapshot` format
-  "heap_snapshot",
-  "heap_retainers",
-  "memory_diff",
-  // CPU throttle (CDP `Emulation.setCPUThrottlingRate`) — Blink-only
-  "cpu_emulate",
-  // network throttle — `emulation.setNetworkConditions` spec'd over BiDi but
-  // not implemented in this Playwright build (reason: refuse-pending)
-  "network_emulate",
-  // Service-Worker fetch interception (CDP `Fetch.*` on the SW target)
-  "sw_intercept_fetch",
-  "sw_unintercept_fetch",
-  // virtual time clock (CDP `Emulation.setVirtualTimePolicy`)
-  "clock",
-  // Chromium extension management (launch flags + CDP) — no Playwright Firefox API
-  "extensions_install",
-  "extensions_list",
-  "extensions_reload",
-  "extensions_trigger",
-  "extensions_uninstall",
-  // print to PDF — Playwright `page.pdf()` throws off Headless Chromium (measured)
-  "pdf_save",
-  // live locale / timezone / UA override (CDP `Emulation.*` / `Network.*`) —
-  // Playwright bakes these at context creation; no live off-Chromium setter
-  "set_locale",
-  "set_timezone",
-  "set_user_agent",
-  // coordinate-space wheel + the touch/gesture family (CDP `Input.dispatch*`)
-  "mouse_wheel",
-  "touch_start",
-  "touch_move",
-  "touch_end",
-  "gesture_pinch",
-  "gesture_swipe",
-  // closed-shadow piercing — CDP `DOM.getDocument({pierce:true})` is the only
-  // automation-protocol path into closed shadow roots; no off-Chromium
-  // equivalent (the one true feature-level loss). The open-shadow
-  // half is portable, but the tool's headline (closed-shadow introspection) is
-  // CDP-bound, so the whole tool gates off Chromium.
-  "shadow_trees",
+ *  on an engine that declares `deep: false`. DERIVED (RFC 0004 P2 / D2) from each
+ *  tool's `host.register({ deep: true })` metadata; any access drives the lazy
+ *  collection. A `Proxy` over the live `Set` so membership, `.size`, and
+ *  iteration all see the derived contents (and the `ReadonlySet<string>` type is
+ *  inferred from the target, not hand-rolled). */
+/** The membership / size / iteration surfaces an external consumer reads to
+ *  answer "is this an engine-gated tool?". A read of one of these on an empty
+ *  unbootstrapped set is the fail-open hazard, so they run the D1 fail-safe;
+ *  internal/other property reads (Symbol.toStringTag, etc.) pass through. */
+const DEEP_TOOLS_GATE_READS = new Set<PropertyKey>([
+  "has",
+  "size",
+  "keys",
+  "values",
+  "entries",
+  "forEach",
+  Symbol.iterator,
 ]);
+export const DEEP_TOOLS: ReadonlySet<string> = new Proxy(DEEP_TOOLS_SET, {
+  get(target, prop) {
+    ensureDeepToolsLoaded();
+    if (DEEP_TOOLS_GATE_READS.has(prop)) assertEngineGateBootstrapped();
+    // Read off the real Set (not via the Proxy receiver): `size` and the iterator
+    // methods touch internal slots and throw on an incompatible receiver, and the
+    // methods must keep `this` bound to the backing Set.
+    const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+    return typeof value === "function"
+      ? (value as (...a: unknown[]) => unknown).bind(target)
+      : value;
+  },
+});
+
+/**
+ * The pre-P2 hand-maintained `DEEP_TOOLS` block, retained verbatim BELOW as a
+ * documentation appendix — the per-tool rationale (which CDP surface each gates,
+ * the three critic-re-resolved tools) is preserved, even though the live
+ * membership now derives from each `host.register({ deep: true })` call. This
+ * block is comment-only. (Reference — not the source of truth.)
+ *
+ * export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
+ *   // perf / tracing (CDP `Tracing.*`) — Chrome trace-event format, engine-specific
+ *   "perf_start",
+ *   "perf_stop",
+ *   "perf_insights",
+ *   "perf_audit",
+ *   "layout_thrash_trace",
+ *   // coverage (CDP `Profiler.*` / `CSS.*RuleUsageTracking`) — V8/Blink-specific
+ *   "coverage_start",
+ *   "coverage_stop",
+ *   // heap (CDP `HeapProfiler.*`) — V8 `.heapsnapshot` format
+ *   "heap_snapshot",
+ *   "heap_retainers",
+ *   "memory_diff",
+ *   // CPU throttle (CDP `Emulation.setCPUThrottlingRate`) — Blink-only
+ *   "cpu_emulate",
+ *   // network throttle — `emulation.setNetworkConditions` spec'd over BiDi but
+ *   // not implemented in this Playwright build (reason: refuse-pending)
+ *   "network_emulate",
+ *   // Service-Worker fetch interception (CDP `Fetch.*` on the SW target)
+ *   "sw_intercept_fetch",
+ *   "sw_unintercept_fetch",
+ *   // virtual time clock (CDP `Emulation.setVirtualTimePolicy`)
+ *   "clock",
+ *   // Chromium extension management (launch flags + CDP) — no Playwright Firefox API
+ *   "extensions_install",
+ *   "extensions_list",
+ *   "extensions_reload",
+ *   "extensions_trigger",
+ *   "extensions_uninstall",
+ *   // print to PDF — Playwright `page.pdf()` throws off Headless Chromium (measured)
+ *   "pdf_save",
+ *   // live locale / timezone / UA override (CDP `Emulation.*` / `Network.*`) —
+ *   // Playwright bakes these at context creation; no live off-Chromium setter
+ *   "set_locale",
+ *   "set_timezone",
+ *   "set_user_agent",
+ *   // coordinate-space wheel + the touch/gesture family (CDP `Input.dispatch*`)
+ *   "mouse_wheel",
+ *   "touch_start",
+ *   "touch_move",
+ *   "touch_end",
+ *   "gesture_pinch",
+ *   "gesture_swipe",
+ *   // closed-shadow piercing — CDP `DOM.getDocument({pierce:true})` is the only
+ *   // automation-protocol path into closed shadow roots; no off-Chromium
+ *   // equivalent (the one true feature-level loss). The open-shadow
+ *   // half is portable, but the tool's headline (closed-shadow introspection) is
+ *   // CDP-bound, so the whole tool gates off Chromium.
+ *   "shadow_trees",
+ * ]);
+ */
 
 /** Per-tool reason fragment appended to the refusal hint. Most tools share the
  *  generic "needs raw CDP" reason; the three the critic re-resolved carry a
@@ -130,6 +221,12 @@ export interface EngineRefusal {
  *  cross-browser tool regardless of engine — a single Set lookup + a capability
  *  read, no allocation on the supported path. */
 export function assertEngineSupports(tool: string, engine: EngineKind): EngineRefusal | null {
+  // D1 fail-safe FIRST: a `DEEP_TOOLS.has` on an empty unbootstrapped set returns
+  // false for every tool, so the early `return null` below would un-gate the
+  // whole engine matrix. Assert the gate is bootstrapped before trusting the
+  // membership read. (`DEEP_TOOLS.has` drives the lazy collection.)
+  ensureDeepToolsLoaded();
+  assertEngineGateBootstrapped();
   if (!DEEP_TOOLS.has(tool)) return null;
   // Prefer the EngineRegistry's capability record (RFC 0004 P1) — it is the source
   // of truth post-D1 and is what gates an engine registered ONLY at runtime (e.g.

@@ -140,6 +140,8 @@ export function registerEmulationConfigTools(host: ToolHost): void {
     register(
       toolName,
       {
+        // emulate_bluetooth / emulate_usb / emulate_hid — all device-emulation.
+        capability: "device-emulation",
         description:
           `Stage a synthetic ${api === "bluetooth" ? "Web Bluetooth" : api === "usb" ? "WebUSB" : "WebHID"} device catalog for this session. The page-side wrapper around \`navigator.${api}.requestDevice()\` resolves with the agent-supplied device(s) the next time the page calls it. ${hint} ` +
           `Pass \`{devices: [...]}\` to install a non-empty catalog (the next requestDevice call ${api === "hid" ? "resolves with the matching device list" : "resolves with the first matching device"}); pass \`{devices: []}\` or omit \`devices\` to clear the catalog (the next call ${api === "hid" ? "resolves with `[]` — the user-dismissed shape for HID" : "rejects with `NotFoundError` — the user-dismissed shape for the picker"}). Persists across navigation: the init-script is re-injected on every new document within the session. Captured page-side calls surface on \`device_requests({session})\`. ` +
@@ -293,6 +295,9 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_locale",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Override the session's browser locale (`navigator.language`, `Intl.*` defaults, `Accept-Language` header). Persists across navigation + new tabs in the same session. Pass `locale: null` to clear the override and restore the browser default. NOTE: Playwright's `BrowserContext.locale` is creation-time-only, so this primitive is implemented via CDP `Emulation.setLocaleOverride` — which DOES take effect mid-session on existing pages. BYOB caveat: the CDP override persists on the attached Chrome until it navigates/restarts after detach.",
       inputSchema: {
@@ -329,6 +334,9 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_timezone",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Override the session's IANA timezone for `Date`, `Intl.DateTimeFormat`, etc. Persists across navigation + new tabs. Pass `timezoneId: null` to clear. NOTE: Playwright's `BrowserContext.timezoneId` is creation-time-only, so this primitive uses CDP `Emulation.setTimezoneOverride` (mid-session-capable). BYOB caveat: the CDP override persists on attached Chrome after detach.",
       inputSchema: {
@@ -365,6 +373,8 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_geolocation",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Override the session's HTML5 Geolocation reading. The page MUST also be granted the `geolocation` permission via `grant_permissions` for `navigator.geolocation.*` to deliver this value (browsers gate it). Uses Playwright's `context.setGeolocation()` which mutates a live context — no CDP fallback needed. Pass no coords (or `latitude:null`) to clear.",
       inputSchema: {
@@ -421,6 +431,8 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_color_scheme",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Override the session's `prefers-color-scheme` media query — drives dark-mode rendering. Mutates a live page via Playwright's `page.emulateMedia({colorScheme})`; takes effect immediately (CSS media queries re-evaluate). Pass `\"no-preference\"` to clear the override.",
       inputSchema: {
@@ -450,6 +462,8 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_reduced_motion",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Override the session's `prefers-reduced-motion` media query — useful when an animation-heavy page is unstable to drive, or to verify a reduced-motion code path. Mutates a live page via Playwright's `page.emulateMedia({reducedMotion})`. Pass `on:false` to clear.",
       inputSchema: {
@@ -476,6 +490,9 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "set_user_agent",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Override the session's User-Agent (HTTP header + `navigator.userAgent`). Persists across navigation + new tabs. Pass `userAgent: null` to clear. NOTE: Playwright's `BrowserContext.userAgent` is creation-time-only, so this primitive uses CDP `Network.setUserAgentOverride` (mid-session-capable; updates both the network header and the JS-visible value). BYOB caveat: the CDP override persists on attached Chrome after detach.",
       inputSchema: {
@@ -512,6 +529,8 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "grant_permissions",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Grant browser permissions for the session — `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, etc. (Chromium permission names). Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. Pass `permissions: []` (or omit) to clear all grants for the session — Playwright does not expose per-origin revocation, so clearing is context-wide.",
       inputSchema: {
@@ -554,6 +573,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "tab_visibility",
     {
+      capability: "navigation",
       description:
         'Background or foreground the session\'s tab — the only way to reproduce the bug class that only fires when the tab is hidden (throttled setTimeout, paused requestAnimationFrame so framework enter/animation hooks never run, and on-return a visibilitychange/focus handler replays stale state). `state:"background"` overrides document.visibilityState/hidden + dispatches visibilitychange, AND best-effort takes front focus away from the page so real timer/rAF throttling applies (real throttling is best-effort under headless). `state:"background"` with `holdMs` is the headline form: background, hold hidden for holdMs, then auto-foreground — reproducing the background→return transition in one call. `state:"foreground"` restores visibility and re-focuses the tab.',
       inputSchema: {
@@ -609,6 +629,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "get_config",
     {
+      batchable: true,
       description:
         "Inspect browxai configuration. Default returns the fully *resolved* view (precedence: built-in defaults < env [legacy BROWX_*] < user < project < session). Pass `scope` to see one raw pre-merge layer. Config is browxai-managed — change it with `set_config`, never by hand-editing files or env.",
       inputSchema: {
@@ -721,6 +742,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "approve_actions",
     {
+      batchable: true,
       description:
         'session-scoped pre-approval for one or more confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)`. The client calls this once at session start with the scopes to pre-approve (e.g. `["byob_action"]`) and an optional TTL; confirm hooks for those scopes auto-approve within the window. Each grant + consume is logged for audit. Falls back to page-side confirm when no grant covers the scope. Pre-approval is **not** a security boundary — it\'s an unblock for headless flows; tighten by capping `ttlSeconds` per-session.',
       inputSchema: {
@@ -766,6 +788,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "list_approvals",
     {
+      batchable: true,
       description:
         "List live pre-approvals from `approve_actions` — scope, grantedAt, expiresAt, uses, remainingMs. Audit helper.",
       inputSchema: {},
@@ -785,6 +808,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "register_secret",
     {
+      capability: "secrets",
       description:
         'Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:"<NAME>"})` / `press({key:"<NAME>"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (URL substring, case-insensitive) narrows the *dispatch* side: a scoped secret won\'t be substituted into a `fill` whose page URL doesn\'t contain the scope (refuses with a clear error). Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page\'s text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.',
       inputSchema: {
@@ -869,6 +893,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "solve_captcha",
     {
+      capability: "captcha",
       description:
         "Delegate a captcha challenge to a configured external provider (2Captcha / CapMonster / etc — provider speaks the 2Captcha-compatible REST API). **Gated behind the off-by-default `captcha` capability** — same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth`. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE; the operator carries the legal exposure. " +
         "Provider config is per-deployment via environment variables: BROWX_CAPTCHA_PROVIDER (`2captcha` or `capmonster`) + BROWX_CAPTCHA_API_KEY; optional BROWX_CAPTCHA_API_BASE / BROWX_CAPTCHA_TIMEOUT_MS / BROWX_CAPTCHA_POLL_MS. **browxai does NOT bundle a solver and does NOT auto-purchase credits** — when the capability is on but no provider is configured the tool returns a structured `ok:false` with a clear `no provider configured` hint. " +
@@ -1049,6 +1074,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "get_totp",
     {
+      capability: "credentials",
       description:
         "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts).",
       inputSchema: {
@@ -1074,6 +1100,7 @@ export function registerEmulationConfigTools(host: ToolHost): void {
   register(
     "get_credential",
     {
+      capability: "credentials",
       description:
         'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would leak it into the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`); the agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch. The returned object carries `{ok, username, aliasName, provider}` — **never the cleartext password**. Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
       inputSchema: {

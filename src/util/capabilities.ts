@@ -80,448 +80,597 @@ export const RETIRED_CAPABILITIES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Map each MCP tool name to the capability that governs it. A tool not in this map
- * is treated as `human` (coordination primitive, always safe). The categories match
- * `docs/threat-model.md` "The capability set".
+ * The per-tool capability assignment is DERIVED (RFC 0004 P2 / D2): it lives at
+ * each tool's `host.register({ capability })` call (the single source of truth,
+ * src/tools/host.ts), not in a hand-maintained list here. This module owns the
+ * closed *vocabulary* (`Capability` / `ALL_CAPABILITIES` above); the per-tool
+ * rows are populated from the registration metadata via `declareToolCapability`,
+ * collected once by the tools-layer bootstrap (`src/tools/tool-metadata.ts`).
+ *
+ * A tool with no declared capability is treated as `human` (coordination
+ * primitive, always safe) — the same permissive default as before, now reachable
+ * only for the control-plane primitives that legitimately carry no browser
+ * capability (open_session, batch, get_config, …), never by a silent omission
+ * (the completeness fitness test asserts every browser tool declares one).
  */
-export const TOOL_CAPABILITY: Record<string, Capability> = {
-  // read
-  snapshot: "read",
-  find: "read",
-  // frame discovery (lists frame tree with stable IDs). Pure-read;
-  // extends `read` so no new capability gate.
-  frames_list: "read",
-  screenshot: "read",
-  console_read: "read",
-  network_read: "read",
-  ws_read: "read",
-  inspect: "read",
-  // Page-wide overflow scan — generalises `inspect`'s per-element overflow
-  // check into a typed multi-detector pass. Pure-read; no new capability.
-  overflow_detect: "read",
-  point_probe: "read",
-  watch: "read",
-  sample: "read",
-  // act_and_sample: the sampler half is `read`; the inner action's own
-  // capability is enforced separately via gateCheck(action.tool) at runtime.
-  act_and_sample: "read",
-  list_named_refs: "read",
-  // Bridge from a session-internal `eN` ref to a Playwright-string locator
-  // expression an adopter can paste into a `.spec.ts`. Pure-read: looks the
-  // ref up in the existing registry, emits a string + structured breakdown.
-  generate_locator: "read",
-  text_search: "read",
-  // read-only introspection of Shadow DOM trees under a given
-  // host ref (or the document root). Open-shadow walk runs as a
-  // Runtime.evaluate; closed-shadow walk uses CDP DOM.getDocument({pierce:
-  // true}). Best-effort — when CDP refuses the pierce call, returns the
-  // open-only view plus a warning. Read-only, same posture as `snapshot`
-  // / `find` — under `read`. No new capability.
-  shadow_trees: "read",
-  // Structured schema-driven data extraction. Read-only; no new
-  // capability (the deterministic mode is selector-only).
-  extract: "read",
-  // verify-family — assertive read primitives (fail-emitting siblings of
-  // wait_for). Read-only — no `eval` capability gate. `verify_predicate` is
-  // intentionally NOT an arbitrary-JS path; its vocabulary is fixed enum +
-  // allow-listed accessor keys, server-evaluated. See src/util/predicates.ts.
-  verify_visible: "read",
-  verify_text: "read",
-  verify_value: "read",
-  verify_count: "read",
-  verify_attribute: "read",
-  verify_predicate: "read",
-  // navigation
-  navigate: "navigation",
-  go_back: "navigation",
-  go_forward: "navigation",
-  scroll: "navigation",
-  set_viewport: "navigation",
-  tab_visibility: "navigation",
-  // action
-  click: "action",
-  fill: "action",
-  press: "action",
-  shortcut: "action",
-  hover: "action",
-  select: "action",
-  choose_option: "action",
-  fill_form: "action",
-  wait_for: "action",
-  // `plan` resolves an NL query to a bound ActionDescriptor without
-  // dispatching — semantically a read-then-bind primitive over `find()`.
-  // `execute` dispatches a previously-planned descriptor; its handler
-  // additionally enforces the underlying verb's capability (so e.g. a
-  // descriptor with verb:"click" still requires `action`).
-  plan: "read",
-  execute: "action",
-  // human
-  await_human: "human",
-  name_ref: "human",
-  start_recording: "human",
-  end_recording: "human",
-  record_annotate: "human",
-  find_feedback: "human",
-  // eval
-  eval_js: "eval",
-  poll_eval: "eval", // repeatedly evaluates page JS — same posture as eval_js
-  // The tools below were promoted from the experimental lane (formerly the
-  // off-by-default `unstable` capability) into the stable surface: each now
-  // sits under its natural capability — gestures/route mocking are `action`,
-  // the compound act-and-observe tools are `read` (the inner action's own
-  // capability is still gate-checked separately), region bind/resolve +
-  // profile snapshot/restore are `human` coordination.
-  drag: "action",
-  double_click: "action",
-  // per-session dialog policy mutator. Registers under `action` (it changes
-  // how subsequent actions respond to alert/confirm/prompt fires — a
-  // session-state knob, not a capability of its own).
-  set_dialog_policy: "action",
-  // per-session permission policy mutator. Sibling of `set_dialog_policy`:
-  // governs camera/microphone/geolocation/clipboard/notification/sensor
-  // permission requests fired from the page. Registers under `action` — no
-  // new capability gate. The posture matches `grant_permissions` (same kind
-  // of mutation) but the policy shape (allow/deny/raise/ask-human, per-
-  // permission overrides) is richer; `grant_permissions` remains the
-  // bulk-grant shortcut for `permission_policy({mode:"allow"})`.
-  set_permission_policy: "action",
-  // read-side companion to set_permission_policy: surfaces the current
-  // CDP-reported state per permission (granted/denied/prompt). Same
-  // posture as `console_read` / `network_read`.
-  permission_state: "read",
-  // per-session notification-construction policy mutator. Sibling of
-  // `set_permission_policy`: governs `new Notification(...)` constructor
-  // calls (distinct from the permission check, which lives in
-  // permission_policy). Registers under `action` — no new capability.
-  set_notification_policy: "action",
-  // per-session File System Access picker policy mutator. Sibling of
-  // `set_dialog_policy` / `set_permission_policy`: governs
-  // `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`
-  // calls from the page. Registers under `action` — same posture as
-  // the other policy mutators (mid-session state knob, not a capability
-  // of its own).
-  set_fs_picker_policy: "action",
-  // companion to `set_fs_picker_policy` — stages agent-supplied files
-  // for the page-side stubs to return in `allow` mode. The save-picker
-  // path writes through to a workspace-rooted destination via the page
-  // stream; the open-picker path reads source bytes from a workspace-
-  // rooted path at respond-time. Under `file-io` — same posture as
-  // `upload_file` (workspace-rooted egress on writes; workspace-rooted
-  // ingress on reads).
-  fs_picker_respond: "file-io",
-  mouse_down: "action",
-  mouse_move: "action",
-  mouse_up: "action",
-  mouse_wheel: "action",
-  // Touch + multi-touch gesture pipeline. Separate CDP dispatch path from
-  // the mouse_* family — extends `action`, no new capability.
-  touch_start: "action",
-  touch_move: "action",
-  touch_end: "action",
-  gesture_pinch: "action",
-  gesture_swipe: "action",
-  route: "action",
-  route_queue: "action",
-  unroute: "action",
-  // Interactive WebSocket primitives — mutate live realtime traffic
-  // (`ws_send` injects a frame on a page-side socket; `ws_intercept` rewrites
-  // inbound frames before they hit app handlers). Sibling of the HTTP `route`
-  // family on the WS channel — same `action` posture; no new capability gate.
-  ws_send: "action",
-  ws_intercept: "action",
-  ws_unintercept: "action",
-  network_emulate: "action",
-  cpu_emulate: "action",
-  clock: "action",
-  seed_random: "action",
-  // Performance tracing (CDP `Tracing.start` / `Tracing.end` + structured
-  // insights extraction). `perf_start` arms collection on the target;
-  // `perf_stop` flushes to a workspace-rooted trace file; `perf_insights`
-  // reads a written trace and returns the structured summary. All three are
-  // `action` — they mutate target state (tracing on/off) and `perf_stop`
-  // writes a file. No new capability is introduced.
-  perf_start: "action",
-  perf_stop: "action",
-  perf_insights: "action",
-  //  perf module additions. `perf_audit` and `coverage_stop` are
-  // `read` — non-mutating observation/composition over the trace + coverage
-  // they collected. `coverage_start` is `action` (arms CDP state on the
-  // target). `layout_thrash_trace` and `memory_diff` are `read` — focused
-  // trace observation + pure file-diff, no further mutation.
-  perf_audit: "read",
-  coverage_start: "action",
-  coverage_stop: "read",
-  layout_thrash_trace: "read",
-  memory_diff: "read",
-  // V8 heap snapshots (CDP `HeapProfiler.takeHeapSnapshot` + in-process
-  // retainer query over the `.heapsnapshot` JSON). `heap_snapshot` writes
-  // a workspace-rooted file; `heap_retainers` reads one and reports who
-  // holds objects matching a name/type query. Both are `action` —
-  // `heap_snapshot` writes a file, and `heap_retainers` is a sibling
-  // tool kept under the same capability so a memory-diagnosis batch
-  // doesn't need to juggle two grants.
-  heap_snapshot: "action",
-  heap_retainers: "action",
-  // Per-primitive device emulation (locale, timezone, geolocation, colour
-  // scheme, reduced motion, user-agent, permissions). Each mutates one
-  // Playwright/CDP emulation knob on the live session; under `action`
-  // (mid-session state mutation, sibling to `set_viewport` which is under
-  // `navigation`). Splitting them as 7 siblings — not a bundled
-  // `emulate({…})` — lets agents set just what they need.
-  set_locale: "action",
-  set_timezone: "action",
-  set_geolocation: "action",
-  set_color_scheme: "action",
-  set_reduced_motion: "action",
-  set_user_agent: "action",
-  grant_permissions: "action",
-  act_and_diff: "read",
-  act_and_wait_for_network: "read",
-  // flake-check: dispatches the same batch payload N times to surface
-  // intermittent failures + emit a cached-selector artifact. Posture is
-  // `action` — unlike the act_and_* siblings (single inner action, sampled),
-  // flake-check is purpose-built to repeatedly DISPATCH a sequence (each
-  // inner call going through its own per-call gateCheck via the batch
-  // handler map). Treating the outer primitive as `action` makes the intent
-  // explicit at config-time: a `read`-only server should not be silently
-  // re-running fills + clicks N times because someone wrapped them in
-  // flake_check.
-  flake_check: "action",
-  cross_session_sample: "read",
-  screenshot_region: "read",
-  // Composed screenshot: paint numbered bounding boxes over caller-supplied
-  // candidates and return the PNG + an index↔ref mapping. Pure compose on top
-  // of existing primitives (no new browser interaction beyond a transient
-  // in-page overlay) — `read`.
-  screenshot_marks: "read",
-  export_session_report: "read",
-  // Sibling to `export_session_report`: rolls up the session's cumulative
-  // tool-call metrics (counts, latency, tokensEstimate sum, capability denials,
-  // per-tool errors). Read-only — accumulates dispatch envelope data the server
-  // already has, no new side-effect.
-  session_metrics: "read",
-  // Trace-export sibling to `export_session_report`: lowers the session's
-  // recorded action trace to a runnable `@playwright/test` spec file. Under
-  // `read` — exports recorded state, dispatches no new action.
-  export_playwright_script: "read",
-  name_region: "human",
-  region: "human",
-  profile_snapshot: "human",
-  profile_restore: "human",
-  // network-body (off by default — full response bodies can carry PII / tokens)
-  network_body: "network-body",
-  // file-io
-  upload_file: "file-io",
-  // drop_files — sibling to `upload_file` for drop-zone uploaders (modern
-  // SaaS file pickers that don't expose an `<input type=file>`). Same
-  // posture: an in-page File construction reading bytes from disk
-  // (`path` mode) or inline base64 (`contents` mode). Workspace-rooted
-  // paths only. Under `file-io` (workspace-rooted egress + file-io IN).
-  drop_files: "file-io",
-  // Page archive — save current page as a self-contained artefact (directory
-  // mode: index.html + assets/ sidecar; single-file mode: data:URI-inlined
-  // HTML). Workspace-rooted output by construction. Under `file-io` (same
-  // posture as `upload_file` / `downloads_capture`): an archive write is a
-  // deliberate filesystem egress, not a routine action. See src/page/archive.ts.
-  page_archive: "file-io",
-  // Element export — save one element subtree (ref-targeted) as a
-  // self-contained HTML snippet + CSS + linked resources. Same UNMASKED
-  // posture as `page_archive`. Under `file-io` (workspace-rooted egress).
-  element_export: "file-io",
-  // Full DOM dump — `documentElement.outerHTML` or one-JSON-line-per-node
-  // jsonl. Walks open shadow roots in jsonl mode; closed shadows are
-  // platform-inaccessible. Under `file-io` (workspace-rooted egress).
-  dom_export: "file-io",
-  // Download capture — reverse of `upload_file`. `downloads_capture` toggles
-  // per-session interception of Playwright `download` events; `download_get`
-  // returns the captured bytes (or workspace-rooted path) for an id surfaced
-  // on `ActionResult.downloads[]`. Same posture as `upload_file`: no new
-  // capability, workspace-rooted paths only.
-  downloads_capture: "file-io",
-  download_get: "file-io",
-  // Filter the session's network ring and persist matching responses to a
-  // workspace-rooted dir. Same posture as `download_get` (read recent
-  // session-state, write the resulting bytes under $BROWX_WORKSPACE) — no new
-  // capability gate to enable.
-  asset_export: "file-io",
-  // Screenshot automation — periodic (`screenshot_schedule`) and event-driven
-  // (`screenshot_on`) capture into a workspace-rooted directory. Same posture
-  // as `screenshot({path})` / `page_archive`: the bytes hit disk, so both ride
-  // the existing off-by-default `file-io` capability; no new gate.
-  screenshot_schedule: "file-io",
-  screenshot_on: "file-io",
-  // PDF save — print the current page to a workspace-rooted PDF. Mirror of
-  // `upload_file` (file-io OUT instead of IN), but under `action` not
-  // `file-io`: the consequential write is to the *workspace* only (no
-  // user-filesystem read like `upload_file`'s `path` mode), so it sits with
-  // the other DOM-mutating / state-mutating writers. Refused on `attached`
-  // sessions at the tool layer — see src/page/pdf.ts.
-  pdf_save: "action",
-  // Three-layer storage-state.
-  //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
-  //   writes (`*_set`, `*_delete`, `*_clear`,
-  //           `inject_storage_state`, `auth_save`, `auth_load`,
-  //           `auth_delete`)                                         → `action`
-  // No new capability gate — these reuse the existing read/action posture so
-  // an existing capability config doesn't need editing to use them.
-  dump_storage_state: "read",
-  inject_storage_state: "action",
-  cookies_get: "read",
-  cookies_list: "read",
-  cookies_set: "action",
-  cookies_delete: "action",
-  cookies_clear: "action",
-  localstorage_get: "read",
-  localstorage_list: "read",
-  localstorage_set: "action",
-  localstorage_delete: "action",
-  localstorage_clear: "action",
-  sessionstorage_get: "read",
-  sessionstorage_list: "read",
-  sessionstorage_set: "action",
-  sessionstorage_delete: "action",
-  sessionstorage_clear: "action",
-  auth_save: "action",
-  auth_load: "action",
-  auth_list: "read",
-  auth_delete: "action",
-  // Cache API + IndexedDB CRUD.
-  //   reads  (`*_list*`, `*_get`)            → `read`
-  //   writes (`*_put`, `*_delete`, `*_clear`,
-  //           `caches_delete_storage`)       → `action`
-  // No new capability gate — same posture as web-storage CRUD.
-  caches_list_storages: "read",
-  caches_list: "read",
-  caches_get: "read",
-  caches_put: "action",
-  caches_delete: "action",
-  caches_clear: "action",
-  caches_delete_storage: "action",
-  idb_list_databases: "read",
-  idb_list_stores: "read",
-  idb_get: "read",
-  idb_put: "action",
-  idb_delete: "action",
-  idb_clear: "action",
-  // Per-session artifact KV — save/get/list of session-scoped string/binary
-  // payloads (the "build your own library over time" loop). `artifact_save`
-  // writes a file → `action`; `artifact_get` / `artifact_list` are read-only.
-  // No new capability gate to enable.
-  artifact_save: "action",
-  artifact_get: "read",
-  artifact_list: "read",
-  // HAR record/replay — `start_har` / `stop_har` both write/mutate session
-  // state and (in the case of start) reserve a workspace-rooted file path
-  // the context will write on close. Under `action` (sibling to the storage
-  // bulk writers); reuses an existing capability, no new gate to enable.
-  start_har: "action",
-  stop_har: "action",
-  // Session video recording — `stop_video` signals intent to finalize the
-  // recording (Playwright finalizes on context.close — same constraint as
-  // native HAR); `get_video` reads the finalized .webm. Both write/read a
-  // workspace-rooted file path, so they sit under `file-io` (sibling to
-  // `upload_file` / `download_get`). The start path is `open_session(
-  // {recordVideo})` — Playwright doesn't expose a runtime start, so the
-  // tool surface here is stop + get only.
-  stop_video: "file-io",
-  get_video: "file-io",
-  // secrets — per-session sensitive-data registry + egress masking. Off by
-  // default; loud-warn one-time when a secret is registered. Mirrors
-  // `eval` / `network-body` / `disableWebSecurity` posture. `register_secret`
-  // is the only tool the capability gates; the masking layer it installs is
-  // behaviour-gated across every egress sink. See docs/tool-reference.md +
-  // docs/threat-model.md.
-  register_secret: "secrets",
-  // extensions — per-session Chrome extension management. Off-by-default
-  // capability; loud-warned at boot. Extensions can read every page the
-  // session visits and make arbitrary network requests, so same posture
-  // class as `eval` / `network-body` / `secrets`. The 5 mutator/read tools
-  // all gate behind the same capability; the tool layer additionally
-  // refuses on `incognito` / `attached` sessions and on `headless:true`
-  // launches (Chromium constraints — see src/session/extensions.ts).
-  extensions_install: "extensions",
-  extensions_list: "extensions",
-  extensions_reload: "extensions",
-  extensions_trigger: "extensions",
-  extensions_uninstall: "extensions",
-  // captcha — per-session delegated captcha solving via a configured external
-  // provider (2Captcha / CapMonster / etc; provider config via env). Off-by-
-  // default capability; loud-warned at boot. Same posture class as
-  // `eval` / `network-body` / `secrets` / `extensions` / `stealth`. Provider
-  // config is per-deployment (env vars) — browxai NEVER bundles a solver and
-  // NEVER auto-purchases credits. When the capability is on but no provider
-  // is configured the tool returns a structured "no provider configured"
-  // failure.
-  solve_captcha: "captcha",
-  // stealth is behaviour-gated (no tool of its own). The capability flips
-  // per-context init-script patches at session creation (navigator.webdriver
-  // / plugins / languages / window.chrome) — see src/helper/stealth.ts.
-  // credentials — off-by-default pluggable hook into an external vault for
-  // TOTP / username+password lookup. Same posture class as `eval` /
-  // `network-body` / `secrets` — provider is configured per-deployment,
-  // never bundled, loud-warned at boot. `get_credential` additionally
-  // requires `secrets` to be enabled at the same time (it auto-registers
-  // the looked-up password into the secrets-mask registry).
-  get_totp: "credentials",
-  get_credential: "credentials",
-  // device-emulation — per-session Web Bluetooth / WebUSB / WebHID device
-  // catalog synthesis. Off-by-default capability; loud-warned at boot.
-  // The wrappers tell the page it found physical devices that don't exist
-  // (an init-script-wrapped `navigator.bluetooth.requestDevice()` /
-  // `navigator.usb.requestDevice()` / `navigator.hid.requestDevice()`
-  // resolves with synthetic objects matching the agent-supplied catalog).
-  // Same posture class as `eval` / `network-body` / `secrets` /
-  // `extensions` / `captcha` — see docs/threat-model.md. `device_requests`
-  // is the read-side companion (sliced view of which APIs the page has
-  // called); it sits under the same capability so a server without
-  // `device-emulation` can't even see whether a page tried to ask.
-  emulate_bluetooth: "device-emulation",
-  emulate_usb: "device-emulation",
-  emulate_hid: "device-emulation",
-  device_requests: "device-emulation",
-  // diagnostics — off-by-default per-call recording layer + agent self-feedback.
-  // Loud-warned at boot. `diagnostics_note` is the write-side primitive (under
-  // the `diagnostics` capability — registering a note implies the recorder is
-  // engaged); `diagnostics_search` + `diagnostics_report` are read-side
-  // queries over the JSONL store, sitting under `read` so a report can be
-  // pulled even when no further notes are being filed. The implicit fourth
-  // surface is the dispatch-boundary recorder hook in server.ts: when the
-  // capability is OFF the hook short-circuits to a no-op (zero allocations
-  // beyond a gate check); when ON, every tool call lands as a JSONL line
-  // DOWNSTREAM of the URL sanitiser + secrets-masking chokepoint so
-  // registered secret values never reach the store raw. Same posture class
-  // as `eval` / `network-body` / `secrets` / `extensions` / `stealth` /
-  // `captcha` / `device-emulation`. See docs/threat-model.md.
-  diagnostics_note: "diagnostics",
-  diagnostics_search: "read",
-  diagnostics_report: "read",
-  // canvas — off-by-default per-session canvas-app automation primitives.
-  // The five tools (`canvas_capture` / `canvas_diff` / `gesture_chain` /
-  // `canvas_world_to_screen` / `canvas_screen_to_world` / `canvas_query`)
-  // provide app-agnostic substrate for driving canvas-based editors
-  // (Figma, Tldraw, Excalidraw, etc) without bundling vision or knowing
-  // any specific app's internals. Loud-warned at boot. Same posture class
-  // as `eval` / `network-body` / `secrets` / `extensions` /
-  // `device-emulation` / `diagnostics`. `canvas_capture` reads framebuffer
-  // bytes — pixel-level page surface; `gesture_chain` dispatches raw
-  // pointer programs (custom paint strokes, lasso paths); the world↔screen
-  // helpers do affine math + heuristic discovery on common app globals.
-  // `canvas_query` is the dispatcher into canvas-app adapter plugins
-  // (landed separately); it returns a structured no-adapter
-  // error when no plugin registers under the namespace. `canvas_diff` is
-  // pure-RGBA-bytes math — under `read` (no canvas-pixel touch of its own).
-  canvas_capture: "canvas",
-  canvas_diff: "read",
-  gesture_chain: "canvas",
-  canvas_world_to_screen: "canvas",
-  canvas_screen_to_world: "canvas",
-  canvas_query: "canvas",
-  // byob-attach is not bound to a specific tool — it gates the
-  // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
-  // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard
-  // side-effect (copy/cut/paste) only engages when `clipboard` is also enabled —
-  // off by default; same posture class as `eval` / `network-body`.
-};
+const TOOL_CAPABILITY_MAP = new Map<string, Capability>();
+
+/** Record one tool's capability assignment from its colocated
+ *  `host.register({ capability })` metadata (RFC 0004 P2). Idempotent for an
+ *  identical re-declaration; a *conflicting* one throws (two registrations cannot
+ *  disagree on one tool's gate). The only writer of the derived map. */
+export function declareToolCapability(tool: string, capability: Capability): void {
+  const existing = TOOL_CAPABILITY_MAP.get(tool);
+  if (existing !== undefined && existing !== capability) {
+    throw new Error(
+      `declareToolCapability: "${tool}" already declared as "${existing}", got "${capability}"`,
+    );
+  }
+  TOOL_CAPABILITY_MAP.set(tool, capability);
+}
+
+/** Lazy-collection seam (RFC 0004 P2). The tools layer installs a collector that
+ *  runs the registration metadata once and populates the derived maps;
+ *  `capabilities.ts` (a leaf) cannot import the tools layer, so the dependency is
+ *  inverted through this setter. Every real entry point (`createServer`, the SDK
+ *  client, the CLI, the package entry) reaches the tools-layer bootstrap, which
+ *  installs the collector AND eagerly populates the map — so in production a gate
+ *  read always sees the full derived rows. */
+let toolMetadataCollector: (() => void) | undefined;
+let toolMetadataLoaded = false;
+/** True while the collector is mid-run. A re-entrant read during collection (the
+ *  collector's own `resolveCapabilities`/`buildHost` path touches the gate) must
+ *  tolerate the partially-populated map WITHOUT tripping the fail-safe — the
+ *  collector is installed and running, so the map is about to be complete. */
+let toolMetadataCollecting = false;
+export function installToolMetadataCollector(collect: () => void): void {
+  toolMetadataCollector = collect;
+  // A late install (after the first read already ran the empty map) still takes
+  // effect: clear the loaded flag so the next read collects.
+  toolMetadataLoaded = false;
+}
+function ensureToolMetadataLoaded(): void {
+  if (toolMetadataLoaded || toolMetadataCollector === undefined) return;
+  toolMetadataLoaded = true; // set before running so re-entrant declares don't recurse
+  toolMetadataCollecting = true;
+  try {
+    toolMetadataCollector();
+  } finally {
+    toolMetadataCollecting = false;
+  }
+}
+
+/**
+ * D1 fail-safe (RFC 0004 P2, SECURITY-CRITICAL): the capability gate must NEVER
+ * fail OPEN. If a reader hits the derived map while it is empty AND no collector
+ * was ever installed, the tools-layer bootstrap did not run — `isToolEnabled`
+ * would otherwise pass EVERYTHING through the permissive `human` default,
+ * silently un-gating `eval_js` / `register_secret` / `network_body` / the engine
+ * gate. Rather than fail open we throw a structured, actionable error so the
+ * misconfiguration is loud and impossible to ship. The guaranteed bootstrap
+ * (`tool-metadata.ts`, imported by every real entry point) is the primary
+ * mechanism that keeps this throw from firing in production; this is the backstop.
+ *
+ * The throw is suppressed only DURING collection (the collector's own gate read
+ * legitimately sees a partial map) — at that point a collector is installed and
+ * running, so the map is about to be complete.
+ */
+function assertGateBootstrapped(): void {
+  if (TOOL_CAPABILITY_MAP.size > 0 || toolMetadataCollecting) return;
+  throw new Error(
+    "browxai capability gate read before the tool-metadata bootstrap ran: the derived " +
+      "TOOL_CAPABILITY map is empty and no collector was installed. Refusing to fail OPEN " +
+      "(which would un-gate eval_js / register_secret / network_body). Import the package " +
+      'entry ("browxai") or call createServer before reading the capability gate. ' +
+      "(RFC 0004 P2 / D1.)",
+  );
+}
+
+/** The derived tool→capability map. Reading drives the lazy collection so the
+ *  rows declared at registration are present for a standalone caller, then
+ *  asserts the gate is bootstrapped (fail-safe — never returns an empty
+ *  un-gated map to a consumer). */
+export function toolCapabilityMap(): ReadonlyMap<string, Capability> {
+  ensureToolMetadataLoaded();
+  assertGateBootstrapped();
+  return TOOL_CAPABILITY_MAP;
+}
+
+/** Back-compat `Record` view of the derived map for the consumers that index it
+ *  by name (`TOOL_CAPABILITY[tool]`). A `Proxy` so a read both triggers the lazy
+ *  collection and reflects any registration that ran after a prior read. Every
+ *  access path that resolves a capability (the by-name `get`, the membership
+ *  `has`, key enumeration, and the D2 `Symbol.iterator` Map-parity iterator)
+ *  runs the D1 fail-safe — the gate never answers from an empty unbootstrapped
+ *  map. */
+export const TOOL_CAPABILITY: Record<string, Capability> = new Proxy(
+  Object.create(null) as Record<string, Capability>,
+  {
+    get(_t, key) {
+      ensureToolMetadataLoaded();
+      // D2: Map-parity iteration — `for (const [tool, cap] of TOOL_CAPABILITY)`
+      // and `[...TOOL_CAPABILITY]` delegate to the backing Map's iterator. Bound
+      // to the Map so the internal-slot read keeps the right receiver.
+      if (key === Symbol.iterator) {
+        assertGateBootstrapped();
+        return TOOL_CAPABILITY_MAP[Symbol.iterator].bind(TOOL_CAPABILITY_MAP);
+      }
+      if (typeof key !== "string") return undefined;
+      assertGateBootstrapped();
+      return TOOL_CAPABILITY_MAP.get(key);
+    },
+    has(_t, key) {
+      ensureToolMetadataLoaded();
+      assertGateBootstrapped();
+      return typeof key === "string" && TOOL_CAPABILITY_MAP.has(key);
+    },
+    ownKeys() {
+      ensureToolMetadataLoaded();
+      assertGateBootstrapped();
+      return [...TOOL_CAPABILITY_MAP.keys()];
+    },
+    getOwnPropertyDescriptor(_t, key) {
+      ensureToolMetadataLoaded();
+      assertGateBootstrapped();
+      if (typeof key === "string" && TOOL_CAPABILITY_MAP.has(key)) {
+        return { enumerable: true, configurable: true, value: TOOL_CAPABILITY_MAP.get(key) };
+      }
+      return undefined;
+    },
+  },
+);
+
+/**
+ * The pre-P2 hand-maintained assignment block, retained verbatim BELOW as a
+ * documentation appendix — the threat-model rationale for each tool's capability
+ * is preserved next to the vocabulary, even though the live assignment now lives
+ * at each `host.register({ capability })` call. This block is comment-only; it
+ * declares nothing. (Reference — not the source of truth.)
+ *
+ * /**
+ *  * Map each MCP tool name to the capability that governs it. A tool not in this map
+ *  * is treated as `human` (coordination primitive, always safe). The categories match
+ *  * `docs/threat-model.md` "The capability set".
+ *  * /
+ * export const TOOL_CAPABILITY: Record<string, Capability> = {
+ *   // read
+ *   snapshot: "read",
+ *   find: "read",
+ *   // frame discovery (lists frame tree with stable IDs). Pure-read;
+ *   // extends `read` so no new capability gate.
+ *   frames_list: "read",
+ *   screenshot: "read",
+ *   console_read: "read",
+ *   network_read: "read",
+ *   ws_read: "read",
+ *   inspect: "read",
+ *   // Page-wide overflow scan — generalises `inspect`'s per-element overflow
+ *   // check into a typed multi-detector pass. Pure-read; no new capability.
+ *   overflow_detect: "read",
+ *   point_probe: "read",
+ *   watch: "read",
+ *   sample: "read",
+ *   // act_and_sample: the sampler half is `read`; the inner action's own
+ *   // capability is enforced separately via gateCheck(action.tool) at runtime.
+ *   act_and_sample: "read",
+ *   list_named_refs: "read",
+ *   // Bridge from a session-internal `eN` ref to a Playwright-string locator
+ *   // expression an adopter can paste into a `.spec.ts`. Pure-read: looks the
+ *   // ref up in the existing registry, emits a string + structured breakdown.
+ *   generate_locator: "read",
+ *   text_search: "read",
+ *   // read-only introspection of Shadow DOM trees under a given
+ *   // host ref (or the document root). Open-shadow walk runs as a
+ *   // Runtime.evaluate; closed-shadow walk uses CDP DOM.getDocument({pierce:
+ *   // true}). Best-effort — when CDP refuses the pierce call, returns the
+ *   // open-only view plus a warning. Read-only, same posture as `snapshot`
+ *   // / `find` — under `read`. No new capability.
+ *   shadow_trees: "read",
+ *   // Structured schema-driven data extraction. Read-only; no new
+ *   // capability (the deterministic mode is selector-only).
+ *   extract: "read",
+ *   // verify-family — assertive read primitives (fail-emitting siblings of
+ *   // wait_for). Read-only — no `eval` capability gate. `verify_predicate` is
+ *   // intentionally NOT an arbitrary-JS path; its vocabulary is fixed enum +
+ *   // allow-listed accessor keys, server-evaluated. See src/util/predicates.ts.
+ *   verify_visible: "read",
+ *   verify_text: "read",
+ *   verify_value: "read",
+ *   verify_count: "read",
+ *   verify_attribute: "read",
+ *   verify_predicate: "read",
+ *   // navigation
+ *   navigate: "navigation",
+ *   go_back: "navigation",
+ *   go_forward: "navigation",
+ *   scroll: "navigation",
+ *   set_viewport: "navigation",
+ *   tab_visibility: "navigation",
+ *   // action
+ *   click: "action",
+ *   fill: "action",
+ *   press: "action",
+ *   shortcut: "action",
+ *   hover: "action",
+ *   select: "action",
+ *   choose_option: "action",
+ *   fill_form: "action",
+ *   wait_for: "action",
+ *   // `plan` resolves an NL query to a bound ActionDescriptor without
+ *   // dispatching — semantically a read-then-bind primitive over `find()`.
+ *   // `execute` dispatches a previously-planned descriptor; its handler
+ *   // additionally enforces the underlying verb's capability (so e.g. a
+ *   // descriptor with verb:"click" still requires `action`).
+ *   plan: "read",
+ *   execute: "action",
+ *   // human
+ *   await_human: "human",
+ *   name_ref: "human",
+ *   start_recording: "human",
+ *   end_recording: "human",
+ *   record_annotate: "human",
+ *   find_feedback: "human",
+ *   // eval
+ *   eval_js: "eval",
+ *   poll_eval: "eval", // repeatedly evaluates page JS — same posture as eval_js
+ *   // The tools below were promoted from the experimental lane (formerly the
+ *   // off-by-default `unstable` capability) into the stable surface: each now
+ *   // sits under its natural capability — gestures/route mocking are `action`,
+ *   // the compound act-and-observe tools are `read` (the inner action's own
+ *   // capability is still gate-checked separately), region bind/resolve +
+ *   // profile snapshot/restore are `human` coordination.
+ *   drag: "action",
+ *   double_click: "action",
+ *   // per-session dialog policy mutator. Registers under `action` (it changes
+ *   // how subsequent actions respond to alert/confirm/prompt fires — a
+ *   // session-state knob, not a capability of its own).
+ *   set_dialog_policy: "action",
+ *   // per-session permission policy mutator. Sibling of `set_dialog_policy`:
+ *   // governs camera/microphone/geolocation/clipboard/notification/sensor
+ *   // permission requests fired from the page. Registers under `action` — no
+ *   // new capability gate. The posture matches `grant_permissions` (same kind
+ *   // of mutation) but the policy shape (allow/deny/raise/ask-human, per-
+ *   // permission overrides) is richer; `grant_permissions` remains the
+ *   // bulk-grant shortcut for `permission_policy({mode:"allow"})`.
+ *   set_permission_policy: "action",
+ *   // read-side companion to set_permission_policy: surfaces the current
+ *   // CDP-reported state per permission (granted/denied/prompt). Same
+ *   // posture as `console_read` / `network_read`.
+ *   permission_state: "read",
+ *   // per-session notification-construction policy mutator. Sibling of
+ *   // `set_permission_policy`: governs `new Notification(...)` constructor
+ *   // calls (distinct from the permission check, which lives in
+ *   // permission_policy). Registers under `action` — no new capability.
+ *   set_notification_policy: "action",
+ *   // per-session File System Access picker policy mutator. Sibling of
+ *   // `set_dialog_policy` / `set_permission_policy`: governs
+ *   // `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker`
+ *   // calls from the page. Registers under `action` — same posture as
+ *   // the other policy mutators (mid-session state knob, not a capability
+ *   // of its own).
+ *   set_fs_picker_policy: "action",
+ *   // companion to `set_fs_picker_policy` — stages agent-supplied files
+ *   // for the page-side stubs to return in `allow` mode. The save-picker
+ *   // path writes through to a workspace-rooted destination via the page
+ *   // stream; the open-picker path reads source bytes from a workspace-
+ *   // rooted path at respond-time. Under `file-io` — same posture as
+ *   // `upload_file` (workspace-rooted egress on writes; workspace-rooted
+ *   // ingress on reads).
+ *   fs_picker_respond: "file-io",
+ *   mouse_down: "action",
+ *   mouse_move: "action",
+ *   mouse_up: "action",
+ *   mouse_wheel: "action",
+ *   // Touch + multi-touch gesture pipeline. Separate CDP dispatch path from
+ *   // the mouse_* family — extends `action`, no new capability.
+ *   touch_start: "action",
+ *   touch_move: "action",
+ *   touch_end: "action",
+ *   gesture_pinch: "action",
+ *   gesture_swipe: "action",
+ *   route: "action",
+ *   route_queue: "action",
+ *   unroute: "action",
+ *   // Interactive WebSocket primitives — mutate live realtime traffic
+ *   // (`ws_send` injects a frame on a page-side socket; `ws_intercept` rewrites
+ *   // inbound frames before they hit app handlers). Sibling of the HTTP `route`
+ *   // family on the WS channel — same `action` posture; no new capability gate.
+ *   ws_send: "action",
+ *   ws_intercept: "action",
+ *   ws_unintercept: "action",
+ *   network_emulate: "action",
+ *   cpu_emulate: "action",
+ *   clock: "action",
+ *   seed_random: "action",
+ *   // Performance tracing (CDP `Tracing.start` / `Tracing.end` + structured
+ *   // insights extraction). `perf_start` arms collection on the target;
+ *   // `perf_stop` flushes to a workspace-rooted trace file; `perf_insights`
+ *   // reads a written trace and returns the structured summary. All three are
+ *   // `action` — they mutate target state (tracing on/off) and `perf_stop`
+ *   // writes a file. No new capability is introduced.
+ *   perf_start: "action",
+ *   perf_stop: "action",
+ *   perf_insights: "action",
+ *   //  perf module additions. `perf_audit` and `coverage_stop` are
+ *   // `read` — non-mutating observation/composition over the trace + coverage
+ *   // they collected. `coverage_start` is `action` (arms CDP state on the
+ *   // target). `layout_thrash_trace` and `memory_diff` are `read` — focused
+ *   // trace observation + pure file-diff, no further mutation.
+ *   perf_audit: "read",
+ *   coverage_start: "action",
+ *   coverage_stop: "read",
+ *   layout_thrash_trace: "read",
+ *   memory_diff: "read",
+ *   // V8 heap snapshots (CDP `HeapProfiler.takeHeapSnapshot` + in-process
+ *   // retainer query over the `.heapsnapshot` JSON). `heap_snapshot` writes
+ *   // a workspace-rooted file; `heap_retainers` reads one and reports who
+ *   // holds objects matching a name/type query. Both are `action` —
+ *   // `heap_snapshot` writes a file, and `heap_retainers` is a sibling
+ *   // tool kept under the same capability so a memory-diagnosis batch
+ *   // doesn't need to juggle two grants.
+ *   heap_snapshot: "action",
+ *   heap_retainers: "action",
+ *   // Per-primitive device emulation (locale, timezone, geolocation, colour
+ *   // scheme, reduced motion, user-agent, permissions). Each mutates one
+ *   // Playwright/CDP emulation knob on the live session; under `action`
+ *   // (mid-session state mutation, sibling to `set_viewport` which is under
+ *   // `navigation`). Splitting them as 7 siblings — not a bundled
+ *   // `emulate({…})` — lets agents set just what they need.
+ *   set_locale: "action",
+ *   set_timezone: "action",
+ *   set_geolocation: "action",
+ *   set_color_scheme: "action",
+ *   set_reduced_motion: "action",
+ *   set_user_agent: "action",
+ *   grant_permissions: "action",
+ *   act_and_diff: "read",
+ *   act_and_wait_for_network: "read",
+ *   // flake-check: dispatches the same batch payload N times to surface
+ *   // intermittent failures + emit a cached-selector artifact. Posture is
+ *   // `action` — unlike the act_and_* siblings (single inner action, sampled),
+ *   // flake-check is purpose-built to repeatedly DISPATCH a sequence (each
+ *   // inner call going through its own per-call gateCheck via the batch
+ *   // handler map). Treating the outer primitive as `action` makes the intent
+ *   // explicit at config-time: a `read`-only server should not be silently
+ *   // re-running fills + clicks N times because someone wrapped them in
+ *   // flake_check.
+ *   flake_check: "action",
+ *   cross_session_sample: "read",
+ *   screenshot_region: "read",
+ *   // Composed screenshot: paint numbered bounding boxes over caller-supplied
+ *   // candidates and return the PNG + an index↔ref mapping. Pure compose on top
+ *   // of existing primitives (no new browser interaction beyond a transient
+ *   // in-page overlay) — `read`.
+ *   screenshot_marks: "read",
+ *   export_session_report: "read",
+ *   // Sibling to `export_session_report`: rolls up the session's cumulative
+ *   // tool-call metrics (counts, latency, tokensEstimate sum, capability denials,
+ *   // per-tool errors). Read-only — accumulates dispatch envelope data the server
+ *   // already has, no new side-effect.
+ *   session_metrics: "read",
+ *   // Trace-export sibling to `export_session_report`: lowers the session's
+ *   // recorded action trace to a runnable `@playwright/test` spec file. Under
+ *   // `read` — exports recorded state, dispatches no new action.
+ *   export_playwright_script: "read",
+ *   name_region: "human",
+ *   region: "human",
+ *   profile_snapshot: "human",
+ *   profile_restore: "human",
+ *   // network-body (off by default — full response bodies can carry PII / tokens)
+ *   network_body: "network-body",
+ *   // file-io
+ *   upload_file: "file-io",
+ *   // drop_files — sibling to `upload_file` for drop-zone uploaders (modern
+ *   // SaaS file pickers that don't expose an `<input type=file>`). Same
+ *   // posture: an in-page File construction reading bytes from disk
+ *   // (`path` mode) or inline base64 (`contents` mode). Workspace-rooted
+ *   // paths only. Under `file-io` (workspace-rooted egress + file-io IN).
+ *   drop_files: "file-io",
+ *   // Page archive — save current page as a self-contained artefact (directory
+ *   // mode: index.html + assets/ sidecar; single-file mode: data:URI-inlined
+ *   // HTML). Workspace-rooted output by construction. Under `file-io` (same
+ *   // posture as `upload_file` / `downloads_capture`): an archive write is a
+ *   // deliberate filesystem egress, not a routine action. See src/page/archive.ts.
+ *   page_archive: "file-io",
+ *   // Element export — save one element subtree (ref-targeted) as a
+ *   // self-contained HTML snippet + CSS + linked resources. Same UNMASKED
+ *   // posture as `page_archive`. Under `file-io` (workspace-rooted egress).
+ *   element_export: "file-io",
+ *   // Full DOM dump — `documentElement.outerHTML` or one-JSON-line-per-node
+ *   // jsonl. Walks open shadow roots in jsonl mode; closed shadows are
+ *   // platform-inaccessible. Under `file-io` (workspace-rooted egress).
+ *   dom_export: "file-io",
+ *   // Download capture — reverse of `upload_file`. `downloads_capture` toggles
+ *   // per-session interception of Playwright `download` events; `download_get`
+ *   // returns the captured bytes (or workspace-rooted path) for an id surfaced
+ *   // on `ActionResult.downloads[]`. Same posture as `upload_file`: no new
+ *   // capability, workspace-rooted paths only.
+ *   downloads_capture: "file-io",
+ *   download_get: "file-io",
+ *   // Filter the session's network ring and persist matching responses to a
+ *   // workspace-rooted dir. Same posture as `download_get` (read recent
+ *   // session-state, write the resulting bytes under $BROWX_WORKSPACE) — no new
+ *   // capability gate to enable.
+ *   asset_export: "file-io",
+ *   // Screenshot automation — periodic (`screenshot_schedule`) and event-driven
+ *   // (`screenshot_on`) capture into a workspace-rooted directory. Same posture
+ *   // as `screenshot({path})` / `page_archive`: the bytes hit disk, so both ride
+ *   // the existing off-by-default `file-io` capability; no new gate.
+ *   screenshot_schedule: "file-io",
+ *   screenshot_on: "file-io",
+ *   // PDF save — print the current page to a workspace-rooted PDF. Mirror of
+ *   // `upload_file` (file-io OUT instead of IN), but under `action` not
+ *   // `file-io`: the consequential write is to the *workspace* only (no
+ *   // user-filesystem read like `upload_file`'s `path` mode), so it sits with
+ *   // the other DOM-mutating / state-mutating writers. Refused on `attached`
+ *   // sessions at the tool layer — see src/page/pdf.ts.
+ *   pdf_save: "action",
+ *   // Three-layer storage-state.
+ *   //   reads  (`*_get`, `*_list`, `dump_storage_state`, `auth_list`) → `read`
+ *   //   writes (`*_set`, `*_delete`, `*_clear`,
+ *   //           `inject_storage_state`, `auth_save`, `auth_load`,
+ *   //           `auth_delete`)                                         → `action`
+ *   // No new capability gate — these reuse the existing read/action posture so
+ *   // an existing capability config doesn't need editing to use them.
+ *   dump_storage_state: "read",
+ *   inject_storage_state: "action",
+ *   cookies_get: "read",
+ *   cookies_list: "read",
+ *   cookies_set: "action",
+ *   cookies_delete: "action",
+ *   cookies_clear: "action",
+ *   localstorage_get: "read",
+ *   localstorage_list: "read",
+ *   localstorage_set: "action",
+ *   localstorage_delete: "action",
+ *   localstorage_clear: "action",
+ *   sessionstorage_get: "read",
+ *   sessionstorage_list: "read",
+ *   sessionstorage_set: "action",
+ *   sessionstorage_delete: "action",
+ *   sessionstorage_clear: "action",
+ *   auth_save: "action",
+ *   auth_load: "action",
+ *   auth_list: "read",
+ *   auth_delete: "action",
+ *   // Cache API + IndexedDB CRUD.
+ *   //   reads  (`*_list*`, `*_get`)            → `read`
+ *   //   writes (`*_put`, `*_delete`, `*_clear`,
+ *   //           `caches_delete_storage`)       → `action`
+ *   // No new capability gate — same posture as web-storage CRUD.
+ *   caches_list_storages: "read",
+ *   caches_list: "read",
+ *   caches_get: "read",
+ *   caches_put: "action",
+ *   caches_delete: "action",
+ *   caches_clear: "action",
+ *   caches_delete_storage: "action",
+ *   idb_list_databases: "read",
+ *   idb_list_stores: "read",
+ *   idb_get: "read",
+ *   idb_put: "action",
+ *   idb_delete: "action",
+ *   idb_clear: "action",
+ *   // Per-session artifact KV — save/get/list of session-scoped string/binary
+ *   // payloads (the "build your own library over time" loop). `artifact_save`
+ *   // writes a file → `action`; `artifact_get` / `artifact_list` are read-only.
+ *   // No new capability gate to enable.
+ *   artifact_save: "action",
+ *   artifact_get: "read",
+ *   artifact_list: "read",
+ *   // HAR record/replay — `start_har` / `stop_har` both write/mutate session
+ *   // state and (in the case of start) reserve a workspace-rooted file path
+ *   // the context will write on close. Under `action` (sibling to the storage
+ *   // bulk writers); reuses an existing capability, no new gate to enable.
+ *   start_har: "action",
+ *   stop_har: "action",
+ *   // Session video recording — `stop_video` signals intent to finalize the
+ *   // recording (Playwright finalizes on context.close — same constraint as
+ *   // native HAR); `get_video` reads the finalized .webm. Both write/read a
+ *   // workspace-rooted file path, so they sit under `file-io` (sibling to
+ *   // `upload_file` / `download_get`). The start path is `open_session(
+ *   // {recordVideo})` — Playwright doesn't expose a runtime start, so the
+ *   // tool surface here is stop + get only.
+ *   stop_video: "file-io",
+ *   get_video: "file-io",
+ *   // secrets — per-session sensitive-data registry + egress masking. Off by
+ *   // default; loud-warn one-time when a secret is registered. Mirrors
+ *   // `eval` / `network-body` / `disableWebSecurity` posture. `register_secret`
+ *   // is the only tool the capability gates; the masking layer it installs is
+ *   // behaviour-gated across every egress sink. See docs/tool-reference.md +
+ *   // docs/threat-model.md.
+ *   register_secret: "secrets",
+ *   // extensions — per-session Chrome extension management. Off-by-default
+ *   // capability; loud-warned at boot. Extensions can read every page the
+ *   // session visits and make arbitrary network requests, so same posture
+ *   // class as `eval` / `network-body` / `secrets`. The 5 mutator/read tools
+ *   // all gate behind the same capability; the tool layer additionally
+ *   // refuses on `incognito` / `attached` sessions and on `headless:true`
+ *   // launches (Chromium constraints — see src/session/extensions.ts).
+ *   extensions_install: "extensions",
+ *   extensions_list: "extensions",
+ *   extensions_reload: "extensions",
+ *   extensions_trigger: "extensions",
+ *   extensions_uninstall: "extensions",
+ *   // captcha — per-session delegated captcha solving via a configured external
+ *   // provider (2Captcha / CapMonster / etc; provider config via env). Off-by-
+ *   // default capability; loud-warned at boot. Same posture class as
+ *   // `eval` / `network-body` / `secrets` / `extensions` / `stealth`. Provider
+ *   // config is per-deployment (env vars) — browxai NEVER bundles a solver and
+ *   // NEVER auto-purchases credits. When the capability is on but no provider
+ *   // is configured the tool returns a structured "no provider configured"
+ *   // failure.
+ *   solve_captcha: "captcha",
+ *   // stealth is behaviour-gated (no tool of its own). The capability flips
+ *   // per-context init-script patches at session creation (navigator.webdriver
+ *   // / plugins / languages / window.chrome) — see src/helper/stealth.ts.
+ *   // credentials — off-by-default pluggable hook into an external vault for
+ *   // TOTP / username+password lookup. Same posture class as `eval` /
+ *   // `network-body` / `secrets` — provider is configured per-deployment,
+ *   // never bundled, loud-warned at boot. `get_credential` additionally
+ *   // requires `secrets` to be enabled at the same time (it auto-registers
+ *   // the looked-up password into the secrets-mask registry).
+ *   get_totp: "credentials",
+ *   get_credential: "credentials",
+ *   // device-emulation — per-session Web Bluetooth / WebUSB / WebHID device
+ *   // catalog synthesis. Off-by-default capability; loud-warned at boot.
+ *   // The wrappers tell the page it found physical devices that don't exist
+ *   // (an init-script-wrapped `navigator.bluetooth.requestDevice()` /
+ *   // `navigator.usb.requestDevice()` / `navigator.hid.requestDevice()`
+ *   // resolves with synthetic objects matching the agent-supplied catalog).
+ *   // Same posture class as `eval` / `network-body` / `secrets` /
+ *   // `extensions` / `captcha` — see docs/threat-model.md. `device_requests`
+ *   // is the read-side companion (sliced view of which APIs the page has
+ *   // called); it sits under the same capability so a server without
+ *   // `device-emulation` can't even see whether a page tried to ask.
+ *   emulate_bluetooth: "device-emulation",
+ *   emulate_usb: "device-emulation",
+ *   emulate_hid: "device-emulation",
+ *   device_requests: "device-emulation",
+ *   // diagnostics — off-by-default per-call recording layer + agent self-feedback.
+ *   // Loud-warned at boot. `diagnostics_note` is the write-side primitive (under
+ *   // the `diagnostics` capability — registering a note implies the recorder is
+ *   // engaged); `diagnostics_search` + `diagnostics_report` are read-side
+ *   // queries over the JSONL store, sitting under `read` so a report can be
+ *   // pulled even when no further notes are being filed. The implicit fourth
+ *   // surface is the dispatch-boundary recorder hook in server.ts: when the
+ *   // capability is OFF the hook short-circuits to a no-op (zero allocations
+ *   // beyond a gate check); when ON, every tool call lands as a JSONL line
+ *   // DOWNSTREAM of the URL sanitiser + secrets-masking chokepoint so
+ *   // registered secret values never reach the store raw. Same posture class
+ *   // as `eval` / `network-body` / `secrets` / `extensions` / `stealth` /
+ *   // `captcha` / `device-emulation`. See docs/threat-model.md.
+ *   diagnostics_note: "diagnostics",
+ *   diagnostics_search: "read",
+ *   diagnostics_report: "read",
+ *   // canvas — off-by-default per-session canvas-app automation primitives.
+ *   // The five tools (`canvas_capture` / `canvas_diff` / `gesture_chain` /
+ *   // `canvas_world_to_screen` / `canvas_screen_to_world` / `canvas_query`)
+ *   // provide app-agnostic substrate for driving canvas-based editors
+ *   // (Figma, Tldraw, Excalidraw, etc) without bundling vision or knowing
+ *   // any specific app's internals. Loud-warned at boot. Same posture class
+ *   // as `eval` / `network-body` / `secrets` / `extensions` /
+ *   // `device-emulation` / `diagnostics`. `canvas_capture` reads framebuffer
+ *   // bytes — pixel-level page surface; `gesture_chain` dispatches raw
+ *   // pointer programs (custom paint strokes, lasso paths); the world↔screen
+ *   // helpers do affine math + heuristic discovery on common app globals.
+ *   // `canvas_query` is the dispatcher into canvas-app adapter plugins
+ *   // (landed separately); it returns a structured no-adapter
+ *   // error when no plugin registers under the namespace. `canvas_diff` is
+ *   // pure-RGBA-bytes math — under `read` (no canvas-pixel touch of its own).
+ *   canvas_capture: "canvas",
+ *   canvas_diff: "read",
+ *   gesture_chain: "canvas",
+ *   canvas_world_to_screen: "canvas",
+ *   canvas_screen_to_world: "canvas",
+ *   canvas_query: "canvas",
+ *   // byob-attach is not bound to a specific tool — it gates the
+ *   // BROWX_ATTACH_CDP code path at session creation. `clipboard` is likewise behaviour-gated,
+ *   // not tool-gated: the `shortcut` tool itself needs `action`, but its OS-clipboard
+ *   // side-effect (copy/cut/paste) only engages when `clipboard` is also enabled —
+ *   // off by default; same posture class as `eval` / `network-body`.
+ * };
+ */
 
 export interface CapabilityConfig {
   enabled: ReadonlySet<Capability>;
@@ -564,7 +713,7 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
   }
   const enabled = new Set(live as Capability[]);
   const disabledTools: Array<{ tool: string; capability: Capability }> = [];
-  for (const [tool, cap] of Object.entries(TOOL_CAPABILITY)) {
+  for (const [tool, cap] of toolCapabilityMap()) {
     if (!enabled.has(cap)) disabledTools.push({ tool, capability: cap });
   }
   return { enabled, disabledTools, warnings };
@@ -572,7 +721,7 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
 
 /** Returns true iff the tool is enabled given the active capability set. */
 export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
-  const cap = TOOL_CAPABILITY[tool];
+  const cap = toolCapabilityMap().get(tool);
   if (!cap) return true; // unknown tool: pass through (human-coordination default)
   return caps.enabled.has(cap);
 }

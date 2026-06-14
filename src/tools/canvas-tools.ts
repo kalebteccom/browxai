@@ -55,6 +55,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "canvas_capture",
     {
+      capability: "canvas",
       description:
         "Extract framebuffer or 2D ImageData from a `<canvas>` element on the page. Three output formats: `png` (`canvas.toDataURL` — encoded image suitable for handoff to a host-agent multimodal vision call), `2d-imagedata` (raw RGBA bytes via `getImageData` — feed to `canvas_diff` for pixel math), `webgl-framebuffer` (raw RGBA via `gl.readPixels` on a WebGL/WebGL2 context, flipped into top-left order to match `2d-imagedata` convention). `ref` optional (canvas element ref from a prior `snapshot()`/`find()`); `selector` is a fallback selector path; omitting both targets the first `<canvas>` in the document. Bounded: canvases larger than 16384×16384 pixels refuse with a structured `too-large` error (defensive cap — most editors stay well below this; a multi-megapixel buffer round-tripped through base64 is genuinely a problem). PNG-format inputs to `canvas_diff` are byte-equality only this cycle (decoded-pixel diff is a follow-up); for per-pixel math + bbox, prefer `2d-imagedata` or `webgl-framebuffer`. Tainted canvases (cross-origin images without CORS) refuse with a `taint-or-encode` / `taint-or-read` error. WebGL contexts created without `preserveDrawingBuffer:true` may read back as zero bytes; `canvas_capture` requests `preserveDrawingBuffer:true` when it acquires the context but can't undo a prior context's choice. App-agnostic — for app-specific extraction (scene-graph node bounds, layer ids, frame names) install a canvas-app adapter plugin and call through `canvas_query`. Capability `canvas` (+ `read`).",
       inputSchema: {
@@ -120,6 +121,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "canvas_diff",
     {
+      capability: "read",
       description:
         "Compute pixel/region delta between two captured RGBA payloads. Pure function — no page contact. Inputs are base64 RGBA byte arrays from a prior `canvas_capture({format:'2d-imagedata'})` or `canvas_capture({format:'webgl-framebuffer'})`. `width` + `height` are required (the byte buffer alone does not carry dimensions). `region` is an optional sub-rectangle (in image px, top-left origin); over-flow regions clamp to image bounds. → `{ ok, changedPixelCount, changedBytes, percentageChanged, bboxOfChanges:{x,y,w,h}|null, warnings[] }`. `changedBytes` is the sum of absolute per-channel deltas (useful for 'how much changed', not just 'did anything'). For PNG-format inputs: pass `inputFormat:'png'` — this cycle compares base64 byte equality only and surfaces a warning; per-pixel diff over PNG is a follow-up. Capability `read` (no canvas-pixel touch of its own; pure math over caller-supplied bytes).",
       inputSchema: {
@@ -199,6 +201,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "gesture_chain",
     {
+      capability: "canvas",
       description:
         "Multi-step pointer program — drive a sequence of `down` / `move` / `up` / `wait` / `wheel` events through the standard Playwright mouse pipeline. For custom paint strokes, lasso paths, hand-drawn gestures, signature widgets — anything the canned `drag` / `double_click` / `gesture_swipe` family doesn't cover. Each step: `{kind, x?, y?, deltaX?, deltaY?, ms?, pointerId?}`. `down` / `up` / `move` require numeric `x` + `y`; `move` accepts an optional `ms` pacing delay (floored at 5 ms — tighter pacing rarely changes app behaviour and starves the renderer); `wait` accepts `ms` (clamped at 5000 ms — split longer waits across calls); `wheel` requires non-zero `deltaX` or `deltaY` and accepts optional `x` + `y` to move the pointer first. Bounded at 200 steps total — split larger programs across multiple calls. → `{ ok, stepsExecuted, totalDurationMs, warnings[] }`. `pointerId` is accepted on input but the v1 implementation routes through Playwright's single-mouse pipeline (multi-pointer fan-out is a future extension — for multi-touch today use `touch_*` / `gesture_pinch`). Capability `canvas` (+ `action`).",
       inputSchema: {
@@ -258,6 +261,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "canvas_world_to_screen",
     {
+      capability: "canvas",
       description:
         "Translate a world-space coordinate to a screen-space coordinate via an affine transform. Two modes: **explicit** (caller passes `transform: {scale, panX, panY, originX?, originY?}` — math: `screenX = (worldX + panX) * scale + originX`); **discovery** (omit `transform` — the page-side probe walks common app-side globals: `app.viewport.zoom` + `app.viewport.center` (Figma / Excalidraw shape), `app.scale` + `app.offset` (Tldraw shape), `app.transform.matrix` (generic 6-element affine). On discovery success, returns `{ok, screenX, screenY, transformDiscovered, adapterHint: 'figma'|'tldraw'|'excalidraw'|'generic', warnings:[\"discovery probes are HEURISTIC — …\"]}`. On discovery failure: `{ok:false, error:'no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin', code:'no-transform'}`. Discovery is HEURISTIC by design — for production, pass `transform` explicitly or install a canvas-app adapter plugin. Capability `canvas` (+ `read`).",
       inputSchema: {
@@ -332,6 +336,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "canvas_screen_to_world",
     {
+      capability: "canvas",
       description:
         "Inverse of `canvas_world_to_screen`. Translate a screen-space coordinate to a world-space coordinate. Two modes: **explicit** (`transform: {scale, panX, panY, originX?, originY?}` — math: `worldX = (screenX - originX) / scale - panX`); **discovery** (omit `transform` — same page-side probe as the forward call). Discovery success: `{ok, worldX, worldY, transformDiscovered, adapterHint, warnings:[…HEURISTIC…]}`. Discovery failure: `{ok:false, error:'no transform discoverable — pass `transform` explicitly OR use a canvas-app adapter plugin', code:'no-transform'}`. Round-trips with `canvas_world_to_screen` to within floating-point precision under the same explicit transform. Capability `canvas` (+ `read`).",
       inputSchema: {
@@ -401,6 +406,7 @@ export function registerCanvasTools(host: ToolHost): void {
   register(
     "canvas_query",
     {
+      capability: "canvas",
       description:
         "Dispatcher routing to a canvas-app adapter plugin's handler. `adapter` is the namespace of a loaded plugin (e.g. `\"figma\"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args`. If no plugin matches: `{ok:false, error:'no canvas adapter registered for <adapter>; install @browxai/plugin-<adapter> or pass a registered adapter namespace', code:'no-adapter', requestedAdapter, requestedOp}`. The inner plugin tool's capability is enforced via the plugin call-graph gate when reached. The host ships the dispatcher; the first-party canvas-app adapter plugins (`@browxai/plugin-figma`, `@browxai/plugin-tldraw`, `@browxai/plugin-excalidraw`) install separately — see docs/plugins-first-party.md for each adapter's op surface. Capability `canvas` (+ the inner tool's own capability via the plugin runtime gate).",
       inputSchema: {

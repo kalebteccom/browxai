@@ -36,6 +36,14 @@
       "default": "./dist/index.js"
     }
   },
+  "//sideEffects": "RFC 0004 P2 / D1 (SECURITY-CRITICAL): the tool-metadata bootstrap import populates the derived TOOL_CAPABILITY / DEEP_TOOLS capability+engine gates. It MUST survive bundler tree-shaking — a dropped side-effect import would silently un-gate eval_js / register_secret / network_body. List the entry points that perform the bootstrap side-effect (and the bootstrap module itself) so they are never elided. NOT `false`.",
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/cli.js",
+    "./dist/server.js",
+    "./dist/sdk/index.js",
+    "./dist/tools/tool-metadata.js"
+  ],
   "files": [
     "dist",
     "THIRD_PARTY_NOTICES.md"
@@ -54,6 +62,7 @@
     "bench:network": "tsx scripts/bench-network-envelope.ts",
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
+    "gen:sdk-types": "tsx scripts/gen-sdk-tool-types.ts",
     "install-browser": "playwright-core install chromium",
     "docs:dev": "pnpm --filter @browxai/website dev",
     "docs:build": "pnpm --filter @browxai/website build",

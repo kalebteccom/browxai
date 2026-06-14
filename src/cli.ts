@@ -3,6 +3,12 @@
 //
 // All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 
+// RFC 0004 P2 / D1 (SECURITY-CRITICAL): EAGERLY populate the derived
+// `TOOL_CAPABILITY` / `DEEP_TOOLS` maps for every CLI sub-command. `doctor` reads
+// `resolveCapabilities` without building a server, so it must reach the
+// tool-metadata bootstrap; importing it here covers the whole CLI surface, not
+// only the default `createServer` path.
+import "./tools/tool-metadata.js";
 import { createServer } from "./server.js";
 import { runDoctor } from "./cli/doctor.js";
 import { runChrome } from "./cli/chrome.js";

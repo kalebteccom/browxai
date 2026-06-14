@@ -20,19 +20,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createServer, NAME, VERSION, type StartOptions } from "../../src/server.js";
-import { buildHost, type HostDeps } from "../../src/tools/host-build.js";
-import type { ToolResponse } from "../../src/tools/host.js";
-import { buildSessionRegistry } from "../../src/tools/session-registry.js";
-import { resolveConfig } from "../../src/util/config.js";
-import { resolveWorkspace } from "../../src/util/workspace.js";
-import { ConfigStore, resolvedToEnv } from "../../src/util/config-store.js";
-import { resolveCapabilities, resolveConfirmHooks } from "../../src/util/capabilities.js";
-import { resolveOriginPolicy } from "../../src/policy/origin.js";
-import { ApprovalStore } from "../../src/policy/confirm.js";
-import { resolveCredentialsProvider } from "../../src/util/credentials.js";
-import { DiagnosticsRecorder } from "../../src/util/diagnostics.js";
+import { createServer } from "../../src/server.js";
 
 // ── Hermetic workspace ───────────────────────────────────────────────────────
 // The frozen surface must never vary with the operator's real ~/.browxai: an
@@ -76,71 +64,22 @@ export async function registeredToolNames(): Promise<string[]> {
   });
 }
 
-/** Assemble a headless `HostDeps` so `buildHost` runs without opening a browser.
- *
- *  This mirrors the deps `createServer` assembles (server.ts:292-339) using the
- *  same public resolvers, with two differences that keep it browser-free and
- *  side-effect-free: the session-registry factory it wires is lazy (no session
- *  is ever opened here), and the two per-handler closures `describeTarget` /
- *  `asTarget` are stubs — `buildHost` only stores them on the host and never
- *  invokes them at construction, and no handler runs in this suite. The batch
- *  allow-set is a plain `const` captured when `buildHost` runs, so it is fully
- *  resolved the moment the host exists. */
-function makeTestHostDeps(opts: StartOptions = { headless: true }): HostDeps {
-  const workspace = resolveWorkspace();
-  const configStore = new ConfigStore(workspace.root);
-  const resolvedConfig = configStore.resolve();
-  const cfgEnv = resolvedToEnv(resolvedConfig);
-  const config = resolveConfig(cfgEnv);
-  const caps = resolveCapabilities(cfgEnv);
-  const confirmHooks = resolveConfirmHooks(cfgEnv);
-  const originPolicy = resolveOriginPolicy(cfgEnv);
-  const approvals = new ApprovalStore();
-  const credentialsResolved = resolveCredentialsProvider(cfgEnv);
-  const diagnostics = new DiagnosticsRecorder({ enabled: false, workspaceRoot: workspace.root });
-  const registry = buildSessionRegistry({
-    opts,
-    resolvedConfig,
-    configStore,
-    caps,
-    workspace,
-    serverEngine: "chromium",
-    serverDefaultMode: "persistent",
+/** The batch allow-set, DERIVED (RFC 0004 P2) from each `register({ batchable })`
+ *  call and surfaced via `ToolHost.batchAllowedTools` (host.ts). It is read off a
+ *  fully-registered host so the derivation has run; `collectToolMetadata` builds a
+ *  browser-free host and runs every registration module. */
+export async function batchAllowedTools(): Promise<ReadonlySet<string>> {
+  const { collectToolMetadata } = await import("../../src/tools/tool-metadata.js");
+  return withHermeticWorkspace(async () => {
+    const table = collectToolMetadata();
+    return new Set([...table].filter(([, m]) => m.batchable).map(([name]) => name));
   });
-  const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
-  const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
-  return {
-    server,
-    toolHandlers,
-    registry,
-    config,
-    configStore,
-    resolvedConfig,
-    caps,
-    confirmHooks,
-    originPolicy,
-    approvals,
-    isByob: false,
-    workspace,
-    diagnostics,
-    credentialsResolved,
-    pluginRecords: () => [],
-    startOptions: opts,
-    // Stubs: stored on the host, never invoked at construction or in this suite.
-    describeTarget: async () => "",
-    asTarget: () => {
-      throw new Error("asTarget is a test stub — no handler runs in the architecture suite");
-    },
-  };
 }
 
-/** The batch allow-set, read OFF a built ToolHost via `ToolHost.batchAllowedTools`
- *  (host.ts:160). `BATCH_ALLOWED_TOOLS` is a local `const` (host-build.ts:640-712),
- *  not exported — this is the only sanctioned read of the set, never an import of
- *  the const. The host builds with no browser open (the session factory is lazy). */
-export async function batchAllowedTools(): Promise<ReadonlySet<string>> {
-  return withHermeticWorkspace(async () => {
-    const host = buildHost(makeTestHostDeps());
-    return host.batchAllowedTools;
-  });
+/** The full derived registration table (name → ToolMeta + zod schema), RFC 0004
+ *  P2 / D7. Built browser-free by running every registration once. The derivation
+ *  checks read `batchable` / `capability` / `deep` off this single table. */
+export async function toolRegistrations() {
+  const { collectToolMetadata } = await import("../../src/tools/tool-metadata.js");
+  return withHermeticWorkspace(async () => collectToolMetadata());
 }

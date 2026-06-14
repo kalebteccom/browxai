@@ -28,17 +28,20 @@ import { screenshotSave } from "../page/screenshot-save.js";
 import type { ActionContext } from "../page/actionresult.js";
 import {
   isToolEnabled,
-  TOOL_CAPABILITY,
+  declareToolCapability,
+  toolCapabilityMap,
+  type Capability,
   type CapabilityConfig,
   type ConfirmHook,
 } from "../util/capabilities.js";
+import { declareDeepTool } from "../engine/tool-gate.js";
 import type { BrowxConfig } from "../util/config.js";
 import type { PluginRecord } from "../plugin/types.js";
 import type { OriginPolicy } from "../policy/origin.js";
 import type { ApprovalStore } from "../policy/confirm.js";
 import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
 import type { StartOptions } from "../server.js";
-import type { ToolHost, ToolResponse } from "./host.js";
+import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -140,7 +143,7 @@ export function buildHost(deps: HostDeps): ToolHost {
             {
               ok: false,
               error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
-              requiredCapability: TOOL_CAPABILITY[toolName] ?? null,
+              requiredCapability: toolCapabilityMap().get(toolName) ?? null,
               activeCapabilities: [...caps.enabled],
               hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (or the `capabilities` config), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a patch that omits this capability silently overrides the env var — include every capability you want, not just this one; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
             },
@@ -507,12 +510,46 @@ export function buildHost(deps: HostDeps): ToolHost {
   // record under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl;
   // when off, the recorder is a zero-overhead gate check (no allocations,
   // no file IO).
+  // Derived (RFC 0004 P2). Both are populated by `register` from the colocated
+  // `{ batchable }` / `{ capability, deep, inputSchema }` metadata each tool
+  // declares, so a tool's batchability, capability, deepness, and SDK type all
+  // trace back to its one registration call. `BATCH_ALLOWED_TOOLS` replaces the
+  // hand-maintained 71-entry literal; `await_human`, `batch`, the recording
+  // controls and the config mutators simply never declare `{ batchable: true }`,
+  // so they are excluded by construction rather than by an omission a human had
+  // to remember. The host exposes the batch set via `batchAllowedTools` and the
+  // full registration table via `registrations` (read by the SDK tool-types
+  // codegen, D7).
+  const BATCH_ALLOWED_TOOLS = new Set<string>();
+  const registrations = new Map<string, ToolRegistration>();
+
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
-    def: { description: string; inputSchema?: S },
+    def: {
+      description: string;
+      inputSchema?: S;
+      capability?: Capability;
+      batchable?: boolean;
+      deep?: boolean;
+    },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
-    const tracked = WEDGE_TRACKED_CAPABILITIES.has(TOOL_CAPABILITY[name] ?? "");
+    // Colocated metadata → derived central maps (RFC 0004 P2 / D2). The
+    // capability/deep facts feed the lower-layer registries; `batchable` feeds the
+    // local batch allow-set; the whole record (incl. the zod schema) is kept for
+    // the SDK tool-types codegen (D7). The capability gate then reads `TOOL_CAPABILITY`
+    // (now derived from these declarations), so the assignment lives only here.
+    if (def.capability !== undefined) declareToolCapability(name, def.capability);
+    if (def.deep) declareDeepTool(name);
+    if (def.batchable) BATCH_ALLOWED_TOOLS.add(name);
+    registrations.set(name, {
+      description: def.description,
+      inputSchema: def.inputSchema,
+      capability: def.capability,
+      batchable: def.batchable,
+      deep: def.deep,
+    });
+    const tracked = WEDGE_TRACKED_CAPABILITIES.has(def.capability ?? "");
     const wrapped = async (rawArgs: unknown): Promise<ToolResponse> => {
       // MCP-wire boundary: the SDK parses + validates the inbound payload against
       // this tool's `inputSchema` before dispatch, so the dispatched value IS the
@@ -562,87 +599,6 @@ export function buildHost(deps: HostDeps): ToolHost {
   ): { content: Array<{ type: "text"; text: string }> } =>
     okText({ ok: false, tool, error: err instanceof Error ? err.message : String(err) });
 
-  // Tools that can be invoked inside `batch`. Excludes: `batch` itself (no
-  // nesting — keeps semantics simple and avoids combinatorial confusion);
-  // `await_human` (blocks indefinitely, defeats batching's point); recording
-  // controls (`start_recording`/`end_recording`/`record_annotate` — meant for
-  // interactive sessions); CLI-style helpers that mutate session config. Shared
-  // with the compound tools through the host, so it is defined before the host
-  // literal that exposes it.
-  const BATCH_ALLOWED_TOOLS = new Set<string>([
-    "navigate",
-    "click",
-    "fill",
-    "fill_form",
-    "press",
-    "hover",
-    "select",
-    "choose_option",
-    "wait_for",
-    "go_back",
-    "go_forward",
-    "scroll",
-    "set_viewport",
-    "set_locale",
-    "set_timezone",
-    "set_geolocation",
-    "set_color_scheme",
-    "set_reduced_motion",
-    "set_user_agent",
-    "grant_permissions",
-    "plan",
-    "execute",
-    "snapshot",
-    "find",
-    "text_search",
-    "frames_list",
-    "shadow_trees",
-    "inspect",
-    "overflow_detect",
-    "watch",
-    "sample",
-    "screenshot",
-    "screenshot_marks",
-    "console_read",
-    "network_read",
-    "ws_read",
-    "network_body",
-    "verify_visible",
-    "verify_text",
-    "verify_value",
-    "verify_count",
-    "verify_attribute",
-    "verify_predicate",
-    "eval_js",
-    "list_named_refs",
-    "name_ref",
-    "find_feedback",
-    "generate_locator",
-    "approve_actions",
-    "list_approvals",
-    "get_config",
-    "list_sessions",
-    "session_metrics",
-    "network_emulate",
-    "cpu_emulate",
-    "clock",
-    "seed_random",
-    "start_har",
-    "stop_har",
-    "stop_video",
-    "get_video",
-    "perf_start",
-    "perf_stop",
-    "perf_insights",
-    "perf_audit",
-    "coverage_start",
-    "coverage_stop",
-    "layout_thrash_trace",
-    "memory_diff",
-    "heap_snapshot",
-    "heap_retainers",
-  ]);
-
   // The composition seam: bundle the shared state + helper closures into one
   // host and hand it to each per-family tool module. createServer stays the
   // registry composition root; the register() blocks live under src/tools/.
@@ -675,6 +631,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     z,
     toolHandlers,
     batchAllowedTools: BATCH_ALLOWED_TOOLS,
+    registrations,
     registry,
     diagnostics,
     approvals,

@@ -4,6 +4,11 @@
 // the gate fires BEFORE any wire call.
 
 import { describe, it, expect } from "vitest";
+// RFC 0004 P2: the SDK capability gate reads the DERIVED `TOOL_CAPABILITY` map
+// (now populated from the colocated `host.register` metadata). This test builds a
+// client with a mock transport — no server — so it loads the tools-layer bootstrap
+// to install the lazy collector and populate the map the gate consults.
+import "../../src/tools/tool-metadata.js";
 import { buildClient, NOT_EXPOSED_ERROR } from "../../src/sdk/client.js";
 import type { BrowxaiClient } from "../../src/sdk/types.js";
 import type { SdkTransport } from "../../src/sdk/transport.js";

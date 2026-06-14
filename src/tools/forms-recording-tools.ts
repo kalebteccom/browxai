@@ -89,6 +89,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "fill_form",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Fill N form fields atomically in one action window, with an optional final `submit` click. Replaces the fill/fill/fill/click round-trip pattern with one dispatch — same action-window envelope (navigation/structure/console/network/snapshotDelta) as a single fill, plus an `elements: ElementProbe[]` slot carrying per-field probes in dispatch order. **Atomic pre-resolution**: every field's target (ref/selector/named) is resolved before any DOM write; if any target misses, the call returns `ok:false` with a structured `fieldResolution` block and NO partial fills land. Same posture for the optional `submit` — a missing submit aborts the whole call. **Secrets-masking composes**: a field value like `<SECRET_NAME>` triggers the standard registry substitution at dispatch (capability `secrets`); the recorded descriptor + per-field probe carry the alias, not the real value. Field targets accept `ref`/`selector`/`named` (no `coords` — fill needs a real input element).",
       inputSchema: {
@@ -159,6 +161,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "plan",
     {
+      capability: "read",
+      batchable: true,
       description:
         "Resolve a natural-language `query` for a single element + a target action `verb` into a serialisable `ActionDescriptor` — no dispatch happens. The descriptor binds the picked ref (same `eN` namespace as snapshot/find/name_ref — NOT a parallel id system), the verb's args, evidence (selectorHint, stability, score, top alternatives + any low-confidence warnings), and an `expiresAt` deadline. Hand it back verbatim to `execute` to dispatch; cache it for replay / self-healing; or inspect `evidence` and refuse to dispatch when the stability is too low. NOT a mock dispatch — the value is captured intent, not suppressed effects.",
       inputSchema: {
@@ -255,6 +259,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "execute",
     {
+      capability: "action",
+      batchable: true,
       description:
         'Dispatch a previously-planned `ActionDescriptor` (from `plan`). Re-resolves the bound ref via the same stable-key scheme snapshot/find use; refuses with structured `reason:"expired"` past `expiresAt`, or `reason:"ref-gone"` when the ref is no longer in the session\'s registry — in both cases NO action runs, re-plan against the current snapshot. The underlying action verb\'s capability is enforced (a descriptor with verb:"click" still requires the `action` capability); a successful dispatch returns the same `ActionResult` shape as calling the verb\'s tool directly.',
       inputSchema: {
@@ -329,6 +335,7 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "start_recording",
     {
+      capability: "human",
       description:
         "Begin recording subsequent action tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds a step (with the resolved selectorHint when a target was given). Call `end_recording` to emit a YAML draft. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding.",
       inputSchema: {
@@ -347,6 +354,7 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "end_recording",
     {
+      capability: "human",
       description:
         "Stop the current recording and emit the draft flow-file YAML. Returns `{ name, yaml, stepCount }`. Review the locators block (entries flagged `stability: medium|low` deserve a second look) and add prerequisites/assertions before committing the flow into a site-docs workspace.",
       inputSchema: { ...SESSION_ARG },
@@ -377,6 +385,7 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "record_annotate",
     {
+      capability: "human",
       description:
         "Attach a doc annotation (copy + optional arrow position + optional target ref) to the most-recent recorded step, or to a specific `stepId`. No-op if no recording is active.",
       inputSchema: {
@@ -406,6 +415,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "name_ref",
     {
+      capability: "human",
+      batchable: true,
       description:
         'Bind a mnemonic name to a ref. Subsequent action tools accept `named: "<name>"` in place of `ref` / `selector`. Refs are stable across snapshots (by element-key), so the binding survives navigation as long as the element persists. Carry session-wide anchor sets without remembering the bare `eN`s.',
       inputSchema: {
@@ -427,6 +438,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "list_named_refs",
     {
+      capability: "read",
+      batchable: true,
       description: "List all current name → ref bindings created via name_ref.",
       inputSchema: { ...SESSION_ARG },
     },
@@ -449,6 +462,8 @@ export function registerFormsRecordingTools(host: ToolHost): void {
   register(
     "find_feedback",
     {
+      capability: "human",
+      batchable: true,
       description:
         "Tell browxai which candidate was the right answer to a prior `find(query)`. Subsequent finds whose query overlaps the token set will boost candidates matching this winner's identity (testId, or role+name). Session-scoped, in-memory, capped at 100 entries with LRU eviction. The learning is intentionally simple — a 'don't re-do that mistake' signal, not an ML model.",
       inputSchema: {

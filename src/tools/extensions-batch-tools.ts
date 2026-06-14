@@ -344,6 +344,8 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "extensions_install",
     {
+      capability: "extensions",
+      deep: true,
       description:
         "Load an unpacked Chromium extension (MV3 or MV2 directory containing `manifest.json`) into the session's managed-profile launch. **Gated behind the off-by-default `extensions` capability** — same posture class as `eval` / `network-body` / `secrets`. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; the extension code itself becomes trust-equivalent to the agent. " +
         "`path` is workspace-rooted (under $BROWX_WORKSPACE) — traversal / absolute-outside is rejected. Pass the UNPACKED extension directory; `.crx` packed archives must be unpacked first (the directory must contain `manifest.json`). " +
@@ -409,6 +411,8 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "extensions_list",
     {
+      capability: "extensions",
+      deep: true,
       description:
         "List extensions currently loaded for this session. Returns `[{id, name, version, path, enabled}]`. Empty list when no extension is loaded (the default). Gated behind the off-by-default `extensions` capability — disabled sessions return a structured error before reaching this list. Headed + persistent sessions only.",
       inputSchema: { ...SESSION_ARG },
@@ -428,6 +432,8 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "extensions_reload",
     {
+      capability: "extensions",
+      deep: true,
       description:
         "Reload an installed extension: re-parse its `manifest.json`, then rebuild the underlying browser context so Chromium re-injects content scripts and restarts the MV3 service worker. Identify the extension by its `id` (from `extensions_install` / `extensions_list`). Same rebuild caveat as install — refs / buffers reset, on-disk profile state survives. Headed + persistent sessions only.",
       inputSchema: {
@@ -482,6 +488,8 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "extensions_trigger",
     {
+      capability: "extensions",
+      deep: true,
       description:
         "Best-effort invoke of an installed extension's surface. With `command`, attempts to fire the keyboard-command binding declared in the extension's manifest (`commands` key). Without `command`, navigates the session's active page to the extension's `chrome-extension://<id>/<default_popup>` URL so the popup renders in-tab and is driveable like any other page. Many extensions lack both surfaces; this tool returns `ok:false` with a clear reason in those cases. Read-only side-effects on the extension itself — it does not mutate the loaded list. Headed + persistent sessions only.\n\n" +
         "**Note on `id`.** browxai's id (a hash of the path) does NOT necessarily equal the Chrome-runtime id of the loaded extension — Chrome derives its id from the extension's signing key when one is present. For popup-style triggers we attempt to read the active page's `chrome-extension://` runtime id from the context's service workers / background pages; on a mismatch the tool returns a hint pointing at extensions_list and the page's own discovery.",
@@ -589,6 +597,8 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "extensions_uninstall",
     {
+      capability: "extensions",
+      deep: true,
       description:
         "Remove an installed extension from the session and rebuild the underlying browser context without it. Same rebuild caveat as install — refs / buffers reset, on-disk profile state survives. Headed + persistent sessions only.",
       inputSchema: {
@@ -643,6 +653,7 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "await_human",
     {
+      capability: "human",
       description:
         "Block until the human responds in the page. Operator reads `prompt` from the server's stderr (or a future banner UI) and triggers a response from DevTools:\n" +
         "  - `acknowledge` → `__browx.proceed()` (or `signal('proceed')`)\n" +
@@ -810,6 +821,7 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "act_and_sample",
     {
+      capability: "read",
       description:
         "run ONE action and capture a metric trace *across its transition*, in one call — closes the state-capture-latency blind spot (a separate read lands after the spinner/pending UI already resolved). The sampler (fixed-enum, no agent JS) starts, the inner action dispatches concurrently, both are awaited. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline + the confirm hooks still apply. Sample target via `ref`/`selector`/`named` (or omit for the document scroller; not coords). Returns `{ action: <inner result>, ...sampleResult }`.",
       inputSchema: {
@@ -940,6 +952,7 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "act_and_diff",
     {
+      capability: "read",
       description:
         "Run ONE action and report the DOM changes it caused within a `scope` — for selection-heavy UIs where the state change (which clip/row became selected) shows only as class / `aria-*` / `data-*` / inline-style changes, invisible to snapshot/find/text_search. Captures a structural DOM map before, dispatches the inner action, captures after, diffs. `action` is `{tool,args}` from the batch whitelist (no `batch`/`await_human`/recording/self); the inner tool's capability + deadline still apply. Returns `{ action: <inner result>, diff: { changed:[{path,tag,testId,classDelta,styleDelta,attrDelta}], added, removed, counts } }`.",
       inputSchema: {
@@ -1031,6 +1044,7 @@ export function registerExtensionsBatchTools(host: ToolHost): void {
   register(
     "flake_check",
     {
+      capability: "action",
       description:
         "Run the same call sequence N times and report what shifted between runs — for diagnosing intermittent CI flakes BEFORE chasing them through logs. Inner calls are dispatched through the `batch` whitelist (capability + confirm hooks unchanged); each run uses `stopOnError:false` internally so a mid-sequence failure does NOT hide the variance picture for later steps. Returns per-step success-rate, distinct errors, distinct resolution signatures, the earliest `firstDivergence` step where ok shifted across runs, and a `cachedResolvers[]` artifact — `{step → resolved ref/selectorHint}` for steps where every run agreed AND succeeded. The artifact mirrors the `ActionDescriptor` shape for `plan` steps so a follow-up call can re-execute against a fresh snapshot. `stopOnAllGreen: K` short-circuits when K consecutive runs are all-green (skips redundant work once you've proved the sequence is stable).",
       inputSchema: {

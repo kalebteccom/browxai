@@ -18,6 +18,13 @@
 // compile cleanly. Per-tool unions are expressed as TS unions (the "exactly
 // one of ref|selector|named|coords" target shape) so the type layer can
 // reject obvious missing-target mistakes (e.g. `verify_text({text:"…"})`).
+//
+// AUTHORITATIVE (RFC 0004 P2 / D4): THIS curated file is the single source of
+// truth for the public SDK types. There is intentionally NO committed generated
+// companion — `scripts/gen-sdk-tool-types.ts` remains a dev-only inspection tool
+// that prints the schema-derived input shapes to stdout, but its output is not
+// git-tracked: it would contradict the deliberate input narrowing here (e.g.
+// `SnapshotArgs` omits `includeShadow`) and was consumed by nothing.
 
 import type { BrowxaiResult } from "./types.js";
 

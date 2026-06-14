@@ -34,10 +34,16 @@ module.exports = {
       name: "no-sdk-to-handler-internals",
       comment:
         "The SDK is transport-only — it speaks the wire, it does not import handler internals " +
-        "(src/tools/* / src/page/*). (DIP: the SDK depends on the protocol, not the impl.)",
+        "(src/tools/* / src/page/*). (DIP: the SDK depends on the protocol, not the impl.)" +
+        " EXCEPTION (RFC 0004 P2 / D1, SECURITY-CRITICAL): the SDK entry side-effect-imports " +
+        "src/tools/tool-metadata.ts — the composition-root bootstrap that eagerly populates the " +
+        "derived TOOL_CAPABILITY gate the SDK's capability filter reads. The socket transport " +
+        "never calls createServer, so without this the gate would read an empty map; the gate's " +
+        "fail-safe makes that throw rather than fail OPEN, and this import keeps the throw from " +
+        "firing on the legitimate path. It pulls a SIDE EFFECT (the bootstrap), not handler logic.",
       severity: "warn",
       from: { path: "^src/sdk/" },
-      to: { path: "^src/(tools|page)/" },
+      to: { path: "^src/(tools|page)/", pathNot: "^src/tools/tool-metadata\\.ts$" },
     },
     {
       name: "core-imports-inward-only",

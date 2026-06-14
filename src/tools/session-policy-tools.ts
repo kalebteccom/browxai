@@ -404,6 +404,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "list_sessions",
     {
+      batchable: true,
       description:
         "List live sessions: id, mode, engine, current url, page count, openedAt. Audit / coordination helper for multi-session work.",
       inputSchema: {},
@@ -438,6 +439,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "set_dialog_policy",
     {
+      capability: "action",
       description:
         "Mutate the session's dialog policy at runtime. Governs how `alert` / `confirm` / `prompt` / `beforeunload` dialogs are handled when fired by the page — without a policy installed, a dialog blocks every subsequent browser event and the session deadlocks. Modes:\n" +
         '  - "accept"               — accept every dialog (confirm/prompt → OK; prompt answers with the empty string).\n' +
@@ -504,6 +506,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "set_permission_policy",
     {
+      capability: "action",
       description:
         "Mutate the session's permission policy at runtime. Governs how page-side permission requests — `getUserMedia` (camera/microphone), `getCurrentPosition`/`watchPosition` (geolocation), `Notification.requestPermission`, `clipboard.read`/`write`, and the sensor permissions — are handled. Without a policy installed, requests either fire silently (Chromium auto-denies in headless) or — if a prior `grant_permissions` pre-granted — change app behavior under an unaware caller. Modes:\n" +
         '  - "allow"     — pre-grant via CDP `Browser.setPermission`; in-page wrappers call through. The app sees a granted permission.\n' +
@@ -579,6 +582,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "set_fs_picker_policy",
     {
+      capability: "action",
       description:
         "Mutate the session's File System Access picker policy at runtime. Governs how `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker` calls are handled. Without a policy installed, modern web editors deadlock on the picker dialog the headless session can't drive. Modes:\n" +
         '  - "allow"     — page-side stubs return synthetic FileSystem*Handle objects built from agent-supplied files (call `fs_picker_respond` BEFORE the action that triggers the picker, OR in parallel — the queue is drained per-API on the next matching call). For `showSaveFilePicker`, the agent supplies a workspace-rooted `path` and `createWritable()` writes from the page persist there. For `showOpenFilePicker`, the agent supplies inline `contents` (base64) or a workspace-rooted `path` (server inlines the bytes); the page reads via `getFile()`.\n' +
@@ -650,6 +654,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "fs_picker_respond",
     {
+      capability: "file-io",
       description:
         'Stage agent-supplied files for the next File System Access picker call on this session — paired with `set_fs_picker_policy({mode:"allow"})` (or a `perAPI` override). The queue is per-API: a response staged for `showSaveFilePicker` won\'t satisfy a `showOpenFilePicker` call. Each file is either inline `{contents, name?, mimeType?}` (base64 — no filesystem read) or workspace-rooted `{path}` (resolved inside `$BROWX_WORKSPACE` only; path escape rejected). For `showSaveFilePicker`, the supplied `path` becomes the destination for `createWritable()`-driven writes from the page — `write()` / `truncate()` / `close()` from the page-side stream are persisted there. For `showOpenFilePicker`, the server reads `path` once at respond-time and inlines the bytes (the page reads via `getFile()`). Capability `file-io` — same posture as `upload_file`. Returns `{ok, session, queued:{api, fileCount}, tokensEstimate}`.',
       inputSchema: {
@@ -767,6 +772,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "permission_state",
     {
+      capability: "read",
       description:
         'Read the current permission state(s) for an origin via the W3C Permissions API (`navigator.permissions.query` — which reflects the CDP-applied baseline). Returns `{ [permission]: "granted" | "denied" | "prompt" | "unknown" }` per requested name. Defaults the `origin` to the current page\'s origin when omitted. Read-only — does not mutate state. Supported permission names (v1): ' +
         SUPPORTED_PERMISSIONS.join(", ") +
@@ -841,6 +847,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "set_notification_policy",
     {
+      capability: "action",
       description:
         "Mutate the session's notification policy at runtime. Governs `new Notification(title, opts)` *constructor* calls — the page actually attempting to display a notification. Distinct from `set_permission_policy` (which gates `Notification.requestPermission` and the `Notification.permission` state); the two policies compose. Modes:\n" +
         '  - "allow"     — DEFAULT (browser default). Constructor proceeds; the OS displays per its own settings. Every call is still captured on `ActionResult.notifications[]` for observability.\n' +
@@ -890,6 +897,7 @@ export function registerSessionPolicyTools(host: ToolHost): void {
   register(
     "device_requests",
     {
+      capability: "device-emulation",
       description:
         'Read-side companion to `emulate_bluetooth` / `emulate_usb` / `emulate_hid`. Returns the buffer of `requestDevice()` calls the page has made on this session — one entry per page-side call, each with `{api, handledAs, returned, filters?, ts}`. Useful for diagnosing "did the page even ask?" when a flow gated on hardware appears stuck. `handledAs`:\n' +
         '  - `"resolved"`  — catalog non-empty; picker resolved with the synthetic device (Bluetooth/USB) or device list (HID).\n' +

@@ -1,4 +1,9 @@
 import { describe, it, expect } from "vitest";
+// RFC 0004 P2: TOOL_CAPABILITY is now DERIVED from the colocated `host.register`
+// metadata (collected by the tools-layer bootstrap). A standalone caller of
+// `resolveCapabilities` / `isToolEnabled` — like this unit test — loads the
+// bootstrap so the lazy collector is installed and the derived rows are present.
+import "../tools/tool-metadata.js";
 import {
   ALL_CAPABILITIES,
   DEFAULT_CAPABILITIES,

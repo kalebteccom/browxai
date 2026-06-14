@@ -45,6 +45,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "dump_storage_state",
     {
+      capability: "read",
       description:
         "Storage-state bulk dump — capture the session's current storage state (cookies + per-origin localStorage), the blob format Playwright's `BrowserContext.storageState()` returns. ALWAYS returns the blob; with `path`, also writes JSON to a workspace-rooted file (path-traversal rejected — must resolve under $BROWX_WORKSPACE). Use this to checkpoint an authed state for later replay via `inject_storage_state` / `auth_save`. Read-only. SECURITY NOTE: cookie *values* may carry credentials — treat the dump as sensitive (a future egress-masking pass lands separately).",
       inputSchema: {
@@ -83,6 +84,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "inject_storage_state",
     {
+      capability: "action",
       description:
         "Storage-state bulk inject — apply a bulk storage state to the current session's context. `state` accepts either an inline blob OR a workspace-rooted JSON path (escape rejected). `mode:\"replace\"` (default) uses Playwright's `setStorageState` which CLEARS the context's existing cookies/localStorage/IndexedDB first — clean swap semantics. `mode:\"merge\"` adds cookies via `addCookies` without clearing AND best-effort merges localStorage for the currently-loaded origin only (other origins in the blob are skipped and returned in `originsSkipped` — localStorage is page-bound, not context-bound). For per-session seeding at CREATION, prefer `open_session({ storageState | authState })` — that's the Playwright-native primitive on incognito mode.",
       inputSchema: {
@@ -129,6 +131,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "cookies_get",
     {
+      capability: "read",
       description:
         "Read a single cookie by name. Optional `url` narrows the cookie jar (only cookies that would be sent on a request to that URL). Returns the full Playwright cookie object or `null`. Read-only.",
       inputSchema: {
@@ -162,6 +165,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "cookies_list",
     {
+      capability: "read",
       description:
         "List cookies in the session's jar. `urls` filters to cookies that would be sent on requests to those URLs (Playwright's native filter). Returns the full Playwright cookie array. Read-only.",
       inputSchema: {
@@ -192,6 +196,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "cookies_set",
     {
+      capability: "action",
       description:
         'Set a single cookie. Playwright\'s `addCookies` requires either `url` (recommended — derives domain/path/secure for you) OR both `domain` AND `path` explicitly; one of those two forms must be supplied or the call is rejected. Optional `expires` (Unix seconds), `httpOnly`, `secure`, `sameSite` (`"Strict"|"Lax"|"None"`). Idempotent w.r.t. (name, domain, path).',
       inputSchema: {
@@ -247,6 +252,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "cookies_delete",
     {
+      capability: "action",
       description:
         "Delete cookies by name, optionally narrowed by `url` (derives domain/path) or explicit `domain`/`path`. Returns `{ok:true}` even if no cookie matched (idempotent — distinguish presence via `cookies_get` first if needed).",
       inputSchema: {
@@ -282,6 +288,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "cookies_clear",
     {
+      capability: "action",
       description:
         'Wipe ALL cookies in the session\'s jar. Destructive across every domain in this context. localStorage and sessionStorage are untouched (use `*_clear` for those, or `inject_storage_state({state, mode:"replace"})` to reset everything via a bulk swap).',
       inputSchema: { ...SESSION_ARG },
@@ -323,6 +330,7 @@ export function registerStorageTools(host: ToolHost): void {
     register(
       `${prefix}_get`,
       {
+        capability: "read",
         description: `Read one key from ${human} of the current page's origin. Returns \`{value: string|null, origin}\`. ${originScope} Read-only.`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
@@ -346,6 +354,7 @@ export function registerStorageTools(host: ToolHost): void {
     register(
       `${prefix}_list`,
       {
+        capability: "read",
         description: `List every key/value pair in ${human} of the current page's origin. Returns \`{entries:[{key,value}...], origin}\`. ${originScope} Read-only.`,
         inputSchema: { ...SESSION_ARG },
       },
@@ -369,6 +378,7 @@ export function registerStorageTools(host: ToolHost): void {
     register(
       `${prefix}_set`,
       {
+        capability: "action",
         description: `Set a key/value in ${human} of the current page's origin. ${lifetimeNote} ${originScope}`,
         inputSchema: {
           key: z.string().describe(`${human} key.`),
@@ -402,6 +412,7 @@ export function registerStorageTools(host: ToolHost): void {
     register(
       `${prefix}_delete`,
       {
+        capability: "action",
         description: `Remove a key from ${human} of the current page's origin. Idempotent. ${originScope}`,
         inputSchema: { key: z.string().describe(`${human} key.`), ...SESSION_ARG },
       },
@@ -427,6 +438,7 @@ export function registerStorageTools(host: ToolHost): void {
     register(
       `${prefix}_clear`,
       {
+        capability: "action",
         description: `Wipe ALL keys in ${human} of the current page's origin. ${originScope}`,
         inputSchema: { ...SESSION_ARG },
       },
@@ -459,6 +471,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "auth_save",
     {
+      capability: "action",
       description:
         "Capture the session's current storage state into a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are letters/digits/`._-` only (no separators, no `..`). Overwrites an existing slot of the same name. Pair with `open_session({authState})` to spin up a session pre-logged-in, or with `auth_load` + `inject_storage_state` for in-flight reseating. SECURITY NOTE: cookie *values* may carry credentials — these files are sensitive (a future secrets-masking pass lands separately).",
       inputSchema: {
@@ -488,6 +501,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "auth_load",
     {
+      capability: "action",
       description:
         'Load a named storage-state slot AND apply it to an existing session (replaces the context\'s cookies/localStorage/IndexedDB — same semantics as `inject_storage_state({mode:"replace"})`). For SEEDING a new session at creation time, prefer `open_session({authState:"<name>"})` — that\'s cheaper (no clear-then-replace cycle on a fresh context) and lets incognito mode use the Playwright-native primitive.',
       inputSchema: {
@@ -520,6 +534,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "auth_list",
     {
+      capability: "read",
       description:
         "Enumerate every named auth-state slot in the workspace. Returns `{name, path, bytes, modifiedAt}` per slot, sorted by name. Read-only.",
       inputSchema: {},
@@ -539,6 +554,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "auth_delete",
     {
+      capability: "action",
       description:
         "Remove a named auth-state slot from the workspace. Idempotent (`existed:false` if it wasn't there).",
       inputSchema: { name: z.string().describe("Slot name.") },
@@ -577,6 +593,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_list_storages",
     {
+      capability: "read",
       description:
         "List every cache storage visible to the current page's origin (`caches.keys()`). Cache API is ORIGIN-SCOPED — the session must be navigated to the target origin first; about:blank rejects with a navigation hint. Returns `{names:[...], origin}`. Read-only.",
       inputSchema: { ...SESSION_ARG },
@@ -601,6 +618,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_list",
     {
+      capability: "read",
       description:
         "List entries in one cache. Returns `{entries:[{url, method}], origin, cacheName}`. Optional `urlPattern` is a case-sensitive substring filter on each entry's URL (no regex — adopters wanting richer filtering can post-filter the result). Origin-scoped — navigate first. Read-only.",
       inputSchema: {
@@ -632,6 +650,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_get",
     {
+      capability: "read",
       description:
         'Read the response body of a single cache entry. Text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) arrive as `{kind:"text", text}`. Everything else arrives as `{kind:"binary", contentBase64, byteLength}`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.',
       inputSchema: {
@@ -660,6 +679,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_put",
     {
+      capability: "action",
       description:
         "Put one entry in a cache. `response.body` is a UTF-8 string (default); for binary content pass `response.contentBase64` instead — exactly one of the two. Optional `response.status` (default 200) and `response.headers` build the `Response`. Auto-opens (= creates) the named cache storage if it doesn't exist. Origin-scoped — navigate first.",
       inputSchema: {
@@ -704,6 +724,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_delete",
     {
+      capability: "action",
       description:
         "Delete one entry from a cache. Returns `existed:true` when a record was present (idempotent — repeat calls return `existed:false`). Origin-scoped — navigate first.",
       inputSchema: {
@@ -734,6 +755,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_clear",
     {
+      capability: "action",
       description:
         "Clear every entry in a cache (the cache storage itself remains — use `caches_delete_storage` to drop the whole storage). Returns `cleared:N` (the count removed). Origin-scoped — navigate first.",
       inputSchema: {
@@ -763,6 +785,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "caches_delete_storage",
     {
+      capability: "action",
       description:
         "Delete a cache storage entirely (`caches.delete(name)`). Returns `existed:true` when the storage was present (idempotent). To clear entries while keeping the storage, use `caches_clear`. Origin-scoped — navigate first.",
       inputSchema: {
@@ -794,6 +817,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_list_databases",
     {
+      capability: "read",
       description:
         "Enumerate every IndexedDB database visible to the current page's origin (`indexedDB.databases()`). Returns `{databases:[{name, version}], origin, supported}`. `supported:false` on engines that don't expose `indexedDB.databases()` (older non-Chromium browsers) — the storage is still readable per-database via `idb_list_stores({dbName})`, you just have to know the names. IndexedDB is ORIGIN-SCOPED — navigate first. Read-only.",
       inputSchema: { ...SESSION_ARG },
@@ -818,6 +842,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_list_stores",
     {
+      capability: "read",
       description:
         "List the object-store names inside a database. Read-only — does NOT trigger an upgrade transaction, so it will only see stores that already exist. Returns `{stores:[...], dbName, version, origin}`. Origin-scoped — navigate first.",
       inputSchema: {
@@ -845,6 +870,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_get",
     {
+      capability: "read",
       description:
         "Get the value at a key in an object store. Returns `{found:true, value}` or `{found:false}`. KEY SHAPES: IDB natively accepts strings, numbers, dates, and arrays as keys — all four shapes round-trip through JSON cleanly (Dates as ISO strings; pass the ISO string back in on subsequent calls). VALUE SHAPES: IDB stores structured-clonable values (Blob/ArrayBuffer/Map/Set/Date), but this tool returns over MCP's JSON-only transport — non-JSON-serialisable values surface as a structured error (the platform value is preserved IN the store; it just can't ride the wire). For binary payloads, store them base64-encoded at the app level. **JSON-string fidelity**: if the app under test stored a value via `JSON.stringify(obj)` (a localStorage-habit common in older code), `idb_get` returns the raw JSON STRING verbatim — IDB faithfully preserves shape, and browxai does NOT auto-detect-and-parse stringified values because some apps legitimately store JSON strings as strings. Call-site responsibility: `JSON.parse` if you expect an object. The companion `idb_put` warning surfaces the opposite footgun (an MCP client double-encoding the input). Origin-scoped — navigate first. Read-only.",
       inputSchema: {
@@ -876,6 +902,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_put",
     {
+      capability: "action",
       description:
         "Put a value at a key in an object store. The object store MUST already exist — this tool does not create stores (store creation requires an IDB upgrade transaction, which is the app's schema concern). `value` is anything JSON-serialisable; non-JSON inputs reject at MCP-validation time. If the store uses an in-line keyPath, `key` is ignored (the keyPath read off `value` is authoritative); otherwise `key` becomes the out-of-line primary key. Origin-scoped — navigate first.",
       inputSchema: {
@@ -936,6 +963,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_delete",
     {
+      capability: "action",
       description:
         "Delete the value at a key in an object store. Idempotent — returns the same shape whether or not a record was there. Origin-scoped — navigate first.",
       inputSchema: {
@@ -969,6 +997,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "idb_clear",
     {
+      capability: "action",
       description:
         "Clear every record from an object store (the store itself remains). Origin-scoped — navigate first.",
       inputSchema: {
@@ -1013,6 +1042,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "artifact_save",
     {
+      capability: "action",
       description:
         'Save a session-scoped artifact (string or binary) into the session\'s workspace-rooted KV. The artifact lives at `$BROWX_WORKSPACE/.artifacts/<sessionId>/<name>`. `name` must be letters / digits / `._-` only (no path separators, no `..`, no leading dot — workspace-escape rejected). `content` is text by default (`encoding:"utf8"`); pass `encoding:"base64"` for binary payloads. Overwrites an existing artifact with the same name. The session\'s KV is capacity-bounded at 200 entries / 50 MiB — past either cap the OLDEST-write entry is evicted to make room. Cleared on `close_session` — artifacts don\'t survive teardown. Retrieve with `artifact_get({name})`; enumerate with `artifact_list()`. → `{ ok, name, size, mtime, path }`. Capability `action`.',
       inputSchema: {
@@ -1055,6 +1085,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "artifact_get",
     {
+      capability: "read",
       description:
         "Read back a previously-saved session artifact. `name` matches the value passed to `artifact_save`. `encoding` controls the return shape — `utf8` (default) returns the bytes as text; `base64` returns them base64-encoded (round-trip-faithful for binary payloads). Throws if the name is unknown in this session. → `{ ok, name, content, size, mtime, encoding }`. Capability `read`.",
       inputSchema: {
@@ -1089,6 +1120,7 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "artifact_list",
     {
+      capability: "read",
       description:
         "Enumerate every artifact in this session's KV (sorted by name asc). Read-only. → `{ ok, count, artifacts: [{ name, size, mtime }] }`. Per-session, capacity-bounded (200 entries / 50 MiB); cleared on `close_session`. Capability `read`.",
       inputSchema: { ...SESSION_ARG },
@@ -1123,6 +1155,8 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "start_har",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright's blessed native primitive — same finalize-on-close caveat). Capability `action`. Workspace-rooted paths only; traversal rejected.",
       inputSchema: {
@@ -1187,6 +1221,8 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "stop_har",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Stop HAR recording on the current session. Removes the recording route so further requests aren't logged. **The HAR file is finalized only when the session closes** (`close_session`) — there is no mid-session flush on Playwright's native HAR pipeline. Returns the reserved path; if the file already exists on disk and is under ~256 KB, an inline `har` field is also returned (only happens once the context has actually been closed and re-opened with the same path; usually you'll just read the file after `close_session`). Re-recording within the same session: stop_har, then start_har again with a fresh path. Capability `action`.",
       inputSchema: { ...SESSION_ARG },
@@ -1240,6 +1276,8 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "stop_video",
     {
+      capability: "file-io",
+      batchable: true,
       description:
         "Signal that the session's video recording should be finalized. Mirrors the `stop_har` native-record posture: **the .webm is written to disk only when the session closes** (`close_session`) — Playwright provides no mid-context flush on the `recordVideo` primitive. This call marks the recorder as `pendingFinalize:true` and returns the reserved target path; the actual file appears on disk after `close_session`. Use `get_video` afterwards to retrieve the bytes or absolute path. Returns a structured error if no video recorder is active (you didn't pass `recordVideo` to `open_session`). Capability `file-io`.",
       inputSchema: { ...SESSION_ARG },
@@ -1290,6 +1328,8 @@ export function registerStorageTools(host: ToolHost): void {
   register(
     "get_video",
     {
+      capability: "file-io",
+      batchable: true,
       description:
         'Read the session\'s recorded video. **The .webm is written only after `close_session`** — calling `get_video` before then returns a structured error pointing at the close requirement. `format:"path"` (default) returns the absolute path + on-disk size. `format:"bytes"` additionally inlines the file as base64 when under ~1 MiB; larger files return path + `tooLargeToInline:true` so the caller reads them off disk. Returns a structured error if no recorder was wired (no `recordVideo` on `open_session`). Capability `file-io`.',
       inputSchema: {

@@ -1,35 +1,40 @@
-// L2 (single source of truth) — freeze BATCH_ALLOWED_TOOLS against the live
-// registration set.
+// L2 (single source of truth) — DERIVED batch allow-set ≡ the `{ batchable: true }`
+// registrations.
 //
-// `BATCH_ALLOWED_TOOLS` (src/tools/host-build.ts:640-712, 71 entries) is the
-// hand-maintained whitelist of tools a compound/batch tool may dispatch to. It
-// is a local `const`, NOT exported, surfaced only via the read-only
-// `ToolHost.batchAllowedTools` member (host.ts:160) — so this suite reads it off
-// a built host (see _surface.ts), never by import.
+// `BATCH_ALLOWED_TOOLS` (src/tools/host-build.ts) is no longer a hand-maintained
+// literal: RFC 0004 P2 (D2) derives it from each `register({ batchable: true })`
+// call. The set is surfaced via the read-only `ToolHost.batchAllowedTools` member
+// (host.ts) and read off a built host (see _surface.ts), never by import.
 //
-// P0 stance (frozen, not derived): two invariants — no ghost (every batchable
-// name is a real registered tool) and the size freeze (71). P2 (D2) derives the
-// set from a `{ batchable: true }` flag at `host.register`, at which point these
-// invert into a derivation check (every flagged registration ⇔ membership).
+// This suite flipped from a FREEZE (P0) to a DERIVATION check: every tool that
+// registered `{ batchable: true }` appears in the set, and nothing else does —
+// proving the derivation, which is what let the hand-list disappear. The 71-entry
+// size stays the behaviour-preservation oracle against the P0 snapshot.
 
 import { describe, it, expect } from "vitest";
-import { registeredToolNames, batchAllowedTools } from "./_surface.js";
+import { registeredToolNames, batchAllowedTools, toolRegistrations } from "./_surface.js";
 
-describe("L2 — the batch allow-set is real and frozen", () => {
-  it("every batchable tool is a registered tool (no ghost in the 71-entry set)", async () => {
+describe("L2 — the batch allow-set is derived from the registrations", () => {
+  it("every batchable tool is a registered tool (no ghost)", async () => {
     const names = new Set(await registeredToolNames());
-    const batch = await batchAllowedTools(); // ToolHost.batchAllowedTools — host.ts:160
+    const batch = await batchAllowedTools();
     const ghosts = [...batch].filter((t) => !names.has(t));
-    expect(
-      ghosts,
-      `BATCH_ALLOWED_TOOLS names with no registered tool: ${ghosts.join(", ")}`,
-    ).toEqual([]);
+    expect(ghosts, `batch-allowed names with no registered tool: ${ghosts.join(", ")}`).toEqual([]);
   });
 
-  it("the batch set is frozen at its current size (P0 snapshot)", async () => {
-    // 71 today (host-build.ts:640-712). The freeze bites: any 72nd entry, or a
-    // dropped one, fails until the change is reviewed. Post-D2 this becomes the
-    // derivation check (every `{ batchable: true }` registration ⇔ membership).
+  it("the derived set is exactly the `{ batchable: true }` registrations", async () => {
+    const table = await toolRegistrations();
+    const flagged = new Set([...table].filter(([, m]) => m.batchable).map(([name]) => name));
+    const batch = await batchAllowedTools();
+    const onlyInSet = [...batch].filter((t) => !flagged.has(t));
+    const onlyFlagged = [...flagged].filter((t) => !batch.has(t));
+    expect(onlyInSet, "in the batch set but not flagged batchable").toEqual([]);
+    expect(onlyFlagged, "flagged batchable but missing from the batch set").toEqual([]);
+  });
+
+  it("the derived set equals the P0 snapshot size (behaviour preserved at 71)", async () => {
+    // 71 today. The derivation must reproduce the frozen snapshot exactly: a 72nd
+    // batchable tool, or a dropped one, shifts this and is reviewed.
     expect((await batchAllowedTools()).size).toBe(71);
   });
 });

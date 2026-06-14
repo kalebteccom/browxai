@@ -8,6 +8,13 @@
 // URL sanitiser, the `<SECRET_NAME>` substitution, and per-session isolation
 // are enforced once at the server and trusted by the SDK.
 
+// RFC 0004 P2 / D1 (SECURITY-CRITICAL): the SDK client's capability gate
+// (`buildClient` → `capabilityFor` → `TOOL_CAPABILITY`) reads the derived map.
+// The SOCKET transport never calls `createServer`, so without this side-effect
+// import the gate would read an empty (fail-open) map. Importing the bootstrap
+// here EAGERLY populates the derived maps for every `createBrowxai` transport —
+// the SDK entry is one of the four real entry points the bootstrap guarantees.
+import "../tools/tool-metadata.js";
 import { buildClient, defaultSdkCapabilities } from "./client.js";
 import type { Capability } from "../util/capabilities.js";
 import { openInProcessTransport } from "./transport-in-process.js";

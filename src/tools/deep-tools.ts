@@ -85,6 +85,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "perf_start",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Arm a CDP performance trace on this session — wraps `Tracing.start`. Use to diagnose **why** a slow interaction was slow: a paired `perf_stop` flushes a chromium-format trace file under `<workspace>/perf-traces/` and a `perf_insights` call extracts structured long-tasks / layout-shifts / render-blocking / LCP / navigation-timing data from it. Per-session; one trace in flight at a time. **Idempotent restart:** calling `perf_start` while a trace is already running cleanly stops the in-flight one (events discarded) and starts fresh — an agent that lost track of state always recovers by just calling again. Empty `categories` uses a DevTools-Performance-equivalent default (devtools.timeline + loading + blink.user_timing + frame). Tracing is per-target (the attached chromium); BYOB sessions: a `perf_stop` is REQUIRED to detach the trace buffer on the human's Chrome — `close_session` also cleans up on its way out.",
       inputSchema: {
@@ -137,6 +140,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "perf_stop",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Stop the in-flight performance trace and flush it to a workspace-rooted JSON file. Wraps `Tracing.end`. Returns `{ path, bytes, eventCount, categories, durationMs }` plus a tiny summary (long-task count, layout-shift count, render-blocking count) so you don't have to call `perf_insights` for a one-glance answer. Default file path: `<workspace>/perf-traces/<sessionId>-<ts>.json` (override with `path`, which is rejected if it resolves outside `$BROWX_WORKSPACE`). **Safe to call any number of times:** if no trace is running, returns `notRunning:true` rather than an error — pairs cleanly with idempotent agent retries. The file is chromium-tracing format (`{ traceEvents, metadata }`), so it loads in DevTools' Performance panel and `chrome://tracing` directly.",
       inputSchema: {
@@ -219,6 +225,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "perf_insights",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Extract structured insights from a written performance trace file. Returns `{ longTasks, layoutShifts, renderBlocking, lcpCandidates, navigation?, totals }`: top-50 long tasks (≥50ms blocking work, sorted longest-first); layout shifts with per-shift score + sum; render-blocking CSS/JS resources with duration; LCP candidates (final = effective LCP); navigation milestones (FP / FCP / DCL / load) relative to `navigationStart`. `tracePath` is workspace-rooted (the path `perf_stop` returned) and rejected if it escapes `$BROWX_WORKSPACE`. Same chromium-tracing JSON format the DevTools Performance panel consumes — bring-your-own trace works too.",
       inputSchema: {
@@ -288,6 +297,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "perf_audit",
     {
+      capability: "read",
+      batchable: true,
+      deep: true,
       description:
         'Run a structured performance audit on this session and return remediation-shaped findings — the headline tool. Records a CDP trace + JS/CSS precise coverage + network response metadata for `durationMs` (default 5000, max 30000), then runs 8 pluggable category analysers against the assembled context and composes a report. **Categories** (default = all): `render-blocking` (resources blocking first paint), `unused-code` (scripts/stylesheets with <30% usage), `oversize-images` (>500KB), `layout-thrashing` (>5 forced sync layouts), `long-tasks` (>50ms main-thread blockers), `leak-suspects` (>10% retainer growth — requires `memory_diff` data passed via the runner), `cache-opportunities` (static assets with missing/short Cache-Control), `font-loading` (fonts loaded >200ms after document start). **Output shape:** `{summary:{score, topIssues[]}, byCategory:{[cat]:{issues[], remediations[]}}, evidence:{tracePath, coveragePath?}, warnings[], tokensEstimate}`. **`format`** (default `"summary"`) caps each category to 3 issues + 3 remediations AND enforces a 2000-token budget on the body — over-budget low/medium severity entries are dropped + a `warnings[]` entry surfaces it. `"full"` is unbounded. **Evidence files** (workspace-rooted): the trace under `<workspace>/perf/<sessionId>-audit-<ts>.json` + coverage JSON alongside; both are loadable in DevTools\' Performance / Coverage panels. Internally pluggable — future categories add by extending `ANALYSERS` in `src/page/perf-audit.ts` without changing this public surface. Capability `read` (non-mutating observation).',
       inputSchema: {
@@ -359,6 +371,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "coverage_start",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Arm precise JS + CSS coverage tracking on this session — wraps CDP `Profiler.startPreciseCoverage` (per-script byte-level use counts) + `CSS.startRuleUsageTracking` (per-stylesheet rule-level use counts) in lockstep. Use to identify dead JS + dead CSS that ships but boot never executes. Pairs with `coverage_stop` (returns the parsed report). Per-session; one lifecycle in flight at a time. **Idempotent restart:** calling `coverage_start` while a tracker is already running cleanly stops the in-flight one (results discarded) and starts fresh. Captures stylesheet metadata (URL + length) via the `CSS.styleSheetAdded` event stream during the tracking window. Capability `action` (mutates target state). The audit tool `perf_audit` calls this internally — only use the direct primitives when you want the raw report or want a longer window than the audit's default.",
       inputSchema: {
@@ -405,6 +420,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "coverage_stop",
     {
+      capability: "read",
+      batchable: true,
+      deep: true,
       description:
         "Stop precise JS + CSS coverage tracking and return the parsed report. Calls `Profiler.takePreciseCoverage` + `CSS.stopRuleUsageTracking` then aggregates the raw byte-range output into per-script + per-stylesheet entries. Returns `{ok, jsCoverage:[{url, totalBytes, usedBytes, usagePercent, deadRanges?}], cssCoverage:[{url, totalBytes, usedBytes, usedRules, totalRules, usagePercent, deadRules?}], durationMs}`. `usagePercent` is the agent's scan metric — `<30` indicates substantial dead code (the audit's `unused-code` analyser flags it). `deadRanges` / `deadRules` are top-50 byte ranges per file. **Safe to call any number of times:** if no tracker is running, returns `notRunning:true` rather than an error. Pure parsing + composition past the CDP fetches — no file written; the caller decides whether to persist the report. Capability `read`.",
       inputSchema: {
@@ -459,6 +477,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "layout_thrash_trace",
     {
+      capability: "read",
+      batchable: true,
+      deep: true,
       description:
         'Record a focused CDP trace for `durationMs` (default 5000, max 30000) that captures forced synchronous layouts + LayoutShift + Recalc Style events, then aggregate by originating call-stack so the agent sees `"this rAF loop fired 200 forced layouts"` at a glance instead of paging through a 100MB chromium trace. Returns `{ok, forcedLayoutsCount, layoutShiftsCount, eventsByOrigin:[{originatingStack, count, totalDurationMs}], tracePath, durationMs}`. `originatingStack` reads from the trace\'s `stackTrace` field on each event (chromium populates it when DevTools is attached) — `"<anonymous>"` when no stack was attached. `tracePath` is a workspace-rooted JSON file under `<workspace>/perf/<sessionId>-layout-thrash-<ts>.json` — loadable in DevTools\' Performance panel for the full visual. Capped at the top 50 origins, sorted by count desc. Capability `read`.',
       inputSchema: {
@@ -515,6 +536,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "memory_diff",
     {
+      capability: "read",
+      batchable: true,
+      deep: true,
       description:
         "Diff two V8 heap snapshots (paths to existing `.heapsnapshot` files from `heap_snapshot`) and report retainer growth per node-type group. Pure function — no browser interaction; no CDP touch; reads + parses two existing JSON-shaped V8 heap snapshots on disk and emits the structured diff. **Inputs:** `beforePath` + `afterPath`, both workspace-rooted (path-escape rejected). **Output:** `{ok, retainerGrowth:[{node, type, sizeBefore, sizeAfter, deltaBytes, deltaPercent}], summary:{totalGrowth, top3Growers}}`. `node` is the V8 `${type}:${name}` display (matches `heap_retainers`'s shape). Groups whose `|deltaBytes| < 1024` are dropped as noise. Sorted by `deltaBytes` desc, capped at 100 rows. Typical leak-detection flow: `heap_snapshot` (before suspect interaction) → drive the action → `heap_snapshot` (after) → `memory_diff({beforePath, afterPath})`. The audit's `leak-suspects` analyser consumes this shape directly. Capability `read`.",
       inputSchema: {
@@ -562,6 +586,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "heap_snapshot",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         "Take a V8 heap snapshot on this session's target — wraps CDP `HeapProfiler.takeHeapSnapshot`. The output file is the same `.heapsnapshot` JSON DevTools' Memory panel and `chrome://inspect` consume on drag-and-drop. Use to diagnose memory leaks: pair with `heap_retainers({snapshotPath, query})` to ask \"who's still pointing to objects named X / typed Y\" — the answer is invisible in `snapshot` / `find` because the leaked nodes are no longer in the DOM. Per-session; one-shot (a heap snapshot is a point-in-time capture, not a recording window). Default file path: `<workspace>/heap-snapshots/<sessionId>-<ts>.heapsnapshot` — explicit `path` is rejected if it escapes `$BROWX_WORKSPACE`. Snapshots are heavy (often tens to hundreds of MiB on a real page); don't take them in a tight loop.",
       inputSchema: {
@@ -620,6 +647,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "heap_retainers",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         'Run a retainer query against a written `.heapsnapshot` file. Returns the top retainers (sorted by retainer self-size desc, capped at 50) of nodes whose display name and/or V8 type matches the query — directly answers "who\'s holding these objects alive?" without paging through DevTools\' Memory panel. Pure file read + in-process parse, no CDP touch. `query.name` defaults to exact match against the node\'s string-table name (use `nameMatch:"substring"` for containment); `query.type` filters by V8 node-type (`"closure"`, `"object"`, `"hidden"`, …). At least one of `name` / `type` is required — a match-everything query is never the right answer. `snapshotPath` is workspace-rooted; rejected if it escapes `$BROWX_WORKSPACE`. Same JSON format `heap_snapshot` writes — bring-your-own snapshot (downloaded from DevTools, saved by a CI run) works too.',
       inputSchema: {
@@ -689,6 +719,9 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "clock",
     {
+      capability: "action",
+      batchable: true,
+      deep: true,
       description:
         'Control the page\'s virtual clock via CDP `Emulation.setVirtualTimePolicy` — deterministic testing of date-sensitive flows (renewal dates, "today" filters, scheduling, expiry edges) without changing the OS clock. Three modes: `freeze` pauses virtual time at `atIso` (or wall-clock now if omitted); `advance` jumps the clock by `byMs` or to an absolute `atIso`, then re-pins; `release` resumes real time. Per-session; persists across navigation (re-applied on main-frame nav in case CDP drops it). Independent of `network_emulate` / `cpu_emulate` — compose freely. **BYOB:** the policy stays in effect on the attached Chrome until released, reloaded, or closed; a `warning` field surfaces this in `attached` mode.',
       inputSchema: {
@@ -760,6 +793,8 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "seed_random",
     {
+      capability: "action",
+      batchable: true,
       description:
         "Override the page's `Math.random` with a deterministic Mulberry32 PRNG seeded from `seed`. For flake-repros where unseeded randomness drives id generation, dice / card / A-B picks, or jittered retry timing. Injected via Playwright `addInitScript`, so every new document in the session — including subsequent navigations — bootstraps the same override; the current page's main realm is re-seeded immediately so the effect is visible without navigating. Per-session; persists across navigation (re-applied on main-frame `framenavigated` for symmetry with `network_emulate` / `clock`). **MVP scope:** only `Math.random` is overridden — `crypto.randomUUID` / `crypto.getRandomValues` are NOT touched (web-crypto is a much bigger deterministic-stub surface; revisit later). Workers are out of scope (the init script runs in document realms, not worker realms). **BYOB:** the override is installed on the attached Chrome's context for as long as the context lives; surfaced as a `warning` in `attached` session mode.",
       inputSchema: {
@@ -808,6 +843,7 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "act_and_wait_for_network",
     {
+      capability: "read",
       description:
         "Run ONE action and wait for a specific network response to complete — async SPAs fire follow-up requests after the action-result window, so `ActionResult.network` misses them. The waiter is armed BEFORE the action dispatches (no race). `action` is `{tool,args}` from the batch whitelist. `match` selects the response: `urlPattern` (case-insensitive substring), `method`, `status` — at least one required. Returns `{ action: <inner result>, network: { matched, method?, url?, status? } }` (url redacted, same as `network_read`). `timeoutMs` is the max wait (default 10000).",
       inputSchema: {
@@ -927,6 +963,7 @@ export function registerDeepTools(host: ToolHost): void {
   register(
     "poll_eval",
     {
+      capability: "eval",
       description:
         "Repeatedly evaluate a JS expression in the page until it returns a truthy value or `timeoutMs` elapses — for waiting on async job completion / store updates without ad-hoc in-page loops (a long in-page promise would trip the anti-wedge deadline). The value is page-controlled — treat it as untrusted, like `eval_js`. Capability: `eval`. Returns `{ ok, truthy, value, polls, elapsedMs, timedOut }`.",
       inputSchema: {

@@ -1,11 +1,11 @@
 import type { z } from "zod";
 
+import type { Capability, CapabilityConfig } from "../util/capabilities.js";
 import type { SessionEntry, SessionRegistry } from "../session/registry.js";
 import type { DiagnosticsRecorder } from "../util/diagnostics.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ActionContext } from "../page/actionresult.js";
 import type { Workspace } from "../util/workspace.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
 import type { BrowxConfig } from "../util/config.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { StartOptions } from "../server.js";
@@ -42,6 +42,39 @@ export type ResolvedTarget =
   | { coords: { x: number; y: number } };
 
 /**
+ * The gating metadata a tool declares inline at its `host.register` call
+ * (RFC 0004 P2 / D2). Colocating these facts with the tool makes the three
+ * central maps DERIVABLE rather than hand-maintained:
+ *   - `capability` → the `TOOL_CAPABILITY` row (replaces `util/capabilities.ts`)
+ *   - `batchable`  → membership in the batch allow-set (replaces the host-build `Set`)
+ *   - `deep`       → membership in `DEEP_TOOLS` (replaces `engine/tool-gate.ts`)
+ * The single source of truth becomes the registration call; the maps iterate the
+ * registrations at startup. A tool that omits `capability` is treated as the
+ * `human` coordination default (the control-plane primitives that legitimately
+ * carry no browser capability — open_session, batch, get_config, …).
+ */
+export interface ToolMeta {
+  /** The capability that gates this tool. Omit only for a control-plane
+   *  coordination primitive that defaults to `human`. */
+  capability?: Capability;
+  /** May a compound/batch tool dispatch to this tool? Replaces batch-set membership. */
+  batchable?: boolean;
+  /** Needs the raw-CDP escape hatch — refused on engines that declare `deep:false`.
+   *  Replaces `DEEP_TOOLS` membership. */
+  deep?: boolean;
+}
+
+/** One tool's accumulated registration record — its `ToolMeta` plus the
+ *  description and zod input schema the `register` call carried. The host stores
+ *  these so the central maps and the SDK tool-types codegen (RFC 0004 D7) derive
+ *  from one place. The schema is type-erased to `z.ZodRawShape` (the codegen reads
+ *  it structurally; the per-handler generic relation is enforced at the call site). */
+export interface ToolRegistration extends ToolMeta {
+  description: string;
+  inputSchema?: z.ZodRawShape;
+}
+
+/**
  * The composition seam between `createServer` (the registry composition root)
  * and the per-family tool modules under `src/tools/`. `createServer` builds the
  * shared state and helper closures once, bundles them into a single `ToolHost`,
@@ -59,7 +92,19 @@ export interface ToolHost {
    *  `any`. Tools with no `inputSchema` receive an empty object. */
   register: <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
-    def: { description: string; inputSchema?: S },
+    def: {
+      description: string;
+      inputSchema?: S;
+      /** The capability that gates this tool — derived into `TOOL_CAPABILITY`
+       *  (RFC 0004 P2). Omit only for a `human` control-plane primitive. */
+      capability?: Capability;
+      /** Whether a compound/batch tool may dispatch to this tool — derived into
+       *  the batch allow-set. */
+      batchable?: boolean;
+      /** Whether the tool needs the raw-CDP escape hatch — derived into
+       *  `DEEP_TOOLS`, refused on engines that declare `deep:false`. */
+      deep?: boolean;
+    },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;
 
@@ -156,8 +201,15 @@ export interface ToolHost {
   toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>>;
 
   /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
-   *  to. Read lazily so the host can expose it before the set is populated. */
+   *  to. Read lazily so the host can expose it before the set is populated. Derived
+   *  (RFC 0004 P2) from each `register({ batchable: true })` call. */
   readonly batchAllowedTools: ReadonlySet<string>;
+
+  /** The accumulated per-tool registration metadata (RFC 0004 P2 / D2 + D7): the
+   *  `ToolMeta` each `register` call declared, plus the tool's zod `inputSchema`
+   *  (the source the SDK tool-types codegen reads). Keyed by tool name, populated
+   *  as each `registerXxxTools(host)` module runs. */
+  readonly registrations: ReadonlyMap<string, ToolRegistration>;
 
   /** The session registry — the live source of truth for which sessions are open
    *  (the QA-evidence report bundles its `list()`). */

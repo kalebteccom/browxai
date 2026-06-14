@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest";
+// RFC 0004 P2: DEEP_TOOLS is now DERIVED from the colocated `host.register({ deep })`
+// metadata (collected by the tools-layer bootstrap). This standalone gate test
+// loads the bootstrap so the lazy collector is installed and the set is populated.
+import "../tools/tool-metadata.js";
 import { assertEngineSupports, DEEP_TOOLS } from "./tool-gate.js";
 
 describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {

@@ -38,6 +38,13 @@ import { registerInputTools } from "./tools/input-tools.js";
 import { registerExtensionsBatchTools } from "./tools/extensions-batch-tools.js";
 import { wirePluginRuntime } from "./tools/plugin-runtime.js";
 import { buildSessionRegistry } from "./tools/session-registry.js";
+// RFC 0004 P2 / D1 (SECURITY-CRITICAL): importing the tool-metadata bootstrap is a
+// side effect that EAGERLY populates the derived `TOOL_CAPABILITY` / `DEEP_TOOLS`
+// maps. `createServer` calls `resolveCapabilities` BEFORE its own tool
+// registrations run; this import guarantees the maps are already populated at that
+// point (and that the gate's fail-safe never trips for a server-built process),
+// independent of whether the consumer reached us via the package entry.
+import "./tools/tool-metadata.js";
 // Shared input-schema fragments live in a leaf module so the per-family tool
 // modules and this composition root depend on them without an import cycle.
 import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/schemas.js";

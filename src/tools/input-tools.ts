@@ -27,6 +27,8 @@ export function registerInputTools(host: ToolHost): void {
     register(
       act,
       {
+        // mouse_down / mouse_move / mouse_up — low-level pointer dispatch.
+        capability: "action",
         description: `Low-level ${act.replace("_", " ")} for custom gestures the higher-level tools don't cover (scrub/trim handles). ${act === "mouse_move" ? "Requires `coords`." : "`coords` optional — moves there first when given, else acts at the current pointer position."}`,
         inputSchema: {
           coords: z
@@ -81,6 +83,10 @@ export function registerInputTools(host: ToolHost): void {
     register(
       act,
       {
+        // touch_start / touch_move / touch_end — CDP touch pipeline; deep (no
+        // off-Chromium Playwright equivalent).
+        capability: "action",
+        deep: true,
         description:
           `Dispatch ${act.replace("_", " ")} via CDP Input.dispatchTouchEvent — a separate pipeline from \`mouse_*\` for mobile-default apps and canvas / map / drawing widgets that listen for \`touchstart\` / \`touchmove\` / \`touchend\`. ${requiresCoords ? "`coords` required (viewport CSS px)." : "`coords` optional — when omitted, dispatches an empty touchPoints[] (the 'all fingers up' form)."} ` +
           "`identifier` (default 1) maps to DOM `TouchEvent.changedTouches[].identifier` — use distinct ids per finger to fan out multi-touch. Touch does NOT synthesise mouse events — dispatch mouse_* explicitly if both pipelines are needed.",
@@ -151,6 +157,8 @@ export function registerInputTools(host: ToolHost): void {
     register(
       action,
       {
+        // profile_snapshot / profile_restore — human coordination primitives.
+        capability: "human",
         description:
           action === "profile_snapshot"
             ? 'Copy a persistent session\'s profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to "default". ALL sessions must be closed first (copying a live profile dir corrupts it).'
