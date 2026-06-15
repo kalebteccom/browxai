@@ -21,6 +21,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
     gateCheck,
     entryFor,
     cfgActionTimeout,
+    egressFor,
     caps,
     config,
   } = host;
@@ -323,9 +324,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       // echo a registered secret if the page rendered it (e.g. an
       // <input value="hunter2"> whose accessible name embeds the value). Mask
       // the entire result via the deep-walk helper before serialising.
-      const masked = caps.enabled.has("secrets")
-        ? e.secrets.applyMaskDeep({ query, ...result })
-        : { query, ...result };
+      const masked = egressFor(e).maskDeep({ query, ...result });
       return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );
@@ -430,9 +429,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       // egress masking — same posture as `find` (matches carry visible
       // text). The action-class catch-all so an `<input value=hunter2>`
       // rendered text leak doesn't slip through text_search.
-      const masked = caps.enabled.has("secrets")
-        ? e.secrets.applyMaskDeep({ query: text, ...result })
-        : { query: text, ...result };
+      const masked = egressFor(e).maskDeep({ query: text, ...result });
       return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );

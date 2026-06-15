@@ -24,6 +24,7 @@ import { type StorageSubstrate } from "../page/storage-substrate.js";
 import { type ScriptSubstrate } from "../page/script-substrate.js";
 import { type EmulationSubstrate } from "../page/emulation-substrate.js";
 import { engineEntry, type SubstrateBundle, type SubstrateDeps } from "../engine/registry.js";
+import { EgressSanitiser } from "../util/egress-sanitiser.js";
 import { screenshotSave } from "../page/screenshot-save.js";
 import type { ActionContext } from "../page/actionresult.js";
 import {
@@ -290,6 +291,14 @@ export function buildHost(deps: HostDeps): ToolHost {
   const storageFor = (e: SessionEntry): StorageSubstrate => substratesFor(e).storage(e);
   const scriptFor = (e: SessionEntry): ScriptSubstrate => substratesFor(e).script(e);
   const emulationFor = (e: SessionEntry): EmulationSubstrate => substratesFor(e).emulation(e);
+
+  // The egress-masking chokepoint (RFC 0004 P3 / D4). The `secrets`-capability
+  // decision is made ONCE here: a `secrets`-off server hands every sink a
+  // sanitiser holding a null registry (URL-sanitisation still applies; deep/text
+  // secrets-masking is a no-op) — byte-identical to the prior per-sink
+  // `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(x) : x` hand-call.
+  const egressFor = (e: SessionEntry): EgressSanitiser =>
+    new EgressSanitiser(caps.enabled.has("secrets") ? e.secrets : null);
 
   // resolve the effective anti-wedge deadline for a call —
   // per-call `timeoutMs` over config `actionTimeoutMs` over the 5000 default,
@@ -623,6 +632,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     storageFor,
     scriptFor,
     emulationFor,
+    egressFor,
     caps,
     config,
     configStore,

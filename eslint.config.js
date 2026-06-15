@@ -470,8 +470,20 @@ export default tseslint.config(
       "src/tools/read-observe-capture-tools.ts",
       "src/tools/read-observe-buffer-tools.ts",
       "src/tools/secrets-captcha-tools.ts",
-      "src/tools/extensions-batch-tools.ts",
-      "src/tools/forms-recording-tools.ts",
+      // The P3 split extracted the persistent-session extension context rebuild
+      // out of extensions-batch-tools.ts (already allowlisted) into
+      // extensions-rebuild.ts. The inline reads here are creation-time wiring
+      // (`caps.enabled.has("stealth"/"action"/"read")` — whether to re-install the
+      // stealth / ws-interactive / workers wrappers on the rebuilt context), NOT
+      // tool-handler gates — the SAME P2 debt their origin file carried, moved
+      // file-to-file. They ride the allowlist their origin file did.
+      "src/tools/extensions-rebuild.ts",
+      // The P3 family split moved the `plan` handler's fallback-strategy reads
+      // (`caps.enabled.has("action"/"eval")` selecting the coords/evalJs ranking
+      // fallbacks — NOT a tool-handler gate) verbatim out of forms-recording-tools.ts
+      // (already allowlisted) into forms-plan-tools.ts. Same P2 debt, moved
+      // file-to-file; rides the same allowlist its origin file did.
+      "src/tools/forms-plan-tools.ts",
       "src/tools/plugin-runtime.ts",
       "src/sdk/client.ts",
       "src/sdk/registry.ts",

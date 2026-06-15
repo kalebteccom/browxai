@@ -17,6 +17,7 @@ import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import type { StorageSubstrate } from "../page/storage-substrate.js";
 import type { ScriptSubstrate } from "../page/script-substrate.js";
 import type { EmulationSubstrate } from "../page/emulation-substrate.js";
+import type { EgressSanitiser } from "../util/egress-sanitiser.js";
 
 /** The MCP content shape every registered handler returns — the same `{ content }`
  *  envelope an over-the-wire MCP call produces. Shared with `createServer` so the
@@ -215,6 +216,18 @@ export interface EmulationHost {
   emulationFor: (e: SessionEntry) => EmulationSubstrate;
 }
 
+/** The egress-masking chokepoint (RFC 0004 P3 / D4). A family that returns
+ *  page-derived text/JSON masks it through the injected `EgressSanitiser` instead
+ *  of hand-calling `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(x) : x`.
+ *  The capability decision is made ONCE here (the sanitiser holds a null registry
+ *  when `secrets` is off), so a sink no longer inlines the gate. */
+export interface EgressHost {
+  /** The egress sanitiser for a session: `EgressSanitiser(e.secrets)` when the
+   *  `secrets` capability is on, else `EgressSanitiser(null)`. `maskDeep` /
+   *  `maskText` / `containsAnySecret` are byte-identical to the prior hand-calls. */
+  egressFor: (e: SessionEntry) => EgressSanitiser;
+}
+
 /** JSON / ActionResult envelope builders shared by every JSON-returning family. */
 export interface EnvelopeHost {
   /** JSON envelope builder for the non-action (JSON-returning) families: stringify
@@ -299,6 +312,7 @@ export interface ToolHost
     StorageHost,
     ScriptHost,
     EmulationHost,
+    EgressHost,
     EnvelopeHost,
     ConfigHost,
     ServerServicesHost {}

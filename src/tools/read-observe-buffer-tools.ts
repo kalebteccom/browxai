@@ -26,6 +26,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
     ctxFor,
     cfgActionTimeout,
     actionTimeout,
+    egressFor,
     caps,
   } = host;
 
@@ -174,8 +175,10 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // responseShape keys. The remaining channel that can echo a literal
       // value is `regions[].name` (a11y node names — e.g. a status-region
       // whose visible text reads back the just-filled token). Deep-mask
-      // the whole result so any future string leaf is also covered.
-      const masked = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      // the whole result so any future string leaf is also covered. Routed
+      // through the injected egress chokepoint (RFC 0004 P3 / D4) — byte-identical
+      // to the prior `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(...) : ...`.
+      const masked = egressFor(e).maskDeep(result);
       return { content: [{ type: "text", text: JSON.stringify(masked, null, 2) }] };
     },
   );
@@ -244,7 +247,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // a registered real-value rendered into the computed-style stream.
       // Low-risk channel (the reviewer flagged as NIT) but the masking layer
       // is cheap; pin the invariant per-sink.
-      const maskedInspect = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      const maskedInspect = egressFor(e).maskDeep(result);
       return { content: [{ type: "text", text: JSON.stringify(maskedInspect, null, 2) }] };
     },
   );
@@ -270,8 +273,8 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       // values can echo a real `name` / `testId` that was registered via the
       // secrets registry. Same exposure class as `find()`'s `selectorHint`
       // and `inspect`'s stringly outputs — mask through the per-session
-      // registry on egress.
-      const masked = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+      // registry on egress (the injected chokepoint — RFC 0004 P3 / D4).
+      const masked = egressFor(e).maskDeep(result);
       const tokensEstimate = estimateTokens(JSON.stringify(masked));
       return {
         content: [
@@ -310,7 +313,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         // textContent of the element-under-point + nearest clickable ancestor.
         // Same exposure class as snapshot/find name fields; mask through the
         // session registry before serialising.
-        const maskedProbe = caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(result) : result;
+        const maskedProbe = egressFor(e).maskDeep(result);
         return { content: [{ type: "text" as const, text: JSON.stringify(maskedProbe, null, 2) }] };
       } catch (err) {
         // structured failure — coordinate + page URL for triage.
