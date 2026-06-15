@@ -100,30 +100,25 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // File System Access picker policy — per-context binding + init-script stubs.
   // The server-side write target for `createWritable()` is workspace-rooted and
   // validated against `workspace.root` at `fs_picker_respond` time.
-  await attachFsPickerPolicy(
-    ctx,
-    entry.fsPicker,
-    workspace.root,
-    async (api, suggestedName) => {
-      log.info(
-        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
-      );
-      try {
-        const sig = await br.awaitSignal("respond", 300_000);
-        const data = sig.data as { kind?: string; value?: unknown } | null;
-        if (
-          data &&
-          data.kind === "fs_picker_respond" &&
-          Array.isArray((data.value as { files?: unknown })?.files)
-        ) {
-          return (data.value as { files: FsPickerFile[] }).files;
-        }
-        return null;
-      } catch {
-        return null;
+  await attachFsPickerPolicy(ctx, entry.fsPicker, workspace.root, async (api, suggestedName) => {
+    log.info(
+      `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+    );
+    try {
+      const sig = await br.awaitSignal("respond", 300_000);
+      const data = sig.data as { kind?: string; value?: unknown } | null;
+      if (
+        data &&
+        data.kind === "fs_picker_respond" &&
+        Array.isArray((data.value as { files?: unknown })?.files)
+      ) {
+        return (data.value as { files: FsPickerFile[] }).files;
       }
-    },
-  ).catch(() => undefined);
+      return null;
+    } catch {
+      return null;
+    }
+  }).catch(() => undefined);
 
   // Per-session download capture — always attach the context listener; when
   // capture is off it just discards Playwright's temp file.

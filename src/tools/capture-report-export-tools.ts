@@ -14,15 +14,7 @@ import type { ToolHost } from "./host.js";
  * construction; registered through the shared `ToolHost` seam.
  */
 export function registerCaptureReportExportTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    engineGate,
-    entryFor,
-    cfgActionTimeout,
-    workspace,
-  } = host;
+  const { z, register, gateCheck, engineGate, entryFor, cfgActionTimeout, workspace } = host;
 
   // `asset_export` — filter the session's network ring and persist matching
   // responses to a workspace-rooted dir. Mirrors `download_get`'s file-io
@@ -315,5 +307,4 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       }
     },
   );
-
 }

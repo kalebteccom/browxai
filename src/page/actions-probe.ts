@@ -143,7 +143,11 @@ async function readProbeValue(loc: Locator): Promise<string | null> {
 
 /** Fold the post-action owner/container ancestor state into the probe, composing
  *  `changed` deltas against the pre-action snapshot when one was supplied. */
-function applyAncestorState(out: ElementProbe, pre: PreProbeData | undefined, post: PreProbeData): void {
+function applyAncestorState(
+  out: ElementProbe,
+  pre: PreProbeData | undefined,
+  post: PreProbeData,
+): void {
   if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
     const before = pre.ownerText;
     const after = post.ownerText;
@@ -189,7 +193,9 @@ export async function probe(
       )
       .catch(() => false);
     const value = await readProbeValue(loc);
-    const checked = await loc.evaluate(checkedScript, undefined, { timeout: PROBE_EVAL_MS }).catch(() => undefined);
+    const checked = await loc
+      .evaluate(checkedScript, undefined, { timeout: PROBE_EVAL_MS })
+      .catch(() => undefined);
     const displayText = await loc
       .evaluate(displayTextScript, undefined, { timeout: PROBE_EVAL_MS })
       .catch(() => null);

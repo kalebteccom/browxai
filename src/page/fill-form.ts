@@ -181,7 +181,13 @@ export async function resolveFieldsAtomically(
   const locators: Locator[] = [];
 
   for (let i = 0; i < fields.length; i++) {
-    const r = await resolveOneTarget(page, refs, fields[i]!.target, i, summariseTarget(fields[i]!.target));
+    const r = await resolveOneTarget(
+      page,
+      refs,
+      fields[i]!.target,
+      i,
+      summariseTarget(fields[i]!.target),
+    );
     resolutions.push(r.resolution);
     if (r.locator) locators.push(r.locator);
   }

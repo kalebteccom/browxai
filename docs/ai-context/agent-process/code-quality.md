@@ -114,6 +114,44 @@ browxai's architecture leans on SOLID with TypeScript-idiomatic interpretations.
 - The SDK depends on a `Transport` abstraction, not WebSocket / stdio specifics. The three transports (in-process, stdio-child, socket-attached) all conform.
 - The plugin runtime's `PluginApi` interface is dependency-inverted by design — plugins call `api.callTool(...)` and `api.registerTool(...)`, never reach into browxai internals.
 
+## Architecture enforcement — the automated guardrails
+
+The SOLID section above states the _rules_. This section states the _machines that
+fail when a rule is broken_ — the macro guardrails. Micro rules (comments, naming,
+async safety) have always been mechanized; until [RFC 0004](../../rfcs/0004-architecture-hardening.md)
+the macro rules were documented and unenforced, and the codebase drifted exactly
+where no machine watched. Each guardrail below names its check. **If a guardrail
+says "code-review only," that is a known gap, not a free pass.** The single index
+of every fitness function — what each proves, which law it enforces, the finding it
+closes — is [`../architecture/fitness-functions.md`](../architecture/fitness-functions.md).
+
+| #   | Guardrail (the rule)                                                                                                                                                      | Law        | How it is checked                                                                                                     | Command                                        |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| 1   | **No engine literals in handlers.** No `engine === "<literal>"` branch above the engine seam; dispatch lives in substrates / the engine registry.                         | L1         | `no-engine-literal-branches` custom ESLint rule (whitelists the engine-select files)                                  | `pnpm lint`                                    |
+| 2   | **No inlined capability gates.** A handler routes capability checks through `ToolHost.gateCheck()`; it never inlines `caps.enabled.has(...)` / `TOOL_CAPABILITY`.         | L1/L3      | `no-inlined-capability-checks` custom ESLint rule                                                                     | `pnpm lint`                                    |
+| 3   | **`server.ts` is composition-only.** No business logic; under the 400-line ceiling; imports `src/tools/*`, never `src/page/*` directly.                                   | L3         | `max-lines` budget on `server.ts` + the composition-root dependency-cruiser rule                                      | `pnpm lint` + `pnpm depcruise`                 |
+| 4   | **Dependency layering holds.** `server.ts`/`tools/*` ⊥ `sdk/*`/`cli/*`; `page/*` ⊥ concrete adapter/transport; `sdk/*` ⊥ handler internals; only the bin imports `cli/*`. | L4/L10/DIP | `dependency-cruiser` forbidden-import rules                                                                           | `pnpm depcruise`                               |
+| 5   | **Engines are pluggable (OCP).** A synthetic 6th engine works through core tools with zero edits to `src/session/*` or `src/tools/*`.                                     | L1         | `ocp-engine-contract` + `gate-bootstrap` fitness tests                                                                | `pnpm test`                                    |
+| 6   | **Central lists are derived.** Every registered tool has a capability; the batch/deep sets derive from registration; every `EngineKind` is gated.                         | L2/L9      | completeness + traceability fitness tests                                                                             | `pnpm test`                                    |
+| 7   | **Budgets, not vibes.** File-size / function-length / complexity / interface-member / duplication budgets.                                                                | L3/L4      | `eslint` budget rules + `interface-member-budget` test + the `jscpd` duplication ratchet (3.5%, exits non-zero above) | `pnpm lint` + `pnpm test` + `pnpm jscpd:check` |
+| 8   | **Boundary types narrowed.** Untyped wire/config/CDP data is narrowed at the edge; no `any` past it.                                                                      | L6         | the five `no-unsafe-*` rules + `no-explicit-any` (all `error`)                                                        | `pnpm lint`                                    |
+| 9   | **Bounded everything.** Every ring / deadline / poll window / recursion depth has an explicit, tested bound.                                                              | L7         | `bounded-resource` fitness test (`error`) + the `bounded-resource` lint rule (**advisory `warn`** — heuristic)        | `pnpm test` (+ `pnpm lint` warn)               |
+| 10  | **Assert the invariants.** Load-bearing modules assert their internal contracts via `invariant()`; a violation is a structured refusal, never a crash.                    | L8         | `assertion-density` fitness test + the `invariant()` helper (`src/util/invariant.ts`)                                 | `pnpm test`                                    |
+
+**The meta-rule.** A guardrail may be relaxed only through an RFC amendment with
+rationale — never an inline `eslint-disable`, never a one-off budget bump in a
+feature PR. This is the same norm the `no-unsafe-*` enforcement already
+established. Re-baselining a budget _down_ (tightening) as modules shrink is always
+welcome and needs no amendment. The one rule that ships advisory and never blocks
+is the `bounded-resource` lint heuristic (#9) — a linter cannot prove termination,
+so it prompts at the loop; the bound's proof is the `bounded-resource` _test_ and
+the `invariant()` termination check.
+
+A PR-time `architecture-fitness-auditor` agent (see
+`.agents/skills/architecture-fitness-auditor.md`) runs the fitness lane, the
+dependency graph, and the budgets against the diff as a backup to the local gate —
+the macro-rule equivalent of `tracker-id-auditor`.
+
 ## Workspace plugin discipline
 
 Adding a new `packages/plugins/<name>/` follows the contract in `docs/plugin-authoring.md`. The discipline that makes the plugin model trustworthy:

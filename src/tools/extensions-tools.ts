@@ -9,10 +9,7 @@ import {
   type LoadedExtension,
 } from "../session/extensions.js";
 import { estimateTokens } from "../util/tokens.js";
-import {
-  rebuildPersistentForExtensions,
-  type ExtensionRebuildDeps,
-} from "./extensions-rebuild.js";
+import { rebuildPersistentForExtensions, type ExtensionRebuildDeps } from "./extensions-rebuild.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,

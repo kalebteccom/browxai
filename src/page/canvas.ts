@@ -56,11 +56,7 @@ export type {
 } from "./canvas-capture.js";
 export { CANVAS_MAX_DIMENSION, PAGE_CAPTURE_FN, canvasCapture } from "./canvas-capture.js";
 
-export type {
-  CanvasDiffRegion,
-  CanvasDiffArgs,
-  CanvasDiffResult,
-} from "./canvas-diff.js";
+export type { CanvasDiffRegion, CanvasDiffArgs, CanvasDiffResult } from "./canvas-diff.js";
 export { diffRgba, canvasDiff } from "./canvas-diff.js";
 
 export type {

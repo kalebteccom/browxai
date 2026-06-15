@@ -84,16 +84,7 @@ function scopeAndSerialise(
  * the closures (gate, ctx, ports), this module owns the registrations.
  */
 export function registerReadObserveDomTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    cfgActionTimeout,
-    egressFor,
-    caps,
-    config,
-  } = host;
+  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config } = host;
 
   register(
     "snapshot",
@@ -169,7 +160,10 @@ export function registerReadObserveDomTools(host: ToolHost): void {
           "snapshot",
         );
       } catch (err) {
-        return jsonErrorContent({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        return jsonErrorContent({
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       const { tree, stats, warnings } = composed;
       const { url, title } = await readSnapshotHeader(s, isMainFrame, targetFrame);

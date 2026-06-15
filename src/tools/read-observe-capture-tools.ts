@@ -98,7 +98,10 @@ function jsonContentWithTokens(body: Record<string, unknown>): ToolResponse {
   const json = JSON.stringify(body);
   return {
     content: [
-      { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) },
+      {
+        type: "text" as const,
+        text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
+      },
     ],
   };
 }
@@ -160,7 +163,13 @@ async function formatScreenshotResult(
  * config.
  */
 export function registerReadObserveCaptureTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & CaptureHost & ConfigHost & ServerServicesHost,
+  host: RegisterHost &
+    GateHost &
+    SessionHost &
+    ActionHost &
+    CaptureHost &
+    ConfigHost &
+    ServerServicesHost,
 ): void {
   const {
     z,

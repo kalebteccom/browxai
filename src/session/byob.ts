@@ -15,11 +15,7 @@ import type { EngineKind } from "../engine/index.js";
 import "../engine/register-engines.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
-export {
-  attachByobChromium,
-  openAndroidByobSession,
-  assertByobAttach,
-} from "./byob-attach.js";
+export { attachByobChromium, openAndroidByobSession, assertByobAttach } from "./byob-attach.js";
 
 /** BYOB / attach session — resolves the engine and hands off to the
  *  EngineRegistry's per-engine attach body. */

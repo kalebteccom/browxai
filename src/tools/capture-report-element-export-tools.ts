@@ -13,14 +13,7 @@ import type { ToolHost } from "./host.js";
  * diagnosis). Registered through the shared `ToolHost` seam.
  */
 export function registerCaptureReportElementExportTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    cfgActionTimeout,
-    workspace,
-  } = host;
+  const { z, register, gateCheck, entryFor, cfgActionTimeout, workspace } = host;
 
   // `element_export` — save the subtree under one ref as a self-contained
   // HTML snippet plus its rendered CSS + linked resources. Sibling to

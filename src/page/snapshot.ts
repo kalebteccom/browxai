@@ -95,14 +95,26 @@ interface VisitResult {
  *  otherwise the node is formatted. Pure — the loop applies the result. */
 function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitResult {
   if (matchesOmit(node, o.omitPatterns)) {
-    return { line: null, skipSubtree: true, elided: countSubtree(node), elidedBranches: 1, truncated: false };
+    return {
+      line: null,
+      skipSubtree: true,
+      elided: countSubtree(node),
+      elidedBranches: 1,
+      truncated: false,
+    };
   }
   if (o.pruneGeneric && isGenericNoise(node)) {
     return { line: null, skipSubtree: false, elided: 0, elidedBranches: 0, truncated: false };
   }
   if (o.emitted >= o.maxNodes) {
     // this node + its descendants we'd have emitted.
-    return { line: null, skipSubtree: true, elided: countSubtree(node), elidedBranches: 0, truncated: true };
+    return {
+      line: null,
+      skipSubtree: true,
+      elided: countSubtree(node),
+      elidedBranches: 0,
+      truncated: true,
+    };
   }
   return {
     line: formatNode(node, depth, o.indent, o.maxNameLen),

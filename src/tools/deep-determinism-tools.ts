@@ -34,7 +34,6 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
     toolHandlers,
   } = host;
 
-
   register(
     "clock",
     {

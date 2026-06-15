@@ -191,7 +191,11 @@ export interface FetchedResource {
   error?: string;
 }
 
-export function assetFilename(url: string, kind: DiscoveredResource["kind"], contentType: string): string {
+export function assetFilename(
+  url: string,
+  kind: DiscoveredResource["kind"],
+  contentType: string,
+): string {
   let stem: string;
   let urlExt = "";
   try {

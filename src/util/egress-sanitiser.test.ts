@@ -14,9 +14,7 @@ describe("EgressSanitiser", () => {
     reg.register({ name: "TOKEN", value: "hunter2" });
     const san = new EgressSanitiser(reg);
     const input = "visit https://x.test/u/123?token=abc with hunter2 inside";
-    expect(san.maskText(input)).toBe(
-      composeUrlAndSecretsInText(input, sanitizeUrlsInText, reg),
-    );
+    expect(san.maskText(input)).toBe(composeUrlAndSecretsInText(input, sanitizeUrlsInText, reg));
     // the secret value is masked and the URL is sanitised
     expect(san.maskText(input)).not.toContain("hunter2");
     expect(san.maskText(input)).toContain("<TOKEN>");
@@ -54,8 +52,13 @@ describe("EgressSanitiser", () => {
     const reg = new SecretRegistry();
     reg.register({ name: "API", value: "zzz999" });
     const san = new EgressSanitiser(reg);
-    expect(san.containsAnySecret("text with zzz999")).toEqual(reg.containsAnySecret("text with zzz999"));
+    expect(san.containsAnySecret("text with zzz999")).toEqual(
+      reg.containsAnySecret("text with zzz999"),
+    );
     expect(san.containsAnySecret("nothing here").hit).toBe(false);
-    expect(new EgressSanitiser(null).containsAnySecret("zzz999")).toEqual({ hit: false, names: [] });
+    expect(new EgressSanitiser(null).containsAnySecret("zzz999")).toEqual({
+      hit: false,
+      names: [],
+    });
   });
 });

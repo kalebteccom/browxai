@@ -26,14 +26,7 @@ import { SESSION_ARG } from "./schemas.js";
  * Registered through the shared `ToolHost` seam.
  */
 export function registerLiveEmulationTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    engineGate,
-    entryFor,
-    emulationFor,
-  } = host;
+  const { z, register, gateCheck, engineGate, entryFor, emulationFor } = host;
 
   // ---------- Per-primitive device emulation ----------
   //

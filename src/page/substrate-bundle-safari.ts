@@ -27,12 +27,9 @@ export function safariSubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
   return {
     actions: (e: SessionEntry): ActionSubstrate =>
       new SafariActionSubstrate(e.session.safari!(), e.refs),
-    capture: (e: SessionEntry): CaptureSubstrate =>
-      new SafariCaptureSubstrate(e.session.safari!()),
-    storage: (e: SessionEntry): StorageSubstrate =>
-      new SafariStorageSubstrate(e.session.safari!()),
-    script: (e: SessionEntry): ScriptSubstrate =>
-      new SafariScriptSubstrate(e.session.safari!()),
+    capture: (e: SessionEntry): CaptureSubstrate => new SafariCaptureSubstrate(e.session.safari!()),
+    storage: (e: SessionEntry): StorageSubstrate => new SafariStorageSubstrate(e.session.safari!()),
+    script: (e: SessionEntry): ScriptSubstrate => new SafariScriptSubstrate(e.session.safari!()),
     emulation: (e: SessionEntry): EmulationSubstrate =>
       new SafariEmulationSubstrate(e.session.safari!()),
     snapshot: (e: SessionEntry): SnapshotSubstrate => {

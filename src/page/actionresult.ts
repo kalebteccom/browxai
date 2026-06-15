@@ -11,6 +11,7 @@ import type { A11yNode } from "./a11y.js";
 import type { NetworkEntry, NetworkSummary, MutationEntry } from "./network.js";
 import { estimateTokens } from "../util/tokens.js";
 import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
+import { invariant } from "../util/invariant.js";
 import { classifyFailure } from "../util/failure.js";
 import { type DialogRecord, UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
 import { type PermissionRecord, UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
@@ -58,7 +59,6 @@ const EMPTY_NETWORK: {
   mutations: [],
 });
 
-
 // The ActionResult type surface lives in `actionresult-types.ts`; re-exported
 // here so callers import the types from `./actionresult.js` unchanged.
 export type {
@@ -85,6 +85,16 @@ import type {
  * The caller's body dispatches the action; this function records pre-state,
  * waits for settle, records post-state, and builds the ActionResult.
  */
+/** The window's seed warnings: the resolved deadline warning plus any caller
+ *  extras, in order. Returned as a fresh array the dispatch/policy phases append
+ *  to in place (same mutation flow as before the extraction). */
+function initialWarnings(opts: ActionWindowOptions): string[] {
+  const warnings: string[] = [];
+  if (opts.deadlineWarning) warnings.push(opts.deadlineWarning);
+  if (opts.extraWarnings) warnings.push(...opts.extraWarnings);
+  return warnings;
+}
+
 export async function runInActionWindow(
   ctx: ActionContext,
   descriptor: DispatchedAction,
@@ -96,9 +106,7 @@ export async function runInActionWindow(
   // dispatch-phase knobs.
   const deadlineMs = opts.deadlineMs ?? DEFAULT_ACTION_TIMEOUT_MS;
   const settleMs = opts.settleMs ?? 400;
-  const warnings: string[] = [];
-  if (opts.deadlineWarning) warnings.push(opts.deadlineWarning);
-  if (opts.extraWarnings) warnings.push(...opts.extraWarnings);
+  const warnings = initialWarnings(opts);
 
   // --- pre-state ---
   const pre = await openActionWindow(ctx);
@@ -154,7 +162,12 @@ export async function runInActionWindow(
   // append to recording when the action succeeded, recording is active, and the
   // action is replayable as a flow-file step (see maybeRecord for the coord-mode
   // escape-hatch handling).
-  maybeRecord(ctx.recorder, ok, { descriptor, urlAfter, recordingHint: opts.recordingHint }, warnings);
+  maybeRecord(
+    ctx.recorder,
+    ok,
+    { descriptor, urlAfter, recordingHint: opts.recordingHint },
+    warnings,
+  );
 
   return {
     ok,
@@ -175,7 +188,11 @@ export async function runInActionWindow(
 }
 
 /** The network slice shape `NetworkTap.close()` (and its Playwright twin) emit. */
-type NetworkClose = { summary: NetworkSummary; requests: NetworkEntry[]; mutations: MutationEntry[] };
+type NetworkClose = {
+  summary: NetworkSummary;
+  requests: NetworkEntry[];
+  mutations: MutationEntry[];
+};
 
 interface OpenWindow {
   urlBefore: string;
@@ -358,6 +375,14 @@ async function dispatchActionBody(
   failure: import("../util/failure.js").FailureClass | undefined;
   elementProbe: ElementProbe | undefined;
 }> {
+  // L7/L8: the action window is bounded — the body is raced against `deadlineMs`
+  // (the anti-wedge bound, deadline.ts) so a wedged page op cannot stall forever.
+  // The bound is only meaningful if positive: a non-positive deadline would make
+  // `withDeadline` fire instantly (or never), defeating the anti-wedge guarantee.
+  // Callers resolve `deadlineMs` from the clamped config timeout (>= 1ms) or the
+  // 5000ms default, so it is always positive; the invariant pins the anti-wedge
+  // bound's positivity as an asserted contract at the point it is consumed.
+  invariant(deadlineMs > 0, `action deadline must be positive, got ${deadlineMs}`);
   try {
     const probe = await withDeadline(Promise.resolve().then(body), deadlineMs, descriptorType);
     let elementProbe: ElementProbe | undefined;

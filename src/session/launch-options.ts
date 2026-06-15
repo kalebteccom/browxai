@@ -9,7 +9,13 @@
 // the engine modules; what lives here is the shared shape every Playwright engine
 // builds identically.
 
-import type { Browser, BrowserContext, BrowserContextOptions, CDPSession, Page } from "playwright-core";
+import type {
+  Browser,
+  BrowserContext,
+  BrowserContextOptions,
+  CDPSession,
+  Page,
+} from "playwright-core";
 import { log } from "../util/logging.js";
 import { resolveWorkspace } from "../util/workspace.js";
 import type { EngineKind } from "../engine/index.js";

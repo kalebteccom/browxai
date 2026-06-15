@@ -19,15 +19,7 @@ import type { ToolHost } from "./host.js";
  * shared `ToolHost` seam.
  */
 export function registerDeepCoverageTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    engineGate,
-    entryFor,
-    workspace,
-  } = host;
-
+  const { z, register, gateCheck, engineGate, entryFor, workspace } = host;
 
   register(
     "coverage_start",

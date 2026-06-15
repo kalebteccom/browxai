@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./logging.js";
+import { invariant } from "./invariant.js";
 
 /** Full resolved view consumed by the server. */
 export interface ResolvedConfig {
@@ -199,8 +200,21 @@ export class ConfigStore {
    *  the old fixed `apply(env) → apply(user) → apply(project) → apply(session)`
    *  sequence, now data-driven. */
   resolve(sessionPatch?: ConfigLayer): ResolvedConfig {
+    // L8: the precedence chain must be non-empty and `session` must be its
+    // highest-precedence (last) layer — the whole contract of `resolve()` is
+    // "apply lowest → highest, session wins". A reordering that demoted `session`
+    // would silently let a persisted layer override an open_session patch. The
+    // PRECEDENCE array is a fixed module constant ending in `session`, so this
+    // holds on every call; the invariant pins the ordering contract at the one
+    // place it is depended on, complementing the per-permutation unit tests.
+    const chain = ConfigStore.PRECEDENCE;
+    invariant(chain.length > 0, "config precedence chain is empty");
+    invariant(
+      chain[chain.length - 1]!.scope === "session",
+      "config precedence: `session` must be the highest-precedence layer",
+    );
     let acc: ResolvedConfig = { ...BUILTIN_DEFAULTS, unstable: { ...BUILTIN_DEFAULTS.unstable } };
-    for (const layer of ConfigStore.PRECEDENCE) {
+    for (const layer of chain) {
       acc = ConfigStore.apply(acc, layer.read(this, sessionPatch));
     }
     return acc;

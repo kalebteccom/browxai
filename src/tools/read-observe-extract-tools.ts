@@ -35,7 +35,11 @@ async function collectShadowTreesForRef(
   let closedShadowAvailable = false;
   let cappedAt: number | undefined;
   try {
-    const fetched = await withDeadline(fetchPiercedDocument(requireCdp(s)), opts.timeoutMs, "shadow_trees");
+    const fetched = await withDeadline(
+      fetchPiercedDocument(requireCdp(s)),
+      opts.timeoutMs,
+      "shadow_trees",
+    );
     if (fetched.warning) warnings.push(fetched.warning);
     closedShadowAvailable = fetched.closedAvailable;
     if (fetched.root) {
@@ -125,15 +129,7 @@ async function resolveShadowScope(
  * shared `ToolHost` seam.
  */
 export function registerReadObserveExtractTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    engineGate,
-    cfgActionTimeout,
-    config,
-  } = host;
+  const { z, register, gateCheck, entryFor, engineGate, cfgActionTimeout, config } = host;
 
   register(
     "shadow_trees",

@@ -195,7 +195,8 @@ export function pmArgs(
   target?: string,
 ): ReadonlyArray<string> {
   const adapter = packageManagerAdapter(pm);
-  if (!adapter) throw new Error(`browxai plugin: no adapter registered for package manager "${pm}"`);
+  if (!adapter)
+    throw new Error(`browxai plugin: no adapter registered for package manager "${pm}"`);
   const verb = adapter.verbs[op];
   return target === undefined ? [verb] : [verb, target];
 }

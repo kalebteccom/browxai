@@ -102,9 +102,7 @@ describe("L1 — a new engine adapter plugs in with zero core edits", () => {
     expect(session.ok).toBe(true); // the synthetic session opened with zero core edits
     // The engine tag is reported correctly through the real surface that carries it
     // (`list_sessions` reports `engine` per row — open_session's envelope omits it).
-    const listed = JSON.parse(
-      (await server.handlers.list_sessions({})).content[0]!.text as string,
-    );
+    const listed = JSON.parse((await server.handlers.list_sessions({})).content[0]!.text as string);
     const row = (listed.sessions as Array<{ id: string; engine: string }>).find(
       (r) => r.id === "synth-a",
     );

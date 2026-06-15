@@ -11,12 +11,7 @@ import { SESSION_ARG } from "./schemas.js";
  * Registered through the shared `ToolHost` seam.
  */
 export function registerDeviceEmulationTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-  } = host;
+  const { z, register, gateCheck, entryFor } = host;
 
   // ---------- Web Bluetooth / WebUSB / WebHID device emulation
   // (capability `device-emulation`) ----------

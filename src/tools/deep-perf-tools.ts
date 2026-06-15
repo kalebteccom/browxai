@@ -15,7 +15,11 @@ import type { ToolHost } from "./host.js";
 /** Cheap one-pass counter for perf_stop's inline summary — gives the agent a
  *  one-glance "is this trace worth running insights on?" without parsing
  *  twice. Matches the surfaces extractInsights exposes. */
-type PerfCountKey = "longTaskCount" | "layoutShiftCount" | "renderBlockingCount" | "lcpCandidateCount";
+type PerfCountKey =
+  | "longTaskCount"
+  | "layoutShiftCount"
+  | "renderBlockingCount"
+  | "lcpCandidateCount";
 
 /** Whether a `ResourceSendRequest` event is render-blocking. */
 function isRenderBlockingEvent(ev: import("../page/perf.js").TraceEvent): boolean {
@@ -43,7 +47,9 @@ function perfCountKey(ev: import("../page/perf.js").TraceEvent): PerfCountKey | 
   return null;
 }
 
-function inlineCounts(events: import("../page/perf.js").TraceEvent[]): Record<PerfCountKey, number> {
+function inlineCounts(
+  events: import("../page/perf.js").TraceEvent[],
+): Record<PerfCountKey, number> {
   const counts: Record<PerfCountKey, number> = {
     longTaskCount: 0,
     layoutShiftCount: 0,
@@ -76,14 +82,7 @@ function inlineCounts(events: import("../page/perf.js").TraceEvent[]): Record<Pe
  * Registered through the shared `ToolHost` seam.
  */
 export function registerDeepPerfTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    engineGate,
-    entryFor,
-    workspace,
-  } = host;
+  const { z, register, gateCheck, engineGate, entryFor, workspace } = host;
 
   // -------- performance tracing --------
 

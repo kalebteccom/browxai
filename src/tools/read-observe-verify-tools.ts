@@ -23,16 +23,7 @@ import type { ToolHost } from "./host.js";
  * `ToolHost` seam.
  */
 export function registerReadObserveVerifyTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    asTarget,
-    cfgActionTimeout,
-    caps,
-    config,
-  } = host;
+  const { z, register, gateCheck, entryFor, asTarget, cfgActionTimeout, caps, config } = host;
 
   // ---------- verify-family — assertive read primitives ----------
 
@@ -426,5 +417,4 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       return verifyResultText(res, e);
     },
   );
-
 }

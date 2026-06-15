@@ -15,6 +15,7 @@
 
 import type { Locator } from "playwright-core";
 import type { EngineKind, EngineCapabilities } from "./types.js";
+import { invariant } from "../util/invariant.js";
 import { EngineNotYetSupportedError } from "./select.js";
 import { setEngineCapabilities, engineCapabilities } from "./capability-registry.js";
 import type { BrowserSession, SessionOptions } from "../session/types.js";
@@ -140,6 +141,16 @@ const REGISTRY = new Map<EngineKind, EngineEntry>();
  *  edit here. Re-registering an engine is a programming error, surfaced loudly so
  *  a duplicate (e.g. a double-imported barrel) never silently shadows. */
 export function registerEngine(def: EngineEntry): void {
+  // L8: the record's own `kind` must match the capability row's `engine` — the
+  // registry keys on `def.kind` while the gate reads `def.capabilities.engine`,
+  // so a mismatch would silently gate the wrong engine. Each adapter module
+  // already wires `{ kind: K, capabilities: capabilitiesFor(K) }`, so this holds
+  // on every valid registration; the invariant catches a copy-paste swap at
+  // module load, not in production.
+  invariant(
+    def.kind === def.capabilities.engine,
+    `engine "${def.kind}" registered with capabilities for "${def.capabilities.engine}"`,
+  );
   if (REGISTRY.has(def.kind)) {
     throw new Error(`engine-registry: "${def.kind}" registered twice`);
   }

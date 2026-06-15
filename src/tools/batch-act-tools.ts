@@ -14,7 +14,9 @@ import type {
 
 /** A structured `{ok:false, error}` envelope as a tool text response. */
 function batchJsonError(error: string): ToolResponse {
-  return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error }, null, 2) }] };
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error }, null, 2) }],
+  };
 }
 
 /**

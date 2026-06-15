@@ -4,6 +4,7 @@
 // the summary's `byType.other` bucket if you want the totals back.
 
 import type { CDPSession } from "playwright-core";
+import { invariant } from "../util/invariant.js";
 import { patternisePath } from "../util/url-sanitizer.js";
 import type { SecretRegistry } from "../util/secrets.js";
 import { maskedUrl } from "./network-mask.js";
@@ -361,7 +362,10 @@ export function mutationWithoutShape(detail: MutationDetail): MutationEntry {
 
 /** Build a mutation entry, attaching the response shape only when non-empty —
  *  the success path shared by the CDP and Playwright probes. */
-export function mutationWithShape(detail: MutationDetail, responseShape: string[] | null): MutationEntry {
+export function mutationWithShape(
+  detail: MutationDetail,
+  responseShape: string[] | null,
+): MutationEntry {
   const entry = mutationWithoutShape(detail);
   if (responseShape && responseShape.length > 0) entry.responseShape = responseShape;
   return entry;
@@ -436,7 +440,16 @@ export class NetworkBuffer {
     // until the substrate port lands, rather than throwing at session creation.
     private cdp: CDPSession | undefined,
     private cap = 500,
-  ) {}
+  ) {
+    // L7/L8: the ring cap is the bound that keeps the buffer from growing without
+    // limit (the audit's bounded-resource inventory pins it at 500). A
+    // non-positive cap would break `push`'s eviction (the ring could never retain
+    // an entry, or `shift()` would underflow), so the bound MUST be positive. The
+    // default is 500 and the only caller passes nothing, so this holds; the
+    // invariant makes the bound's positivity an asserted contract, not an
+    // assumption.
+    invariant(this.cap > 0, `NetworkBuffer ring cap must be positive, got ${this.cap}`);
+  }
 
   setSecrets(secrets: SecretRegistry): void {
     this.secrets = secrets;
@@ -510,6 +523,14 @@ export class NetworkBuffer {
       const evicted = this.ring.shift();
       if (evicted?.requestId) this.byReqId.delete(evicted.requestId);
     }
+    // L7: the ring is bounded — one push evicts at most one entry, so the length
+    // is `<= cap` after every push. This is the bounded-buffer property the
+    // network surface depends on; asserting it post-eviction makes "the ring
+    // never exceeds its cap" a tested invariant rather than a comment.
+    invariant(
+      this.ring.length <= this.cap,
+      `NetworkBuffer ring exceeded cap (${this.ring.length} > ${this.cap})`,
+    );
   }
 
   /** Raw, read-only snapshot of the ring — every entry, no noise/beacon

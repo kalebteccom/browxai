@@ -58,192 +58,183 @@ export async function rebuildPersistentForExtensions(
   deps: ExtensionRebuildDeps,
 ): Promise<void> {
   const { caps, configStore, workspace, opts, resolvedConfig } = deps;
-    const headless = opts.headless ?? resolvedConfig.headless;
-    const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
-    const profileName = e.launchProfile ?? e.id;
-    const profileDir =
-      e.id === DEFAULT_SESSION_ID && !e.launchProfile
-        ? workspace.sub("profile")
-        : workspace.sub(`profiles/${profileName}`);
-    const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
-    // Preserve the engine across the rebuild (extensions are Chromium-only, so
-    // this is chromium today; reading it before close keeps the rebuild engine-
-    // faithful for when a second engine lands).
-    const rebuildEngine = e.session.engine;
-    // Tear down the current session BEFORE relaunching — Chromium will not
-    // open a second persistent context on the same profile dir.
-    await e.bridge.detach().catch(() => undefined);
-    await e.session.close().catch(() => undefined);
-    // Resolve device fresh from the current resolved config (no spec stored
-    // post-creation; the device-emulation state on `e.deviceEmulation` is
-    // re-applied below).
-    const device = resolveDevice({
-      device: resolvedConfig.defaultDevice,
-      viewport: resolvedConfig.defaultViewport,
-    });
-    const sess = await openManagedSession({
-      headless,
-      profileDir,
-      device,
-      disableWebSecurity,
-      browserType: rebuildEngine,
-      ...(extensionPaths.length ? { extensionPaths } : {}),
-    });
-    // Rebuild the per-session inner pieces. The secrets / dialog policy /
-    // device-emulation state survive on the entry (intentional — they are
-    // operator-supplied across rebuilds); buffers and refs are replaced
-    // since they referenced the now-closed CDP session.
-    const consoleBuf = new ConsoleBuffer();
-    consoleBuf.attach(sess.page());
-    // Re-select the network substrate on the rebuilt context (extensions are
-    // chromium-only, so this stays the CDP substrate — but routing through the
-    // selector keeps the rebuild engine-agnostic and the entry's substrate live).
-    const networkSub = networkSubstrateFor(sess);
-    await networkSub.attach();
-    const networkBuf = networkSub.http;
-    const wsBuf = networkSub.ws;
-    consoleBuf.setSecrets(e.secrets);
-    networkSub.setSecrets(e.secrets);
-    const br = new BrowxBridge();
-    await br.attach(sess.page().context());
-    attachDialogPolicy(sess.page().context(), e.dialog);
-    // Re-attach permission policy on the rebuilt context. The state's
-    // wired-contexts WeakSet ensures the new context is treated as fresh
-    // (the old one was torn down), so the binding + init-script install
-    // afresh and the CDP baseline is re-applied.
-    await attachPermissionPolicy(
-      sess.page().context(),
-      e.permission,
-      async (permission, origin) => {
-        log.info(
-          `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
-        );
-        try {
-          const sig = await br.awaitSignal("respond", 300_000);
-          const data = sig.data as { kind?: string; value?: unknown } | null;
-          if (data && data.kind === "confirm" && data.value === true) return "allow";
-          return "deny";
-        } catch {
-          return "deny";
-        }
-      },
+  const headless = opts.headless ?? resolvedConfig.headless;
+  const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
+  const profileName = e.launchProfile ?? e.id;
+  const profileDir =
+    e.id === DEFAULT_SESSION_ID && !e.launchProfile
+      ? workspace.sub("profile")
+      : workspace.sub(`profiles/${profileName}`);
+  const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
+  // Preserve the engine across the rebuild (extensions are Chromium-only, so
+  // this is chromium today; reading it before close keeps the rebuild engine-
+  // faithful for when a second engine lands).
+  const rebuildEngine = e.session.engine;
+  // Tear down the current session BEFORE relaunching — Chromium will not
+  // open a second persistent context on the same profile dir.
+  await e.bridge.detach().catch(() => undefined);
+  await e.session.close().catch(() => undefined);
+  // Resolve device fresh from the current resolved config (no spec stored
+  // post-creation; the device-emulation state on `e.deviceEmulation` is
+  // re-applied below).
+  const device = resolveDevice({
+    device: resolvedConfig.defaultDevice,
+    viewport: resolvedConfig.defaultViewport,
+  });
+  const sess = await openManagedSession({
+    headless,
+    profileDir,
+    device,
+    disableWebSecurity,
+    browserType: rebuildEngine,
+    ...(extensionPaths.length ? { extensionPaths } : {}),
+  });
+  // Rebuild the per-session inner pieces. The secrets / dialog policy /
+  // device-emulation state survive on the entry (intentional — they are
+  // operator-supplied across rebuilds); buffers and refs are replaced
+  // since they referenced the now-closed CDP session.
+  const consoleBuf = new ConsoleBuffer();
+  consoleBuf.attach(sess.page());
+  // Re-select the network substrate on the rebuilt context (extensions are
+  // chromium-only, so this stays the CDP substrate — but routing through the
+  // selector keeps the rebuild engine-agnostic and the entry's substrate live).
+  const networkSub = networkSubstrateFor(sess);
+  await networkSub.attach();
+  const networkBuf = networkSub.http;
+  const wsBuf = networkSub.ws;
+  consoleBuf.setSecrets(e.secrets);
+  networkSub.setSecrets(e.secrets);
+  const br = new BrowxBridge();
+  await br.attach(sess.page().context());
+  attachDialogPolicy(sess.page().context(), e.dialog);
+  // Re-attach permission policy on the rebuilt context. The state's
+  // wired-contexts WeakSet ensures the new context is treated as fresh
+  // (the old one was torn down), so the binding + init-script install
+  // afresh and the CDP baseline is re-applied.
+  await attachPermissionPolicy(sess.page().context(), e.permission, async (permission, origin) => {
+    log.info(
+      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
     );
-    await applyPermissionCdpBaseline(sess.page().context(), e.permission).catch(() => undefined);
-    // Re-attach notification-constructor policy on the rebuilt context. The
-    // state's wired-contexts WeakSet ensures the new context is treated as
-    // fresh (the old one was torn down), so the binding + init-script install
-    // afresh and the sync-decision hint is re-seeded.
-    await attachNotificationPolicy(sess.page().context(), e.notification, async (n) => {
+    try {
+      const sig = await br.awaitSignal("respond", 300_000);
+      const data = sig.data as { kind?: string; value?: unknown } | null;
+      if (data && data.kind === "confirm" && data.value === true) return "allow";
+      return "deny";
+    } catch {
+      return "deny";
+    }
+  });
+  await applyPermissionCdpBaseline(sess.page().context(), e.permission).catch(() => undefined);
+  // Re-attach notification-constructor policy on the rebuilt context. The
+  // state's wired-contexts WeakSet ensures the new context is treated as
+  // fresh (the old one was torn down), so the binding + init-script install
+  // afresh and the sync-decision hint is re-seeded.
+  await attachNotificationPolicy(sess.page().context(), e.notification, async (n) => {
+    log.info(
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+    );
+    try {
+      const sig = await br.awaitSignal("respond", 300_000);
+      const data = sig.data as { kind?: string; value?: unknown } | null;
+      if (data && data.kind === "confirm" && data.value === true) return "allow";
+      return "deny";
+    } catch {
+      return "deny";
+    }
+  });
+  // Re-attach fs-picker policy on the rebuilt context. WeakSet inside the
+  // state treats the new context as fresh — binding + init script are
+  // re-installed, write-target handles for the previous context are
+  // garbage-collected with it.
+  await attachFsPickerPolicy(
+    sess.page().context(),
+    e.fsPicker,
+    workspace.root,
+    async (api, suggestedName) => {
       log.info(
-        `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
       );
       try {
         const sig = await br.awaitSignal("respond", 300_000);
         const data = sig.data as { kind?: string; value?: unknown } | null;
-        if (data && data.kind === "confirm" && data.value === true) return "allow";
-        return "deny";
-      } catch {
-        return "deny";
-      }
-    });
-    // Re-attach fs-picker policy on the rebuilt context. WeakSet inside the
-    // state treats the new context as fresh — binding + init script are
-    // re-installed, write-target handles for the previous context are
-    // garbage-collected with it.
-    await attachFsPickerPolicy(
-      sess.page().context(),
-      e.fsPicker,
-      workspace.root,
-      async (api, suggestedName) => {
-        log.info(
-          `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
-        );
-        try {
-          const sig = await br.awaitSignal("respond", 300_000);
-          const data = sig.data as { kind?: string; value?: unknown } | null;
-          if (
-            data &&
-            data.kind === "fs_picker_respond" &&
-            Array.isArray((data.value as { files?: unknown })?.files)
-          ) {
-            return (data.value as { files: FsPickerFile[] }).files;
-          }
-          return null;
-        } catch {
-          return null;
+        if (
+          data &&
+          data.kind === "fs_picker_respond" &&
+          Array.isArray((data.value as { files?: unknown })?.files)
+        ) {
+          return (data.value as { files: FsPickerFile[] }).files;
         }
-      },
-    ).catch(() => undefined);
-    await applyOverlayHide(sess.page().context(), configStore.resolve().hideOverlaySelectors);
-    // Re-apply per-context stealth init-script (capability `stealth`) on the
-    // rebuilt context. Stealth must engage on every navigation post-rebuild,
-    // not just on the original launch.
-    if (caps.enabled.has("stealth")) {
-      await applyStealth(sess.page().context()).catch((err) => {
-        log.warn(
-          `stealth: rebuild failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-    }
-    // Re-apply per-primitive device emulation state to the fresh context's
-    // pages (locale/timezone/UA via CDP, geolocation/colour-scheme/reduced-
-    // motion/permissions via Playwright). Best-effort — failures don't
-    // abort the rebuild.
-    try {
-      await reapplyEmulation(
-        sess.page().context(),
-        sess.page(),
-        requireCdp(sess),
-        e.deviceEmulation,
+        return null;
+      } catch {
+        return null;
+      }
+    },
+  ).catch(() => undefined);
+  await applyOverlayHide(sess.page().context(), configStore.resolve().hideOverlaySelectors);
+  // Re-apply per-context stealth init-script (capability `stealth`) on the
+  // rebuilt context. Stealth must engage on every navigation post-rebuild,
+  // not just on the original launch.
+  if (caps.enabled.has("stealth")) {
+    await applyStealth(sess.page().context()).catch((err) => {
+      log.warn(
+        `stealth: rebuild failed to apply init script — ${err instanceof Error ? err.message : String(err)}`,
       );
-    } catch {
-      /* best-effort */
-    }
-    // Re-attach Web Bluetooth / WebUSB / WebHID device-emulation wrappers on
-    // the rebuilt context. The state's wired-contexts WeakSet treats the new
-    // context as fresh — binding + init script reinstall, current catalog is
-    // re-served verbatim on the next page-side requestDevice.
-    await attachDeviceEmulation(sess.page().context(), e.webDeviceEmulation).catch(() => undefined);
-    sess
-      .page()
-      .context()
-      .on("page", (newPage) => {
-        (async () => {
-          try {
-            const newCdp = await sess.page().context().newCDPSession(newPage);
-            await reapplyEmulation(sess.page().context(), newPage, newCdp, e.deviceEmulation);
-          } catch {
-            /* best-effort */
-          }
-        })().catch(() => undefined);
-      });
-    // Splice the new pieces onto the existing entry — sessionId still maps
-    // here so every caller holding `entry` keeps working.
-    e.session = sess;
-    e.console = consoleBuf;
-    e.networkSubstrate = networkSub;
-    e.network = networkBuf;
-    e.ws = wsBuf;
-    e.bridge = br;
-    e.refs = new RefRegistry();
-    // The rebuild minted a fresh CDP session on the new context; re-derive the
-    // snapshot substrate so it captures the live handle (extensions are
-    // chromium-only, so this stays the CDP substrate).
-    e.snapshotSubstrate = snapshotSubstrateFor(sess);
-    // Interactive-WS state is page-side; the rebuild destroyed the wrapper
-    // and any active interceptors with it. Discard the server-side mirror
-    // so it doesn't claim live interceptors that no longer exist, then
-    // re-install the wrapper before any nav so the new context's first
-    // page sees the wrapped WebSocket constructor.
-    e.wsInteractive = new WsInteractiveRegistry();
-    if (caps.enabled.has("action")) {
-      await e.wsInteractive.install(sess.page()).catch(() => undefined);
-    }
-    // workers visibility. Rebuild destroyed the page-side wrapper
-    // and any SW attachments; discard the server-side mirror and re-install.
-    e.workers.dispose();
-    e.workers = new WorkersRegistry();
-    if (caps.enabled.has("read")) {
-      await e.workers.installPageWrapper(sess.page()).catch(() => undefined);
-    }
+    });
+  }
+  // Re-apply per-primitive device emulation state to the fresh context's
+  // pages (locale/timezone/UA via CDP, geolocation/colour-scheme/reduced-
+  // motion/permissions via Playwright). Best-effort — failures don't
+  // abort the rebuild.
+  try {
+    await reapplyEmulation(sess.page().context(), sess.page(), requireCdp(sess), e.deviceEmulation);
+  } catch {
+    /* best-effort */
+  }
+  // Re-attach Web Bluetooth / WebUSB / WebHID device-emulation wrappers on
+  // the rebuilt context. The state's wired-contexts WeakSet treats the new
+  // context as fresh — binding + init script reinstall, current catalog is
+  // re-served verbatim on the next page-side requestDevice.
+  await attachDeviceEmulation(sess.page().context(), e.webDeviceEmulation).catch(() => undefined);
+  sess
+    .page()
+    .context()
+    .on("page", (newPage) => {
+      (async () => {
+        try {
+          const newCdp = await sess.page().context().newCDPSession(newPage);
+          await reapplyEmulation(sess.page().context(), newPage, newCdp, e.deviceEmulation);
+        } catch {
+          /* best-effort */
+        }
+      })().catch(() => undefined);
+    });
+  // Splice the new pieces onto the existing entry — sessionId still maps
+  // here so every caller holding `entry` keeps working.
+  e.session = sess;
+  e.console = consoleBuf;
+  e.networkSubstrate = networkSub;
+  e.network = networkBuf;
+  e.ws = wsBuf;
+  e.bridge = br;
+  e.refs = new RefRegistry();
+  // The rebuild minted a fresh CDP session on the new context; re-derive the
+  // snapshot substrate so it captures the live handle (extensions are
+  // chromium-only, so this stays the CDP substrate).
+  e.snapshotSubstrate = snapshotSubstrateFor(sess);
+  // Interactive-WS state is page-side; the rebuild destroyed the wrapper
+  // and any active interceptors with it. Discard the server-side mirror
+  // so it doesn't claim live interceptors that no longer exist, then
+  // re-install the wrapper before any nav so the new context's first
+  // page sees the wrapped WebSocket constructor.
+  e.wsInteractive = new WsInteractiveRegistry();
+  if (caps.enabled.has("action")) {
+    await e.wsInteractive.install(sess.page()).catch(() => undefined);
+  }
+  // workers visibility. Rebuild destroyed the page-side wrapper
+  // and any SW attachments; discard the server-side mirror and re-install.
+  e.workers.dispose();
+  e.workers = new WorkersRegistry();
+  if (caps.enabled.has("read")) {
+    await e.workers.installPageWrapper(sess.page()).catch(() => undefined);
+  }
 }

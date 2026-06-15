@@ -10,6 +10,7 @@ import { type DispatchOutcome } from "../session/metrics.js";
 import type { RefRegistry } from "../page/refs.js";
 import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
+import { invariant } from "../util/invariant.js";
 import type { Workspace } from "../util/workspace.js";
 import {
   buildEvalJsCapture,
@@ -543,6 +544,15 @@ export function buildHost(deps: HostDeps): ToolHost {
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
+    // L8/L2: a tool name registers EXACTLY once. The derived central maps
+    // (TOOL_CAPABILITY / BATCH_ALLOWED_TOOLS / DEEP_TOOLS) and `toolHandlers` all
+    // key on `name`, so a duplicate registration would silently shadow the
+    // handler AND desync the derived metadata from the live surface — the exact
+    // single-source-of-truth break L2 forbids. Every core family registers
+    // disjoint names (the registered-name freeze test pins the set), so this
+    // holds; the invariant turns "names are unique" from a convention into an
+    // asserted contract at the one seam every registration flows through.
+    invariant(!registrations.has(name), `tool "${name}" registered twice`);
     // Colocated metadata → derived central maps (RFC 0004 P2 / D2). The
     // capability/deep facts feed the lower-layer registries; `batchable` feeds the
     // local batch allow-set; the whole record (incl. the zod schema) is kept for

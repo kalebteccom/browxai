@@ -98,7 +98,6 @@ export type {
   StorageSubstrate,
 } from "./storage-substrate-types.js";
 
-
 /** Playwright engines — delegates cookie ops to the existing `cookiesList` /
  *  `cookiesSet` over the session's BrowserContext (the `context` thunk captures the
  *  session entry, the same per-call access the handlers did before this seam), and

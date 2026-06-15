@@ -26,7 +26,6 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
     workspace,
   } = host;
 
-
   register(
     "upload_file",
     {

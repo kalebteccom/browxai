@@ -1,19 +1,7 @@
-import {
-  parseDialogPolicyArg,
-  type DialogPolicy,
-} from "../session/dialog.js";
-import {
-  parsePermissionPolicyArg,
-  type PermissionPolicy,
-} from "../session/permission.js";
-import {
-  parseNotificationPolicyArg,
-  type NotificationPolicy,
-} from "../session/notification.js";
-import {
-  parseFsPickerPolicyArg,
-  type FsPickerPolicy,
-} from "../session/fs-picker.js";
+import { parseDialogPolicyArg, type DialogPolicy } from "../session/dialog.js";
+import { parsePermissionPolicyArg, type PermissionPolicy } from "../session/permission.js";
+import { parseNotificationPolicyArg, type NotificationPolicy } from "../session/notification.js";
+import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
 import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from "./host.js";
 
@@ -21,6 +9,12 @@ import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from
  *  session-lifecycle handlers return. */
 function lifecycleJson(body: object): ToolResponse {
   return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+}
+
+/** The standard `ok:false` lifecycle envelope for an unknown throw — the message
+ *  lifted from an Error or stringified. */
+function lifecycleError(err: unknown): ToolResponse {
+  return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
 }
 
 /** The parsed policy bundle `open_session` threads into `registry.get`. Extracting
@@ -257,7 +251,10 @@ export function registerSessionLifecycleTools(
       recordVideo,
     }) => {
       if (registry.has(session)) {
-        return lifecycleJson({ ok: false, error: `session "${session}" already open; close_session first` });
+        return lifecycleJson({
+          ok: false,
+          error: `session "${session}" already open; close_session first`,
+        });
       }
       let policies: ParsedOpenSessionPolicies;
       try {
@@ -268,7 +265,7 @@ export function registerSessionLifecycleTools(
           fsPickerPolicy,
         });
       } catch (err) {
-        return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        return lifecycleError(err);
       }
       try {
         const e = await registry.get(session, {
@@ -301,7 +298,7 @@ export function registerSessionLifecycleTools(
           ...buildOpenSessionResultFields(e, hars),
         });
       } catch (err) {
-        return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
+        return lifecycleError(err);
       }
     },
   );
@@ -418,5 +415,4 @@ export function registerSessionLifecycleTools(
       };
     },
   );
-
 }

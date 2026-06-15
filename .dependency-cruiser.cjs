@@ -80,7 +80,7 @@ module.exports = {
       comment:
         "No RUNTIME import cycles — they defeat levelization and make load order load-bearing. " +
         "TYPE-ONLY cycles (`import type` both ways) are erased at compile and carry no load-order " +
-        "hazard, so `viaOnly.dependencyTypesNot: [\"type-only\"]` reports a cycle ONLY when its path " +
+        'hazard, so `viaOnly.dependencyTypesNot: ["type-only"]` reports a cycle ONLY when its path ' +
         "has a real runtime edge. A genuine runtime cycle still errors; the ~93 type-only cycles " +
         "from the P2 bootstrap + P3 splits sharing types do not. (RFC 0004 D10, L4.)",
       severity: "error",

@@ -462,8 +462,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // Keyed on the Playwright-Page capability (`!e.session.safari`), not an
       // engine-name branch — Safari has no CDP, so `requireCdp` would refuse.
       const teardownHasCdp = !e.session.safari;
-      if (teardownHasCdp)
-        await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
+      if (teardownHasCdp) await e.perf.closeIfRunning(requireCdp(e.session)).catch(() => undefined);
       // also release any in-flight Profiler/CSS coverage on
       // the attached target so a BYOB Chrome doesn't keep coverage state
       // pinned past detach.

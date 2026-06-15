@@ -326,5 +326,4 @@ export function registerStorageWebAuthTools(
   //           `idb_clear`)                                          → `action`
   // No new capability gate — same posture as web-storage CRUD.
   // ===========================================================================
-
 }

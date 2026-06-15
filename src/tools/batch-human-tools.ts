@@ -1,12 +1,7 @@
 import { runBatch } from "../util/batch.js";
 import { log } from "../util/logging.js";
 import { SESSION_ARG } from "./schemas.js";
-import type {
-  RegisterHost,
-  GateHost,
-  SessionHost,
-  ServerServicesHost,
-} from "./host.js";
+import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
 
 /** Build the DevTools-prompt body for an `await_human` call. Extracting the
  *  four-way kind dispatch into a pure helper keeps the handler under the
@@ -203,5 +198,4 @@ export function registerBatchHumanTools(
       };
     },
   );
-
 }

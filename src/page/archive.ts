@@ -226,7 +226,6 @@ const DISCOVERY_SCRIPT = `(() => {
   };
 })()`;
 
-
 /** Page handle adapter — `page_archive` only needs `evaluate`. Exposing a
  *  thin interface keeps the unit test mock trivial. */
 export interface ArchivePage {
@@ -350,7 +349,10 @@ async function fetchArchiveResources(
     for (const f of settled) phase.fetched.push(classifyArchiveFetched(f, maxBytes, phase));
     if (phase.budgetExhausted) {
       for (let j = i + CONCURRENCY; j < resources.length; j++) {
-        phase.fetched.push({ res: resources[j]!, r: { ok: false, error: "size budget exhausted" } });
+        phase.fetched.push({
+          res: resources[j]!,
+          r: { ok: false, error: "size budget exhausted" },
+        });
       }
       break;
     }
@@ -359,7 +361,11 @@ async function fetchArchiveResources(
 }
 
 /** Push the post-fetch budget/CSP warnings onto the result warnings. */
-function appendArchiveWarnings(phase: ArchiveFetchPhase, maxSizeMb: number, warnings: string[]): void {
+function appendArchiveWarnings(
+  phase: ArchiveFetchPhase,
+  maxSizeMb: number,
+  warnings: string[],
+): void {
   if (phase.cspBlocked > 0) {
     warnings.push(
       `${phase.cspBlocked} resource(s) blocked by the page's Content-Security-Policy ` +
@@ -464,6 +470,3 @@ function emitArchiveSingleFile(
   }
   return { resourceCount, droppedCount, sizeBytes };
 }
-
-
-

@@ -7,14 +7,7 @@ import type { ToolHost } from "./host.js";
  * the shared `ToolHost` seam.
  */
 export function registerConfigApprovalTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    caps,
-    configStore,
-    approvals,
-    pluginRecords,
-  } = host;
+  const { z, register, caps, configStore, approvals, pluginRecords } = host;
 
   // ---------- config store ----------
 

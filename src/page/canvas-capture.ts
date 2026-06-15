@@ -144,7 +144,11 @@ export const PAGE_CAPTURE_FN = (args: {
       const dataUrl = canvas.toDataURL("image/png");
       const idx = dataUrl.indexOf("base64,");
       if (idx < 0) {
-        return { ok: false, error: "toDataURL did not return a base64 payload", code: "encode-failed" };
+        return {
+          ok: false,
+          error: "toDataURL did not return a base64 payload",
+          code: "encode-failed",
+        };
       }
       const b64 = dataUrl.slice(idx + 7);
       // Byte length of decoded PNG ≈ b64.length * 3/4 (minus padding).
@@ -169,14 +173,22 @@ export const PAGE_CAPTURE_FN = (args: {
     if (!ctx) {
       return {
         ok: false,
-        error: 'canvas has no 2d context (likely a WebGL/WebGPU canvas — try format:"webgl-framebuffer")',
+        error:
+          'canvas has no 2d context (likely a WebGL/WebGPU canvas — try format:"webgl-framebuffer")',
         code: "no-2d-context",
       };
     }
     try {
       const data = ctx.getImageData(0, 0, w, h);
       const bytes = new Uint8Array(data.data.buffer, data.data.byteOffset, data.data.byteLength);
-      return { ok: true, format: "2d-imagedata", contentBase64: bytesToB64(bytes), width: w, height: h, channelCount: 4 };
+      return {
+        ok: true,
+        format: "2d-imagedata",
+        contentBase64: bytesToB64(bytes),
+        width: w,
+        height: h,
+        channelCount: 4,
+      };
     } catch (e) {
       return {
         ok: false,
@@ -255,7 +267,11 @@ export const PAGE_CAPTURE_FN = (args: {
   const w = canvas.width;
   const h = canvas.height;
   if (w <= 0 || h <= 0) {
-    return { ok: false, error: `canvas dimensions are non-positive (${w}x${h})`, code: "bad-dimensions" };
+    return {
+      ok: false,
+      error: `canvas dimensions are non-positive (${w}x${h})`,
+      code: "bad-dimensions",
+    };
   }
   if (w > args.maxDimension || h > args.maxDimension) {
     return {

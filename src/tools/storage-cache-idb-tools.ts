@@ -477,5 +477,4 @@ export function registerStorageCacheIdbTools(
       }
     },
   );
-
 }

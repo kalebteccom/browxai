@@ -14,6 +14,7 @@ The repo-root `AGENTS.md` is the single source of truth for cross-harness rules.
 - `docs-impact-auditor.toml` — Docs / Audit / Changelog — docs-impact verification on behavior-change diffs.
 - `release-engineer.toml` — Release / Ship / Tag — the release ritual.
 - `tracker-id-auditor.toml` — Tracker / Lint / Comments — scanning diffs for tracker IDs.
+- `architecture-fitness-auditor.toml` — Fitness / Arch / Laws — running the fitness suite + dependency graph + budgets against boundary diffs.
 
 ## See also
 

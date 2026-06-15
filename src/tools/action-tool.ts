@@ -74,7 +74,12 @@ export interface ActionToolOpts {
 export function actionTool<S extends z.ZodRawShape>(
   host: ActionToolHost,
   name: string,
-  def: { description: string; capability: ToolMeta["capability"]; batchable?: boolean; inputSchema: S },
+  def: {
+    description: string;
+    capability: ToolMeta["capability"];
+    batchable?: boolean;
+    inputSchema: S;
+  },
   dispatch: (ctx: ActionDispatchCtx<z.infer<z.ZodObject<S>>>) => Promise<unknown>,
   opts: ActionToolOpts = {},
 ): void {

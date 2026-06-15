@@ -178,7 +178,11 @@ function pushOversizeImage(
 
 /** oversize-images — images > 500KB. */
 export function analyseOversizeImages(ctx: AuditContext): CategoryResult {
-  const acc = { issues: [] as AuditIssue[], remediations: [] as AuditRemediation[], seen: new Set<string>() };
+  const acc = {
+    issues: [] as AuditIssue[],
+    remediations: [] as AuditRemediation[],
+    seen: new Set<string>(),
+  };
   // Prefer network responses metadata; fall back to ResourceFinish events.
   for (const r of ctx.responses ?? []) {
     if (!r.mimeType?.startsWith("image/")) continue;

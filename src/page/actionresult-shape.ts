@@ -105,7 +105,11 @@ function serialiseScopedSubtrees(
   if (subtrees.length === 0) {
     // All scope refs gone — element vanished + no appeared regions. Fall through
     // to a tiny scope marker instead of the full tree.
-    return { mode: "scoped_snapshot", scope: "(scope refs not present in post-tree)", truncated: false };
+    return {
+      mode: "scoped_snapshot",
+      scope: "(scope refs not present in post-tree)",
+      truncated: false,
+    };
   }
   const text = subtrees
     .map(

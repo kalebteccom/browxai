@@ -381,7 +381,10 @@ function validateForExecute(
 ): { ok: true; descriptor: ActionDescriptor } | { ok: false; outcome: ExecuteOutcome } {
   const validated = validateDescriptor(rawDescriptor);
   if (!validated.ok) {
-    return { ok: false, outcome: { ok: false, error: validated.error, reason: "invalid", tokensEstimate: 0 } };
+    return {
+      ok: false,
+      outcome: { ok: false, error: validated.error, reason: "invalid", tokensEstimate: 0 },
+    };
   }
   const d = validated.descriptor;
   if (now > d.expiresAt) {
@@ -412,7 +415,10 @@ function validateForExecute(
   // have dropped a required arg between plan and execute.
   const argError = validateVerbArgs(d.verb, d.args);
   if (argError) {
-    return { ok: false, outcome: { ok: false, error: argError, reason: "invalid", tokensEstimate: 0 } };
+    return {
+      ok: false,
+      outcome: { ok: false, error: argError, reason: "invalid", tokensEstimate: 0 },
+    };
   }
   return { ok: true, descriptor: d };
 }

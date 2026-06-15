@@ -54,11 +54,14 @@ function buildTree(refs: RefRegistry): A11yNode {
     role: "WebArea",
     source: "dom",
   });
-  const btnRef = refs.forKey(elementKey({ role: "button", name: "Submit", path: "button#submit" }), {
-    role: "button",
-    name: "Submit",
-    source: "dom",
-  });
+  const btnRef = refs.forKey(
+    elementKey({ role: "button", name: "Submit", path: "button#submit" }),
+    {
+      role: "button",
+      name: "Submit",
+      source: "dom",
+    },
+  );
   return {
     ref: rootRef,
     role: "WebArea",
@@ -78,7 +81,11 @@ function buildTree(refs: RefRegistry): A11yNode {
 
 class InMemorySnapshotSubstrate implements SnapshotSubstrate {
   readonly engine = "synthetic";
-  compose(refs: RefRegistry, _testAttributes: string[], _opts: ComposeOptions = {}): Promise<ComposedSnapshot> {
+  compose(
+    refs: RefRegistry,
+    _testAttributes: string[],
+    _opts: ComposeOptions = {},
+  ): Promise<ComposedSnapshot> {
     return Promise.resolve({
       tree: buildTree(refs),
       stats: { a11yInteractive: 1, domWalkEntries: 1, domWalkNew: 1, domWalkCombined: 0 },
@@ -206,6 +213,7 @@ export function inMemorySubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
     capture: (_e: SessionEntry): CaptureSubstrate => unsupported<CaptureSubstrate>("capture"),
     storage: (_e: SessionEntry): StorageSubstrate => unsupported<StorageSubstrate>("storage"),
     script: (_e: SessionEntry): ScriptSubstrate => unsupported<ScriptSubstrate>("script"),
-    emulation: (_e: SessionEntry): EmulationSubstrate => unsupported<EmulationSubstrate>("emulation"),
+    emulation: (_e: SessionEntry): EmulationSubstrate =>
+      unsupported<EmulationSubstrate>("emulation"),
   };
 }

@@ -304,7 +304,8 @@ export interface ServerServicesHost {
  *  sub-port. `buildHost` returns one object that satisfies all of them; a handler
  *  may type its `host` parameter to the narrower slice it actually calls. */
 export interface ToolHost
-  extends RegisterHost,
+  extends
+    RegisterHost,
     GateHost,
     SessionHost,
     ActionHost,

@@ -53,7 +53,11 @@ export interface FetchedResource {
 
 /** Slugify a URL into a filesystem-safe asset filename. The hash prefix
  *  disambiguates same-name resources from different origins. */
-export function assetFilename(url: string, kind: DiscoveredResource["kind"], contentType: string): string {
+export function assetFilename(
+  url: string,
+  kind: DiscoveredResource["kind"],
+  contentType: string,
+): string {
   let stem: string;
   let urlExt = "";
   try {

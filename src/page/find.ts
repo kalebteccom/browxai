@@ -318,7 +318,9 @@ export async function find(
   // actionable depends on bbox), and `PROBE_TIMEOUT_MS` caps any single
   // probe call so a no-match hint fails fast instead of waiting on auto-wait.
   const candidates: FindCandidate[] = await Promise.all(
-    top.map(({ node, score }) => probeCandidate(node, score, { locatorRoot, cdp, frame: opts.frame })),
+    top.map(({ node, score }) =>
+      probeCandidate(node, score, { locatorRoot, cdp, frame: opts.frame }),
+    ),
   );
 
   // visibility-aware ranking. Stable-partition actionable candidates ahead of

@@ -147,7 +147,9 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
       const caption = req.describe ? await this.deps.describeTarget(loc, this.refs, target) : "";
       return { buf, caption };
     }
-    const opts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = { type: fmt };
+    const opts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = {
+      type: fmt,
+    };
     if (fmt === "jpeg") opts.quality = req.quality ?? 80;
     if (req.scale) opts.scale = req.scale;
     const buf = await page.screenshot({ fullPage: req.fullPage, ...opts });

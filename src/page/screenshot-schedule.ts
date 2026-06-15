@@ -168,7 +168,9 @@ export async function runSchedule(
     // Belt-and-braces ceiling — independent of count/duration. Ensures a
     // 100ms-cadence over the 1h action-timeout ceiling can't blow up disk space.
     if (paths.length >= MAX_CAPTURES_PER_CALL) {
-      warnings.push(`reached MAX_CAPTURES_PER_CALL=${MAX_CAPTURES_PER_CALL}; schedule stopped early`);
+      warnings.push(
+        `reached MAX_CAPTURES_PER_CALL=${MAX_CAPTURES_PER_CALL}; schedule stopped early`,
+      );
       break;
     }
     const t = clock.now();
@@ -176,7 +178,8 @@ export async function runSchedule(
     if (buf === null) {
       i++;
       // Honour the cadence even on a failed capture.
-      if (i < targetCount && clock.now() < windowEndMs) await clock.sleep(Math.max(0, args.everyMs));
+      if (i < targetCount && clock.now() < windowEndMs)
+        await clock.sleep(Math.max(0, args.everyMs));
       continue;
     }
     const ts = clock.now() - tStart;

@@ -284,12 +284,7 @@ function functionName(node) {
   if (parent && parent.type === "VariableDeclarator" && parent.id.type === "Identifier") {
     return parent.id.name;
   }
-  if (
-    parent &&
-    parent.type === "Property" &&
-    parent.key &&
-    parent.key.type === "Identifier"
-  ) {
+  if (parent && parent.type === "Property" && parent.key && parent.key.type === "Identifier") {
     return parent.key.name;
   }
   return null;
@@ -309,7 +304,11 @@ function countFunctionLines(node, sourceCode, { skipBlankLines, skipComments }) 
   for (let l = start; l <= end; l++) {
     const text = lines[l - 1] ?? "";
     if (skipBlankLines && text.trim() === "") continue;
-    if (skipComments && commentLines.has(l) && text.replace(/\/\/.*$|\/\*.*$|^\s*\*.*$/g, "").trim() === "") {
+    if (
+      skipComments &&
+      commentLines.has(l) &&
+      text.replace(/\/\/.*$|\/\*.*$|^\s*\*.*$/g, "").trim() === ""
+    ) {
       continue;
     }
     count++;
@@ -337,8 +336,7 @@ const maxLinesPerFunctionRegistrationAware = {
       },
     ],
     messages: {
-      tooLong:
-        "{{ name }} has too many lines ({{ count }}). Maximum allowed is {{ max }}.",
+      tooLong: "{{ name }} has too many lines ({{ count }}). Maximum allowed is {{ max }}.",
     },
   },
   create(context) {
@@ -470,8 +468,7 @@ const complexityRegistrationAware = {
       },
     ],
     messages: {
-      tooComplex:
-        "{{ name }} has a complexity of {{ complexity }}. Maximum allowed is {{ max }}.",
+      tooComplex: "{{ name }} has a complexity of {{ complexity }}. Maximum allowed is {{ max }}.",
     },
   },
   create(context) {
@@ -502,12 +499,80 @@ const complexityRegistrationAware = {
   },
 };
 
+// RFC 0004 L7 (bounded everything), BEST-EFFORT / ADVISORY. Custom rule: flag a
+// `while` / `for` (classic) / `for…of` / `do-while` loop that has NEITHER an
+// obvious counter-comparison test (`i < N`, `i < arr.length`) NOR a nearby
+// cap/bound/limit/max/guard comment. A linter cannot prove termination (halting
+// problem), so this rule is honestly advisory — it ships `warn`, NEVER `error`
+// (0004-05 §1.3), and exists to FORCE A HUMAN DECISION at the loop ("state the
+// bound, and assert it"), not to verify the bound. Same "make the author state
+// the bound" posture as the tracker-id rule. A counted `for (let i = 0; i < n;
+// i++)` passes; `for (;;)`, `for (; cond;)`, and an uncommented `for…of`/`while`
+// warn. Mirrors the existing custom-rule idiom (meta/schema/create visitor).
+const NO_BOUND_COMMENT = /\b(cap|bound|bounded|limit|max|guard)\b/i;
+
+const boundedResource = {
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Flag potentially-unbounded loops (while / for / for-of / do-while without an explicit " +
+        "counter bound) that lack a nearby cap/bound comment. Best-effort: prompts the author to " +
+        "state the bound. Advisory (warn), never error — a linter cannot prove termination.",
+    },
+    schema: [],
+    messages: {
+      unbounded:
+        "This loop has no obvious counter bound and no cap/bound comment nearby. L7 (bounded " +
+        "everything) requires an explicit, tested bound on every loop, ring, and wait — even a " +
+        "`while (true)` ring needs a `// cap: N` and a break. State the bound in a comment (and " +
+        "assert it with invariant(), and pin it with a bounded-resource test), or rewrite as a " +
+        "counted loop. Advisory: this is a prompt for a human decision, not a proof.",
+    },
+  },
+  create(context) {
+    const sourceCode = context.sourceCode ?? context.getSourceCode();
+    const hasNearbyBoundComment = (node) => {
+      const before = sourceCode.getCommentsBefore(node);
+      const inside = sourceCode.getCommentsInside(node);
+      return [...before, ...inside].some((c) => NO_BOUND_COMMENT.test(c.value));
+    };
+    const looksCounted = (test) =>
+      test && test.type === "BinaryExpression" && ["<", "<=", ">", ">="].includes(test.operator);
+
+    const check = (node) => {
+      // `node.test` exists on For/While/DoWhile (null for `for(;;)` ⇒ flagged).
+      if (node.test && looksCounted(node.test)) return; // counted for/while — fine
+      if (hasNearbyBoundComment(node)) return; // author declared the bound
+      context.report({ node, messageId: "unbounded" });
+    };
+    // Scoped to the GENUINELY-unbounded loop forms — `while` / `do-while` /
+    // classic `for` whose condition is not a counter comparison (`while (cond)`,
+    // `for (;;)`, `for (; cond;)`). These are the real L7 hazard: a `while (true)`
+    // ring, an uncounted poll. `for…of` / `for…in` iterate a FINITE collection by
+    // construction (the iterable's own length is the bound), so flagging every
+    // uncommented `for…of` is noise that drowns the signal — it is deliberately
+    // omitted here. (Deviation from 0004-05 §1.3's literal `ForOfStatement` visitor,
+    // recorded in the P5 report: the rule stays advisory and best-effort; narrowing
+    // it to the unbounded forms keeps it a USEFUL prompt rather than 200 false
+    // positives on finite-collection iteration. A `for…of` over a potentially
+    // unbounded stream still warrants a `// cap:` comment + a bounded-resource test,
+    // by code-review/the architecture-fitness-auditor, not this heuristic.)
+    return {
+      WhileStatement: check,
+      DoWhileStatement: check,
+      ForStatement: check,
+    };
+  },
+};
+
 const browxaiLocal = {
   rules: {
     "no-tracker-ids-in-comments": noTrackerIdsInComments,
     "no-page-eval-stringified-arrow": noPageEvalStringifiedArrow,
     "no-engine-literal-branches": noEngineLiteralBranches, // L1
     "no-inlined-capability-checks": noInlinedCapabilityChecks, // L3 (gate centralization)
+    "bounded-resource": boundedResource, // L7 (best-effort, advisory warn)
     "max-lines-per-function-registration-aware": maxLinesPerFunctionRegistrationAware,
     "complexity-registration-aware": complexityRegistrationAware,
   },
@@ -655,6 +720,20 @@ export default tseslint.config(
       // gate. Promote to whole-tree (drop the override) in P1 / P2.
       "browxai-local/no-engine-literal-branches": "error",
       "browxai-local/no-inlined-capability-checks": "error",
+    },
+  },
+  // RFC 0004 L7 — the bounded-resource lint rule. ADVISORY (`warn`), NEVER `error`
+  // (0004-05 §1.3): it is a halting-problem heuristic that cannot PROVE
+  // termination, so it prompts a human decision at the loop rather than blocking
+  // the build. The proof of a bound is the `bounded-resource.test.ts` budget test
+  // + the `invariant()` termination check, not this rule. Scoped to the
+  // resource-handling layer (`src/page/**`, `src/util/**`) where rings / walks /
+  // waits live; the rest of the tree does not carry the bounded-resource concern.
+  {
+    files: ["src/page/**/*.ts", "src/util/**/*.ts"],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "browxai-local/bounded-resource": "warn",
     },
   },
   // RFC 0004 D11 — the size / complexity budgets (L3). Sized from the CURRENT

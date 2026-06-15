@@ -127,7 +127,13 @@ function validateStep(s: GestureChainStep, i: number, warnings: string[]): StepO
 export function validateGestureChain(steps: GestureChainStep[]): ValidateGestureChainResult {
   const warnings: string[] = [];
   if (!Array.isArray(steps) || steps.length === 0) {
-    return { ok: false, steps: [], warnings, error: "gesture_chain: `steps` must be a non-empty array", code: "no-steps" };
+    return {
+      ok: false,
+      steps: [],
+      warnings,
+      error: "gesture_chain: `steps` must be a non-empty array",
+      code: "no-steps",
+    };
   }
   if (steps.length > GESTURE_CHAIN_MAX_STEPS) {
     return {

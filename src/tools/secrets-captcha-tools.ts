@@ -48,14 +48,7 @@ async function readSiteKeyFromSelector(
  * `ToolHost` seam.
  */
 export function registerSecretsCaptchaTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    caps,
-    credentialsResolved,
-  } = host;
+  const { z, register, gateCheck, entryFor, caps, credentialsResolved } = host;
 
   // ---------- secrets registry (capability `secrets`) ----------
 

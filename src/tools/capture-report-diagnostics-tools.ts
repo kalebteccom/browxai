@@ -49,16 +49,7 @@ function matchesDiagnosticFilter(
  * and Playwright-script export. Registered through the shared `ToolHost` seam.
  */
 export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
-  const {
-    z,
-    register,
-    gateCheck,
-    entryFor,
-    workspace,
-    registry,
-    diagnostics,
-  } = host;
-
+  const { z, register, gateCheck, entryFor, workspace, registry, diagnostics } = host;
 
   register(
     "export_session_report",

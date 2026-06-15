@@ -110,7 +110,11 @@ export function resolveCaptchaProvider(
     /\/+$/,
     "",
   );
-  const timeout = parsePositiveIntEnv(env.BROWX_CAPTCHA_TIMEOUT_MS, 120_000, "BROWX_CAPTCHA_TIMEOUT_MS");
+  const timeout = parsePositiveIntEnv(
+    env.BROWX_CAPTCHA_TIMEOUT_MS,
+    120_000,
+    "BROWX_CAPTCHA_TIMEOUT_MS",
+  );
   if (!timeout.ok) return { ok: false, reason: "partial", error: timeout.error };
   const poll = parsePositiveIntEnv(env.BROWX_CAPTCHA_POLL_MS, 5000, "BROWX_CAPTCHA_POLL_MS");
   if (!poll.ok) return { ok: false, reason: "partial", error: poll.error };

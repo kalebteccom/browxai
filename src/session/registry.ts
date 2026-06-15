@@ -287,7 +287,8 @@ export interface SessionCaptureRole {
  *  may depend on the narrow role it reads (e.g. `SessionPolicyRole`) instead of
  *  the whole record. The factory in server.ts still builds one object. */
 export interface SessionEntry
-  extends SessionCore,
+  extends
+    SessionCore,
     SessionObserveRole,
     SessionNetworkRole,
     SessionFeatureRole,

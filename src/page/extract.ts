@@ -43,7 +43,6 @@
 // Refs used during extraction land in `evidence.refsUsed` so the caller
 // can audit / cache / pin (`name_ref`) the elements the result drew from.
 
-
 import type { Locator, Page } from "playwright-core";
 import { type A11yNode } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
@@ -109,7 +108,11 @@ function prepareSchema(
 
   const schemaError = validateSchema(schema, "");
   if (schemaError) {
-    return failPrepared("invalid-schema", "a JSON schema whose root is object or array", schemaError);
+    return failPrepared(
+      "invalid-schema",
+      "a JSON schema whose root is object or array",
+      schemaError,
+    );
   }
   // Strict mode: promote unknown-`x-browx-source`-key diagnostics from soft
   // `partialMisses` notes to a hard `invalid-schema` rejection. Default off;
@@ -169,7 +172,10 @@ async function resolveScope(
         "no matching ref",
       );
     }
-    return { ok: true, value: { scopeTree: sub, scopeLocator: locatorForRef(page, refs, opts.ref) } };
+    return {
+      ok: true,
+      value: { scopeTree: sub, scopeLocator: locatorForRef(page, refs, opts.ref) },
+    };
   }
   if (opts.scope) {
     const scopeLocator = page.locator(opts.scope).first();

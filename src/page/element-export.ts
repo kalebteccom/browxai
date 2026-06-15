@@ -121,9 +121,6 @@ export function defaultElementExportPath(
   return format === "single-file" ? `${stem}.html` : stem;
 }
 
-
-
-
 /**
  * Adapter that resolves the ref + runs `elementExport`. Lives in this
  * module so the server-side handler doesn't have to know the discovery
@@ -195,7 +192,10 @@ async function fetchElementResources(
     for (const f of settled) phase.fetched.push(classifyFetched(f, maxBytes, phase));
     if (phase.budgetExhausted) {
       for (let j = i + CONCURRENCY; j < resources.length; j++) {
-        phase.fetched.push({ res: resources[j]!, r: { ok: false, error: "size budget exhausted" } });
+        phase.fetched.push({
+          res: resources[j]!,
+          r: { ok: false, error: "size budget exhausted" },
+        });
       }
       break;
     }
@@ -372,7 +372,6 @@ export async function elementExport(
   };
 }
 
-
 /**
  * Server-facing helper: resolve a ref through the registry, then call
  * `elementExport`. Lives here so the server.ts call site is a one-liner.
@@ -392,4 +391,3 @@ export async function elementExportFromRef(
   const pageAdapter: ElementExportPage = { evaluate: (expr) => page.evaluate(expr) };
   return elementExport(pageAdapter, adapter, workspaceRoot, sessionId, args);
 }
-

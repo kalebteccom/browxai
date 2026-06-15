@@ -284,7 +284,12 @@ export class WorkersRegistry {
    *  attachment(s). */
   private registerVersionUpdated(cdp: CDPSession): void {
     type WorkerVersionUpdated = {
-      versions: Array<{ versionId: string; scriptURL: string; runningStatus: string; targetId?: string }>;
+      versions: Array<{
+        versionId: string;
+        scriptURL: string;
+        runningStatus: string;
+        targetId?: string;
+      }>;
     };
     this.onCdp(cdp, "ServiceWorker.workerVersionUpdated", (raw) => {
       const e = raw as WorkerVersionUpdated;
@@ -319,7 +324,8 @@ export class WorkersRegistry {
       };
       this.swAttached.set(e.sessionId, att);
       this.swIdBySession.set(e.sessionId, `sw-${this.nextSwId++}`);
-      if (this.fetchInterceptors.size > 0) void this.applyFetchEnable(cdp, att).catch(() => undefined);
+      if (this.fetchInterceptors.size > 0)
+        void this.applyFetchEnable(cdp, att).catch(() => undefined);
     });
     this.onCdp(cdp, "Target.detachedFromTarget", (raw) => {
       const { sessionId } = raw as { sessionId: string };
@@ -383,7 +389,11 @@ export class WorkersRegistry {
     // Enumerate + monitor running versions; auto-attach for a child session per SW.
     await cdp.send("ServiceWorker.enable").catch(() => undefined);
     await cdp
-      .send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
+      .send("Target.setAutoAttach", {
+        autoAttach: true,
+        waitForDebuggerOnStart: false,
+        flatten: true,
+      })
       .catch(() => undefined);
     this.registerVersionUpdated(cdp);
     this.registerAttachDetach(cdp);
@@ -454,13 +464,7 @@ export class WorkersRegistry {
     if (args.workerId.startsWith("sw-")) {
       await this.installSwListener(cdp);
       // Find the SW attachment for this id.
-      let sessionId: string | undefined;
-      for (const [sid, id] of this.swIdBySession) {
-        if (id === args.workerId) {
-          sessionId = sid;
-          break;
-        }
-      }
+      const sessionId = [...this.swIdBySession].find(([, id]) => id === args.workerId)?.[0];
       if (!sessionId)
         return {
           ok: false,
