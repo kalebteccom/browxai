@@ -13,7 +13,11 @@
 // Run: pnpm tsx scripts/bench-network-envelope.ts
 
 import { chromium, type BrowserContext, type Page } from "playwright-core";
-import { NetworkTap, PlaywrightNetworkTap } from "../src/page/network.js";
+import { NetworkTap } from "../src/page/network.js";
+// RFC 0004 P4 / D10 — the Playwright network classes are no longer re-exported
+// through the `network.js` barrel (that re-export formed a runtime cycle);
+// import from the defining module directly.
+import { PlaywrightNetworkTap } from "../src/page/network-playwright.js";
 import { startFixture } from "../test/keystone/fixture.js";
 
 const ITERATIONS = 60;

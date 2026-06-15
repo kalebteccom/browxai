@@ -532,10 +532,11 @@ export class NetworkBuffer {
 
 // ===========================================================================
 // Off-Chromium (Playwright-events) network/WebSocket capture lives in a sibling
-// module to keep this file under the size budget; re-exported here so callers
-// import the whole network surface from the one `./network.js` barrel, unchanged.
-export {
-  PlaywrightNetworkTap,
-  PlaywrightNetworkBuffer,
-  PlaywrightWsBuffer,
-} from "./network-playwright.js";
+// module (`network-playwright.ts`) to keep this file under the size budget.
+//
+// RFC 0004 P4 / D10 — these classes are NOT re-exported through this barrel: a
+// runtime re-export here (and `network-playwright.ts` importing runtime helpers
+// back from here) formed a genuine import cycle that the no-circular rule flags
+// at `error`. The sole runtime consumer (`network-substrate.ts`) now imports
+// them DIRECTLY from `./network-playwright.js`, so the only surviving edge is
+// `network-playwright.ts` → `network.ts` — one-directional, no cycle.

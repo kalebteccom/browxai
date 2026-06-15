@@ -6,29 +6,15 @@
 import type { TraceEvent } from "./perf.js";
 import type { JsCoverageEntry, CssCoverageEntry } from "./coverage.js";
 import type { MemoryDiffResult } from "./memory-diff.js";
+// RFC 0004 P4 / D6 — `AuditCategory` is DERIVED from the `ANALYSERS` registry
+// (the single source of truth) in `perf-audit-analysers.ts`. This is a TYPE-ONLY
+// import: the value side of that module (the `ANALYSERS` object + analyser fns)
+// imports the issue/result shapes from here, so a runtime re-export of the union
+// would be a cycle. Importing only the type keeps the edge type-only (erased at
+// compile) — the category vocabulary still has exactly one declaration site.
+import type { AuditCategory } from "./perf-audit-analysers.js";
 
-/** The eight initial audit categories. Order is meaningful — issues are
- *  surfaced in this order when severity ties. */
-export type AuditCategory =
-  | "render-blocking"
-  | "unused-code"
-  | "oversize-images"
-  | "layout-thrashing"
-  | "long-tasks"
-  | "leak-suspects"
-  | "cache-opportunities"
-  | "font-loading";
-
-export const ALL_AUDIT_CATEGORIES: AuditCategory[] = [
-  "render-blocking",
-  "unused-code",
-  "oversize-images",
-  "layout-thrashing",
-  "long-tasks",
-  "leak-suspects",
-  "cache-opportunities",
-  "font-loading",
-];
+export type { AuditCategory } from "./perf-audit-analysers.js";
 
 export type IssueSeverity = "high" | "medium" | "low";
 

@@ -2,12 +2,21 @@
 // the architecture guardrail. Lakos-style levelization made executable: the core
 // depends inward, never toward a delivery mechanism.
 //
-// P0 stance: every rule ships `severity: "warn"`, so `pnpm depcruise` REPORTS
-// layering drift but exits 0 — it cannot fail the gate while the tree still has
-// the cross-layer imports the later phases remove. The rules promote to `error`
-// in P4 (alongside the D6 switch-to-registry work), once the registries that
-// satisfy them exist. Promotion is a one-line `severity` change per rule, and —
-// per the §7 meta-rule — a reviewable RFC-amendment diff, never an inline disable.
+// P4 stance (PROMOTED): every layering rule below now ships `severity: "error"`,
+// so `pnpm depcruise` FAILS the gate on any cross-layer import. The tree is clean
+// of layering violations (P1–P3 removed the cross-layer imports the registries
+// replaced), so promotion is safe per the §3.1 ratchet ("promote in the same
+// phase that removes the last violation"). Relaxing a promoted rule is an
+// RFC-amendment diff with rationale — never an inline disable (the §7 meta-rule).
+//
+// `no-circular` is `error` too, but FILTERED to runtime cycles: the ~93 cycles
+// the tree carries are TYPE-ONLY (`import type` shared across the P2 bootstrap +
+// P3 module splits), erased at compile and harmless to load order. The
+// `viaOnly.dependencyTypesNot: ["type-only"]` clause reports a cycle ONLY when it
+// has a real runtime edge — so a genuine runtime cycle still errors (the
+// network.ts ↔ network-playwright.ts cycle P4 resolved would re-fire), while the
+// type-only cycles do not. Suppression is by dependency KIND, not an allowlist of
+// specific cycles, so a new runtime cycle is caught automatically.
 
 module.exports = {
   forbidden: [
@@ -17,7 +26,7 @@ module.exports = {
         "The composition root + tool handlers must not import the SDK client or CLI. " +
         "server.ts is a registry composition root (<=400 LOC); the SDK is a downstream " +
         "consumer of the wire, not an upstream dependency. (RFC 0004 D10, L4.)",
-      severity: "warn",
+      severity: "error",
       from: { path: "^src/(server\\.ts|tools/)" },
       to: { path: "^src/(sdk|cli)/" },
     },
@@ -26,7 +35,7 @@ module.exports = {
       comment:
         "A page handler is engine-agnostic: it reaches the capability substrates, never a " +
         "concrete engine adapter or a transport. (RFC 0004 L1: the closed core.)",
-      severity: "warn",
+      severity: "error",
       from: { path: "^src/page/" },
       to: { path: "^src/(engine/adapters|sdk/transport)" },
     },
@@ -41,7 +50,7 @@ module.exports = {
         "never calls createServer, so without this the gate would read an empty map; the gate's " +
         "fail-safe makes that throw rather than fail OPEN, and this import keeps the throw from " +
         "firing on the legitimate path. It pulls a SIDE EFFECT (the bootstrap), not handler logic.",
-      severity: "warn",
+      severity: "error",
       from: { path: "^src/sdk/" },
       to: { path: "^src/(tools|page)/", pathNot: "^src/tools/tool-metadata\\.ts$" },
     },
@@ -50,23 +59,33 @@ module.exports = {
       comment:
         "The core (engine/page/session/util) must not import outward into cli/sdk/plugin. " +
         "Dependencies point toward the abstraction, never toward the delivery mechanism.",
-      severity: "warn",
+      severity: "error",
       from: { path: "^src/(engine|page|session|util)/" },
       to: { path: "^src/(cli|sdk|plugin)/" },
     },
     {
       name: "only-the-bin-imports-cli",
-      comment: "Nothing imports src/cli/* except the bin entry (src/cli.ts). The CLI is a leaf.",
-      severity: "warn",
-      from: { pathNot: "^src/cli\\.ts$" },
+      comment:
+        "Nothing outside the CLI imports src/cli/* except the bin entry (src/cli.ts). The CLI is " +
+        "a leaf of the delivery layer: the bin composes it, and CLI modules import each other " +
+        "(e.g. doctor.ts → doctor-plugins.ts), but no CORE/SDK/plugin module may reach into it. " +
+        "The `from.pathNot` excludes BOTH the bin entry AND sibling cli/ modules so an intra-CLI " +
+        "import is not a violation — only an inward leak from outside the CLI is. (RFC 0004 D10.)",
+      severity: "error",
+      from: { pathNot: "^src/(cli\\.ts$|cli/)" },
       to: { path: "^src/cli/" },
     },
     {
       name: "no-circular",
-      comment: "No import cycles — they defeat levelization and make load order load-bearing.",
-      severity: "warn",
+      comment:
+        "No RUNTIME import cycles — they defeat levelization and make load order load-bearing. " +
+        "TYPE-ONLY cycles (`import type` both ways) are erased at compile and carry no load-order " +
+        "hazard, so `viaOnly.dependencyTypesNot: [\"type-only\"]` reports a cycle ONLY when its path " +
+        "has a real runtime edge. A genuine runtime cycle still errors; the ~93 type-only cycles " +
+        "from the P2 bootstrap + P3 splits sharing types do not. (RFC 0004 D10, L4.)",
+      severity: "error",
       from: {},
-      to: { circular: true },
+      to: { circular: true, viaOnly: { dependencyTypesNot: ["type-only"] } },
     },
   ],
   options: {

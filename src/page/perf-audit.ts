@@ -16,21 +16,24 @@
 
 import { estimateTokens } from "../util/tokens.js";
 import {
-  type AuditCategory,
   type IssueSeverity,
   type AuditIssue,
   type AuditRemediation,
   type AuditContext,
   type CategoryResult,
-  ALL_AUDIT_CATEGORIES,
 } from "./perf-audit-types.js";
-import { ANALYSERS } from "./perf-audit-analysers.js";
+import {
+  ANALYSERS,
+  ALL_AUDIT_CATEGORIES,
+  type AuditCategory,
+} from "./perf-audit-analysers.js";
 
-// The audit type vocabulary lives in `perf-audit-types.ts` and the category
-// analysers + ANALYSERS registry in `perf-audit-analysers.ts`; re-exported here
-// so callers import the whole perf_audit surface from `./perf-audit.js`.
+// The audit type vocabulary lives in `perf-audit-types.ts`; the category
+// analysers + the `ANALYSERS` registry (the single source of truth from which
+// `AuditCategory` + `ALL_AUDIT_CATEGORIES` derive) in `perf-audit-analysers.ts`.
+// Re-exported here so callers import the whole perf_audit surface from
+// `./perf-audit.js`.
 export type {
-  AuditCategory,
   IssueSeverity,
   AuditIssue,
   AuditRemediation,
@@ -38,9 +41,10 @@ export type {
   AuditContext,
   AuditCategoryAnalyser,
 } from "./perf-audit-types.js";
-export { ALL_AUDIT_CATEGORIES } from "./perf-audit-types.js";
 export {
   ANALYSERS,
+  ALL_AUDIT_CATEGORIES,
+  type AuditCategory,
   analyseRenderBlocking,
   analyseUnusedCode,
   analyseOversizeImages,

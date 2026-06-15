@@ -2,10 +2,17 @@
 // and the `ANALYSERS` registry that maps each category to its analyser. Split
 // out of perf-audit.ts so the analysers (the bulk of the file) live apart from
 // the report composer; re-exported through `./perf-audit.js`.
+//
+// RFC 0004 P4 / D6 — `ANALYSERS` is the SINGLE source of truth for the audit
+// category set: an add-only registry (one entry per category). The
+// `AuditCategory` union and the `ALL_AUDIT_CATEGORIES` array are DERIVED from
+// its keys, so adding a category is ONE edit (a new `ANALYSERS` entry) and a
+// typo'd category string is a compile error, not a silently-dropped key. This
+// makes the perf-audit registry — the doctrine's own cited OCP exemplar
+// (architecture-principles §2) — genuinely exemplary.
 
 import type { TraceEvent } from "./perf.js";
 import type {
-  AuditCategory,
   AuditCategoryAnalyser,
   AuditContext,
   AuditIssue,
@@ -13,7 +20,13 @@ import type {
   CategoryResult,
 } from "./perf-audit-types.js";
 
-export const ANALYSERS: Record<AuditCategory, AuditCategoryAnalyser> = {
+/** The audit category registry — the ONE place a category is declared. Each
+ *  key is a category name; each value is its analyser. `as const satisfies`
+ *  pins the keys as string literals (so `AuditCategory` derives a closed union)
+ *  while still type-checking every value against the analyser signature.
+ *
+ *  Order is meaningful — issues are surfaced in this order when severity ties. */
+export const ANALYSERS = {
   "render-blocking": analyseRenderBlocking,
   "unused-code": analyseUnusedCode,
   "oversize-images": analyseOversizeImages,
@@ -22,7 +35,15 @@ export const ANALYSERS: Record<AuditCategory, AuditCategoryAnalyser> = {
   "leak-suspects": analyseLeakSuspects,
   "cache-opportunities": analyseCacheOpportunities,
   "font-loading": analyseFontLoading,
-};
+} as const satisfies Record<string, AuditCategoryAnalyser>;
+
+/** The closed audit-category vocabulary — DERIVED from `ANALYSERS`'s keys, never
+ *  hand-listed. A category exists iff it has an analyser. */
+export type AuditCategory = keyof typeof ANALYSERS;
+
+/** Every audit category, in declaration order — DERIVED from `ANALYSERS`. The
+ *  `Object.keys` cast is sound because the keys ARE the `AuditCategory` union. */
+export const ALL_AUDIT_CATEGORIES = Object.keys(ANALYSERS) as AuditCategory[];
 
 // ---------------------------------------------------------------------------
 // Category analysers

@@ -20,6 +20,13 @@ import { join, relative, sep } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
 import { log } from "../util/logging.js";
 import { pluginPaths, type PluginPaths } from "./resolver.js";
+import {
+  packageManagerAdapter,
+  packageManagerAdaptersByPriority,
+  type PackageManager,
+  type PmOperation,
+} from "./package-manager.js";
+import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
 
 const RESTART_NOTICE =
   "Server restart required — plugins are resolved ONCE at server start, so changes only take effect after a fresh `browxai` start.";
@@ -148,16 +155,12 @@ function* walkDir(dir: string): Generator<string> {
   }
 }
 
-/** Package managers the plugin CLI can drive. */
-export type PackageManager = "pnpm" | "npm";
-
-/** The pnpm-flavoured operations the CLI performs, mapped per manager. */
-export type PmOperation = "add" | "remove" | "update" | "install";
-
-const PM_VERBS: Record<PackageManager, Record<PmOperation, string>> = {
-  pnpm: { add: "add", remove: "remove", update: "update", install: "install" },
-  npm: { add: "install", remove: "uninstall", update: "update", install: "install" },
-};
+// RFC 0004 P4 / D6 — the per-manager verb mapping moved to an add-only
+// `PackageManagerAdapter` registry (`package-manager.ts`); `pmArgs` /
+// `detectPackageManager` now resolve through it. Re-exported here so callers
+// (incl. the CLI tests) keep importing `PackageManager` / `PmOperation` from
+// `./cli.js` unchanged.
+export type { PackageManager, PmOperation } from "./package-manager.js";
 
 /** Emitted when neither pnpm nor npm is on PATH — actionable, names the
  *  requirement. Exported for the CLI tests. */
@@ -170,16 +173,18 @@ function canSpawn(cmd: string): boolean {
 }
 
 /**
- * Probe for an available package manager. pnpm wins (it is the
- * project's declared manager and what CI uses); npm is the fallback so
- * `npm install -g browxai` adopters aren't dead-ended with a bare
- * ENOENT. Returns null when neither is on PATH.
+ * Probe for an available package manager. The adapters are walked in ascending
+ * probe priority (pnpm at 0 wins — it is the project's declared manager and what
+ * CI uses; npm at 1 is the fallback so `npm install -g browxai` adopters aren't
+ * dead-ended with a bare ENOENT). Returns null when none is on PATH. Adding a
+ * manager is a new adapter registration, not an edit here.
  */
 export function detectPackageManager(
   probe: (cmd: string) => boolean = canSpawn,
 ): PackageManager | null {
-  if (probe("pnpm")) return "pnpm";
-  if (probe("npm")) return "npm";
+  for (const adapter of packageManagerAdaptersByPriority()) {
+    if (probe(adapter.name)) return adapter.name;
+  }
   return null;
 }
 
@@ -189,7 +194,9 @@ export function pmArgs(
   op: PmOperation,
   target?: string,
 ): ReadonlyArray<string> {
-  const verb = PM_VERBS[pm][op];
+  const adapter = packageManagerAdapter(pm);
+  if (!adapter) throw new Error(`browxai plugin: no adapter registered for package manager "${pm}"`);
+  const verb = adapter.verbs[op];
   return target === undefined ? [verb] : [verb, target];
 }
 
@@ -497,42 +504,50 @@ function help(): number {
   return 0;
 }
 
-/** CLI dispatcher — invoked by `src/cli.ts` for the `plugin` subcommand. */
+// RFC 0004 P4 / D6 — the extensibility verbs are an add-only registry. Each
+// handler owns its OWN argument validation (the install/remove/info missing-arg
+// checks the old `case` performed) and returns the SAME exit code, so the
+// dispatch in `runPlugin` is a pure registry lookup. Adding a verb is one
+// `registerPluginCommand(...)` line here, not a new `switch` arm.
+registerPluginCommand("install", (rest) => {
+  if (!rest[0]) {
+    process.stderr.write("browxai plugin install: missing <pkg> argument\n");
+    return 1;
+  }
+  return cmdInstall(rest[0]);
+});
+registerPluginCommand("remove", (rest) => {
+  if (!rest[0]) {
+    process.stderr.write("browxai plugin remove: missing <pkg> argument\n");
+    return 1;
+  }
+  return cmdRemove(rest[0]);
+});
+registerPluginCommand("list", () => cmdList());
+registerPluginCommand("info", (rest) => {
+  if (!rest[0]) {
+    process.stderr.write("browxai plugin info: missing <pkg> argument\n");
+    return 1;
+  }
+  return cmdInfo(rest[0]);
+});
+registerPluginCommand("upgrade", (rest) => cmdUpgrade(rest[0]));
+registerPluginCommand("sync", () => cmdSync());
+
+/** CLI dispatcher — invoked by `src/cli.ts` for the `plugin` subcommand. The
+ *  help branch (no verb / `help` / `--help` / `-h`) and the unknown-verb
+ *  diagnostic stay inline — they are the subcommand's fixed contract; the
+ *  extensibility verbs resolve through the add-only registry above. */
 export async function runPlugin(args: ReadonlyArray<string>): Promise<number> {
   const [sub, ...rest] = args;
-  switch (sub) {
-    case undefined:
-    case "help":
-    case "--help":
-    case "-h":
-      return help();
-    case "install":
-      if (!rest[0]) {
-        process.stderr.write("browxai plugin install: missing <pkg> argument\n");
-        return 1;
-      }
-      return cmdInstall(rest[0]);
-    case "remove":
-      if (!rest[0]) {
-        process.stderr.write("browxai plugin remove: missing <pkg> argument\n");
-        return 1;
-      }
-      return cmdRemove(rest[0]);
-    case "list":
-      return cmdList();
-    case "info":
-      if (!rest[0]) {
-        process.stderr.write("browxai plugin info: missing <pkg> argument\n");
-        return 1;
-      }
-      return cmdInfo(rest[0]);
-    case "upgrade":
-      return cmdUpgrade(rest[0]);
-    case "sync":
-      return cmdSync();
-    default:
-      process.stderr.write(`browxai plugin: unknown subcommand "${sub}"\n`);
-      help();
-      return 2;
+  if (sub === undefined || sub === "help" || sub === "--help" || sub === "-h") {
+    return help();
   }
+  const handler = pluginCommandFor(sub);
+  if (handler) {
+    return handler(rest);
+  }
+  process.stderr.write(`browxai plugin: unknown subcommand "${sub}"\n`);
+  help();
+  return 2;
 }

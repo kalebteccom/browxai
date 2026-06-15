@@ -17,9 +17,14 @@
 import "../tools/tool-metadata.js";
 import { buildClient, defaultSdkCapabilities } from "./client.js";
 import type { Capability } from "../util/capabilities.js";
-import { openInProcessTransport } from "./transport-in-process.js";
-import { openSocketTransport } from "./transport-socket.js";
-import { openStdioChildTransport } from "./transport-stdio-child.js";
+// Importing the three transport modules runs their side-effect
+// `registerTransport(...)` calls (RFC 0004 P4 / D6), populating the transport
+// registry below. `createBrowxai` then dispatches through `openTransport`
+// rather than a `switch (mode)` — a fourth transport is add-only.
+import "./transport-in-process.js";
+import "./transport-socket.js";
+import "./transport-stdio-child.js";
+import { openTransport } from "./transport-registry.js";
 import type { BrowxaiClient, BrowxaiSdkOptions } from "./types.js";
 
 export type {
@@ -209,33 +214,12 @@ export async function createBrowxai(opts: BrowxaiSdkOptions = {}): Promise<Browx
 
   const mode = opts.transport ?? (opts.endpoint ? "socket" : "in-process");
 
-  let transport;
-  switch (mode) {
-    case "in-process":
-      transport = await openInProcessTransport({
-        attachCdp: opts.attachCdp,
-        headless: opts.headless,
-      });
-      break;
-    case "stdio-child":
-      transport = await openStdioChildTransport({
-        command: opts.command,
-        args: opts.args,
-        env: opts.env,
-      });
-      break;
-    case "socket":
-      if (!opts.endpoint) {
-        throw new Error(
-          `browxai-sdk: transport "socket" requires an \`endpoint\`. ` +
-            `Set { endpoint: "unix:///path/to/sock" } (or pipe://./pipe/<name> on Windows).`,
-        );
-      }
-      transport = await openSocketTransport({ endpoint: opts.endpoint });
-      break;
-    default:
-      throw new Error(`browxai-sdk: unknown transport "${String(mode)}"`);
-  }
+  // Resolve the transport via the add-only registry. `openTransport` returns the
+  // SAME transport the old `switch (mode)` constructed for each mode (the per-
+  // transport argument mapping + the socket endpoint guard now live in each
+  // transport file's `registerTransport(...)`), and throws the same structured
+  // error for an unknown mode.
+  const transport = await openTransport(mode, opts);
 
   return buildClient({ transport, capabilities, session: opts.session });
 }

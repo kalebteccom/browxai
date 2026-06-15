@@ -45,15 +45,24 @@ import {
   WsBuffer,
   NetworkTap,
   fetchResponseBody,
-  PlaywrightNetworkBuffer,
-  PlaywrightWsBuffer,
-  PlaywrightNetworkTap,
   type NetworkEntry,
   type NetworkSummary,
   type MutationEntry,
   type SessionNetworkRing,
   type SessionWsRing,
 } from "./network.js";
+// RFC 0004 P4 / D10 — the off-Chromium Playwright network classes are imported
+// DIRECTLY from their defining module, not re-exported through the `network.js`
+// barrel. The barrel re-export was a genuine RUNTIME cycle
+// (`network.ts` → `network-playwright.ts` → `network.ts`); routing this sole
+// runtime consumer to the source module breaks it so the no-circular rule is
+// clean at `error`. (network-playwright.ts still imports runtime helpers from
+// network.ts — that edge is one-directional now, so no cycle.)
+import {
+  PlaywrightNetworkBuffer,
+  PlaywrightWsBuffer,
+  PlaywrightNetworkTap,
+} from "./network-playwright.js";
 
 /** The per-action network tap — opened before an action dispatches, closed after
  *  the settle window. `close()` returns the same `{summary, requests, mutations}`
