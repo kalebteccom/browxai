@@ -3,7 +3,14 @@ import { withDeadline } from "../util/deadline.js";
 import { runShortcut } from "../page/shortcut.js";
 import { drag, doubleClick } from "../page/gestures.js";
 import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
-import type { ToolHost } from "./host.js";
+import type {
+  RegisterHost,
+  GateHost,
+  SessionHost,
+  ActionHost,
+  ConfigHost,
+  ServerServicesHost,
+} from "./host.js";
 
 /**
  * Navigation + core action tools — the verbs an agent drives a page with:
@@ -12,8 +19,14 @@ import type { ToolHost } from "./host.js";
  * set_viewport. Every block is registered through the shared `ToolHost` seam;
  * the host owns the closures (gate, confirm, ports), this module owns the
  * registrations.
+ *
+ * The parameter is narrowed to the sub-ports this family touches (RFC 0004 P3 /
+ * D3 ISP) — the signature compiles a guarantee that the action family reaches
+ * nothing outside gating, session resolution, action dispatch, and config.
  */
-export function registerActionTools(host: ToolHost): void {
+export function registerActionTools(
+  host: RegisterHost & GateHost & SessionHost & ActionHost & ConfigHost & ServerServicesHost,
+): void {
   const { z } = host;
 
   host.register(

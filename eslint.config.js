@@ -459,8 +459,17 @@ export default tseslint.config(
       // wiring decision, not a tool-handler gate; it rode this allowlist pre-P1 and
       // is a P2 concern (the engine-literal P1 promotion left it on this list).
       "src/tools/session-registry.ts",
-      "src/tools/read-observe-tools.ts",
-      "src/tools/emulation-config-tools.ts",
+      // The P3 god-module split (D3) relocated read-observe / emulation-config
+      // into per-family modules verbatim. The inline reads here are egress-masking
+      // (`caps.enabled.has("secrets")`) and creation-time wiring — the SAME P2 debt
+      // their origin files carried, moved file-to-file, not new violations. They
+      // ride the allowlist their origin file did until the EgressSanitiser chokepoint
+      // (D4(c)) retires the secrets reads.
+      "src/tools/read-observe-dom-tools.ts",
+      "src/tools/read-observe-verify-tools.ts",
+      "src/tools/read-observe-capture-tools.ts",
+      "src/tools/read-observe-buffer-tools.ts",
+      "src/tools/secrets-captcha-tools.ts",
       "src/tools/extensions-batch-tools.ts",
       "src/tools/forms-recording-tools.ts",
       "src/tools/plugin-runtime.ts",

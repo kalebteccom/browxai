@@ -249,19 +249,13 @@ export class NetworkTap {
   }> {
     for (const off of this.listeners) off();
     this.listeners = [];
-    const summary: NetworkSummary = { total: this.finished.length, byType: {}, failed: 0 };
-    const interesting: NetworkEntry[] = [];
-    for (const e of this.finished) {
-      let bucket = e.type;
-      if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
-      summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
-      if (e.failed) summary.failed += 1;
-      // sanitize at the egress boundary only — the ring keeps the raw url so
-      // beacon detection / url-substring filtering still see the real value.
-      // The secrets-masking layer composes with the URL sanitiser (no fight:
-      // sanitiser is regex on URL shape; masking is literal real-value scan).
-      if (bucket !== "other") interesting.push({ ...e, url: maskedUrl(e.url, this.secrets) });
-    }
+    // The summary/interesting fold is the shared `foldInteresting` rule (RFC 0004
+    // P3 / D4) — noise/beacon entries collapse into `summary.byType.other` and stay
+    // out of `requests`, failures count toward `summary.failed`, and surviving
+    // entries are URL-masked at egress. The ring keeps the raw url so beacon
+    // detection / url-substring filtering still see the real value; masking
+    // composes with the URL sanitiser (regex on URL shape vs literal value scan).
+    const { summary, requests: interesting } = foldInteresting(this.finished, this.secrets);
     const mutationsRaw = (await Promise.all(this.mutationPromises)).filter(
       (m): m is MutationEntry => m !== null,
     );
@@ -666,17 +660,10 @@ export class NetworkBuffer {
 
   /** Most-recent N entries; noise + beacons are folded into the `other` bucket of the summary. */
   recent(limit = 50): { summary: NetworkSummary; requests: NetworkEntry[] } {
-    const slice = this.ring.slice(-limit);
-    const summary: NetworkSummary = { total: slice.length, byType: {}, failed: 0 };
-    const interesting: NetworkEntry[] = [];
-    for (const e of slice) {
-      let bucket = e.type;
-      if (NOISE_TYPES.has(e.type) || isBeacon(e.url)) bucket = "other";
-      summary.byType[bucket] = (summary.byType[bucket] ?? 0) + 1;
-      if (e.failed) summary.failed += 1;
-      if (bucket !== "other") interesting.push({ ...e, url: maskedUrl(e.url, this.secrets) });
-    }
-    return { summary, requests: interesting };
+    // Routed through the shared `foldInteresting` rule (RFC 0004 P3 / D4) — the
+    // CDP `NetworkBuffer.recent()` now produces the byte-identical shape the
+    // Playwright buffer already did, instead of a fourth inlined copy of the fold.
+    return foldInteresting(this.ring.slice(-limit), this.secrets);
   }
 }
 

@@ -84,7 +84,22 @@ export interface ToolRegistration extends ToolMeta {
  * Members are exposed at the granularity handlers consume them — a handler asks
  * the host for exactly the closure it calls and nothing else.
  */
-export interface ToolHost {
+/**
+ * RFC 0004 P3 / D3 (ISP). `ToolHost` is segregated into composable sub-ports a
+ * handler depends on à la carte. The 35 members already clustered by role in the
+ * source — gating, session resolution, action dispatch, the five engine-selected
+ * substrate ports, envelope builders, config, server services — so this is a
+ * REGROUPING, not a redesign. `ToolHost` stays as their INTERSECTION (declared at
+ * the bottom): the composition root keeps building one object that satisfies all
+ * of them, and a handler's signature may narrow to its slice (e.g.
+ * `registerActionTools(host: RegisterHost & GateHost & SessionHost & ActionHost)`)
+ * so the function signature compiles a guarantee of what it touches. Per
+ * 0004-03 §3.
+ */
+
+/** Tool registration + the derived registration surface. Every function that
+ *  wires a tool depends on this role. */
+export interface RegisterHost {
   /** Register one MCP tool: wires it into the server surface and the in-process
    *  handler side-table. The handler's `args` are typed from the tool's own zod
    *  `inputSchema` (the exact shape the MCP SDK parses and validates the wire
@@ -108,9 +123,20 @@ export interface ToolHost {
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;
 
-  /** Resolve a session entry by id (defaulting to the default session). */
-  entryFor: (sessionId?: string) => Promise<SessionEntry>;
+  /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
+   *  to. Read lazily so the host can expose it before the set is populated. Derived
+   *  (RFC 0004 P2) from each `register({ batchable: true })` call. */
+  readonly batchAllowedTools: ReadonlySet<string>;
 
+  /** The accumulated per-tool registration metadata (RFC 0004 P2 / D2 + D7): the
+   *  `ToolMeta` each `register` call declared, plus the tool's zod `inputSchema`
+   *  (the source the SDK tool-types codegen reads). Keyed by tool name, populated
+   *  as each `registerXxxTools(host)` module runs. */
+  readonly registrations: ReadonlyMap<string, ToolRegistration>;
+}
+
+/** Capability/engine gating + denial envelopes. */
+export interface GateHost {
   /** Capability-dimension early return: disabled-tool refusal content, or null
    *  when the tool is enabled. */
   gateCheck: (toolName: string) => ToolResponse | null;
@@ -119,6 +145,15 @@ export interface ToolHost {
    *  when the engine supports the tool. */
   engineGate: (toolName: string, e: SessionEntry) => ToolResponse | null;
 
+  /** Confirm-hook rejection content for a denied decision. */
+  denyContent: (toolName: string, decision: { reason: string }) => ToolResponse;
+}
+
+/** Session resolution + the per-session contexts a handler builds. */
+export interface SessionHost {
+  /** Resolve a session entry by id (defaulting to the default session). */
+  entryFor: (sessionId?: string) => Promise<SessionEntry>;
+
   /** Build the confirm-hook context for a session entry. */
   confirmCtxFor: (e: SessionEntry) => ConfirmContext;
 
@@ -126,23 +161,13 @@ export interface ToolHost {
    *  per-session buffers + policies), as the read/observe + compound tools need. */
   ctxFor: (e: SessionEntry) => ActionContext;
 
-  /** Resolved workspace (root dir for file-io-bound captures and archives). */
-  workspace: Workspace;
+  /** The session registry — the live source of truth for which sessions are open
+   *  (the QA-evidence report bundles its `list()`). */
+  registry: SessionRegistry;
+}
 
-  /** Confirm-hook rejection content for a denied decision. */
-  denyContent: (toolName: string, decision: { reason: string }) => ToolResponse;
-
-  /** Wrap an ActionResult promise as the standard `{ content: [text] }` envelope. */
-  asActionResultText: (p: Promise<unknown>) => Promise<ToolResponse>;
-
-  /** JSON envelope builder for the non-action (JSON-returning) families: stringify
-   *  the body with an appended `tokensEstimate`. Every such family — storage,
-   *  cookies, auth, caches, … — returns through this so callers see one shape. */
-  okText: (body: Record<string, unknown>) => ToolResponse;
-
-  /** The `ok:false` rejection counterpart of `okText`, same envelope shape. */
-  errText: (tool: string, err: unknown) => ToolResponse;
-
+/** Action dispatch: targets, deadlines, the engine-selected action port, envelopes. */
+export interface ActionHost {
   /** Narrow wire target args to a resolved `ActionTarget`; throws on ambiguity /
    *  unbound name / missing target. */
   asTarget: (args: RawTargetArgs, toolName: string, refs: RefRegistry) => ResolvedTarget;
@@ -162,17 +187,49 @@ export interface ToolHost {
   /** The action capability port for a session (engine-selected). */
   actionsFor: (e: SessionEntry) => ActionSubstrate;
 
+  /** Wrap an ActionResult promise as the standard `{ content: [text] }` envelope. */
+  asActionResultText: (p: Promise<unknown>) => Promise<ToolResponse>;
+}
+
+/** The capture capability port. */
+export interface CaptureHost {
   /** The capture capability port for a session (engine-selected). */
   captureFor: (e: SessionEntry) => CaptureSubstrate;
+}
 
+/** The storage capability port. */
+export interface StorageHost {
   /** The storage capability port for a session (engine-selected). */
   storageFor: (e: SessionEntry) => StorageSubstrate;
+}
 
+/** The script (page-eval) capability port. */
+export interface ScriptHost {
   /** The script capability port for a session (engine-selected). */
   scriptFor: (e: SessionEntry) => ScriptSubstrate;
+}
 
+/** The live-emulation capability port. */
+export interface EmulationHost {
   /** The live-emulation capability port for a session (engine-selected). */
   emulationFor: (e: SessionEntry) => EmulationSubstrate;
+}
+
+/** JSON / ActionResult envelope builders shared by every JSON-returning family. */
+export interface EnvelopeHost {
+  /** JSON envelope builder for the non-action (JSON-returning) families: stringify
+   *  the body with an appended `tokensEstimate`. Every such family — storage,
+   *  cookies, auth, caches, … — returns through this so callers see one shape. */
+  okText: (body: Record<string, unknown>) => ToolResponse;
+
+  /** The `ok:false` rejection counterpart of `okText`, same envelope shape. */
+  errText: (tool: string, err: unknown) => ToolResponse;
+}
+
+/** Resolved config, capabilities, and the workspace root the tools read. */
+export interface ConfigHost {
+  /** Resolved workspace (root dir for file-io-bound captures and archives). */
+  workspace: Workspace;
 
   /** Resolved capability policy (active set + warnings). */
   caps: CapabilityConfig;
@@ -191,7 +248,12 @@ export interface ToolHost {
   /** The server start options — the extension-rebuild path reads the
    *  operator's `headless` override from them. */
   startOptions: StartOptions;
+}
 
+/** Server-scoped services the tool families dispatch through: zod, the in-process
+ *  handler table, the diagnostics/approvals/credentials stores, the loaded-plugin
+ *  records, and the per-call metrics/diagnostics hooks. */
+export interface ServerServicesHost {
   /** zod, so tool modules build their input schemas with the same instance the
    *  composition root uses. */
   z: typeof z;
@@ -199,21 +261,6 @@ export interface ToolHost {
   /** The in-process handler side-table — the compound tools (act_and_wait_for_network,
    *  …) dispatch an inner tool by name through this rather than re-implementing it. */
   toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>>;
-
-  /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
-   *  to. Read lazily so the host can expose it before the set is populated. Derived
-   *  (RFC 0004 P2) from each `register({ batchable: true })` call. */
-  readonly batchAllowedTools: ReadonlySet<string>;
-
-  /** The accumulated per-tool registration metadata (RFC 0004 P2 / D2 + D7): the
-   *  `ToolMeta` each `register` call declared, plus the tool's zod `inputSchema`
-   *  (the source the SDK tool-types codegen reads). Keyed by tool name, populated
-   *  as each `registerXxxTools(host)` module runs. */
-  readonly registrations: ReadonlyMap<string, ToolRegistration>;
-
-  /** The session registry — the live source of truth for which sessions are open
-   *  (the QA-evidence report bundles its `list()`). */
-  registry: SessionRegistry;
 
   /** The diagnostics JSONL recorder — the note/search/report family reads and
    *  writes the agent-feedback store through it. */
@@ -239,3 +286,19 @@ export interface ToolHost {
    *  runtime reuses it so plugin-tool calls land in the same store. */
   noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
 }
+
+/** The full host the composition root assembles — the INTERSECTION of every
+ *  sub-port. `buildHost` returns one object that satisfies all of them; a handler
+ *  may type its `host` parameter to the narrower slice it actually calls. */
+export interface ToolHost
+  extends RegisterHost,
+    GateHost,
+    SessionHost,
+    ActionHost,
+    CaptureHost,
+    StorageHost,
+    ScriptHost,
+    EmulationHost,
+    EnvelopeHost,
+    ConfigHost,
+    ServerServicesHost {}

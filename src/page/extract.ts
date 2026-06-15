@@ -717,14 +717,29 @@ async function resolveCollection(
   return matches.map((node) => ({ subTree: node }));
 }
 
+/** Shared a11y-tree search combinator (RFC 0004 P3 / D4). Folds `visit` over
+ *  every node `walk` yields, threading an accumulator — the one traversal both
+ *  `scanTreeForCollection` (accumulate all matches) and `scanTreeForBestMatch`
+ *  (score and keep the best) drive, instead of two hand-rolled `for … of walk`
+ *  loops. `walk` is already the shared depth-first generator; this names the fold
+ *  on top of it so a third tree query reuses the same shape. */
+function treeSearch<TAcc>(
+  tree: A11yNode,
+  initial: TAcc,
+  visit: (acc: TAcc, node: A11yNode) => TAcc,
+): TAcc {
+  let acc = initial;
+  for (const { node } of walk(tree)) acc = visit(acc, node);
+  return acc;
+}
+
 function scanTreeForCollection(tree: A11yNode, query: string): A11yNode[] {
   const lower = query.toLowerCase();
-  const out: A11yNode[] = [];
-  for (const { node } of walk(tree)) {
+  return treeSearch<A11yNode[]>(tree, [], (out, node) => {
     const hay = `${node.role}|${node.name ?? ""}|${node.testId ?? ""}`.toLowerCase();
     if (hay.includes(lower)) out.push(node);
-  }
-  return out;
+    return out;
+  });
 }
 
 async function resolveLeaf(ctx: ResolveCtx): Promise<unknown> {
@@ -781,23 +796,27 @@ function missLeaf(ctx: ResolveCtx): unknown {
  *  testId-equals, else substring on name/testId. */
 export function scanTreeForBestMatch(tree: A11yNode, query: string): A11yNode | undefined {
   const q = query.toLowerCase();
-  let best: { node: A11yNode; score: number } | undefined;
-  for (const { node } of walk(tree)) {
-    const name = (node.name ?? "").toLowerCase();
-    const tid = (node.testId ?? "").toLowerCase();
-    const role = node.role.toLowerCase();
-    let s = 0;
-    if (name === q || tid === q) s += 100;
-    if (tid && tid.includes(q)) s += 30;
-    if (name && name.includes(q)) s += 20;
-    if (role === q) s += 5;
-    // token-by-token substring on testId and name.
-    for (const t of q.split(/\s+/).filter((x) => x.length >= 2)) {
-      if (tid.includes(t)) s += 5;
-      if (name.includes(t)) s += 3;
-    }
-    if (s > 0 && (!best || s > best.score)) best = { node, score: s };
-  }
+  const best = treeSearch<{ node: A11yNode; score: number } | undefined>(
+    tree,
+    undefined,
+    (acc, node) => {
+      const name = (node.name ?? "").toLowerCase();
+      const tid = (node.testId ?? "").toLowerCase();
+      const role = node.role.toLowerCase();
+      let s = 0;
+      if (name === q || tid === q) s += 100;
+      if (tid && tid.includes(q)) s += 30;
+      if (name && name.includes(q)) s += 20;
+      if (role === q) s += 5;
+      // token-by-token substring on testId and name.
+      for (const t of q.split(/\s+/).filter((x) => x.length >= 2)) {
+        if (tid.includes(t)) s += 5;
+        if (name.includes(t)) s += 3;
+      }
+      if (s > 0 && (!acc || s > acc.score)) return { node, score: s };
+      return acc;
+    },
+  );
   return best?.node;
 }
 

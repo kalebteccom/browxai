@@ -49,6 +49,7 @@
 
 import type { BrowserContext, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type PolicyMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -131,17 +132,17 @@ export const BYOB_PERMISSION_WARNING =
  *  very next request without page reload. */
 export class PermissionPolicyState {
   private policy: PermissionPolicy;
-  private buffer: PermissionRecord[] = [];
-  /** Hard cap so a chatty page can't grow this without bound. The per-action
-   *  slice is the only consumer — older records are noise. */
-  private readonly cap: number;
+  /** Bounded record ring (shared `PolicyRecordBuffer` — the hard cap so a chatty
+   *  page can't grow this without bound; the per-action slice is the only
+   *  consumer, older records are noise). */
+  private readonly records: PolicyRecordBuffer<PermissionRecord>;
   /** Contexts we've already installed the init-script + binding on. Idempotent
    *  install guard — BYOB reconnect / context rebuild MUST not double-wire. */
   private wired = new WeakSet<BrowserContext>();
 
   constructor(initial: PermissionPolicy = { mode: "raise" }, cap = 200) {
     this.policy = normalise(initial);
-    this.cap = cap;
+    this.records = new PolicyRecordBuffer<PermissionRecord>(cap);
   }
 
   /** Resolved policy snapshot. */
@@ -167,19 +168,18 @@ export class PermissionPolicyState {
 
   /** Append a request record. Caps the buffer at `cap`. */
   record(rec: PermissionRecord): void {
-    this.buffer.push(rec);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    this.records.record(rec);
   }
 
   /** Slice records with `ts >= since`. Used by the action-window. */
   since(since: number): PermissionRecord[] {
-    return this.buffer.filter((r) => r.ts >= since);
+    return this.records.since(since);
   }
 
   /** True if any record in `[since, now]` was handled in `raise` mode.
    *  When true, the action-window flips the result to `ok:false`. */
   raisedSince(since: number): boolean {
-    return this.buffer.some((r) => r.ts >= since && r.handledAs === "raised");
+    return this.records.matchedSince(since, (r) => r.handledAs === "raised");
   }
 
   /** Has this context already been wired? Idempotent install guard. */
