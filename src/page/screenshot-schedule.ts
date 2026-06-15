@@ -107,6 +107,36 @@ const REAL_CLOCK: ScheduleClock = {
 /** Run the schedule. The caller is responsible for the outer `withDeadline`
  *  wrap (anti-wedge), and supplies `workspaceRoot` so `intoDir` resolves
  *  inside `$BROWX_WORKSPACE`. */
+/** Attempt one capture; on failure surface a warning and return null (a single
+ *  transient hiccup shouldn't poison the whole window). */
+async function tryCapture(snap: SnapFn, i: number, warnings: string[]): Promise<Buffer | null> {
+  try {
+    return await snap();
+  } catch (err) {
+    warnings.push(`capture ${i}: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+/** Sleep until the next scheduled tick (drift-tolerant: anchored to the capture
+ *  start, so a slow snap still fires the next tick on-cadence). Returns true when
+ *  the window has ended (caller should break). */
+async function cadenceSleep(
+  clock: ScheduleClock,
+  captureStart: number,
+  everyMs: number,
+  hasCount: boolean,
+  windowEndMs: number,
+): Promise<boolean> {
+  const sleepMs = Math.max(0, captureStart + everyMs - clock.now());
+  if (!hasCount && clock.now() + sleepMs >= windowEndMs) {
+    await clock.sleep(Math.max(0, windowEndMs - clock.now()));
+    return true;
+  }
+  await clock.sleep(sleepMs);
+  return false;
+}
+
 export async function runSchedule(
   snap: SnapFn,
   args: ScheduleArgs,
@@ -135,9 +165,8 @@ export async function runSchedule(
 
   let i = 0;
   while (i < targetCount && clock.now() < windowEndMs) {
-    // Belt-and-braces ceiling — independent of count/duration. The schedule
-    // is already bounded by exactly-one of them; this ensures a 100ms-cadence
-    // over the 1h action-timeout ceiling can't blow up disk space in one call.
+    // Belt-and-braces ceiling — independent of count/duration. Ensures a
+    // 100ms-cadence over the 1h action-timeout ceiling can't blow up disk space.
     if (paths.length >= MAX_CAPTURES_PER_CALL) {
       warnings.push(
         `reached MAX_CAPTURES_PER_CALL=${MAX_CAPTURES_PER_CALL}; schedule stopped early`,
@@ -145,44 +174,23 @@ export async function runSchedule(
       break;
     }
     const t = clock.now();
-    let buf: Buffer;
-    try {
-      buf = await snap();
-    } catch (err) {
-      // Surface as a warning; keep the schedule running. A single failed
-      // capture (e.g. a transient renderer hiccup) shouldn't poison the
-      // whole window. If every capture fails the caller still sees an empty
-      // paths array + N warnings.
-      warnings.push(`capture ${i}: ${err instanceof Error ? err.message : String(err)}`);
+    const buf = await tryCapture(snap, i, warnings);
+    if (buf === null) {
       i++;
-      // wait the interval anyway so we honour the cadence semantics.
-      if (i < targetCount && clock.now() < windowEndMs) {
+      // Honour the cadence even on a failed capture.
+      if (i < targetCount && clock.now() < windowEndMs)
         await clock.sleep(Math.max(0, args.everyMs));
-      }
       continue;
     }
     const ts = clock.now() - tStart;
-    const name = `${String(i).padStart(4, "0")}-${ts}.${ext}`;
-    // `p` inherits its root from `resolvedDir`, which is $BROWX_WORKSPACE-rooted
-    // by construction (resolveWorkspacePath above).
-    const p = join(resolvedDir, name);
+    // `p` inherits its $BROWX_WORKSPACE-rooted dir from `resolvedDir`.
+    const p = join(resolvedDir, `${String(i).padStart(4, "0")}-${ts}.${ext}`);
     writeFileSync(p, buf);
     paths.push(p);
     capturedAt.push(ts);
     i++;
     if (i >= targetCount) break;
-    // Sleep until the next scheduled tick. Drift-tolerant: we anchor sleep to
-    // the *start of this capture* — preserves cadence semantics across a slow
-    // snap (a 200ms capture inside a 500ms cadence still fires the next tick
-    // at +500ms, not +700ms).
-    const nextTickAt = t + args.everyMs;
-    const sleepMs = Math.max(0, nextTickAt - clock.now());
-    if (!hasCount && clock.now() + sleepMs >= windowEndMs) {
-      // Don't sleep past the window end — the loop condition will exit.
-      await clock.sleep(Math.max(0, windowEndMs - clock.now()));
-      break;
-    }
-    await clock.sleep(sleepMs);
+    if (await cadenceSleep(clock, t, args.everyMs, hasCount, windowEndMs)) break;
   }
 
   return {

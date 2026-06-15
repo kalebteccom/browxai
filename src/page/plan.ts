@@ -371,43 +371,67 @@ export function validateDescriptor(
  * `action` capability is disabled, surfacing the *underlying* capability error
  * (not a generic "execute denied").
  */
-export async function execute(
+/** Pre-flight validation for `execute`: schema, expiry, ref-presence, and
+ *  re-validated verb args. Returns the validated descriptor or a failure
+ *  outcome to return verbatim. */
+function validateForExecute(
   ctx: ActionContext,
   rawDescriptor: unknown,
-  opts: ExecuteOptions = {},
-): Promise<ExecuteOutcome> {
+  now: number,
+): { ok: true; descriptor: ActionDescriptor } | { ok: false; outcome: ExecuteOutcome } {
   const validated = validateDescriptor(rawDescriptor);
   if (!validated.ok) {
-    return { ok: false, error: validated.error, reason: "invalid", tokensEstimate: 0 };
-  }
-  const d = validated.descriptor;
-  const now = opts.now ?? Date.now();
-  if (now > d.expiresAt) {
-    const ageMs = now - d.expiresAt;
     return {
       ok: false,
-      error: `execute: descriptor expired (${ageMs}ms past expiresAt). Re-plan against the current snapshot.`,
-      reason: "expired",
-      tokensEstimate: 0,
+      outcome: { ok: false, error: validated.error, reason: "invalid", tokensEstimate: 0 },
+    };
+  }
+  const d = validated.descriptor;
+  if (now > d.expiresAt) {
+    return {
+      ok: false,
+      outcome: {
+        ok: false,
+        error: `execute: descriptor expired (${now - d.expiresAt}ms past expiresAt). Re-plan against the current snapshot.`,
+        reason: "expired",
+        tokensEstimate: 0,
+      },
     };
   }
   if (!ctx.refs.has(d.ref)) {
     return {
       ok: false,
-      error:
-        `execute: ref "${d.ref}" no longer in the session's registry — the page likely re-snapshotted ` +
-        `to a tree where the bound element is absent. Re-plan against the current snapshot.`,
-      reason: "ref-gone",
-      tokensEstimate: 0,
+      outcome: {
+        ok: false,
+        error:
+          `execute: ref "${d.ref}" no longer in the session's registry — the page likely re-snapshotted ` +
+          `to a tree where the bound element is absent. Re-plan against the current snapshot.`,
+        reason: "ref-gone",
+        tokensEstimate: 0,
+      },
     };
   }
-
-  // Re-validate verb args at execute time too — a hand-edited descriptor
-  // could have dropped a required arg between plan and execute.
+  // Re-validate verb args at execute time too — a hand-edited descriptor could
+  // have dropped a required arg between plan and execute.
   const argError = validateVerbArgs(d.verb, d.args);
   if (argError) {
-    return { ok: false, error: argError, reason: "invalid", tokensEstimate: 0 };
+    return {
+      ok: false,
+      outcome: { ok: false, error: argError, reason: "invalid", tokensEstimate: 0 },
+    };
   }
+  return { ok: true, descriptor: d };
+}
+
+export async function execute(
+  ctx: ActionContext,
+  rawDescriptor: unknown,
+  opts: ExecuteOptions = {},
+): Promise<ExecuteOutcome> {
+  const now = opts.now ?? Date.now();
+  const pre = validateForExecute(ctx, rawDescriptor, now);
+  if (!pre.ok) return pre.outcome;
+  const d = pre.descriptor;
 
   const target = { ref: d.ref };
   // Forwarded window options. We don't override the underlying action's

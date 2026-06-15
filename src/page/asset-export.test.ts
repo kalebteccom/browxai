@@ -288,7 +288,10 @@ describe("assetExport integration", () => {
         mimeType: "image/png",
       }));
       const args: AssetExportArgs = { filter: { mime: ["image/"] } };
-      const r = await assetExport(cdp, page, buf, root, "sess", args);
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        args,
+      );
       expect(r.ok).toBe(true);
       // 2 image/* + 2xx — the 404 image and the css are filtered out.
       expect(r.matchedCount).toBe(2);
@@ -340,7 +343,10 @@ describe("assetExport integration", () => {
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
-      const r = await assetExport(cdp, page, buf, root, "sess", { filter: {} });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {} },
+      );
       expect(r.persistedCount).toBe(3);
       const names = r.manifest.map((m) => m.savedAs).sort();
       expect(names).toEqual(["logo-1.png", "logo-2.png", "logo.png"]);
@@ -378,7 +384,10 @@ describe("assetExport integration", () => {
           ? { ok: false as const, error: "CORS rejected" }
           : { ok: true as const, base64: Buffer.from("x").toString("base64") },
       );
-      const r = await assetExport(cdp, page, buf, root, "sess", { filter: {} });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {} },
+      );
       expect(r.matchedCount).toBe(2);
       expect(r.persistedCount).toBe(1);
       expect(r.droppedCount).toBe(1);
@@ -422,7 +431,10 @@ describe("assetExport integration", () => {
       ]);
       const cdp = stubCdpNoBody();
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
-      const r = await assetExport(cdp, page, buf, root, "sess", { filter: {}, maxCount: 2 });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, maxCount: 2 },
+      );
       expect(r.matchedCount).toBeGreaterThanOrEqual(2);
       expect(r.persistedCount).toBe(2);
       expect(r.warnings.some((w) => w.includes("maxCount"))).toBe(true);
@@ -469,7 +481,10 @@ describe("assetExport integration", () => {
         ok: true,
         base64: Buffer.from("ABCDEF").toString("base64"),
       }));
-      const r = await assetExport(cdp, page, buf, root, "sess", { filter: {}, maxBytes: 10 });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, maxBytes: 10 },
+      );
       expect(r.persistedCount).toBe(1);
       expect(r.warnings.some((w) => w.includes("maxBytes"))).toBe(true);
     } finally {
@@ -495,10 +510,13 @@ describe("assetExport integration", () => {
       const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
       // Asking for 10x the hard ceiling — clamps, doesn't throw. Smoke-tests
       // that the clamp path doesn't reject a legitimate single export.
-      const r = await assetExport(cdp, page, buf, root, "sess", {
-        filter: {},
-        maxCount: ASSET_EXPORT_HARD_MAX_COUNT * 10,
-      });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        {
+          filter: {},
+          maxCount: ASSET_EXPORT_HARD_MAX_COUNT * 10,
+        },
+      );
       expect(r.persistedCount).toBe(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -529,7 +547,10 @@ describe("assetExport integration", () => {
       } as unknown as CDPSession;
       const pageEval = vi.fn(async () => ({ ok: false as const, error: "should not run" }));
       const page = { evaluate: pageEval } as unknown as Page;
-      const r = await assetExport(cdp, page, buf, root, "sess", { filter: {} });
+      const r = await assetExport(
+        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {} },
+      );
       expect(r.persistedCount).toBe(1);
       expect(pageEval).not.toHaveBeenCalled();
       expect(readFileSync(join(r.intoDir, "a.png"))).toEqual(Buffer.from("HELLO"));

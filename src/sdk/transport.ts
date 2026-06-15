@@ -31,7 +31,7 @@ export function parseEnvelope(content: ReadonlyArray<BrowxaiContentItem>): Browx
   for (const item of content) {
     if (item && item.type === "text") {
       try {
-        const parsed = JSON.parse(item.text);
+        const parsed: unknown = JSON.parse(item.text);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
           return { content, data: parsed as Record<string, unknown> };
         }

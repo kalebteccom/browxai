@@ -32,11 +32,11 @@ surface" covers.
   `BROWX_ATTACH_CDP`). `browxai doctor` now reports the **selected** engine
   (resolved the same way) and points at that engine's availability row (binary
   present / device reachable), instead of a hardcoded `chromium`. This makes
-  multi-engine real for operators, not just internally wired (RFC 0002).
+  multi-engine real for operators, not just internally wired.
 
 - **Android is a real fourth engine (`browserType:"android"`) — real
   Chrome-on-Android attached over adb + CDP.** The surviving full-fidelity
-  real-profile BYOB lane (RFC 0002 D3/D8): an `AndroidCdpAdapter`
+  real-profile BYOB lane: an `AndroidCdpAdapter`
   (`src/engine/adapters/android-cdp.ts`) attaches to the user's **real** Chrome
   on a USB-connected device with `chromium.connectOverCDP(<ws-from-adb-forwarded-socket>)`.
   We use **`connectOverCDP`, not Playwright's `_android` device API** — it returns
@@ -71,14 +71,14 @@ surface" covers.
   **skips cleanly when no device is connected** (the same honest gate the
   Firefox/WebKit keystones use for their binaries). Chromium + Firefox + WebKit
   unit + keystone suites unchanged. See
-  `docs/ai-context/architecture/engine-adapters.md` (the P3 Android section + the
+  `docs/ai-context/architecture/engine-adapters.md` (the Android section + the
   per-engine matrix's Android column — every row `works`, including the deep
   rows).
 
 - **`network_read` / `ws_read` / `network_body` (and the per-action network
   slice of every `ActionResult`) now run on Firefox and WebKit.** The network/WS
-  tap + response-body fetch moved behind one `NetworkSubstrate` interface (RFC
-  0002 D5, hybrid): `CdpNetworkSubstrate` keeps the existing CDP `NetworkBuffer` /
+  tap + response-body fetch moved behind one `NetworkSubstrate` interface
+  (hybrid): `CdpNetworkSubstrate` keeps the existing CDP `NetworkBuffer` /
   `WsBuffer` / `NetworkTap` / `fetchResponseBody` path on Chromium **verbatim**
   (byte-identical — the Chromium keystones + unit tests pass unchanged), and
   `PlaywrightNetworkSubstrate` drives `context.on('request'|'response'|...)` for
@@ -103,13 +103,13 @@ surface" covers.
   equivalent). The Firefox keystone gains a `network_read` assertion on real
   Firefox (a real Script subresource record + a substrate-minted requestId) plus
   a `network_body` capability-gate check. See
-  `docs/ai-context/architecture/engine-adapters.md` (P2b substrate section + the
-  updated per-engine matrix).
+  `docs/ai-context/architecture/engine-adapters.md` (the network substrate section
+  + the updated per-engine matrix).
 
 - **WebKit is a real third engine (`browserType:"webkit"`).** A
   `PlaywrightWebKitAdapter` (`src/engine/adapters/playwright-webkit.ts`) drives
-  Playwright's bundled WebKit build — the WebKit-**engine** correctness lane per
-  RFC 0002 D7, **not** Safari (a real-Safari surface stays a separate, tiered
+  Playwright's bundled WebKit build — the WebKit-**engine** correctness lane,
+  **not** Safari (a real-Safari surface stays a separate, tiered
   companion product, never a browxai engine adapter). It mirrors the Firefox
   adapter: managed (`launchPersistentContext`) + ephemeral (`launch` +
   `newContext`) launch shapes, and **no eager CDP session** — WebKit has no CDP
@@ -126,12 +126,12 @@ surface" covers.
   adapter + a capability row, not a gate edit). Both substrates were already
   engine-agnostic, so WebKit gets `snapshot` / `find` / `navigate` / `click` /
   `fill` / `text_search` / `extract` / `set_of_marks` / `plan` for free via the
-  P2a page-side walker (selected by CDP-absence, not engine name), and
+  page-side walker (selected by CDP-absence, not engine name), and
   `network_read` / `ws_read` / `network_body` + the action envelope's network
-  slice via the P2b Playwright-event substrate (selected the same way) — same as
+  slice via the Playwright-event substrate (selected the same way) — same as
   Firefox, with no substrate code change. WebKit BYOB is a structured
   `webkit-attach-not-supported` refusal (no CDP/BiDi attach client; Safari has not
-  shipped BiDi as of June 2026 — RFC D7). A real-WebKit keystone lane
+  shipped BiDi as of June 2026). A real-WebKit keystone lane
   (`test/keystone/webkit.keystone.test.ts`, threaded via
   `createServer({browserType:"webkit"})`) proves a session opens + tags
   `engine:"webkit"`, drives the class-A surface (cookies / storageState /
@@ -140,12 +140,12 @@ surface" covers.
   it skips cleanly when the WebKit binary is absent. `browxai doctor` gains a
   WebKit-availability check. Chromium + Firefox stay byte-identical (the existing
   unit + keystone suites are unchanged except additive WebKit rows/columns). See
-  `docs/ai-context/architecture/engine-adapters.md` (the P2c section + the WebKit
-  matrix column) and RFC 0002 (P2c).
+  `docs/ai-context/architecture/engine-adapters.md` (the WebKit engine section +
+  the WebKit matrix column).
 
 - **`snapshot` / `find` / `navigate` / `click` / `fill` (and `text_search` /
   `extract` / `set_of_marks` / `plan`) now run on Firefox.** The snapshot/a11y
-  substrate moved behind one `SnapshotSubstrate` interface (RFC 0002 D4, hybrid):
+  substrate moved behind one `SnapshotSubstrate` interface (hybrid):
   `CdpSnapshotSubstrate` keeps the existing CDP `Accessibility.getFullAXTree` +
   DOM-walk path on Chromium **verbatim** (byte-identical — the 71 Chromium
   keystones + 1663 unit tests pass unchanged), and `PlaywrightSnapshotSubstrate`
@@ -160,14 +160,14 @@ surface" covers.
   `snapshotDelta` from the substrate and detects navigation via the cross-browser
   `page.on('framenavigated')`, so `navigate` / `click` / `fill` produce a real
   `ActionResult` envelope on Firefox (the **network slice is empty** there until
-  the Playwright-event network tap lands — P2b). The walker was chosen over
+  the Playwright-event network tap lands). The walker was chosen over
   `locator.ariaSnapshot()` on benchmark evidence: ariaSnapshot carries no test
   attributes (0 testId nodes vs the walker's 9 on a testid-tagged fixture, 0/5 vs
   4/5 find targets, ~10× slower). `shadow_trees` (closed-shadow piercing) stays
   CDP-gated on Firefox — no off-Chromium protocol reaches closed shadow roots.
   The Firefox keystone gains a `navigate → snapshot → find → fill → click` flow
   on real Firefox proving stable refs + a ranked target + acted-on effect. See
-  `docs/ai-context/architecture/engine-adapters.md` (P2a substrate section + the
+  `docs/ai-context/architecture/engine-adapters.md` (substrate section + the
   updated per-engine matrix).
 
 - **Firefox is a real second engine (`browserType:"firefox"`).** A
@@ -372,8 +372,8 @@ surface" covers.
   licensing note. `pnpm licenses:notices` now prints the raw inventory
   to stdout instead of overwriting the curated file.
 - **Internal artifact references swept from public-facing surfaces.**
-  Internal work-item / baseline-document citations (`W-V12`,
-  `universal-baseline`, `npm-package-defense`, `ci-and-bot-threats`,
+  Internal work-item / baseline-document citations
+  (`universal-baseline`, `npm-package-defense`, `ci-and-bot-threats`,
   "portfolio repo") are removed from MCP tool descriptions, workflow and
   CODEOWNERS/Dependabot comments, `AGENTS.md`, and the public docs — the
   actual reasons are now stated inline instead. Historical CHANGELOG
@@ -1834,7 +1834,7 @@ hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
 - **`get_totp` / `get_credential` (capability `credentials`)** — pluggable
   hook into an operator-configured credentials / TOTP vault. Without this,
   agents driving real auth flows block on 2FA; baking seeds into the prompt
-  defeats W-V12 secrets-masking by leaking them into transcripts.
+  defeats secrets-masking by leaking them into transcripts.
   Off-by-default; loud-warned at server boot. Provider matrix selected via
   `BROWX_CREDENTIALS_PROVIDER`: `oathtool` (default — self-managed seeds
   via `BROWX_OATHTOOL_SEEDS`, no paid dependency), `1password` (shells out
@@ -1846,7 +1846,7 @@ hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
   argv (no shell interpolation, account passed as a discrete argv
   element). 5-second per-call wall-clock so a hung CLI can't block
   dispatch. `get_credential` ADDITIONALLY requires the `secrets`
-  capability — the looked-up password is auto-registered into the W-V12
+  capability — the looked-up password is auto-registered into the secrets
   registry under `<PASSWORD_<account>>` and masked across every egress
   sink; the return value carries `aliasName`, NEVER the cleartext
   password. Without `secrets`, the lookup refuses rather than leak. Same
@@ -2076,7 +2076,7 @@ hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
     incognito; on persistent it post-seeds AND clears the profile (loud-warned);
     ignored on attached/BYOB. Mutually exclusive.
   - **Security gap documented** — cookie *values* may carry credentials. The
-    future W-V12 secrets-masking pass will mask them on egress; this cycle
+    future secrets-masking pass will mask them on egress; this cycle
     ships unmasked. Treat dumps + saved named-states as sensitive.
 - **`extract`** — structured, schema-driven data extraction. Closes a
   highest-leverage gap: every adopter currently rebuilds the
@@ -2104,7 +2104,7 @@ hard-break. Default capability set is unchanged (`read`/`navigation`/`action`/
   `act_and_diff().diff`, `watch`) rewrites occurrences of the real value
   back to `<NAME>` before returning to the agent. Required
   for safely automating auth flows when transcripts are shareable. Composes
-  with the existing W-O1 URL sanitiser at the same boundary — both layers
+  with the existing URL sanitiser at the same boundary — both layers
   apply (URL-shape regex first, then literal real-value substring scan).
   Off by default; loud one-time warning at server boot + at first
   registration. `screenshot` is a partial sink: when the page's visible

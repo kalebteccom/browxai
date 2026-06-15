@@ -171,6 +171,42 @@ Statelessness and bounded concurrency are the runtime side of this. Where
 concurrency exists, it is bounded with backpressure (deadlines, step caps, poll
 windows), never unbounded fan-out.
 
+## 4a. The ten laws - the seams, mechanized
+
+§4 names the seams the system grows along. A seam the machine does not guard is a
+seam that drifts: the audit behind [RFC 0004](../../rfcs/0004-architecture-hardening.md)
+found the flagship claim of §4 - _"new engine = new adapter behind the existing
+port"_ - was **false in practice**, because the adapter _wiring_ (not the adapters)
+was hardcoded across the session factories. The fix is not more prose; it is an
+**enforcer per invariant**. The ten laws below are the standard; each is backed by
+a fitness function, a custom lint rule, or a CI gate. **A law with no green check
+is not in the standard.** The full rationale and safety-critical lineage
+(Power-of-Ten, JPL, DO-178C) live in
+[`../../rfcs/references/0004-02-maintainability-standard.md`](../../rfcs/references/0004-02-maintainability-standard.md);
+the executable specs in
+[`../../rfcs/references/0004-05-fitness-functions-and-guardrails.md`](../../rfcs/references/0004-05-fitness-functions-and-guardrails.md);
+the single index of every check in [`fitness-functions.md`](fitness-functions.md).
+
+| Law                                  | Statement                                                                                                                                 | Enforcer (the machine that fails)                                                                                                               |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| **L1 - Closed core**                 | No module above the engine seam names an engine, a transport, or a concrete adapter. Extension is add-only.                               | `no-engine-literal-branches` lint rule + the `ocp-engine-contract` keystone (a synthetic 6th engine that must work with zero core edits).       |
+| **L2 - Single source of truth**      | No fact is written twice. Capability, batchability, deep-ness, tool-types are **declared once** at the unit and **derived**.              | Completeness fitness tests (every registered tool ∈ derived capability map; the batch/deep sets derive from registration) + tool-types codegen. |
+| **L3 - One reason to change**        | One module, one responsibility. Hard budgets: a tool module ≤ ~450 LOC, `server.ts` ≤ 400, a function ≤ ~70 LOC / complexity ≤ ~15.       | `eslint` `max-lines` / `complexity` / `max-lines-per-function` budgets + the composition-root guard.                                            |
+| **L4 - Segregated contracts**        | No god-object. Consumers depend on the narrow port they use, not a 35-member bag.                                                         | Interface-member budget (`interface-member-budget`) + the dependency-cruiser "host split" rules.                                                |
+| **L5 - Substitutable adapters**      | Every adapter honors its port's full contract or **declares the gap as a capability**; no adapter throws where the port promises a value. | The `port-conformance` contract test, run against every adapter including a synthetic one.                                                      |
+| **L6 - Validate at the edge**        | Untyped data is narrowed at the boundary (MCP wire, config, CDP/Playwright edge) and fully typed thereafter.                              | The five `no-unsafe-*` rules + `no-explicit-any` + `no-page-eval-stringified-arrow`.                                                            |
+| **L7 - Bounded everything**          | Every loop, buffer, ring, recursion, and wait has an explicit, tested bound.                                                              | The `bounded-resource` budget test (`error`) + the `bounded-resource` lint rule (**advisory `warn`** - it cannot prove termination).            |
+| **L8 - Assert the invariants**       | Internal invariants are asserted, not assumed; a violated invariant surfaces as a structured refusal, never a crash.                      | The `invariant()` helper (`src/util/invariant.ts`) + the `assertion-density` check on the load-bearing modules.                                 |
+| **L9 - Traceable**                   | Every world-touching tool ⇒ a capability declaration ⇒ a keystone denial test. Every engine ⇒ a capability row ⇒ a keystone lane.         | Traceability fitness tests (tool↔capability↔keystone; engine↔caps↔lane: `tool-capability-completeness`, `deep-tools-engine-matrix`).            |
+| **L10 - Deterministic & observable** | The surface is deterministic where it pays (replay, diffing) and self-diagnosing; determinism is keystone-verified.                       | The keystone determinism gates + the dependency-cruiser layering rules (no nondeterministic cross-layer leak), extended to the new seams.       |
+
+The laws are not new doctrine bolted on - they are §1's dependency direction, §2's
+proven-seam test, §3's bounded-buffer rule, and §4's seams, each given the machine
+that §1-§5 always implied but never named. When you change a boundary, you are
+changing the thing one of these laws guards; run the architecture lane (the
+`test/architecture/**` suite + `pnpm depcruise`) before you assume your change is
+add-only.
+
 ## 5. Readability and maintainability
 
 Code reads like the domain. One tool = one file (page-side function + handler +
@@ -232,12 +268,39 @@ against this:
       CHANGELOG / AGENTS.md reflect the change; the decision is recorded if it was
       non-obvious.
 
+The machine-checked items below sit beneath the human-judgment items above -
+they are the ones a reviewer can now stop hand-checking, because the gate does it.
+They are the ten laws (§4a) at the point of review:
+
+- [ ] **Closed to the core?** (L1) No new `engine === "<literal>"` branch above the
+      engine seam; no handler imports a concrete adapter or transport. The
+      `no-engine-literal-branches` rule and the dependency-cruiser layering gate
+      pass. A new engine still reduces to one adapter file + one registration.
+- [ ] **Declared once, derived everywhere?** (L2/L9) New tool metadata (capability,
+      batchable, deep) is colocated at `host.register`, not hand-added to a central
+      list. The completeness fitness tests pass (no tool missing from the derived
+      capability map).
+- [ ] **Within budget, and bounded?** (L3/L4/L7) File-size, function-length,
+      complexity, and interface-member budgets are green; `server.ts` is still
+      composition-only and under its line ceiling; any new loop / ring / recursion
+      has an explicit bound asserted with `invariant()` and pinned by a
+      `bounded-resource` test.
+- [ ] **Invariants asserted, fitness suite green?** (L8/L1-L10) A load-bearing
+      contract is asserted via `invariant()` (a structured refusal, never a crash).
+      The `test/architecture/**` lane + `pnpm depcruise` pass. If a fitness function
+      is _intended_ to change (a budget re-baselined, a law amended), that is an RFC
+      amendment with rationale - never an inline disable. See the meta-rule in
+      [`fitness-functions.md`](fitness-functions.md).
+
 ## Related
 
 - [`code-quality.md`](../agent-process/code-quality.md) - the micro layer (SOLID,
   naming, function shape, comments, public-surface hygiene).
 - [`repo-map.md`](repo-map.md) - the source map and the load-bearing boundaries
   this doctrine protects.
+- [`fitness-functions.md`](fitness-functions.md) - the index of executable
+  architecture invariants: every fitness function, what it proves, how to run it,
+  and which law it enforces. The machine behind §4a.
 - [`capability-posture-map.md`](capability-posture-map.md) - the on-by-default /
   gated capability lattice.
 - [`../testing/unit-vs-keystone.md`](../testing/unit-vs-keystone.md) - why

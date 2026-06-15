@@ -6,6 +6,17 @@
 import type { CDPSession } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
 
+// L7 (bounded everything) — the a11y tree-walk depth cap. The audit flagged
+// `walk` as iterative (an explicit stack, so no native stack-overflow risk) but
+// carrying NO declared depth cap: a pathological tree was bounded only by memory.
+// This makes the bound explicit and tested. 2000 is far beyond any real
+// accessibility tree (a deeply-nested SPA is rarely past ~60 levels), so it never
+// trips in practice — it is a containment ceiling against an adversarial /
+// malformed tree, matching the `secrets.ts` `depth > 8` exemplar one layer up.
+// Nodes BELOW the cap are simply not descended into (the tree is truncated, not
+// rejected), so the walk always terminates within `MAX_WALK_DEPTH` levels.
+export const MAX_WALK_DEPTH = 2000;
+
 export interface A11yNode {
   ref: string;
   role: string;
@@ -91,6 +102,23 @@ interface RawAXNode {
  * type so a hypothetical structured value renders as JSON rather than
  * `[object Object]`.
  */
+/** Map the CDP AX boolean/tri-state properties onto the node. The two tri-state
+ *  props (`checked`/`pressed`) carry `boolean | "mixed"`; the rest are plain
+ *  booleans. Each property is independent, so a lookup table keeps the cyclomatic
+ *  complexity flat. */
+const BOOL_AX_PROPS = ["disabled", "selected", "expanded", "focused"] as const;
+const TRISTATE_AX_PROPS = ["checked", "pressed"] as const;
+function applyAxProperties(node: A11yNode, properties: RawProp[]): void {
+  for (const p of properties) {
+    const v = p.value?.value;
+    if ((BOOL_AX_PROPS as readonly string[]).includes(p.name)) {
+      node[p.name as (typeof BOOL_AX_PROPS)[number]] = !!v;
+    } else if ((TRISTATE_AX_PROPS as readonly string[]).includes(p.name)) {
+      node[p.name as (typeof TRISTATE_AX_PROPS)[number]] = v as boolean | "mixed";
+    }
+  }
+}
+
 function stringifyAxValue(v: unknown): string | undefined {
   if (v === undefined) return undefined;
   if (v === null) return "null";
@@ -150,31 +178,7 @@ export async function getA11yTree(
       backendDOMNodeId: raw.backendDOMNodeId,
       children: [],
     };
-    for (const p of raw.properties ?? []) {
-      const v = p.value?.value;
-      switch (p.name) {
-        case "disabled":
-          node.disabled = !!v;
-          break;
-        case "checked":
-          node.checked = v as boolean | "mixed";
-          break;
-        case "pressed":
-          node.pressed = v as boolean | "mixed";
-          break;
-        case "selected":
-          node.selected = !!v;
-          break;
-        case "expanded":
-          node.expanded = !!v;
-          break;
-        case "focused":
-          node.focused = !!v;
-          break;
-        default:
-          break;
-      }
-    }
+    applyAxProperties(node, raw.properties ?? []);
     // testId attaches later in enrichTestIds if we batch-fetch attributes.
     node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), {
       role,
@@ -207,6 +211,11 @@ export function* walk(root: A11yNode): Generator<{ node: A11yNode; depth: number
   while (stack.length) {
     const next = stack.pop()!;
     yield next;
+    // L7: bounded depth — children below MAX_WALK_DEPTH are not pushed, so a
+    // pathological tree is truncated at the cap rather than walked to exhaustion.
+    // Real trees are orders of magnitude shallower, so this never truncates in
+    // practice; it is the containment ceiling the bounded-resource test pins.
+    if (next.depth >= MAX_WALK_DEPTH) continue;
     for (let i = next.node.children.length - 1; i >= 0; i--) {
       stack.push({ node: next.node.children[i]!, depth: next.depth + 1 });
     }

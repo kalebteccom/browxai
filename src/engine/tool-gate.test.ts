@@ -1,4 +1,8 @@
 import { describe, it, expect } from "vitest";
+// RFC 0004 P2: DEEP_TOOLS is now DERIVED from the colocated `host.register({ deep })`
+// metadata (collected by the tools-layer bootstrap). This standalone gate test
+// loads the bootstrap so the lazy collector is installed and the set is populated.
+import "../tools/tool-metadata.js";
 import { assertEngineSupports, DEEP_TOOLS } from "./tool-gate.js";
 
 describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
@@ -21,7 +25,7 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
   });
 
   it("allows EVERY deep tool on android too — deep:true, the standout (it IS Chromium)", () => {
-    // The P3 headline through the gate: Android Chrome speaks full CDP and
+    // The headline through the gate: Android Chrome speaks full CDP and
     // declares deep:true, so the SAME capability-based gate that refuses
     // firefox/webkit allows every CDP-deep tool on android — no per-engine edit,
     // the gate keys on the deep capability. Asserted alongside the firefox/webkit

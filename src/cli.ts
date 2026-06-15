@@ -3,12 +3,19 @@
 //
 // All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/). NEVER cwd.
 
+// RFC 0004 P2 / D1 (SECURITY-CRITICAL): EAGERLY populate the derived
+// `TOOL_CAPABILITY` / `DEEP_TOOLS` maps for every CLI sub-command. `doctor` reads
+// `resolveCapabilities` without building a server, so it must reach the
+// tool-metadata bootstrap; importing it here covers the whole CLI surface, not
+// only the default `createServer` path.
+import "./tools/tool-metadata.js";
 import { createServer } from "./server.js";
-import { runDoctor } from "./cli/doctor.js";
-import { runChrome } from "./cli/chrome.js";
-import { runInit } from "./cli/init.js";
-import { runServe } from "./cli/serve.js";
-import { runPlugin } from "./plugin/cli.js";
+// RFC 0004 P4 / D6 — the extensibility subcommands (doctor/chrome/init/serve/
+// plugin) dispatch through an add-only registry. Importing the registrations
+// for their side effect populates the map; `commandFor` resolves the SAME
+// handler the old `switch (subcommand)` case did.
+import "./cli/register-commands.js";
+import { commandFor, registeredCommands } from "./cli/command-registry.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
@@ -42,23 +49,19 @@ All transient state lives at $BROWX_WORKSPACE (default ~/.browxai/).
 async function main(): Promise<void> {
   const [, , subcommand, ...rest] = process.argv;
 
-  // Sub-command dispatch.
+  // Sub-command dispatch. The extensibility subcommands resolve through the
+  // add-only registry; the `--version` / `--help` literal fast paths and the
+  // `undefined` / `--engine` server-fallthrough stay inline (they are the bin's
+  // own argv contract, not extension points). Resolving the registry FIRST keeps
+  // the same precedence the old `switch` encoded by case order: a registered
+  // subcommand wins, then the flag literals, then the server fallthrough.
+  if (subcommand !== undefined) {
+    const handler = commandFor(subcommand);
+    if (handler) {
+      process.exit(await handler(rest));
+    }
+  }
   switch (subcommand) {
-    case "doctor":
-      process.exit(await runDoctor());
-      break;
-    case "chrome":
-      process.exit(await runChrome(rest));
-      break;
-    case "init":
-      process.exit(await runInit(rest));
-      break;
-    case "serve":
-      process.exit(await runServe(rest));
-      break;
-    case "plugin":
-      process.exit(await runPlugin(rest));
-      break;
     case "--version":
     case "-v":
       process.stdout.write(`${PACKAGE_VERSION}\n`);
@@ -79,8 +82,9 @@ async function main(): Promise<void> {
       if (subcommand === "--engine" || subcommand.startsWith("--engine=")) break;
       // Unknown subcommand — print help and exit non-zero (don't silently start the
       // MCP server, since stdout is the MCP wire and we'd corrupt any caller's expectation).
+      // The valid-subcommand list is derived from the registry so it can't drift.
       process.stderr.write(
-        `unknown subcommand "${subcommand}". Valid: doctor | chrome | init | serve | plugin | (no args = start MCP server). Run \`browxai --help\` for details.\n`,
+        `unknown subcommand "${subcommand}". Valid: ${registeredCommands().join(" | ")} | (no args = start MCP server). Run \`browxai --help\` for details.\n`,
       );
       process.exit(2);
   }

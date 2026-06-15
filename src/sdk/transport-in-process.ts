@@ -7,6 +7,7 @@
 
 import { createServer, type StartOptions } from "../server.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
+import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiResult } from "./types.js";
 
 /**
@@ -58,3 +59,10 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
 
   return { dispatch, close };
 }
+
+// RFC 0004 P4 / D6 — self-register under the "in-process" mode. The factory maps
+// the SDK options to this opener's argument shape EXACTLY as the old
+// `case "in-process"` arm did (`{ attachCdp, headless }`).
+registerTransport("in-process", {
+  open: (opts) => openInProcessTransport({ attachCdp: opts.attachCdp, headless: opts.headless }),
+});

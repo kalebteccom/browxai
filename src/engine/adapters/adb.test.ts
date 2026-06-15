@@ -155,7 +155,6 @@ describe("structured error shapes", () => {
     expect(e.name).toBe("AdbNotInstalledError");
     expect(e.message).toContain("adb-missing");
     expect(e.message).toContain("platform-tools");
-    expect(e.message).toContain("0002-multi-engine-bidi");
   });
 
   it("NoAndroidDeviceError carries the device rows it saw", () => {

@@ -1,7 +1,7 @@
 {
   "name": "browxai",
   "version": "0.7.0",
-  "description": "MCP-native, model-agnostic, agentic-first browser-control server (Playwright/CDP).",
+  "description": "MCP-native, model-agnostic, agentic-first, multi-engine browser-control server.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",
   "type": "module",
@@ -36,6 +36,14 @@
       "default": "./dist/index.js"
     }
   },
+  "//sideEffects": "RFC 0004 P2 / D1 (SECURITY-CRITICAL): the tool-metadata bootstrap import populates the derived TOOL_CAPABILITY / DEEP_TOOLS capability+engine gates. It MUST survive bundler tree-shaking — a dropped side-effect import would silently un-gate eval_js / register_secret / network_body. List the entry points that perform the bootstrap side-effect (and the bootstrap module itself) so they are never elided. NOT `false`.",
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/cli.js",
+    "./dist/server.js",
+    "./dist/sdk/index.js",
+    "./dist/tools/tool-metadata.js"
+  ],
   "files": [
     "dist",
     "THIRD_PARTY_NOTICES.md"
@@ -54,6 +62,7 @@
     "bench:network": "tsx scripts/bench-network-envelope.ts",
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
+    "gen:sdk-types": "tsx scripts/gen-sdk-tool-types.ts",
     "install-browser": "playwright-core install chromium",
     "docs:dev": "pnpm --filter @browxai/website dev",
     "docs:build": "pnpm --filter @browxai/website build",
@@ -62,6 +71,8 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "depcruise": "depcruise --config .dependency-cruiser.cjs src",
+    "jscpd:check": "jscpd --config .jscpd.json",
     "licenses:check": "license-checker-rseidelsohn --production --onlyAllow 'MIT;Apache-2.0;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;Unlicense;CC0-1.0'",
     "licenses:notices": "license-checker-rseidelsohn --production --markdown",
     "audit:prod": "pnpm audit --prod --audit-level=high",
@@ -93,9 +104,11 @@
     "@eslint/js": "^9.12.0",
     "@types/node": "^20.14.0",
     "depcheck": "^1.4.7",
+    "dependency-cruiser": "^17.4.3",
     "eslint": "^9.12.0",
     "eslint-plugin-import-x": "^4.3.0",
     "globals": "^15.11.0",
+    "jscpd": "^5.0.9",
     "license-checker-rseidelsohn": "^4.4.2",
     "lint-staged": "^15.2.10",
     "prettier": "^3.3.3",

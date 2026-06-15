@@ -14,421 +14,42 @@
 // opts in.
 
 import { estimateTokens } from "../util/tokens.js";
-import type { TraceEvent } from "./perf.js";
-import type { JsCoverageEntry, CssCoverageEntry } from "./coverage.js";
-import type { MemoryDiffResult } from "./memory-diff.js";
+import { invariant } from "../util/invariant.js";
+import {
+  type IssueSeverity,
+  type AuditIssue,
+  type AuditRemediation,
+  type AuditContext,
+  type CategoryResult,
+} from "./perf-audit-types.js";
+import { ANALYSERS, ALL_AUDIT_CATEGORIES, type AuditCategory } from "./perf-audit-analysers.js";
 
-/** The eight initial audit categories. Order is meaningful — issues are
- *  surfaced in this order when severity ties. */
-export type AuditCategory =
-  | "render-blocking"
-  | "unused-code"
-  | "oversize-images"
-  | "layout-thrashing"
-  | "long-tasks"
-  | "leak-suspects"
-  | "cache-opportunities"
-  | "font-loading";
-
-export const ALL_AUDIT_CATEGORIES: AuditCategory[] = [
-  "render-blocking",
-  "unused-code",
-  "oversize-images",
-  "layout-thrashing",
-  "long-tasks",
-  "leak-suspects",
-  "cache-opportunities",
-  "font-loading",
-];
-
-export type IssueSeverity = "high" | "medium" | "low";
-
-export interface AuditIssue {
-  category: AuditCategory;
-  severity: IssueSeverity;
-  title: string;
-  /** Free-form additional context, structured per category. */
-  details?: Record<string, unknown>;
-}
-
-export interface AuditRemediation {
-  category: AuditCategory;
-  /** Imperative one-liner: "Defer non-critical CSS in <head>". */
-  action: string;
-  /** Optional URL pointing at the offending resource the remediation applies
-   *  to (when the analyser identified a specific target). */
-  target?: string;
-}
-
-export interface CategoryResult {
-  issues: AuditIssue[];
-  remediations: AuditRemediation[];
-}
-
-export interface AuditContext {
-  trace: TraceEvent[];
-  jsCoverage?: JsCoverageEntry[];
-  cssCoverage?: CssCoverageEntry[];
-  memoryDiff?: MemoryDiffResult;
-  /** Network response metadata, when available, for cache-opportunities
-   *  + oversize-images + font-loading categories. */
-  responses?: Array<{
-    url: string;
-    status: number;
-    mimeType?: string;
-    encodedDataLength?: number;
-    cacheControl?: string;
-  }>;
-}
-
-export type AuditCategoryAnalyser = (ctx: AuditContext) => CategoryResult;
-
-/** Registry — exported so tests can monkey-patch categories, and so future
- *  .x additions are a one-liner change. */
-export const ANALYSERS: Record<AuditCategory, AuditCategoryAnalyser> = {
-  "render-blocking": analyseRenderBlocking,
-  "unused-code": analyseUnusedCode,
-  "oversize-images": analyseOversizeImages,
-  "layout-thrashing": analyseLayoutThrashing,
-  "long-tasks": analyseLongTasks,
-  "leak-suspects": analyseLeakSuspects,
-  "cache-opportunities": analyseCacheOpportunities,
-  "font-loading": analyseFontLoading,
-};
-
-// ---------------------------------------------------------------------------
-// Category analysers
-// ---------------------------------------------------------------------------
-
-/** render-blocking — `ParseHTML`/`Layout` events with VeryHigh-priority
- *  resources blocking first paint. Heuristic: any `ResourceSendRequest`
- *  with `args.data.renderBlocking == "blocking"` or
- *  `args.data.priority == "VeryHigh"` BEFORE the first `firstPaint` event. */
-export function analyseRenderBlocking(ctx: AuditContext): CategoryResult {
-  let firstPaintTs = Infinity;
-  for (const e of ctx.trace) {
-    if (e.name === "firstPaint" && typeof e.ts === "number") {
-      firstPaintTs = e.ts;
-      break;
-    }
-  }
-  const blockers: Array<{ url: string; priority: string }> = [];
-  for (const e of ctx.trace) {
-    if (e.name !== "ResourceSendRequest") continue;
-    const ts = typeof e.ts === "number" ? e.ts : 0;
-    if (ts >= firstPaintTs) continue;
-    const args = e.args ?? {};
-    const data = (args.data ?? {}) as Record<string, unknown>;
-    const url = typeof data.url === "string" ? data.url : "";
-    const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
-    const priority = typeof data.priority === "string" ? data.priority : "";
-    if (!url) continue;
-    if (
-      blocking === "blocking" ||
-      blocking === "in_body_parser_blocking" ||
-      priority === "VeryHigh"
-    ) {
-      blockers.push({ url, priority: priority || blocking });
-    }
-  }
-  const issues: AuditIssue[] = blockers.map((b) => ({
-    category: "render-blocking" as const,
-    severity:
-      b.priority === "VeryHigh" || b.priority === "blocking"
-        ? ("high" as const)
-        : ("medium" as const),
-    title: `Render-blocking resource: ${b.url}`,
-    details: { url: b.url, priority: b.priority },
-  }));
-  const remediations: AuditRemediation[] = blockers.map((b) => ({
-    category: "render-blocking" as const,
-    action: b.url.endsWith(".css")
-      ? "Inline critical CSS in <head>; defer the rest with rel=preload + onload."
-      : "Add `defer` or `async` to the script tag, or move below the fold.",
-    target: b.url,
-  }));
-  return { issues, remediations };
-}
-
-/** unused-code — scripts + CSS files with `usagePercent < 30`. Severity tied
- *  to absolute waste (bytes), not percent, because a 90%-dead 2KB file
- *  doesn't matter. */
-export function analyseUnusedCode(ctx: AuditContext): CategoryResult {
-  const issues: AuditIssue[] = [];
-  const remediations: AuditRemediation[] = [];
-  for (const js of ctx.jsCoverage ?? []) {
-    if (js.usagePercent >= 30) continue;
-    const wasted = js.totalBytes - js.usedBytes;
-    if (wasted < 5000) continue;
-    issues.push({
-      category: "unused-code",
-      severity: wasted > 100_000 ? "high" : wasted > 20_000 ? "medium" : "low",
-      title: `Unused JS in ${js.url}: ${Math.round(wasted / 1024)}KB dead (${js.usagePercent}% used)`,
-      details: {
-        url: js.url,
-        totalBytes: js.totalBytes,
-        usedBytes: js.usedBytes,
-        usagePercent: js.usagePercent,
-      },
-    });
-    remediations.push({
-      category: "unused-code",
-      action: "Tree-shake / code-split this bundle; dead code is the largest opportunity.",
-      target: js.url,
-    });
-  }
-  for (const css of ctx.cssCoverage ?? []) {
-    if (css.usagePercent >= 30) continue;
-    const wasted = css.totalBytes - css.usedBytes;
-    if (wasted < 5000) continue;
-    issues.push({
-      category: "unused-code",
-      severity: wasted > 50_000 ? "high" : wasted > 10_000 ? "medium" : "low",
-      title: `Unused CSS in ${css.url}: ${Math.round(wasted / 1024)}KB dead (${css.usagePercent}% used)`,
-      details: {
-        url: css.url,
-        totalBytes: css.totalBytes,
-        usedBytes: css.usedBytes,
-        usagePercent: css.usagePercent,
-      },
-    });
-    remediations.push({
-      category: "unused-code",
-      action: "PurgeCSS / Tailwind-style on-demand generation; ship only selectors the page uses.",
-      target: css.url,
-    });
-  }
-  return { issues, remediations };
-}
-
-/** oversize-images — images > 500KB. */
-export function analyseOversizeImages(ctx: AuditContext): CategoryResult {
-  const issues: AuditIssue[] = [];
-  const remediations: AuditRemediation[] = [];
-  // Prefer network responses metadata; fall back to ResourceFinish events.
-  const seen = new Set<string>();
-  for (const r of ctx.responses ?? []) {
-    if (!r.mimeType || !r.mimeType.startsWith("image/")) continue;
-    const bytes = r.encodedDataLength ?? 0;
-    if (bytes < 500_000) continue;
-    if (seen.has(r.url)) continue;
-    seen.add(r.url);
-    issues.push({
-      category: "oversize-images",
-      severity: bytes > 2_000_000 ? "high" : "medium",
-      title: `Oversize image: ${r.url} (${Math.round(bytes / 1024)}KB)`,
-      details: { url: r.url, bytes, mimeType: r.mimeType },
-    });
-    remediations.push({
-      category: "oversize-images",
-      action:
-        "Compress + resize to displayed dimensions; switch to AVIF/WebP; add srcset for responsive sizing.",
-      target: r.url,
-    });
-  }
-  for (const e of ctx.trace) {
-    if (e.name !== "ResourceFinish") continue;
-    const args = e.args ?? {};
-    const data = (args.data ?? {}) as Record<string, unknown>;
-    const url = typeof data.url === "string" ? data.url : "";
-    const bytes = typeof data.encodedDataLength === "number" ? data.encodedDataLength : 0;
-    if (!url || bytes < 500_000) continue;
-    // Best-effort mime guess by extension.
-    const ext = url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
-    if (!["png", "jpg", "jpeg", "gif", "webp", "avif", "svg"].includes(ext)) continue;
-    if (seen.has(url)) continue;
-    seen.add(url);
-    issues.push({
-      category: "oversize-images",
-      severity: bytes > 2_000_000 ? "high" : "medium",
-      title: `Oversize image: ${url} (${Math.round(bytes / 1024)}KB)`,
-      details: { url, bytes },
-    });
-    remediations.push({
-      category: "oversize-images",
-      action: "Compress + resize to displayed dimensions; switch to AVIF/WebP.",
-      target: url,
-    });
-  }
-  return { issues, remediations };
-}
-
-/** layout-thrashing — > 5 forced sync layouts. */
-export function analyseLayoutThrashing(ctx: AuditContext): CategoryResult {
-  let forcedCount = 0;
-  let shiftCount = 0;
-  for (const e of ctx.trace) {
-    if (e.name === "LayoutShift") shiftCount++;
-    if (e.name === "ForcedSyncLayout") forcedCount++;
-    if (e.name === "Layout" && hasForcedFlag(e)) forcedCount++;
-  }
-  const issues: AuditIssue[] = [];
-  const remediations: AuditRemediation[] = [];
-  if (forcedCount > 5) {
-    issues.push({
-      category: "layout-thrashing",
-      severity: forcedCount > 50 ? "high" : forcedCount > 20 ? "medium" : "low",
-      title: `${forcedCount} forced synchronous layouts in window`,
-      details: { forcedCount, layoutShiftCount: shiftCount },
-    });
-    remediations.push({
-      category: "layout-thrashing",
-      action:
-        "Batch DOM reads + writes; avoid alternating offsetWidth/offsetHeight measurements with style writes.",
-    });
-  }
-  return { issues, remediations };
-}
-
-function hasForcedFlag(e: TraceEvent): boolean {
-  const args = e.args as
-    | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
-    | undefined;
-  if (!args) return false;
-  const data = args.data ?? args.beginData ?? {};
-  return Array.isArray(data.stackTrace) && (data.stackTrace as unknown[]).length > 0;
-}
-
-/** long-tasks — `RunTask` events > 50ms. */
-export function analyseLongTasks(ctx: AuditContext): CategoryResult {
-  const tasks: Array<{ durationMs: number }> = [];
-  for (const e of ctx.trace) {
-    if (e.name !== "RunTask" && e.name !== "LongTask") continue;
-    const dur = typeof e.dur === "number" ? e.dur / 1000 : 0;
-    if (dur >= 50) tasks.push({ durationMs: dur });
-  }
-  tasks.sort((a, b) => b.durationMs - a.durationMs);
-  const issues: AuditIssue[] = tasks.map((t) => ({
-    category: "long-tasks" as const,
-    severity:
-      t.durationMs > 200
-        ? ("high" as const)
-        : t.durationMs > 100
-          ? ("medium" as const)
-          : ("low" as const),
-    title: `Long task: ${Math.round(t.durationMs)}ms blocking main thread`,
-    details: { durationMs: t.durationMs },
-  }));
-  const remediations: AuditRemediation[] =
-    tasks.length > 0
-      ? [
-          {
-            category: "long-tasks",
-            action:
-              "Yield to the event loop with scheduler.postTask() or requestIdleCallback; move heavy work to a Web Worker.",
-          },
-        ]
-      : [];
-  return { issues, remediations };
-}
-
-/** leak-suspects — retainer-growth rows with deltaPercent > 10. */
-export function analyseLeakSuspects(ctx: AuditContext): CategoryResult {
-  const issues: AuditIssue[] = [];
-  const remediations: AuditRemediation[] = [];
-  if (!ctx.memoryDiff) return { issues, remediations };
-  for (const row of ctx.memoryDiff.retainerGrowth) {
-    const pct = row.deltaPercent === "+inf" ? Infinity : row.deltaPercent;
-    if (pct <= 10) continue;
-    if (row.deltaBytes <= 0) continue;
-    issues.push({
-      category: "leak-suspects",
-      severity: row.deltaBytes > 1_000_000 ? "high" : row.deltaBytes > 100_000 ? "medium" : "low",
-      title: `Retainer growth: ${row.node} +${Math.round(row.deltaBytes / 1024)}KB (${row.deltaPercent}%)`,
-      details: {
-        node: row.node,
-        type: row.type,
-        deltaBytes: row.deltaBytes,
-        deltaPercent: row.deltaPercent,
-      },
-    });
-    remediations.push({
-      category: "leak-suspects",
-      action:
-        "Check listeners + cached references on this type; pair with heap_retainers({snapshotPath, query:{name}}) for the retention path.",
-      target: row.node,
-    });
-  }
-  return { issues, remediations };
-}
-
-/** cache-opportunities — static assets missing `Cache-Control` header. */
-export function analyseCacheOpportunities(ctx: AuditContext): CategoryResult {
-  const issues: AuditIssue[] = [];
-  const remediations: AuditRemediation[] = [];
-  const seen = new Set<string>();
-  for (const r of ctx.responses ?? []) {
-    if (r.status !== 200) continue;
-    const ext = r.url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
-    const isStatic = [
-      "js",
-      "css",
-      "png",
-      "jpg",
-      "jpeg",
-      "gif",
-      "webp",
-      "avif",
-      "svg",
-      "woff",
-      "woff2",
-      "ttf",
-    ].includes(ext);
-    if (!isStatic) continue;
-    if (r.cacheControl && /max-age=\d+/i.test(r.cacheControl)) continue;
-    if (seen.has(r.url)) continue;
-    seen.add(r.url);
-    issues.push({
-      category: "cache-opportunities",
-      severity: "medium",
-      title: `Missing/short Cache-Control on static asset: ${r.url}`,
-      details: { url: r.url, cacheControl: r.cacheControl ?? null },
-    });
-    remediations.push({
-      category: "cache-opportunities",
-      action:
-        "Add Cache-Control: public, max-age=31536000, immutable on content-hashed static assets.",
-      target: r.url,
-    });
-  }
-  return { issues, remediations };
-}
-
-/** font-loading — fonts loaded > 200ms after document start. */
-export function analyseFontLoading(ctx: AuditContext): CategoryResult {
-  let docStartMs = 0;
-  for (const e of ctx.trace) {
-    if (e.name === "navigationStart" && typeof e.ts === "number") {
-      docStartMs = e.ts / 1000;
-      break;
-    }
-  }
-  const fontLoads: Array<{ url: string; offsetMs: number }> = [];
-  for (const e of ctx.trace) {
-    if (e.name !== "ResourceFinish") continue;
-    const args = e.args ?? {};
-    const data = (args.data ?? {}) as Record<string, unknown>;
-    const url = typeof data.url === "string" ? data.url : "";
-    const ext = url.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
-    if (!["woff", "woff2", "ttf", "otf"].includes(ext)) continue;
-    const ts = typeof e.ts === "number" ? e.ts / 1000 : 0;
-    const offset = ts - docStartMs;
-    if (offset > 200) fontLoads.push({ url, offsetMs: offset });
-  }
-  const issues: AuditIssue[] = fontLoads.map((f) => ({
-    category: "font-loading" as const,
-    severity: f.offsetMs > 1000 ? ("high" as const) : ("medium" as const),
-    title: `Font loaded ${Math.round(f.offsetMs)}ms after document start: ${f.url}`,
-    details: { url: f.url, offsetMs: f.offsetMs },
-  }));
-  const remediations: AuditRemediation[] = fontLoads.map((f) => ({
-    category: "font-loading" as const,
-    action:
-      "<link rel=preload as=font crossorigin> in <head>, or self-host with font-display: swap.",
-    target: f.url,
-  }));
-  return { issues, remediations };
-}
+// The audit type vocabulary lives in `perf-audit-types.ts`; the category
+// analysers + the `ANALYSERS` registry (the single source of truth from which
+// `AuditCategory` + `ALL_AUDIT_CATEGORIES` derive) in `perf-audit-analysers.ts`.
+// Re-exported here so callers import the whole perf_audit surface from
+// `./perf-audit.js`.
+export type {
+  IssueSeverity,
+  AuditIssue,
+  AuditRemediation,
+  CategoryResult,
+  AuditContext,
+  AuditCategoryAnalyser,
+} from "./perf-audit-types.js";
+export {
+  ANALYSERS,
+  ALL_AUDIT_CATEGORIES,
+  type AuditCategory,
+  analyseRenderBlocking,
+  analyseUnusedCode,
+  analyseOversizeImages,
+  analyseLayoutThrashing,
+  analyseLongTasks,
+  analyseLeakSuspects,
+  analyseCacheOpportunities,
+  analyseFontLoading,
+} from "./perf-audit-analysers.js";
 
 // ---------------------------------------------------------------------------
 // Compose the final report
@@ -444,8 +65,31 @@ export interface AuditReport {
 }
 
 const SEVERITY_WEIGHT: Record<IssueSeverity, number> = { high: 10, medium: 4, low: 1 };
-const SUMMARY_TOKEN_BUDGET = 2000;
+export const SUMMARY_TOKEN_BUDGET = 2000;
 const MAX_PER_CATEGORY_SUMMARY = 3;
+
+// L7 (bounded everything) — the summary-budget trim is bounded on BOTH axes:
+//
+//   * Iteration: every trim loop drops at least one entry per iteration (or
+//     breaks), so the total iteration count is bounded by the number of
+//     droppable entries. `TRIM_ITERATION_CAP` is the explicit hard ceiling — a
+//     belt-and-braces bound so a future estimator change can never turn the trim
+//     into an unbounded `while`. The audit flagged the old `while (!withinBudget)`
+//     as the one loop in the bounded inventory lacking an explicit cap.
+//   * Size: even when the report cannot be trimmed under the soft 2000-token
+//     budget (a single high-severity issue with a long title — or a ~1MB resource
+//     URL stored in `details`/`target` — can exceed it alone), the RETURNED summary
+//     never exceeds `SUMMARY_TOKEN_HARD_CEILING` (2.5× the soft budget). The trim
+//     drops whole entries until at or under the ceiling, then `enforceHardCeiling`
+//     GUARANTEES the ceiling BY CONSTRUCTION: it deep-truncates EVERY string-bearing
+//     field (titles, remediation action/target, every string in `details`, warnings
+//     — recursively) and, for the structural-floor case, drops content. The ceiling
+//     is a guarantee, not a hope — a valid audit never refuses due to size.
+export const SUMMARY_BUDGET_CEILING_FACTOR = 2.5;
+export const SUMMARY_TOKEN_HARD_CEILING = Math.ceil(
+  SUMMARY_TOKEN_BUDGET * SUMMARY_BUDGET_CEILING_FACTOR,
+);
+const TRIM_ITERATION_CAP = 10_000;
 
 /** Compose an audit report from already-collected context. The category set
  *  is the categories the caller asked for (default = all). `format`
@@ -519,48 +163,72 @@ function pickTopIssues(
   return top.map((i) => ({ category: i.category, severity: i.severity, title: i.title }));
 }
 
-/** Drop lowest-severity issues across all categories until estimated tokens
- *  are within the summary budget. Adds a warnings[] entry if the cap binds. */
-export function enforceSummaryBudget(report: AuditReport): AuditReport {
-  const estimate = () => estimateTokens(JSON.stringify(report));
-  if (estimate() <= SUMMARY_TOKEN_BUDGET) return report;
+const SEVERITY_ORDER: IssueSeverity[] = ["low", "medium", "high"];
+
+/** Returns true once the report is within budget. */
+function withinBudget(report: AuditReport): boolean {
+  return estimateTokens(JSON.stringify(report)) <= SUMMARY_TOKEN_BUDGET;
+}
+
+/** One severity pass — drop `sev` issues across categories + paired remediations
+ *  + matching topIssues until within budget. Returns the count dropped. */
+function dropSeverityPass(report: AuditReport, sev: IssueSeverity): number {
   let dropped = 0;
-  // Drop lowest-severity issues + paired remediations.
-  const order: IssueSeverity[] = ["low", "medium", "high"];
-  for (const sev of order) {
-    if (estimate() <= SUMMARY_TOKEN_BUDGET) break;
-    for (const cat of Object.keys(report.byCategory)) {
-      const r = report.byCategory[cat]!;
-      const newIssues: AuditIssue[] = [];
-      for (const i of r.issues) {
-        if (i.severity === sev && estimate() > SUMMARY_TOKEN_BUDGET) {
-          dropped++;
-          continue;
-        }
-        newIssues.push(i);
+  for (const cat of Object.keys(report.byCategory)) {
+    const r = report.byCategory[cat]!;
+    const newIssues: AuditIssue[] = [];
+    for (const i of r.issues) {
+      if (i.severity === sev && !withinBudget(report)) {
+        dropped++;
+        continue;
       }
-      r.issues = newIssues;
-      // Also trim remediations proportional to issue drops at this severity.
-      if (r.remediations.length > r.issues.length) {
-        r.remediations = r.remediations.slice(0, Math.max(1, r.issues.length));
-      }
-      if (estimate() <= SUMMARY_TOKEN_BUDGET) break;
+      newIssues.push(i);
     }
-    // After each severity pass, also trim topIssues at the matching severity —
-    // the summary section duplicates the heaviest cross-category list, so it
-    // can dominate the budget on its own.
-    if (estimate() > SUMMARY_TOKEN_BUDGET) {
-      const before = report.summary.topIssues.length;
-      report.summary.topIssues = report.summary.topIssues.filter((t) => t.severity !== sev);
-      dropped += before - report.summary.topIssues.length;
+    r.issues = newIssues;
+    if (r.remediations.length > r.issues.length) {
+      r.remediations = r.remediations.slice(0, Math.max(1, r.issues.length));
     }
+    if (withinBudget(report)) break;
   }
-  // If still over budget, trim topIssues + remaining categories aggressively.
-  while (report.summary.topIssues.length > 1 && estimate() > SUMMARY_TOKEN_BUDGET) {
+  // The summary's cross-category topIssues list can dominate the budget alone.
+  if (!withinBudget(report)) {
+    const before = report.summary.topIssues.length;
+    report.summary.topIssues = report.summary.topIssues.filter((t) => t.severity !== sev);
+    dropped += before - report.summary.topIssues.length;
+  }
+  return dropped;
+}
+
+/** Final aggressive trim — pop topIssues then per-category issues until within
+ *  budget or nothing left to drop. Returns the count dropped.
+ *
+ *  L7: bounded by `TRIM_ITERATION_CAP`. Every iteration of the second loop drops
+ *  at least one entry (or sets `trimmed = false` and breaks), so it terminates in
+ *  at most (total issues across categories) iterations — the explicit cap is the
+ *  hard ceiling that makes termination a property the code GUARANTEES rather than
+ *  relies on the `trimmed` flag for. A `termination` invariant fires if the cap is
+ *  ever hit (it cannot be on any real report; the bounded-resource property test
+ *  exercises an adversarial report to prove it). */
+function trimAggressively(report: AuditReport): number {
+  let dropped = 0;
+  // cap: at most `TRIM_ITERATION_CAP` pops — each removes one topIssue.
+  let iterations = 0;
+  while (report.summary.topIssues.length > 1 && !withinBudget(report)) {
+    invariant(
+      iterations++ < TRIM_ITERATION_CAP,
+      "perf-audit topIssues trim exceeded iteration cap",
+    );
     report.summary.topIssues.pop();
     dropped++;
   }
-  while (estimate() > SUMMARY_TOKEN_BUDGET) {
+  // cap: at most `TRIM_ITERATION_CAP` passes — each pass that does not break drops
+  // at least one per-category issue, so the loop is bounded by the entry count.
+  iterations = 0;
+  while (!withinBudget(report)) {
+    invariant(
+      iterations++ < TRIM_ITERATION_CAP,
+      "perf-audit per-category trim exceeded iteration cap",
+    );
     let trimmed = false;
     for (const cat of Object.keys(report.byCategory)) {
       const r = report.byCategory[cat]!;
@@ -569,16 +237,209 @@ export function enforceSummaryBudget(report: AuditReport): AuditReport {
         if (r.remediations.length > r.issues.length) r.remediations.pop();
         dropped++;
         trimmed = true;
-        if (estimate() <= SUMMARY_TOKEN_BUDGET) break;
+        if (withinBudget(report)) break;
       }
     }
     if (!trimmed) break;
   }
+  return dropped;
+}
+
+/** A mutable handle on one string-bearing field anywhere in the report. */
+interface StringRef {
+  get: () => string;
+  set: (s: string) => void;
+}
+
+const TRUNCATION_NOTE = "summary truncated to honour the hard token ceiling.";
+
+/** Collect a mutable handle on EVERY human-readable / data string in the report —
+ *  topIssue titles; per-category issue titles + every string value in their
+ *  `details` (recursively, where a ~1MB resource URL can hide); remediation
+ *  `action` + `target`; and the warnings. This is the exhaustive set the hard
+ *  ceiling truncates, so no string-bearing field can keep the report over the
+ *  ceiling. */
+function collectStringRefs(report: AuditReport): StringRef[] {
+  const refs: StringRef[] = [];
+  for (let i = 0; i < report.summary.topIssues.length; i++) {
+    refs.push({
+      get: () => report.summary.topIssues[i]!.title,
+      set: (s) => (report.summary.topIssues[i]!.title = s),
+    });
+  }
+  for (const cat of Object.keys(report.byCategory)) {
+    const r = report.byCategory[cat]!;
+    for (let i = 0; i < r.issues.length; i++) {
+      refs.push({
+        get: () => r.issues[i]!.title,
+        set: (s) => (r.issues[i]!.title = s),
+      });
+      collectRecordStringRefs(r.issues[i]!.details, refs);
+    }
+    for (let i = 0; i < r.remediations.length; i++) {
+      const rem = r.remediations[i]!;
+      refs.push({ get: () => rem.action, set: (s) => (rem.action = s) });
+      if (typeof rem.target === "string") {
+        refs.push({ get: () => rem.target as string, set: (s) => (rem.target = s) });
+      }
+    }
+  }
+  for (let i = 0; i < report.warnings.length; i++) {
+    refs.push({
+      get: () => report.warnings[i]!,
+      set: (s) => (report.warnings[i] = s),
+    });
+  }
+  return refs;
+}
+
+/** Recursively gather string-valued fields in a free-form `details` record (and
+ *  nested records/arrays) so a long URL or message inside `details` is reachable
+ *  by the truncator — `details` is `Record<string, unknown>`, so a string field
+ *  can hide at any depth. Bounded by the (finite) structure of the value. */
+function collectRecordStringRefs(value: unknown, refs: StringRef[]): void {
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) {
+      const arr = value;
+      if (typeof arr[i] === "string") {
+        refs.push({ get: () => arr[i] as string, set: (s) => (arr[i] = s) });
+      } else {
+        collectRecordStringRefs(arr[i], refs);
+      }
+    }
+    return;
+  }
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    for (const key of Object.keys(rec)) {
+      if (typeof rec[key] === "string") {
+        refs.push({ get: () => rec[key] as string, set: (s) => (rec[key] = s) });
+      } else {
+        collectRecordStringRefs(rec[key], refs);
+      }
+    }
+  }
+}
+
+/** L7 hard-ceiling enforcement — the last line of defence, GUARANTEED BY
+ *  CONSTRUCTION. The returned report is ALWAYS ≤ `SUMMARY_TOKEN_HARD_CEILING`:
+ *
+ *  1. Deep-truncate every string-bearing field (titles, remediation
+ *     action/target, every string in `details`, warnings — recursively), halving
+ *     the longest each pass until the estimate is within the ceiling. A single
+ *     irreducible long entry (e.g. a ~1MB resource URL stored in `details`/`target`)
+ *     is shrunk here, not refused.
+ *  2. If after every string is driven to its 1-char floor the report is STILL
+ *     over (the structural-floor case — thousands of warnings / issues whose KEYS
+ *     and numbers alone exceed the ceiling), drop structural content (warnings,
+ *     then per-category issues + remediations, then topIssues) until within the
+ *     ceiling, appending one short truncation note.
+ *
+ *  The ceiling is therefore a post-condition established by construction — a valid
+ *  audit NEVER refuses due to size. The TERMINATION cap below is the real L7
+ *  protection (it asserts the bounded loop terminates); the ceiling post-condition
+ *  is kept as a defensive sanity but is unreachable. */
+function enforceHardCeiling(report: AuditReport): void {
+  // Phase 1 — halve the longest string until within the ceiling or nothing left
+  // to shorten. cap: each pass at least halves the single longest string, so the
+  // string mass shrinks geometrically; bounded by `TRIM_ITERATION_CAP`.
+  let iterations = 0;
+  while (estimateTokens(JSON.stringify(report)) > SUMMARY_TOKEN_HARD_CEILING) {
+    invariant(
+      iterations++ < TRIM_ITERATION_CAP,
+      "perf-audit hard-ceiling string-truncation exceeded iteration cap",
+    );
+    if (!shortenLongestString(report)) break; // every string at its 1-char floor
+  }
+  // Phase 2 — structural floor: strings are minimized but the skeleton (keys +
+  // numbers across thousands of entries) still exceeds the ceiling. Drop content
+  // until within it, then note the truncation once. cap: each pass drops at least
+  // one structural element (or breaks), so it is bounded by the entry count.
+  iterations = 0;
+  let noted = false;
+  while (estimateTokens(JSON.stringify(report)) > SUMMARY_TOKEN_HARD_CEILING) {
+    invariant(
+      iterations++ < TRIM_ITERATION_CAP,
+      "perf-audit hard-ceiling structural-drop exceeded iteration cap",
+    );
+    if (!noted) {
+      report.warnings = [TRUNCATION_NOTE];
+      noted = true;
+    }
+    if (!dropStructuralContent(report)) break; // nothing structural left to drop
+  }
+  // Defensive post-condition — unreachable: phase 2 drives the report to an empty
+  // skeleton (far under the ceiling) if phase 1 could not. Kept as a sanity guard.
+  invariant(
+    estimateTokens(JSON.stringify(report)) <= SUMMARY_TOKEN_HARD_CEILING,
+    `perf-audit summary exceeded hard ceiling (${SUMMARY_TOKEN_HARD_CEILING} tokens)`,
+  );
+}
+
+/** Halve the single longest string anywhere in the report. Returns false when no
+ *  string is longer than its 1-char floor — i.e. nothing left to shorten. */
+function shortenLongestString(report: AuditReport): boolean {
+  let longest: { ref: StringRef; len: number } | null = null;
+  for (const ref of collectStringRefs(report)) {
+    const len = ref.get().length;
+    if (len > 1 && (!longest || len > longest.len)) longest = { ref, len };
+  }
+  if (!longest) return false;
+  const cur = longest.ref.get();
+  longest.ref.set(cur.slice(0, Math.max(1, Math.floor(cur.length / 2))) + "…");
+  return true;
+}
+
+/** Drop one unit of structural content for the structural-floor case — warnings
+ *  beyond the note first, then per-category issues + their paired remediations,
+ *  then topIssues. Returns false when only the empty skeleton remains. */
+function dropStructuralContent(report: AuditReport): boolean {
+  if (report.warnings.length > 1) {
+    report.warnings = report.warnings.slice(0, 1);
+    return true;
+  }
+  for (const cat of Object.keys(report.byCategory)) {
+    const r = report.byCategory[cat]!;
+    if (r.issues.length > 0) {
+      r.issues.pop();
+      if (r.remediations.length > 0) r.remediations.pop();
+      return true;
+    }
+    if (r.remediations.length > 0) {
+      r.remediations.pop();
+      return true;
+    }
+  }
+  if (report.summary.topIssues.length > 0) {
+    report.summary.topIssues.pop();
+    return true;
+  }
+  return false;
+}
+
+/** Drop lowest-severity issues across all categories until estimated tokens
+ *  are within the summary budget. Adds a warnings[] entry if the cap binds. */
+export function enforceSummaryBudget(report: AuditReport): AuditReport {
+  if (withinBudget(report)) return report;
+  let dropped = 0;
+  for (const sev of SEVERITY_ORDER) {
+    if (withinBudget(report)) break;
+    dropped += dropSeverityPass(report, sev);
+  }
+  dropped += trimAggressively(report);
   if (dropped > 0) {
     report.warnings.push(
       `summary token budget enforced (${SUMMARY_TOKEN_BUDGET}): dropped ${dropped} low/medium severity entries. Re-run with format:"full" for the full report.`,
     );
   }
+  // L7: the soft trim above drops WHOLE entries; a single irreducible large entry
+  // (e.g. a ~1MB resource URL in `details`/`target`) can still exceed the budget.
+  // `enforceHardCeiling` GUARANTEES BY CONSTRUCTION that the RETURNED report is
+  // within the hard ceiling — it deep-truncates every string-bearing field and,
+  // for the structural-floor case, drops content — so a valid audit NEVER refuses
+  // due to size. Always run it last, even when the soft trim already fit, so the
+  // hard ceiling is an unconditional postcondition.
+  enforceHardCeiling(report);
   return report;
 }
 

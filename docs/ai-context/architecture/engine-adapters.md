@@ -33,7 +33,10 @@ rewrite.
 ## The port (`src/engine/`)
 
 ```
-EngineKind = "chromium" | "firefox" | "webkit" | "android"   // engines the RFC commits to
+EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari"   // engines the RFC commits to
+//   safari (P4): REAL Safari.app over safaridriver — the FIRST non-Playwright engine
+//   (no Playwright Page, no CDP). page() THROWS; a curated subset works via the
+//   Safari-native handle. See the "Safari (P4)" section below.
 
 BrowserEngine (port)                              // capability-segregated
 ├── Lifecycle    launch / attach / contexts / close
@@ -62,18 +65,22 @@ the handles above.
 
 ### Files
 
-| File                              | Role                                                                                                                    |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `types.ts`                        | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.                                    |
-| `select.ts`                       | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.                                  |
-| `capabilities.ts`                 | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`. |
-| `session-cdp.ts`                  | `requireCdp(session)` — asserts the now-optional `cdp()` is present.                                                    |
-| `tool-gate.ts`                    | `assertEngineSupports(tool, engine)` — the engine-dimension refusal for the CDP-deep tools.                             |
-| `adapters/playwright-chromium.ts` | `PlaywrightChromiumAdapter` — wraps today's Chromium/CDP launch verbatim.                                               |
-| `adapters/playwright-firefox.ts`  | `PlaywrightFirefoxAdapter` — Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                            |
-| `adapters/playwright-webkit.ts`   | `PlaywrightWebKitAdapter` — bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                              |
-| `adapters/android-cdp.ts`         | `AndroidCdpAdapter` — real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                     |
-| `adapters/adb.ts`                 | adb plumbing — device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.    |
+| File                                  | Role                                                                                                                               |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`                            | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.                                               |
+| `select.ts`                           | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.                                             |
+| `capabilities.ts`                     | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`.            |
+| `session-cdp.ts`                      | `requireCdp(session)` — asserts the now-optional `cdp()` is present.                                                               |
+| `tool-gate.ts`                        | `assertEngineSupports(tool, engine)` — the engine-dimension refusal for the CDP-deep tools.                                        |
+| `adapters/playwright-chromium.ts`     | `PlaywrightChromiumAdapter` — wraps today's Chromium/CDP launch verbatim.                                                          |
+| `adapters/playwright-firefox.ts`      | `PlaywrightFirefoxAdapter` — Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                                       |
+| `adapters/playwright-webkit.ts`       | `PlaywrightWebKitAdapter` — bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                                         |
+| `adapters/android-cdp.ts`             | `AndroidCdpAdapter` — real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                                |
+| `adapters/adb.ts`                     | adb plumbing — device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.               |
+| `adapters/safaridriver-hybrid.ts`     | `SafaridriverHybridAdapter` (P4) — REAL Safari over safaridriver, WebDriver Classic + experimental BiDi; first non-Playwright.     |
+| `adapters/safari/webdriver-client.ts` | `SafariWebDriverClient` — WebDriver-Classic HTTP client (the workhorse: navigate/screenshot/element/cookies/execute).              |
+| `adapters/safari/bidi-client.ts`      | `SafariBidiClient` — BiDi WebSocket client (additive: console/nav events, script), gated behind `safari:experimentalWebSocketUrl`. |
+| `adapters/safari/launch.ts`           | safaridriver spawn + readiness poll + teardown; `safari-unavailable` / `-remote-automation-disabled` / launch-timeout errors.      |
 
 ## The capability dimension
 
@@ -136,16 +143,16 @@ function, `resolveEngineSelection(argv, env)` (`src/engine/select.ts`):
 explicit --engine flag   >   BROWX_ENGINE env   >   default chromium
 ```
 
-- `--engine firefox`, `--engine=webkit`, `BROWX_ENGINE=android` — all valid.
+- `--engine firefox`, `--engine=webkit`, `BROWX_ENGINE=android`, `--engine=safari` — all valid.
 - Resolves to `undefined` when neither is set, so `cli.ts` omits `browserType`
   and `server.ts` applies its own `?? "chromium"` default — **byte-identical** to
   the pre-feature path for anyone not setting the var. Default stays chromium.
 - The value is validated against `IMPLEMENTED_ENGINES` (the real list:
-  `chromium, firefox, webkit, android`). An unknown value (`safari`, a typo)
-  throws `UnknownEngineError` — a **structured** message listing the implemented
-  engines (the fix is in the error), naming RFC 0002 for Safari's status, printed
-  to stderr with `exit 2`. Never a stack trace, never a silent fallback to
-  chromium. A bare `--engine` with no value is likewise a loud error.
+  `chromium, firefox, webkit, android, safari`). An unknown value (a typo, an
+  unsupported browser) throws `UnknownEngineError` — a **structured** message
+  listing the implemented engines (the fix is in the error), printed to stderr
+  with `exit 2`. Never a stack trace, never a silent fallback to chromium. A bare
+  `--engine` with no value is likewise a loud error.
 - This mirrors the existing inline env/flag idiom (`BROWX_HEADLESS`,
   `BROWX_ATTACH_CDP`) — lifted into a function only because the precedence +
   validation are worth unit-testing without a browser
@@ -560,6 +567,43 @@ navigate → snapshot → find, AND a deep tool (`coverage_start`) running — t
 of `deep: true` — on a real connected device (skips cleanly otherwise). The
 attach-only `n/a` for `extensions_*` is launch-shape, not a CDP limit: extension
 loading is a Chromium **launch-flag** concern, and Android is attach-only.
+
+### Safari (P4) — the curated subset (first non-Playwright engine)
+
+Safari is the odd one out and gets a prose row rather than a table column: it has
+**no Playwright Page and no CDP**, so `session.page()` THROWS (`safari-no-playwright-page`)
+and the cross-browser Playwright surface the table assumes does not exist. Real
+Safari.app is driven over `safaridriver` (WebDriver Classic, the workhorse) + the
+experimental BiDi socket (gated behind `safari:experimentalWebSocketUrl` — console
+
+- nav events + script). The capability declaration is a **subset**
+  (`lifecycle/navigation/snapshot/input/storage/script/capture`, `deep: false`; no
+  `network`, no full `emulation`). Per-family status (first landing):
+
+* **works:** session lifecycle (engine tag `safari`); `navigate` (routed through
+  `safariNavigate` → WebDriver Classic, NOT the Playwright action envelope);
+  `snapshot` / `find` / `text_search` / `extract` (the `SafariClassicSnapshotSubstrate`
+  runs browxai's DOM-walk over WebDriver `execute/sync` — spike-confirmed identical
+  to `frame.evaluate`; refs are content-hashed + stable; `find` ranks from the tree
+  without locator bbox/actionability).
+* **gated (page()-throw, first landing — an action substrate over WebDriver element
+  interaction is the follow-up):** `click` / `fill` / `press` / `hover` / `select`
+  and the rest of the Playwright action envelope; `screenshot` / `cookies_*` /
+  `eval_js` (each needs a small safari handler branch — follow-up).
+* **gated (engine gate, `deep: false`):** the whole CDP-deep family (perf / coverage
+  / heap / cpu / clock / SW-interception / shadow_trees / touch / pdf / live
+  locale-timezone-UA) — refuses with `engine: "safari"`, no per-tool edit.
+* **gated (no substrate at all):** `network_read` / `ws_read` / `network_body` — Safari
+  has no protocol-level network tap (the `SafariNoopNetworkSubstrate` reports empty +
+  a structured `network_body` refusal).
+
+Non-BYOB: every Safari session is an isolated automation window (no real-profile
+cookies/storage/history) — `incognito` and `byob`/attach both structured-refuse
+(`safari-incognito-not-supported` / `safari-attach-not-supported`). There is no
+headless Safari. The real-Safari keystone (`test/keystone/safari.keystone.test.ts`,
+skips off-mac) asserts open → `engine:safari` → navigate → snapshot → find + the
+deep-tool refusal on a real Safari. Full design + follow-ups:
+[`../../rfcs/references/07-safari-adapter-implementation-plan.md`](../../rfcs/references/07-safari-adapter-implementation-plan.md).
 
 ## Related
 

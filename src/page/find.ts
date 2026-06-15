@@ -171,8 +171,92 @@ const CONTAINER_ROLES = new Set([
  *
  * Candidates with score 0 are dropped. Top `maxCandidates` (default 5) returned.
  */
+/** The compose layer's shadow-DOM warnings, surfaced only when `pierce` was
+ *  explicitly opted into (so a pierce-less caller's find() envelope stays
+ *  byte-identical to pre-v0.5.0). The `low-content` warning is always skipped —
+ *  it pre-dates this path and was surfaced through snapshot only. */
+function pierceWarnings(composedWarnings: string[], pierce: unknown): string[] {
+  if (pierce === undefined) return [];
+  return composedWarnings.filter((w) => !w.startsWith("low-content"));
+}
+
+/** Walk the (scoped) tree, scoring each node and applying any feedback bonus;
+ *  returns the score-descending candidate list. */
+function scoreCandidates(
+  walkRoot: A11yNode,
+  q: string,
+  qTokens: string[],
+  opts: FindOptions,
+): Array<{ node: A11yNode; score: number }> {
+  const scored: Array<{ node: A11yNode; score: number }> = [];
+  for (const { node } of walk(walkRoot)) {
+    let score = scoreNode(node, q, qTokens);
+    if (score > 0 && opts.feedback) {
+      score += opts.feedback.bonusFor(opts.query, {
+        testId: node.testId,
+        testIdAttr: node.testIdAttr,
+        role: node.role,
+        name: node.name,
+      });
+    }
+    if (score > 0) scored.push({ node, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  return scored;
+}
+
+/** Probe one candidate against the live page (hint disambiguation → bbox →
+ *  actionability) into a `FindCandidate`. Each probe is independent so the pool
+ *  runs in parallel; the steps within stay ordered (actionable needs bbox). */
+async function probeCandidate(
+  node: A11yNode,
+  score: number,
+  ctx: { locatorRoot: Page | Frame | null; cdp?: CDPSession; frame?: Frame },
+): Promise<FindCandidate> {
+  const { locatorRoot, cdp, frame } = ctx;
+  const { hint: bareHint, tier, stability } = buildSelectorHint(node);
+  // disambiguate when the bare hint matches multiple DOM nodes (needs a locator
+  // root; on safari there is none, so use the bare hint as-is).
+  const hint = locatorRoot ? await disambiguateHint(locatorRoot, bareHint) : bareHint;
+  // Frame-scoped finds skip the CDP visible-rect path (its backendDOMNodeIds are
+  // rooted at the top target and don't resolve into OOPIFs); the portable
+  // locator-bounding-box path is identical-behaviour.
+  let bbox =
+    frame === undefined && cdp !== undefined && node.backendDOMNodeId !== undefined
+      ? await visibleRect(cdp, node.backendDOMNodeId)
+      : null;
+  // attached/BYOB: the CDP rect path can spuriously null out a rendered DOM-walk
+  // node → fall back to Playwright's locator box before a bad signal classifies a
+  // visible element off-screen (which `visibleOnly` would then drop entirely).
+  if (bbox === null && locatorRoot)
+    bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
+  // No locator root (safari) → actionability can't be locator-probed, but the
+  // DOM-walk PAGE_SCRIPT already filtered to VISIBLE interactive elements, so the
+  // node is known-visible. Report `true` rather than fabricate a signal we can't
+  // measure. bbox stays null (no protocol rect on safari).
+  const actionable = locatorRoot ? await probeActionable(locatorRoot, hint, bbox) : true;
+  return {
+    ref: node.ref,
+    role: node.role,
+    name: node.name,
+    testId: node.testId,
+    stability,
+    selectorHint: hint,
+    selectorTier: tier,
+    bbox,
+    clipped: bbox === null,
+    actionable,
+    score,
+    ...(node.context ? { context: node.context } : {}),
+  };
+}
+
 export async function find(
-  page: Page,
+  // `null` on the safari engine — it has no Playwright Page, so the locator-based
+  // enrichment (disambiguation / bbox / actionability) is skipped and candidates
+  // are ranked from the substrate tree alone. Every other engine
+  // passes a real Page.
+  page: Page | null,
   substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: FindOptions,
@@ -199,37 +283,15 @@ export async function find(
       : await substrate.compose(refs, opts.testAttributes, { pierce: opts.pierce });
   const { tree } = composed;
   if (!tree) {
-    // Same byte-identical-back-compat reasoning as the success path:
-    // surface compose warnings only when pierce was explicitly opted in.
-    const w =
-      opts.pierce !== undefined
-        ? composed.warnings.filter((s) => !s.startsWith("low-content"))
-        : [];
-    return { candidates: [], warnings: w };
+    return { candidates: [], warnings: pierceWarnings(composed.warnings, opts.pierce) };
   }
   // The locator-resolution root: page for main-frame finds, frame for
-  // frame-scoped finds. Probes (disambiguation, bbox fallback, actionable)
-  // use this root so they exercise the correct DOM tree.
-  const locatorRoot: Page | Frame = opts.frame ?? page;
+  // frame-scoped finds. Probes use this root so they exercise the correct DOM tree.
+  const locatorRoot: Page | Frame | null = opts.frame ?? page;
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
-  const warnings: string[] = [];
-  // when pierce was explicitly opted into, surface the compose
-  // layer's shadow-DOM warnings (closed-shadow CDP availability, the
-  // "closed-shadow candidates are inspect-only" caveat). Without an
-  // explicit pierce arg, the find() envelope stays byte-identical to
-  // pre-v0.5.0.
-  if (opts.pierce !== undefined) {
-    for (const w of composed.warnings) {
-      // Skip the low-content warning — it pre-dates this and was
-      // surfaced through snapshot only; smuggling it into find() now
-      // would change pre-existing pierce-less callers' output the moment
-      // they opt into pierce.
-      if (w.startsWith("low-content")) continue;
-      warnings.push(w);
-    }
-  }
+  const warnings: string[] = [...pierceWarnings(composed.warnings, opts.pierce)];
 
   // limit walk to subtree rooted at contextRef.
   let walkRoot: A11yNode = tree;
@@ -240,21 +302,7 @@ export async function find(
       warnings.push(`contextRef=${opts.contextRef} not found; ranking over the full tree instead.`);
   }
 
-  const scored: Array<{ node: A11yNode; score: number }> = [];
-  for (const { node } of walk(walkRoot)) {
-    let score = scoreNode(node, q, qTokens);
-    if (score > 0 && opts.feedback) {
-      score += opts.feedback.bonusFor(opts.query, {
-        testId: node.testId,
-        testIdAttr: node.testIdAttr,
-        role: node.role,
-        name: node.name,
-      });
-    }
-    if (score > 0) scored.push({ node, score });
-  }
-
-  scored.sort((a, b) => b.score - a.score);
+  const scored = scoreCandidates(walkRoot, q, qTokens, opts);
   const top = scored.slice(0, max);
 
   // Per-candidate probing is independent (each candidate's hint, bbox,
@@ -270,50 +318,26 @@ export async function find(
   // actionable depends on bbox), and `PROBE_TIMEOUT_MS` caps any single
   // probe call so a no-match hint fails fast instead of waiting on auto-wait.
   const candidates: FindCandidate[] = await Promise.all(
-    top.map(async ({ node, score }) => {
-      const { hint: bareHint, tier, stability } = buildSelectorHint(node);
-      // disambiguate when the bare hint matches multiple DOM nodes.
-      const hint = await disambiguateHint(locatorRoot, bareHint);
-      // For frame-scoped finds, skip the CDP visible-rect path entirely
-      // (its backendDOMNodeIds are rooted at the top target and don't
-      // resolve into OOPIFs). Same-origin frames technically could be
-      // probed via CDP with the right node-id juggling but the
-      // locator-bounding-box path is portable and identical-behaviour.
-      let bbox =
-        opts.frame === undefined && cdp !== undefined && node.backendDOMNodeId !== undefined
-          ? await visibleRect(cdp, node.backendDOMNodeId)
-          : null;
-      // attached/BYOB: the CDP rect path can spuriously null out a rendered
-      // DOM-walk node → fall back to Playwright's locator box before we let a
-      // bad signal classify a visible element off-screen (which `visibleOnly`
-      // would then drop entirely).
-      if (bbox === null)
-        bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
-      const actionable = await probeActionable(locatorRoot, hint, bbox);
-      return {
-        ref: node.ref,
-        role: node.role,
-        name: node.name,
-        testId: node.testId,
-        stability,
-        selectorHint: hint,
-        selectorTier: tier,
-        bbox,
-        clipped: bbox === null,
-        actionable,
-        score,
-        ...(node.context ? { context: node.context } : {}),
-      };
-    }),
+    top.map(({ node, score }) =>
+      probeCandidate(node, score, { locatorRoot, cdp, frame: opts.frame }),
+    ),
   );
 
-  // visibility-aware ranking. Stable-partition actionable candidates
-  // ahead of non-actionable ones (off-screen / clipped / covered / disabled),
-  // preserving score order within each tier — so a slightly-lower-scored
-  // *visible* match outranks a high-scored hidden modal.
+  // visibility-aware ranking. Stable-partition actionable candidates ahead of
+  // non-actionable ones, preserving score order within each tier.
   const { ranked, visibleCount } = rankByVisibility(candidates, opts.visibleOnly === true);
+  appendRankingWarnings(warnings, ranked, candidates, visibleCount, opts);
+  return { candidates: ranked, warnings };
+}
 
-  // confidence-floor warning (combined with any earlier warnings).
+/** Append the confidence-floor + no-visible-candidate diagnostic warnings. */
+function appendRankingWarnings(
+  warnings: string[],
+  ranked: FindCandidate[],
+  candidates: FindCandidate[],
+  visibleCount: number,
+  opts: FindOptions,
+): void {
   const floor = opts.confidenceFloor ?? 0;
   if (floor > 0 && (ranked.length === 0 || ranked[0]!.score < floor)) {
     warnings.push(
@@ -321,18 +345,12 @@ export async function find(
         `Consider falling through to a snapshot scan + raw selector, or rephrasing the query against the element's accessible name / test-attribute value.`,
     );
   }
-
-  // when there *are* candidates but none are actionable, that's a strong
-  // "the match is wrong" signal — the field report saw confident off-screen
-  // dialogs returned for a plainly-visible target. Flag it, and suggest the
-  // fallbacks the caller actually has enabled (never name a disabled tool).
-  // base this on the pre-filter match count + visible count so it still
+  // When there are candidates but none visible, that's a strong "the match is
+  // wrong" signal — base it on the pre-filter match + visible count so it still
   // fires under `visibleOnly` (where `ranked` is empty when nothing's visible).
   if (visibleCount === 0 && candidates.length > 0) {
     warnings.push(noVisibleCandidateWarning(candidates.length, opts.fallbackHints));
   }
-
-  return { candidates: ranked, warnings };
 }
 
 /**
@@ -452,63 +470,69 @@ async function probeActionable(
 
 const INPUT_LIKE_ROLES = new Set(["input", "textbox", "searchbox", "combobox", "spinbutton"]);
 
-export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number {
-  const nameLower = (node.name ?? "").toLowerCase();
-  const testIdLower = (node.testId ?? "").toLowerCase();
-  const roleLower = node.role.toLowerCase();
+/** Direct name / testId / role match scoring (exact + substring). testId hits
+ *  weigh heavier — `<input>`-shaped roles typically have an empty accessible
+ *  name, so the testId is the load-bearing signal. */
+function scoreDirect(nameLower: string, testIdLower: string, roleLower: string, q: string): number {
   let s = 0;
-  // Exact-name match: strongest signal.
   if (nameLower === q) s += 10;
   if (nameLower.includes(q)) s += 5;
-  // weight testId hits more heavily, especially against
-  // `<input>`-shaped roles where `name` is typically empty. Without this, a
-  // query like "X-time-input-seconds inside Y-start-time-input" failed to
-  // surface an `<input data-testid="X-time-input-seconds">` because the score
-  // came entirely from accidental short-token hits.
-  if (testIdLower === q) s += 15; // exact testId match wins big
-  if (testIdLower.includes(q)) s += 10; // (was +5 pre-ask-#14)
+  if (testIdLower === q) s += 15;
+  if (testIdLower.includes(q)) s += 10;
   if (roleLower.includes(q)) s += 2;
-  // per-testId-token weight is amplified for icon-only controls (no
-  // accessible name) where the only signal is the testId itself. Without this
-  // boost, an icon-only side-panel tab whose testId encodes the intent
-  // (`side-panel-feature-tab`) loses ranking to a neighbour with one more
-  // accidental name-token hit.
-  const isIconOnly = !nameLower && !!testIdLower;
+  return s;
+}
+
+/** Per-query-token substring scoring on name + testId. testId tokens are
+ *  amplified for icon-only controls (no accessible name) where the testId is the
+ *  only signal. */
+function scoreTokens(
+  nameLower: string,
+  testIdLower: string,
+  qTokens: string[],
+  isIconOnly: boolean,
+): number {
+  let s = 0;
   for (const t of qTokens) {
     if (t.length < 2) continue;
     if (nameLower.includes(t)) s += 1;
     if (testIdLower.includes(t)) s += isIconOnly ? 3 : 2;
   }
+  return s;
+}
+
+/** Input-shaped boost: +3 once when the node is input-like AND any testId token
+ *  matched (the round-3 case). */
+function scoreInputTestIdBoost(node: A11yNode, testIdLower: string, qTokens: string[]): number {
+  if (!testIdLower || !INPUT_LIKE_ROLES.has(node.role)) return 0;
+  return qTokens.some((t) => t.length >= 2 && testIdLower.includes(t)) ? 3 : 0;
+}
+
+/** Trimmed text-content scoring (title tooltip / sr-only label / glyph-adjacent
+ *  text) — often the only human-readable hint on an icon-only control. */
+function scoreText(textLower: string, q: string, qTokens: string[], isIconOnly: boolean): number {
+  if (!textLower) return 0;
+  let s = 0;
+  if (textLower === q) s += 6;
+  else if (textLower.includes(q)) s += 3;
+  for (const t of qTokens) {
+    if (t.length < 2) continue;
+    if (textLower.includes(t)) s += isIconOnly ? 2 : 1;
+  }
+  return s;
+}
+
+export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number {
+  const nameLower = (node.name ?? "").toLowerCase();
+  const testIdLower = (node.testId ?? "").toLowerCase();
+  const isIconOnly = !nameLower && !!testIdLower;
+  let s = scoreDirect(nameLower, testIdLower, node.role.toLowerCase(), q);
+  s += scoreTokens(nameLower, testIdLower, qTokens, isIconOnly);
   if (s > 0 && INTERACTIVE_ROLES.has(node.role)) s += 2;
-  // Extra boost when the node is input-shaped AND any testId token matched —
-  // this is the case round 3 exposed.
-  if (testIdLower && INPUT_LIKE_ROLES.has(node.role)) {
-    for (const t of qTokens) {
-      if (t.length >= 2 && testIdLower.includes(t)) {
-        s += 3;
-        break;
-      }
-    }
-  }
-  // Trimmed text content (a `title` tooltip, an sr-only label, visible
-  // glyph-adjacent text) — often the only human-readable hint on an
-  // icon-only control whose accessible name is empty. Weaker than the
-  // accessible name (it can be noisier), stronger when the control is
-  // icon-only and the text is all we have.
-  const textLower = (node.text ?? "").toLowerCase();
-  if (textLower) {
-    if (textLower === q) s += 6;
-    else if (textLower.includes(q)) s += 3;
-    for (const t of qTokens) {
-      if (t.length < 2) continue;
-      if (textLower.includes(t)) s += isIconOnly ? 2 : 1;
-    }
-  }
-  // Active / selected state. A control already in a selected / pressed /
-  // checked state that also matches the query is almost always the live
-  // feature area the agent means — this is what disambiguates the active
-  // side-panel tab from its inert icon-only siblings (the report's
-  // "neighbouring selected-state" signal). Only bonuses an existing match.
+  s += scoreInputTestIdBoost(node, testIdLower, qTokens);
+  s += scoreText((node.text ?? "").toLowerCase(), q, qTokens, isIconOnly);
+  // Active / selected state bonuses an existing match (the live feature area the
+  // agent means) — disambiguates the active side-panel tab from inert siblings.
   const isActive = node.selected === true || node.pressed === true || node.checked === true;
   if (s > 0 && isActive) s += 3;
   return s;

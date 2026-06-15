@@ -1,5 +1,4 @@
-// Envelope-perf benchmark (RFC 0002 D5 / open input #4 — the explicit P2b
-// "measure the hot path" requirement). It times the per-action ActionResult
+// Envelope-perf benchmark that measures the hot path. It times the per-action ActionResult
 // network tap two ways on REAL Chromium:
 //
 //   (A) CDP NetworkTap            — the chromium path (kept on chromium)
@@ -14,7 +13,11 @@
 // Run: pnpm tsx scripts/bench-network-envelope.ts
 
 import { chromium, type BrowserContext, type Page } from "playwright-core";
-import { NetworkTap, PlaywrightNetworkTap } from "../src/page/network.js";
+import { NetworkTap } from "../src/page/network.js";
+// RFC 0004 P4 / D10 — the Playwright network classes are no longer re-exported
+// through the `network.js` barrel (that re-export formed a runtime cycle);
+// import from the defining module directly.
+import { PlaywrightNetworkTap } from "../src/page/network-playwright.js";
 import { startFixture } from "../test/keystone/fixture.js";
 
 const ITERATIONS = 60;

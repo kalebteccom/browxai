@@ -14,12 +14,15 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the four RFC engines", () => {
-    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android"]);
+  it("commits to the five engines (safari is declared)", () => {
+    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
-  it("wires chromium + firefox + webkit + android (all four RFC engines)", () => {
-    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android"]);
+  it("wires all five engines including safari (operator-reachable, P4)", () => {
+    // safari (P4) is the first non-Playwright engine: driven over safaridriver,
+    // no Playwright Page (page() throws), reachable via `--engine safari` /
+    // BROWX_ENGINE=safari through the no-Playwright-Page session seam.
+    expect(IMPLEMENTED_ENGINES).toEqual(["chromium", "firefox", "webkit", "android", "safari"]);
   });
 
   it.each(["chromium", "firefox", "webkit"] as const)(
@@ -46,7 +49,6 @@ describe("engine port — EngineKind + selection", () => {
     expect(err).toBeInstanceOf(EngineNotYetSupportedError);
     expect(err.engine).toBe("webkit");
     expect(err.message).toContain("engine-not-yet-supported");
-    expect(err.message).toContain("0002-multi-engine-bidi");
     expect(err.message).toContain("webkit");
   });
 });
@@ -57,8 +59,9 @@ describe("engine port — capability declaration", () => {
     expect(caps).toBe(CHROMIUM_CAPABILITIES);
     expect(caps?.engine).toBe("chromium");
     expect(caps?.deep).toBe(true);
-    // all nine sub-interfaces — nothing newly gated on chromium.
-    expect(caps?.subInterfaces.size).toBe(9);
+    // all ten sub-interfaces — the nine cross-browser ones plus `page` (RFC 0004
+    // D5: chromium backs a real Playwright Page). Nothing newly gated on chromium.
+    expect(caps?.subInterfaces.size).toBe(10);
     for (const sub of [
       "lifecycle",
       "navigation",
@@ -69,6 +72,7 @@ describe("engine port — capability declaration", () => {
       "script",
       "emulation",
       "capture",
+      "page",
     ] as const) {
       expect(caps?.subInterfaces.has(sub)).toBe(true);
     }
@@ -80,8 +84,10 @@ describe("engine port — capability declaration", () => {
     expect(caps?.engine).toBe("firefox");
     // the headline of the capability gate: firefox has no raw-CDP escape hatch.
     expect(caps?.deep).toBe(false);
-    // it still serves the nine cross-browser sub-interfaces.
-    expect(caps?.subInterfaces.size).toBe(9);
+    // it still serves the nine cross-browser sub-interfaces + `page` (D5: firefox
+    // backs a real Playwright Page).
+    expect(caps?.subInterfaces.size).toBe(10);
+    expect(caps?.subInterfaces.has("page")).toBe(true);
   });
 
   it("webkit declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
@@ -92,19 +98,23 @@ describe("engine port — capability declaration", () => {
     // capability-based engine gate auto-refuses the CDP-deep tools on it.
     expect(caps?.deep).toBe(false);
     // it still serves the nine cross-browser sub-interfaces (the walker substrate
-    // + Playwright's cross-browser surface).
-    expect(caps?.subInterfaces.size).toBe(9);
+    // + Playwright's cross-browser surface) + `page` (D5: webkit backs a real Page).
+    expect(caps?.subInterfaces.size).toBe(10);
+    expect(caps?.subInterfaces.has("page")).toBe(true);
   });
 
   it("android declares EVERYTHING incl. deep:true — the standout (it IS Chromium)", () => {
     const caps = capabilitiesFor("android");
     expect(caps).toBe(ANDROID_CAPABILITIES);
     expect(caps?.engine).toBe("android");
-    // The headline of P3: real Chrome-on-Android speaks full CDP, so unlike
+    // The headline behavior: real Chrome-on-Android speaks full CDP, so unlike
     // firefox/webkit it exposes the deep escape hatch — every tool works, and the
     // existing CDP substrates serve it verbatim (no new substrate).
     expect(caps?.deep).toBe(true);
-    expect(caps?.subInterfaces.size).toBe(9);
+    // ten sub-interfaces — the nine cross-browser ones + `page` (D5: android IS
+    // Chromium, so it backs a real Playwright Page).
+    expect(caps?.subInterfaces.size).toBe(10);
+    expect(caps?.subInterfaces.has("page")).toBe(true);
   });
 });
 
@@ -118,6 +128,5 @@ describe("engine port — cdp() as a capability via requireCdp", () => {
   it("throws a structured, engine-naming error when cdp() is absent", () => {
     const session = { engine: "firefox" as EngineKind };
     expect(() => requireCdp(session)).toThrowError(/engine "firefox" has no CDP escape hatch/);
-    expect(() => requireCdp(session)).toThrowError(/0002-multi-engine-bidi/);
   });
 });

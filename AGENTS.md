@@ -119,6 +119,31 @@ Adding a new MCP tool:
 
 See [`docs/ai-context/tool-registration/server-tool-registry.md`](docs/ai-context/tool-registration/server-tool-registry.md).
 
+## Architecture enforcement
+
+The doctrine ([`docs/ai-context/architecture/architecture-principles.md`](docs/ai-context/architecture/architecture-principles.md)
+§4a) is **mechanized**: every architectural invariant has a fitness function, a
+custom lint rule, or a CI gate. Before a boundary, world-touching-surface, or
+engine change, the macro guardrails apply:
+
+- **Engines are pluggable.** A new engine is a new adapter + a `CAPABILITIES` row +
+  one registry registration — **never** an edit to `src/session/{managed,incognito,byob}.ts`
+  or a `engine === "<literal>"` branch in a handler. The `no-engine-literal-branches`
+  lint rule and the `engine-adapter-contract` keystone enforce it.
+- **Metadata is declared once.** Capability / batchable / deep live at
+  `host.register`, not in a hand-edited central list. The completeness fitness tests
+  enforce it.
+- **`server.ts` is composition-only**, under 400 lines, importing `src/tools/*` not
+  `src/page/*`. The dependency-cruiser layering gate enforces it.
+- **Run the lane.** The architecture fitness suite (under `pnpm test`) plus
+  `pnpm depcruise` (dependency layering) are part of the quality gate for any
+  boundary change.
+
+The single index of every check is
+[`docs/ai-context/architecture/fitness-functions.md`](docs/ai-context/architecture/fitness-functions.md).
+A guardrail is relaxed only via an RFC amendment, never an inline disable. The
+PR-time `architecture-fitness-auditor` agent re-runs the suite against the diff.
+
 ## Workspace + paths
 
 All file IO is `$BROWX_WORKSPACE`-rooted, never `cwd`. The chokepoint is `resolveWorkspacePath` in `src/util/workspace.ts`. The no-trace contract (recorded session artifacts leave no trace outside the workspace) is enforced by tests in `src/util/no-trace.test.ts`. Any new code path that touches the filesystem MUST go through `resolveWorkspacePath`.
@@ -170,7 +195,7 @@ Repository-bundled expert agent definitions live in three mirrored locations:
 - `.codex/agents/<name>.md` — Codex agent registry (format under iteration; see directory README).
 - `.agents/skills/<name>.md` — cross-harness source of truth for non-harness-specific role logic.
 
-Current agents: `tool-author`, `plugin-author`, `keystone-writer`, `capability-gate-auditor`, `security-reviewer`, `docs-impact-auditor`, `release-engineer`, `tracker-id-auditor`.
+Current agents: `tool-author`, `plugin-author`, `keystone-writer`, `capability-gate-auditor`, `security-reviewer`, `docs-impact-auditor`, `release-engineer`, `tracker-id-auditor`, `architecture-fitness-auditor`.
 
 ## Quality gate contract
 
@@ -186,6 +211,13 @@ pnpm build
 ```
 
 Every behavior-change diff verifies this gate locally before pushing — never push and hope CI catches it. CI runs the same gate; a CI failure on push is a self-inflicted wound.
+
+The architecture fitness lane runs inside `pnpm test`; the dependency graph
+(`pnpm depcruise`) and the duplication budget (`pnpm jscpd:check`) are separate
+commands. A **boundary change** (engine seam, substrate port, tool-registration
+host, dependency layering, a budget) additionally runs `pnpm depcruise` directly
+for fast feedback. See
+[`docs/ai-context/architecture/fitness-functions.md`](docs/ai-context/architecture/fitness-functions.md).
 
 ## Related
 

@@ -16,7 +16,7 @@ export interface FailureClass {
 }
 
 const BROWXAI_PATTERNS =
-  /(target (page|context|browser).*(closed|crashed)|context (was|has been) (closed|destroyed)|execution context was destroyed|browser has been closed|session closed|page has been closed|protocol error.*(target closed|session closed)|anti-wedge|deadline exceeded|deadlineerror)/i;
+  /(target (page|context|browser).*(closed|crashed)|context (was|has been) (closed|destroyed)|execution context was destroyed|browser has been closed|session closed|page has been closed|protocol error.*(target closed|session closed)|anti-wedge|deadline exceeded|deadlineerror|invariant violated|invarianterror)/i;
 
 const APP_PATTERNS =
   /(page crashed|renderer (crash|process gone)|net::err_|err_(connection|name_not_resolved|aborted|timed_out)|navigation (failed|to .* was interrupted)|frame was detached due to navigation)/i;
@@ -28,16 +28,25 @@ export function classifyFailure(message: string): FailureClass {
   // more often a session reap than a genuine app crash, and a false
   // app-crash defect is the expensive mistake we're preventing.
   if (BROWXAI_PATTERNS.test(m)) {
-    // Both a context teardown and an anti-wedge deadline match here, but the
-    // right recovery differs — a teardown is fixed by reopening, a deadline
-    // must NOT be blindly retried (that is the wedged-session loop).
+    // Three browxai-origin shapes match here, each with a different recovery: a
+    // context teardown is fixed by reopening; an anti-wedge deadline must NOT be
+    // blindly retried (that is the wedged-session loop); an invariant violation
+    // (L8) is a browxai-internal contract failure — a defect to report, not a
+    // usage error, and the session itself is usually unaffected.
     const isDeadline = /anti-wedge|deadline exceeded|deadlineerror/i.test(m);
-    return {
-      source: "browxai",
-      hint: isDeadline
-        ? "anti-wedge deadline fired — browxai returned instead of stalling on a wedged page op. NOT an application crash; do not file an app-crash defect. Retry the call ONCE; if timeouts keep recurring on this session it is wedged — discard it (`close_session`) and `open_session` a fresh one. A bigger `timeoutMs` will not recover a wedged session."
-        : "browxai-side context teardown/detach (session closed by another agent, or an incognito context discarded) — NOT an application crash. Re-open the session and retry; do not file an app-crash defect.",
-    };
+    const isInvariant = /invariant violated|invarianterror/i.test(m);
+    let hint: string;
+    if (isInvariant) {
+      hint =
+        "browxai-internal invariant violated (L8) — browxai reached a state one of its own modules guarantees cannot happen and refused with a structured error instead of returning a wrong answer. NOT an application crash and NOT a usage error: this indicates a bug in browxai. The session is usually unaffected — retry once; if it recurs, capture the message and file it as a browxai defect.";
+    } else if (isDeadline) {
+      hint =
+        "anti-wedge deadline fired — browxai returned instead of stalling on a wedged page op. NOT an application crash; do not file an app-crash defect. Retry the call ONCE; if timeouts keep recurring on this session it is wedged — discard it (`close_session`) and `open_session` a fresh one. A bigger `timeoutMs` will not recover a wedged session.";
+    } else {
+      hint =
+        "browxai-side context teardown/detach (session closed by another agent, or an incognito context discarded) — NOT an application crash. Re-open the session and retry; do not file an app-crash defect.";
+    }
+    return { source: "browxai", hint };
   }
   if (APP_PATTERNS.test(m)) {
     return {

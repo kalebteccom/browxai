@@ -110,25 +110,34 @@ export function resolveCaptchaProvider(
     /\/+$/,
     "",
   );
-  const timeoutRaw = env.BROWX_CAPTCHA_TIMEOUT_MS?.trim();
-  const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) : 120_000;
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return {
-      ok: false,
-      reason: "partial",
-      error: `BROWX_CAPTCHA_TIMEOUT_MS="${timeoutRaw}" must be a positive integer (ms).`,
-    };
+  const timeout = parsePositiveIntEnv(
+    env.BROWX_CAPTCHA_TIMEOUT_MS,
+    120_000,
+    "BROWX_CAPTCHA_TIMEOUT_MS",
+  );
+  if (!timeout.ok) return { ok: false, reason: "partial", error: timeout.error };
+  const poll = parsePositiveIntEnv(env.BROWX_CAPTCHA_POLL_MS, 5000, "BROWX_CAPTCHA_POLL_MS");
+  if (!poll.ok) return { ok: false, reason: "partial", error: poll.error };
+  return {
+    ok: true,
+    config: { provider, apiKey: rawKey, apiBase, timeoutMs: timeout.value, pollMs: poll.value },
+  };
+}
+
+/** Parse a positive-integer env var (ms), falling back to `fallback` when unset.
+ *  Returns a structured error message naming `varName` when it isn't a positive
+ *  integer. */
+function parsePositiveIntEnv(
+  raw: string | undefined,
+  fallback: number,
+  varName: string,
+): { ok: true; value: number } | { ok: false; error: string } {
+  const trimmed = raw?.trim();
+  const value = trimmed ? Number.parseInt(trimmed, 10) : fallback;
+  if (!Number.isFinite(value) || value <= 0) {
+    return { ok: false, error: `${varName}="${trimmed}" must be a positive integer (ms).` };
   }
-  const pollRaw = env.BROWX_CAPTCHA_POLL_MS?.trim();
-  const pollMs = pollRaw ? Number.parseInt(pollRaw, 10) : 5000;
-  if (!Number.isFinite(pollMs) || pollMs <= 0) {
-    return {
-      ok: false,
-      reason: "partial",
-      error: `BROWX_CAPTCHA_POLL_MS="${pollRaw}" must be a positive integer (ms).`,
-    };
-  }
-  return { ok: true, config: { provider, apiKey: rawKey, apiBase, timeoutMs, pollMs } };
+  return { ok: true, value };
 }
 
 /** A challenge ready to submit. The shape mirrors the 2Captcha `in.php` form:
@@ -176,6 +185,72 @@ export interface CaptchaFailure {
  * `fetchImpl` parameter is injected so tests can stub it without a real
  * network round-trip.
  */
+/** Per-captcha-type submit-method config: the 2Captcha `method`, the form key
+ *  the siteKey rides under, and an optional extra (e.g. recaptcha3 `version`). */
+const SITEKEY_SUBMIT: Record<
+  "recaptcha2" | "recaptcha3" | "hcaptcha" | "turnstile",
+  { method: string; keyParam: string; extra?: [string, string]; hint: string }
+> = {
+  recaptcha2: {
+    method: "userrecaptcha",
+    keyParam: "googlekey",
+    hint: "recaptcha2 requires a siteKey (the page's `data-sitekey` attribute)",
+  },
+  recaptcha3: {
+    method: "userrecaptcha",
+    keyParam: "googlekey",
+    extra: ["version", "v3"],
+    hint: "recaptcha3 requires a siteKey (the page's `data-sitekey` attribute)",
+  },
+  hcaptcha: {
+    method: "hcaptcha",
+    keyParam: "sitekey",
+    hint: "hcaptcha requires a siteKey (the hCaptcha widget's `data-sitekey`)",
+  },
+  turnstile: {
+    method: "turnstile",
+    keyParam: "sitekey",
+    hint: "turnstile requires a siteKey (Cloudflare Turnstile's `data-sitekey`)",
+  },
+};
+
+/** Build the 2Captcha `/in.php` form body for a challenge, or a structured
+ *  failure when a required field (siteKey / imageBase64) is missing. */
+function buildSubmitBody(
+  challenge: CaptchaChallenge,
+  config: CaptchaProviderConfig,
+): { body: URLSearchParams } | { error: CaptchaFailure } {
+  const body = new URLSearchParams({ key: config.apiKey, json: "1" });
+  if (challenge.type === "image") {
+    if (!challenge.imageBase64) {
+      return {
+        error: failureWithHint(
+          config.provider,
+          "image captcha requires `imageBase64` (raw base64, no data URL prefix)",
+        ),
+      };
+    }
+    body.set("method", "base64");
+    body.set("body", challenge.imageBase64);
+    return { body };
+  }
+  const spec = SITEKEY_SUBMIT[challenge.type];
+  if (!spec) {
+    return {
+      error: failureWithHint(
+        config.provider,
+        `unsupported captcha type "${String((challenge as { type: string }).type)}"`,
+      ),
+    };
+  }
+  if (!challenge.siteKey) return { error: failureWithHint(config.provider, spec.hint) };
+  body.set("method", spec.method);
+  if (spec.extra) body.set(spec.extra[0], spec.extra[1]);
+  body.set(spec.keyParam, challenge.siteKey);
+  body.set("pageurl", challenge.pageUrl);
+  return { body };
+}
+
 export async function submitToProvider(
   challenge: CaptchaChallenge,
   config: CaptchaProviderConfig,
@@ -184,64 +259,9 @@ export async function submitToProvider(
   sleepFn: (ms: number) => Promise<void> = (ms) => new Promise((res) => setTimeout(res, ms)),
 ): Promise<CaptchaSolution | CaptchaFailure> {
   const started = nowFn();
-  // 2Captcha-compatible submit. Form-encoded POST to /in.php.
-  const submitBody = new URLSearchParams({ key: config.apiKey, json: "1" });
-  if (challenge.type === "recaptcha2") {
-    submitBody.set("method", "userrecaptcha");
-    if (!challenge.siteKey) {
-      return failureWithHint(
-        config.provider,
-        "recaptcha2 requires a siteKey (the page's `data-sitekey` attribute)",
-      );
-    }
-    submitBody.set("googlekey", challenge.siteKey);
-    submitBody.set("pageurl", challenge.pageUrl);
-  } else if (challenge.type === "recaptcha3") {
-    submitBody.set("method", "userrecaptcha");
-    submitBody.set("version", "v3");
-    if (!challenge.siteKey) {
-      return failureWithHint(
-        config.provider,
-        "recaptcha3 requires a siteKey (the page's `data-sitekey` attribute)",
-      );
-    }
-    submitBody.set("googlekey", challenge.siteKey);
-    submitBody.set("pageurl", challenge.pageUrl);
-  } else if (challenge.type === "hcaptcha") {
-    submitBody.set("method", "hcaptcha");
-    if (!challenge.siteKey) {
-      return failureWithHint(
-        config.provider,
-        "hcaptcha requires a siteKey (the hCaptcha widget's `data-sitekey`)",
-      );
-    }
-    submitBody.set("sitekey", challenge.siteKey);
-    submitBody.set("pageurl", challenge.pageUrl);
-  } else if (challenge.type === "turnstile") {
-    submitBody.set("method", "turnstile");
-    if (!challenge.siteKey) {
-      return failureWithHint(
-        config.provider,
-        "turnstile requires a siteKey (Cloudflare Turnstile's `data-sitekey`)",
-      );
-    }
-    submitBody.set("sitekey", challenge.siteKey);
-    submitBody.set("pageurl", challenge.pageUrl);
-  } else if (challenge.type === "image") {
-    submitBody.set("method", "base64");
-    if (!challenge.imageBase64) {
-      return failureWithHint(
-        config.provider,
-        "image captcha requires `imageBase64` (raw base64, no data URL prefix)",
-      );
-    }
-    submitBody.set("body", challenge.imageBase64);
-  } else {
-    return failureWithHint(
-      config.provider,
-      `unsupported captcha type "${String((challenge as { type: string }).type)}"`,
-    );
-  }
+  const built = buildSubmitBody(challenge, config);
+  if ("error" in built) return built.error;
+  const submitBody = built.body;
   let submitResp: Response;
   try {
     submitResp = await fetchImpl(`${config.apiBase}/in.php`, {
@@ -281,10 +301,77 @@ export async function submitToProvider(
       ...(submitJson.request ? { providerCode: submitJson.request } : {}),
     };
   }
-  const taskId = submitJson.request;
-  // Poll /res.php until ready or deadline expires.
+  return pollForSolution(submitJson.request, config, started, { fetchImpl, nowFn, sleepFn });
+}
+
+/** Injected timing/network seams for the poll loop (tests stub these). */
+interface PollSeams {
+  fetchImpl: typeof fetch;
+  nowFn: () => number;
+  sleepFn: (ms: number) => Promise<void>;
+}
+
+/** One poll tick: fetch /res.php once. Returns a terminal solution/failure, or
+ *  null to keep polling (transient blip or still-working). */
+async function pollOnce(
+  taskId: string,
+  config: CaptchaProviderConfig,
+  started: number,
+  seams: PollSeams,
+): Promise<CaptchaSolution | CaptchaFailure | null> {
+  let pollResp: Response;
+  try {
+    pollResp = await seams.fetchImpl(
+      `${config.apiBase}/res.php?key=${encodeURIComponent(config.apiKey)}&action=get&id=${encodeURIComponent(taskId)}&json=1`,
+    );
+  } catch (err) {
+    log.warn(
+      `solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`,
+    );
+    return null;
+  }
+  if (!pollResp.ok) {
+    log.warn(`solve_captcha: poll returned HTTP ${pollResp.status} — continuing`);
+    return null;
+  }
+  let pollJson: { status?: number; request?: string; error_text?: string };
+  try {
+    pollJson = (await pollResp.json()) as typeof pollJson;
+  } catch {
+    return null;
+  }
+  if (pollJson.status === 1 && pollJson.request) {
+    return {
+      ok: true,
+      provider: config.provider,
+      solution: pollJson.request,
+      taskId,
+      elapsedMs: seams.nowFn() - started,
+    };
+  }
+  // `status:0, request:"CAPCHA_NOT_READY"` is the canonical "still working"
+  // signal; any other request-string is a terminal error.
+  if (pollJson.request && pollJson.request !== "CAPCHA_NOT_READY") {
+    return {
+      ok: false,
+      provider: config.provider,
+      error: `provider returned terminal error: ${pollJson.request}`,
+      hint: pollJson.error_text ?? "Consult the provider documentation for this error code.",
+      providerCode: pollJson.request,
+    };
+  }
+  return null; // still working — keep polling
+}
+
+/** Poll /res.php until ready or the deadline expires. */
+async function pollForSolution(
+  taskId: string,
+  config: CaptchaProviderConfig,
+  started: number,
+  seams: PollSeams,
+): Promise<CaptchaSolution | CaptchaFailure> {
   while (true) {
-    if (nowFn() - started > config.timeoutMs) {
+    if (seams.nowFn() - started > config.timeoutMs) {
       return {
         ok: false,
         provider: config.provider,
@@ -293,51 +380,9 @@ export async function submitToProvider(
         providerCode: taskId,
       };
     }
-    await sleepFn(config.pollMs);
-    let pollResp: Response;
-    try {
-      pollResp = await fetchImpl(
-        `${config.apiBase}/res.php?key=${encodeURIComponent(config.apiKey)}&action=get&id=${encodeURIComponent(taskId)}&json=1`,
-      );
-    } catch (err) {
-      // transient network blip — keep polling until the deadline
-      log.warn(
-        `solve_captcha: poll network blip (${err instanceof Error ? err.message : String(err)}) — continuing`,
-      );
-      continue;
-    }
-    if (!pollResp.ok) {
-      log.warn(`solve_captcha: poll returned HTTP ${pollResp.status} — continuing`);
-      continue;
-    }
-    let pollJson: { status?: number; request?: string; error_text?: string };
-    try {
-      pollJson = (await pollResp.json()) as typeof pollJson;
-    } catch {
-      continue;
-    }
-    if (pollJson.status === 1 && pollJson.request) {
-      return {
-        ok: true,
-        provider: config.provider,
-        solution: pollJson.request,
-        taskId,
-        elapsedMs: nowFn() - started,
-      };
-    }
-    // The canonical "still working" signal in 2Captcha-compatible providers
-    // is `status:0, request:"CAPCHA_NOT_READY"`. Any other request-string is
-    // a terminal error.
-    if (pollJson.request && pollJson.request !== "CAPCHA_NOT_READY") {
-      return {
-        ok: false,
-        provider: config.provider,
-        error: `provider returned terminal error: ${pollJson.request}`,
-        hint: pollJson.error_text ?? "Consult the provider documentation for this error code.",
-        providerCode: pollJson.request,
-      };
-    }
-    // else: still working — loop
+    await seams.sleepFn(config.pollMs);
+    const outcome = await pollOnce(taskId, config, started, seams);
+    if (outcome) return outcome;
   }
 }
 

@@ -317,157 +317,159 @@ const MAX_LIST_ENTRIES = 50;
 
 /** Extract structured insights from a trace event array. Pure — exported for
  *  unit tests. */
-export function extractInsights(events: TraceEvent[]): PerfInsights {
-  const warnings: string[] = [];
-  // chromium ts is microseconds; surface ms for the agent.
-  const usToMs = (us: number | undefined): number => (typeof us === "number" ? us / 1000 : 0);
+/** chromium trace ts is microseconds; surface ms for the agent. */
+function usToMs(us: number | undefined): number {
+  return typeof us === "number" ? us / 1000 : 0;
+}
 
-  // ---- long tasks
-  const longTasks: PerfInsights["longTasks"] = [];
-  // ---- layout shifts
-  const layoutShifts: PerfInsights["layoutShifts"] = [];
-  // ---- render-blocking resources: signalled by ResourceSendRequest events
-  //      with `args.data.renderBlocking` ∈ {blocking, in_body_parser_blocking}
-  //      plus a corresponding ResourceFinish event for duration.
-  const sendStartByRequestId = new Map<
-    string,
-    { url: string; type?: string; tsMs: number; blocking: string }
-  >();
-  const renderBlocking: PerfInsights["renderBlocking"] = [];
-  // ---- LCP candidates
-  const lcpCandidates: PerfInsights["lcpCandidates"] = [];
-  // ---- navigation milestones
-  let navigationStartMs: number | undefined;
-  let firstPaintMs: number | undefined;
-  let firstContentfulPaintMs: number | undefined;
-  let domContentLoadedMs: number | undefined;
-  let loadEventMs: number | undefined;
+/** Navigation milestones, captured raw (relativised against navigationStart at
+ *  the end). */
+interface NavMilestones {
+  navigationStartMs?: number;
+  firstPaintMs?: number;
+  firstContentfulPaintMs?: number;
+  domContentLoadedMs?: number;
+  loadEventMs?: number;
+}
 
-  for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    const name = typeof e.name === "string" ? e.name : "";
-    if (!name) continue;
-    const ts = usToMs(e.ts);
-    const dur = usToMs(e.dur);
-    const args = e.args ?? {};
-    const data = (args.data ?? {}) as Record<string, unknown>;
+/** The mutable accumulator the per-event handlers fill during the single pass. */
+interface InsightsAcc {
+  longTasks: PerfInsights["longTasks"];
+  layoutShifts: PerfInsights["layoutShifts"];
+  renderBlocking: PerfInsights["renderBlocking"];
+  lcpCandidates: PerfInsights["lcpCandidates"];
+  sendStartByRequestId: Map<string, { url: string; type?: string; tsMs: number; blocking: string }>;
+  nav: NavMilestones;
+}
 
-    // Long tasks land as `RunTask` (or `RunMicrotasks`) on the renderer main
-    // thread with dur ≥ 50ms. chromium's own LongTask v8 event is also
-    // emitted with name "LongTask"; accept either spelling.
-    if (name === "RunTask" || name === "LongTask") {
-      if (dur >= LONG_TASK_THRESHOLD_MS) {
-        longTasks.push({ startMs: ts, durationMs: dur });
-      }
+function handleLayoutShift(acc: InsightsAcc, ts: number, data: Record<string, unknown>): void {
+  const score =
+    typeof data.score === "number"
+      ? data.score
+      : typeof data.weighted_score_delta === "number"
+        ? data.weighted_score_delta
+        : 0;
+  const entry: PerfInsights["layoutShifts"][number] = { startMs: ts, score };
+  if (data.had_recent_input === true) entry.hadRecentInput = true;
+  acc.layoutShifts.push(entry);
+}
+
+/** Render-blocking resources are stitched: a `blocking`/`in_body_parser_blocking`
+ *  `ResourceSendRequest` records the start; the matching `ResourceFinish` emits
+ *  the duration. */
+function handleResourceEvent(
+  acc: InsightsAcc,
+  name: string,
+  ts: number,
+  data: Record<string, unknown>,
+): void {
+  const requestId = typeof data.requestId === "string" ? data.requestId : undefined;
+  if (!requestId) return;
+  if (name === "ResourceSendRequest") {
+    const url = typeof data.url === "string" ? data.url : "";
+    const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
+    if (url && (blocking === "blocking" || blocking === "in_body_parser_blocking")) {
+      acc.sendStartByRequestId.set(requestId, {
+        url,
+        tsMs: ts,
+        blocking,
+        type: typeof data.resourceType === "string" ? data.resourceType : undefined,
+      });
     }
-
-    if (name === "LayoutShift") {
-      const score =
-        typeof data.score === "number"
-          ? data.score
-          : typeof data.weighted_score_delta === "number"
-            ? data.weighted_score_delta
-            : 0;
-      const entry: PerfInsights["layoutShifts"][number] = { startMs: ts, score };
-      if (data.had_recent_input === true) entry.hadRecentInput = true;
-      layoutShifts.push(entry);
-    }
-
-    if (name === "ResourceSendRequest") {
-      const requestId = typeof data.requestId === "string" ? data.requestId : undefined;
-      const url = typeof data.url === "string" ? data.url : "";
-      const blocking = typeof data.renderBlocking === "string" ? data.renderBlocking : "";
-      if (
-        requestId &&
-        url &&
-        (blocking === "blocking" ||
-          blocking === "in_body_parser_blocking" ||
-          blocking === "non_blocking_dynamic")
-      ) {
-        // We only treat the actively render-blocking ones as such. Track all
-        // candidates so we can stitch durations on `ResourceFinish`.
-        if (blocking === "blocking" || blocking === "in_body_parser_blocking") {
-          sendStartByRequestId.set(requestId, {
-            url,
-            tsMs: ts,
-            blocking,
-            type: typeof data.resourceType === "string" ? data.resourceType : undefined,
-          });
-        }
-      }
-    }
-    if (name === "ResourceFinish") {
-      const requestId = typeof data.requestId === "string" ? data.requestId : undefined;
-      if (requestId && sendStartByRequestId.has(requestId)) {
-        const start = sendStartByRequestId.get(requestId)!;
-        renderBlocking.push({ url: start.url, type: start.type, durationMs: ts - start.tsMs });
-        sendStartByRequestId.delete(requestId);
-      }
-    }
-
-    if (name === "largestContentfulPaint::Candidate") {
-      const entry: PerfInsights["lcpCandidates"][number] = { startMs: ts };
-      if (typeof data.size === "number") entry.size = data.size;
-      if (typeof data.DOMNodeId === "number") entry.nodeName = `#${String(data.DOMNodeId)}`;
-      if (typeof data.nodeName === "string") entry.nodeName = data.nodeName;
-      if (typeof data.url === "string") entry.url = data.url;
-      lcpCandidates.push(entry);
-    }
-
-    // Navigation milestones (renderer-side).
-    if (name === "navigationStart") {
-      navigationStartMs = ts;
-    } else if (name === "firstPaint") {
-      firstPaintMs = ts;
-    } else if (name === "firstContentfulPaint") {
-      firstContentfulPaintMs = ts;
-    } else if (name === "MarkDOMContent" || name === "domContentLoadedEventEnd") {
-      domContentLoadedMs = ts;
-    } else if (name === "MarkLoad" || name === "loadEventEnd") {
-      loadEventMs = ts;
-    }
+  } else if (name === "ResourceFinish" && acc.sendStartByRequestId.has(requestId)) {
+    const start = acc.sendStartByRequestId.get(requestId)!;
+    acc.renderBlocking.push({ url: start.url, type: start.type, durationMs: ts - start.tsMs });
+    acc.sendStartByRequestId.delete(requestId);
   }
+}
 
-  // Sort + cap. Sorting by impact gives the agent the top contributors first.
-  longTasks.sort((a, b) => b.durationMs - a.durationMs);
-  renderBlocking.sort((a, b) => b.durationMs - a.durationMs);
-  layoutShifts.sort((a, b) => b.score - a.score);
-  // LCP candidates are best read newest-first (final candidate = effective LCP),
-  // but agents tend to want chronological order — keep input order.
+function handleLcpCandidate(acc: InsightsAcc, ts: number, data: Record<string, unknown>): void {
+  const entry: PerfInsights["lcpCandidates"][number] = { startMs: ts };
+  if (typeof data.size === "number") entry.size = data.size;
+  if (typeof data.DOMNodeId === "number") entry.nodeName = `#${String(data.DOMNodeId)}`;
+  if (typeof data.nodeName === "string") entry.nodeName = data.nodeName;
+  if (typeof data.url === "string") entry.url = data.url;
+  acc.lcpCandidates.push(entry);
+}
+
+const NAV_MILESTONE_BY_NAME: Record<string, keyof NavMilestones> = {
+  navigationStart: "navigationStartMs",
+  firstPaint: "firstPaintMs",
+  firstContentfulPaint: "firstContentfulPaintMs",
+  MarkDOMContent: "domContentLoadedMs",
+  domContentLoadedEventEnd: "domContentLoadedMs",
+  MarkLoad: "loadEventMs",
+  loadEventEnd: "loadEventMs",
+};
+
+/** Dispatch one trace event into the accumulator. */
+function ingestEvent(acc: InsightsAcc, e: TraceEvent): void {
+  if (!e || typeof e !== "object") return;
+  const name = typeof e.name === "string" ? e.name : "";
+  if (!name) return;
+  const ts = usToMs(e.ts);
+  const data = ((e.args ?? {}).data ?? {}) as Record<string, unknown>;
+  // Long tasks: `RunTask` / `LongTask` on the main thread with dur ≥ threshold.
+  if ((name === "RunTask" || name === "LongTask") && usToMs(e.dur) >= LONG_TASK_THRESHOLD_MS) {
+    acc.longTasks.push({ startMs: ts, durationMs: usToMs(e.dur) });
+  } else if (name === "LayoutShift") {
+    handleLayoutShift(acc, ts, data);
+  } else if (name === "ResourceSendRequest" || name === "ResourceFinish") {
+    handleResourceEvent(acc, name, ts, data);
+  } else if (name === "largestContentfulPaint::Candidate") {
+    handleLcpCandidate(acc, ts, data);
+  }
+  const navKey = NAV_MILESTONE_BY_NAME[name];
+  if (navKey) acc.nav[navKey] = ts;
+}
+
+/** Relativise navigation timing against navigationStart — raw monotonic ts
+ *  numbers aren't interpretable; offsets are. */
+function buildNavigation(nav: NavMilestones): PerfInsights["navigation"] | undefined {
+  if (nav.navigationStartMs === undefined) return undefined;
+  const start = nav.navigationStartMs;
+  const out: NonNullable<PerfInsights["navigation"]> = { navigationStartMs: start };
+  if (nav.firstPaintMs !== undefined) out.firstPaintMs = nav.firstPaintMs - start;
+  if (nav.firstContentfulPaintMs !== undefined)
+    out.firstContentfulPaintMs = nav.firstContentfulPaintMs - start;
+  if (nav.domContentLoadedMs !== undefined) out.domContentLoadedMs = nav.domContentLoadedMs - start;
+  if (nav.loadEventMs !== undefined) out.loadEventMs = nav.loadEventMs - start;
+  return out;
+}
+
+export function extractInsights(events: TraceEvent[]): PerfInsights {
+  const acc: InsightsAcc = {
+    longTasks: [],
+    layoutShifts: [],
+    renderBlocking: [],
+    lcpCandidates: [],
+    sendStartByRequestId: new Map(),
+    nav: {},
+  };
+  for (const e of events) ingestEvent(acc, e);
+
+  // Sort by impact (top contributors first). LCP candidates stay in input order
+  // (chronological) — the final candidate is the effective LCP.
+  acc.longTasks.sort((a, b) => b.durationMs - a.durationMs);
+  acc.renderBlocking.sort((a, b) => b.durationMs - a.durationMs);
+  acc.layoutShifts.sort((a, b) => b.score - a.score);
 
   const cap = <T>(arr: T[]): T[] =>
     arr.length > MAX_LIST_ENTRIES ? arr.slice(0, MAX_LIST_ENTRIES) : arr;
-
-  const totals = {
-    events: events.length,
-    longTaskCount: longTasks.length,
-    layoutShiftCount: layoutShifts.length,
-    layoutShiftScoreSum: layoutShifts.reduce((s, l) => s + l.score, 0),
-    renderBlockingCount: renderBlocking.length,
-  };
-
   const insights: PerfInsights = {
-    longTasks: cap(longTasks),
-    layoutShifts: cap(layoutShifts),
-    renderBlocking: cap(renderBlocking),
-    lcpCandidates: cap(lcpCandidates),
-    totals,
+    longTasks: cap(acc.longTasks),
+    layoutShifts: cap(acc.layoutShifts),
+    renderBlocking: cap(acc.renderBlocking),
+    lcpCandidates: cap(acc.lcpCandidates),
+    totals: {
+      events: events.length,
+      longTaskCount: acc.longTasks.length,
+      layoutShiftCount: acc.layoutShifts.length,
+      layoutShiftScoreSum: acc.layoutShifts.reduce((s, l) => s + l.score, 0),
+      renderBlockingCount: acc.renderBlocking.length,
+    },
   };
-
-  // Relativise navigation timing against navigationStart when we have one —
-  // raw monotonic ts numbers are not interpretable; offsets are.
-  if (navigationStartMs !== undefined) {
-    insights.navigation = { navigationStartMs };
-    if (firstPaintMs !== undefined)
-      insights.navigation.firstPaintMs = firstPaintMs - navigationStartMs;
-    if (firstContentfulPaintMs !== undefined)
-      insights.navigation.firstContentfulPaintMs = firstContentfulPaintMs - navigationStartMs;
-    if (domContentLoadedMs !== undefined)
-      insights.navigation.domContentLoadedMs = domContentLoadedMs - navigationStartMs;
-    if (loadEventMs !== undefined)
-      insights.navigation.loadEventMs = loadEventMs - navigationStartMs;
-  }
-
-  if (warnings.length) insights.warnings = warnings;
+  const navigation = buildNavigation(acc.nav);
+  if (navigation) insights.navigation = navigation;
   return insights;
 }

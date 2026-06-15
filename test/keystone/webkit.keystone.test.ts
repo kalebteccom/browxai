@@ -1,5 +1,5 @@
 // WebKit keystone — the proof the engine port generalizes to a real THIRD
-// engine (RFC 0002 D7, P2c). It drives a real headless WebKit (Playwright's
+// engine. It drives a real headless WebKit (Playwright's
 // bundled WebKit build — the WebKit-ENGINE correctness lane, NOT Safari) end-to-
 // end through the actual MCP tool handlers, the same way the firefox keystone
 // drives real Firefox. This is the regression gate for the WebKit lane: mocked
@@ -16,19 +16,20 @@
 //     - cookies_set / cookies_list   (context-level cookie jar)
 //     - dump_storage_state            (context.storageState)
 //     - screenshot                    (page.screenshot)
-//   RUNS on WebKit (P2a substrate — the page-side ARIA/DOM walker behind the
+//   RUNS on WebKit (the page-side ARIA/DOM walker behind the
 //   SnapshotSubstrate interface serves WebKit by CDP-absence, not engine name):
 //     - navigate                      (page.goto + framenavigated nav detection)
 //     - snapshot                      (the walker tree — real refs, [from-dom])
 //     - find                          (ranks a target, locatorBoundingBox bbox)
 //     - click / fill                  (action window over the walker a11y delta;
-//                                      the network slice is empty — that is P2b)
+//                                      the network slice is empty — the network
+//                                      tap is not yet ported onto Playwright events)
 //     - text_search                   (walker-sourced tree)
 //   ASSERTS-REFUSAL on WebKit (CDP-deep — audit class B + live-CDP class C):
 //     - perf_start / coverage_start / heap_snapshot / cpu_emulate
 //     - pdf_save / set_user_agent / network_emulate
-//     - shadow_trees  (closed-shadow pierce is CDP-only — RFC D4)
-//   SKIPS on WebKit (P2b — needs the network CDP tap ported onto Playwright
+//     - shadow_trees  (closed-shadow pierce is CDP-only)
+//   SKIPS on WebKit (needs the network CDP tap ported onto Playwright
 //   events before the network slice of the envelope is populated):
 //     - network_read / ws_read / network_body
 //
@@ -129,7 +130,7 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
       }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === session);
       expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The headline of P2c: a real-browser session is tagged webkit through the
+      // The core claim: a real-browser session is tagged webkit through the
       // BrowserEngine port — the port generalized to a third engine.
       expect(row!.engine).toBe("webkit");
     },
@@ -186,7 +187,7 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
       await callJson("open_session", { session, mode: "incognito" });
 
       // A representative sample across the audit class-B families + the three
-      // D6-reclassified tools. Each must refuse with the ENGINE gate (carries
+      // reclassified deep-CDP tools. Each must refuse with the ENGINE gate (carries
       // `engine:"webkit"` + a hint), NOT crash and NOT a capability denial. This
       // is the proof the CAPABILITY-based gate auto-gates webkit (deep:false)
       // with no per-engine tool-gate.ts edit.
@@ -220,7 +221,7 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
   );
 
   it(
-    "P2a substrate — snapshot/find/navigate/click/fill run on real WebKit via the walker",
+    "snapshot substrate — snapshot/find/navigate/click/fill run on real WebKit via the walker",
     async () => {
       // The page-side snapshot/a11y walker behind the SnapshotSubstrate interface
       // serves WebKit (selected by CDP-absence), so the read + action core works
@@ -233,7 +234,8 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
 
       // (0) navigate — page.goto + the Playwright `framenavigated` nav detector.
       // The action window builds its envelope with an EMPTY network slice (the
-      // CDP tap is P2b) but a real a11y delta from the walker.
+      // CDP tap is not yet ported onto Playwright events) but a real a11y delta
+      // from the walker.
       const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
         session,
         url: `${fixture.url}/`,

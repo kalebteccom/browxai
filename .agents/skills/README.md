@@ -21,3 +21,4 @@ Today's scope: the eight expert agents listed below. Browxai does not yet have a
 - `docs-impact-auditor.md`
 - `release-engineer.md`
 - `tracker-id-auditor.md`
+- `architecture-fitness-auditor.md`

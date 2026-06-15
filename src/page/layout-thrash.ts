@@ -72,14 +72,10 @@ export function defaultLayoutThrashPath(workspaceRoot: string, sessionId: string
 /** Run a focused layout-thrash trace. Records for `durationMs`, parses the
  *  result, writes the raw events to `<workspace>/perf/...`, returns the
  *  aggregated finding. */
-export async function runLayoutThrashTrace(
-  cdp: CDPSession,
-  workspaceRoot: string,
-  sessionId: string,
-  opts: LayoutThrashOptions = {},
-): Promise<LayoutThrashResult> {
-  const durationMs = clampDuration(opts.durationMs);
-
+/** Start a layout-thrash CDP trace, record for `durationMs`, then stop and drain
+ *  the buffered events (bounded by a 30s completion race). Detaches both
+ *  listeners in `finally` regardless of outcome. */
+async function collectTraceEvents(cdp: CDPSession, durationMs: number): Promise<TraceEvent[]> {
   const events: TraceEvent[] = [];
   let complete: (() => void) | null = null;
   const onData = (e: { value: TraceEvent[] }) => {
@@ -92,7 +88,6 @@ export async function runLayoutThrashTrace(
   };
   cdp.on("Tracing.dataCollected", onData);
   cdp.on("Tracing.tracingComplete", onComplete);
-
   try {
     await cdp.send("Tracing.start", {
       transferMode: "ReportEvents",
@@ -119,6 +114,17 @@ export async function runLayoutThrashTrace(
       /* best-effort */
     }
   }
+  return events;
+}
+
+export async function runLayoutThrashTrace(
+  cdp: CDPSession,
+  workspaceRoot: string,
+  sessionId: string,
+  opts: LayoutThrashOptions = {},
+): Promise<LayoutThrashResult> {
+  const durationMs = clampDuration(opts.durationMs);
+  const events = await collectTraceEvents(cdp, durationMs);
 
   // Write the raw trace events file (workspace-rooted) so the agent can
   // re-open it in the DevTools Performance panel if desired.
@@ -163,6 +169,23 @@ function clampDuration(d?: number): number {
 
 /** Aggregate trace events into the result shape. Pure — exported for unit
  *  tests against synthetic fixture event blobs. */
+const RECALC_NAMES = new Set(["UpdateLayoutTree", "Recalc Style", "RecalculateStyles"]);
+
+/** Classify a trace event for the thrash aggregation: a forced/sync layout, a
+ *  layout shift, or a recalc — `relevant` is true when it should be bucketed by
+ *  origin. Returns null for non-object / unnamed events. */
+function classifyLayoutEvent(
+  e: TraceEvent,
+): { forced: boolean; shift: boolean; relevant: boolean } | null {
+  if (!e || typeof e !== "object") return null;
+  const name = typeof e.name === "string" ? e.name : "";
+  if (!name) return null;
+  const forced = (name === "Layout" && hasForcedFlag(e)) || name === "ForcedSyncLayout";
+  const shift = name === "LayoutShift";
+  const recalc = RECALC_NAMES.has(name);
+  return { forced, shift, relevant: forced || shift || recalc };
+}
+
 export function aggregateLayoutThrash(events: TraceEvent[]): {
   forcedLayoutsCount: number;
   layoutShiftsCount: number;
@@ -172,17 +195,11 @@ export function aggregateLayoutThrash(events: TraceEvent[]): {
   let layoutShiftsCount = 0;
   const byOrigin = new Map<string, { count: number; totalDurationMs: number }>();
   for (const e of events) {
-    if (!e || typeof e !== "object") continue;
-    const name = typeof e.name === "string" ? e.name : "";
-    if (!name) continue;
-    const isForced = name === "Layout" && hasForcedFlag(e);
-    const isForcedAlt = name === "ForcedSyncLayout";
-    const isShift = name === "LayoutShift";
-    const isRecalc =
-      name === "UpdateLayoutTree" || name === "Recalc Style" || name === "RecalculateStyles";
-    if (isShift) layoutShiftsCount++;
-    if (isForced || isForcedAlt) forcedLayoutsCount++;
-    if (!isShift && !isForced && !isForcedAlt && !isRecalc) continue;
+    const k = classifyLayoutEvent(e);
+    if (!k) continue;
+    if (k.shift) layoutShiftsCount++;
+    if (k.forced) forcedLayoutsCount++;
+    if (!k.relevant) continue;
     const dur = typeof e.dur === "number" ? e.dur / 1000 : 0;
     const stack = extractOriginStack(e);
     const slot = byOrigin.get(stack);

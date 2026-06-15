@@ -76,6 +76,7 @@ import type { BrowserContext } from "playwright-core";
 import { writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve, sep, basename } from "node:path";
 import { log } from "../util/logging.js";
+import { PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type FsPickerMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -145,7 +146,10 @@ export const UNHANDLED_FS_PICKER_HINT =
  *  next picker without page reload. */
 export class FsPickerPolicyState {
   private policy: FsPickerPolicy;
-  private buffer: FsPickerRecord[] = [];
+  /** Bounded record ring (shared `PolicyRecordBuffer` — the hard cap so a chatty
+   *  page can't grow this without bound; the per-action slice is the only
+   *  consumer, older records are noise). */
+  private readonly records: PolicyRecordBuffer<FsPickerRecord>;
   /** Per-API response queue. `fs_picker_respond` pushes; the binding
    *  dequeues on the next matching picker call. Per-API so a queued
    *  open-file response doesn't satisfy a save-file picker (different
@@ -155,9 +159,6 @@ export class FsPickerPolicyState {
     showSaveFilePicker: [],
     showDirectoryPicker: [],
   };
-  /** Hard cap so a chatty page can't grow this without bound. The per-action
-   *  slice is the only consumer — older records are noise. */
-  private readonly cap: number;
   /** Contexts we've already installed the init-script + binding on.
    *  Idempotent install guard — BYOB reconnect / context rebuild MUST not
    *  double-wire. */
@@ -165,7 +166,7 @@ export class FsPickerPolicyState {
 
   constructor(initial: FsPickerPolicy = { mode: "raise" }, cap = 200) {
     this.policy = normalise(initial);
-    this.cap = cap;
+    this.records = new PolicyRecordBuffer<FsPickerRecord>(cap);
   }
 
   /** Resolved policy snapshot. */
@@ -188,19 +189,18 @@ export class FsPickerPolicyState {
 
   /** Append a request record. Caps the buffer at `cap`. */
   record(rec: FsPickerRecord): void {
-    this.buffer.push(rec);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    this.records.record(rec);
   }
 
   /** Slice records with `ts >= since`. Used by the action-window. */
   since(since: number): FsPickerRecord[] {
-    return this.buffer.filter((r) => r.ts >= since);
+    return this.records.since(since);
   }
 
   /** True if any record in `[since, now]` was handled in `raise` mode.
    *  When true, the action-window flips the result to `ok:false`. */
   raisedSince(since: number): boolean {
-    return this.buffer.some((r) => r.ts >= since && r.handledAs === "raised");
+    return this.records.matchedSince(since, (r) => r.handledAs === "raised");
   }
 
   /** Queue an agent-supplied response for the next picker of `api`.

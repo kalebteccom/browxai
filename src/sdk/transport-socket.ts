@@ -15,6 +15,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { NAME, VERSION } from "../server.js";
 import { SocketTransport } from "./socket-transport.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
+import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiContentItem, BrowxaiResult } from "./types.js";
 
 /**
@@ -74,3 +75,19 @@ export async function openSocketTransport(opts: SocketTransportOptions): Promise
 
   return { dispatch, close };
 }
+
+// RFC 0004 P4 / D6 — self-register under the "socket" mode. The factory carries
+// the endpoint guard the old `case "socket"` arm enforced inline: a socket
+// transport REQUIRES `opts.endpoint`, and the structured error message is
+// byte-identical to the prior switch arm.
+registerTransport("socket", {
+  open: (opts) => {
+    if (!opts.endpoint) {
+      throw new Error(
+        `browxai-sdk: transport "socket" requires an \`endpoint\`. ` +
+          `Set { endpoint: "unix:///path/to/sock" } (or pipe://./pipe/<name> on Windows).`,
+      );
+    }
+    return openSocketTransport({ endpoint: opts.endpoint });
+  },
+});

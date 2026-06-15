@@ -250,7 +250,7 @@ export async function runDoctor(): Promise<number> {
   // Informational: WebKit is opt-in, so a missing binary never FAILS doctor —
   // it just tells the operator how to enable the engine. Mirrors the Chromium +
   // Firefox checks above but against the WebKit build (Playwright's bundled
-  // WebKit — the WebKit-engine correctness lane per RFC D7, NOT Safari).
+  // WebKit — the WebKit-engine correctness lane, NOT Safari).
   try {
     const { webkit } = await import("playwright-core");
     const path = webkit.executablePath();
@@ -277,7 +277,7 @@ export async function runDoctor(): Promise<number> {
 
   // 8a4. Android availability (opt-in fourth engine — `browserType:"android"`).
   // The full-fidelity real-profile BYOB lane: real Chrome-on-Android over adb +
-  // CDP (RFC D3/D8). Informational — Android is opt-in + needs a physically
+  // CDP. Informational — Android is opt-in + needs a physically
   // connected device, so a missing adb / no device / closed Chrome NEVER fails
   // doctor; it just reports how far the chain reaches (adb present → device ready
   // → Chrome socket reachable). Probes without opening a session: lists devices,
@@ -385,7 +385,7 @@ async function androidCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
-      fix: "connect an Android phone over USB, enable USB debugging, open Chrome — see RFC 0002 D8",
+      fix: "connect an Android phone over USB, enable USB debugging, open Chrome",
     };
   }
   // Device ready — try to reach the Chrome socket so the operator knows whether

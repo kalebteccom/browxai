@@ -24,6 +24,7 @@ export {
   FIREFOX_CAPABILITIES,
   WEBKIT_CAPABILITIES,
   ANDROID_CAPABILITIES,
+  SAFARI_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { assertEngineSupports, DEEP_TOOLS, type EngineRefusal } from "./tool-gate.js";
@@ -45,6 +46,12 @@ export type {
 } from "./adapters/playwright-webkit.js";
 export { AndroidCdpAdapter } from "./adapters/android-cdp.js";
 export type { AndroidAttachHandles, AndroidAdapterDeps } from "./adapters/android-cdp.js";
+export {
+  SafaridriverHybridAdapter,
+  SafariSessionBusyError,
+  SafariRemoteAutomationDisabledError,
+} from "./adapters/safaridriver-hybrid.js";
+export type { SafariSessionHandle, SafariAdapterDeps } from "./adapters/safaridriver-hybrid.js";
 export {
   CHROME_ANDROID_SOCKET,
   AdbNotInstalledError,

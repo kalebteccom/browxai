@@ -1,4 +1,4 @@
-// AndroidCdpAdapter — the FOURTH BrowserEngine adapter (RFC 0002 D3/D8, P3). The
+// AndroidCdpAdapter — the FOURTH BrowserEngine adapter. The
 // surviving full-fidelity real-profile BYOB lane: real Chrome-on-Android attached
 // over adb + CDP. The KEY property is that Android Chrome speaks FULL CDP, so this
 // adapter:
@@ -152,9 +152,8 @@ export class AndroidCdpAdapter {
         "android-launch-not-supported: the android engine is ATTACH-ONLY. managed / ephemeral " +
           "launch means spawning a browser process browxai owns, which is not a thing on a phone " +
           "the user controls — the user opens Chrome on their device, and browxai attaches over " +
-          'adb + CDP (RFC 0002 D3/D8). Open the session with mode:"attached" (BROWX_ATTACH_CDP ' +
-          "is loopback-enforced; the adb forward is loopback by construction). " +
-          "See docs/rfcs/0002-multi-engine-bidi.md.",
+          'adb + CDP. Open the session with mode:"attached" (BROWX_ATTACH_CDP ' +
+          "is loopback-enforced; the adb forward is loopback by construction).",
       ),
     );
   }

@@ -55,31 +55,47 @@ export function annotateStructuralContext(tree: A11yNode): void {
     if (!chain) continue;
     const row = findRowContainer(node, chain);
     if (!row) continue;
-
-    const collectionRoot = nearestCollectionRoot(row, parents);
-    const collection = collectionRoot ? collectionRoot.role : `${row.role}-list`;
-
-    const rowText = collectVisibleText(row, 200);
-    const rowKey = firstNonEmptyName(row);
-
-    let column: string | undefined;
-    if (collectionRoot && columnHeadersByRoot.has(collectionRoot)) {
-      const headers = columnHeadersByRoot.get(collectionRoot)!;
-      // Find the index of the cell ancestor (or `node` itself) within `row`.
-      const cellAncestor =
-        chain.find((a) => CELL_ROLES.has(a.role)) ?? (CELL_ROLES.has(node.role) ? node : undefined);
-      if (cellAncestor) {
-        const idx = row.children.indexOf(cellAncestor);
-        if (idx >= 0 && idx < headers.length) column = headers[idx] || undefined;
-      }
-    }
-
-    const ctx: StructuralContext = { collection };
-    if (rowKey) ctx.rowKey = rowKey;
-    if (column) ctx.column = column;
-    if (rowText) ctx.rowText = rowText;
-    node.context = ctx;
+    node.context = buildStructuralContext(node, chain, row, parents, columnHeadersByRoot);
   }
+}
+
+/** Resolve the column header for `node` within `row` — index the node's cell
+ *  ancestor (or the node itself) against the collection root's header list. */
+function resolveColumn(
+  node: A11yNode,
+  chain: A11yNode[],
+  row: A11yNode,
+  collectionRoot: A11yNode | undefined,
+  columnHeadersByRoot: Map<A11yNode, string[]>,
+): string | undefined {
+  if (!collectionRoot || !columnHeadersByRoot.has(collectionRoot)) return undefined;
+  const headers = columnHeadersByRoot.get(collectionRoot)!;
+  const cellAncestor =
+    chain.find((a) => CELL_ROLES.has(a.role)) ?? (CELL_ROLES.has(node.role) ? node : undefined);
+  if (!cellAncestor) return undefined;
+  const idx = row.children.indexOf(cellAncestor);
+  return idx >= 0 && idx < headers.length ? headers[idx] || undefined : undefined;
+}
+
+/** Build the `StructuralContext` for a node inside a resolved row container. */
+function buildStructuralContext(
+  node: A11yNode,
+  chain: A11yNode[],
+  row: A11yNode,
+  parents: Map<A11yNode, A11yNode>,
+  columnHeadersByRoot: Map<A11yNode, string[]>,
+): StructuralContext {
+  const collectionRoot = nearestCollectionRoot(row, parents);
+  const ctx: StructuralContext = {
+    collection: collectionRoot ? collectionRoot.role : `${row.role}-list`,
+  };
+  const rowKey = firstNonEmptyName(row);
+  const column = resolveColumn(node, chain, row, collectionRoot, columnHeadersByRoot);
+  const rowText = collectVisibleText(row, 200);
+  if (rowKey) ctx.rowKey = rowKey;
+  if (column) ctx.column = column;
+  if (rowText) ctx.rowText = rowText;
+  return ctx;
 }
 
 function findRowContainer(node: A11yNode, ancestorChain: A11yNode[]): A11yNode | undefined {

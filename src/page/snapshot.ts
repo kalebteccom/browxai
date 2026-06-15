@@ -35,24 +35,28 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
   let elidedBranches = 0;
 
   // Manual walk so we can prune subtrees on `omit` matches (the generator yields
-  // depth-first; pruning needs to skip descendants explicitly).
+  // depth-first; pruning needs to skip descendants explicitly). `visitForSerialise`
+  // decides this node's disposition (skip-subtree / emit / silent-skip); the loop
+  // only owns stack management.
   const stack: Array<{ node: A11yNode; depth: number }> = [{ node: root, depth: 0 }];
   while (stack.length) {
     const { node, depth } = stack.pop()!;
-    if (matchesOmit(node, omitPatterns)) {
-      elidedBranches++;
-      elided += countSubtree(node);
-      continue;
-    }
-    if (!(pruneGeneric && isGenericNoise(node))) {
-      if (emitted >= maxNodes) {
-        truncated = true;
-        elided += 1 + countSubtree(node) - 1; // this node + its descendants we'd have emitted
-        continue;
-      }
-      lines.push(formatNode(node, depth, indent, maxNameLen));
+    const v = visitForSerialise(node, depth, {
+      omitPatterns,
+      pruneGeneric,
+      maxNameLen,
+      indent,
+      emitted,
+      maxNodes,
+    });
+    elidedBranches += v.elidedBranches;
+    elided += v.elided;
+    if (v.truncated) truncated = true;
+    if (v.line !== null) {
+      lines.push(v.line);
       emitted++;
     }
+    if (v.skipSubtree) continue;
     for (let i = node.children.length - 1; i >= 0; i--) {
       stack.push({ node: node.children[i]!, depth: depth + 1 });
     }
@@ -65,6 +69,60 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
     lines.push(`... [omit matched ${elidedBranches} subtree(s), ${elided} nodes total]`);
   }
   return lines.join("\n");
+}
+
+interface VisitOpts {
+  omitPatterns: string[];
+  pruneGeneric: boolean;
+  maxNameLen: number;
+  indent: string;
+  emitted: number;
+  maxNodes: number;
+}
+
+interface VisitResult {
+  /** The formatted line to emit, or null to emit nothing for this node. */
+  line: string | null;
+  /** Skip the node's children (omit-match or truncation). */
+  skipSubtree: boolean;
+  elided: number;
+  elidedBranches: number;
+  truncated: boolean;
+}
+
+/** Decide one node's disposition during `serialise`: an `omit` match prunes the
+ *  whole subtree, the maxNodes cap truncates, generic noise is silently dropped,
+ *  otherwise the node is formatted. Pure — the loop applies the result. */
+function visitForSerialise(node: A11yNode, depth: number, o: VisitOpts): VisitResult {
+  if (matchesOmit(node, o.omitPatterns)) {
+    return {
+      line: null,
+      skipSubtree: true,
+      elided: countSubtree(node),
+      elidedBranches: 1,
+      truncated: false,
+    };
+  }
+  if (o.pruneGeneric && isGenericNoise(node)) {
+    return { line: null, skipSubtree: false, elided: 0, elidedBranches: 0, truncated: false };
+  }
+  if (o.emitted >= o.maxNodes) {
+    // this node + its descendants we'd have emitted.
+    return {
+      line: null,
+      skipSubtree: true,
+      elided: countSubtree(node),
+      elidedBranches: 0,
+      truncated: true,
+    };
+  }
+  return {
+    line: formatNode(node, depth, o.indent, o.maxNameLen),
+    skipSubtree: false,
+    elided: 0,
+    elidedBranches: 0,
+    truncated: false,
+  };
 }
 
 function matchesOmit(node: A11yNode, patterns: string[]): boolean {

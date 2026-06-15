@@ -1,7 +1,7 @@
 // PlaywrightFirefoxAdapter — the second BrowserEngine adapter, the proof the
 // port generalizes to a second engine. It mirrors PlaywrightChromiumAdapter's
 // three launch shapes over `resolveBrowserType("firefox")` (Playwright's bundled
-// Juggler Firefox, the supported P1 lane per RFC D2) — but it mints NO eager CDP
+// Juggler Firefox, the default supported lane) — but it mints NO eager CDP
 // session: `newCDPSession` throws on Firefox (measured), and Firefox declares
 // `deep: false`, so the raw-CDP escape hatch is absent. Sessions on this engine
 // run the cross-browser surface; the ~19 CDP-hard tools structured-refuse via
@@ -11,7 +11,7 @@
 // The adapter delegates directly to Playwright on the per-action path exactly
 // like the chromium one — no added allocation on the hot path.
 //
-// Two-track per D2: the default lane is Juggler (full Playwright API — routes,
+// Two-track design: the default lane is Juggler (full Playwright API — routes,
 // video, HAR — so the ~139 class-A tools are real). The experimental stock-
 // Firefox `moz-firefox` BiDi channel rides behind `BROWX_FIREFOX_CHANNEL`
 // (see firefoxChannelFromEnv); it is NOT gated by the keystone. Measured against
@@ -56,7 +56,7 @@ export function firefoxChannelFromEnv(env: NodeJS.ProcessEnv = process.env): str
     throw new Error(
       `BROWX_FIREFOX_CHANNEL: unknown value "${raw}". The only supported value is ` +
         `"${MOZ_FIREFOX_CHANNEL}" (the experimental stock-Firefox WebDriver-BiDi channel). ` +
-        "Unset it for the default bundled-Juggler lane (RFC 0002 D2).",
+        "Unset it for the default bundled-Juggler lane.",
     );
   }
   return MOZ_FIREFOX_CHANNEL;
@@ -96,11 +96,11 @@ export class PlaywrightFirefoxAdapter {
     return { browser, context, page };
   }
 
-  /** BYOB attach. Per RFC D3 the Firefox attach model is a glass-box LAUNCH of
+  /** BYOB attach. The Firefox attach model is a glass-box LAUNCH of
    *  the user's real profile with `--remote-debugging-port`, NOT a CDP-attach —
    *  and Playwright has no public `connectOverBiDi` for a user's running
    *  Firefox. Until a BiDi attach client exists this rejects with a structured,
-   *  RFC-naming error rather than silently failing (the doctrine's
+   *  explanatory error rather than silently failing (the doctrine's
    *  no-silent-no-op rule). The `BROWX_ATTACH_BIDI` name is reserved for it.
    *  Promise-returning (not `async`) so the eslint require-await rule is honest:
    *  there is no awaited work — it is a structured refusal. */
@@ -110,10 +110,9 @@ export class PlaywrightFirefoxAdapter {
         "firefox-attach-not-supported: browxai cannot attach to a running Firefox over CDP. " +
           "Firefox removed CDP in v141; the forward path is WebDriver BiDi, and Playwright has no " +
           "public `connectOverBiDi` for a user's running Firefox yet (the `BROWX_ATTACH_BIDI` name " +
-          "is reserved for it). Per RFC 0002 D3 the Firefox BYOB model is a glass-box LAUNCH of the " +
+          "is reserved for it). The Firefox BYOB model is a glass-box LAUNCH of the " +
           "real profile with `--remote-debugging-port`, subject to the profile lock. Use a managed " +
-          "Firefox session (the default), or a chromium session for CDP-attach BYOB. " +
-          "See docs/rfcs/0002-multi-engine-bidi.md.",
+          "Firefox session (the default), or a chromium session for CDP-attach BYOB.",
       ),
     );
   }

@@ -1,4 +1,4 @@
-// adb plumbing for the Android engine (RFC 0002 D3/D8) — discover the Chrome
+// adb plumbing for the Android engine — discover the Chrome
 // DevTools socket on a USB-connected device and forward it to a loopback port so
 // `chromium.connectOverCDP` can attach to the user's REAL Chrome-on-Android.
 //
@@ -14,7 +14,7 @@
 // DevTools endpoint is exposed by the OS as an abstract-namespace unix socket
 // (`localabstract:chrome_devtools_remote`), reachable only after the user
 // enables USB debugging + on-device USB web-debugging. So the full-fidelity
-// BYOB-to-the-real-profile win survives on Android (RFC D3/D8) — this is the one
+// BYOB-to-the-real-profile win survives on Android — this is the one
 // place real-profile attach still works post-Chrome-136. See
 // developer.chrome.com/blog/remote-debugging-port (desktop-only) and
 // developer.chrome.com/docs/devtools/remote-debugging (the Android adb path).
@@ -49,11 +49,11 @@ export class AdbNotInstalledError extends Error {
   constructor(detail?: string) {
     super(
       "adb-missing: the Android Debug Bridge (`adb`) was not found on PATH. The android " +
-        "engine attaches to real Chrome-on-Android over adb + CDP (RFC 0002 D8). Install the " +
+        "engine attaches to real Chrome-on-Android over adb + CDP. Install the " +
         "Android platform-tools (https://developer.android.com/tools/releases/platform-tools) " +
         "and ensure `adb` is on PATH" +
         (detail ? ` (${detail})` : "") +
-        ". See docs/rfcs/0002-multi-engine-bidi.md.",
+        ".",
     );
     this.name = "AdbNotInstalledError";
   }
@@ -75,7 +75,7 @@ export class NoAndroidDeviceError extends Error {
         seen +
         " Connect a phone over USB, enable Developer Options → USB debugging, open Chrome, and " +
         "(for web debugging) enable Chrome → Settings → Developer tools / the on-device USB " +
-        "web-debugging toggle. See docs/rfcs/0002-multi-engine-bidi.md (RFC D8).",
+        "web-debugging toggle.",
     );
     this.name = "NoAndroidDeviceError";
     this.devices = devices;
@@ -89,8 +89,7 @@ export class ChromeSocketUnreachableError extends Error {
     super(
       "chrome-socket-unreachable: forwarded the adb socket but the Chrome DevTools endpoint did " +
         `not answer (${detail}). Open Chrome on the device and enable USB web-debugging ` +
-        "(chrome://inspect from the desktop should list the device's tabs). " +
-        "See docs/rfcs/0002-multi-engine-bidi.md (RFC D8).",
+        "(chrome://inspect from the desktop should list the device's tabs).",
     );
     this.name = "ChromeSocketUnreachableError";
   }
@@ -163,7 +162,7 @@ export function selectDevice(devices: readonly AdbDevice[], serial?: string): Ad
   throw new Error(
     `ambiguous-device: ${ready.length} ready Android devices are connected ` +
       `(${ready.map((d) => d.serial).join(", ")}). Pass a serial via BROWX_ANDROID_SERIAL ` +
-      "to pick one. See docs/rfcs/0002-multi-engine-bidi.md (RFC D8).",
+      "to pick one.",
   );
 }
 

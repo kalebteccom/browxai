@@ -181,16 +181,23 @@ export class SecretRegistry {
    *  Non-string leaves pass through. Bounded depth (8) so a malformed input
    *  can't blow the stack. Returns a new object — the input is not mutated. */
   applyMaskDeep<T>(obj: T, depth = 0): T {
+    // Masking only rewrites string leaves, so the result has the same structure
+    // as the input. The recursion runs on `unknown` (every branch narrows with a
+    // real runtime check); the single `as T` is that structure-preserving contract.
+    return this.maskValue(obj, depth) as T;
+  }
+
+  private maskValue(obj: unknown, depth: number): unknown {
     if (this.byName.size === 0) return obj;
     if (depth > 8) return obj;
-    if (typeof obj === "string") return this.applyMaskInText(obj) as unknown as T;
-    if (Array.isArray(obj)) return obj.map((v) => this.applyMaskDeep(v, depth + 1)) as unknown as T;
+    if (typeof obj === "string") return this.applyMaskInText(obj);
+    if (Array.isArray(obj)) return (obj as unknown[]).map((v) => this.maskValue(v, depth + 1));
     if (obj && typeof obj === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        out[k] = this.applyMaskDeep(v, depth + 1);
+        out[k] = this.maskValue(v, depth + 1);
       }
-      return out as unknown as T;
+      return out;
     }
     return obj;
   }

@@ -180,15 +180,12 @@ export async function verifyVisible(
 async function probeNotVisibleReason(loc: Locator): Promise<string> {
   try {
     return await loc
-      .evaluate((el: unknown) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const e = el as any;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const cs = (globalThis as any).getComputedStyle(e);
+      .evaluate((el: Element): string => {
+        const cs = window.getComputedStyle(el);
         if (cs.display === "none") return "hidden (display:none)";
         if (cs.visibility === "hidden") return "hidden (visibility:hidden)";
         if (Number(cs.opacity || "1") === 0) return "hidden (opacity:0)";
-        const r = e.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) return "hidden (zero-sized box)";
         return "off-screen or covered";
       })
@@ -284,11 +281,14 @@ export async function verifyValue(
     }
     const actual = await loc
       .first()
-      .evaluate((el: unknown): string | null => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const e = el as any;
-        if (typeof e.value === "string") return e.value;
-        if (e.isContentEditable) return e.innerText ?? "";
+      .evaluate((el: Element): string | null => {
+        // Any element carrying a string `value` (input/textarea/select, but
+        // also output/button/etc.) reports it directly; a contenteditable host
+        // falls back to its rendered text. Structural checks mirror the DOM
+        // surface without assuming a single concrete element type.
+        const valued = el as Element & { value?: unknown };
+        if (typeof valued.value === "string") return valued.value;
+        if (el instanceof HTMLElement && el.isContentEditable) return el.innerText ?? "";
         return null;
       })
       .catch(() => null);

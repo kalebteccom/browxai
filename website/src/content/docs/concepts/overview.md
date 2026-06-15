@@ -1,6 +1,6 @@
 ---
 title: What browxai is
-description: browxai is a browser-control surface designed for AI agents, not for human developers. It owns its own Playwright and CDP transport so it can own the whole session lifecycle.
+description: browxai is a browser-control surface designed for AI agents, not for human developers. It owns its own multi-engine transport so it can own the whole session lifecycle.
 ---
 
 browxai is an [MCP](https://modelcontextprotocol.io/) server that hands an AI
@@ -31,8 +31,10 @@ in tokens or guessing at selectors.
 ## Not a wrapper
 
 browxai is not a thin shell over someone else's MCP server. It owns its own
-Playwright and CDP transport. That ownership is the point: it lets browxai own
-the full session lifecycle rather than inheriting whatever a wrapped tool
+multi-engine transport spanning Chromium, Firefox, and WebKit, real
+Chrome-on-Android, and real Safari, each over the automation protocol that fits
+it, behind one capability-port seam. That ownership is the point: it lets browxai
+own the full session lifecycle rather than inheriting whatever a wrapped tool
 allows.
 
 Owning the transport is what makes the rest possible: managed profiles,

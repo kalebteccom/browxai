@@ -1,23 +1,23 @@
 // The NetworkSubstrate interface — the engine-agnostic seam beneath the network
 // tools (network_read / ws_read / network_body) and the per-action ActionResult
-// network slice. It is the network side of RFC 0002 D5 (hybrid network substrate,
-// Playwright events as the portable layer): the tools + the action window ask a
+// network slice. It is the network side of the hybrid network substrate, with
+// Playwright events as the portable layer: the tools + the action window ask a
 // substrate for "the session network ring", "the WS/SSE ring", "a per-action tap",
 // and "a response body"; an engine-specific implementation answers.
 //
-// Dependency direction (architecture doctrine §1): tools / action-window →
+// Dependency direction: tools / action-window →
 // NetworkSubstrate (this interface) → implementation → CDP / Playwright events. A
 // tool never reaches a CDPSession or a raw context event through this seam; the
 // engine handle is captured at substrate construction, so the per-call surface
 // carries no engine type. That is what un-couples the network slice from CDP and
 // lets network_read / ws_read / network_body run on Firefox.
 //
-// Two implementations behind it (hybrid per D5):
+// Two implementations behind it (hybrid):
 //   - CdpNetworkSubstrate (chromium): owns the EXISTING NetworkBuffer / WsBuffer /
 //     NetworkTap / fetchResponseBody CDP path VERBATIM — byte-identical buffers
 //     and per-action tap, so the chromium keystones + unit tests stay green
 //     unchanged. The CDP path is kept on chromium deliberately: the envelope is
-//     browxai's hottest path and the benchmark (RFC open input #4) put the CDP
+//     browxai's hottest path and benchmarking put the CDP
 //     tap at parity with the event tap on chromium, so there is no reason to move
 //     chromium off the substrate it already has.
 //   - PlaywrightNetworkSubstrate (firefox / webkit): the Playwright context
@@ -45,15 +45,24 @@ import {
   WsBuffer,
   NetworkTap,
   fetchResponseBody,
-  PlaywrightNetworkBuffer,
-  PlaywrightWsBuffer,
-  PlaywrightNetworkTap,
   type NetworkEntry,
   type NetworkSummary,
   type MutationEntry,
   type SessionNetworkRing,
   type SessionWsRing,
 } from "./network.js";
+// RFC 0004 P4 / D10 — the off-Chromium Playwright network classes are imported
+// DIRECTLY from their defining module, not re-exported through the `network.js`
+// barrel. The barrel re-export was a genuine RUNTIME cycle
+// (`network.ts` → `network-playwright.ts` → `network.ts`); routing this sole
+// runtime consumer to the source module breaks it so the no-circular rule is
+// clean at `error`. (network-playwright.ts still imports runtime helpers from
+// network.ts — that edge is one-directional now, so no cycle.)
+import {
+  PlaywrightNetworkBuffer,
+  PlaywrightWsBuffer,
+  PlaywrightNetworkTap,
+} from "./network-playwright.js";
 
 /** The per-action network tap — opened before an action dispatches, closed after
  *  the settle window. `close()` returns the same `{summary, requests, mutations}`
@@ -184,5 +193,58 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
 
   fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
     return this.http.fetchBody(requestId, secrets);
+  }
+}
+
+/** Safari substrate — a NO-OP. Real Safari has NO protocol-level
+ *  network observation or interception at all: safaridriver's WebDriver Classic
+ *  has no network tap, and Safari's experimental BiDi ships only
+ *  `network.setCacheBehavior` (the `network` observation domain is absent). So
+ *  the network tools are
+ *  capability-gated on Safari and the action-window network slice is empty. This
+ *  empty substrate keeps the session-creation + envelope code engine-blind: the
+ *  rings are always empty, the per-action tap reports zero traffic, and
+ *  `network_body` returns a structured "not available". It is never the source of
+ *  truth for any surfaced network claim — the gate refuses the tools first. */
+export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
+  readonly engine = "safari";
+  readonly http: SessionNetworkRing = {
+    setSecrets: () => undefined,
+    iter: () => [],
+    recent: () => ({ summary: { total: 0, byType: {}, failed: 0 }, requests: [] }),
+  };
+  readonly ws: SessionWsRing = {
+    setSecrets: () => undefined,
+    recent: () => ({ total: 0, frames: [] }),
+    since: () => [],
+  };
+
+  attach(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  setSecrets(): void {
+    // No egress sinks to wire — the rings + tap are permanently empty on Safari.
+  }
+
+  openActionTap(): ActionNetworkTap {
+    return {
+      open: () => Promise.resolve(),
+      close: () =>
+        Promise.resolve({
+          summary: { total: 0, byType: {}, failed: 0 },
+          requests: [],
+          mutations: [],
+        }),
+    };
+  }
+
+  fetchBody(): Promise<FetchBodyResult> {
+    return Promise.resolve({
+      ok: false,
+      error:
+        "network_body is not available on the safari engine — Safari exposes no protocol-level " +
+        "network observation. Use a chromium/firefox/webkit session for network bodies.",
+    });
   }
 }

@@ -1,0 +1,10 @@
+{
+  "comment": "RFC 0004 D11 / L2 duplication budget. P3 promotes this from reporting-only to an ENFORCED ratchet: jscpd:check exits non-zero above `threshold`. Current duplication is 3.30% — D4's PolicyRecordBuffer / actionTool / EgressSanitiser / page-split extractions collapsed the five-policy and several substrate/handler clones; the residual is the actionTool + EgressSanitiser sites not yet fully migrated (a tracked follow-up). The floor is set just above current to bite on any REGRESSION while honestly acknowledging that debt; the RFC's <=1% target lands as the remaining D4 extractions complete and the threshold ratchets down.",
+  "path": ["src"],
+  "minTokens": 70,
+  "threshold": 3.5,
+  "reporters": ["consoleFull"],
+  "ignore": ["**/*.test.ts", "**/*.generated.*"],
+  "gitignore": true,
+  "absolute": true
+}

@@ -1,5 +1,5 @@
 // Android keystone — the proof the engine port generalizes to REAL Chrome-on-
-// Android over adb + CDP (RFC 0002 D3/D8, P3). The surviving full-fidelity real-
+// Android over adb + CDP. The surviving full-fidelity real-
 // profile BYOB lane.
 //
 // REQUIRES a USB-connected Android device with Chrome open + USB debugging
@@ -121,7 +121,7 @@ describeAndroid("android keystone — real Chrome-on-Android over adb + CDP (BYO
       }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === session);
       expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The headline of P3: a real Chrome-on-Android session is tagged android
+      // The headline behavior: a real Chrome-on-Android session is tagged android
       // through the BrowserEngine port — the BYOB-to-real-profile win.
       expect(row!.engine).toBe("android");
     },

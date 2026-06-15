@@ -10,9 +10,15 @@ import {
   type ActionResult,
   type ActionWindowOptions,
   type ElementProbe,
-  type HitPoint,
 } from "./actionresult.js";
 import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.js";
+import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
+import {
+  windowScrollGeometry,
+  elementScrollGeometry,
+  type ScrollContainerEl,
+  type WindowLike,
+} from "./actions-scroll.js";
 
 // aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
@@ -324,8 +330,7 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     if (mode.kind === "container") {
       const loc = locatorFor(ctx.page, ctx.refs, args.target!);
       await loc.evaluate(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (el: any, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
+        (el: ScrollContainerEl, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
           if (a.to === "top") el.scrollTop = 0;
           else if (a.to === "bottom") el.scrollTop = el.scrollHeight;
           else if (a.to === "left") el.scrollLeft = 0;
@@ -341,8 +346,8 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     // window
     await ctx.page.evaluate(
       (a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = globalThis as any;
+        const g: unknown = globalThis;
+        const w = g as WindowLike;
         const doc = w.document?.documentElement;
         if (a.to === "top") w.scrollTo(w.scrollX, 0);
         else if (a.to === "bottom") w.scrollTo(w.scrollX, doc ? doc.scrollHeight : 1e9);
@@ -354,55 +359,6 @@ export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<Acti
     );
     return { stillAttached: true, scroll: await windowScrollGeometry(ctx.page) };
   });
-}
-
-type ScrollGeometry = NonNullable<ElementProbe["scroll"]>;
-
-/** Post-scroll geometry of the document/window scroller. */
-async function windowScrollGeometry(page: Page): Promise<ScrollGeometry | undefined> {
-  return page
-    .evaluate((): ScrollGeometry | undefined => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const w = globalThis as any;
-      const d = w.document;
-      const s = d?.scrollingElement || d?.documentElement;
-      if (!s) return undefined;
-      const x = w.scrollX ?? s.scrollLeft ?? 0;
-      const y = w.scrollY ?? s.scrollTop ?? 0;
-      return {
-        x,
-        y,
-        scrollWidth: s.scrollWidth,
-        scrollHeight: s.scrollHeight,
-        clientWidth: s.clientWidth,
-        clientHeight: s.clientHeight,
-        atTop: y <= 1,
-        atBottom: y + s.clientHeight >= s.scrollHeight - 1,
-      };
-    })
-    .catch(() => undefined);
-}
-
-/** Post-scroll geometry of a scroll-container element. */
-async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometry | undefined> {
-  return loc
-    .evaluate((el: unknown): ScrollGeometry | undefined => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const e = el as any;
-      if (!e) return undefined;
-      const y = e.scrollTop ?? 0;
-      return {
-        x: e.scrollLeft ?? 0,
-        y,
-        scrollWidth: e.scrollWidth,
-        scrollHeight: e.scrollHeight,
-        clientWidth: e.clientWidth,
-        clientHeight: e.clientHeight,
-        atTop: y <= 1,
-        atBottom: y + e.clientHeight >= e.scrollHeight - 1,
-      };
-    })
-    .catch(() => undefined);
 }
 
 export interface SetViewportArgs extends ActionWindowOptions {
@@ -468,8 +424,10 @@ export async function chooseOption(
     // Open the control if not already expanded. `aria-expanded` is the strongest
     // signal; absence isn't proof it's closed, so we still click if false-or-missing.
     const isExpanded = await trigger
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .evaluate((el: any) => el.getAttribute && el.getAttribute("aria-expanded") === "true")
+      .evaluate(
+        (el: { getAttribute?: (k: string) => string | null }) =>
+          !!el.getAttribute && el.getAttribute("aria-expanded") === "true",
+      )
       .catch(() => false);
     if (!isExpanded) {
       await trigger.click({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
@@ -609,301 +567,8 @@ function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } 
   return refOrSelector(t);
 }
 
-/** State captured *before* the action runs so the post-action probe can compute
- *  before/after deltas for `ownerControl` / `container`. */
-export interface PreProbeData {
-  ownerLabel?: string;
-  ownerText?: string;
-  container?: { kind: string; rowKey?: string; rowText?: string };
-}
-
-/**
- * Capture the pre-action state of the owning control and the enclosing
- * repeated container, so the post-action probe can emit `changed` flags
- * without the caller having to re-snapshot.
- *
- * Exported for unit tests; runs at the DOM level (cheap, no a11y tree).
- */
-export async function preProbe(loc: Locator): Promise<PreProbeData> {
-  // Same 1.5s bound as `probe` — see PROBE_EVAL_MS rationale there.
-  try {
-    const count = await loc.count();
-    if (count === 0) return {};
-    return await loc.evaluate(probeAncestorsScript, undefined, { timeout: 1500 }).catch(() => ({}));
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Always read post-action DOM state so callers can confirm a write landed
- * without a follow-up `snapshot`/`screenshot` round-trip. We deliberately
- * do not echo back `valueRequested` as `value` — the probe must report what
- * the DOM actually holds, not what the caller asked for.
- *
- * Exported for unit tests.
- */
-export async function probe(
-  loc: Locator,
-  target: ActionTarget,
-  valueRequested?: string,
-  pre?: PreProbeData,
-): Promise<ElementProbe> {
-  const ref = target.ref;
-  // Post-action probe runs MULTIPLE `loc.evaluate()` calls — each defaults to
-  // Playwright's 30s timeout. On busy SPAs where re-renders re-attach the
-  // element handle constantly, a probe evaluate can hang far longer than
-  // makes sense for a read-only check. Bound each evaluate to PROBE_EVAL_MS
-  // so a stuck probe returns partial data instead of consuming the whole
-  // action deadline (which then surfaces as a click "timeout" even though
-  // the click already fired — adopter report 2026-06-08).
-  const PROBE_EVAL_MS = 1500;
-  try {
-    const count = await loc.count();
-    if (count === 0) return { ref, stillAttached: false };
-    const focused = await loc
-      .evaluate(
-        (el: { ownerDocument?: { activeElement?: unknown } }) =>
-          el === el.ownerDocument?.activeElement,
-        undefined,
-        { timeout: PROBE_EVAL_MS },
-      )
-      .catch(() => false);
-    const inputValue = await loc.inputValue({ timeout: PROBE_EVAL_MS }).catch(() => undefined);
-    const value =
-      inputValue !== undefined
-        ? inputValue
-        : await loc
-            .evaluate(
-              (el: { isContentEditable?: boolean; textContent?: string | null }) =>
-                el.isContentEditable ? (el.textContent ?? "") : null,
-              undefined,
-              { timeout: PROBE_EVAL_MS },
-            )
-            .catch(() => null);
-    const checked = await loc
-      .evaluate(
-        (el: { tagName?: string; type?: string; checked?: boolean; indeterminate?: boolean }) => {
-          const tag = el.tagName?.toLowerCase();
-          const type = el.type?.toLowerCase();
-          if (tag !== "input" || (type !== "checkbox" && type !== "radio")) return undefined;
-          if (el.indeterminate) return "mixed" as const;
-          return el.checked === true;
-        },
-        undefined,
-        { timeout: PROBE_EVAL_MS },
-      )
-      .catch(() => undefined);
-    // Visible-wrapper text. Covers controls that render the post-action state
-    // outside `input.value` (chip-style selects, combobox displays, badge
-    // pickers, custom dropdowns that clear the underlying input on commit).
-    // Walks up to 4 ancestors looking for a labelled node (role attr or
-    // `data-testid|test|cy|qa`); falls back to immediate parent's innerText.
-    // Capped at 200 chars.
-    const displayText = await loc
-      .evaluate(
-        (el: unknown) => {
-          const DOC_BODY_TAG = "BODY";
-          const isElement = (
-            n: unknown,
-          ): n is {
-            parentElement: unknown;
-            tagName?: string;
-            getAttribute?: (k: string) => string | null;
-            dataset?: Record<string, string | undefined>;
-            innerText?: string;
-          } => !!n && typeof n === "object";
-          type ElLike = {
-            parentElement: unknown;
-            tagName?: string;
-            getAttribute?: (k: string) => string | null;
-            dataset?: Record<string, string | undefined>;
-            innerText?: string;
-          };
-          let cur: ElLike | null = isElement(el) ? el : null;
-          for (let i = 0; i < 4 && cur; i++) {
-            const next = cur.parentElement;
-            if (!isElement(next) || next.tagName === DOC_BODY_TAG) break;
-            cur = next;
-            const role = cur.getAttribute?.("role") || null;
-            const ds = cur.dataset || {};
-            if (role || ds.testid || ds.test || ds.cy || ds.qa) {
-              const t = (cur.innerText || "").trim();
-              return t ? t.slice(0, 200) : null;
-            }
-          }
-          if (isElement(el)) {
-            const parent = el.parentElement;
-            if (isElement(parent)) {
-              const t = (parent.innerText || "").trim();
-              return t ? t.slice(0, 200) : null;
-            }
-          }
-          return null;
-        },
-        undefined,
-        { timeout: PROBE_EVAL_MS },
-      )
-      .catch(() => null);
-    const out: ElementProbe = { ref, stillAttached: true, focused, value: value ?? null };
-    if (checked !== undefined) out.checked = checked;
-    if (valueRequested !== undefined) out.valueRequested = valueRequested;
-    if (displayText !== null) out.displayText = displayText;
-
-    // post-action owner/container state. Always read; compose deltas
-    // against `pre` when supplied. Same in-page script as preProbe, so the
-    // pre/post values are directly comparable.
-    const post: PreProbeData = await loc
-      .evaluate(probeAncestorsScript, undefined, { timeout: PROBE_EVAL_MS })
-      .catch((): PreProbeData => ({}));
-    if (pre && (pre.ownerText !== undefined || post.ownerText !== undefined)) {
-      const before = pre.ownerText;
-      const after = post.ownerText;
-      const oc: NonNullable<ElementProbe["ownerControl"]> = { changed: before !== after };
-      if (post.ownerLabel ?? pre.ownerLabel) oc.label = post.ownerLabel ?? pre.ownerLabel;
-      if (before !== undefined) oc.displayTextBefore = before;
-      if (after !== undefined) oc.displayTextAfter = after;
-      out.ownerControl = oc;
-    }
-    if (post.container) {
-      const cont: NonNullable<ElementProbe["container"]> = {
-        kind: post.container.kind,
-        ...(post.container.rowKey ? { rowKey: post.container.rowKey } : {}),
-        ...(post.container.rowText !== undefined ? { rowText: post.container.rowText } : {}),
-      };
-      if (pre?.container) {
-        cont.changed = pre.container.rowText !== post.container.rowText;
-      }
-      out.container = cont;
-    }
-    return out;
-  } catch {
-    return { ref, stillAttached: false };
-  }
-}
-
-/**
- * In-page script used by `preProbe` and the post-action half of `probe`.
- * Walks up the target element's ancestor chain looking for:
- *   - The nearest owning **form control** (combobox / listbox / radiogroup /
- *     labelled `data-test*` wrapper) — `ownerText` is its `innerText`.
- *   - The nearest repeated **container** (`role=row`/`listitem`/`article`,
- *     or `<tr>`/`<li>` tags) — `container.rowText` is its `innerText`.
- *
- * Capped at 6 ancestor steps and 200 chars per text field. Returns an empty
- * object when nothing matches.
- *
- * Defined as a plain function (not an arrow) so Playwright can stringify it
- * across the CDP boundary cleanly. `el: any` because we run in DOM context
- * where TS's DOM lib isn't loaded; the runtime check is what matters.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const probeAncestorsScript = function probeAncestors(el: any): PreProbeData {
-  if (!el || typeof el !== "object") return {};
-  const OWNER_ROLES = new Set(["combobox", "listbox", "radiogroup", "group", "menu", "tablist"]);
-  const ROW_ROLES = new Set(["row", "listitem", "article"]);
-  const ROW_TAGS = new Set(["tr", "li"]);
-  const out: PreProbeData = {};
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let cur: any = el.parentElement;
-  for (let i = 0; i < 6 && cur && cur.tagName !== "BODY" && cur.tagName !== "HTML"; i++) {
-    const role: string | null = cur.getAttribute ? cur.getAttribute("role") : null;
-    const ds = cur.dataset || {};
-    const hasTestAttr = !!(ds.testid || ds.test || ds.cy || ds.qa);
-    const ariaLabel: string | null = cur.getAttribute ? cur.getAttribute("aria-label") : null;
-
-    if (!out.ownerText) {
-      const isFieldOwner = (role && OWNER_ROLES.has(role)) || (hasTestAttr && (role || ariaLabel));
-      if (isFieldOwner) {
-        const txt = ((cur.innerText || "") as string).trim();
-        if (txt) out.ownerText = txt.length > 200 ? txt.slice(0, 199) + "…" : txt;
-        if (ariaLabel) out.ownerLabel = ariaLabel;
-      }
-    }
-
-    if (!out.container) {
-      const tag = cur.tagName ? (cur.tagName as string).toLowerCase() : "";
-      if ((role && ROW_ROLES.has(role)) || ROW_TAGS.has(tag)) {
-        const kind = role && ROW_ROLES.has(role) ? role : tag;
-        const rowText = ((cur.innerText || "") as string).trim().replace(/\s+/g, " ");
-        const capped = rowText.length > 200 ? rowText.slice(0, 199) + "…" : rowText;
-        // rowKey = first non-empty text node within the container.
-        let rowKey: string | undefined;
-        const firstText = (cur.innerText || "")
-          .trim()
-          .split("\n")
-          .find((s: string) => s.trim().length > 0);
-        if (firstText) {
-          const t = firstText.trim();
-          rowKey = t.length > 80 ? t.slice(0, 79) + "…" : t;
-        }
-        const containerOut: { kind: string; rowKey?: string; rowText?: string } = { kind };
-        if (rowKey) containerOut.rowKey = rowKey;
-        if (capped) containerOut.rowText = capped;
-        out.container = containerOut;
-      }
-    }
-
-    if (out.ownerText && out.container) break;
-    cur = cur.parentElement;
-  }
-  return out;
-};
-
-/** Coordinate-action evidence helper: read `document.elementFromPoint` at (x,y)
- *  with role/text/ancestor context. Returns null when nothing's there.
- *  Uses `any` for the in-page DOM side — TS's DOM lib isn't loaded here. */
-async function captureHit(page: Page, x: number, y: number): Promise<HitPoint | null> {
-  return page
-    .evaluate(
-      ({ x, y }: { x: number; y: number }): HitPoint | null => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const doc: any = (globalThis as any).document;
-        if (!doc) return null;
-        const el = doc.elementFromPoint(x, y);
-        if (!el) return null;
-        const tag: string = (el.tagName || "").toLowerCase();
-        const role: string | undefined = el.getAttribute
-          ? el.getAttribute("role") || undefined
-          : undefined;
-        const text = ((el.textContent || "") as string).trim().replace(/\s+/g, " ").slice(0, 120);
-        const parent = el.parentElement;
-        const ancestorText = parent
-          ? ((parent.innerText || "") as string).trim().replace(/\s+/g, " ").slice(0, 200)
-          : undefined;
-        const out: HitPoint = { tag };
-        if (role) out.role = role;
-        if (text) out.text = text;
-        if (ancestorText) out.ancestorText = ancestorText;
-        return out;
-      },
-      { x, y },
-    )
-    .catch(() => null);
-}
-
-/** Best-effort identity for the active element so we can report whether focus
- *  shifted during a coord action. Returns a stable-ish key (tag + id + role +
- *  testid + first text). */
-async function captureFocusedRef(page: Page): Promise<string | null> {
-  return page
-    .evaluate((): string | null => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const doc: any = (globalThis as any).document;
-      if (!doc) return null;
-      const a = doc.activeElement;
-      if (!a) return null;
-      const id: string = a.id || "";
-      const role: string = a.getAttribute ? a.getAttribute("role") || "" : "";
-      const testid: string = a.getAttribute
-        ? a.getAttribute("data-testid") ||
-          a.getAttribute("data-test") ||
-          a.getAttribute("data-cy") ||
-          ""
-        : "";
-      const tag: string = (a.tagName || "").toLowerCase();
-      const txt = ((a.textContent || "") as string).trim().slice(0, 60);
-      return `${tag}#${id}@${role}[${testid}]:${txt}`;
-    })
-    .catch(() => null);
-}
+// The post-action element-probe machinery (preProbe / probe / captureHit /
+// captureFocusedRef + their in-page scripts) lives in `actions-probe.ts` to keep
+// this file under the size budget; re-exported here so callers import unchanged.
+export type { PreProbeData } from "./actions-probe.js";
+export { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";

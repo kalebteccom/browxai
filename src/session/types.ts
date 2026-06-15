@@ -4,7 +4,7 @@
 // no close, no storage reset on shutdown).
 
 import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
-import type { EngineKind } from "../engine/index.js";
+import type { EngineKind, SafariSessionHandle } from "../engine/index.js";
 
 export type SessionMode = "managed" | "byob";
 
@@ -76,6 +76,15 @@ export interface SessionOptions {
    *  is attach-only (real Chrome-on-Android over adb + CDP) — managed/ephemeral
    *  launch refuses with `android-launch-not-supported`. */
   browserType?: EngineKind;
+  /** The launch mode the EngineRegistry's `makeAdapter` builds for. The three
+   *  session factories (managed / incognito / byob) thread this through so the
+   *  per-engine launch/attach branching collapses into one registry lookup —
+   *  the factory keeps the MODE concern (option-building), the engine entry owns
+   *  the per-engine launch. Defaults to `"managed"` (a bare `makeAdapter(opts)`
+   *  with no `launchMode` is the managed launch, matching the 0004-03 §1 safari
+   *  example). Internal: never set from the wire — `open_session` carries
+   *  `mode`, which the factory maps to this. */
+  launchMode?: "managed" | "incognito" | "byob";
 }
 
 export interface BrowserSession {
@@ -90,6 +99,13 @@ export interface BrowserSession {
    *  Consumers that need the handle route through `requireCdp()` (src/engine/),
    *  which asserts presence with a structured, engine-naming error. */
   cdp?(): CDPSession;
+  /** The Safari-native handle — present ONLY on the `safari` engine, the first
+   *  engine with no Playwright `Page`. On a Safari session,
+   *  `page()` THROWS (`safari-no-playwright-page`); consumers that can run on
+   *  Safari (snapshot/find/navigate/screenshot/cookies via this handle's
+   *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the
+   *  capability gate refuses the rest up front. Absent on every other engine. */
+  safari?(): SafariSessionHandle;
   close(): Promise<void>;
 }
 

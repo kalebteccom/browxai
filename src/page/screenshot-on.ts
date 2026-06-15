@@ -105,6 +105,60 @@ const REAL_CLOCK: OnClock = {
 /** Run the trigger window. The caller is responsible for the outer
  *  `withDeadline` wrap (anti-wedge). The trigger source must be wired by the
  *  caller (the server handler binds it to the live `Page` / `CDPSession`). */
+/** Mutable state for an in-flight screenshot_on window, threaded through the
+ *  fire handler. */
+interface OnWindowState {
+  paths: string[];
+  capturedAt: number[];
+  warnings: string[];
+  i: number;
+  capHit: boolean;
+  snapping: boolean;
+  tStart: number;
+  resolvedDir: string;
+  ext: string;
+  snap: SnapFn;
+  clock: OnClock;
+  trigger: string;
+  /** End the window early (cancel timer + resolve). */
+  endWindow: () => void;
+}
+
+/** Trigger handler: capture one frame per visible state. Drops overlapping fires
+ *  (a single screenshot per state is the useful unit), ends the window on the
+ *  per-window cap, else fires a fire-and-forget snap that writes the PNG. */
+function onScreenshotFire(st: OnWindowState): void {
+  if (st.capHit || st.snapping) return;
+  if (st.paths.length >= MAX_TRIGGERS_PER_WINDOW) {
+    st.capHit = true;
+    st.warnings.push(
+      `reached MAX_TRIGGERS_PER_WINDOW=${MAX_TRIGGERS_PER_WINDOW} for trigger "${st.trigger}"; window stopped early`,
+    );
+    st.endWindow();
+    return;
+  }
+  st.snapping = true;
+  const t = st.clock.now();
+  st.snap()
+    .then((buf) => {
+      const ts = t - st.tStart;
+      const name = `${String(st.i++).padStart(4, "0")}-${ts}.${st.ext}`;
+      // $BROWX_WORKSPACE-rooted by construction (resolveWorkspacePath in caller).
+      const p = join(st.resolvedDir, name);
+      writeFileSync(p, buf);
+      st.paths.push(p);
+      st.capturedAt.push(ts);
+    })
+    .catch((err) => {
+      st.warnings.push(
+        `capture on "${st.trigger}" at +${st.clock.now() - st.tStart}ms: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    })
+    .finally(() => {
+      st.snapping = false;
+    });
+}
+
 export async function runScreenshotOn(
   snap: SnapFn,
   source: TriggerSource,
@@ -126,66 +180,34 @@ export async function runScreenshotOn(
   const capturedAt: number[] = [];
   const warnings: string[] = [];
 
-  const tStart = clock.now();
-  let i = 0;
-  let capHit = false;
-  // Serialise captures — if a trigger fires while a previous snap is still in
-  // flight (e.g. console-error storm), drop the extra fire. Cheaper than
-  // queueing N writes that all converge on the same UI state.
-  let snapping = false;
-
-  // Resolver for the window's natural end. The trigger source can also push
-  // us to early-finish when the per-window cap is hit.
+  // Resolver for the window's natural end. The trigger source can also push us
+  // to early-finish when the per-window cap is hit.
   let resolveWindow: () => void = () => undefined;
   const windowDone = new Promise<void>((r) => {
     resolveWindow = r;
   });
-
   const cancelTimer = clock.setTimeout(() => resolveWindow(), args.durationMs);
 
-  const onFire = (): void => {
-    if (capHit) return;
-    if (snapping) {
-      // Drop the in-flight overlap — a single screenshot per visible state is
-      // the useful unit; we don't want N nearly-identical PNGs for a sub-ms
-      // event burst.
-      return;
-    }
-    if (paths.length >= MAX_TRIGGERS_PER_WINDOW) {
-      capHit = true;
-      warnings.push(
-        `reached MAX_TRIGGERS_PER_WINDOW=${MAX_TRIGGERS_PER_WINDOW} for trigger "${args.trigger}"; window stopped early`,
-      );
+  const st: OnWindowState = {
+    paths,
+    capturedAt,
+    warnings,
+    i: 0,
+    capHit: false,
+    snapping: false,
+    tStart: clock.now(),
+    resolvedDir,
+    ext,
+    snap,
+    clock,
+    trigger: args.trigger,
+    endWindow: () => {
       cancelTimer();
       resolveWindow();
-      return;
-    }
-    snapping = true;
-    const t = clock.now();
-    // Fire-and-forget — the trigger source is event-emitter shaped; we can't
-    // await inside the handler. Errors are caught and surfaced as warnings.
-    snap()
-      .then((buf) => {
-        const ts = t - tStart;
-        const idx = i++;
-        const name = `${String(idx).padStart(4, "0")}-${ts}.${ext}`;
-        // $BROWX_WORKSPACE-rooted by construction (resolveWorkspacePath above).
-        const p = join(resolvedDir, name);
-        writeFileSync(p, buf);
-        paths.push(p);
-        capturedAt.push(ts);
-      })
-      .catch((err) => {
-        warnings.push(
-          `capture on "${args.trigger}" at +${clock.now() - tStart}ms: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      })
-      .finally(() => {
-        snapping = false;
-      });
+    },
   };
 
-  const dispose = source.subscribe(args.trigger, onFire);
+  const dispose = source.subscribe(args.trigger, () => onScreenshotFire(st));
   try {
     await windowDone;
   } finally {
@@ -194,13 +216,13 @@ export async function runScreenshotOn(
   }
 
   // A snap may still be in flight when the timer fires — drain briefly so the
-  // final capture lands on the result. Bounded so a wedged snap can't extend
-  // the window indefinitely; the outer `withDeadline` is the ultimate ceiling.
+  // final capture lands. Bounded so a wedged snap can't extend the window; the
+  // outer `withDeadline` is the ultimate ceiling.
   const drainDeadline = clock.now() + 250;
-  while (snapping && clock.now() < drainDeadline) {
+  while (st.snapping && clock.now() < drainDeadline) {
     await new Promise((r) => setTimeout(r, 10));
   }
-  if (snapping) {
+  if (st.snapping) {
     warnings.push(
       `screenshot_on: final capture did not settle within 250ms drain window — result may omit one frame`,
     );

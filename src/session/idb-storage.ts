@@ -95,14 +95,22 @@ export async function idbListStores(
 
 /** Get the value at a key. Returns `{found:false}` if absent. Non-JSON
  *  values surface as a structured error rather than a silent `undefined`. */
+type IdbGetResult =
+  | { found: false; dbName: string; storeName: string; key: unknown; origin: string }
+  | {
+      found: true;
+      dbName: string;
+      storeName: string;
+      key: unknown;
+      value: unknown;
+      origin: string;
+    };
+
 export async function idbGet(
   page: Page,
   args: { dbName: string; storeName: string; key: unknown },
   tool: string,
-): Promise<
-  | { found: false; dbName: string; storeName: string; key: unknown; origin: string }
-  | { found: true; dbName: string; storeName: string; key: unknown; value: unknown; origin: string }
-> {
+): Promise<IdbGetResult> {
   if (!args.dbName) throw new Error(`${tool}: \`dbName\` is required`);
   if (!args.storeName) throw new Error(`${tool}: \`storeName\` is required`);
   if (args.key === undefined || args.key === null) throw new Error(`${tool}: \`key\` is required`);
@@ -134,8 +142,7 @@ export async function idbGet(
     `  throw new Error("${tool}: value at (\\"" + ${JSON.stringify(args.dbName)} + "\\", \\"" + ${JSON.stringify(args.storeName)} + "\\") is not JSON-serialisable (" + (e && e.message || e) + ") — agentic browser surface returns JSON over MCP; the platform value is preserved IN the IDB store but cannot be returned over this transport"); ` +
     `} ` +
     `return { found: true, dbName: ${JSON.stringify(args.dbName)}, storeName: ${JSON.stringify(args.storeName)}, key: key, value: jsonable, origin: location.origin }; })()`;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await page.evaluate(expr)) as any;
+  return await page.evaluate<IdbGetResult>(expr);
 }
 
 /** Put a value at a key. The object store must already exist — this

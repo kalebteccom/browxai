@@ -68,6 +68,7 @@
 
 import type { BrowserContext } from "playwright-core";
 import { log } from "../util/logging.js";
+import { PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type NotificationPolicyMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -110,15 +111,16 @@ export const UNHANDLED_NOTIFICATION_HINT =
  *  on the very next construction without page reload. */
 export class NotificationPolicyState {
   private policy: NotificationPolicy;
-  private buffer: NotificationRecord[] = [];
-  /** Hard cap so a chatty page can't grow this without bound. */
-  private readonly cap: number;
+  /** Bounded record ring (shared `PolicyRecordBuffer`; the hard cap so a chatty
+   *  page can't grow this without bound). `NotificationRecord` carries its
+   *  timestamp as `timestamp`, so the buffer reads it via an explicit extractor. */
+  private readonly records: PolicyRecordBuffer<NotificationRecord>;
   /** Contexts we've already installed the init-script + binding on. */
   private wired = new WeakSet<BrowserContext>();
 
   constructor(initial: NotificationPolicy = { mode: "allow" }, cap = 200) {
     this.policy = normalise(initial);
-    this.cap = cap;
+    this.records = new PolicyRecordBuffer<NotificationRecord>(cap, (r) => r.timestamp);
   }
 
   /** Resolved policy snapshot. */
@@ -133,18 +135,17 @@ export class NotificationPolicyState {
 
   /** Append a record. Caps the buffer at `cap`. */
   record(rec: NotificationRecord): void {
-    this.buffer.push(rec);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    this.records.record(rec);
   }
 
   /** Slice records with `timestamp >= since`. Used by the action-window. */
   since(since: number): NotificationRecord[] {
-    return this.buffer.filter((r) => r.timestamp >= since);
+    return this.records.since(since);
   }
 
   /** True if any record in `[since, now]` was handled in `raise` mode. */
   raisedSince(since: number): boolean {
-    return this.buffer.some((r) => r.timestamp >= since && r.handledAs === "raised");
+    return this.records.matchedSince(since, (r) => r.handledAs === "raised");
   }
 
   /** Has this context already been wired? Idempotent install guard. */

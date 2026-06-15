@@ -120,15 +120,50 @@ export async function runDomWalkOnFrame(
         attrs: string[];
         cap: number;
         openShadow: boolean;
-      }) =>
+      }): DomWalkEntry[] => {
+        // The page-side `Function` constructor produces an untyped callable;
+        // annotate its precise call signature (the PAGE_SCRIPT IIFE returns
+        // `DomWalkEntry[]`) so the invocation result is typed, not `any`.
         // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        new Function("attrs", "cap", "openShadow", `return (${script})(attrs, cap, openShadow)`)(
-          attrs,
-          cap,
-          openShadow,
-        ),
+        const run = new Function(
+          "attrs",
+          "cap",
+          "openShadow",
+          `return (${script})(attrs, cap, openShadow)`,
+        ) as (attrs: string[], cap: number, openShadow: boolean) => DomWalkEntry[];
+        return run(attrs, cap, openShadow);
+      },
       { script: PAGE_SCRIPT, attrs: testAttrs, cap: max, openShadow: walkOpen },
     );
+    return raw ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Transport-agnostic DOM walk. Runs the SAME `PAGE_SCRIPT` via an injected
+ * `exec` that takes a function BODY + an args array and returns the value —
+ * exactly the WebDriver-Classic `execute/sync` shape (`{script, args}`). This is
+ * the seam the Safari snapshot substrate uses: Safari has neither
+ * CDP nor a Playwright Frame, but `safaridriver`'s `execute/sync` runs the script
+ * identically (the returned `DomWalkEntry` shape matches
+ * `frame.evaluate` byte-for-byte).
+ * `PAGE_SCRIPT` stays encapsulated here; callers pass only the transport.
+ */
+export async function runDomWalkViaExecute(
+  exec: (scriptBody: string, args: unknown[]) => Promise<unknown>,
+  opts: DomWalkOptions = {},
+): Promise<DomWalkEntry[]> {
+  const testAttrs = opts.testAttributes ?? DEFAULT_TEST_ATTRS;
+  const max = opts.maxEntries ?? DEFAULT_MAX;
+  const walkOpen = opts.pierce === "open" || opts.pierce === "closed";
+  try {
+    const raw = await exec(`return (${PAGE_SCRIPT})(arguments[0], arguments[1], arguments[2])`, [
+      testAttrs,
+      max,
+      walkOpen,
+    ]);
     return (raw as DomWalkEntry[]) ?? [];
   } catch {
     return [];

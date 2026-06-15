@@ -81,7 +81,7 @@ describe("extractTopLevelKeys — response shape redaction", () => {
   });
 });
 
-describe("cdpTypeFromPlaywright — cross-engine resourceType reconciliation (RFC D5)", () => {
+describe("cdpTypeFromPlaywright — cross-engine resourceType reconciliation", () => {
   it("maps Playwright lowercase types onto the CDP-capitalised bucket names", () => {
     // The names the NOISE_TYPES fold + the byType summary key on must be the CDP
     // capitalisation so the network_read shape is engine-blind.

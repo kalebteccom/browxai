@@ -6,25 +6,27 @@
 // the adapter launches, the seam tags the session firefox, the CDP-free class-A
 // tools work, and the CDP-deep tools structured-refuse.
 //
-// SCOPE (RFC 0002 — P1 landed Firefox + the engine gate; P2a landed the
-// snapshot/a11y substrate behind an interface, un-gating the read + action core):
+// SCOPE: Firefox supports a growing slice of the tool surface. The CDP-free
+// class-A tools, the snapshot/a11y substrate, and the network/WS substrate all
+// run on Firefox; the CDP-deep tools structured-refuse.
 //   RUNS on Firefox (class-A, CDP-free — they ride Playwright's cross-browser
 //   surface directly, not the CDP envelope/substrate):
 //     - open_session(firefox) + list_sessions.engine === "firefox"
 //     - cookies_set / cookies_list   (context-level cookie jar)
 //     - dump_storage_state            (context.storageState)
 //     - screenshot                    (page.screenshot)
-//   RUNS on Firefox (P2a — the snapshot/a11y substrate now has a Playwright
-//   page-side walker behind the SnapshotSubstrate interface, so these mint refs
-//   + build their ActionResult envelope off Playwright, not CDP):
+//   RUNS on Firefox (the snapshot/a11y substrate has a Playwright page-side
+//   walker behind the SnapshotSubstrate interface, so these mint refs + build
+//   their ActionResult envelope off Playwright, not CDP):
 //     - navigate                      (page.goto + framenavigated nav detection)
 //     - snapshot                      (the walker tree — real refs, [from-dom])
 //     - find                          (ranks a target, locatorBoundingBox bbox)
 //     - click / fill                  (action window over the walker a11y delta;
-//                                      the network slice is empty — that is P2b)
+//                                      the network slice is covered separately
+//                                      by the network substrate below)
 //     - text_search                   (walker-sourced tree)
-//   RUNS on Firefox (P2b — the network/WS tap + response-body fetch now have a
-//   Playwright context-event substrate (PlaywrightNetworkSubstrate) behind the
+//   RUNS on Firefox (the network/WS tap + response-body fetch have a Playwright
+//   context-event substrate (PlaywrightNetworkSubstrate) behind the
 //   NetworkSubstrate interface, so the network slice of the envelope is real and
 //   the network tools read off Playwright events, not CDP):
 //     - network_read   (PlaywrightNetworkBuffer — context request/response ring)
@@ -33,7 +35,7 @@
 //   ASSERTS-REFUSAL on Firefox (CDP-deep — audit class B + live-CDP class C):
 //     - perf_start / coverage_start / heap_snapshot / cpu_emulate
 //     - pdf_save / set_user_agent / network_emulate
-//     - shadow_trees  (closed-shadow pierce is CDP-only — RFC D4)
+//     - shadow_trees  (closed-shadow pierce is CDP-only)
 //     - sw_intercept_fetch  (Fetch.* on the SW target — CDP-only, stays gated)
 //
 // The per-engine expectation matrix lives in
@@ -135,7 +137,7 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
       }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === session);
       expect(row, "opened session present in list_sessions").toBeTruthy();
-      // The headline of P1: a real-browser session is tagged firefox through the
+      // The core claim: a real-browser session is tagged firefox through the
       // BrowserEngine port — the port generalized to a second engine.
       expect(row!.engine).toBe("firefox");
     },
@@ -247,11 +249,11 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
   );
 
   it(
-    "P2a — snapshot/find/navigate/click/fill run on real Firefox via the page-side substrate",
+    "snapshot/find/navigate/click/fill run on real Firefox via the page-side substrate",
     async () => {
-      // The headline of P2a: the snapshot/a11y substrate now has a Playwright
+      // The snapshot/a11y substrate has a Playwright
       // walker behind the SnapshotSubstrate interface, so the read + action
-      // core that was CDP-gated on Firefox in P1 works on real Firefox. This is
+      // core that was previously CDP-gated on Firefox works on real Firefox. This is
       // the proof mocks cannot give (evaluate-serialization only fails on a real
       // engine — the page-side-function discipline). Mirrors the chromium
       // headless keystone's snapshot → find → fill flow against the same fixture.
@@ -261,7 +263,7 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
       // (0) navigate — page.goto + the Playwright `framenavigated` nav detector
       // (replacing the chromium-only CDP `Page.frameNavigated`). The action
       // window builds its envelope with a real a11y delta from the walker AND a
-      // real network slice off the Playwright-event tap (P2b).
+      // real network slice off the Playwright-event tap.
       const nav = await callJson<{ ok: boolean; navigation: { changed: boolean } }>("navigate", {
         session,
         url: `${fixture.url}/`,
@@ -347,12 +349,12 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
   );
 
   it(
-    "P2b — network_read / network_body run on real Firefox via the Playwright-event substrate",
+    "network_read / network_body run on real Firefox via the Playwright-event substrate",
     async () => {
-      // The headline of P2b: the network/WS tap + response-body fetch now have a
+      // The network/WS tap + response-body fetch have a
       // Playwright context-event substrate (PlaywrightNetworkSubstrate) behind the
-      // NetworkSubstrate interface, so the network slice that was empty on Firefox
-      // in P2a is now real. This is the proof mocks cannot give — a real Firefox
+      // NetworkSubstrate interface, so the network slice that the snapshot/action
+      // substrate leaves empty is real here. This is the proof mocks cannot give — a real Firefox
       // session must surface real request/response records off `context.on(...)`.
       // The fixture's /perf-audit-page fires real subresources: the document
       // itself, /perf-dead.css (Stylesheet — folds to noise), and /perf-dead.js
@@ -396,7 +398,7 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
       // bounded LRU, then resolved by requestId (no after-the-fact CDP fetch). The
       // capability is `network-body` (off by default); the keystone server runs
       // without it, so the read must refuse with the CAPABILITY gate (not crash,
-      // not the engine gate — P2b explicitly does NOT engine-gate network_body).
+      // not the engine gate — network_body is explicitly NOT engine-gated).
       const bodyGated = await callJson<{
         ok: boolean;
         engine?: string;

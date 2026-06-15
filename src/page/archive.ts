@@ -46,9 +46,24 @@
 //   the archive as sensitive material. Documented in tool-reference + flagged
 //   on every result through `warnings[]`.
 
-import { resolve as resolvePath, dirname, join, sep, extname } from "node:path";
-import { mkdirSync, writeFileSync, statSync, readdirSync } from "node:fs";
+import { resolve as resolvePath, dirname, join } from "node:path";
+import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { resolveWorkspacePath } from "../session/storage.js";
+import {
+  buildFetchScript,
+  assetFilename,
+  subdirForKind,
+  rewriteHtml,
+  mimeFromKind,
+  directorySize,
+  type DiscoveredResource,
+  type FetchedResource,
+} from "./archive-assets.js";
+
+// The asset-naming + fetch + rewrite helpers (and their types) live in
+// `archive-assets.ts`; re-export `DiscoveredResource` so callers that imported
+// it from `./archive.js` are unchanged.
+export type { DiscoveredResource } from "./archive-assets.js";
 
 /** Archive format. `directory` writes index.html + assets/ sidecar; `single-file`
  *  inlines every linked resource as a `data:` URI in one HTML file. */
@@ -113,16 +128,9 @@ export function defaultArchivePath(sessionId: string, format: ArchiveFormat): st
   return format === "single-file" ? `${stem}.html` : stem;
 }
 
-/** Discovered resource — one URL the page references that we'll try to
- *  fetch. `kind` drives subdir placement in directory mode + content-type
- *  inference in single-file mode. */
-interface DiscoveredResource {
-  url: string;
-  kind: "image" | "font" | "script" | "stylesheet" | "media" | "other";
-  /** Original attribute text the discovery script saw — used to rewrite
-   *  the HTML to point at the asset sidecar in directory mode. */
-  rawRef: string;
-}
+/** One linked resource the discovery script found. `kind` drives subdir
+ *  placement in directory mode + content-type inference in single-file mode.
+ *  Re-exported from `./archive-assets.js` (the type's home) at the top. */
 
 /** Page-side discovery script — runs inside the page and returns the
  *  document HTML plus a list of every linked resource URL we can reach.
@@ -218,162 +226,6 @@ const DISCOVERY_SCRIPT = `(() => {
   };
 })()`;
 
-/** Fetch one URL from inside the page, returning base64 + a content-type
- *  guess. Used in single-file mode (data: URIs) and as the byte source for
- *  directory mode. Failures are caught — the caller drops + counts. */
-function buildFetchScript(url: string): string {
-  // page.evaluate(string) treats the string as an expression — `await` only
-  // works inside an async IIFE. Encode the URL once at compose time.
-  const literal = JSON.stringify(url);
-  return `(async () => {
-  try {
-    var r = await fetch(${literal}, { credentials: 'include', cache: 'no-store' });
-    if (!r.ok) return { ok: false, status: r.status, contentType: r.headers.get('content-type') || '' };
-    var ct = r.headers.get('content-type') || '';
-    var buf = await r.arrayBuffer();
-    var bytes = new Uint8Array(buf);
-    // chunked base64 — TextDecoder + btoa for portability inside the page
-    var CHUNK = 0x8000, parts = [];
-    for (var i = 0; i < bytes.length; i += CHUNK) {
-      parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
-    }
-    return { ok: true, base64: btoa(parts.join('')), contentType: ct, bytes: bytes.length };
-  } catch (e) {
-    return { ok: false, error: (e && e.message) ? String(e.message) : String(e) };
-  }
-})()`;
-}
-
-interface FetchedResource {
-  ok: boolean;
-  base64?: string;
-  contentType?: string;
-  bytes?: number;
-  status?: number;
-  error?: string;
-}
-
-/** Slugify a URL into a filesystem-safe asset filename. The hash prefix
- *  disambiguates same-name resources from different origins. */
-function assetFilename(url: string, kind: DiscoveredResource["kind"], contentType: string): string {
-  let stem: string;
-  let urlExt = "";
-  try {
-    const u = new URL(url);
-    const last = u.pathname.split("/").filter(Boolean).pop() ?? "asset";
-    urlExt = extname(last);
-    stem = last.replace(/[^A-Za-z0-9._-]/g, "_") || "asset";
-    if (urlExt) stem = stem.slice(0, -urlExt.length);
-  } catch {
-    stem = "asset";
-  }
-  // 8-char hash from the URL to disambiguate collisions across origins.
-  const hash = simpleHash(url);
-  const ext = urlExt || guessExtFromContentType(contentType) || guessExtFromKind(kind);
-  return `${stem}-${hash}${ext}`;
-}
-
-function simpleHash(s: string): string {
-  // tiny non-cryptographic hash — collision risk is negligible at archive
-  // resource counts (low hundreds) and we want zero deps.
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h = (h ^ s.charCodeAt(i)) >>> 0;
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-function guessExtFromContentType(ct: string): string {
-  const c = ct.split(";")[0]!.trim().toLowerCase();
-  const map: Record<string, string> = {
-    "text/html": ".html",
-    "text/css": ".css",
-    "text/javascript": ".js",
-    "application/javascript": ".js",
-    "application/json": ".json",
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/gif": ".gif",
-    "image/svg+xml": ".svg",
-    "image/webp": ".webp",
-    "image/x-icon": ".ico",
-    "font/woff": ".woff",
-    "font/woff2": ".woff2",
-    "font/ttf": ".ttf",
-    "font/otf": ".otf",
-    "application/font-woff": ".woff",
-    "application/font-woff2": ".woff2",
-    "video/mp4": ".mp4",
-    "audio/mpeg": ".mp3",
-  };
-  return map[c] ?? "";
-}
-
-function guessExtFromKind(kind: DiscoveredResource["kind"]): string {
-  switch (kind) {
-    case "image":
-      return ".bin";
-    case "font":
-      return ".font";
-    case "script":
-      return ".js";
-    case "stylesheet":
-      return ".css";
-    case "media":
-      return ".media";
-    default:
-      return ".bin";
-  }
-}
-
-function subdirForKind(kind: DiscoveredResource["kind"]): string {
-  switch (kind) {
-    case "image":
-      return "images";
-    case "font":
-      return "fonts";
-    case "script":
-      return "scripts";
-    case "stylesheet":
-      return "styles";
-    case "media":
-      return "media";
-    default:
-      return "other";
-  }
-}
-
-/** Rewrite raw HTML — replace every recorded `rawRef` with the relative
- *  asset path the file has been written to. We do a literal substring
- *  replacement (anchored to quote boundaries where possible) rather than
- *  parsing the HTML: parsing introduces fidelity risk, and the discovery
- *  script captured exactly the raw attribute text we'll see in `outerHTML`.
- *
- *  The order matters — replace longer `rawRef`s before shorter ones so a
- *  prefix-substring of a different URL isn't accidentally matched. */
-function rewriteHtml(
-  html: string,
-  replacements: Array<{ rawRef: string; replacement: string }>,
-): string {
-  const sorted = [...replacements].sort((a, b) => b.rawRef.length - a.rawRef.length);
-  let out = html;
-  for (const { rawRef, replacement } of sorted) {
-    if (!rawRef) continue;
-    // Wrap in quote-anchored patterns first so `path="/foo"` doesn't catch
-    // a stray `/foo` substring in inline text.
-    const quoted = [`"${rawRef}"`, `'${rawRef}'`];
-    for (const q of quoted) {
-      const replWith = q[0]! + replacement + q[0]!;
-      out = out.split(q).join(replWith);
-    }
-    // Fall through — some `srcset` / `style` references don't wear quotes.
-    // Bounded literal replace to avoid the regex-cost trap.
-    if (rawRef.length >= 4) out = out.split(rawRef).join(replacement);
-  }
-  return out;
-}
-
 /** Page handle adapter — `page_archive` only needs `evaluate`. Exposing a
  *  thin interface keeps the unit test mock trivial. */
 export interface ArchivePage {
@@ -414,92 +266,120 @@ export async function pageArchive(
     // sees it on every call.
     "page_archive output is UNMASKED — secrets-masking would corrupt the archive (literal-substring substitution breaks inline JSON / CSS / binary bytes). Treat the archive as sensitive material, same posture as dump_storage_state.",
   ];
+  // 2. Fetch each resource (bounded concurrency + size budgets), then 3. emit.
+  const phase = await fetchArchiveResources(page, discovered.resources, maxBytes);
+  appendArchiveWarnings(phase, maxSizeMb, warnings);
+  const emit =
+    format === "directory"
+      ? emitArchiveDirectory(resolved, discovered.html, phase.fetched, phase.runningBytes)
+      : emitArchiveSingleFile(resolved, discovered.html, phase.fetched, warnings);
 
-  // 2. Fetch each resource. Bound the parallelism so we don't tip the page
-  //    over — small concurrency, sequential batches.
+  return {
+    ok: true,
+    format,
+    path: resolvePath(resolved),
+    sizeBytes: emit.sizeBytes,
+    resourceCount: emit.resourceCount,
+    droppedCount: emit.droppedCount,
+    warnings,
+  };
+}
+
+type Fetched = { res: DiscoveredResource; r: FetchedResource };
+
+interface ArchiveFetchPhase {
+  fetched: Fetched[];
+  cspBlocked: number;
+  perResourceOversize: number;
+  runningBytes: number;
+  budgetExhausted: boolean;
+}
+
+const ARCHIVE_CSP_HINTS = ["connect-src", "refused to connect", "content security policy"];
+
+/** Classify one fetched resource against the per-resource + total budget,
+ *  mutating the running totals. Returns the (possibly budget-rejected) entry. */
+function classifyArchiveFetched(f: Fetched, maxBytes: number, phase: ArchiveFetchPhase): Fetched {
+  if (!f.r.ok) {
+    const err = (f.r.error ?? "").toLowerCase();
+    if (ARCHIVE_CSP_HINTS.some((h) => err.includes(h))) phase.cspBlocked++;
+    return f;
+  }
+  const bytes = f.r.bytes ?? 0;
+  if (bytes > PER_RESOURCE_HARD_MB * 1024 * 1024) {
+    phase.perResourceOversize++;
+    return {
+      res: f.res,
+      r: { ok: false, error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)` },
+    };
+  }
+  if (phase.runningBytes + bytes > maxBytes) {
+    phase.budgetExhausted = true;
+    return { res: f.res, r: { ok: false, error: "size budget exhausted" } };
+  }
+  phase.runningBytes += bytes;
+  return f;
+}
+
+/** Fetch the discovered resources in bounded concurrency batches, applying the
+ *  per-resource + total size budgets. Stops early once the budget is exhausted. */
+async function fetchArchiveResources(
+  page: ArchivePage,
+  resources: DiscoveredResource[],
+  maxBytes: number,
+): Promise<ArchiveFetchPhase> {
   const CONCURRENCY = 6;
-  type Fetched = { res: DiscoveredResource; r: FetchedResource };
-  const fetched: Fetched[] = [];
-  let cspBlocked = 0;
-  let perResourceOversize = 0;
-  let runningBytes = 0;
-  let budgetExhausted = false;
-  for (let i = 0; i < discovered.resources.length; i += CONCURRENCY) {
-    const batch = discovered.resources.slice(i, i + CONCURRENCY);
+  const phase: ArchiveFetchPhase = {
+    fetched: [],
+    cspBlocked: 0,
+    perResourceOversize: 0,
+    runningBytes: 0,
+    budgetExhausted: false,
+  };
+  for (let i = 0; i < resources.length; i += CONCURRENCY) {
     const settled = await Promise.all(
-      batch.map(async (res) => {
+      resources.slice(i, i + CONCURRENCY).map(async (res): Promise<Fetched> => {
         try {
-          const r = (await page.evaluate(buildFetchScript(res.url))) as FetchedResource;
-          return { res, r };
+          return { res, r: (await page.evaluate(buildFetchScript(res.url))) as FetchedResource };
         } catch (e) {
-          return {
-            res,
-            r: { ok: false, error: e instanceof Error ? e.message : String(e) },
-          };
+          return { res, r: { ok: false, error: e instanceof Error ? e.message : String(e) } };
         }
       }),
     );
-    for (const f of settled) {
-      if (!f.r.ok) {
-        // CSP `connect-src` typically surfaces a TypeError mentioning
-        // "Failed to fetch" or "Refused to connect". Treat any fetch
-        // error as a drop; flag CSP separately when the message hints.
-        const err = (f.r.error ?? "").toLowerCase();
-        if (
-          err.includes("connect-src") ||
-          err.includes("refused to connect") ||
-          err.includes("content security policy")
-        ) {
-          cspBlocked++;
-        }
-        fetched.push(f);
-        continue;
-      }
-      const bytes = f.r.bytes ?? 0;
-      if (bytes > PER_RESOURCE_HARD_MB * 1024 * 1024) {
-        perResourceOversize++;
-        fetched.push({
-          res: f.res,
-          r: {
-            ok: false,
-            error: `resource exceeded per-resource cap (${PER_RESOURCE_HARD_MB} MB)`,
-          },
-        });
-        continue;
-      }
-      if (runningBytes + bytes > maxBytes) {
-        budgetExhausted = true;
-        fetched.push({ res: f.res, r: { ok: false, error: "size budget exhausted" } });
-        continue;
-      }
-      runningBytes += bytes;
-      fetched.push(f);
-    }
-    if (budgetExhausted) {
-      // Drop any remaining resources without trying to fetch — we're full.
-      for (let j = i + CONCURRENCY; j < discovered.resources.length; j++) {
-        fetched.push({
-          res: discovered.resources[j]!,
+    for (const f of settled) phase.fetched.push(classifyArchiveFetched(f, maxBytes, phase));
+    if (phase.budgetExhausted) {
+      for (let j = i + CONCURRENCY; j < resources.length; j++) {
+        phase.fetched.push({
+          res: resources[j]!,
           r: { ok: false, error: "size budget exhausted" },
         });
       }
       break;
     }
   }
-  if (cspBlocked > 0) {
+  return phase;
+}
+
+/** Push the post-fetch budget/CSP warnings onto the result warnings. */
+function appendArchiveWarnings(
+  phase: ArchiveFetchPhase,
+  maxSizeMb: number,
+  warnings: string[],
+): void {
+  if (phase.cspBlocked > 0) {
     warnings.push(
-      `${cspBlocked} resource(s) blocked by the page's Content-Security-Policy ` +
+      `${phase.cspBlocked} resource(s) blocked by the page's Content-Security-Policy ` +
         "(typically `connect-src` — fetch() inside the page is subject to the same " +
         "policy as the page itself). These are counted in droppedCount.",
     );
   }
-  if (perResourceOversize > 0) {
+  if (phase.perResourceOversize > 0) {
     warnings.push(
-      `${perResourceOversize} resource(s) exceeded the per-resource ${PER_RESOURCE_HARD_MB} MB cap and were dropped. ` +
+      `${phase.perResourceOversize} resource(s) exceeded the per-resource ${PER_RESOURCE_HARD_MB} MB cap and were dropped. ` +
         "Raise the per-resource cap by forking — the cap is hard-coded by design (an archive is fidelity, not a CDN).",
     );
   }
-  if (budgetExhausted) {
+  if (phase.budgetExhausted) {
     warnings.push(
       `Archive size cap (maxSizeMb=${maxSizeMb}) reached — remaining resources were dropped. ` +
         "Raise `maxSizeMb` to capture more, but note browsers struggle with single-file archives > " +
@@ -507,123 +387,86 @@ export async function pageArchive(
         " MB.",
     );
   }
+}
 
-  // 3. Emit the archive in the requested format.
-  // `resolved` is workspace-rooted by construction (resolveWorkspacePath
-  // above rejects any escape from `$BROWX_WORKSPACE`). Every mkdirSync /
-  // writeFileSync below is anchored on `resolved` or `dirname(resolved)`.
+interface ArchiveEmitResult {
+  resourceCount: number;
+  droppedCount: number;
+  sizeBytes: number;
+}
+
+/** Emit the multi-file directory archive — each asset under `assets/<kind>/`,
+ *  the HTML rewritten to relative paths. Workspace-rooted by construction
+ *  (`resolved` ⊆ $BROWX_WORKSPACE). */
+function emitArchiveDirectory(
+  resolved: string,
+  html: string,
+  fetched: Fetched[],
+  runningBytes: number,
+): ArchiveEmitResult {
+  mkdirSync(resolved, { recursive: true });
+  const assetsRoot = join(resolved, "assets");
+  mkdirSync(assetsRoot, { recursive: true });
   let resourceCount = 0;
   let droppedCount = 0;
-  let sizeBytes = 0;
-  if (format === "directory") {
-    // workspace-rooted (see comment above; `resolved` ⊆ $BROWX_WORKSPACE).
-    mkdirSync(resolved, { recursive: true });
-    const assetsRoot = join(resolved, "assets");
-    // workspace-rooted: assetsRoot = join(resolved, ...), resolved ⊆ $BROWX_WORKSPACE.
-    mkdirSync(assetsRoot, { recursive: true });
-
-    const replacements: Array<{ rawRef: string; replacement: string }> = [];
-    for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) {
-        droppedCount++;
-        continue;
-      }
-      const subdir = subdirForKind(f.res.kind);
-      // workspace-rooted: dir = join(assetsRoot, ...), assetsRoot ⊆ $BROWX_WORKSPACE.
-      const dir = join(assetsRoot, subdir);
-      mkdirSync(dir, { recursive: true });
-      const filename = assetFilename(f.res.url, f.res.kind, f.r.contentType ?? "");
-      // workspace-rooted: dest = join(dir, ...), dir ⊆ $BROWX_WORKSPACE.
-      const dest = join(dir, filename);
-      writeFileSync(dest, Buffer.from(f.r.base64, "base64"));
-      replacements.push({ rawRef: f.res.rawRef, replacement: `assets/${subdir}/${filename}` });
-      resourceCount++;
+  const replacements: Array<{ rawRef: string; replacement: string }> = [];
+  for (const f of fetched) {
+    if (!f.r.ok || !f.r.base64) {
+      droppedCount++;
+      continue;
     }
-    const rewritten = rewriteHtml(discovered.html, replacements);
-    // workspace-rooted: indexPath = join(resolved, ...), resolved ⊆ $BROWX_WORKSPACE.
-    const indexPath = join(resolved, "index.html");
-    writeFileSync(indexPath, rewritten, "utf8");
-    try {
-      sizeBytes = directorySize(resolved);
-    } catch {
-      // best-effort — fall back to the resource ledger
-      sizeBytes = Buffer.byteLength(rewritten, "utf8") + runningBytes;
-    }
-  } else {
-    // single-file: inline every resource as a data: URI.
-    // workspace-rooted: dirname(resolved) is the parent of a $BROWX_WORKSPACE-anchored path.
-    mkdirSync(dirname(resolved), { recursive: true });
-    const replacements: Array<{ rawRef: string; replacement: string }> = [];
-    for (const f of fetched) {
-      if (!f.r.ok || !f.r.base64) {
-        droppedCount++;
-        continue;
-      }
-      const mime = (f.r.contentType ?? "").split(";")[0]!.trim() || mimeFromKind(f.res.kind);
-      const dataUri = `data:${mime};base64,${f.r.base64}`;
-      replacements.push({ rawRef: f.res.rawRef, replacement: dataUri });
-      resourceCount++;
-    }
-    const rewritten = rewriteHtml(discovered.html, replacements);
-    // workspace-rooted by construction — `resolved` ⊆ $BROWX_WORKSPACE.
-    writeFileSync(resolved, rewritten, "utf8");
-    sizeBytes = statSync(resolved).size;
-    if (sizeBytes > SINGLE_FILE_SOFT_WARN_MB * 1024 * 1024) {
-      warnings.push(
-        `single-file archive is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. ` +
-          `Browsers commonly struggle to open inline-data HTML beyond ~${SINGLE_FILE_SOFT_WARN_MB} MB ` +
-          '(the data: URI cost compounds in-memory). Use `format:"directory"` for large pages.',
-      );
-    }
+    const subdir = subdirForKind(f.res.kind);
+    const dir = join(assetsRoot, subdir);
+    mkdirSync(dir, { recursive: true });
+    const filename = assetFilename(f.res.url, f.res.kind, f.r.contentType ?? "");
+    writeFileSync(join(dir, filename), Buffer.from(f.r.base64, "base64"));
+    replacements.push({ rawRef: f.res.rawRef, replacement: `assets/${subdir}/${filename}` });
+    resourceCount++;
   }
-
-  return {
-    ok: true,
-    format,
-    path: resolvePath(resolved),
-    sizeBytes,
-    resourceCount,
-    droppedCount,
-    warnings,
-  };
+  const rewritten = rewriteHtml(html, replacements);
+  // workspace-rooted: `resolved` ⊆ $BROWX_WORKSPACE (resolveWorkspacePath gated it).
+  writeFileSync(join(resolved, "index.html"), rewritten, "utf8");
+  let sizeBytes: number;
+  try {
+    sizeBytes = directorySize(resolved);
+  } catch {
+    sizeBytes = Buffer.byteLength(rewritten, "utf8") + runningBytes;
+  }
+  return { resourceCount, droppedCount, sizeBytes };
 }
 
-function mimeFromKind(kind: DiscoveredResource["kind"]): string {
-  // Fallback MIME when the response carried no Content-Type. Use a concrete
-  // type the browser can render rather than a wildcard (which is not valid
-  // in a `data:` URI). These are best-guesses, not authoritative — the
-  // upstream response should be carrying Content-Type in any sane setup.
-  switch (kind) {
-    case "image":
-      return "image/png";
-    case "font":
-      return "font/woff2";
-    case "script":
-      return "application/javascript";
-    case "stylesheet":
-      return "text/css";
-    case "media":
-      return "video/mp4";
-    default:
-      return "application/octet-stream";
-  }
-}
-
-function directorySize(dir: string): number {
-  let total = 0;
-  const walk = (d: string): void => {
-    for (const entry of readdirSync(d, { withFileTypes: true })) {
-      const p = d + sep + entry.name;
-      if (entry.isDirectory()) walk(p);
-      else if (entry.isFile()) {
-        try {
-          total += statSync(p).size;
-        } catch {
-          /* best-effort */
-        }
-      }
+/** Emit the single-file archive — assets inlined as data: URIs in the HTML.
+ *  Workspace-rooted by construction (`resolved` ⊆ $BROWX_WORKSPACE). */
+function emitArchiveSingleFile(
+  resolved: string,
+  html: string,
+  fetched: Fetched[],
+  warnings: string[],
+): ArchiveEmitResult {
+  // workspace-rooted: dirname(resolved) is the parent of a $BROWX_WORKSPACE path.
+  mkdirSync(dirname(resolved), { recursive: true });
+  let resourceCount = 0;
+  let droppedCount = 0;
+  const replacements: Array<{ rawRef: string; replacement: string }> = [];
+  for (const f of fetched) {
+    if (!f.r.ok || !f.r.base64) {
+      droppedCount++;
+      continue;
     }
-  };
-  walk(dir);
-  return total;
+    const mime = (f.r.contentType ?? "").split(";")[0]!.trim() || mimeFromKind(f.res.kind);
+    replacements.push({ rawRef: f.res.rawRef, replacement: `data:${mime};base64,${f.r.base64}` });
+    resourceCount++;
+  }
+  const rewritten = rewriteHtml(html, replacements);
+  // workspace-rooted: `resolved` ⊆ $BROWX_WORKSPACE (resolveWorkspacePath gated it).
+  writeFileSync(resolved, rewritten, "utf8");
+  const sizeBytes = statSync(resolved).size;
+  if (sizeBytes > SINGLE_FILE_SOFT_WARN_MB * 1024 * 1024) {
+    warnings.push(
+      `single-file archive is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. ` +
+        `Browsers commonly struggle to open inline-data HTML beyond ~${SINGLE_FILE_SOFT_WARN_MB} MB ` +
+        '(the data: URI cost compounds in-memory). Use `format:"directory"` for large pages.',
+    );
+  }
+  return { resourceCount, droppedCount, sizeBytes };
 }

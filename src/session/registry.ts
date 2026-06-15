@@ -43,14 +43,39 @@ import type { ArtifactsRegistry } from "./artifacts.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
-/** Per-session state. Everything here was a server-singleton pre-multi-session;
- *  one of these exists per live session id. */
-export interface SessionEntry {
+/**
+ * RFC 0004 P3 / D3 (ISP). The per-session state is segregated into the role
+ * bundles its consumers actually use — engine-core, observation, network, the
+ * four page-policy buffers, live + deep emulation, capture/artifact, and the
+ * cross-cutting feature concerns — instead of one 40-field record every tool
+ * depends on whole. `SessionEntry` stays the composed WHOLE (the intersection of
+ * the bundles, declared at the bottom), so no field moves at runtime and the
+ * factory keeps building one object; a consumer that reads only `e.refs` /
+ * `e.dialog` can depend on `SessionObserveRole` / `SessionPolicyRole` and stop
+ * recompiling when an unrelated feature field changes. Per 0004-03 §3.
+ */
+
+/** Engine-core identity + lifecycle. The fields every consumer that touches the
+ *  live browser handle reads. */
+export interface SessionCore {
   id: string;
   mode: SessionMode;
   session: BrowserSession;
+  openedAt: number;
+  /** epoch ms of the last `get()` for this id — drives idle-age
+   *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
+  lastActivityAt: number;
+  /** Profile-name component used at launch (persistent mode only). Recorded
+   *  so the rebuild path used by `extensions_*` can recompute the same
+   *  profileDir without re-deriving the spec. Undefined for incognito /
+   *  attached sessions. */
+  launchProfile?: string;
+}
+
+/** Observation role — the snapshot/find/frames/console reads. */
+export interface SessionObserveRole {
   refs: RefRegistry;
-  /** Engine-agnostic snapshot/a11y tree source (RFC 0002 D4). Chromium gets the
+  /** Engine-agnostic snapshot/a11y tree source. Chromium gets the
    *  verbatim CDP substrate (Accessibility.getFullAXTree + DOM-walk); firefox /
    *  webkit get the page-side Playwright walker. The snapshot / find / extract /
    *  text_search / set-of-marks tools and the action-window pre/post deltas mint
@@ -58,8 +83,8 @@ export interface SessionEntry {
    *  any engine, not only chromium. Selected once at session creation
    *  (`snapshotSubstrateFor`) so the hot path is a captured-handle delegate. */
   snapshotSubstrate: SnapshotSubstrate;
-  /** Engine-agnostic network tap + ActionResult-network-slice source (RFC 0002
-   *  D5). Chromium gets the verbatim CDP substrate (NetworkBuffer / WsBuffer /
+  /** Engine-agnostic network tap + ActionResult-network-slice source.
+   *  Chromium gets the verbatim CDP substrate (NetworkBuffer / WsBuffer /
    *  NetworkTap / fetchResponseBody); firefox / webkit get the Playwright context-
    *  event substrate. The session-wide rings below (`network` / `ws`) ARE this
    *  substrate's rings; the action window mints its per-action tap from it and
@@ -72,6 +97,11 @@ export interface SessionEntry {
    *  resolve a `frame` arg back to a Playwright `Frame` handle. */
   frames: FrameRegistry;
   console: ConsoleBuffer;
+}
+
+/** Network role — the session-wide rings + the engine-selected network substrate
+ *  and the interactive-WS / workers / route registries. */
+export interface SessionNetworkRole {
   /** session-wide HTTP request ring (`networkSubstrate.http`). */
   network: SessionNetworkRing;
   /** session-wide WebSocket/SSE frame ring (`networkSubstrate.ws`). */
@@ -88,6 +118,14 @@ export interface SessionEntry {
    *  the initial document are seen; otherwise the wrapper installs on first
    *  `workers_list` / `worker_message_send` / `sw_intercept_fetch` call. */
   workers: WorkersRegistry;
+  /** per-session network route interceptions (capability `action`). */
+  routes: RouteRegistry;
+}
+
+/** Feature role — the cross-cutting per-session services a handler reaches for
+ *  one feature at a time (the helper bridge, the recorder, learning feedback,
+ *  the clipboard model, and the named-region store). */
+export interface SessionFeatureRole {
   bridge: BrowxBridge;
   recorder: Recorder;
   feedback: FeedbackMemory;
@@ -95,10 +133,13 @@ export interface SessionEntry {
    *  concurrent sessions don't clobber each other through the shared OS
    *  clipboard; the OS clipboard is touched only transactionally. */
   clipboard: ClipboardBuffer;
-  /** per-session network route interceptions (capability `action`). */
-  routes: RouteRegistry;
   /** per-session named visual regions (capability `human`). */
   regions: RegionRegistry;
+}
+
+/** Live-emulation role — the runtime knobs that re-apply on navigation
+ *  (network/CPU throttling, virtual clock, seeded randomness). */
+export interface SessionEmulationRole {
   /** per-session network + CPU emulation overrides (capability `action`).
    *  Caches active state and re-applies on main-frame navigation. */
   emulation: EmulationRegistry;
@@ -111,6 +152,11 @@ export interface SessionEntry {
    *  are deterministic. Per-session; `crypto.randomUUID` /
    *  `crypto.getRandomValues` NOT touched in MVP. */
   seededRandom: SeededRandomRegistry;
+}
+
+/** Deep role — the CDP-deep tracing/coverage state the `perf_*` / `coverage_*`
+ *  tools drive (Chromium-only). */
+export interface SessionDeepRole {
   /** per-session CDP performance tracing state (capability `action`). One
    *  trace lifecycle at a time per session; `perf_start` while a trace is
    *  already running cleanly restarts (see src/page/perf.ts). */
@@ -119,6 +165,11 @@ export interface SessionEntry {
    *  is `action`, `coverage_stop` is `read`). Pairs JS Profiler + CSS rule
    *  usage trackers into one lifecycle. Internally used by `perf_audit`. */
   coverage: CoverageTrackerState;
+}
+
+/** Health role — the per-session anti-wedge + metrics bookkeeping the dispatch
+ *  wrapper accumulates. */
+export interface SessionHealthRole {
   /** Per-session consecutive anti-wedge-timeout counter; drives the
    *  `sessionWedged` signal once the session times out repeatedly. */
   wedge: WedgeTracker;
@@ -127,6 +178,11 @@ export interface SessionEntry {
    *  dispatch wrapper in `server.ts`; surfaced via the `session_metrics`
    *  tool. Read-only from the agent's side — no per-call disk writes. */
   metrics: SessionMetrics;
+}
+
+/** Policy role — the four page-policy buffers (dialog / permission / notification
+ *  / fs-picker) a handler reads or mutates together. */
+export interface SessionPolicyRole {
   /** per-session dialog policy + per-page handler bookkeeping. Survives
    *  navigation: the `context.on('page')` install re-attaches the handler on
    *  every new page (capability `action` — no separate capability). */
@@ -158,6 +214,11 @@ export interface SessionEntry {
    *  re-injected on every new document). Capability `action` for the
    *  policy mutators; `file-io` for `fs_picker_respond`. */
   fsPicker: FsPickerPolicyState;
+}
+
+/** Device-emulation role — the per-primitive live-emulation state + the synthetic
+ *  Web Bluetooth/USB/HID device catalogs. */
+export interface SessionDeviceRole {
   /** Per-primitive runtime device-emulation state (locale, timezone,
    *  geolocation, colour scheme, reduced motion, user-agent, permissions).
    *  Mutated by the 7 `set_*` / `grant_permissions` tools and re-applied
@@ -171,6 +232,12 @@ export interface SessionEntry {
    *  default user-dismissed-picker shape is delivered without a deadlock
    *  on headless), but the check binding short-circuits to `refused`. */
   webDeviceEmulation: WebDeviceEmulationState;
+}
+
+/** Capture role — the artifact-egress + sensitive-data state: HAR / video
+ *  recorders, the secrets registry, loaded extensions, and the download /
+ *  artifact stores. */
+export interface SessionCaptureRole {
   /** Per-session HAR recorder state (HTTP Archive record/replay). Drives the
    *  `start_har`/`stop_har` tools and tracks any HAR wired at session creation
    *  via `open_session({har})`. Capability `action` (writes a file). The HAR
@@ -199,11 +266,6 @@ export interface SessionEntry {
    *  Chromium. Persistent (headed) sessions only — `incognito` / `attached`
    *  reject the mutators with a structured error. */
   extensions: ExtensionRegistry;
-  /** Profile-name component used at launch (persistent mode only). Recorded
-   *  so the rebuild path used by `extensions_*` can recompute the same
-   *  profileDir without re-deriving the spec. Undefined for incognito /
-   *  attached sessions. */
-  launchProfile?: string;
   /** per-session download-capture registry (capability `file-io`). Off by
    *  default — every Playwright `download` event is intercepted and discarded
    *  until `downloads_capture({on:true})` toggles capture on. When on, the
@@ -217,11 +279,25 @@ export interface SessionEntry {
    *  cap). The on-disk dir is wiped on session teardown — sessions that
    *  never wrote an artifact leave no trace. */
   artifacts: ArtifactsRegistry;
-  openedAt: number;
-  /** epoch ms of the last `get()` for this id — drives idle-age
-   *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
-  lastActivityAt: number;
 }
+
+/** Per-session state. Everything here was a server-singleton pre-multi-session;
+ *  one of these exists per live session id. Composed (RFC 0004 P3 / D3) as the
+ *  INTERSECTION of the role bundles above — no field moved at runtime; a consumer
+ *  may depend on the narrow role it reads (e.g. `SessionPolicyRole`) instead of
+ *  the whole record. The factory in server.ts still builds one object. */
+export interface SessionEntry
+  extends
+    SessionCore,
+    SessionObserveRole,
+    SessionNetworkRole,
+    SessionFeatureRole,
+    SessionEmulationRole,
+    SessionDeepRole,
+    SessionHealthRole,
+    SessionPolicyRole,
+    SessionDeviceRole,
+    SessionCaptureRole {}
 
 export const DEFAULT_SESSION_ID = "default";
 

@@ -83,6 +83,45 @@ function tokens(s: string): Set<string> {
 }
 
 /** Pure structural diff of two DOM maps. Exported for unit tests. */
+/** Compute the per-attribute delta between two attribute maps, or null when
+ *  nothing changed. */
+function attrDeltaOf(
+  b: Record<string, string>,
+  a: Record<string, string>,
+): Record<string, { before?: string; after?: string }> | null {
+  const delta: Record<string, { before?: string; after?: string }> = {};
+  for (const k of new Set([...Object.keys(b), ...Object.keys(a)])) {
+    if (b[k] !== a[k]) delta[k] = { before: b[k], after: a[k] };
+  }
+  return Object.keys(delta).length ? delta : null;
+}
+
+/** Diff one node (present before AND after) into a `DomChange`, or null when it
+ *  is unchanged across class / style / attribute dimensions. */
+function diffNode(path: string, b: DomNode, a: DomNode): DomChange | null {
+  const change: DomChange = { path, tag: a.tag, ...(a.testId ? { testId: a.testId } : {}) };
+  let dirty = false;
+  if (b.classes !== a.classes) {
+    const bt = tokens(b.classes);
+    const at = tokens(a.classes);
+    change.classDelta = {
+      added: [...at].filter((t) => !bt.has(t)),
+      removed: [...bt].filter((t) => !at.has(t)),
+    };
+    dirty = true;
+  }
+  if (b.style !== a.style) {
+    change.styleDelta = { before: b.style, after: a.style };
+    dirty = true;
+  }
+  const attrDelta = attrDeltaOf(b.attrs, a.attrs);
+  if (attrDelta) {
+    change.attrDelta = attrDelta;
+    dirty = true;
+  }
+  return dirty ? change : null;
+}
+
 export function diffDomMaps(before: DomMap | null, after: DomMap | null): DomDiff {
   const changed: DomChange[] = [];
   const added: DomDiff["added"] = [];
@@ -102,31 +141,8 @@ export function diffDomMaps(before: DomMap | null, after: DomMap | null): DomDif
       removed.push({ path, tag: b.tag, ...(b.testId ? { testId: b.testId } : {}) });
       continue;
     }
-    const change: DomChange = { path, tag: a.tag, ...(a.testId ? { testId: a.testId } : {}) };
-    let dirty = false;
-    if (b.classes !== a.classes) {
-      const bt = tokens(b.classes),
-        at = tokens(a.classes);
-      change.classDelta = {
-        added: [...at].filter((t) => !bt.has(t)),
-        removed: [...bt].filter((t) => !at.has(t)),
-      };
-      dirty = true;
-    }
-    if (b.style !== a.style) {
-      change.styleDelta = { before: b.style, after: a.style };
-      dirty = true;
-    }
-    const attrKeys = new Set([...Object.keys(b.attrs), ...Object.keys(a.attrs)]);
-    const attrDelta: Record<string, { before?: string; after?: string }> = {};
-    for (const k of attrKeys) {
-      if (b.attrs[k] !== a.attrs[k]) attrDelta[k] = { before: b.attrs[k], after: a.attrs[k] };
-    }
-    if (Object.keys(attrDelta).length) {
-      change.attrDelta = attrDelta;
-      dirty = true;
-    }
-    if (dirty) changed.push(change);
+    const change = diffNode(path, b, a);
+    if (change) changed.push(change);
   }
   for (const [path, a] of Object.entries(after)) {
     if (!before[path]) added.push({ path, tag: a.tag, ...(a.testId ? { testId: a.testId } : {}) });

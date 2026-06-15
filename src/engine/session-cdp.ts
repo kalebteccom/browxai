@@ -28,7 +28,7 @@ export function requireCdp(session: CdpCapable): CDPSession {
     throw new Error(
       `engine "${session.engine}" has no CDP escape hatch — this operation needs raw CDP ` +
         "(perf / coverage / heap / network tap / a11y substrate) and is only available on " +
-        "chromium today. See docs/rfcs/0002-multi-engine-bidi.md for the per-engine capability matrix.",
+        "chromium today.",
     );
   }
   return session.cdp();

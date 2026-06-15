@@ -29,6 +29,14 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
       - run: pnpm run depcheck
+      # RFC 0004 architecture guardrails, REPORTING-ONLY in P0. depcruise rules
+      # ship severity "warn" (.dependency-cruiser.cjs) and jscpd carries no
+      # threshold (.jscpd.json), so neither fails the lint job — they surface
+      # layering / duplication drift in the log. depcruise promotes to error in
+      # P4; jscpd promotes to a thresholded jscpd:strict in P3, once the
+      # registries / extractions those phases land make the tree able to pass.
+      - run: pnpm depcruise
+      - run: pnpm jscpd:check
 
   audit:
     runs-on: ubuntu-latest

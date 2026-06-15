@@ -14,6 +14,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./logging.js";
+import { invariant } from "./invariant.js";
 
 /** Full resolved view consumed by the server. */
 export interface ResolvedConfig {
@@ -171,30 +172,65 @@ export class ConfigStore {
     };
   }
 
-  /** Resolve the full config. `sessionPatch` is the highest-precedence layer. */
+  /** The precedence chain as DATA (RFC 0004 P4 / D6) — replacing the four
+   *  fixed-order `apply` calls + the `getLayer` switch. The array order IS the
+   *  precedence, applied lowest → highest: env < user < project < session, atop
+   *  the built-in defaults base. CRITICAL: reordering this array silently
+   *  changes which layer wins, so the order is pinned by the config-store unit
+   *  tests for every layer permutation. `read(store, sessionPatch)` returns the
+   *  raw pre-merge layer for that scope (the same value the old `getLayer` arm
+   *  returned). Adding a layer is one entry here, not edits to two methods.
+   *
+   *  `defaults` is NOT in this array: it is the base accumulator, not an
+   *  override layer (`getLayer("defaults")` returns the resolved base directly).
+   *  `session` reads `sessionPatch` during `resolve()` but is not held on the
+   *  store, so its `getLayer` view is `{}` — preserved exactly. */
+  private static readonly PRECEDENCE: ReadonlyArray<{
+    scope: Exclude<ConfigScope, "defaults">;
+    read: (store: ConfigStore, sessionPatch?: ConfigLayer) => ConfigLayer | undefined;
+  }> = [
+    { scope: "env", read: (s) => s.env },
+    { scope: "user", read: (s) => s.persisted.user },
+    { scope: "project", read: (s) => s.persisted.project },
+    { scope: "session", read: (_s, sessionPatch) => sessionPatch },
+  ];
+
+  /** Resolve the full config. `sessionPatch` is the highest-precedence layer.
+   *  Iterates `PRECEDENCE` low → high atop the defaults base — byte-identical to
+   *  the old fixed `apply(env) → apply(user) → apply(project) → apply(session)`
+   *  sequence, now data-driven. */
   resolve(sessionPatch?: ConfigLayer): ResolvedConfig {
+    // L8: the precedence chain must be non-empty and `session` must be its
+    // highest-precedence (last) layer — the whole contract of `resolve()` is
+    // "apply lowest → highest, session wins". A reordering that demoted `session`
+    // would silently let a persisted layer override an open_session patch. The
+    // PRECEDENCE array is a fixed module constant ending in `session`, so this
+    // holds on every call; the invariant pins the ordering contract at the one
+    // place it is depended on, complementing the per-permutation unit tests.
+    const chain = ConfigStore.PRECEDENCE;
+    invariant(chain.length > 0, "config precedence chain is empty");
+    invariant(
+      chain[chain.length - 1]!.scope === "session",
+      "config precedence: `session` must be the highest-precedence layer",
+    );
     let acc: ResolvedConfig = { ...BUILTIN_DEFAULTS, unstable: { ...BUILTIN_DEFAULTS.unstable } };
-    acc = ConfigStore.apply(acc, this.env);
-    acc = ConfigStore.apply(acc, this.persisted.user);
-    acc = ConfigStore.apply(acc, this.persisted.project);
-    acc = ConfigStore.apply(acc, sessionPatch);
+    for (const layer of chain) {
+      acc = ConfigStore.apply(acc, layer.read(this, sessionPatch));
+    }
     return acc;
   }
 
-  /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. */
+  /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. Reads the
+   *  same `PRECEDENCE` array `resolve()` iterates, so the inspected layer and the
+   *  applied layer can never diverge. `defaults` returns the base directly (it is
+   *  not an override layer); `session` is never held here, so its raw view is
+   *  `{}` — both preserved exactly. */
   getLayer(scope: ConfigScope): ConfigLayer | ResolvedConfig {
-    switch (scope) {
-      case "defaults":
-        return BUILTIN_DEFAULTS;
-      case "env":
-        return this.env;
-      case "user":
-        return this.persisted.user ?? {};
-      case "project":
-        return this.persisted.project ?? {};
-      case "session":
-        return {}; // session config isn't held here; it's per open_session
-    }
+    if (scope === "defaults") return BUILTIN_DEFAULTS;
+    const entry = ConfigStore.PRECEDENCE.find((l) => l.scope === scope);
+    // session config isn't held here (it's per open_session), so its raw layer
+    // is `{}`; every other scope returns its stored layer (or `{}` when unset).
+    return entry?.read(this) ?? {};
   }
 
   /** Persist a patch into `user` or `project`. The only writer of config.json. */

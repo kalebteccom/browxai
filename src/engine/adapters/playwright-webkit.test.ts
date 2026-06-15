@@ -5,8 +5,8 @@ import { WEBKIT_CAPABILITIES } from "../capabilities.js";
 // The launch/attach methods drive a real browser and are exercised by the WebKit
 // keystone lane (real-WebKit). Here we assert the adapter's pure declarative
 // surface — that it tags itself webkit, declares NO deep escape hatch (WebKit has
-// no CDP at all), and refuses attach structurally per RFC D7 (no CDP/BiDi attach
-// client for WebKit/Safari).
+// no CDP at all), and refuses attach structurally because there is no CDP/BiDi
+// attach client for WebKit/Safari.
 describe("PlaywrightWebKitAdapter — declarative surface", () => {
   it("identifies as the webkit engine", () => {
     expect(new PlaywrightWebKitAdapter().engine).toBe("webkit");
@@ -16,7 +16,7 @@ describe("PlaywrightWebKitAdapter — declarative surface", () => {
     const adapter = new PlaywrightWebKitAdapter();
     expect(adapter.capabilities).toBe(WEBKIT_CAPABILITIES);
     expect(adapter.capabilities.deep).toBe(false);
-    expect(adapter.capabilities.subInterfaces.size).toBe(9);
+    expect(adapter.capabilities.subInterfaces.size).toBe(10); // +page (RFC 0004 D5)
   });
 
   it("exposes the two managed launch shapes the session factories delegate to", () => {
@@ -25,11 +25,10 @@ describe("PlaywrightWebKitAdapter — declarative surface", () => {
     expect(typeof adapter.launchEphemeral).toBe("function");
   });
 
-  it("refuses attach structurally (webkit-attach-not-supported, RFC D7)", async () => {
+  it("refuses attach structurally (webkit-attach-not-supported)", async () => {
     const adapter = new PlaywrightWebKitAdapter();
     await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(
       /webkit-attach-not-supported/,
     );
-    await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(/0002-multi-engine-bidi/);
   });
 });

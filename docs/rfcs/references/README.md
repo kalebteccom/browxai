@@ -1,4 +1,8 @@
-# RFC 0002 references — the multi-engine research record
+# RFC references
+
+Supporting research and design records for the numbered RFCs. Each RFC's deep companion material lives here — the architecture-hardening suite prefixed by its RFC number (`0004-NN-*.md`), the original multi-engine archive by a bare sequence number.
+
+## RFC 0002 — the multi-engine research record
 
 The full research that backs [RFC 0002](../0002-multi-engine-bidi.md). Captured verbatim in the repo (the owner's directive: track the whole research record as the working base for the multi-engine workstream). Produced by an orchestrated research workflow, June 2026; primary-source-led, dated claims.
 
@@ -12,3 +16,19 @@ The full research that backs [RFC 0002](../0002-multi-engine-bidi.md). Captured 
 | `selenium-driver-protocols.webp`                                   | The Selenium per-driver-protocol diagram (chromedriver→CDP, msedgedriver→CDP, geckodriver→Marionette, safaridriver→XPC) — the mental model RFC 0002 reasons over.                                                                                                                                                                                                               |
 
 These are a research snapshot, not living docs: they reflect the state of the standards and the codebase in June 2026. Where a later finding supersedes one (e.g. a spec command that the audit marked unavailable but the critic re-fetched as spec'd), the RFC carries the reconciled ruling; the references are kept as-was for provenance.
+
+## RFC 0004 — the architecture-hardening record
+
+The deep companion suite for [RFC 0004](../0004-architecture-hardening.md): the adversarial audit, the safety-critical maintainability standard, the target patterns, the phased plan, the fitness-function/guardrail specs, the AI-documentation and harness changes, the prior art, the future-proofing roadmap, and the adversarial review log. Produced June 2026 from an eight-subsystem adversarial audit; evidence-backed with verified `file:line` citations, and held to an iterate-until-clean adversarial review (`0004-09`).
+
+| File                                                                                         | What it is                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md)                           | The 80 SOLID/spaghetti findings across all 8 subsystems with `file:line` evidence, the OCP extension-scenario tables (how many files each addition touches today), and the six cross-cutting themes.                           |
+| [`0004-02-maintainability-standard.md`](0004-02-maintainability-standard.md)                 | The centerpiece: the ten browxai laws (L1–L10), each traced to its safety-critical lineage (Power of Ten / JPL / DO-178C / defense-in-depth / fitness functions), its TypeScript adaptation, and its executable enforcer.      |
+| [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md)                       | The target pattern catalogue with before/after TypeScript: the `EngineRegistry`, metadata-at-registration + derived maps, port segregation, `PolicyBuffer`, `actionTool()`, the `EgressSanitiser` chokepoint, switch→registry. |
+| [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md)                                       | The phased, behavior-preserving execution plan (P0–P5, guardrail-first strangler-fig): per-phase file inventories, gate checkpoints, risk, rollback.                                                                           |
+| [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md) | The executable architecture: every custom lint rule, fitness test, `dependency-cruiser` layering rule, budget, codegen, and CI gate, with concrete config and code.                                                            |
+| [`0004-06-ai-documentation-and-harness.md`](0004-06-ai-documentation-and-harness.md)         | The AI-documentation and harness hardening: the exact doc edits, the new `fitness-functions.md` index, the `architecture-fitness-auditor` skill, and the workflow/harness contracts.                                           |
+| [`0004-07-prior-art-and-references.md`](0004-07-prior-art-and-references.md)                 | Prior art and citations: the safety-critical lineage, the design/maintainability canon, the evolutionary-architecture and tooling landscape, and the mapping of each external practice to a browxai law/guardrail.             |
+| [`0004-08-future-proofing.md`](0004-08-future-proofing.md)                                   | The future-proofing roadmap: anticipated extension pressure (engines, plugins, transports, capability classes, scale) and how the hardened seams absorb each add-only; the maintainability ratchet.                            |
+| [`0004-09-adversarial-review-cycles.md`](0004-09-adversarial-review-cycles.md)               | The adversarial review record: the iterate-until-clean loop (two independent reviewers, source-verified, repeated to zero defects), the per-cycle verdicts, and the disposition table of every fix.                            |

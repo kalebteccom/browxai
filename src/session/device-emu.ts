@@ -72,6 +72,7 @@
 
 import type { BrowserContext, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { PolicyRecordBuffer } from "./policy-buffer.js";
 
 /** The three Web platform APIs browxai's device-emulation governs. */
 export const SUPPORTED_DEVICE_APIS = ["bluetooth", "usb", "hid"] as const;
@@ -160,10 +161,10 @@ export class DeviceEmulationState {
     usb: { devices: [] },
     hid: { devices: [] },
   };
-  /** Captured `requestDevice` calls. Capped — chatty pages can't grow this
-   *  without bound; `device_requests` slices on `since`. */
-  private buffer: DeviceRequestRecord[] = [];
-  private readonly cap: number;
+  /** Captured `requestDevice` calls — a bounded record ring (shared
+   *  `PolicyRecordBuffer`; chatty pages can't grow this without bound,
+   *  `device_requests` slices on `since`). */
+  private readonly records: PolicyRecordBuffer<DeviceRequestRecord>;
   /** Contexts we've already installed the init-script + binding on.
    *  Idempotent install guard — BYOB reconnect / context rebuild MUST not
    *  double-wire. */
@@ -177,7 +178,7 @@ export class DeviceEmulationState {
 
   constructor(enabledByCapability: boolean, cap = 200) {
     this.enabledByCapability = enabledByCapability;
-    this.cap = cap;
+    this.records = new PolicyRecordBuffer<DeviceRequestRecord>(cap);
   }
 
   /** Snapshot of one API's catalog. */
@@ -206,13 +207,12 @@ export class DeviceEmulationState {
 
   /** Append a request record. Caps the buffer at `cap`. */
   record(rec: DeviceRequestRecord): void {
-    this.buffer.push(rec);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    this.records.record(rec);
   }
 
   /** Slice records with `ts >= since`. Default since=0 returns all. */
   since(since: number = 0): DeviceRequestRecord[] {
-    return this.buffer.filter((r) => r.ts >= since);
+    return this.records.since(since);
   }
 
   /** Capability gate snapshot. The check binding consults this on every

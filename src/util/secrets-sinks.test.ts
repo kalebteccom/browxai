@@ -47,7 +47,7 @@ describe("sink: console_read", () => {
     expect(out[0]!.text).toBe("auth header carried <TOKEN> inline");
   });
 
-  it("composes with the W-O1 URL sanitiser (both layers apply)", () => {
+  it("composes with the URL sanitiser (both layers apply)", () => {
     const buf = new ConsoleBuffer();
     const secrets = new SecretRegistry();
     secrets.register({ name: "TOKEN", value: "tok-xyz" });
@@ -179,7 +179,7 @@ describe("sink: NetworkTap (ActionResult.network)", () => {
   });
 });
 
-describe("sanitiser composition — W-O1 + secrets both apply", () => {
+describe("sanitiser composition — URL sanitiser + secrets both apply", () => {
   it("URL sanitiser patternises path; secrets layer catches a literal value elsewhere", () => {
     // The URL sanitiser handles URL structure (query/fragment/userinfo/
     // token-paths via regex). The secrets layer handles literal real-value

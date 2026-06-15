@@ -11,6 +11,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
+import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiContentItem, BrowxaiResult } from "./types.js";
 import { NAME, VERSION } from "../server.js";
 
@@ -54,3 +55,11 @@ export async function openStdioChildTransport(opts: StdioChildOptions = {}): Pro
 
   return { dispatch, close };
 }
+
+// RFC 0004 P4 / D6 — self-register under the "stdio-child" mode. The factory maps
+// the SDK options to this opener's argument shape EXACTLY as the old
+// `case "stdio-child"` arm did (`{ command, args, env }`).
+registerTransport("stdio-child", {
+  open: (opts) =>
+    openStdioChildTransport({ command: opts.command, args: opts.args, env: opts.env }),
+});

@@ -210,87 +210,80 @@ export class CoverageTrackerState {
  *      with count:0 are dead blocks within the live function.
  *  We follow the same algorithm: aggregate per-function dead ranges, then
  *  total used = script length - sum of dead ranges. */
+/** The script's total byte span = the largest `endOffset` across all ranges. */
+function scriptTotalSpan(s: CdpScriptCoverage): number {
+  let total = 0;
+  for (const fn of s.functions ?? []) {
+    for (const r of fn.ranges ?? []) {
+      if (typeof r.endOffset === "number" && r.endOffset > total) total = r.endOffset;
+    }
+  }
+  return total;
+}
+
+/** Collect dead (count:0) byte ranges. The first range in each `ranges[]` is the
+ *  function body; subsequent ranges are sub-blocks (when isBlockCoverage:true). */
+function collectDeadRanges(s: CdpScriptCoverage): Array<[number, number]> {
+  const deadRanges: Array<[number, number]> = [];
+  for (const fn of s.functions ?? []) {
+    const ranges = fn.ranges ?? [];
+    if (ranges.length === 0) continue;
+    const root = ranges[0]!;
+    if (typeof root.startOffset !== "number" || typeof root.endOffset !== "number") continue;
+    if (root.count === 0) {
+      deadRanges.push([root.startOffset, root.endOffset]); // whole body dead
+      continue;
+    }
+    for (let i = 1; i < ranges.length; i++) {
+      const r = ranges[i]!;
+      if (r.count === 0 && typeof r.startOffset === "number" && typeof r.endOffset === "number") {
+        deadRanges.push([r.startOffset, r.endOffset]);
+      }
+    }
+  }
+  return deadRanges;
+}
+
+/** Merge overlapping (sorted-by-start) ranges into a minimal disjoint set. */
+function mergeRanges(ranges: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  let dStart = -1;
+  let dEnd = -1;
+  for (const [s, e] of sorted) {
+    if (s > dEnd) {
+      if (dEnd > dStart) merged.push([dStart, dEnd]);
+      dStart = s;
+      dEnd = e;
+    } else if (e > dEnd) {
+      dEnd = e;
+    }
+  }
+  if (dEnd > dStart) merged.push([dStart, dEnd]);
+  return merged;
+}
+
+function parseScriptCoverage(s: CdpScriptCoverage): JsCoverageEntry | null {
+  const url = typeof s.url === "string" ? s.url : "";
+  if (!url) return null;
+  const total = scriptTotalSpan(s);
+  const mergedDead = mergeRanges(collectDeadRanges(s));
+  const deadBytes = mergedDead.reduce((sum, [s3, e3]) => sum + (e3 - s3), 0);
+  const used = Math.max(0, total - deadBytes);
+  const usagePercent = total === 0 ? 100 : Math.round((used / total) * 10000) / 100;
+  const dead = mergedDead
+    .slice(0, MAX_DEAD_RANGES_PER_SCRIPT)
+    .map(([s5, e5]) => ({ start: s5, end: e5 }));
+  const entry: JsCoverageEntry = { url, totalBytes: total, usedBytes: used, usagePercent };
+  if (dead.length > 0) entry.deadRanges = dead;
+  return entry;
+}
+
 export function parseJsCoverage(scripts: CdpScriptCoverage[]): JsCoverageEntry[] {
   const out: JsCoverageEntry[] = [];
   for (const s of scripts) {
-    const url = typeof s.url === "string" ? s.url : "";
-    if (!url) continue;
-    // Identify the script total span via the outermost wrapper range.
-    let total = 0;
-    for (const fn of s.functions ?? []) {
-      for (const r of fn.ranges ?? []) {
-        if (typeof r.endOffset === "number" && r.endOffset > total) total = r.endOffset;
-      }
-    }
-    // Collect dead byte ranges per function. The first range in each
-    // `ranges[]` array is the function's full body; subsequent ranges are
-    // sub-blocks (when isBlockCoverage:true) describing block-level coverage.
-    const deadRanges: Array<[number, number]> = [];
-    for (const fn of s.functions ?? []) {
-      const ranges = fn.ranges ?? [];
-      if (ranges.length === 0) continue;
-      const root = ranges[0]!;
-      if (typeof root.startOffset !== "number" || typeof root.endOffset !== "number") continue;
-      if (root.count === 0) {
-        // Whole function body dead.
-        deadRanges.push([root.startOffset, root.endOffset]);
-        continue;
-      }
-      // Function ran. Walk sub-ranges (index 1..) for any count:0 blocks.
-      for (let i = 1; i < ranges.length; i++) {
-        const r = ranges[i]!;
-        if (r.count === 0 && typeof r.startOffset === "number" && typeof r.endOffset === "number") {
-          deadRanges.push([r.startOffset, r.endOffset]);
-        }
-      }
-    }
-    // Merge overlapping dead ranges (sub-blocks of one function don't overlap
-    // sibling functions, but defensive collapse is cheap + safer).
-    deadRanges.sort((a, b) => a[0] - b[0]);
-    const mergedDead: Array<[number, number]> = [];
-    let dStart = -1,
-      dEnd = -1;
-    for (const [s2, e2] of deadRanges) {
-      if (s2 > dEnd) {
-        if (dEnd > dStart) mergedDead.push([dStart, dEnd]);
-        dStart = s2;
-        dEnd = e2;
-      } else if (e2 > dEnd) {
-        dEnd = e2;
-      }
-    }
-    if (dEnd > dStart) mergedDead.push([dStart, dEnd]);
-    const deadBytes = mergedDead.reduce((sum, [s3, e3]) => sum + (e3 - s3), 0);
-    const used = Math.max(0, total - deadBytes);
-    // Re-derive usedRanges as the complement of mergedDead for the
-    // backward-compatible local variable name.
-    const usedRanges: Array<[number, number]> = [];
-    {
-      let cursor = 0;
-      for (const [s4, e4] of mergedDead) {
-        if (s4 > cursor) usedRanges.push([cursor, s4]);
-        cursor = e4;
-      }
-      if (cursor < total) usedRanges.push([cursor, total]);
-    }
-    // usagePercent is the headline metric the agent reads.
-    const usagePercent = total === 0 ? 100 : Math.round((used / total) * 10000) / 100;
-    // Dead ranges = the merged dead set we already computed; cap to 50.
-    const dead: Array<{ start: number; end: number }> = mergedDead
-      .slice(0, MAX_DEAD_RANGES_PER_SCRIPT)
-      .map(([s5, e5]) => ({ start: s5, end: e5 }));
-    // Silence TS unused-variable warning — usedRanges is exported semantics
-    // (kept for future API extension, e.g. surfacing usedRanges in `full`
-    // audit mode); use it once to keep the compiler quiet.
-    void usedRanges;
-    const entry: JsCoverageEntry = {
-      url,
-      totalBytes: total,
-      usedBytes: used,
-      usagePercent,
-    };
-    if (dead.length > 0) entry.deadRanges = dead;
-    out.push(entry);
+    const entry = parseScriptCoverage(s);
+    if (entry) out.push(entry);
   }
   return out;
 }

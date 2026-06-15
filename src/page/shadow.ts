@@ -172,40 +172,47 @@ function findByBackendId(root: CdpDomNode, target: number): CdpDomNode | null {
   return null;
 }
 
+/** Summarise the element children of one shadow root (tag + child count + direct
+ *  text), skipping non-element nodes. */
+function summariseShadowChildren(sr: CdpDomNode): ShadowChildSummary[] {
+  const children: ShadowChildSummary[] = [];
+  for (const c of sr.children ?? []) {
+    if (c.nodeType !== 1) continue;
+    const summary: ShadowChildSummary = {
+      tag: (c.localName ?? c.nodeName ?? "").toLowerCase(),
+      childCount: countElementChildren(c),
+    };
+    const txt = directText(c);
+    if (txt) summary.text = txt;
+    children.push(summary);
+  }
+  return children;
+}
+
+/** Build the `ShadowTreeEntry` for one host node + shadow root (non-user-agent). */
+function buildShadowEntry(host: CdpDomNode, sr: CdpDomNode): ShadowTreeEntry {
+  return {
+    hostRef: `backend:${host.backendNodeId ?? 0}`,
+    hostTag: (host.localName ?? host.nodeName ?? "").toLowerCase(),
+    mode: sr.shadowRootType === "closed" ? "closed" : "open",
+    children: summariseShadowChildren(sr),
+    descendantCount: countDescendantElements(sr),
+  };
+}
+
 function walkForShadowHosts(node: CdpDomNode, out: ShadowTreeEntry[], cap: number): void {
-  // BFS so we surface hosts in document order — easier for an agent to
-  // reason about than DFS's reverse traversal.
+  // BFS so we surface hosts in document order — easier for an agent to reason
+  // about than DFS's reverse traversal.
   const queue: CdpDomNode[] = [node];
   while (queue.length && out.length < cap) {
     const n = queue.shift()!;
     for (const sr of n.shadowRoots ?? []) {
       if (out.length >= cap) break;
-      // user-agent shadow roots (e.g. <video> internals) are not the
-      // adopter's app — skip them. They're not what an agent means by
-      // "the shadow root under this web component."
+      // user-agent shadow roots (e.g. <video> internals) aren't the adopter's
+      // app — not what an agent means by "the shadow root under this component."
       if (sr.shadowRootType === "user-agent") continue;
-      const mode = sr.shadowRootType === "closed" ? "closed" : "open";
-      const children: ShadowChildSummary[] = [];
-      for (const c of sr.children ?? []) {
-        if (c.nodeType !== 1) continue;
-        const tag = (c.localName ?? c.nodeName ?? "").toLowerCase();
-        const summary: ShadowChildSummary = {
-          tag,
-          childCount: countElementChildren(c),
-        };
-        const txt = directText(c);
-        if (txt) summary.text = txt;
-        children.push(summary);
-      }
-      out.push({
-        hostRef: `backend:${n.backendNodeId ?? 0}`,
-        hostTag: (n.localName ?? n.nodeName ?? "").toLowerCase(),
-        mode,
-        children,
-        descendantCount: countDescendantElements(sr),
-      });
-      // Descend into the shadow root to find nested shadow hosts.
-      for (const c of sr.children ?? []) queue.push(c);
+      out.push(buildShadowEntry(n, sr));
+      for (const c of sr.children ?? []) queue.push(c); // descend for nested hosts
     }
     for (const c of n.children ?? []) queue.push(c);
     if (n.contentDocument) queue.push(n.contentDocument);
@@ -410,58 +417,72 @@ export async function harvestClosedShadowElements(
   return { entries };
 }
 
+const INTERACTIVE_TAGS = new Set(["button", "a", "input", "select", "textarea"]);
+
+/** Predicate mirroring PAGE_SCRIPT in dom-walk.ts: a node with a role, a standard
+ *  interactive tag, or an interaction attribute is interactive. */
+function isInteractiveNode(tag: string, attrMap: Map<string, string>): boolean {
+  return (
+    attrMap.has("role") ||
+    INTERACTIVE_TAGS.has(tag) ||
+    (tag === "a" && attrMap.has("href")) ||
+    attrMap.has("onclick") ||
+    attrMap.has("tabindex") ||
+    attrMap.get("contenteditable") === "true"
+  );
+}
+
+/** Build a closed-shadow entry. Closed shadow has no addressable selector from
+ *  the page side, so the synthetic `structuralPath` documents the boundary (the
+ *  selectorHint then emits `tier 5` role-only and the agent sees why it isn't
+ *  actionable). */
+function buildClosedShadowEntry(
+  n: CdpDomNode,
+  tag: string,
+  attrMap: Map<string, string>,
+  testIdEntry: { attr: string; value: string } | null,
+  index: number,
+): ClosedShadowDomEntry {
+  return {
+    role: attrMap.get("role") || tag,
+    name: nameFromAttrs(attrMap),
+    testId: testIdEntry?.value ?? "",
+    testIdAttr: testIdEntry?.attr ?? "",
+    tag,
+    id: attrMap.get("id") ?? "",
+    structuralPath: `closed-shadow/${tag}[${index}]`,
+    cssPath: "",
+    closedShadow: true,
+  };
+}
+
 function harvestSubtree(
   root: CdpDomNode,
   testAttrs: string[],
   out: ClosedShadowDomEntry[],
   max: number,
 ): void {
-  // Predicate set mirrors PAGE_SCRIPT in dom-walk.ts: anything with role,
-  // any of the standard interactive tags, or any configured test
-  // attribute.
-  const interactiveTags = new Set(["button", "a", "input", "select", "textarea"]);
   const stack: CdpDomNode[] = [...(root.children ?? [])];
   while (stack.length && out.length < max) {
     const n = stack.pop()!;
     if (n.nodeType !== 1) continue;
     const tag = (n.localName ?? n.nodeName ?? "").toLowerCase();
     const attrMap = readAttrs(n);
-    const role = attrMap.get("role") || tag;
     const testIdEntry = firstTestAttr(attrMap, testAttrs);
-    const isInteractive =
-      attrMap.has("role") ||
-      interactiveTags.has(tag) ||
-      (tag === "a" && attrMap.has("href")) ||
-      attrMap.has("onclick") ||
-      attrMap.has("tabindex") ||
-      attrMap.get("contenteditable") === "true";
-    if (isInteractive || testIdEntry) {
-      out.push({
-        role,
-        name: nameFromAttrs(attrMap),
-        testId: testIdEntry?.value ?? "",
-        testIdAttr: testIdEntry?.attr ?? "",
-        tag,
-        id: attrMap.get("id") ?? "",
-        // Closed shadow has no addressable selector from the page side.
-        // We surface a synthetic path that documents the boundary so the
-        // selectorHint emits `tier 5` (role-only) and the agent can see
-        // why a closed-shadow candidate isn't actionable.
-        structuralPath: `closed-shadow/${tag}[${out.length}]`,
-        cssPath: "",
-        closedShadow: true,
-      });
+    if (isInteractiveNode(tag, attrMap) || testIdEntry) {
+      out.push(buildClosedShadowEntry(n, tag, attrMap, testIdEntry, out.length));
     }
-    for (const c of n.children ?? []) stack.push(c);
-    // Recurse open shadow roots that live inside the closed boundary —
-    // those are visible to anyone inside the closed component.
-    for (const sr of n.shadowRoots ?? []) {
-      if (sr.shadowRootType === "open") {
-        for (const c of sr.children ?? []) stack.push(c);
-      } else if (sr.shadowRootType === "closed") {
-        // Nested closed inside closed — harvest recursively.
-        for (const c of sr.children ?? []) stack.push(c);
-      }
+    pushHarvestChildren(stack, n);
+  }
+}
+
+/** Push a node's element children + its open/closed shadow-root children onto
+ *  the harvest stack (user-agent shadow roots are skipped). */
+function pushHarvestChildren(stack: CdpDomNode[], n: CdpDomNode): void {
+  for (const c of n.children ?? []) stack.push(c);
+  for (const sr of n.shadowRoots ?? []) {
+    if (sr.shadowRootType === "open" || sr.shadowRootType === "closed") {
+      for (const c of sr.children ?? []) stack.push(c);
     }
   }
 }

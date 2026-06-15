@@ -23,6 +23,7 @@
 
 import type { BrowserContext, Dialog, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type DialogMode = "accept" | "dismiss" | "raise" | "accept-prompt-with";
 
@@ -59,10 +60,10 @@ export const UNHANDLED_DIALOG_HINT =
  *  so a `set_dialog_policy` call takes effect on the very next dialog. */
 export class DialogPolicyState {
   private policy: DialogPolicy;
-  private buffer: DialogRecord[] = [];
-  /** Hard cap so a chatty page can't grow this without bound. The
-   *  per-action slice is the only consumer — older records are noise. */
-  private readonly cap: number;
+  /** Bounded record ring (shared `PolicyRecordBuffer` — the hard cap so a chatty
+   *  page can't grow this without bound; the per-action slice is the only
+   *  consumer, older records are noise). */
+  private readonly records: PolicyRecordBuffer<DialogRecord>;
   /** Pages we've already installed the handler on. Lets the
    *  `context.on('page')` wiring be idempotent — re-attaching to an existing
    *  page (BYOB reconnect, profile-restore) doesn't double-fire. */
@@ -70,7 +71,7 @@ export class DialogPolicyState {
 
   constructor(initial: DialogPolicy = { mode: "raise" }, cap = 200) {
     this.policy = normalise(initial);
-    this.cap = cap;
+    this.records = new PolicyRecordBuffer<DialogRecord>(cap);
   }
 
   current(): DialogPolicy {
@@ -84,19 +85,18 @@ export class DialogPolicyState {
 
   /** Append a dialog record. Caps the buffer at `cap`. */
   record(rec: DialogRecord): void {
-    this.buffer.push(rec);
-    if (this.buffer.length > this.cap) this.buffer.shift();
+    this.records.record(rec);
   }
 
   /** Slice records with `ts >= since`. Used by the action-window. */
   since(since: number): DialogRecord[] {
-    return this.buffer.filter((r) => r.ts >= since);
+    return this.records.since(since);
   }
 
   /** True if any record in `[since, now]` was handled in `raise` mode.
    *  When true, the action-window flips the result to `ok:false`. */
   raisedSince(since: number): boolean {
-    return this.buffer.some((r) => r.ts >= since && r.handledAs === "raised");
+    return this.records.matchedSince(since, (r) => r.handledAs === "raised");
   }
 
   /** Has this page already been wired? Idempotent install guard. */

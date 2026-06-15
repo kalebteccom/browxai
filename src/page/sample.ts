@@ -137,10 +137,10 @@ type SamplerParams = {
 // closure (which wouldn't survive serialization).
 
 /** Element sampler — runs as `loc.evaluate(elementSampler, params)`. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number; value: number }>> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const g = globalThis as any;
+function elementSampler(
+  el: HTMLElement,
+  p: SamplerParams,
+): Promise<Array<{ tMs: number; value: number }>> {
   const read = (): number => {
     switch (p.metric) {
       case "scrollTop":
@@ -169,7 +169,10 @@ function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number;
   };
   return new Promise((resolve) => {
     const series: Array<{ tMs: number; value: number }> = [];
-    const clock = () => (g.performance && g.performance.now ? g.performance.now() : Date.now());
+    const clock = () =>
+      globalThis.performance && globalThis.performance.now
+        ? globalThis.performance.now()
+        : Date.now();
     const t0 = clock();
     const tick = () => {
       if (series.length < p.maxSeries)
@@ -178,8 +181,8 @@ function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number;
         resolve(series);
         return;
       }
-      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick);
-      else g.setTimeout(tick, p.intervalMs);
+      if (p.everyFrame && globalThis.requestAnimationFrame) globalThis.requestAnimationFrame(tick);
+      else globalThis.setTimeout(tick, p.intervalMs);
     };
     tick();
   });
@@ -187,15 +190,13 @@ function elementSampler(el: any, p: SamplerParams): Promise<Array<{ tMs: number;
 
 /** Window/document sampler — runs as `page.evaluate(windowSampler, params)`. */
 function windowSampler(p: SamplerParams): Promise<Array<{ tMs: number; value: number }>> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const g = globalThis as any;
   const read = (): number => {
-    const s = g.document.scrollingElement || g.document.documentElement;
+    const s = globalThis.document.scrollingElement || globalThis.document.documentElement;
     switch (p.metric) {
       case "scrollTop":
-        return g.scrollY ?? s.scrollTop ?? 0;
+        return globalThis.scrollY ?? s.scrollTop ?? 0;
       case "scrollLeft":
-        return g.scrollX ?? s.scrollLeft ?? 0;
+        return globalThis.scrollX ?? s.scrollLeft ?? 0;
       case "scrollHeight":
         return s.scrollHeight;
       case "scrollWidth":
@@ -210,7 +211,10 @@ function windowSampler(p: SamplerParams): Promise<Array<{ tMs: number; value: nu
   };
   return new Promise((resolve) => {
     const series: Array<{ tMs: number; value: number }> = [];
-    const clock = () => (g.performance && g.performance.now ? g.performance.now() : Date.now());
+    const clock = () =>
+      globalThis.performance && globalThis.performance.now
+        ? globalThis.performance.now()
+        : Date.now();
     const t0 = clock();
     const tick = () => {
       if (series.length < p.maxSeries)
@@ -219,8 +223,8 @@ function windowSampler(p: SamplerParams): Promise<Array<{ tMs: number; value: nu
         resolve(series);
         return;
       }
-      if (p.everyFrame && g.requestAnimationFrame) g.requestAnimationFrame(tick);
-      else g.setTimeout(tick, p.intervalMs);
+      if (p.everyFrame && globalThis.requestAnimationFrame) globalThis.requestAnimationFrame(tick);
+      else globalThis.setTimeout(tick, p.intervalMs);
     };
     tick();
   });
