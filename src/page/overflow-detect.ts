@@ -289,43 +289,41 @@ const PAGE_DETECT_FN = (args: {
     }
     return n;
   }
+  /** Tier 3 — nth-of-type CSS path (≤5 levels), else a class selector, else the
+   *  bare tag. */
+  function synthTier3(el: Element, tag: string): string {
+    const path: string[] = [];
+    let cur: Element | null = el;
+    for (let i = 0; i < 5 && cur && cur.nodeType === 1 && cur !== document.documentElement; i++) {
+      const ctag = (cur.tagName || "").toLowerCase();
+      path.unshift(ctag + ":nth-of-type(" + nthOfType(cur) + ")");
+      cur = cur.parentElement;
+    }
+    if (path.length > 0) return path.join(" > ");
+    if (el.classList && el.classList.length > 0) {
+      const cls: string[] = [];
+      for (let i = 0; i < el.classList.length && i < 3; i++) cls.push(escapeCls(el.classList[i]!));
+      return tag + "." + cls.join(".");
+    }
+    return tag || "*";
+  }
+
+  /** Compute the raw (un-truncated) selector via the tiered preference:
+   *  data-testid → role+aria-label → tier-3 path. */
+  function synthRaw(el: Element, tag: string): string {
+    const testId = el.getAttribute("data-testid");
+    if (testId) return '[data-testid="' + escapeAttr(testId) + '"]';
+    const role = el.getAttribute("role");
+    const ariaLabel = el.getAttribute("aria-label");
+    if (role && ariaLabel) {
+      return '[role="' + escapeAttr(role) + '"][aria-label="' + escapeAttr(ariaLabel) + '"]';
+    }
+    return synthTier3(el, tag);
+  }
+
   function synth(el: Element): { selector: string; truncated: boolean; originalLength: number } {
     const tag = (el.tagName || "").toLowerCase();
-    let raw = "";
-    const testId = el.getAttribute("data-testid");
-    if (testId) {
-      raw = '[data-testid="' + escapeAttr(testId) + '"]';
-    } else {
-      const role = el.getAttribute("role");
-      const ariaLabel = el.getAttribute("aria-label");
-      if (role && ariaLabel) {
-        raw = '[role="' + escapeAttr(role) + '"][aria-label="' + escapeAttr(ariaLabel) + '"]';
-      } else {
-        // Tier 3 — nth-of-type CSS path bounded at 5 levels (4 ancestors + self).
-        const path: string[] = [];
-        let cur: Element | null = el;
-        for (
-          let i = 0;
-          i < 5 && cur && cur.nodeType === 1 && cur !== document.documentElement;
-          i++
-        ) {
-          const ctag = (cur.tagName || "").toLowerCase();
-          path.unshift(ctag + ":nth-of-type(" + nthOfType(cur) + ")");
-          cur = cur.parentElement;
-        }
-        if (path.length > 0) {
-          raw = path.join(" > ");
-        } else if (el.classList && el.classList.length > 0) {
-          const cls: string[] = [];
-          for (let i = 0; i < el.classList.length && i < 3; i++) {
-            cls.push(escapeCls(el.classList[i]!));
-          }
-          raw = tag + "." + cls.join(".");
-        } else {
-          raw = tag || "*";
-        }
-      }
-    }
+    const raw = synthRaw(el, tag);
     if (raw.length <= selectorMaxLen) {
       return { selector: raw, truncated: false, originalLength: raw.length };
     }
@@ -355,56 +353,7 @@ const PAGE_DETECT_FN = (args: {
 
   // 1. viewport-horizontal — singleton finding before the element walk.
   let scanCapped = false;
-  if (wantVpHorizontal) {
-    try {
-      const docEl = document.documentElement;
-      if (docEl) {
-        const sw = docEl.scrollWidth;
-        const cw = docEl.clientWidth;
-        if (sw > cw + epsilon) {
-          // Best-effort: identify the widest descendant whose bbox extends
-          // past the viewport. Bounded scan (first 500 candidates) so the
-          // singleton stays cheap.
-          let widestSel: string | undefined;
-          let widestW = 0;
-          try {
-            const candidates = document.body
-              ? document.body.querySelectorAll("*")
-              : ([] as unknown as NodeListOf<Element>);
-            const max = candidates.length < 500 ? candidates.length : 500;
-            for (let i = 0; i < max; i++) {
-              const c = candidates[i]!;
-              const r = c.getBoundingClientRect();
-              if (r.right > cw + epsilon && r.width > widestW) {
-                widestW = r.width;
-                const s = synth(c);
-                widestSel = s.selector;
-              }
-            }
-          } catch {
-            // best-effort widest-descendant scan; leave widestSel undefined on failure
-          }
-          findings.push({
-            selector: "html",
-            selectorTruncated: false,
-            selectorOriginalLength: 4,
-            bbox: { x: 0, y: 0, w: cw, h: docEl.clientHeight },
-            type: "viewport-horizontal",
-            evidence: {
-              documentScrollWidth: sw,
-              viewportWidth: cw,
-              overrunPx: sw - cw,
-              ...(widestSel
-                ? { widestDescendantSelector: widestSel, widestDescendantWidth: widestW }
-                : {}),
-            },
-          });
-        }
-      }
-    } catch {
-      // best-effort viewport-overflow probe; skip section on hostile docs
-    }
-  }
+  if (wantVpHorizontal) detectViewportHorizontal();
 
   // 2. Element walk for layout / clipped / text-ellipsis.
   if (wantLayout || wantClipped || wantEllipsis) {
@@ -431,99 +380,143 @@ const PAGE_DETECT_FN = (args: {
       }
       if (!cs) continue;
 
-      const sw = el.scrollWidth;
-      const sh = el.scrollHeight;
-      const cw = el.clientWidth;
-      const ch = el.clientHeight;
-      const overX = sw > cw + epsilon;
-      const overY = sh > ch + epsilon;
-
-      const ox = cs.overflowX || "";
-      const oy = cs.overflowY || "";
-
-      const isScroll = (v: string): boolean => v === "auto" || v === "scroll";
-      const isClip = (v: string): boolean => v === "hidden" || v === "clip";
-
-      if (wantLayout && (overX || overY)) {
-        const axisScrollableX = isScroll(ox);
-        const axisScrollableY = isScroll(oy);
-        if ((overX && axisScrollableX) || (overY && axisScrollableY)) {
-          const s = synth(el);
-          findings.push({
-            selector: s.selector,
-            selectorTruncated: s.truncated,
-            selectorOriginalLength: s.originalLength,
-            bbox: bboxOf(el),
-            type: "layout",
-            evidence: {
-              scrollWidth: sw,
-              clientWidth: cw,
-              scrollHeight: sh,
-              clientHeight: ch,
-              overflowX: ox,
-              overflowY: oy,
-            },
-          });
-        }
-      }
-
-      if (wantClipped && (overX || overY)) {
-        const clipX = isClip(ox);
-        const clipY = isClip(oy);
-        if ((overX && clipX) || (overY && clipY)) {
-          const s = synth(el);
-          findings.push({
-            selector: s.selector,
-            selectorTruncated: s.truncated,
-            selectorOriginalLength: s.originalLength,
-            bbox: bboxOf(el),
-            type: "clipped",
-            evidence: {
-              scrollWidth: sw,
-              clientWidth: cw,
-              scrollHeight: sh,
-              clientHeight: ch,
-              overflowX: ox,
-              overflowY: oy,
-            },
-          });
-        }
-      }
-
-      if (wantEllipsis) {
-        const to = cs.textOverflow || "";
-        if (to === "ellipsis" && overX) {
-          // Element's full text (DOM truth) + a best-effort visible prefix.
-          // The visible prefix is heuristic: substring of the textContent
-          // proportional to clientWidth/scrollWidth. The agent reads
-          // `fullText` for the truth.
-          const fullText = (el.textContent || "").replace(/\s+/g, " ").trim();
-          let visibleText = fullText;
-          if (sw > 0 && cw > 0 && fullText.length > 0) {
-            const ratio = cw / sw;
-            const cutoff = Math.max(0, Math.floor(fullText.length * ratio));
-            visibleText = fullText.slice(0, cutoff);
-          }
-          const s = synth(el);
-          findings.push({
-            selector: s.selector,
-            selectorTruncated: s.truncated,
-            selectorOriginalLength: s.originalLength,
-            bbox: bboxOf(el),
-            type: "text-ellipsis",
-            evidence: {
-              scrollWidth: sw,
-              clientWidth: cw,
-              visibleText,
-              fullText,
-            },
-          });
-        }
-      }
+      classifyElement(el, cs);
     }
   }
 
   return { findings, scanCapped };
+
+  // --- nested classifiers (must stay nested for page serialization) ---
+
+  /** Find the widest descendant whose bbox overruns the viewport (bounded scan
+   *  of the first 500 candidates so the singleton stays cheap). */
+  function widestOverrunDescendant(cw: number): { sel?: string; w: number } {
+    let widestSel: string | undefined;
+    let widestW = 0;
+    try {
+      const candidates = document.body
+        ? document.body.querySelectorAll("*")
+        : ([] as unknown as NodeListOf<Element>);
+      const max = candidates.length < 500 ? candidates.length : 500;
+      for (let i = 0; i < max; i++) {
+        const c = candidates[i]!;
+        const r = c.getBoundingClientRect();
+        if (r.right > cw + epsilon && r.width > widestW) {
+          widestW = r.width;
+          widestSel = synth(c).selector;
+        }
+      }
+    } catch {
+      // best-effort widest-descendant scan; leave widestSel undefined on failure
+    }
+    return { sel: widestSel, w: widestW };
+  }
+
+  /** viewport-horizontal singleton — the document scrolls horizontally past the
+   *  viewport. Best-effort; skips on hostile docs. */
+  function detectViewportHorizontal(): void {
+    try {
+      const docEl = document.documentElement;
+      if (!docEl) return;
+      const sw = docEl.scrollWidth;
+      const cw = docEl.clientWidth;
+      if (sw <= cw + epsilon) return;
+      const widest = widestOverrunDescendant(cw);
+      findings.push({
+        selector: "html",
+        selectorTruncated: false,
+        selectorOriginalLength: 4,
+        bbox: { x: 0, y: 0, w: cw, h: docEl.clientHeight },
+        type: "viewport-horizontal",
+        evidence: {
+          documentScrollWidth: sw,
+          viewportWidth: cw,
+          overrunPx: sw - cw,
+          ...(widest.sel
+            ? { widestDescendantSelector: widest.sel, widestDescendantWidth: widest.w }
+            : {}),
+        },
+      });
+    } catch {
+      // best-effort viewport-overflow probe; skip section on hostile docs
+    }
+  }
+
+  function classifyElement(el: Element, cs: CSSStyleDeclaration): void {
+    const geom = {
+      sw: el.scrollWidth,
+      sh: el.scrollHeight,
+      cw: el.clientWidth,
+      ch: el.clientHeight,
+    };
+    const overX = geom.sw > geom.cw + epsilon;
+    const overY = geom.sh > geom.ch + epsilon;
+    if (!overX && !overY && !wantEllipsis) return;
+    const ox = cs.overflowX || "";
+    const oy = cs.overflowY || "";
+    detectLayoutClip(el, geom, { overX, overY, ox, oy });
+    detectEllipsis(el, cs, geom, overX);
+  }
+
+  /** Layout (overflow on a scrollable axis) + clipped (overflow on a hidden/clip
+   *  axis) findings share the same evidence shape; emit whichever matches. */
+  function detectLayoutClip(
+    el: Element,
+    geom: { sw: number; sh: number; cw: number; ch: number },
+    o: { overX: boolean; overY: boolean; ox: string; oy: string },
+  ): void {
+    const isScroll = (v: string): boolean => v === "auto" || v === "scroll";
+    const isClip = (v: string): boolean => v === "hidden" || v === "clip";
+    const evidence = {
+      scrollWidth: geom.sw,
+      clientWidth: geom.cw,
+      scrollHeight: geom.sh,
+      clientHeight: geom.ch,
+      overflowX: o.ox,
+      overflowY: o.oy,
+    };
+    if (wantLayout && ((o.overX && isScroll(o.ox)) || (o.overY && isScroll(o.oy)))) {
+      pushFinding(el, "layout", evidence);
+    }
+    if (wantClipped && ((o.overX && isClip(o.ox)) || (o.overY && isClip(o.oy)))) {
+      pushFinding(el, "clipped", evidence);
+    }
+  }
+
+  function detectEllipsis(
+    el: Element,
+    cs: CSSStyleDeclaration,
+    geom: { sw: number; cw: number },
+    overX: boolean,
+  ): void {
+    if (!wantEllipsis || (cs.textOverflow || "") !== "ellipsis" || !overX) return;
+    // full text (DOM truth) + a heuristic visible prefix proportional to
+    // clientWidth/scrollWidth; the agent reads `fullText` for the truth.
+    const fullText = (el.textContent || "").replace(/\s+/g, " ").trim();
+    let visibleText = fullText;
+    if (geom.sw > 0 && geom.cw > 0 && fullText.length > 0) {
+      const cutoff = Math.max(0, Math.floor(fullText.length * (geom.cw / geom.sw)));
+      visibleText = fullText.slice(0, cutoff);
+    }
+    pushFinding(el, "text-ellipsis", {
+      scrollWidth: geom.sw,
+      clientWidth: geom.cw,
+      visibleText,
+      fullText,
+    });
+  }
+
+  function pushFinding(el: Element, type: OverflowType, evidence: OverflowEvidence): void {
+    const s = synth(el);
+    findings.push({
+      selector: s.selector,
+      selectorTruncated: s.truncated,
+      selectorOriginalLength: s.originalLength,
+      bbox: bboxOf(el),
+      type,
+      evidence,
+    });
+  }
 };
 
 /** Thin Page-shaped adapter so the unit tests can stub the page surface.

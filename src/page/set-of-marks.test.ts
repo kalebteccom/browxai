@@ -58,10 +58,7 @@ describe("resolveCandidates (full-find-candidate fast path)", () => {
     const page = fakePage();
     const refs = new RefRegistry();
     const { entries, warnings } = await resolveCandidates(
-      page as never,
-      {} as never,
-      refs,
-      [],
+      { page: page as never, substrate: {} as never, refs, testAttributes: [] },
       [
         { ref: "e1", role: "button", name: "Save", bbox: { x: 10, y: 20, width: 80, height: 24 } },
         { ref: "e2", role: "link", name: "Cancel", bbox: null },

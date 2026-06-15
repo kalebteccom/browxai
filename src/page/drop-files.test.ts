@@ -181,7 +181,7 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
     expect(a.payload.clientY).toBe(90); // 50 + 80/2
     expect(a.payload.files.length).toBe(1);
     expect(a.payload.files[0]!.base64).toBe(Buffer.from("hello").toString("base64"));
-    expect(a.src).toContain("dropFilesInPage");
+    expect(a.src).toContain("PAGE_DROP_FILES_FN");
   });
 
   it("path-mode → reads bytes from $BROWX_WORKSPACE, defaults name to basename", async () => {

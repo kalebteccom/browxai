@@ -108,8 +108,8 @@ export function lowerTraceToSpec(
 }
 
 /** Pure step lowering. Exported for the unit tests. */
-export function lowerStep(step: RecordedStep): LoweredStep {
-  const a = step.action;
+/** Navigation/history actions need no target. Returns null for non-nav types. */
+function lowerNavigation(a: DispatchedAction): LoweredStep | null {
   switch (a.type) {
     case "navigate":
       return handledLines([`await page.goto(${jsString(a.url ?? "")});`]);
@@ -117,67 +117,33 @@ export function lowerStep(step: RecordedStep): LoweredStep {
       return handledLines(["await page.goBack();"]);
     case "goForward":
       return handledLines(["await page.goForward();"]);
+    default:
+      return null;
+  }
+}
+
+export function lowerStep(step: RecordedStep): LoweredStep {
+  const a = step.action;
+  const nav = lowerNavigation(a);
+  if (nav) return nav;
+  switch (a.type) {
     case "click":
       return targeted(step, (loc) => [`await ${loc}.click();`]);
     case "fill":
       return targeted(step, (loc) => [`await ${loc}.fill(${jsString(a.value ?? "")});`]);
     case "hover":
       return targeted(step, (loc) => [`await ${loc}.hover();`]);
-    case "select": {
-      // `select` records its values as a comma-joined string (see
-      // src/page/actions.ts); lower back to `selectOption([...])`. A single
-      // value still goes through the array form — Playwright accepts both
-      // and the array form is unambiguous.
-      const values = (a.value ?? "")
-        .split(",")
-        .map((v) => v.trim())
-        .filter((v) => v.length > 0);
-      const literal = "[" + values.map(jsString).join(", ") + "]";
-      return targeted(step, (loc) => [`await ${loc}.selectOption(${literal});`]);
-    }
-    case "press": {
-      // `press` may or may not have a target. Without one, the keypress
-      // lands at the page level (`page.keyboard.press`); with one, the
-      // target is focused first by Playwright (`locator.press`).
-      const key = a.value ?? "";
-      if (step.selectorHint) {
-        return targeted(step, (loc) => [`await ${loc}.press(${jsString(key)});`]);
-      }
-      return handledLines([`await page.keyboard.press(${jsString(key)});`]);
-    }
-    case "waitFor": {
-      // Two shapes — `text:<...>` (page-level visible-text wait) and a
-      // target-shaped wait (element visible).
-      const v = a.value ?? "";
-      if (v.startsWith("text:")) {
-        const text = v.slice("text:".length);
-        return handledLines([
-          `await page.getByText(${jsString(text)}).first().waitFor({ state: "visible" });`,
-        ]);
-      }
-      return targeted(step, (loc) => [`await ${loc}.waitFor({ state: "visible" });`]);
-    }
-    case "chooseOption": {
-      // `choose_option` is a compound (open-trigger → click-option) that
-      // doesn't lower cleanly to one Playwright call. Emit the trigger
-      // click + the option click as two calls and flag a TODO so the
-      // consumer knows to review the open/wait gap.
-      const optionText = a.value ?? "";
-      const lines = [
-        "// choose_option lowered as trigger-click + option-click; review the wait between them.",
-      ];
-      const loc = locatorExprFor(step);
-      lines.push(`await ${loc}.click();`);
-      lines.push(
-        `await page.getByRole("option", { name: ${jsString(optionText)} }).first().click();`,
-      );
-      // chooseOption is "handled" — we emitted a runnable sequence — but
-      // the comment makes the review-needed status visible in-source.
-      return { lines, fragile: isFragile(step), handled: true };
-    }
+    case "select":
+      return lowerSelect(step, a.value ?? "");
+    case "press":
+      return lowerPress(step, a.value ?? "");
+    case "waitFor":
+      return lowerWaitFor(step, a.value ?? "");
+    case "chooseOption":
+      return lowerChooseOption(step, a.value ?? "");
     default:
-      // Unknown action type — emit a TODO placeholder so the spec still
-      // parses, and bump the `unhandled` counter so the caller sees the gap.
+      // Unknown action type — emit a TODO placeholder so the spec still parses,
+      // and bump the `unhandled` counter so the caller sees the gap.
       return {
         lines: [
           `// TODO: unhandled action type "${a.type}" — no Playwright lowering wired. ` +
@@ -187,6 +153,52 @@ export function lowerStep(step: RecordedStep): LoweredStep {
         handled: false,
       };
   }
+}
+
+/** `select` records values as a comma-joined string; lower to `selectOption([...])`
+ *  (the array form is unambiguous and accepts a single value too). */
+function lowerSelect(step: RecordedStep, value: string): LoweredStep {
+  const values = value
+    .split(",")
+    .map((v) => v.trim())
+    .filter((v) => v.length > 0);
+  const literal = "[" + values.map(jsString).join(", ") + "]";
+  return targeted(step, (loc) => [`await ${loc}.selectOption(${literal});`]);
+}
+
+/** `press` may target an element (`locator.press`) or the page (`page.keyboard.press`). */
+function lowerPress(step: RecordedStep, key: string): LoweredStep {
+  if (step.selectorHint) {
+    return targeted(step, (loc) => [`await ${loc}.press(${jsString(key)});`]);
+  }
+  return handledLines([`await page.keyboard.press(${jsString(key)});`]);
+}
+
+/** `waitFor` lowers to a page-level visible-text wait (`text:<...>`) or an
+ *  element-visible wait. */
+function lowerWaitFor(step: RecordedStep, value: string): LoweredStep {
+  if (value.startsWith("text:")) {
+    const text = value.slice("text:".length);
+    return handledLines([
+      `await page.getByText(${jsString(text)}).first().waitFor({ state: "visible" });`,
+    ]);
+  }
+  return targeted(step, (loc) => [`await ${loc}.waitFor({ state: "visible" });`]);
+}
+
+/** `choose_option` is a compound (open-trigger → click-option) emitted as two
+ *  clicks with a review-the-wait comment. */
+function lowerChooseOption(step: RecordedStep, optionText: string): LoweredStep {
+  const loc = locatorExprFor(step);
+  return {
+    lines: [
+      "// choose_option lowered as trigger-click + option-click; review the wait between them.",
+      `await ${loc}.click();`,
+      `await page.getByRole("option", { name: ${jsString(optionText)} }).first().click();`,
+    ],
+    fragile: isFragile(step),
+    handled: true,
+  };
 }
 
 function targeted(step: RecordedStep, build: (locatorExpr: string) => string[]): LoweredStep {
@@ -298,6 +310,39 @@ function renderSpec(flowName: string, bodyLines: string[]): string {
 // check is enough: matched braces / parens / quotes, the expected import
 // line at the top, the expected test shell. Catches the "I emitted a line
 // without closing the call" class of bug the cycle invariant calls out.
+type Depth = { paren: number; brace: number; bracket: number };
+
+/** Skip a comment or string token starting at `i`; returns the index just past
+ *  it, or `i` unchanged when `i` doesn't start a comment/string. */
+function skipCommentOrString(source: string, i: number): number {
+  const c = source[i];
+  if (c === "/" && source[i + 1] === "/") {
+    const nl = source.indexOf("\n", i);
+    return nl === -1 ? source.length : nl + 1;
+  }
+  if (c === "/" && source[i + 1] === "*") {
+    const end = source.indexOf("*/", i + 2);
+    return end === -1 ? source.length : end + 2;
+  }
+  if (c === '"' || c === "'" || c === "`") {
+    let j = i + 1;
+    while (j < source.length && source[j] !== c) j += source[j] === "\\" ? 2 : 1;
+    return j + 1;
+  }
+  return i;
+}
+
+const OPEN_DELIMS: Record<string, keyof Depth> = { "(": "paren", "{": "brace", "[": "bracket" };
+const CLOSE_DELIMS: Record<string, keyof Depth> = { ")": "paren", "}": "brace", "]": "bracket" };
+
+/** Apply one character's delimiter effect to `depth`. */
+function applyDelimiter(c: string, depth: Depth): void {
+  const open = OPEN_DELIMS[c];
+  if (open) depth[open] += 1;
+  const close = CLOSE_DELIMS[c];
+  if (close) depth[close] -= 1;
+}
+
 export function parseCheck(source: string): { ok: true } | { ok: false; reason: string } {
   if (!source.startsWith('import { test, expect } from "@playwright/test";')) {
     return { ok: false, reason: "missing @playwright/test import header" };
@@ -305,41 +350,17 @@ export function parseCheck(source: string): { ok: true } | { ok: false; reason: 
   if (!/\ntest\(/.test(source)) {
     return { ok: false, reason: "missing test(...) shell" };
   }
-  // matched-delimiter pass — strings + line-comments are skipped to avoid
-  // false positives on, e.g., a `{` inside a string literal.
+  // matched-delimiter pass — strings + comments are skipped so a `{` inside a
+  // string literal isn't a false positive.
   let i = 0;
-  const depth = { paren: 0, brace: 0, bracket: 0 };
+  const depth: Depth = { paren: 0, brace: 0, bracket: 0 };
   while (i < source.length) {
-    const c = source[i]!;
-    // line comment
-    if (c === "/" && source[i + 1] === "/") {
-      const nl = source.indexOf("\n", i);
-      i = nl === -1 ? source.length : nl + 1;
+    const skipped = skipCommentOrString(source, i);
+    if (skipped !== i) {
+      i = skipped;
       continue;
     }
-    // block comment
-    if (c === "/" && source[i + 1] === "*") {
-      const end = source.indexOf("*/", i + 2);
-      i = end === -1 ? source.length : end + 2;
-      continue;
-    }
-    // string literal — track until matching quote, respecting backslash
-    if (c === '"' || c === "'" || c === "`") {
-      const quote = c;
-      i += 1;
-      while (i < source.length && source[i] !== quote) {
-        if (source[i] === "\\") i += 2;
-        else i += 1;
-      }
-      i += 1;
-      continue;
-    }
-    if (c === "(") depth.paren += 1;
-    else if (c === ")") depth.paren -= 1;
-    else if (c === "{") depth.brace += 1;
-    else if (c === "}") depth.brace -= 1;
-    else if (c === "[") depth.bracket += 1;
-    else if (c === "]") depth.bracket -= 1;
+    applyDelimiter(source[i]!, depth);
     if (depth.paren < 0 || depth.brace < 0 || depth.bracket < 0) {
       return { ok: false, reason: `unbalanced delimiter at offset ${i}` };
     }

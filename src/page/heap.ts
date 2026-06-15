@@ -189,7 +189,16 @@ interface ParsedSnapshot {
 /** Parse a `.heapsnapshot` JSON string into the structural form retainer
  *  queries walk. Throws on malformed input — the caller surfaces a
  *  structured error. */
-export function parseHeapSnapshot(snapshotJson: string): ParsedSnapshot {
+interface SnapshotMeta {
+  nodeFields: string[];
+  edgeFields: string[];
+  nodeTypes: string[];
+  edgeTypes: string[];
+}
+
+/** Parse + validate the heap snapshot JSON into a plain record, throwing a
+ *  descriptive error on malformed input. */
+function parseSnapshotRoot(snapshotJson: string): Record<string, unknown> {
   let raw: unknown;
   try {
     raw = JSON.parse(snapshotJson);
@@ -201,24 +210,33 @@ export function parseHeapSnapshot(snapshotJson: string): ParsedSnapshot {
   if (!raw || typeof raw !== "object") {
     throw new Error("heap snapshot: top-level value is not an object");
   }
-  const r = raw as Record<string, unknown>;
+  return raw as Record<string, unknown>;
+}
+
+/** Extract the field/type name arrays from `snapshot.meta`. */
+function extractSnapshotMeta(r: Record<string, unknown>): SnapshotMeta {
   const snapshot = r.snapshot as Record<string, unknown> | undefined;
   const meta = snapshot?.meta as Record<string, unknown> | undefined;
   if (!meta || !Array.isArray(meta.node_fields) || !Array.isArray(meta.edge_fields)) {
     throw new Error("heap snapshot: missing snapshot.meta.node_fields / edge_fields");
   }
-  const nodeFields = (meta.node_fields as unknown[]).map(String);
-  const edgeFields = (meta.edge_fields as unknown[]).map(String);
-  // node_types[0] / edge_types[0] is the array of distinct type names
-  // (the others are scalar tags like "string" or "number"). V8 quirks.
-  const nodeTypesRaw = Array.isArray(meta.node_types) ? (meta.node_types as unknown[]) : [];
-  const edgeTypesRaw = Array.isArray(meta.edge_types) ? (meta.edge_types as unknown[]) : [];
-  const nodeTypes = Array.isArray(nodeTypesRaw[0])
-    ? (nodeTypesRaw[0] as unknown[]).map(String)
-    : [];
-  const edgeTypes = Array.isArray(edgeTypesRaw[0])
-    ? (edgeTypesRaw[0] as unknown[]).map(String)
-    : [];
+  // node_types[0] / edge_types[0] is the array of distinct type names (the others
+  // are scalar tags like "string" / "number"). V8 quirks.
+  const firstTypeArray = (v: unknown): string[] => {
+    const arr = Array.isArray(v) ? (v as unknown[]) : [];
+    return Array.isArray(arr[0]) ? (arr[0] as unknown[]).map(String) : [];
+  };
+  return {
+    nodeFields: (meta.node_fields as unknown[]).map(String),
+    edgeFields: (meta.edge_fields as unknown[]).map(String),
+    nodeTypes: firstTypeArray(meta.node_types),
+    edgeTypes: firstTypeArray(meta.edge_types),
+  };
+}
+
+export function parseHeapSnapshot(snapshotJson: string): ParsedSnapshot {
+  const r = parseSnapshotRoot(snapshotJson);
+  const { nodeFields, edgeFields, nodeTypes, edgeTypes } = extractSnapshotMeta(r);
 
   const nodes = Array.isArray(r.nodes) ? (r.nodes as number[]) : null;
   const edges = Array.isArray(r.edges) ? (r.edges as number[]) : null;
@@ -305,75 +323,47 @@ export interface HeapRetainersQuery {
   nameMatch?: "exact" | "substring";
 }
 
-/** Run a retainer query over a parsed snapshot. Pure — exported for unit
- *  tests; the public-facing tool composes parse → query. */
-export function queryRetainers(p: ParsedSnapshot, q: HeapRetainersQuery): HeapRetainersResult {
-  const warnings: string[] = [];
-  if (!q.name && !q.type) {
-    // Caller must specify SOMETHING — running against every node would
-    // dump millions of edges and is never the right answer.
-    throw new Error("heap_retainers: query must specify at least one of `name` or `type`");
-  }
-  const nameMatch = q.nameMatch ?? "exact";
-  const nodeCount = (p.nodes.length / p.nodeFieldCount) | 0;
-  const edgeCount = (p.edges.length / p.edgeFieldCount) | 0;
+type RetainerAgg = { edgesToMatches: number; sampleHeldNodes: string[] };
 
-  // First pass: identify matching nodes + accumulate self-size totals.
+/** First pass: identify nodes matching the query + accumulate total self-size. */
+function findMatchingNodes(
+  p: ParsedSnapshot,
+  q: HeapRetainersQuery,
+  nodeCount: number,
+): { matchSet: Set<number>; totalSelfSize: number } {
+  const nameMatch = q.nameMatch ?? "exact";
   const matchSet = new Set<number>();
   let totalSelfSize = 0;
   for (let i = 0; i < nodeCount; i++) {
     const base = i * p.nodeFieldCount;
-    const typeIdx = p.nodes[base + p.fieldIdx.nodeType] ?? 0;
-    const nameIdx = p.nodes[base + p.fieldIdx.nodeName] ?? 0;
-    const selfSize = p.nodes[base + p.fieldIdx.nodeSelfSize] ?? 0;
-    totalSelfSize += selfSize;
-    const type = p.nodeTypes[typeIdx] ?? "";
-    const name = p.strings[nameIdx] ?? "";
-    // type filter first (cheap)
-    if (q.type && type !== q.type) continue;
+    totalSelfSize += p.nodes[base + p.fieldIdx.nodeSelfSize] ?? 0;
+    const type = p.nodeTypes[p.nodes[base + p.fieldIdx.nodeType] ?? 0] ?? "";
+    if (q.type && type !== q.type) continue; // type filter first (cheap)
     if (q.name) {
+      const name = p.strings[p.nodes[base + p.fieldIdx.nodeName] ?? 0] ?? "";
       if (nameMatch === "exact" ? name !== q.name : !name.includes(q.name)) continue;
     }
     matchSet.add(i);
   }
+  return { matchSet, totalSelfSize };
+}
 
-  const summary: HeapSnapshotSummary = {
-    nodeCount,
-    edgeCount,
-    stringCount: p.strings.length,
-    totalSelfSize,
-  };
-
-  if (matchSet.size === 0) {
-    return { summary, matchCount: 0, retainers: [], sampleMatches: [] };
-  }
-
-  // Sample matches for the caller's sanity check (cap at 10).
-  const sampleMatches: string[] = [];
-  for (const idx of matchSet) {
-    if (sampleMatches.length >= MAX_SAMPLE_MATCHES) break;
-    sampleMatches.push(nodeDisplayName(p, idx));
-  }
-
-  // Second pass: walk every node's edge slice (sequential layout) and
-  // record retainers of matched nodes. The `to_node` field in V8 heap
-  // snapshots is the FIRST-FIELD index into the flat `nodes` array — so
-  // to get the logical node index we divide by `nodeFieldCount`.
-  // Tracks: retainerNodeIdx → { edgesToMatches, sampleHeldNodes }.
-  type RetainerAgg = { edgesToMatches: number; sampleHeldNodes: string[] };
+/** Second pass: walk every node's edge slice and record retainers of matched
+ *  nodes. `to_node` is a FIRST-FIELD index into the flat `nodes` array, so divide
+ *  by `nodeFieldCount` for the logical node index. */
+function walkRetainers(
+  p: ParsedSnapshot,
+  matchSet: Set<number>,
+  nodeCount: number,
+): Map<number, RetainerAgg> {
   const retainerMap = new Map<number, RetainerAgg>();
-
   let edgeCursor = 0;
   for (let nodeIdx = 0; nodeIdx < nodeCount; nodeIdx++) {
-    const nodeBase = nodeIdx * p.nodeFieldCount;
-    const edgesOnThisNode = p.nodes[nodeBase + p.fieldIdx.nodeEdgeCount] ?? 0;
+    const edgesOnThisNode = p.nodes[nodeIdx * p.nodeFieldCount + p.fieldIdx.nodeEdgeCount] ?? 0;
     for (let e = 0; e < edgesOnThisNode; e++) {
       const edgeBase = (edgeCursor + e) * p.edgeFieldCount;
-      const toNodeRaw = p.edges[edgeBase + p.fieldIdx.edgeToNode] ?? 0;
-      // toNodeRaw is in "first-field-index" units; convert to logical idx.
-      const toNodeIdx = (toNodeRaw / p.nodeFieldCount) | 0;
-      if (!matchSet.has(toNodeIdx)) continue;
-      if (nodeIdx === toNodeIdx) continue; // skip self-edges
+      const toNodeIdx = ((p.edges[edgeBase + p.fieldIdx.edgeToNode] ?? 0) / p.nodeFieldCount) | 0;
+      if (!matchSet.has(toNodeIdx) || nodeIdx === toNodeIdx) continue; // skip non-matches + self
       let agg = retainerMap.get(nodeIdx);
       if (!agg) {
         agg = { edgesToMatches: 0, sampleHeldNodes: [] };
@@ -386,12 +376,18 @@ export function queryRetainers(p: ParsedSnapshot, q: HeapRetainersQuery): HeapRe
     }
     edgeCursor += edgesOnThisNode;
   }
+  return retainerMap;
+}
 
-  // Materialise + sort by retainer self_size desc; tie-break by edgesToMatches desc.
+/** Materialise the retainer rows, sorted by self-size desc then edge count desc,
+ *  capped at MAX_RETAINER_RESULTS. */
+function materialiseRetainerRows(
+  p: ParsedSnapshot,
+  retainerMap: Map<number, RetainerAgg>,
+): HeapRetainerRow[] {
   const rows: HeapRetainerRow[] = [];
   for (const [retainerIdx, agg] of retainerMap.entries()) {
-    const base = retainerIdx * p.nodeFieldCount;
-    const typeIdx = p.nodes[base + p.fieldIdx.nodeType] ?? 0;
+    const typeIdx = p.nodes[retainerIdx * p.nodeFieldCount + p.fieldIdx.nodeType] ?? 0;
     rows.push({
       retainerName: nodeDisplayName(p, retainerIdx),
       retainerType: p.nodeTypes[typeIdx] ?? "",
@@ -400,18 +396,39 @@ export function queryRetainers(p: ParsedSnapshot, q: HeapRetainersQuery): HeapRe
       sampleHeldNodes: agg.sampleHeldNodes,
     });
   }
-  rows.sort((a, b) => {
-    if (b.retainerSelfSize !== a.retainerSelfSize) return b.retainerSelfSize - a.retainerSelfSize;
-    return b.edgesToMatches - a.edgesToMatches;
-  });
-  const retainers = rows.length > MAX_RETAINER_RESULTS ? rows.slice(0, MAX_RETAINER_RESULTS) : rows;
+  rows.sort((a, b) =>
+    b.retainerSelfSize !== a.retainerSelfSize
+      ? b.retainerSelfSize - a.retainerSelfSize
+      : b.edgesToMatches - a.edgesToMatches,
+  );
+  return rows.length > MAX_RETAINER_RESULTS ? rows.slice(0, MAX_RETAINER_RESULTS) : rows;
+}
 
-  const result: HeapRetainersResult = {
-    summary,
-    matchCount: matchSet.size,
-    retainers,
-    sampleMatches,
+/** Run a retainer query over a parsed snapshot. Pure — exported for unit
+ *  tests; the public-facing tool composes parse → query. */
+export function queryRetainers(p: ParsedSnapshot, q: HeapRetainersQuery): HeapRetainersResult {
+  if (!q.name && !q.type) {
+    // Caller must specify SOMETHING — running against every node would dump
+    // millions of edges and is never the right answer.
+    throw new Error("heap_retainers: query must specify at least one of `name` or `type`");
+  }
+  const nodeCount = (p.nodes.length / p.nodeFieldCount) | 0;
+  const { matchSet, totalSelfSize } = findMatchingNodes(p, q, nodeCount);
+  const summary: HeapSnapshotSummary = {
+    nodeCount,
+    edgeCount: (p.edges.length / p.edgeFieldCount) | 0,
+    stringCount: p.strings.length,
+    totalSelfSize,
   };
-  if (warnings.length) result.warnings = warnings;
-  return result;
+  if (matchSet.size === 0) {
+    return { summary, matchCount: 0, retainers: [], sampleMatches: [] };
+  }
+  // Sample matches for the caller's sanity check (cap at MAX_SAMPLE_MATCHES).
+  const sampleMatches: string[] = [];
+  for (const idx of matchSet) {
+    if (sampleMatches.length >= MAX_SAMPLE_MATCHES) break;
+    sampleMatches.push(nodeDisplayName(p, idx));
+  }
+  const retainers = materialiseRetainerRows(p, walkRetainers(p, matchSet, nodeCount));
+  return { summary, matchCount: matchSet.size, retainers, sampleMatches };
 }

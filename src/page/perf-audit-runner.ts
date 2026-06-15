@@ -90,6 +90,164 @@ interface NetworkResponseMeta {
  *  `durationMs`, gather network response metadata in parallel, then
  *  compose the report. Writes the trace + coverage to workspace-rooted
  *  files for the agent's reference. */
+interface CollectedAuditData {
+  traceEvents: TraceEvent[];
+  responses: NetworkResponseMeta[];
+  jsCoverage?: JsCoverageEntry[];
+  cssCoverage?: CssCoverageEntry[];
+}
+
+/** Build the CDP network-response listeners, accumulating `responses[]` from
+ *  `responseReceived` (+ a best-effort `loadingFinished` size patch). Returns the
+ *  listeners + the shared accumulator. */
+function makeNetworkListeners(responses: NetworkResponseMeta[]): {
+  onResponseReceived: (e: unknown) => void;
+  onLoadingFinished: (e: unknown) => void;
+} {
+  const responseHeaders = new Map<string, Record<string, string>>();
+  return {
+    onResponseReceived: (raw) => {
+      const e = raw as {
+        requestId: string;
+        response?: {
+          url?: string;
+          status?: number;
+          mimeType?: string;
+          encodedDataLength?: number;
+          headers?: Record<string, string>;
+        };
+      };
+      const r = e?.response;
+      if (!r || typeof r.url !== "string") return;
+      const headers = r.headers ?? {};
+      responseHeaders.set(e.requestId, headers);
+      responses.push({
+        url: r.url,
+        status: r.status ?? 0,
+        mimeType: r.mimeType,
+        encodedDataLength: r.encodedDataLength,
+        cacheControl: headers["cache-control"] ?? headers["Cache-Control"],
+      });
+    },
+    onLoadingFinished: (raw) => {
+      const e = raw as { requestId: string; encodedDataLength?: number };
+      if (typeof e.encodedDataLength !== "number" || !responseHeaders.has(e.requestId)) return;
+      for (let i = responses.length - 1; i >= 0; i--) {
+        if (responses[i]!.encodedDataLength == null || responses[i]!.encodedDataLength === 0) {
+          responses[i]!.encodedDataLength = e.encodedDataLength;
+          break;
+        }
+      }
+    },
+  };
+}
+
+/** Run the trace + coverage + network collection window, detaching all listeners
+ *  in `finally`. */
+async function collectAuditData(cdp: CDPSession, durationMs: number): Promise<CollectedAuditData> {
+  const traceEvents: TraceEvent[] = [];
+  let traceComplete: (() => void) | null = null;
+  const onData = (e: { value: TraceEvent[] }) => {
+    if (Array.isArray(e?.value)) for (const ev of e.value) traceEvents.push(ev);
+  };
+  const onTraceComplete = () => {
+    if (traceComplete) traceComplete();
+  };
+  const responses: NetworkResponseMeta[] = [];
+  const net = makeNetworkListeners(responses);
+  const coverage = new CoverageTrackerState();
+  cdp.on("Tracing.dataCollected", onData);
+  cdp.on("Tracing.tracingComplete", onTraceComplete);
+  cdp.on("Network.responseReceived", net.onResponseReceived);
+  cdp.on("Network.loadingFinished", net.onLoadingFinished);
+
+  const data: CollectedAuditData = { traceEvents, responses };
+  try {
+    await cdp.send("Network.enable").catch(() => undefined);
+    await cdp.send("Tracing.start", {
+      transferMode: "ReportEvents",
+      traceConfig: { recordMode: "recordContinuously", includedCategories: AUDIT_TRACE_CATEGORIES },
+    });
+    await coverage.start(cdp).catch(() => undefined);
+    await new Promise<void>((res) => setTimeout(res, durationMs));
+    const traceCompletePromise = new Promise<void>((res) => {
+      traceComplete = res;
+    });
+    await cdp.send("Tracing.end").catch(() => undefined);
+    await Promise.race([traceCompletePromise, new Promise<void>((res) => setTimeout(res, 30_000))]);
+    const covResult = await coverage.stop(cdp).catch(() => undefined);
+    if (covResult && !covResult.notRunning) {
+      data.jsCoverage = covResult.jsCoverage;
+      data.cssCoverage = covResult.cssCoverage;
+    }
+  } finally {
+    for (const [event, h] of [
+      ["Tracing.dataCollected", onData],
+      ["Tracing.tracingComplete", onTraceComplete],
+      ["Network.responseReceived", net.onResponseReceived],
+      ["Network.loadingFinished", net.onLoadingFinished],
+    ] as const) {
+      try {
+        (cdp as unknown as { off: (e: string, fn: unknown) => void }).off(event, h);
+      } catch {
+        /* best-effort */
+      }
+    }
+  }
+  return data;
+}
+
+/** Write the trace + coverage evidence files (workspace-rooted) and return their
+ *  resolved paths. */
+function writeAuditEvidence(
+  workspaceRoot: string,
+  sessionId: string,
+  durationMs: number,
+  data: CollectedAuditData,
+): { tracePath: string; coveragePath?: string } {
+  const resolvedTrace = resolveAuditPath(
+    workspaceRoot,
+    defaultAuditTracePath(workspaceRoot, sessionId),
+    "perf_audit",
+  );
+  const traceParent = dirname(resolvedTrace);
+  if (traceParent && !existsSync(traceParent)) mkdirSync(traceParent, { recursive: true });
+  // ws.root-rooted path — resolveAuditPath guards the escape.
+  writeFileSync(
+    resolvedTrace,
+    JSON.stringify({
+      traceEvents: data.traceEvents,
+      metadata: {
+        source: "browxai",
+        sessionId,
+        categories: AUDIT_TRACE_CATEGORIES,
+        durationMs,
+        eventCount: data.traceEvents.length,
+        capturedAt: new Date().toISOString(),
+        kind: "perf-audit",
+      },
+    }),
+    "utf8",
+  );
+  if (!data.jsCoverage || !data.cssCoverage) return { tracePath: resolvedTrace };
+  const resolvedCov = resolveAuditPath(
+    workspaceRoot,
+    defaultCoveragePath(workspaceRoot, sessionId),
+    "perf_audit",
+  );
+  writeFileSync(
+    resolvedCov,
+    JSON.stringify({
+      jsCoverage: data.jsCoverage,
+      cssCoverage: data.cssCoverage,
+      durationMs,
+      capturedAt: new Date().toISOString(),
+    }),
+    "utf8",
+  );
+  return { tracePath: resolvedTrace, coveragePath: resolvedCov };
+}
+
 export async function runPerfAudit(
   cdp: CDPSession,
   workspaceRoot: string,
@@ -100,169 +258,22 @@ export async function runPerfAudit(
   const format = opts.format === "full" ? "full" : "summary";
   const categoriesRun = resolveCategories(opts.categories);
 
-  // -- trace collection
-  const traceEvents: TraceEvent[] = [];
-  let traceComplete: (() => void) | null = null;
-  const onData = (e: { value: TraceEvent[] }) => {
-    if (Array.isArray(e?.value)) for (const ev of e.value) traceEvents.push(ev);
-  };
-  const onTraceComplete = () => {
-    if (traceComplete) traceComplete();
-  };
-  cdp.on("Tracing.dataCollected", onData);
-  cdp.on("Tracing.tracingComplete", onTraceComplete);
+  const data = await collectAuditData(cdp, durationMs);
+  const evidencePaths = writeAuditEvidence(workspaceRoot, sessionId, durationMs, data);
 
-  // -- network response metadata collection via CDP Network domain. We
-  //    enable Network domain (cheap, idempotent) for the audit window so
-  //    `Network.responseReceived` events feed our `responses[]` list.
-  const responses: NetworkResponseMeta[] = [];
-  const responseHeaders = new Map<string, Record<string, string>>();
-  const onResponseReceived = (e: {
-    requestId: string;
-    response?: {
-      url?: string;
-      status?: number;
-      mimeType?: string;
-      encodedDataLength?: number;
-      headers?: Record<string, string>;
-    };
-  }) => {
-    const r = e?.response;
-    if (!r || typeof r.url !== "string") return;
-    const headers = r.headers ?? {};
-    responseHeaders.set(e.requestId, headers);
-    const cc = headers["cache-control"] ?? headers["Cache-Control"];
-    responses.push({
-      url: r.url,
-      status: r.status ?? 0,
-      mimeType: r.mimeType,
-      encodedDataLength: r.encodedDataLength,
-      cacheControl: cc,
-    });
-  };
-  const onLoadingFinished = (e: { requestId: string; encodedDataLength?: number }) => {
-    // Update encodedDataLength when only known at finish.
-    if (typeof e.encodedDataLength !== "number") return;
-    // Best-effort — match the response by requestId via headers map presence.
-    if (!responseHeaders.has(e.requestId)) return;
-    // Find the last response without a confirmed encodedDataLength and update.
-    for (let i = responses.length - 1; i >= 0; i--) {
-      if (responses[i]!.encodedDataLength == null || responses[i]!.encodedDataLength === 0) {
-        responses[i]!.encodedDataLength = e.encodedDataLength;
-        break;
-      }
-    }
-  };
-  cdp.on("Network.responseReceived", onResponseReceived);
-  cdp.on("Network.loadingFinished", onLoadingFinished);
-
-  // -- coverage tracker, parallel to the trace.
-  const coverage = new CoverageTrackerState();
-  let jsCoverage: JsCoverageEntry[] | undefined;
-  let cssCoverage: CssCoverageEntry[] | undefined;
-
-  try {
-    await cdp.send("Network.enable").catch(() => undefined);
-    await cdp.send("Tracing.start", {
-      transferMode: "ReportEvents",
-      traceConfig: {
-        recordMode: "recordContinuously",
-        includedCategories: AUDIT_TRACE_CATEGORIES,
-      },
-    });
-    await coverage.start(cdp).catch(() => undefined);
-
-    await new Promise<void>((res) => setTimeout(res, durationMs));
-
-    const traceCompletePromise = new Promise<void>((res) => {
-      traceComplete = res;
-    });
-    await cdp.send("Tracing.end").catch(() => undefined);
-    await Promise.race([traceCompletePromise, new Promise<void>((res) => setTimeout(res, 30_000))]);
-    const covResult = await coverage.stop(cdp).catch(() => undefined);
-    if (covResult && !covResult.notRunning) {
-      jsCoverage = covResult.jsCoverage;
-      cssCoverage = covResult.cssCoverage;
-    }
-  } finally {
-    try {
-      cdp.off("Tracing.dataCollected", onData);
-    } catch {
-      /* best-effort */
-    }
-    try {
-      cdp.off("Tracing.tracingComplete", onTraceComplete);
-    } catch {
-      /* best-effort */
-    }
-    try {
-      cdp.off("Network.responseReceived", onResponseReceived);
-    } catch {
-      /* best-effort */
-    }
-    try {
-      cdp.off("Network.loadingFinished", onLoadingFinished);
-    } catch {
-      /* best-effort */
-    }
-  }
-
-  // -- write evidence files
-  const tracePath = defaultAuditTracePath(workspaceRoot, sessionId);
-  const resolvedTrace = resolveAuditPath(workspaceRoot, tracePath, "perf_audit");
-  const traceParent = dirname(resolvedTrace);
-  // ws.sub-style: ensure parent exists under workspace.root.
-  if (traceParent && !existsSync(traceParent)) mkdirSync(traceParent, { recursive: true });
-  // ws.root-rooted path — see resolveAuditPath above for the guard.
-  writeFileSync(
-    resolvedTrace,
-    JSON.stringify({
-      traceEvents,
-      metadata: {
-        source: "browxai",
-        sessionId,
-        categories: AUDIT_TRACE_CATEGORIES,
-        durationMs,
-        eventCount: traceEvents.length,
-        capturedAt: new Date().toISOString(),
-        kind: "perf-audit",
-      },
-    }),
-    "utf8",
-  );
-
-  let coveragePath: string | undefined;
-  if (jsCoverage && cssCoverage) {
-    const path = defaultCoveragePath(workspaceRoot, sessionId);
-    const resolvedCov = resolveAuditPath(workspaceRoot, path, "perf_audit");
-    // ws.root-rooted path — see resolveAuditPath above for the guard.
-    writeFileSync(
-      resolvedCov,
-      JSON.stringify({
-        jsCoverage,
-        cssCoverage,
-        durationMs,
-        capturedAt: new Date().toISOString(),
-      }),
-      "utf8",
-    );
-    coveragePath = resolvedCov;
-  }
-
-  // -- compose the report
   const ctx: AuditContext = {
-    trace: traceEvents,
-    jsCoverage,
-    cssCoverage,
-    responses,
+    trace: data.traceEvents,
+    jsCoverage: data.jsCoverage,
+    cssCoverage: data.cssCoverage,
+    responses: data.responses,
   };
   const report = composeReport(ctx, categoriesRun, format);
 
   return {
     report,
     evidence: {
-      tracePath: resolvedTrace,
-      ...(coveragePath ? { coveragePath } : {}),
+      tracePath: evidencePaths.tracePath,
+      ...(evidencePaths.coveragePath ? { coveragePath: evidencePaths.coveragePath } : {}),
     },
     durationMs,
     categoriesRun,

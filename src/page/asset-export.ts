@@ -117,48 +117,46 @@ export function compileUrlPattern(src: string | undefined): RegExp | null {
 /** Filter a single `NetworkEntry` against a normalised filter. Pure — uses
  *  only the entry's captured metadata; no I/O. Exported so the test suite
  *  can pin every branch without spinning a NetworkBuffer. */
-export function matchesFilter(
-  entry: NetworkEntry,
-  filter: {
-    mime?: string[];
-    urlPattern: RegExp | null;
-    minBytes?: number;
-    maxBytes?: number;
-    status: ReadonlySet<number> | null;
-  },
-): boolean {
-  // Status: defaults to "2xx" when caller didn't supply an allow-list.
-  if (filter.status) {
-    if (entry.status === undefined || !filter.status.has(entry.status)) return false;
-  } else {
-    if (entry.status === undefined || entry.status < 200 || entry.status >= 300) return false;
-  }
-  // MIME: substring on the captured Content-Type. No mime info → reject; the
-  // export contract is "filter by mime", an entry that never reported a
-  // Content-Type can't be classified.
-  if (filter.mime && filter.mime.length > 0) {
-    if (!entry.mimeType) return false;
-    const lower = entry.mimeType.toLowerCase();
-    if (!filter.mime.some((m) => lower.includes(m.toLowerCase()))) return false;
-  }
-  // URL pattern: case-insensitive regex.
-  if (filter.urlPattern && !filter.urlPattern.test(entry.url)) return false;
-  // Byte bounds: only enforced when bytes have landed. A still-in-flight
-  // entry without a finished size is admitted at the filter step; the
-  // body-fetch step counts its actual bytes against the total cap.
-  if (
-    typeof filter.minBytes === "number" &&
-    typeof entry.bytes === "number" &&
-    entry.bytes < filter.minBytes
-  )
-    return false;
-  if (
-    typeof filter.maxBytes === "number" &&
-    typeof entry.bytes === "number" &&
-    entry.bytes > filter.maxBytes
-  )
-    return false;
+interface NormalisedAssetFilter {
+  mime?: string[];
+  urlPattern: RegExp | null;
+  minBytes?: number;
+  maxBytes?: number;
+  status: ReadonlySet<number> | null;
+}
+
+/** Status gate: an explicit allow-list, else default 2xx. */
+function statusMatches(entry: NetworkEntry, status: ReadonlySet<number> | null): boolean {
+  if (entry.status === undefined) return false;
+  return status ? status.has(entry.status) : entry.status >= 200 && entry.status < 300;
+}
+
+/** MIME gate: substring on the captured Content-Type; no mime info → reject
+ *  (an entry that never reported a Content-Type can't be classified). */
+function mimeMatches(entry: NetworkEntry, mime: string[] | undefined): boolean {
+  if (!mime || mime.length === 0) return true;
+  if (!entry.mimeType) return false;
+  const lower = entry.mimeType.toLowerCase();
+  return mime.some((m) => lower.includes(m.toLowerCase()));
+}
+
+/** Byte-bound gate: only enforced when bytes have landed (still-in-flight
+ *  entries are admitted here; the fetch step counts actual bytes). */
+function bytesMatch(entry: NetworkEntry, minBytes?: number, maxBytes?: number): boolean {
+  if (typeof entry.bytes !== "number") return true;
+  if (typeof minBytes === "number" && entry.bytes < minBytes) return false;
+  if (typeof maxBytes === "number" && entry.bytes > maxBytes) return false;
   return true;
+}
+
+/** Filter a single `NetworkEntry` against a normalised filter. Pure — uses only
+ *  the entry's captured metadata; no I/O. Exported so the test suite can pin
+ *  every branch without spinning a NetworkBuffer. */
+export function matchesFilter(entry: NetworkEntry, filter: NormalisedAssetFilter): boolean {
+  if (!statusMatches(entry, filter.status)) return false;
+  if (!mimeMatches(entry, filter.mime)) return false;
+  if (filter.urlPattern && !filter.urlPattern.test(entry.url)) return false;
+  return bytesMatch(entry, filter.minBytes, filter.maxBytes);
 }
 
 /** Sanitise a URL-derived asset filename. Same posture as
@@ -321,128 +319,159 @@ export async function fetchBodyBytes(
 
 // ---------- main entry point -------------------------------------------------
 
+/** The live-session handles + workspace anchors `asset_export` threads through,
+ *  bundled so the entry point stays within the parameter budget. */
+export interface AssetExportDeps {
+  cdp: CDPSession;
+  page: Page;
+  buffer: SessionNetworkRing;
+  workspaceRoot: string;
+  sessionId: string;
+}
+
+/** The mutable export accumulator threaded through the per-entry loop. */
+interface ExportState {
+  intoDir: string;
+  maxCount: number;
+  maxBytes: number;
+  warnings: string[];
+  manifest: ManifestEntry[];
+  used: Set<string>;
+  matchedCount: number;
+  droppedCount: number;
+  runningBytes: number;
+}
+
+type EntryDisposition = "continue" | "break";
+
+/** Persist one fetched body to disk, appending its manifest entry (or recording
+ *  a drop / workspace-escape refusal). Returns "break" only on a maxBytes stop. */
+function persistAssetBody(
+  st: ExportState,
+  entry: NetworkEntry,
+  fetched: { bytes: Buffer; mimeType?: string },
+): EntryDisposition {
+  if (st.runningBytes + fetched.bytes.length > st.maxBytes) {
+    st.warnings.push(
+      `maxBytes (${st.maxBytes}) would be exceeded by ${entry.url} (${fetched.bytes.length} bytes); stopping export`,
+    );
+    return "break";
+  }
+  const finalName = resolveCollision(filenameFromUrl(entry.url), st.used);
+  st.used.add(finalName);
+  // Defence in depth — the sanitised name has no separators, so the join can't
+  // escape `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
+  const resolved = resolve(join(st.intoDir, finalName));
+  if (resolved !== st.intoDir && !resolved.startsWith(st.intoDir + sep)) {
+    st.droppedCount += 1;
+    st.warnings.push(`refused to write outside intoDir: ${entry.url}`);
+    return "continue";
+  }
+  try {
+    writeFileSync(resolved, fetched.bytes);
+  } catch (err) {
+    st.droppedCount += 1;
+    st.warnings.push(
+      `write failed for ${entry.url}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return "continue";
+  }
+  let sizeBytes = fetched.bytes.length;
+  try {
+    sizeBytes = statSync(resolved).size;
+  } catch {
+    /* best-effort */
+  }
+  st.runningBytes += sizeBytes;
+  const m: ManifestEntry = { url: entry.url, sizeBytes, savedAs: finalName };
+  const mt = fetched.mimeType ?? entry.mimeType;
+  if (mt !== undefined) m.mime = mt;
+  if (entry.status !== undefined) m.status = entry.status;
+  st.manifest.push(m);
+  return "continue";
+}
+
+/** Process one matched entry: cap checks → fetch → size checks → persist. */
+async function processAssetEntry(
+  deps: AssetExportDeps,
+  st: ExportState,
+  entry: NetworkEntry,
+): Promise<EntryDisposition> {
+  st.matchedCount += 1;
+  if (st.manifest.length >= st.maxCount) {
+    st.warnings.push(
+      `maxCount (${st.maxCount}) reached — ${st.matchedCount - st.manifest.length} additional matches were not persisted`,
+    );
+    return "break";
+  }
+  if (typeof entry.bytes === "number" && entry.bytes > SINGLE_BODY_MAX_BYTES) {
+    st.droppedCount += 1;
+    st.warnings.push(
+      `skipped ${entry.url} — single-response size (${entry.bytes} bytes) exceeds SINGLE_BODY_MAX_BYTES (${SINGLE_BODY_MAX_BYTES})`,
+    );
+    return "continue";
+  }
+  const fetched = await fetchBodyBytes(deps.cdp, deps.page, entry);
+  if (!fetched.ok) {
+    st.droppedCount += 1;
+    st.warnings.push(`skipped ${entry.url} — ${fetched.error}`);
+    return "continue";
+  }
+  if (fetched.bytes.length > SINGLE_BODY_MAX_BYTES) {
+    st.droppedCount += 1;
+    st.warnings.push(
+      `skipped ${entry.url} — fetched body (${fetched.bytes.length} bytes) exceeds SINGLE_BODY_MAX_BYTES (${SINGLE_BODY_MAX_BYTES})`,
+    );
+    return "continue";
+  }
+  return persistAssetBody(st, entry, fetched);
+}
+
 export async function assetExport(
-  cdp: CDPSession,
-  page: Page,
-  buffer: SessionNetworkRing,
-  workspaceRoot: string,
-  sessionId: string,
+  deps: AssetExportDeps,
   args: AssetExportArgs,
 ): Promise<AssetExportResult> {
   const filter = args.filter ?? {};
   const urlPattern = compileUrlPattern(filter.urlPattern);
   const statusSet = filter.status && filter.status.length > 0 ? new Set(filter.status) : null;
-  const maxCount = Math.min(
-    Math.max(1, args.maxCount ?? ASSET_EXPORT_DEFAULT_MAX_COUNT),
-    ASSET_EXPORT_HARD_MAX_COUNT,
-  );
-  const maxBytes = Math.min(
-    Math.max(1, args.maxBytes ?? ASSET_EXPORT_DEFAULT_MAX_BYTES),
-    ASSET_EXPORT_HARD_MAX_BYTES,
-  );
-
-  const intoDir = resolveAssetExportDir(workspaceRoot, sessionId, args.intoDir);
+  const intoDir = resolveAssetExportDir(deps.workspaceRoot, deps.sessionId, args.intoDir);
   // `intoDir` is workspace-rooted by construction: `resolveAssetExportDir`
-  // resolves it inside `workspaceRoot` ($BROWX_WORKSPACE) and rejects any
-  // escape. Every write below is under this dir, never cwd.
+  // resolves it inside `workspaceRoot` ($BROWX_WORKSPACE) and rejects any escape.
+  // Every write below is under this dir, never cwd.
   mkdirSync(intoDir, { recursive: true });
 
-  const all = buffer.iter();
+  const all = deps.buffer.iter();
   const totalCount = all.length;
-  const warnings: string[] = [];
-  const manifest: ManifestEntry[] = [];
-  const used = new Set<string>();
-  let matchedCount = 0;
-  let droppedCount = 0;
-  let runningBytes = 0;
+  const st: ExportState = {
+    intoDir,
+    maxCount: Math.min(
+      Math.max(1, args.maxCount ?? ASSET_EXPORT_DEFAULT_MAX_COUNT),
+      ASSET_EXPORT_HARD_MAX_COUNT,
+    ),
+    maxBytes: Math.min(
+      Math.max(1, args.maxBytes ?? ASSET_EXPORT_DEFAULT_MAX_BYTES),
+      ASSET_EXPORT_HARD_MAX_BYTES,
+    ),
+    warnings: [],
+    manifest: [],
+    used: new Set<string>(),
+    matchedCount: 0,
+    droppedCount: 0,
+    runningBytes: 0,
+  };
 
   for (const entry of all) {
-    if (
-      !matchesFilter(entry, {
-        mime: filter.mime,
-        urlPattern,
-        minBytes: filter.minBytes,
-        maxBytes: filter.maxBytes,
-        status: statusSet,
-      })
-    ) {
-      continue;
-    }
-    matchedCount += 1;
-
-    if (manifest.length >= maxCount) {
-      warnings.push(
-        `maxCount (${maxCount}) reached — ${matchedCount - manifest.length} additional matches were not persisted`,
-      );
-      break;
-    }
-    if (typeof entry.bytes === "number" && entry.bytes > SINGLE_BODY_MAX_BYTES) {
-      droppedCount += 1;
-      warnings.push(
-        `skipped ${entry.url} — single-response size (${entry.bytes} bytes) exceeds SINGLE_BODY_MAX_BYTES (${SINGLE_BODY_MAX_BYTES})`,
-      );
-      continue;
-    }
-    const fetched = await fetchBodyBytes(cdp, page, entry);
-    if (!fetched.ok) {
-      droppedCount += 1;
-      warnings.push(`skipped ${entry.url} — ${fetched.error}`);
-      continue;
-    }
-    if (fetched.bytes.length > SINGLE_BODY_MAX_BYTES) {
-      droppedCount += 1;
-      warnings.push(
-        `skipped ${entry.url} — fetched body (${fetched.bytes.length} bytes) exceeds SINGLE_BODY_MAX_BYTES (${SINGLE_BODY_MAX_BYTES})`,
-      );
-      continue;
-    }
-    if (runningBytes + fetched.bytes.length > maxBytes) {
-      warnings.push(
-        `maxBytes (${maxBytes}) would be exceeded by ${entry.url} (${fetched.bytes.length} bytes); stopping export`,
-      );
-      break;
-    }
-    const baseName = filenameFromUrl(entry.url);
-    const finalName = resolveCollision(baseName, used);
-    used.add(finalName);
-    const target = join(intoDir, finalName);
-    // Defence in depth — the sanitised name has no separators, so the join
-    // can't escape `intoDir`. Still verify.
-    const resolved = resolve(target);
-    if (resolved !== intoDir && !resolved.startsWith(intoDir + sep)) {
-      droppedCount += 1;
-      warnings.push(`refused to write outside intoDir: ${entry.url}`);
-      continue;
-    }
-    try {
-      // `resolved` lands under `intoDir` (workspace-rooted by construction);
-      // the workspace-escape verify above guarantees the path stays inside
-      // $BROWX_WORKSPACE.
-      writeFileSync(resolved, fetched.bytes);
-    } catch (err) {
-      droppedCount += 1;
-      warnings.push(
-        `write failed for ${entry.url}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      continue;
-    }
-    let sizeBytes = fetched.bytes.length;
-    try {
-      sizeBytes = statSync(resolved).size;
-    } catch {
-      /* best-effort */
-    }
-    runningBytes += sizeBytes;
-    const m: ManifestEntry = {
-      url: entry.url,
-      sizeBytes,
-      savedAs: finalName,
-    };
-    const mt = fetched.mimeType ?? entry.mimeType;
-    if (mt !== undefined) m.mime = mt;
-    if (entry.status !== undefined) m.status = entry.status;
-    manifest.push(m);
+    const matched = matchesFilter(entry, {
+      mime: filter.mime,
+      urlPattern,
+      minBytes: filter.minBytes,
+      maxBytes: filter.maxBytes,
+      status: statusSet,
+    });
+    if (!matched) continue;
+    if ((await processAssetEntry(deps, st, entry)) === "break") break;
   }
+  const { warnings, manifest, matchedCount, droppedCount } = st;
 
   // Write `_manifest.json` last so a crash mid-export doesn't leave a
   // misleading manifest pointing at files that weren't all written.

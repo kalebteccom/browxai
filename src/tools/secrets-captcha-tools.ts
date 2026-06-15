@@ -9,6 +9,37 @@ import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
 
+type CaptchaPage = ReturnType<Awaited<ReturnType<ToolHost["entryFor"]>>["session"]["page"]>;
+
+/** Stamp a captcha result body with its token estimate and wrap it as a tool
+ *  text response — the shared shape every solve_captcha envelope uses. */
+function captchaJsonResult(body: object): { content: Array<{ type: "text"; text: string }> } {
+  const withTokens = { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) };
+  return { content: [{ type: "text" as const, text: JSON.stringify(withTokens, null, 2) }] };
+}
+
+/** Read the widget site-key from a selector — `data-sitekey` (the
+ *  reCAPTCHA/hCaptcha/Turnstile convention) first, then common alternatives.
+ *  Returns undefined when the selector misses or carries no key. */
+async function readSiteKeyFromSelector(
+  page: CaptchaPage,
+  selector: string,
+): Promise<string | undefined> {
+  try {
+    const handle = await page.$(selector);
+    if (!handle) return undefined;
+    const key =
+      (await handle.getAttribute("data-sitekey")) ??
+      (await handle.getAttribute("data-site-key")) ??
+      (await handle.getAttribute("sitekey")) ??
+      undefined;
+    await handle.dispose().catch(() => undefined);
+    return key;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Secrets / captcha / credentials tools — the off-by-default egress-sensitive
  * seams: `register_secret` (the per-session secrets registry that backs egress
@@ -163,108 +194,42 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     }) => {
       const g = gateCheck("solve_captcha");
       if (g) return g;
-      // Resolve provider config fresh per call so an operator can rotate
-      // creds via env without restarting the server (env is the source of
-      // truth — set_config doesn't override; secrets shouldn't live in the
-      // config store).
+      // Resolve provider config fresh per call so an operator can rotate creds
+      // via env without restarting (env is the source of truth).
       const cfg = resolveCaptchaProvider(process.env);
       if (!cfg.ok) {
-        if (cfg.reason === "unconfigured") {
-          const body = unconfiguredFailure();
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-        const body = {
+        if (cfg.reason === "unconfigured") return captchaJsonResult(unconfiguredFailure());
+        return captchaJsonResult({
           ok: false,
           provider: null,
           error: cfg.error ?? "captcha provider config is incomplete",
           hint: "Set BROWX_CAPTCHA_PROVIDER and BROWX_CAPTCHA_API_KEY together. browxai does NOT bundle a solver and does NOT auto-purchase credits.",
-        };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        });
       }
       const e = await entryFor(session);
       let pageUrl: string;
       try {
         pageUrl = e.session.page().url();
       } catch {
-        const body = {
+        return captchaJsonResult({
           ok: false,
           provider: cfg.config.provider,
           error: "session has no active page",
           hint: "Call open_session + navigate first.",
-        };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        });
       }
       // Resolve siteKey: explicit > selector-derived. For `image` neither is
       // needed (imageBase64 is the payload).
       let resolvedSiteKey = siteKey;
       if (!resolvedSiteKey && selector && type !== "image") {
-        try {
-          const handle = await e.session.page().$(selector);
-          if (handle) {
-            // Read `data-sitekey` first (recaptcha/hcaptcha/turnstile
-            // convention); fall back to a few common alternatives.
-            resolvedSiteKey =
-              (await handle.getAttribute("data-sitekey")) ??
-              (await handle.getAttribute("data-site-key")) ??
-              (await handle.getAttribute("sitekey")) ??
-              undefined;
-            await handle.dispose().catch(() => undefined);
-          }
-        } catch {
-          /* fall through — explicit failure below if still no key */
-        }
+        resolvedSiteKey = await readSiteKeyFromSelector(e.session.page(), selector);
         if (!resolvedSiteKey) {
-          const body = {
+          return captchaJsonResult({
             ok: false,
             provider: cfg.config.provider,
             error: `solve_captcha: could not read a site-key attribute from selector "${selector}"`,
             hint: "Pass `siteKey` explicitly, or pass a `selector` that points at an element carrying `data-sitekey` (the standard reCAPTCHA / hCaptcha / Turnstile widget attribute).",
-          };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          });
         }
       }
       const result = await submitToProvider(

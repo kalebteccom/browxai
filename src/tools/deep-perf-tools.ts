@@ -15,34 +15,46 @@ import type { ToolHost } from "./host.js";
 /** Cheap one-pass counter for perf_stop's inline summary — gives the agent a
  *  one-glance "is this trace worth running insights on?" without parsing
  *  twice. Matches the surfaces extractInsights exposes. */
-function inlineCounts(events: import("../page/perf.js").TraceEvent[]): {
-  longTaskCount: number;
-  layoutShiftCount: number;
-  renderBlockingCount: number;
-  lcpCandidateCount: number;
-} {
-  let longTaskCount = 0,
-    layoutShiftCount = 0,
-    renderBlockingCount = 0,
-    lcpCandidateCount = 0;
+type PerfCountKey = "longTaskCount" | "layoutShiftCount" | "renderBlockingCount" | "lcpCandidateCount";
+
+/** Whether a `ResourceSendRequest` event is render-blocking. */
+function isRenderBlockingEvent(ev: import("../page/perf.js").TraceEvent): boolean {
+  const data = (ev.args && ev.args.data) as Record<string, unknown> | undefined;
+  const rb = data && typeof data.renderBlocking === "string" ? data.renderBlocking : "";
+  return rb === "blocking" || rb === "in_body_parser_blocking";
+}
+
+/** Whether an event is a long task (`RunTask`/`LongTask` ≥ 50ms). */
+function isLongTaskEvent(ev: import("../page/perf.js").TraceEvent, name: string): boolean {
+  return (
+    (name === "RunTask" || name === "LongTask") && typeof ev.dur === "number" && ev.dur / 1000 >= 50
+  );
+}
+
+/** Classify a trace event into the perf counter it bumps, or null. */
+function perfCountKey(ev: import("../page/perf.js").TraceEvent): PerfCountKey | null {
+  if (!ev || typeof ev !== "object") return null;
+  const name = typeof ev.name === "string" ? ev.name : "";
+  if (!name) return null;
+  if (isLongTaskEvent(ev, name)) return "longTaskCount";
+  if (name === "LayoutShift") return "layoutShiftCount";
+  if (name === "largestContentfulPaint::Candidate") return "lcpCandidateCount";
+  if (name === "ResourceSendRequest" && isRenderBlockingEvent(ev)) return "renderBlockingCount";
+  return null;
+}
+
+function inlineCounts(events: import("../page/perf.js").TraceEvent[]): Record<PerfCountKey, number> {
+  const counts: Record<PerfCountKey, number> = {
+    longTaskCount: 0,
+    layoutShiftCount: 0,
+    renderBlockingCount: 0,
+    lcpCandidateCount: 0,
+  };
   for (const ev of events) {
-    if (!ev || typeof ev !== "object") continue;
-    const name = typeof ev.name === "string" ? ev.name : "";
-    if (!name) continue;
-    if (
-      (name === "RunTask" || name === "LongTask") &&
-      typeof ev.dur === "number" &&
-      ev.dur / 1000 >= 50
-    )
-      longTaskCount++;
-    else if (name === "LayoutShift") layoutShiftCount++;
-    else if (name === "ResourceSendRequest") {
-      const data = (ev.args && ev.args.data) as Record<string, unknown> | undefined;
-      const rb = data && typeof data.renderBlocking === "string" ? data.renderBlocking : "";
-      if (rb === "blocking" || rb === "in_body_parser_blocking") renderBlockingCount++;
-    } else if (name === "largestContentfulPaint::Candidate") lcpCandidateCount++;
+    const key = perfCountKey(ev);
+    if (key) counts[key]++;
   }
-  return { longTaskCount, layoutShiftCount, renderBlockingCount, lcpCandidateCount };
+  return counts;
 }
 
 /**

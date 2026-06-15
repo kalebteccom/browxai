@@ -128,13 +128,39 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
     this.engine = engine;
   }
 
+  /** Capture the screenshot bytes + caption for either the element-scoped target
+   *  (deferred `asTarget` resolution) or the whole page. */
+  private async captureBytes(
+    page: Page,
+    req: ScreenshotRequest,
+    fmt: "png" | "jpeg",
+  ): Promise<{ buf: Buffer; caption: string }> {
+    if (req.resolveTarget) {
+      // Deferred: only now does the `asTarget` chokepoint run. A malformed target
+      // throws here — past the `fullPage` refusal, matching the pre-seam handler.
+      const target = req.resolveTarget();
+      const loc = await locatorForTarget(page, this.refs, target);
+      // Locator.screenshot doesn't accept `scale`; pass type/quality only there.
+      const locOpts: { type: "png" | "jpeg"; quality?: number } = { type: fmt };
+      if (fmt === "jpeg") locOpts.quality = req.quality ?? 80;
+      const buf = await loc.screenshot(locOpts);
+      const caption = req.describe ? await this.deps.describeTarget(loc, this.refs, target) : "";
+      return { buf, caption };
+    }
+    const opts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = { type: fmt };
+    if (fmt === "jpeg") opts.quality = req.quality ?? 80;
+    if (req.scale) opts.scale = req.scale;
+    const buf = await page.screenshot({ fullPage: req.fullPage, ...opts });
+    const caption = req.describe ? `${req.fullPage ? "fullPage" : "viewport"} (${page.url()})` : "";
+    return { buf, caption };
+  }
+
   async screenshot(req: ScreenshotRequest): Promise<CaptureResult> {
     const page = this.page();
     const fmt = req.format;
     const mimeType = fmt === "jpeg" ? "image/jpeg" : "image/png";
     const fullPage = req.fullPage;
-    const elementScoped = !!req.resolveTarget;
-    if (fullPage && elementScoped) {
+    if (fullPage && req.resolveTarget) {
       return {
         kind: "refusal",
         error:
@@ -142,28 +168,7 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
         hint: "Drop `fullPage` for an element capture, or drop the target for a whole-document capture.",
       };
     }
-    const screenshotOpts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = {
-      type: fmt,
-    };
-    if (fmt === "jpeg") screenshotOpts.quality = req.quality ?? 80;
-    if (req.scale) screenshotOpts.scale = req.scale;
-    let buf: Buffer;
-    let caption = "";
-    if (req.resolveTarget) {
-      // Deferred: only now does the `asTarget` chokepoint run. A malformed target
-      // throws here — past the `fullPage` refusal above, matching the pre-seam
-      // handler where `asTarget` sat inside the element-scoped branch.
-      const target = req.resolveTarget();
-      const loc = await locatorForTarget(page, this.refs, target);
-      // Locator.screenshot doesn't accept `scale`; pass type/quality only there.
-      const locOpts: { type: "png" | "jpeg"; quality?: number } = { type: fmt };
-      if (fmt === "jpeg") locOpts.quality = req.quality ?? 80;
-      buf = await loc.screenshot(locOpts);
-      if (req.describe) caption = await this.deps.describeTarget(loc, this.refs, target);
-    } else {
-      buf = await page.screenshot({ fullPage, ...screenshotOpts });
-      if (req.describe) caption = `${fullPage ? "fullPage" : "viewport"} (${page.url()})`;
-    }
+    const { buf, caption } = await this.captureBytes(page, req, fmt);
     // `path` mode: write bytes to a workspace-rooted file and return the save
     // envelope instead of inline base64. The `file-io` capability check already
     // ran (handler gate); a path escaping the workspace or a failed write throws

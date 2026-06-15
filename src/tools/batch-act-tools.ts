@@ -9,7 +9,13 @@ import type {
   ActionHost,
   EgressHost,
   ServerServicesHost,
+  ToolResponse,
 } from "./host.js";
+
+/** A structured `{ok:false, error}` envelope as a tool text response. */
+function batchJsonError(error: string): ToolResponse {
+  return { content: [{ type: "text" as const, text: JSON.stringify({ ok: false, error }, null, 2) }] };
+}
 
 /**
  * Act-then-trace + flake-check compound primitives: act_and_sample / act_and_diff
@@ -82,21 +88,9 @@ export function registerBatchActTools(
       if (g) return g;
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_sample") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `act_and_sample: inner tool "${innerTool}" not allowed (must be in the batch whitelist; no batch / await_human / recording / self)`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return batchJsonError(
+          `act_and_sample: inner tool "${innerTool}" not allowed (must be in the batch whitelist; no batch / await_human / recording / self)`,
+        );
       }
       const ig = gateCheck(innerTool);
       if (ig) return ig; // enforce the inner tool's own capability gate
@@ -105,22 +99,9 @@ export function registerBatchActTools(
       if (args.ref || args.selector || args.named || args.coords) {
         const t = asTarget(args, "act_and_sample", e.refs);
         if ("coords" in t) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error:
-                      "act_and_sample: sample target can't be coords — use ref/selector/named or omit for the window",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return batchJsonError(
+            "act_and_sample: sample target can't be coords — use ref/selector/named or omit for the window",
+          );
         }
         sampleTarget = t;
       }

@@ -10,7 +10,144 @@ import type {
   CaptureHost,
   ConfigHost,
   ServerServicesHost,
+  ToolResponse,
 } from "./host.js";
+import type { CaptureResult } from "../page/capture-substrate.js";
+import type { SecretRegistry } from "../util/secrets.js";
+
+type CapturePage = ReturnType<Awaited<ReturnType<SessionHost["entryFor"]>>["session"]["page"]>;
+type CaptureCdp = ReturnType<typeof requireCdp>;
+type OnTrigger = "navigation" | "console-error" | "network-mutation" | "dialog";
+
+const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+/** Subscribe the requested trigger to its event surface, accumulating disposers.
+ *  Each branch wires the no-arg `onFire` signal the screenshot controller wants. */
+function subscribeOnTrigger(
+  page: CapturePage,
+  cdp: CaptureCdp,
+  trigger: OnTrigger,
+  onFire: () => void,
+  disposers: Array<() => void>,
+): void {
+  if (trigger === "navigation") {
+    const onNav = (frame: { parentFrame: () => unknown }) => {
+      if (frame.parentFrame() === null) onFire(); // main frame only
+    };
+    page.on("framenavigated", onNav as (f: unknown) => void);
+    disposers.push(() => page.off("framenavigated", onNav as (f: unknown) => void));
+  } else if (trigger === "console-error") {
+    const onConsole = (m: { type: () => string }) => {
+      if (m.type() === "error") onFire();
+    };
+    const onPageError = () => onFire();
+    page.on("console", onConsole as (m: unknown) => void);
+    page.on("pageerror", onPageError);
+    disposers.push(() => page.off("console", onConsole as (m: unknown) => void));
+    disposers.push(() => page.off("pageerror", onPageError));
+  } else if (trigger === "network-mutation") {
+    // Fire only on write-shaped 2xx responses (NetworkTap's heuristic). CDP
+    // Network is usually already enabled; a second enable is a no-op.
+    const pending = new Map<string, string>();
+    const onRequest = (e2: { requestId: string; request: { method: string } }) => {
+      pending.set(e2.requestId, e2.request.method);
+    };
+    const onResponse = (e2: { requestId: string; response: { status: number } }) => {
+      const method = pending.get(e2.requestId);
+      if (!method) return;
+      if (MUTATION_METHODS.has(method) && e2.response.status >= 200 && e2.response.status < 300) {
+        onFire();
+      }
+      pending.delete(e2.requestId);
+    };
+    void cdp.send("Network.enable").catch(() => undefined);
+    cdp.on("Network.requestWillBeSent", onRequest);
+    cdp.on("Network.responseReceived", onResponse);
+    disposers.push(() => cdp.off("Network.requestWillBeSent", onRequest));
+    disposers.push(() => cdp.off("Network.responseReceived", onResponse));
+  } else if (trigger === "dialog") {
+    const onDialog = () => onFire();
+    page.on("dialog", onDialog);
+    disposers.push(() => page.off("dialog", onDialog));
+  }
+}
+
+/** The live trigger source for `screenshot_on` — `subscribe(trigger, onFire)`
+ *  binds the event surface and returns a single disposer that unwires every
+ *  listener it attached. */
+function buildScreenshotOnSource(page: CapturePage, cdp: CaptureCdp) {
+  return {
+    subscribe: (trigger: OnTrigger, onFire: () => void) => {
+      const disposers: Array<() => void> = [];
+      subscribeOnTrigger(page, cdp, trigger, onFire, disposers);
+      return () => {
+        for (const d of disposers) {
+          try {
+            d();
+          } catch {
+            /* listener already gone */
+          }
+        }
+      };
+    },
+  };
+}
+
+/** Wrap a JSON payload + its token estimate as a tool text response. */
+function jsonContentWithTokens(body: Record<string, unknown>): ToolResponse {
+  const json = JSON.stringify(body);
+  return {
+    content: [
+      { type: "text" as const, text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2) },
+    ],
+  };
+}
+
+/** Render the screenshot capture result: structured envelope for
+ *  refusal/save-error/saved, else an image (+ optional caption + a best-effort
+ *  secrets-in-visible-text warning). */
+async function formatScreenshotResult(
+  cap: CaptureResult,
+  secrets: SecretRegistry | null,
+): Promise<ToolResponse> {
+  if (cap.kind === "refusal") {
+    const body: Record<string, unknown> = { ok: false, error: cap.error };
+    if (cap.hint) body.hint = cap.hint;
+    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  }
+  if (cap.kind === "save-error") {
+    return jsonContentWithTokens({ ok: false, error: cap.error });
+  }
+  // `path` mode: the bytes were written to disk → JSON envelope (with optional
+  // describe caption) instead of inline base64.
+  if (cap.kind === "saved") {
+    const body: Record<string, unknown> = { ...cap.result };
+    if (cap.caption) body.caption = cap.caption;
+    return jsonContentWithTokens(body);
+  }
+  const content: Array<
+    { type: "image"; data: string; mimeType: string } | { type: "text"; text: string }
+  > = [{ type: "image", data: cap.data, mimeType: cap.mimeType }];
+  if (cap.caption) content.unshift({ type: "text", text: cap.caption });
+  // Secrets sink — best-effort. PNG/JPEG bytes aren't searched (no server-side
+  // OCR); instead sweep the page's text for any registered real-value and prepend
+  // a warning when one might be visible. `pageText` is present only on the
+  // Playwright path (Safari has no Page to evaluate).
+  if (cap.pageText && secrets && secrets.size() > 0) {
+    const probe = secrets.containsAnySecret(await cap.pageText());
+    if (probe.hit) {
+      content.unshift({
+        type: "text",
+        text:
+          `WARNING: screenshot may reveal registered secret values — ` +
+          `the page's text content contains: ${probe.names.map((n) => `<${n}>`).join(", ")}. ` +
+          `Pixel-level redaction (region-blur) is not yet implemented; prefer ` +
+          `snapshot() / find() for verified-clean evidence of these fields.`,
+      });
+    }
+  }
+  return { content };
+}
 
 /**
  * Read / observe — screenshot capture. The viewport/element PNG-JPEG primitive
@@ -132,67 +269,7 @@ export function registerReadObserveCaptureTools(
         resolveTarget,
         path: args.path,
       });
-      if (cap.kind === "refusal") {
-        const body: Record<string, unknown> = { ok: false, error: cap.error };
-        if (cap.hint) body.hint = cap.hint;
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
-      }
-      if (cap.kind === "save-error") {
-        const body = { ok: false, error: cap.error };
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-      // `path` mode: the bytes were written to disk → return the JSON envelope
-      // (with the optional describe caption folded in) instead of inline base64.
-      if (cap.kind === "saved") {
-        const body: Record<string, unknown> = { ...cap.result };
-        if (cap.caption) body.caption = cap.caption;
-        const json = JSON.stringify(body);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ...body, tokensEstimate: estimateTokens(json) }, null, 2),
-            },
-          ],
-        };
-      }
-      const content: Array<
-        { type: "image"; data: string; mimeType: string } | { type: "text"; text: string }
-      > = [{ type: "image", data: cap.data, mimeType: cap.mimeType }];
-      if (cap.caption) content.unshift({ type: "text", text: cap.caption });
-      // Secrets sink — best-effort. PNG/JPEG bytes are NOT searched (no OCR
-      // server-side); instead, sweep the page's text content for any
-      // registered real-value and prepend a warning when one might be
-      // visible. Pixel-level redaction (region-blur of matched bounding
-      // boxes) is deferred — see docs/tool-reference.md for the typed seam.
-      // `pageText` is present only on the Playwright path (Safari has no Page to
-      // evaluate — the same boundary the deleted safari branch sat behind).
-      if (cap.pageText && caps.enabled.has("secrets") && e.secrets.size() > 0) {
-        const pageText = await cap.pageText();
-        const probe = e.secrets.containsAnySecret(pageText);
-        if (probe.hit) {
-          content.unshift({
-            type: "text",
-            text:
-              `WARNING: screenshot may reveal registered secret values — ` +
-              `the page's text content contains: ${probe.names.map((n) => `<${n}>`).join(", ")}. ` +
-              `Pixel-level redaction (region-blur) is not yet implemented; prefer ` +
-              `snapshot() / find() for verified-clean evidence of these fields.`,
-          });
-        }
-      }
-      return { content };
+      return formatScreenshotResult(cap, caps.enabled.has("secrets") ? e.secrets : null);
     },
   );
 
@@ -351,80 +428,7 @@ export function registerReadObserveCaptureTools(
 
         const snap = (): Promise<Buffer> =>
           page.screenshot({ type: fmt, ...(fmt === "jpeg" ? { quality: 80 } : {}) });
-
-        // Live trigger source — binds the requested trigger to the right
-        // event surface and returns a single disposer that unwires every
-        // listener we attached. Per-trigger callback `onFire` is the no-arg
-        // signal the controller wants; we don't pass event payloads through
-        // because the controller's job is "screenshot every time" and the
-        // payload would only complicate the egress-masking story.
-        const source = {
-          subscribe: (
-            trigger: "navigation" | "console-error" | "network-mutation" | "dialog",
-            onFire: () => void,
-          ) => {
-            const disposers: Array<() => void> = [];
-            const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-            if (trigger === "navigation") {
-              const onNav = (frame: { parentFrame: () => unknown }) => {
-                // main frame only — subframe navigations are noise here
-                if (frame.parentFrame() === null) onFire();
-              };
-              page.on("framenavigated", onNav as (f: unknown) => void);
-              disposers.push(() => page.off("framenavigated", onNav as (f: unknown) => void));
-            } else if (trigger === "console-error") {
-              const onConsole = (m: { type: () => string }) => {
-                if (m.type() === "error") onFire();
-              };
-              const onPageError = () => onFire();
-              page.on("console", onConsole as (m: unknown) => void);
-              page.on("pageerror", onPageError);
-              disposers.push(() => page.off("console", onConsole as (m: unknown) => void));
-              disposers.push(() => page.off("pageerror", onPageError));
-            } else if (trigger === "network-mutation") {
-              // Track per-requestId methods so we only fire on write-shaped
-              // 2xx responses (same heuristic NetworkTap uses). CDP Network
-              // domain is normally already enabled by the per-session
-              // NetworkBuffer; calling `Network.enable` a second time is a
-              // no-op.
-              const pending = new Map<string, string>();
-              const onRequest = (e2: { requestId: string; request: { method: string } }) => {
-                pending.set(e2.requestId, e2.request.method);
-              };
-              const onResponse = (e2: { requestId: string; response: { status: number } }) => {
-                const method = pending.get(e2.requestId);
-                if (!method) return;
-                if (
-                  MUTATION_METHODS.has(method) &&
-                  e2.response.status >= 200 &&
-                  e2.response.status < 300
-                ) {
-                  onFire();
-                }
-                pending.delete(e2.requestId);
-              };
-              // best-effort enable; ignore failures (most sessions already have it on).
-              void cdp.send("Network.enable").catch(() => undefined);
-              cdp.on("Network.requestWillBeSent", onRequest);
-              cdp.on("Network.responseReceived", onResponse);
-              disposers.push(() => cdp.off("Network.requestWillBeSent", onRequest));
-              disposers.push(() => cdp.off("Network.responseReceived", onResponse));
-            } else if (trigger === "dialog") {
-              const onDialog = () => onFire();
-              page.on("dialog", onDialog);
-              disposers.push(() => page.off("dialog", onDialog));
-            }
-            return () => {
-              for (const d of disposers) {
-                try {
-                  d();
-                } catch {
-                  /* listener already gone */
-                }
-              }
-            };
-          },
-        };
+        const source = buildScreenshotOnSource(page, cdp);
 
         const result = await withDeadline(
           runScreenshotOn(

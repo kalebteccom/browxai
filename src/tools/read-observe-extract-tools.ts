@@ -7,6 +7,117 @@ import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
+type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
+type Session = SessionEntry["session"];
+
+interface ShadowTree {
+  hostRef: string;
+  hostTag: string;
+  mode: "open" | "closed";
+  children: unknown[];
+  descendantCount: number;
+}
+
+/** Collect shadow trees via the CDP pierce path (open + closed); when CDP yields
+ *  nothing, fall back to the page-side open-shadow walk. Pushes any failures as
+ *  warnings (the tool still returns a partial result). */
+async function collectShadowTreesForRef(
+  s: Session,
+  warnings: string[],
+  opts: {
+    rootBackendId: number | undefined;
+    scopeSelector: string | undefined;
+    cap: number;
+    timeoutMs: number;
+  },
+): Promise<{ trees: ShadowTree[]; closedShadowAvailable: boolean; cappedAt: number | undefined }> {
+  let trees: ShadowTree[] = [];
+  let closedShadowAvailable = false;
+  let cappedAt: number | undefined;
+  try {
+    const fetched = await withDeadline(fetchPiercedDocument(requireCdp(s)), opts.timeoutMs, "shadow_trees");
+    if (fetched.warning) warnings.push(fetched.warning);
+    closedShadowAvailable = fetched.closedAvailable;
+    if (fetched.root) {
+      const harvested = collectShadowTrees(fetched.root, {
+        rootBackendNodeId: opts.rootBackendId,
+        maxHosts: opts.cap,
+      });
+      trees = harvested.entries;
+      cappedAt = harvested.cappedAt;
+    }
+  } catch (err) {
+    warnings.push(
+      `CDP pierce path failed (${err instanceof Error ? err.message : String(err)}); falling back to open-only page-side walk.`,
+    );
+  }
+  if (trees.length === 0) {
+    try {
+      const open = await withDeadline(
+        runOpenShadowWalk(requireCdp(s), opts.scopeSelector, opts.cap),
+        opts.timeoutMs,
+        "shadow_trees",
+      );
+      // page-side walk can't address by backendNodeId — surface "backend:0" so
+      // the field is non-empty and the agent sees the host came from that path.
+      trees = open.map((o) => ({ hostRef: "backend:0", ...o }));
+    } catch (err) {
+      warnings.push(
+        `open-shadow page-side walk failed (${err instanceof Error ? err.message : String(err)}).`,
+      );
+    }
+  }
+  return { trees, closedShadowAvailable, cappedAt };
+}
+
+/** Resolve a `shadow_trees` ref into a CDP `backendNodeId` (preferred) or a CSS
+ *  scope selector (DOM-walk fallback). Returns undefineds + a warning when the
+ *  ref doesn't resolve to an addressable node. */
+async function resolveShadowScope(
+  e: SessionEntry,
+  ref: string,
+  warnings: string[],
+  deps: { testAttributes: string[]; timeoutMs: number },
+): Promise<{ rootBackendId: number | undefined; scopeSelector: string | undefined }> {
+  const out: { rootBackendId: number | undefined; scopeSelector: string | undefined } = {
+    rootBackendId: undefined,
+    scopeSelector: undefined,
+  };
+  try {
+    const composed = await withDeadline(
+      e.snapshotSubstrate.compose(e.refs, deps.testAttributes),
+      deps.timeoutMs,
+      "shadow_trees",
+    );
+    if (!composed.tree) {
+      warnings.push("snapshot returned an empty tree; walking from the document root instead.");
+      return out;
+    }
+    const sub = findByRef(composed.tree, ref);
+    if (sub?.backendDOMNodeId !== undefined) {
+      out.rootBackendId = sub.backendDOMNodeId;
+    } else if (sub) {
+      // DOM-walk-sourced nodes don't carry backendDOMNodeId; fall back to their
+      // CSS path via the registry's locator hints.
+      const loc = e.refs.locatorOf(ref);
+      if (loc?.cssPath) out.scopeSelector = loc.cssPath;
+      else
+        warnings.push(
+          `ref=${ref} resolved to a node with no addressable backend handle; walking from the document root instead.`,
+        );
+    } else {
+      warnings.push(
+        `ref=${ref} not found in the current snapshot; walking from the document root instead.`,
+      );
+    }
+  } catch (err) {
+    warnings.push(
+      `failed to resolve ref=${ref} (${err instanceof Error ? err.message : String(err)}); walking from the document root.`,
+    );
+  }
+  return out;
+}
+
 /**
  * Read / observe — extraction + Shadow DOM introspection. `shadow_trees` walks
  * open and (via CDP pierce) closed shadow roots; `extract` lowers a JSON-schema
@@ -65,110 +176,29 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
       const warnings: string[] = [];
       const cap = maxHosts ?? 200;
 
-      // Resolve `ref` → backendNodeId via the current snapshot. Same model
-      // as `snapshot({scope})` — the registry doesn't store backend ids,
-      // but a fresh compose pass yields a tree whose nodes carry them.
-      let rootBackendId: number | undefined;
-      let scopeSelector: string | undefined;
-      if (ref) {
-        try {
-          const composed = await withDeadline(
-            e.snapshotSubstrate.compose(e.refs, config.testAttributes),
-            cfgActionTimeout(),
-            "shadow_trees",
-          );
-          if (composed.tree) {
-            const sub = findByRef(composed.tree, ref);
-            if (sub?.backendDOMNodeId !== undefined) {
-              rootBackendId = sub.backendDOMNodeId;
-            } else if (sub) {
-              // DOM-walk-sourced nodes don't carry backendDOMNodeId; fall
-              // back to their CSS path via the registry's locator hints.
-              const loc = e.refs.locatorOf(ref);
-              if (loc?.cssPath) scopeSelector = loc.cssPath;
-              else
-                warnings.push(
-                  `ref=${ref} resolved to a node with no addressable backend handle; walking from the document root instead.`,
-                );
-            } else {
-              warnings.push(
-                `ref=${ref} not found in the current snapshot; walking from the document root instead.`,
-              );
-            }
-          } else {
-            warnings.push(
-              "snapshot returned an empty tree; walking from the document root instead.",
-            );
-          }
-        } catch (err) {
-          warnings.push(
-            `failed to resolve ref=${ref} (${err instanceof Error ? err.message : String(err)}); walking from the document root.`,
-          );
-        }
-      }
+      // Resolve `ref` → backendNodeId (or a CSS scope fallback) via a fresh
+      // compose pass. Same model as `snapshot({scope})`.
+      const scope = ref
+        ? await resolveShadowScope(e, ref, warnings, {
+            testAttributes: config.testAttributes,
+            timeoutMs: cfgActionTimeout(),
+          })
+        : { rootBackendId: undefined, scopeSelector: undefined };
+      const { rootBackendId, scopeSelector } = scope;
 
-      // Try CDP pierce:true first — covers open AND closed.
-      let trees: Array<{
-        hostRef: string;
-        hostTag: string;
-        mode: "open" | "closed";
-        children: unknown[];
-        descendantCount: number;
-      }> = [];
-      let closedShadowAvailable = false;
-      let cappedAt: number | undefined;
-      try {
-        const fetched = await withDeadline(
-          fetchPiercedDocument(requireCdp(s)),
-          cfgActionTimeout(),
-          "shadow_trees",
-        );
-        if (fetched.warning) warnings.push(fetched.warning);
-        closedShadowAvailable = fetched.closedAvailable;
-        if (fetched.root) {
-          const harvested = collectShadowTrees(fetched.root, {
-            rootBackendNodeId: rootBackendId,
-            maxHosts: cap,
-          });
-          trees = harvested.entries;
-          cappedAt = harvested.cappedAt;
-        }
-      } catch (err) {
-        warnings.push(
-          `CDP pierce path failed (${err instanceof Error ? err.message : String(err)}); falling back to open-only page-side walk.`,
-        );
-      }
-
-      // Fallback / supplement: when CDP returned nothing OR (the ref
-      // resolved to a cssPath instead of a backend id), use the page-side
-      // open-shadow walk.
-      if (trees.length === 0) {
-        try {
-          const open = await withDeadline(
-            runOpenShadowWalk(requireCdp(s), scopeSelector, cap),
-            cfgActionTimeout(),
-            "shadow_trees",
-          );
-          trees = open.map((o) => ({
-            // page-side walk can't address by backendNodeId — surface
-            // `"backend:0"` so the field is non-empty and the agent can
-            // see the host came from the page-side path.
-            hostRef: "backend:0",
-            ...o,
-          }));
-        } catch (err) {
-          warnings.push(
-            `open-shadow page-side walk failed (${err instanceof Error ? err.message : String(err)}).`,
-          );
-        }
-      }
-
-      // Hard de-duplicate by hostRef + hostTag — when both paths produce a
-      // hit we surface only the richer (CDP) version. The page-side
-      // fallback only ran when the CDP path returned nothing, so this is
-      // a defensive guard rather than the common case.
+      // Collect via CDP pierce (open + closed); fall back to the page-side
+      // open-shadow walk when CDP returns nothing.
+      const collected = await collectShadowTreesForRef(s, warnings, {
+        rootBackendId,
+        scopeSelector,
+        cap,
+        timeoutMs: cfgActionTimeout(),
+      });
+      const { closedShadowAvailable, cappedAt } = collected;
+      // Hard de-duplicate by hostRef + hostTag + mode — defensive guard for the
+      // (rare) case both paths produced the same host.
       const seen = new Set<string>();
-      const dedup = trees.filter((t) => {
+      const dedup = collected.trees.filter((t) => {
         const k = `${t.hostRef}|${t.hostTag}|${t.mode}`;
         if (seen.has(k)) return false;
         seen.add(k);

@@ -97,100 +97,103 @@ function hasBbox(
  * to look up the bbox + role/name. Pure-ish: only does a `find()` walk when
  * a bare ref needs resolving. Exported for unit-test composition.
  */
+/** The page-side dependencies `resolveCandidates` threads through (bundled so the
+ *  signature stays within the parameter budget). `cdp` is the chromium-only
+ *  visible-rect fast path; off Chromium it is undefined and bbox computes via the
+ *  portable `locatorBoundingBox` fallback. */
+export interface MarksDeps {
+  page: Page;
+  substrate: SnapshotSubstrate;
+  refs: RefRegistry;
+  testAttributes: string[];
+  cdp?: CDPSession;
+}
+
+/** Build the ref→node lookup by walking the composed tree once, so each bare-ref
+ *  candidate's `backendDOMNodeId` resolves exactly as `find()` would. Returns
+ *  null + pushes a warning on compose failure. */
+async function buildRefLookup(
+  deps: MarksDeps,
+  warnings: string[],
+): Promise<Map<string, A11yNode> | null> {
+  try {
+    const { tree } = await deps.substrate.compose(deps.refs, deps.testAttributes);
+    if (!tree) return null;
+    const m = new Map<string, A11yNode>();
+    for (const { node } of walk(tree)) {
+      if (!m.has(node.ref)) m.set(node.ref, node);
+    }
+    return m;
+  } catch (err) {
+    warnings.push(
+      `set-of-marks: bbox lookup for bare ref candidates failed (${err instanceof Error ? err.message : String(err)}); ` +
+        `they will be reported without bboxes. Pass the full find() candidate to avoid the lookup.`,
+    );
+    return null;
+  }
+}
+
+/** Build a mark entry from a node (carrying its optional role/name/testId). */
+function markEntryFrom(index: number, node: MarkEntrySource, bbox: VisibleRect | null): MarkEntry {
+  return {
+    index,
+    ref: node.ref,
+    ...(node.role !== undefined ? { role: node.role } : {}),
+    ...(node.name !== undefined ? { name: node.name } : {}),
+    ...(node.testId !== undefined ? { testId: node.testId } : {}),
+    bbox,
+    painted: bbox !== null,
+  };
+}
+
+type MarkEntrySource = { ref: string; role?: string; name?: string; testId?: string };
+
+/** Resolve one bare-ref candidate's bbox the same way `find()` does (CDP
+ *  visibleRect → portable locatorBoundingBox fallback, capped at 1s). */
+async function resolveBareRef(
+  deps: MarksDeps,
+  index: number,
+  ref: string,
+  lookupByRef: Map<string, A11yNode> | null,
+  warnings: string[],
+): Promise<MarkEntry> {
+  const looked = lookupByRef?.get(ref);
+  if (!looked) {
+    warnings.push(
+      `set-of-marks: ref "${ref}" was not surfaced by the current snapshot walk — ` +
+        `no bbox to paint. Pass the full find() candidate (with bbox) or call snapshot/find first.`,
+    );
+    return { index, ref, bbox: null, painted: false };
+  }
+  let bbox: VisibleRect | null =
+    deps.cdp !== undefined && looked.backendDOMNodeId !== undefined
+      ? await visibleRect(deps.cdp, looked.backendDOMNodeId)
+      : null;
+  if (bbox === null) {
+    const { hint } = buildSelectorHint(looked);
+    bbox = await locatorBoundingBox(deps.page, hint, { timeoutMs: 1000 });
+  }
+  return markEntryFrom(index, looked, bbox);
+}
+
 export async function resolveCandidates(
-  page: Page,
-  substrate: SnapshotSubstrate,
-  refs: RefRegistry,
-  testAttributes: string[],
+  deps: MarksDeps,
   candidates: MarkCandidate[],
-  /** CDP handle for the visible-rect bbox fast path — chromium only. Off
-   *  Chromium the walker has no `backendDOMNodeId`, so bbox computes via the
-   *  portable `locatorBoundingBox` fallback. */
-  cdp?: CDPSession,
 ): Promise<{ entries: MarkEntry[]; warnings: string[] }> {
   const warnings: string[] = [];
   const entries: MarkEntry[] = [];
-
-  // Cheap fast-path: when every candidate already carries a bbox, we don't
-  // need to walk the tree at all — the caller (typically piping a prior
-  // find() result straight in) has done the work.
-  const allHaveBbox = candidates.every(hasBbox);
-  let lookupByRef: Map<string, A11yNode> | null = null;
-  if (!allHaveBbox) {
-    // Walk the composed (a11y + DOM-walk) tree once and index by ref so we
-    // can look up each bare-ref candidate's `backendDOMNodeId` and compute
-    // its `visibleRect` exactly as `find()` would. This is the same path
-    // `find()` uses (`src/page/compose.ts` + `src/page/bbox.ts`) — visible-rect
-    // with ancestor-overflow + viewport intersection applied — so calibration
-    // bbox == screenshot-marks bbox for the same ref.
-    try {
-      const { tree } = await substrate.compose(refs, testAttributes);
-      if (tree) {
-        const m = new Map<string, A11yNode>();
-        for (const { node } of walk(tree)) {
-          if (!m.has(node.ref)) m.set(node.ref, node);
-        }
-        lookupByRef = m;
-      }
-    } catch (err) {
-      warnings.push(
-        `set-of-marks: bbox lookup for bare ref candidates failed (${err instanceof Error ? err.message : String(err)}); ` +
-          `they will be reported without bboxes. Pass the full find() candidate to avoid the lookup.`,
-      );
-    }
-  }
+  // Fast-path: when every candidate already carries a bbox (e.g. piped straight
+  // from a prior find()), skip the tree walk entirely.
+  const lookupByRef = candidates.every(hasBbox) ? null : await buildRefLookup(deps, warnings);
 
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i]!;
-    const index = i + 1;
     if (hasBbox(c)) {
-      entries.push({
-        index,
-        ref: c.ref,
-        ...(c.role !== undefined ? { role: c.role } : {}),
-        ...(c.name !== undefined ? { name: c.name } : {}),
-        ...(c.testId !== undefined ? { testId: c.testId } : {}),
-        bbox: c.bbox,
-        painted: c.bbox !== null,
-      });
-      continue;
+      entries.push(markEntryFrom(i + 1, c, c.bbox));
+    } else {
+      entries.push(await resolveBareRef(deps, i + 1, c.ref, lookupByRef, warnings));
     }
-    // bare-ref input — look the node up in the freshly-composed tree.
-    const looked = lookupByRef?.get(c.ref);
-    if (!looked) {
-      warnings.push(
-        `set-of-marks: ref "${c.ref}" was not surfaced by the current snapshot walk — ` +
-          `no bbox to paint. Pass the full find() candidate (with bbox) or call snapshot/find first.`,
-      );
-      entries.push({ index, ref: c.ref, bbox: null, painted: false });
-      continue;
-    }
-    // Compute the bbox the same way `find()` does: CDP-known DOM node →
-    // `visibleRect` first, with the Playwright `locatorBoundingBox` fallback
-    // when the CDP path nulls out a still-rendered DOM-walk node (the BYOB /
-    // attached quirk `find()` documents). The fallback is **fast-failing** —
-    // synthetic a11y refs (e.g. the document root `RootWebArea`) have no
-    // matching DOM, and Playwright's `boundingBox()` auto-waits 30 s before
-    // returning null on a non-matching selector. Cap the fallback at 1 s.
-    let bbox: VisibleRect | null =
-      cdp !== undefined && looked.backendDOMNodeId !== undefined
-        ? await visibleRect(cdp, looked.backendDOMNodeId)
-        : null;
-    if (bbox === null) {
-      const { hint } = buildSelectorHint(looked);
-      bbox = await locatorBoundingBox(page, hint, { timeoutMs: 1000 });
-    }
-    entries.push({
-      index,
-      ref: looked.ref,
-      ...(looked.role !== undefined ? { role: looked.role } : {}),
-      ...(looked.name !== undefined ? { name: looked.name } : {}),
-      ...(looked.testId !== undefined ? { testId: looked.testId } : {}),
-      bbox,
-      painted: bbox !== null,
-    });
   }
-
   return { entries, warnings };
 }
 
@@ -307,12 +310,8 @@ export async function screenshotMarks(
   const testAttributes = opts.testAttributes ?? [];
   const label: LabelMode = opts.label ?? "index";
   const { entries, warnings } = await resolveCandidates(
-    page,
-    substrate,
-    refs,
-    testAttributes,
+    { page, substrate, refs, testAttributes, cdp },
     opts.candidates,
-    cdp,
   );
 
   // Only paint entries that have a bbox to paint.

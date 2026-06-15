@@ -15,7 +15,13 @@ import {
   type FsPickerPolicy,
 } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
-import type { RegisterHost, SessionHost, ServerServicesHost } from "./host.js";
+import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from "./host.js";
+
+/** Wrap a JSON-serialisable body as a tool text response — the shared shape the
+ *  session-lifecycle handlers return. */
+function lifecycleJson(body: object): ToolResponse {
+  return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+}
 
 /** The parsed policy bundle `open_session` threads into `registry.get`. Extracting
  *  the four parse ternaries into one pure helper keeps the handler under the
@@ -251,18 +257,7 @@ export function registerSessionLifecycleTools(
       recordVideo,
     }) => {
       if (registry.has(session)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: `session "${session}" already open; close_session first` },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return lifecycleJson({ ok: false, error: `session "${session}" already open; close_session first` });
       }
       let policies: ParsedOpenSessionPolicies;
       try {
@@ -273,18 +268,7 @@ export function registerSessionLifecycleTools(
           fsPickerPolicy,
         });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
       try {
         const e = await registry.get(session, {
@@ -308,38 +292,16 @@ export function registerSessionLifecycleTools(
         const openedUrl = safariOpened
           ? await safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "")
           : e.session.page().url();
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: true,
-                  session: e.id,
-                  mode: e.mode,
-                  url: openedUrl,
-                  openedAt: new Date(e.openedAt).toISOString(),
-                  ...buildOpenSessionResultFields(e, hars),
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return lifecycleJson({
+          ok: true,
+          session: e.id,
+          mode: e.mode,
+          url: openedUrl,
+          openedAt: new Date(e.openedAt).toISOString(),
+          ...buildOpenSessionResultFields(e, hars),
+        });
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
     },
   );

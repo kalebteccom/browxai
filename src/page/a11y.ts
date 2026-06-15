@@ -91,6 +91,23 @@ interface RawAXNode {
  * type so a hypothetical structured value renders as JSON rather than
  * `[object Object]`.
  */
+/** Map the CDP AX boolean/tri-state properties onto the node. The two tri-state
+ *  props (`checked`/`pressed`) carry `boolean | "mixed"`; the rest are plain
+ *  booleans. Each property is independent, so a lookup table keeps the cyclomatic
+ *  complexity flat. */
+const BOOL_AX_PROPS = ["disabled", "selected", "expanded", "focused"] as const;
+const TRISTATE_AX_PROPS = ["checked", "pressed"] as const;
+function applyAxProperties(node: A11yNode, properties: RawProp[]): void {
+  for (const p of properties) {
+    const v = p.value?.value;
+    if ((BOOL_AX_PROPS as readonly string[]).includes(p.name)) {
+      node[p.name as (typeof BOOL_AX_PROPS)[number]] = !!v;
+    } else if ((TRISTATE_AX_PROPS as readonly string[]).includes(p.name)) {
+      node[p.name as (typeof TRISTATE_AX_PROPS)[number]] = v as boolean | "mixed";
+    }
+  }
+}
+
 function stringifyAxValue(v: unknown): string | undefined {
   if (v === undefined) return undefined;
   if (v === null) return "null";
@@ -150,31 +167,7 @@ export async function getA11yTree(
       backendDOMNodeId: raw.backendDOMNodeId,
       children: [],
     };
-    for (const p of raw.properties ?? []) {
-      const v = p.value?.value;
-      switch (p.name) {
-        case "disabled":
-          node.disabled = !!v;
-          break;
-        case "checked":
-          node.checked = v as boolean | "mixed";
-          break;
-        case "pressed":
-          node.pressed = v as boolean | "mixed";
-          break;
-        case "selected":
-          node.selected = !!v;
-          break;
-        case "expanded":
-          node.expanded = !!v;
-          break;
-        case "focused":
-          node.focused = !!v;
-          break;
-        default:
-          break;
-      }
-    }
+    applyAxProperties(node, raw.properties ?? []);
     // testId attaches later in enrichTestIds if we batch-fetch attributes.
     node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), {
       role,

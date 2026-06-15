@@ -98,13 +98,49 @@ interface PreparedFile {
   mode: "path" | "contents";
 }
 
+/** Prepare a path-mode file: workspace-escape guarded, read off disk, base64'd. */
+function preparePathFile(workspaceRoot: string, f: DropFileInputPath, i: number): PreparedFile {
+  const fp = f.path;
+  const resolved = resolve(workspaceRoot, fp);
+  if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
+    throw new Error(
+      `drop_files: files[${i}].path must resolve inside $BROWX_WORKSPACE — stage the file there, or use \`contents\` (base64)`,
+    );
+  }
+  let buf: Buffer;
+  try {
+    buf = readFileSync(resolved);
+  } catch (err) {
+    throw new Error(`drop_files: files[${i}].path: ${(err as Error).message}`);
+  }
+  return {
+    base64: buf.toString("base64"),
+    name: f.name ?? basename(fp),
+    mimeType: f.mimeType ?? "application/octet-stream",
+    bytes: buf.length,
+    mode: "path",
+  };
+}
+
+/** Prepare a contents-mode file (base64 inline; `name` required). */
+function prepareContentsFile(f: DropFileInputContents, i: number): PreparedFile {
+  if (!f.name || f.name.length === 0) {
+    throw new Error(`drop_files: files[${i}]: \`name\` is required in contents-mode`);
+  }
+  return {
+    base64: f.contents,
+    name: f.name,
+    mimeType: f.mimeType ?? "application/octet-stream",
+    bytes: Buffer.from(f.contents, "base64").length,
+    mode: "contents",
+  };
+}
+
 function prepareFiles(workspaceRoot: string, files: DropFileInput[]): PreparedFile[] {
   if (!Array.isArray(files) || files.length === 0) {
     throw new Error("drop_files: `files` must be a non-empty array");
   }
-  const prepared: PreparedFile[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const f = files[i]!;
+  return files.map((f, i) => {
     const hasPath =
       typeof (f as DropFileInputPath).path === "string" && (f as DropFileInputPath).path.length > 0;
     const hasContents = typeof (f as DropFileInputContents).contents === "string";
@@ -114,43 +150,10 @@ function prepareFiles(workspaceRoot: string, files: DropFileInput[]): PreparedFi
     if (!hasPath && !hasContents) {
       throw new Error(`drop_files: files[${i}]: requires \`path\` or \`contents\``);
     }
-    if (hasPath) {
-      const fp = (f as DropFileInputPath).path;
-      const resolved = resolve(workspaceRoot, fp);
-      if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-        throw new Error(
-          `drop_files: files[${i}].path must resolve inside $BROWX_WORKSPACE — stage the file there, or use \`contents\` (base64)`,
-        );
-      }
-      let buf: Buffer;
-      try {
-        buf = readFileSync(resolved);
-      } catch (err) {
-        throw new Error(`drop_files: files[${i}].path: ${(err as Error).message}`);
-      }
-      prepared.push({
-        base64: buf.toString("base64"),
-        name: (f as DropFileInputPath).name ?? basename(fp),
-        mimeType: f.mimeType ?? "application/octet-stream",
-        bytes: buf.length,
-        mode: "path",
-      });
-    } else {
-      const c = f as DropFileInputContents;
-      if (!c.name || c.name.length === 0) {
-        throw new Error(`drop_files: files[${i}]: \`name\` is required in contents-mode`);
-      }
-      const buf = Buffer.from(c.contents, "base64");
-      prepared.push({
-        base64: c.contents,
-        name: c.name,
-        mimeType: c.mimeType ?? "application/octet-stream",
-        bytes: buf.length,
-        mode: "contents",
-      });
-    }
-  }
-  return prepared;
+    return hasPath
+      ? preparePathFile(workspaceRoot, f as DropFileInputPath, i)
+      : prepareContentsFile(f as DropFileInputContents, i);
+  });
 }
 
 export interface DropPayload {
@@ -204,7 +207,7 @@ function isDropTarget(v: unknown): v is DropTarget {
   );
 }
 
-export const dropFilesPageScript = function dropFilesInPage(args: {
+export const dropFilesPageScript = function PAGE_DROP_FILES_FN(args: {
   // `el` is the DOM element resolved by Locator.evaluate on the browser side
   // (ref/selector mode), or `null` for coords mode (re-resolved in-page via
   // elementFromPoint). It crosses the Node->page boundary as an opaque handle
@@ -371,6 +374,23 @@ export const dropFilesPageScript = function dropFilesInPage(args: {
   };
 };
 
+/** Resolve the viewport-relative drop point: coords mode uses the literal point;
+ *  element mode uses the target's bounding-box centre (throwing when unrendered). */
+async function computeDropPoint(
+  resolved: ReturnType<typeof resolveTarget>,
+): Promise<{ clientX: number; clientY: number; byCoords: boolean }> {
+  if (resolved.kind === "coords") {
+    return { clientX: resolved.x, clientY: resolved.y, byCoords: true };
+  }
+  const box = await resolved.loc.boundingBox().catch(() => null);
+  if (!box || box.width <= 0 || box.height <= 0) {
+    throw new Error(
+      "drop_files: target element has no rendered box — scroll into view or wait for it to mount",
+    );
+  }
+  return { clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, byCoords: false };
+}
+
 export async function dropFiles(
   page: Page,
   refs: RefRegistry,
@@ -382,27 +402,10 @@ export async function dropFiles(
   }
   const prepared = prepareFiles(workspaceRoot, args.files);
 
-  // Build the payload shape we send into the page. We compute the
-  // viewport-relative click point on the Node side so apps that read
+  // Compute the viewport-relative click point on the Node side so apps reading
   // `event.clientX`/`clientY` see realistic values.
   const resolved = resolveTarget(page, refs, args.target);
-  let clientX = 0;
-  let clientY = 0;
-  let byCoords = false;
-  if (resolved.kind === "coords") {
-    clientX = resolved.x;
-    clientY = resolved.y;
-    byCoords = true;
-  } else {
-    const box = await resolved.loc.boundingBox().catch(() => null);
-    if (!box || box.width <= 0 || box.height <= 0) {
-      throw new Error(
-        "drop_files: target element has no rendered box — scroll into view or wait for it to mount",
-      );
-    }
-    clientX = box.x + box.width / 2;
-    clientY = box.y + box.height / 2;
-  }
+  const { clientX, clientY, byCoords } = await computeDropPoint(resolved);
 
   const payload: DropPayload = {
     clientX,

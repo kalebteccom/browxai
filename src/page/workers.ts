@@ -268,32 +268,28 @@ export class WorkersRegistry {
   /** Enable the CDP ServiceWorker domain on the session's top-level CDP and
    *  wire `Target.setAutoAttach` so newly-registered SWs auto-attach as child
    *  sessions. Idempotent. */
-  async installSwListener(cdp: CDPSession): Promise<void> {
-    if (this.swEnabled) return;
-    this.swEnabled = true;
-    // Enumerate + monitor running versions.
-    await cdp.send("ServiceWorker.enable").catch(() => undefined);
-    // Auto-attach so we get a child session per SW.
-    await cdp
-      .send("Target.setAutoAttach", {
-        autoAttach: true,
-        waitForDebuggerOnStart: false,
-        flatten: true,
-      })
-      .catch(() => undefined);
-
-    type WorkerVersionUpdated = {
-      versions: Array<{
-        versionId: string;
-        scriptURL: string;
-        runningStatus: string;
-        targetId?: string;
-      }>;
+  /** Register a CDP event handler + push its detacher onto `this.detachers`.
+   *  The event name is dynamic here, so the strongly-typed per-event `on`/`off`
+   *  overloads are bridged through a single untyped seam. */
+  private onCdp(cdp: CDPSession, event: string, handler: (e: unknown) => void): void {
+    const c = cdp as unknown as {
+      on: (event: string, handler: (e: unknown) => void) => void;
+      off: (event: string, handler: (e: unknown) => void) => void;
     };
-    const onVersionUpdated = (e: WorkerVersionUpdated): void => {
+    c.on(event, handler);
+    this.detachers.push(() => c.off(event, handler));
+  }
+
+  /** `ServiceWorker.workerVersionUpdated` — refresh url/status on the matching
+   *  attachment(s). */
+  private registerVersionUpdated(cdp: CDPSession): void {
+    type WorkerVersionUpdated = {
+      versions: Array<{ versionId: string; scriptURL: string; runningStatus: string; targetId?: string }>;
+    };
+    this.onCdp(cdp, "ServiceWorker.workerVersionUpdated", (raw) => {
+      const e = raw as WorkerVersionUpdated;
       for (const v of e.versions ?? []) {
         if (!v.targetId) continue;
-        // Update any existing attachment that matches this targetId.
         for (const att of this.swAttached.values()) {
           if (att.targetId === v.targetId) {
             att.url = v.scriptURL || att.url;
@@ -301,17 +297,18 @@ export class WorkersRegistry {
           }
         }
       }
-    };
-    cdp.on("ServiceWorker.workerVersionUpdated", onVersionUpdated as (e: unknown) => void);
-    this.detachers.push(() =>
-      cdp.off("ServiceWorker.workerVersionUpdated", onVersionUpdated as (e: unknown) => void),
-    );
+    });
+  }
 
+  /** `Target.attachedToTarget` / `detachedFromTarget` — track the SW attachment
+   *  map, arming any already-armed fetch interceptors on a new SW. */
+  private registerAttachDetach(cdp: CDPSession): void {
     type AttachedToTarget = {
       sessionId: string;
       targetInfo: { type: string; targetId: string; url: string };
     };
-    const onAttached = (e: AttachedToTarget): void => {
+    this.onCdp(cdp, "Target.attachedToTarget", (raw) => {
+      const e = raw as AttachedToTarget;
       if (e.targetInfo.type !== "service_worker") return;
       const att: SwAttachment = {
         targetId: e.targetInfo.targetId,
@@ -322,72 +319,75 @@ export class WorkersRegistry {
       };
       this.swAttached.set(e.sessionId, att);
       this.swIdBySession.set(e.sessionId, `sw-${this.nextSwId++}`);
-      // If any fetch interceptors are already armed, apply them to this SW.
-      if (this.fetchInterceptors.size > 0) {
-        void this.applyFetchEnable(cdp, att).catch(() => undefined);
-      }
-    };
-    cdp.on("Target.attachedToTarget", onAttached as (e: unknown) => void);
-    this.detachers.push(() =>
-      cdp.off("Target.attachedToTarget", onAttached as (e: unknown) => void),
-    );
+      if (this.fetchInterceptors.size > 0) void this.applyFetchEnable(cdp, att).catch(() => undefined);
+    });
+    this.onCdp(cdp, "Target.detachedFromTarget", (raw) => {
+      const { sessionId } = raw as { sessionId: string };
+      this.swAttached.delete(sessionId);
+      this.swIdBySession.delete(sessionId);
+    });
+  }
 
-    type DetachedFromTarget = { sessionId: string };
-    const onDetached = (e: DetachedFromTarget): void => {
-      this.swAttached.delete(e.sessionId);
-      this.swIdBySession.delete(e.sessionId);
-    };
-    cdp.on("Target.detachedFromTarget", onDetached as (e: unknown) => void);
-    this.detachers.push(() =>
-      cdp.off("Target.detachedFromTarget", onDetached as (e: unknown) => void),
-    );
-
-    // Listen for Fetch.requestPaused on the TOP session — flatten:true means
-    // child-session events come up here, demultiplexed by `sessionId`. The
-    // CDPSession event payload carries the sessionId for routed messages.
+  /** `Fetch.requestPaused` (TOP session; flatten routes child events up by
+   *  `sessionId`) — fulfill against a matching interceptor, else continue. */
+  private registerRequestPaused(cdp: CDPSession): void {
     type RequestPaused = {
       requestId: string;
       request: { url: string; method: string };
-      // `sessionId` only set on flatten-routed events from child targets.
       sessionId?: string;
     };
-    const onPaused = async (e: RequestPaused): Promise<void> => {
-      // Find a matching interceptor.
-      let hit: ActiveFetchIntercept | undefined;
-      for (const ic of this.fetchInterceptors.values()) {
-        if (ic.regex.test(e.request.url)) {
-          hit = ic;
-          break;
-        }
+    this.onCdp(cdp, "Fetch.requestPaused", (raw) => {
+      void this.handleRequestPaused(cdp, raw as RequestPaused);
+    });
+  }
+
+  private async handleRequestPaused(
+    cdp: CDPSession,
+    e: { requestId: string; request: { url: string; method: string }; sessionId?: string },
+  ): Promise<void> {
+    let hit: ActiveFetchIntercept | undefined;
+    for (const ic of this.fetchInterceptors.values()) {
+      if (ic.regex.test(e.request.url)) {
+        hit = ic;
+        break;
       }
-      if (!hit) {
-        // No match: continue the request unchanged.
-        await cdp
-          .send("Fetch.continueRequest", {
-            requestId: e.requestId,
-            ...(e.sessionId ? { sessionId: e.sessionId } : {}),
-          })
-          .catch(() => undefined);
-        return;
-      }
-      const r = hit.response;
-      const headers = [
-        { name: "content-type", value: r.contentType ?? "application/json" },
-        ...Object.entries(r.headers ?? {}).map(([name, value]) => ({ name, value })),
-      ];
-      const body = Buffer.from(r.body ?? "", "utf-8").toString("base64");
+    }
+    if (!hit) {
       await cdp
-        .send("Fetch.fulfillRequest", {
+        .send("Fetch.continueRequest", {
           requestId: e.requestId,
-          responseCode: r.status ?? 200,
-          responseHeaders: headers,
-          body,
           ...(e.sessionId ? { sessionId: e.sessionId } : {}),
         })
         .catch(() => undefined);
-    };
-    cdp.on("Fetch.requestPaused", onPaused as (e: unknown) => void);
-    this.detachers.push(() => cdp.off("Fetch.requestPaused", onPaused as (e: unknown) => void));
+      return;
+    }
+    const r = hit.response;
+    const headers = [
+      { name: "content-type", value: r.contentType ?? "application/json" },
+      ...Object.entries(r.headers ?? {}).map(([name, value]) => ({ name, value })),
+    ];
+    await cdp
+      .send("Fetch.fulfillRequest", {
+        requestId: e.requestId,
+        responseCode: r.status ?? 200,
+        responseHeaders: headers,
+        body: Buffer.from(r.body ?? "", "utf-8").toString("base64"),
+        ...(e.sessionId ? { sessionId: e.sessionId } : {}),
+      })
+      .catch(() => undefined);
+  }
+
+  async installSwListener(cdp: CDPSession): Promise<void> {
+    if (this.swEnabled) return;
+    this.swEnabled = true;
+    // Enumerate + monitor running versions; auto-attach for a child session per SW.
+    await cdp.send("ServiceWorker.enable").catch(() => undefined);
+    await cdp
+      .send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true })
+      .catch(() => undefined);
+    this.registerVersionUpdated(cdp);
+    this.registerAttachDetach(cdp);
+    this.registerRequestPaused(cdp);
   }
 
   private async applyFetchEnable(cdp: CDPSession, att: SwAttachment): Promise<void> {

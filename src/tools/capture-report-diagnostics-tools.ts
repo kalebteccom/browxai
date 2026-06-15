@@ -16,6 +16,33 @@ import {
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
+/** Stamp the body with its token estimate and wrap it as a tool text response —
+ *  the shared shape every `export_playwright_script` failure/early return uses. */
+function exportScriptResult(body: Record<string, unknown>): {
+  content: Array<{ type: "text"; text: string }>;
+} {
+  const withTokens = { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) };
+  return { content: [{ type: "text" as const, text: JSON.stringify(withTokens, null, 2) }] };
+}
+
+/** Filter a diagnostics record against the `diagnostics_search` query. The
+ *  `tool` filter implies a `call` record; the `category` filter implies a `note`
+ *  record (records of the other kind are excluded when either is set). */
+function matchesDiagnosticFilter(
+  r: DiagnosticsRecord,
+  q: { sinceMs?: number; sessionId?: string; tool?: string; category?: string },
+): boolean {
+  if (q.sinceMs !== undefined && Date.parse(r.ts) < q.sinceMs) return false;
+  if (q.sessionId && r.sessionId !== q.sessionId) return false;
+  if (q.tool) {
+    if (r.kind !== "call" || r.tool !== q.tool) return false;
+  }
+  if (q.category) {
+    if (r.kind !== "note" || r.category !== q.category) return false;
+  }
+  return true;
+}
+
 /**
  * Capture + report — session report & the diagnostics store. The session report
  * + metrics rollups, the diagnostics note/search/report agent-feedback store,
@@ -219,16 +246,10 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       if (g) return g;
       const lim = limit ?? 100;
       const sinceMs = since ? Date.parse(since) : undefined;
-      const all = diagnostics.readAll();
       const matched: DiagnosticsRecord[] = [];
       let truncated = false;
-      for (const r of all) {
-        if (sinceMs !== undefined && Date.parse(r.ts) < sinceMs) continue;
-        if (sessionId && r.sessionId !== sessionId) continue;
-        if (tool && r.kind === "call" && r.tool !== tool) continue;
-        if (tool && r.kind !== "call") continue;
-        if (category && r.kind === "note" && r.category !== category) continue;
-        if (category && r.kind !== "note") continue;
+      for (const r of diagnostics.readAll()) {
+        if (!matchesDiagnosticFilter(r, { sinceMs, sessionId, tool, category })) continue;
         if (matched.length >= lim) {
           truncated = true;
           break;
@@ -334,7 +355,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       const e = await entryFor(session);
       const snap = e.recorder.inspect();
       if (!snap) {
-        const body = {
+        return exportScriptResult({
           ok: false,
           tool: "export_playwright_script",
           error:
@@ -343,24 +364,18 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
             "), then call this. The recording is NOT ended by export — `end_recording` " +
             "still emits the YAML flow-file separately.",
           failure: { source: "browxai", hint: "start_recording before exporting" },
-          tokensEstimate: 0,
-        };
-        body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        });
       }
       const lowered = lowerTraceToSpec(snap.name, snap.steps);
       const check = parsePlaywrightSpec(lowered.source);
       if (!check.ok) {
-        const body = {
+        return exportScriptResult({
           ok: false,
           tool: "export_playwright_script",
           error: `generated spec failed the structural parse-check: ${check.reason}`,
           source: lowered.source,
           stats: lowered.stats,
-          tokensEstimate: 0,
-        };
-        body.tokensEstimate = estimateTokens(JSON.stringify(body));
-        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+        });
       }
       let writtenPath: string | undefined;
       let writtenBytes: number | undefined;
@@ -374,16 +389,13 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
           writtenPath = resolved;
           writtenBytes = Buffer.byteLength(lowered.source, "utf8");
         } catch (err) {
-          const body = {
+          return exportScriptResult({
             ok: false,
             tool: "export_playwright_script",
             error: err instanceof Error ? err.message : String(err),
             source: lowered.source,
             stats: lowered.stats,
-            tokensEstimate: 0,
-          };
-          body.tokensEstimate = estimateTokens(JSON.stringify(body));
-          return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+          });
         }
       }
       const body: {

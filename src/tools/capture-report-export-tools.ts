@@ -99,12 +99,21 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const result = await withDeadline(
-          assetExport(requireCdp(e.session), e.session.page(), e.network, workspace.root, e.id, {
-            filter: args.filter ?? {},
-            intoDir: args.intoDir,
-            maxCount: args.maxCount,
-            maxBytes: args.maxBytes,
-          }),
+          assetExport(
+            {
+              cdp: requireCdp(e.session),
+              page: e.session.page(),
+              buffer: e.network,
+              workspaceRoot: workspace.root,
+              sessionId: e.id,
+            },
+            {
+              filter: args.filter ?? {},
+              intoDir: args.intoDir,
+              maxCount: args.maxCount,
+              maxBytes: args.maxBytes,
+            },
+          ),
           cfgActionTimeout(),
           "asset_export",
         );

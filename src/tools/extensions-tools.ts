@@ -31,6 +31,25 @@ import type {
  * `extensions-batch-tools` by cohesive family (RFC 0004 P3 / D3 SRP); registered
  * through the shared `ToolHost` seam in the same source order.
  */
+/** Discover the loaded extensions' Chrome-runtime ids by inspecting the
+ *  context's service-worker (MV3) + background-page (MV2) URLs — both start with
+ *  `chrome-extension://<runtime-id>/`. Best-effort: older Playwright builds may
+ *  not surface every channel; returns the deduped set. */
+function discoverExtensionRuntimeIds(ctx: unknown): string[] {
+  const idsFrom = (urls: Array<{ url: () => string }>): string[] =>
+    urls
+      .map((w) => w.url())
+      .filter((u) => u.startsWith("chrome-extension://"))
+      .map((u) => u.slice("chrome-extension://".length).split("/")[0]!);
+  const c = ctx as {
+    serviceWorkers?: () => Array<{ url: () => string }>;
+    backgroundPages?: () => Array<{ url: () => string }>;
+  };
+  const swIds = idsFrom(c.serviceWorkers?.() ?? []);
+  const bgIds = idsFrom(c.backgroundPages?.() ?? []);
+  return Array.from(new Set([...swIds, ...bgIds]));
+}
+
 export function registerExtensionsTools(
   host: RegisterHost & GateHost & SessionHost & ConfigHost & ServerServicesHost,
 ): void {
@@ -302,35 +321,13 @@ export function registerExtensionsTools(
         );
       }
       try {
-        // Resolve the Chrome-runtime id of the extension by inspecting the
-        // context's service-worker / background-page URLs (both start with
-        // `chrome-extension://<runtime-id>/`). We don't fail when this comes
-        // up empty — the result surfaces the discovered ids so the caller
-        // can decide.
-        const ctx = e.session.page().context();
-        // service workers (MV3) — newer Playwright surfaces them; older
-        // builds may not. Best-effort.
-        const sw =
-          (
-            ctx as unknown as { serviceWorkers?: () => Array<{ url: () => string }> }
-          ).serviceWorkers?.() ?? [];
-        const swIds = sw
-          .map((w) => w.url())
-          .filter((u) => u.startsWith("chrome-extension://"))
-          .map((u) => u.slice("chrome-extension://".length).split("/")[0]!);
-        // background pages (MV2)
-        const bgPages =
-          (
-            ctx as unknown as { backgroundPages?: () => Array<{ url: () => string }> }
-          ).backgroundPages?.() ?? [];
-        const bgIds = bgPages
-          .map((p) => p.url())
-          .filter((u) => u.startsWith("chrome-extension://"))
-          .map((u) => u.slice("chrome-extension://".length).split("/")[0]!);
-        const runtimeIds = Array.from(new Set([...swIds, ...bgIds]));
+        // Resolve the Chrome-runtime id by inspecting the context's
+        // service-worker / background-page URLs. Best-effort — surfaces the
+        // discovered ids so the caller can decide.
+        const runtimeIds = discoverExtensionRuntimeIds(e.session.page().context());
         // We can't reliably map our path-hash id to the runtime id without
-        // parsing the manifest's `key` field — when there's exactly one
-        // loaded extension AND one runtime id we assume the mapping.
+        // parsing the manifest's `key` field — when there's exactly one loaded
+        // extension AND one runtime id we assume the mapping.
         const runtimeId =
           runtimeIds.length === 1 && e.extensions.loaded.length === 1 ? runtimeIds[0] : undefined;
         if (command) {

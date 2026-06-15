@@ -4,7 +4,18 @@ import { estimateTokens } from "../util/tokens.js";
 import { matchesResponse } from "../page/await_network.js";
 import { sanitizeUrl } from "../util/url-sanitizer.js";
 import { SESSION_ARG } from "./schemas.js";
-import type { ToolHost } from "./host.js";
+import type { ToolHost, ToolResponse } from "./host.js";
+
+/** Wrap a JSON body as a tool text response — the shape the determinism handlers
+ *  return. */
+function determinismJson(body: object): ToolResponse {
+  return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+}
+
+/** A structured `{ok:false, error}` envelope. */
+function determinismJsonError(error: string): ToolResponse {
+  return determinismJson({ ok: false, error });
+}
 
 /**
  * Deep tools — determinism injection & compound network waits. `clock` (virtual
@@ -184,21 +195,9 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       if (g) return g;
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_wait_for_network") {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error: `act_and_wait_for_network: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)`,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return determinismJsonError(
+          `act_and_wait_for_network: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)`,
+        );
       }
       const ig = gateCheck(innerTool);
       if (ig) return ig;
@@ -207,22 +206,9 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         args.match.method === undefined &&
         args.match.status === undefined
       ) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                {
-                  ok: false,
-                  error:
-                    "act_and_wait_for_network: `match` needs at least one of urlPattern / method / status",
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return determinismJsonError(
+          "act_and_wait_for_network: `match` needs at least one of urlPattern / method / status",
+        );
       }
       const e = await entryFor(args.session);
       const timeout = args.timeoutMs ?? 10_000;
@@ -312,67 +298,34 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         try {
           value = await withDeadline(s.page().evaluate(expr), perPoll, "poll_eval");
         } catch (err) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error: err instanceof Error ? err.message : String(err),
-                    polls,
-                    elapsedMs: Date.now() - start,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return determinismJson({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+            polls,
+            elapsedMs: Date.now() - start,
+          });
         }
         if (value) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: true,
-                    truthy: true,
-                    value,
-                    polls,
-                    elapsedMs: Date.now() - start,
-                    timedOut: false,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return determinismJson({
+            ok: true,
+            truthy: true,
+            value,
+            polls,
+            elapsedMs: Date.now() - start,
+            timedOut: false,
+          });
         }
         if (Date.now() - start + interval >= budget) break;
         await new Promise((r) => setTimeout(r, interval));
       }
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                ok: true,
-                truthy: false,
-                value,
-                polls,
-                elapsedMs: Date.now() - start,
-                timedOut: true,
-              },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
+      return determinismJson({
+        ok: true,
+        truthy: false,
+        value,
+        polls,
+        elapsedMs: Date.now() - start,
+        timedOut: true,
+      });
     },
   );
 }

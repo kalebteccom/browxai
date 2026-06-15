@@ -128,6 +128,41 @@ export function validateFillFormArgs(args: FillFormArgs): void {
  * Exported for unit tests — the atomic-resolution invariant is the most
  * important part of the primitive, and we test it directly.
  */
+/** Resolve one field/submit target into a locator + resolution record. `index`
+ *  is the field index, or -1 for the submit target (which drives the zero-node
+ *  error wording, preserving the prior byte-identical messages). */
+async function resolveOneTarget(
+  page: Page,
+  refs: ActionContext["refs"],
+  target: ActionTarget,
+  index: number,
+  targetSummary: string,
+): Promise<{ locator?: Locator; resolution: FieldResolution }> {
+  const zeroNodeError =
+    index === -1
+      ? "submit target resolved to zero DOM nodes"
+      : "target resolved to zero DOM nodes — element no longer present";
+  try {
+    const loc = locatorFor(page, refs, target);
+    // count() is the cheap "does this resolve" gate — surfaces "ref exists in
+    // registry but no longer in the DOM" before we start typing.
+    const count = await loc.count().catch(() => 0);
+    if (count === 0) {
+      return { resolution: { index, targetSummary, ok: false, error: zeroNodeError } };
+    }
+    return { locator: loc, resolution: { index, targetSummary, ok: true } };
+  } catch (err) {
+    return {
+      resolution: {
+        index,
+        targetSummary,
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      },
+    };
+  }
+}
+
 export async function resolveFieldsAtomically(
   page: Page,
   refs: ActionContext["refs"],
@@ -146,60 +181,17 @@ export async function resolveFieldsAtomically(
   const locators: Locator[] = [];
 
   for (let i = 0; i < fields.length; i++) {
-    const f = fields[i]!;
-    const summary = summariseTarget(f.target);
-    try {
-      const loc = locatorFor(page, refs, f.target);
-      // count() is the cheap "does this resolve" gate — surfaces "ref exists
-      // in registry but no longer in the DOM" before we start typing.
-      const count = await loc.count().catch(() => 0);
-      if (count === 0) {
-        resolutions.push({
-          index: i,
-          targetSummary: summary,
-          ok: false,
-          error: "target resolved to zero DOM nodes — element no longer present",
-        });
-        continue;
-      }
-      locators.push(loc);
-      resolutions.push({ index: i, targetSummary: summary, ok: true });
-    } catch (err) {
-      resolutions.push({
-        index: i,
-        targetSummary: summary,
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    const r = await resolveOneTarget(page, refs, fields[i]!.target, i, summariseTarget(fields[i]!.target));
+    resolutions.push(r.resolution);
+    if (r.locator) locators.push(r.locator);
   }
 
   let submitLocator: Locator | undefined;
   let submitResolution: FieldResolution | undefined;
   if (submit) {
-    const submitSummary = summariseTarget(submit);
-    try {
-      const loc = locatorFor(page, refs, submit);
-      const count = await loc.count().catch(() => 0);
-      if (count === 0) {
-        submitResolution = {
-          index: -1,
-          targetSummary: `submit ${submitSummary}`,
-          ok: false,
-          error: "submit target resolved to zero DOM nodes",
-        };
-      } else {
-        submitLocator = loc;
-        submitResolution = { index: -1, targetSummary: `submit ${submitSummary}`, ok: true };
-      }
-    } catch (err) {
-      submitResolution = {
-        index: -1,
-        targetSummary: `submit ${submitSummary}`,
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
+    const r = await resolveOneTarget(page, refs, submit, -1, `submit ${summariseTarget(submit)}`);
+    submitLocator = r.locator;
+    submitResolution = r.resolution;
   }
 
   const allFieldsOk = resolutions.every((r) => r.ok);
@@ -227,6 +219,66 @@ function descriptorFor(args: FillFormArgs): DispatchedAction {
  * agents see the same `ok / action / navigation / structure / console …`
  * surface they get from every other action tool.
  */
+/** Build the empty-window `ok:false` envelope for an atomic pre-flight rejection
+ *  (no fields typed). Mirrors the action-window shape so callers see the same
+ *  surface every action tool returns. */
+function fillFormFailure(
+  ctx: ActionContext,
+  descriptor: DispatchedAction,
+  error: string,
+  fieldResolution: FieldResolution[],
+): FillFormResult {
+  const url = ctx.page.url();
+  return {
+    ok: false,
+    action: descriptor,
+    navigation: { changed: false, from: url, to: url, kind: null },
+    structure: { appeared: [], removed: [], newTabs: [] },
+    console: { errors: [], warnings: 0 },
+    pageErrors: [],
+    network: { summary: { total: 0, byType: {}, failed: 0 } },
+    tokensEstimate: 0,
+    warnings: [],
+    error,
+    fieldResolution,
+  };
+}
+
+/** Materialise every field's value (resolving registered-secret aliases) before
+ *  any write. Returns the materialised values or a pre-flight failure (a
+ *  rejection on field 3 mustn't leave 0..2 filled). */
+function materialiseFields(
+  ctx: ActionContext,
+  args: FillFormArgs,
+  descriptor: DispatchedAction,
+  fieldResolution: FieldResolution[],
+):
+  | { ok: true; materialised: Array<{ value: string; alias?: string; descriptorValue: string }> }
+  | { ok: false; failure: FillFormResult } {
+  const materialised: Array<{ value: string; alias?: string; descriptorValue: string }> = [];
+  for (let i = 0; i < args.fields.length; i++) {
+    const f = args.fields[i]!;
+    const mat = materialiseValue(ctx, f.value);
+    if (!mat.ok) {
+      return {
+        ok: false,
+        failure: fillFormFailure(
+          ctx,
+          descriptor,
+          `fill_form: secrets materialisation rejected fields[${i}]: ${mat.error}`,
+          fieldResolution,
+        ),
+      };
+    }
+    materialised.push({
+      value: mat.value,
+      alias: mat.alias,
+      descriptorValue: mat.alias ? `<${mat.alias}>` : f.value,
+    });
+  }
+  return { ok: true, materialised };
+}
+
 export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<FillFormResult> {
   validateFillFormArgs(args);
 
@@ -244,50 +296,19 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
       .filter((r) => !r.ok)
       .map((r) => `[${r.index}] ${r.targetSummary}: ${r.error}`)
       .join("; ");
-    const failure: FillFormResult = {
-      ok: false,
-      action: descriptor,
-      navigation: { changed: false, from: ctx.page.url(), to: ctx.page.url(), kind: null },
-      structure: { appeared: [], removed: [], newTabs: [] },
-      console: { errors: [], warnings: 0 },
-      pageErrors: [],
-      network: { summary: { total: 0, byType: {}, failed: 0 } },
-      tokensEstimate: 0,
-      warnings: [],
-      error:
-        `fill_form: atomic pre-resolution rejected the call — no fields were typed. ` +
-        `Misses: ${missedSummaries}`,
-      fieldResolution: allResolutions,
-    };
-    return failure;
+    return fillFormFailure(
+      ctx,
+      descriptor,
+      `fill_form: atomic pre-resolution rejected the call — no fields were typed. Misses: ${missedSummaries}`,
+      allResolutions,
+    );
   }
 
-  // Pre-validate secrets materialisation for every field too. Same "fail
-  // atomically before writing" posture — a registered-secret rejection on
-  // field 3 mustn't leave fields 0..2 filled.
-  const materialised: Array<{ value: string; alias?: string; descriptorValue: string }> = [];
-  for (let i = 0; i < args.fields.length; i++) {
-    const f = args.fields[i]!;
-    const mat = materialiseValue(ctx, f.value);
-    if (!mat.ok) {
-      const failure: FillFormResult = {
-        ok: false,
-        action: descriptor,
-        navigation: { changed: false, from: ctx.page.url(), to: ctx.page.url(), kind: null },
-        structure: { appeared: [], removed: [], newTabs: [] },
-        console: { errors: [], warnings: 0 },
-        pageErrors: [],
-        network: { summary: { total: 0, byType: {}, failed: 0 } },
-        tokensEstimate: 0,
-        warnings: [],
-        error: `fill_form: secrets materialisation rejected fields[${i}]: ${mat.error}`,
-        fieldResolution: resolution.resolutions,
-      };
-      return failure;
-    }
-    const descriptorValue = mat.alias ? `<${mat.alias}>` : f.value;
-    materialised.push({ value: mat.value, alias: mat.alias, descriptorValue });
-  }
+  // Pre-validate secrets materialisation for every field too (same "fail
+  // atomically before writing" posture).
+  const mat = materialiseFields(ctx, args, descriptor, resolution.resolutions);
+  if (!mat.ok) return mat.failure;
+  const materialised = mat.materialised;
 
   // ---- single action window across the whole sequence ----
   // The body returns the *final* probe (submit's post-click probe if a

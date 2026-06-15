@@ -7,36 +7,42 @@
 // The always-on cheap signals (navigation / structure / console / pageErrors / element)
 // are real. `tree_diff` is a follow-on.
 
-import type { Page } from "playwright-core";
-import { walk, type A11yNode } from "./a11y.js";
-import type { SnapshotSubstrate } from "./snapshot-substrate.js";
-import type { NetworkSubstrate } from "./network-substrate.js";
-import type { RefRegistry } from "./refs.js";
-import { findByRef, serialise } from "./snapshot.js";
-import {
-  type NetworkEntry,
-  type NetworkSummary,
-  type MutationEntry,
-  type WsFrame,
-} from "./network.js";
-import { ConsoleBuffer } from "./console.js";
-import { truncateToBudget, estimateTokens } from "../util/tokens.js";
+import type { A11yNode } from "./a11y.js";
+import type { NetworkEntry, NetworkSummary, MutationEntry } from "./network.js";
+import { estimateTokens } from "../util/tokens.js";
 import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { classifyFailure } from "../util/failure.js";
-import type { DialogPolicyState, DialogRecord } from "../session/dialog.js";
-import { UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
-import type { PermissionPolicyState, PermissionRecord } from "../session/permission.js";
-import { UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
-import type { NotificationPolicyState, NotificationRecord } from "../session/notification.js";
-import { UNHANDLED_NOTIFICATION_HINT } from "../session/notification.js";
-import type { FsPickerPolicyState, FsPickerRecord } from "../session/fs-picker.js";
-import { UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
+import { type DialogRecord, UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
+import { type PermissionRecord, UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
+import { type NotificationRecord, UNHANDLED_NOTIFICATION_HINT } from "../session/notification.js";
+import { type FsPickerRecord, UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
+import {
+  type ActionOutcome,
+  applyPolicyRaise,
+  assembleOptionalBlocks,
+  buildDialogsBlock,
+  buildDownloadsBlock,
+  buildFsPickerRequestsBlock,
+  buildNetworkBlock,
+  buildNotificationsBlock,
+  buildPermissionRequestsBlock,
+  maybeRecord,
+} from "./actionresult-blocks.js";
 
-export type SnapshotMode = "scoped_snapshot" | "tree_diff" | "full" | "none";
-
-/** A top-level a11y region tracked across the action window for the
- *  appeared/removed structure diff. Keyed by `ref` in the region maps. */
-type Region = { role: string; name?: string; ref: string };
+// The snapshot/navigation/console shape helpers + their types live in
+// `actionresult-shape.ts`; `SnapshotMode` + `Region` are re-exported here so the
+// public surface (callers importing `SnapshotMode` from `./actionresult.js`) is
+// unchanged.
+export type { SnapshotMode } from "./actionresult-shape.js";
+import type { SnapshotMode, Region } from "./actionresult-shape.js";
+import {
+  buildSnapshotDelta,
+  describeNavigation,
+  diffRegions,
+  sleep,
+  summariseConsoleErrors,
+  topLevelRegions,
+} from "./actionresult-shape.js";
 
 /** The network slice when there is no CDP tap (off Chromium, where the
  *  Playwright-event network tap is used instead). Matches `NetworkTap.close()`'s
@@ -52,362 +58,24 @@ const EMPTY_NETWORK: {
   mutations: [],
 });
 
-/**
- * Internal record of the action being dispatched, attached to every
- * `ActionResult` as `action: {type,...}` so the result is self-describing.
- * NOT the same shape as the public `ActionDescriptor` returned by `plan()` —
- * that one (see `./plan.ts`) carries bound evidence + expiry + a verb-args
- * envelope; this one is the leaner internal label the action-window writes
- * into the result envelope.
- */
-export interface DispatchedAction {
-  type: string;
-  ref?: string;
-  selector?: string;
-  value?: string;
-  url?: string;
-}
 
-export interface ElementProbe {
-  ref?: string;
-  stillAttached: boolean;
-  focused?: boolean;
-  checked?: boolean | "mixed";
-  /** Mid-action warnings the body wants surfaced on the ActionResult
-   *  (e.g. click auto-recovery via `force:true`). Merged into the result's
-   *  `warnings[]` by `runInActionWindow`. */
-  warnings?: string[];
-  /** Post-action DOM value of the element (input.value / textarea.value /
-   *  contenteditable text). Null for elements that don't carry a value.
-   *  Compare against `valueRequested` to confirm a fill landed without an
-   *  extra screenshot/snapshot round-trip. */
-  value?: string | null;
-  /** For `fill`, the string the caller asked us to type. `value ===
-   *  valueRequested` means the write succeeded as-asked; a mismatch means
-   *  the field rejected or transformed it (masked input, length cap,
-   *  controlled-component handler, etc.). */
-  valueRequested?: string;
-  /** Visible text of the closest labelled wrapper (role attr or
-   *  `data-testid|test|cy|qa`) up to 4 ancestors above the targeted element,
-   *  trimmed and capped at 200 chars. Surfaces the *displayed* state for
-   *  controls that render the result outside `input.value` — chip-style
-   *  selects, combobox displays, badge pickers, custom dropdowns where the
-   *  underlying input is cleared on commit. Use when `value` is "" / null
-   *  but the caller needs to confirm the visible state landed. Null when
-   *  no labelled ancestor was found. Convenience alias for
-   *  `ownerControl?.displayTextAfter` when an owner was detected. */
-  displayText?: string | null;
-  /** state of the logical *owning control* (combobox / listbox /
-   *  radiogroup / labelled field wrapper) the action targeted. The caller
-   *  often acts on an inner element (an option, a hidden input), but what
-   *  *changed* is the owner's displayed state. `displayTextBefore` /
-   *  `displayTextAfter` are the wrapper's `innerText` captured pre- and
-   *  post-action; `changed: true` when they differ. Absent when no
-   *  recognised owning control was found above the target. */
-  ownerControl?: {
-    label?: string;
-    displayTextBefore?: string;
-    displayTextAfter?: string;
-    changed: boolean;
-  };
-  /** state of the repeated *container* (row / listitem / article /
-   *  `<tr>` / `<li>`) the target lives inside. `rowText` is the container's
-   *  visible text post-action; `changed: true` when it differed pre-vs-post.
-   *  Lets the caller confirm a row-level save changed the row without
-   *  re-snapshotting the whole table. Absent when the target isn't in a
-   *  recognised repeated structure. */
-  container?: {
-    kind: string;
-    rowKey?: string;
-    rowText?: string;
-    changed?: boolean;
-  };
-  /** coordinate-action evidence. Only populated for `coords` targets.
-   *  `before` is `document.elementFromPoint(x, y)` immediately before the
-   *  action; `after` is the same point after settling (the page may have
-   *  re-rendered or scrolled). `focusChanged` flags whether the active
-   *  element shifted. The coord-action analogue of `value`/`displayText`. */
-  hit?: {
-    before?: HitPoint | null;
-    after?: HitPoint | null;
-    focusChanged?: boolean;
-  };
-  /** post-scroll geometry of the relevant scroller (the scrolled
-   *  container for `scroll` container-mode, else the window/document). Lets a
-   *  caller assert "the older page prepended" (`scrollHeight` grew),
-   *  "pinned to bottom" (`atBottom`), etc. without `eval_js`. Only populated
-   *  by the `scroll` / `set_viewport` actions. */
-  scroll?: {
-    x: number;
-    y: number;
-    scrollWidth: number;
-    scrollHeight: number;
-    clientWidth: number;
-    clientHeight: number;
-    atTop: boolean;
-    atBottom: boolean;
-  };
-}
-
-export interface HitPoint {
-  tag: string;
-  role?: string;
-  text?: string;
-  ancestorText?: string;
-}
-
-export interface ActionResult {
-  ok: boolean;
-  action: DispatchedAction;
-  navigation: {
-    changed: boolean;
-    from: string;
-    to: string;
-    kind: "full_load" | "spa" | "hash" | null;
-  };
-  structure: {
-    appeared: Array<{ role: string; name?: string; ref: string }>;
-    removed: Array<{ role: string; name?: string; ref: string }>;
-    newTabs: Array<{ url: string; title: string }>;
-  };
-  console: {
-    errors: string[];
-    warnings: number;
-    /** number of chars trimmed from the summarised view of `errors`
-     *  (long React stack-traces etc). The full message is retained via `console_read`. */
-    truncated_chars?: number;
-  };
-  pageErrors: string[];
-  element?: ElementProbe;
-  /** Multi-element variant of `element`. Populated by composed primitives
-   *  that act on more than one target inside a single action window (e.g.
-   *  multi-field fill). Each entry is the per-target probe in the order the
-   *  primitive dispatched. `element` (singular) when present alongside refers
-   *  to the *final* / submit target — kept so single-target consumers don't
-   *  need to feature-detect. Absent for single-target actions. */
-  elements?: ElementProbe[];
-  snapshotDelta?: {
-    mode: SnapshotMode;
-    scope: string;
-    tree?: string;
-    truncated: boolean;
-  };
-  network: {
-    summary: NetworkSummary;
-    requests?: NetworkEntry[];
-    /** count of requests in this action window that left
-     *  `BROWX_ALLOWED_ORIGINS` (0 when no allowlist is set). */
-    egressOffAllowlist?: number;
-    /** bounded summary of write-shaped requests (POST/PUT/PATCH/DELETE,
-     *  2xx) whose response body parsed as JSON. `responseShape` carries the
-     *  *top-level keys only* — no values, no nested keys. Use to confirm a
-     *  mutation succeeded and what shape it wrote back, without exposing the
-     *  full response body. Absent when no mutations landed in the window. */
-    mutations?: MutationEntry[];
-    /** WebSocket/SSE frames that arrived during this action window
-     *  (payloads truncated). Absent when none. Use to verify realtime
-     *  correctness — e.g. that a click produced the expected broadcast. */
-    wsFrames?: WsFrame[];
-  };
-  /** `alert` / `confirm` / `prompt` / `beforeunload` dialogs that fired
-   *  during this action window. Empty/absent when none. Each carries the
-   *  dialog kind, the page-supplied message + default value, and what the
-   *  server's per-session `dialogPolicy` did with it (`accepted`, `dismissed`,
-   *  or `raised` — see `set_dialog_policy`). Independent of `ok`: a policy
-   *  of `accept`/`dismiss`/`accept-prompt-with:<text>` handles the dialog
-   *  and the action proceeds; `raise` mode dismisses server-side AND flips
-   *  `ok` to false with `failure.source:"app"`. */
-  dialogs?: Array<{
-    kind: DialogRecord["kind"];
-    message: string;
-    defaultValue?: string;
-    handledAs: DialogRecord["handledAs"];
-  }>;
-  /** Permission requests that the page made during this action window —
-   *  `getUserMedia`, `getCurrentPosition`/`watchPosition`, `Notification.
-   *  requestPermission`, `clipboard.read`/`write`, and the long-tail sensor
-   *  permissions. Each carries the canonical permission name, the page origin
-   *  at request time, and what the server's per-session `permissionPolicy`
-   *  did with it (`allowed`, `denied`, `raised`, or `asked-human` — see
-   *  `set_permission_policy`). Independent of `ok`: a policy of `allow`/
-   *  `deny`/`ask-human` resolves the request and the action proceeds;
-   *  `raise` mode rejects page-side AND flips `ok` to false with
-   *  `failure.source:"app"`. Empty/absent when no requests fired. */
-  permissionRequests?: Array<{
-    permission: PermissionRecord["permission"];
-    origin?: string;
-    handledAs: PermissionRecord["handledAs"];
-  }>;
-  /** `new Notification(title, opts)` constructor calls the page made during
-   *  this action window. Each entry carries the constructor arguments
-   *  (title + the documented subset of `NotificationOptions`: body, icon,
-   *  tag), the page origin at construction time, and what the server's
-   *  per-session `notificationPolicy` did with it (`allowed`, `denied`,
-   *  `raised`, or `asked-human` — see `set_notification_policy`).
-   *  Independent of `ok`: `allow`/`deny`/`ask-human` resolve the call and
-   *  the action proceeds; `raise` mode rejects page-side AND flips `ok` to
-   *  false with `failure.source:"app"`. Empty/absent when none.
-   *
-   *  Coordination with `permissionRequests[]`: the two surfaces are
-   *  disjoint. `permissionRequests[].permission === "notifications"` is the
-   *  page asking *whether it MAY notify* (`Notification.requestPermission`);
-   *  `notifications[]` is the page actually *constructing* a notification
-   *  (`new Notification(...)`). Both can fire in one action — typical apps
-   *  call requestPermission once at startup, then construct freely. */
-  notifications?: Array<{
-    title: string;
-    body?: string;
-    icon?: string;
-    tag?: string;
-    timestamp: number;
-    origin?: string;
-    handledAs: NotificationRecord["handledAs"];
-  }>;
-  /** File System Access picker calls (`showOpenFilePicker` /
-   *  `showSaveFilePicker` / `showDirectoryPicker`) the page made during
-   *  this action window. Each carries the API name, the page-supplied
-   *  `suggestedName` (save-picker only), and what the server's per-session
-   *  `fsPickerPolicy` did with it (`allowed`, `denied`, `raised`, or
-   *  `asked-human` — see `set_fs_picker_policy`). Independent of `ok`: a
-   *  policy of `allow`/`deny`/`ask-human` resolves the picker and the
-   *  action proceeds; `raise` mode rejects page-side AND flips `ok` to
-   *  false with `failure.source:"app"`. Empty/absent when no pickers
-   *  fired. */
-  fsPickerRequests?: Array<{
-    api: FsPickerRecord["api"];
-    suggestedName?: string;
-    handledAs: FsPickerRecord["handledAs"];
-  }>;
-  /** Files the page initiated as downloads during this action window —
-   *  populated only when per-session capture has been turned on via
-   *  `downloads_capture({on:true})` (capability `file-io`); absent otherwise.
-   *  Each entry persists at a workspace-rooted path under
-   *  `$BROWX_WORKSPACE/.downloads/<sessionId>/` and can be read back as
-   *  bytes via `download_get({id})`. Multiple captures share the action
-   *  window — bulk-downloading agents see one entry per file. */
-  downloads?: Array<{
-    id: string;
-    suggestedFilename: string;
-    rawSuggestedFilename?: string;
-    mimeType?: string;
-    sizeBytes: number;
-    path: string;
-  }>;
-  tokensEstimate: number;
-  warnings: string[];
-  error?: string;
-  /** present only when `ok` is false: did the failure originate in the app
-   *  (navigation/renderer crash — a real defect signal) or in browxai
-   *  (context torn down / detached / anti-wedge — NOT an app crash)? Stops
-   *  agents filing false "page crashed" defects for tool teardown. */
-  failure?: import("../util/failure.js").FailureClass;
-  /** Set by the server when this session has hit the anti-wedge
-   *  deadline on several consecutive calls — the session is wedged and
-   *  retrying it (or raising `timeoutMs`) will not recover it. When present,
-   *  discard the session (`close_session`) and `open_session` a fresh one.
-   *  Injected onto the result by the server, not produced by the action
-   *  body; `sessionWedgedHint` carries the agent-facing recovery text. */
-  sessionWedged?: boolean;
-  sessionWedgedHint?: string;
-}
-
-export interface ActionContext {
-  page: Page;
-  /** Engine-agnostic network substrate. The action window mints
-   *  its per-action tap from here (`openActionTap()`): chromium → the verbatim
-   *  CDP NetworkTap; firefox/webkit → the Playwright context-event tap. The
-   *  network slice of the envelope is built off whichever the engine supplied —
-   *  so navigate/click/fill carry a real network slice on every engine, not just
-   *  chromium. Optional so a context with no substrate (defensive — never the
-   *  live path) still builds the rest of the envelope. */
-  network?: NetworkSubstrate;
-  /** Engine-agnostic snapshot/a11y substrate. The pre/post
-   *  `snapshotDelta` trees come from here, so the action window builds its
-   *  structure diff on chromium (CDP a11y) and firefox (the page-side walker)
-   *  alike. */
-  snapshot: SnapshotSubstrate;
-  refs: RefRegistry;
-  console: ConsoleBuffer;
-  pages: () => Page[]; // for newTabs detection (Playwright BrowserContext.pages())
-  /** Configured test-attribute list (sourced from BROWX_TEST_ATTRIBUTES). Threaded
-   *  through so pre/post a11y trees pick up the same testIds the canonical surface uses. */
-  testAttributes: string[];
-  /** origin allowlist used to populate `ActionResult.network.egressOffAllowlist`.
-   *  Empty allow-set means "no allowlist" → egress count is always 0. */
-  originPolicy?: import("../policy/origin.js").OriginPolicy;
-  /** if a recording is active, the recorder is wired in here so
-   *  successful actions append to the recording. Best-effort: errors during
-   *  recording never affect the action's outcome. */
-  recorder?: import("./recording.js").Recorder;
-  /** session WS/SSE frame ring (the engine's `networkSubstrate.ws`). When
-   *  present, frames that arrived during the action window are sliced into
-   *  `ActionResult.network.wsFrames` via `since()`. Engine-agnostic
-   *  (`SessionWsRing`): the CDP `WsBuffer` and the Playwright `PlaywrightWsBuffer`
-   *  both satisfy it. */
-  ws?: import("./network.js").SessionWsRing;
-  /** per-session dialog policy state. When present, dialogs that fired
-   *  during the action window are sliced into `ActionResult.dialogs[]`; if
-   *  any fired under `raise` mode the action is marked failed with the
-   *  documented hint. */
-  dialog?: DialogPolicyState;
-  /** per-session permission policy state. When present, permission requests
-   *  that fired during the action window are sliced into
-   *  `ActionResult.permissionRequests[]`; if any fired under `raise` mode the
-   *  action is marked failed with the documented hint. */
-  permission?: PermissionPolicyState;
-  /** per-session notification policy state. When present, `new
-   *  Notification(...)` constructor calls that fired during the action
-   *  window are sliced into `ActionResult.notifications[]`; if any fired
-   *  under `raise` mode the action is marked failed with
-   *  `UNHANDLED_NOTIFICATION_HINT`. */
-  notification?: NotificationPolicyState;
-  /** per-session File System Access picker policy state. When present,
-   *  picker calls (`showOpenFilePicker` / `showSaveFilePicker` /
-   *  `showDirectoryPicker`) that fired during the action window are
-   *  sliced into `ActionResult.fsPickerRequests[]`; if any fired under
-   *  `raise` mode the action is marked failed with the documented hint. */
-  fsPicker?: FsPickerPolicyState;
-  /** per-session secrets registry (capability `secrets`). When non-null,
-   *  the action-window NetworkTap masks egressing URLs / mutation
-   *  responseShape keys against any registered real-values. The action's
-   *  own dispatched-action descriptor is masked by the action handler
-   *  (so a `fill({value:"<PASSWORD>"})` records `value:"<PASSWORD>"`, not
-   *  the materialised real password). */
-  secrets?: import("../util/secrets.js").SecretRegistry;
-  /** per-session downloads registry. When present, any download fired during
-   *  the action window AND captured (registry was toggled on) is sliced into
-   *  `ActionResult.downloads[]`. Always-present-but-off-by-default at the
-   *  registry level; the action-window only emits entries that actually
-   *  fired during this window, so a session with capture off contributes
-   *  nothing to the result. */
-  downloads?: import("./downloads.js").DownloadsRegistry;
-}
-
-export interface ActionWindowOptions {
-  mode?: SnapshotMode;
-  /** Approx output budget for the elastic part of the result (snapshotDelta.tree). */
-  maxResultTokens?: number;
-  /** Cap on per-request rows in `network.requests`; default 10. */
-  networkRequestCap?: number;
-  /** Post-dispatch settle delay in ms — let CDP events / framework reconciliations drain. */
-  settleMs?: number;
-  /** hard anti-wedge deadline (ms) for the action body. Already clamped
-   *  to [1, 3_600_000] by the caller. The body is raced against this; on
-   *  expiry the action returns `ok:false` with the timeout error rather than
-   *  stalling on a wedged page op. */
-  deadlineMs?: number;
-  /** if the caller requested an over-ceiling (insane) timeout, this
-   *  carries the "clamped + that's almost always a mistake" warning so it
-   *  surfaces in the ActionResult, not just server stderr. */
-  deadlineWarning?: string;
-  /** extra warnings computed before the action window opened (e.g. a ref
-   *  re-resolution notice) — seeded into the result's `warnings`. */
-  extraWarnings?: string[];
-  /** caller-supplied selectorHint info for the recorder. Without
-   *  this the recorded step has the action + url but no locator for the YAML
-   *  scaffold; callers should populate it whenever they resolved a target. */
-  recordingHint?: { selectorHint: string; stability?: "high" | "medium" | "low" };
-}
+// The ActionResult type surface lives in `actionresult-types.ts`; re-exported
+// here so callers import the types from `./actionresult.js` unchanged.
+export type {
+  DispatchedAction,
+  ElementProbe,
+  HitPoint,
+  ActionResult,
+  ActionContext,
+  ActionWindowOptions,
+} from "./actionresult-types.js";
+import type {
+  ActionContext,
+  ActionResult,
+  ActionWindowOptions,
+  DispatchedAction,
+  ElementProbe,
+} from "./actionresult-types.js";
 
 /**
  * Run an action inside the action-window machinery.
@@ -423,66 +91,24 @@ export async function runInActionWindow(
   opts: ActionWindowOptions,
   body: () => Promise<ElementProbe | void>,
 ): Promise<ActionResult> {
-  const mode: SnapshotMode = opts.mode ?? "scoped_snapshot";
-  const maxTokens = opts.maxResultTokens ?? 600;
+  // mode / maxResultTokens / networkRequestCap defaults are resolved inside
+  // shapeActionResult (the only consumer); the orchestrator needs only the
+  // dispatch-phase knobs.
   const deadlineMs = opts.deadlineMs ?? DEFAULT_ACTION_TIMEOUT_MS;
-  const requestCap = opts.networkRequestCap ?? 10;
   const settleMs = opts.settleMs ?? 400;
   const warnings: string[] = [];
   if (opts.deadlineWarning) warnings.push(opts.deadlineWarning);
   if (opts.extraWarnings) warnings.push(...opts.extraWarnings);
 
   // --- pre-state ---
-  const urlBefore = ctx.page.url();
-  const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
-  const tBefore = Date.now();
-  const preTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
-  const preRegions = preTree ? topLevelRegions(preTree) : new Map<string, Region>();
-
-  // Track main-frame full-load. Playwright's `framenavigated` is cross-browser
-  // and fires on the same main-frame nav the CDP `Page.frameNavigated` did, so
-  // navigation detection works on every engine (the CDP `Page.enable` + raw
-  // listener it replaced was Chromium-only).
-  let frameNavigatedMain = false;
-  const onFrameNav = (frame: import("playwright-core").Frame) => {
-    if (frame === ctx.page.mainFrame()) frameNavigatedMain = true;
-  };
-  ctx.page.on("framenavigated", onFrameNav);
-
-  // The per-action network tap comes from the engine's substrate:
-  // chromium → the CDP NetworkTap; firefox/webkit → the Playwright context-event
-  // tap. Both produce the same `{summary, requests, mutations}` close shape, so
-  // the envelope builder downstream is engine-blind. (`ctx.secrets` was already
-  // wired into the substrate at session creation; the tap inherits it.)
-  const net = ctx.network ? ctx.network.openActionTap() : null;
-  if (net) await net.open();
+  const pre = await openActionWindow(ctx);
+  const { urlBefore, tabsBefore, tBefore, preTree, preRegions } = pre;
+  if (pre.net) await pre.net.open();
 
   // --- dispatch ---
-  let ok = true;
-  let error: string | undefined;
-  let failure: import("../util/failure.js").FailureClass | undefined;
-  let elementProbe: ElementProbe | undefined;
-  try {
-    // race the action body against the hard anti-wedge deadline. A
-    // wedged page op (evaluate/CDP that ignores timeouts) becomes a clean
-    // ok:false ActionResult within the deadline instead of an infinite stall.
-    const probe = await withDeadline(Promise.resolve().then(body), deadlineMs, descriptor.type);
-    if (probe) {
-      elementProbe = probe;
-      // Body-side mid-action warnings (e.g. click auto-recovery on
-      // actionability timeout) get spliced onto the result's warnings.
-      // The field is removed from the probe so it doesn't leak into the
-      // `element` block — warnings belong at the top level.
-      if (probe.warnings && probe.warnings.length > 0) {
-        warnings.push(...probe.warnings);
-        delete probe.warnings;
-      }
-    }
-  } catch (e) {
-    ok = false;
-    error = e instanceof Error ? e.message : String(e);
-    failure = classifyFailure(error);
-  }
+  const dispatch = await dispatchActionBody(body, deadlineMs, descriptor.type, warnings);
+  let { ok, error, failure } = dispatch;
+  const elementProbe = dispatch.elementProbe;
 
   // --- settle ---
   await sleep(settleMs);
@@ -493,277 +119,42 @@ export async function runInActionWindow(
   }
 
   // --- post-state ---
-  ctx.page.off("framenavigated", onFrameNav);
+  const frameNavigatedMain = pre.detach();
   const urlAfter = ctx.page.url();
   const postTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map<string, Region>();
-  const network = net ? await net.close() : EMPTY_NETWORK;
+  const network = pre.net ? await pre.net.close() : EMPTY_NETWORK;
 
-  // dialog capture — every alert/confirm/prompt that fired in the action
-  // window is sliced off the per-session buffer (DialogPolicyState). If the
-  // active policy was `raise` at fire time, the action is flipped to
-  // ok:false with a stable hint (UNHANDLED_DIALOG_HINT) — the page was
-  // dismissed server-side so it isn't deadlocked, but its app effect is the
-  // cancel branch and the caller almost certainly didn't want that.
-  const dialogSlice = ctx.dialog ? ctx.dialog.since(tBefore) : [];
-  const dialogRaised = ctx.dialog ? ctx.dialog.raisedSince(tBefore) : false;
-  if (dialogRaised && ok) {
-    // The page-op probably succeeded as a Playwright call, but a dialog the
-    // caller didn't opt to handle fired during the window. The agent-facing
-    // failure is the lack of a policy, not the page-op exception.
-    ok = false;
-    error = error ?? UNHANDLED_DIALOG_HINT;
-    failure = { source: "app", hint: UNHANDLED_DIALOG_HINT };
-  }
-
-  // permission-request capture — every page-side permission request that fired
-  // during the action window is sliced off the per-session buffer
-  // (PermissionPolicyState). Same shape as the dialog path: if the active
-  // policy was `raise` at request time, flip the action to ok:false with a
-  // stable hint (UNHANDLED_PERMISSION_HINT) — the request was rejected
-  // page-side so the page isn't deadlocked, but the app saw the deny branch
-  // and the caller almost certainly didn't want that.
-  const permissionSlice = ctx.permission ? ctx.permission.since(tBefore) : [];
-  const permissionRaised = ctx.permission ? ctx.permission.raisedSince(tBefore) : false;
-  if (permissionRaised && ok) {
-    ok = false;
-    error = error ?? UNHANDLED_PERMISSION_HINT;
-    failure = { source: "app", hint: UNHANDLED_PERMISSION_HINT };
-  }
-
-  // notification-construction capture — every `new Notification(...)` the
-  // page invoked during the action window is sliced off the per-session
-  // buffer (NotificationPolicyState). Same posture as the permission slice:
-  // `raise` mode flips ok to false with a stable hint. Default `allow`
-  // preserves typical app behaviour (the OS displays per its settings) and
-  // still populates `notifications[]` for observability.
-  const notificationSlice = ctx.notification ? ctx.notification.since(tBefore) : [];
-  const notificationRaised = ctx.notification ? ctx.notification.raisedSince(tBefore) : false;
-  if (notificationRaised && ok) {
-    ok = false;
-    error = error ?? UNHANDLED_NOTIFICATION_HINT;
-    failure = { source: "app", hint: UNHANDLED_NOTIFICATION_HINT };
-  }
-
-  // fs-picker capture — every File System Access picker call that fired
-  // during the action window is sliced off the per-session buffer
-  // (FsPickerPolicyState). Same shape as the dialog / permission paths:
-  // if the active policy was `raise` at call time, flip the action to
-  // ok:false with a stable hint (UNHANDLED_FS_PICKER_HINT) — the picker
-  // was rejected page-side so the page isn't deadlocked, but the app saw
-  // the user-dismissed branch and the caller almost certainly didn't
-  // want that.
-  const fsPickerSlice = ctx.fsPicker ? ctx.fsPicker.since(tBefore) : [];
-  const fsPickerRaised = ctx.fsPicker ? ctx.fsPicker.raisedSince(tBefore) : false;
-  if (fsPickerRaised && ok) {
-    ok = false;
-    error = error ?? UNHANDLED_FS_PICKER_HINT;
-    failure = { source: "app", hint: UNHANDLED_FS_PICKER_HINT };
-  }
+  // policy capture — dialogs / permission requests / notifications / fs-picker
+  // calls that fired in the window; a `raise` flips ok→false (see capturePolicy).
+  const policy = capturePolicy(ctx, tBefore, { ok, error, failure });
+  ({ ok, error, failure } = policy.outcome);
 
   // --- shape ---
-  const navigation = describeNavigation(urlBefore, urlAfter, frameNavigatedMain);
-  const structure = diffRegions(preRegions, postRegions);
-  for (const p of ctx.pages()) {
-    if (!tabsBefore.has(p.url())) {
-      structure.newTabs.push({ url: p.url(), title: await p.title().catch(() => "") });
-    }
-  }
-  // summarise long console errors inline. A single React stack-trace
-  // is routinely ~50 lines / ~1500 tokens; the agent rarely needs the full thing in
-  // an ActionResult. We truncate per-error to the first line + a token-budget cap,
-  // record the trimmed-chars total, and a warnings entry points the agent at
-  // `console_read` for the full message.
-  const rawErrors = ctx.console.errorsSince(tBefore);
-  const consoleSlice = summariseConsoleErrors(rawErrors, warnings);
-  consoleSlice.warnings = ctx.console.warningCountSince(tBefore);
-  const pageErrors = ctx.console.pageErrorsSince(tBefore);
+  const shaped = await shapeActionResult({
+    ctx,
+    descriptor,
+    opts,
+    warnings,
+    tBefore,
+    urlBefore,
+    urlAfter,
+    frameNavigatedMain,
+    preTree,
+    postTree,
+    preRegions,
+    postRegions,
+    tabsBefore,
+    network,
+    policy,
+  });
+  const { navigation, structure, consoleSlice, pageErrors, snapshotDelta, networkBlock, blocks } =
+    shaped;
 
-  // smarter `mode` defaults. When the default `scoped_snapshot` was
-  // requested AND the action produced no structural change (no nav, no appeared/
-  // removed regions), it's almost never useful to emit any tree — the adopter
-  // reported routinely setting `mode: "none"` for this reason. Promote to `none`
-  // automatically; explicit non-default modes are still honoured.
-  const navigationChanged = urlBefore !== urlAfter;
-  const structureChanged =
-    postTree &&
-    preTree &&
-    (diffRegions(preRegions, postRegions).appeared.length > 0 ||
-      diffRegions(preRegions, postRegions).removed.length > 0);
-  let effectiveMode = mode;
-  if (mode === "scoped_snapshot" && !navigationChanged && !structureChanged) {
-    effectiveMode = "none";
-    warnings.push(
-      'snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:"full" if you need the post-action tree anyway',
-    );
-  }
-  // when scoped_snapshot mode is honoured and there are scope-able
-  // refs (action's ref + appeared regions), serialise *just those subtrees* instead
-  // of the full tree.
-  const scopeRefs: string[] = [];
-  if (descriptor.ref) scopeRefs.push(descriptor.ref);
-  for (const r of structure.appeared) scopeRefs.push(r.ref);
-  const snapshotDelta = buildSnapshotDelta(effectiveMode, postTree, maxTokens, warnings, scopeRefs);
-  // egress-off-allowlist count, for the security model's
-  // network-egress-visibility surface (docs/threat-model.md §"What browxai defends against" #2).
-  const egressOffAllowlist =
-    ctx.originPolicy && ctx.originPolicy.allowed.length > 0
-      ? (await import("../policy/confirm.js")).countEgressOffAllowlist(
-          network.requests,
-          ctx.originPolicy,
-        )
-      : 0;
-  const mutationsBlock = network.mutations.length > 0 ? { mutations: network.mutations } : {};
-  // WS/SSE frames that arrived during this action window.
-  const wsSlice = ctx.ws ? ctx.ws.since(tBefore) : [];
-  const wsBlock = wsSlice.length > 0 ? { wsFrames: wsSlice } : {};
-  const networkBlock =
-    network.summary.total > 0
-      ? network.requests.length <= requestCap
-        ? {
-            summary: network.summary,
-            requests: network.requests,
-            ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}),
-            ...mutationsBlock,
-            ...wsBlock,
-          }
-        : (warnings.push(
-            `network.requests omitted (count ${network.requests.length} > cap ${requestCap}); call network_read for details`,
-          ),
-          {
-            summary: network.summary,
-            ...(egressOffAllowlist > 0 ? { egressOffAllowlist } : {}),
-            ...mutationsBlock,
-            ...wsBlock,
-          })
-      : { summary: network.summary, ...mutationsBlock, ...wsBlock };
-
-  const dialogsBlock =
-    dialogSlice.length > 0
-      ? dialogSlice.map((d) => {
-          const { ts: _ts, ...pub } = d;
-          return pub;
-        })
-      : undefined;
-
-  const permissionRequestsBlock =
-    permissionSlice.length > 0
-      ? permissionSlice.map((r) => {
-          const out: {
-            permission: PermissionRecord["permission"];
-            origin?: string;
-            handledAs: PermissionRecord["handledAs"];
-          } = {
-            permission: r.permission,
-            handledAs: r.handledAs,
-          };
-          if (r.origin !== undefined) out.origin = r.origin;
-          return out;
-        })
-      : undefined;
-
-  const notificationsBlock =
-    notificationSlice.length > 0
-      ? notificationSlice.map((n) => {
-          const out: {
-            title: string;
-            body?: string;
-            icon?: string;
-            tag?: string;
-            timestamp: number;
-            origin?: string;
-            handledAs: NotificationRecord["handledAs"];
-          } = { title: n.title, timestamp: n.timestamp, handledAs: n.handledAs };
-          if (n.body !== undefined) out.body = n.body;
-          if (n.icon !== undefined) out.icon = n.icon;
-          if (n.tag !== undefined) out.tag = n.tag;
-          if (n.origin !== undefined) out.origin = n.origin;
-          return out;
-        })
-      : undefined;
-
-  const fsPickerRequestsBlock =
-    fsPickerSlice.length > 0
-      ? fsPickerSlice.map((r) => {
-          const out: {
-            api: FsPickerRecord["api"];
-            suggestedName?: string;
-            handledAs: FsPickerRecord["handledAs"];
-          } = {
-            api: r.api,
-            handledAs: r.handledAs,
-          };
-          if (r.suggestedName !== undefined) out.suggestedName = r.suggestedName;
-          return out;
-        })
-      : undefined;
-
-  // download-capture slice — downloads that fired during this action window.
-  // Off-by-default registry: when capture wasn't toggled on, `since()` returns
-  // an empty list and the block is omitted from the result (keeps results
-  // unchanged for sessions that don't opt in).
-  const downloadsSlice = ctx.downloads ? ctx.downloads.since(tBefore) : [];
-  const downloadsBlock =
-    downloadsSlice.length > 0
-      ? downloadsSlice.map((d) => {
-          const out: {
-            id: string;
-            suggestedFilename: string;
-            rawSuggestedFilename?: string;
-            mimeType?: string;
-            sizeBytes: number;
-            path: string;
-          } = {
-            id: d.id,
-            suggestedFilename: d.suggestedFilename,
-            sizeBytes: d.sizeBytes,
-            path: d.path,
-          };
-          if (d.rawSuggestedFilename !== undefined)
-            out.rawSuggestedFilename = d.rawSuggestedFilename;
-          if (d.mimeType !== undefined) out.mimeType = d.mimeType;
-          return out;
-        })
-      : undefined;
-
-  const tokensEstimate = estimateTokens(
-    JSON.stringify({
-      navigation,
-      structure,
-      console: consoleSlice,
-      pageErrors,
-      snapshotDelta,
-      network: networkBlock,
-      ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
-      ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
-      ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
-      ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
-      ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
-    }),
-  );
-
-  // append to recording when (a) action succeeded, (b) recording
-  // is active, and (c) the action is *replayable as a flow-file step*. Coord-mode
-  // click/hover have neither a descriptor ref/selector nor a recordingHint —
-  // they're an escape hatch for visually-located targets that flow files can't
-  // mechanically replay, so they don't belong in a flow-file draft. Navigation /
-  // history actions don't need a target at all and are always recorded.
-  if (ok && ctx.recorder?.active()) {
-    const NON_TARGETED_ACTIONS = new Set(["navigate", "goBack", "goForward"]);
-    const isElementAction = !NON_TARGETED_ACTIONS.has(descriptor.type);
-    const hasReplayableTarget = !!(descriptor.ref || descriptor.selector || opts.recordingHint);
-    if (!isElementAction || hasReplayableTarget) {
-      try {
-        ctx.recorder.record(descriptor, urlAfter, opts.recordingHint);
-      } catch {
-        /* swallow */
-      }
-    } else {
-      warnings.push(
-        "recorder: skipped untargeted action (coords-mode click/hover) — flow files replay deterministically by ref/selector; record the equivalent ref-based action if you want this step in the draft",
-      );
-    }
-  }
+  // append to recording when the action succeeded, recording is active, and the
+  // action is replayable as a flow-file step (see maybeRecord for the coord-mode
+  // escape-hatch handling).
+  maybeRecord(ctx.recorder, ok, { descriptor, urlAfter, recordingHint: opts.recordingHint }, warnings);
 
   return {
     ok,
@@ -775,194 +166,299 @@ export async function runInActionWindow(
     element: elementProbe,
     snapshotDelta,
     network: networkBlock,
-    ...(dialogsBlock ? { dialogs: dialogsBlock } : {}),
-    ...(permissionRequestsBlock ? { permissionRequests: permissionRequestsBlock } : {}),
-    ...(notificationsBlock ? { notifications: notificationsBlock } : {}),
-    ...(fsPickerRequestsBlock ? { fsPickerRequests: fsPickerRequestsBlock } : {}),
-    ...(downloadsBlock ? { downloads: downloadsBlock } : {}),
-    tokensEstimate,
+    ...blocks,
+    tokensEstimate: shaped.tokensEstimate,
     warnings,
     error,
     ...(failure ? { failure } : {}),
   };
 }
 
-function topLevelRegions(tree: A11yNode): Map<string, Region> {
-  // "Top-level regions" = nodes whose role indicates a page-level appearance
-  // (dialog, alert, alertdialog, status, banner, etc.) anywhere in the tree.
-  const out = new Map<string, Region>();
-  const interesting = new Set([
-    "dialog",
-    "alertdialog",
-    "alert",
-    "status",
-    "banner",
-    "complementary",
-    "tablist",
-    "menu",
-    "menubar",
-    "tooltip",
-    "toolbar",
-  ]);
-  for (const { node } of walk(tree)) {
-    if (interesting.has(node.role)) {
-      out.set(node.ref, { role: node.role, name: node.name, ref: node.ref });
-    }
-  }
-  return out;
+/** The network slice shape `NetworkTap.close()` (and its Playwright twin) emit. */
+type NetworkClose = { summary: NetworkSummary; requests: NetworkEntry[]; mutations: MutationEntry[] };
+
+interface OpenWindow {
+  urlBefore: string;
+  tabsBefore: Set<string>;
+  tBefore: number;
+  preTree: A11yNode | null;
+  preRegions: Map<string, Region>;
+  net: ReturnType<NonNullable<ActionContext["network"]>["openActionTap"]> | null;
+  detach: () => boolean;
 }
 
-function diffRegions(
-  pre: Map<string, Region>,
-  post: Map<string, Region>,
-): {
-  appeared: Region[];
-  removed: Region[];
-  newTabs: Array<{ url: string; title: string }>;
-} {
-  const appeared: Region[] = [];
-  const removed: Region[] = [];
-  for (const [ref, r] of post) if (!pre.has(ref)) appeared.push(r);
-  for (const [ref, r] of pre) if (!post.has(ref)) removed.push(r);
-  return { appeared, removed, newTabs: [] };
-}
-
-function describeNavigation(
-  from: string,
-  to: string,
-  frameNavigated: boolean,
-): ActionResult["navigation"] {
-  if (from === to) return { changed: false, from, to, kind: null };
-  try {
-    const a = new URL(from);
-    const b = new URL(to);
-    if (
-      a.origin === b.origin &&
-      a.pathname === b.pathname &&
-      a.search === b.search &&
-      a.hash !== b.hash
-    ) {
-      return { changed: true, from, to, kind: "hash" };
-    }
-  } catch {
-    /* invalid URL — fall through */
-  }
-  return { changed: true, from, to, kind: frameNavigated ? "full_load" : "spa" };
-}
-
-function buildSnapshotDelta(
-  mode: SnapshotMode,
-  tree: A11yNode | null,
-  maxTokens: number,
-  warnings: string[],
-  /** refs to scope the delta to (action's ref + appeared regions).
-   *  When empty + mode=scoped_snapshot, falls back to the full tree as before. */
-  scopeRefs: string[] = [],
-): ActionResult["snapshotDelta"] {
-  if (mode === "none") return undefined;
-  if (!tree) {
-    return { mode, scope: "(no tree)", truncated: false };
-  }
-  let renderMode: SnapshotMode = mode;
-  if (mode === "tree_diff") {
-    //  partial: emit appeared/removed-as-subtrees instead of a unified diff.
-    // Closer in spirit to Vercel agent-browser's diff than the previous fallback,
-    // without needing the line-stable cross-snapshot diff plumbing.
-    warnings.push(
-      'mode=tree_diff: emitting appeared-region subtrees only (full unified diff not yet implemented; pass mode:"full" for the post-action tree)',
-    );
-    renderMode = "scoped_snapshot";
-  }
-
-  if (renderMode === "scoped_snapshot" && scopeRefs.length > 0) {
-    // real scope-down. Serialise just the action's element subtree + any
-    // newly-appeared top-level regions. Drops 7-10k-token snapshots to ~500-1500
-    // on the heavy-SPA / many-elements shape.
-    const subtrees = scopeRefs
-      .map((ref) => findByRef(tree, ref))
-      .filter((n): n is A11yNode => n !== null);
-    if (subtrees.length === 0) {
-      // All scope refs gone — element vanished + no appeared regions. Fall through
-      // to a tiny scope marker instead of the full tree.
-      return { mode: renderMode, scope: "(scope refs not present in post-tree)", truncated: false };
-    }
-    const text = subtrees
-      .map(
-        (n, i) =>
-          (subtrees.length > 1 ? `--- subtree ${i + 1}/${subtrees.length} ---\n` : "") +
-          serialise(n),
-      )
-      .join("\n");
-    const { text: trimmed, truncated } = truncateToBudget(text, maxTokens);
-    if (truncated)
-      warnings.push(
-        `snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`,
-      );
-    return {
-      mode: renderMode,
-      scope: `scoped to ${subtrees.length} subtree(s) [${scopeRefs.join(", ")}]`,
-      tree: trimmed,
-      truncated,
-    };
-  }
-
-  // Fall-through: full tree. Honours explicit mode:"full" and the rare case where
-  // scoped_snapshot was asked-for but we have no scope refs (no action ref, no
-  // appeared regions — uncommon).
-  const scope = renderMode === "scoped_snapshot" ? "full (no scope refs)" : "full";
-  const full = serialise(tree);
-  const { text, truncated } = truncateToBudget(full, maxTokens);
-  if (truncated)
-    warnings.push(
-      `snapshotDelta truncated to fit maxResultTokens=${maxTokens}; call snapshot() for the complete tree`,
-    );
-  return { mode: renderMode, scope, tree: text, truncated };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-/**
- * . Inline summary of console errors — collapse multi-line stack-traces
- * to their first line + a token-budget per error, and emit `truncated_chars` if any
- * were trimmed. The full text is still in the session's `ConsoleBuffer`; an agent
- * who needs it calls `console_read`. Pattern mirrors the existing
- * `network.requests omitted (count N > cap)` design.
- */
-const ERROR_MAX_CHARS_PER = 400;
-const ERROR_MAX_TOTAL_ENTRIES = 20;
-function summariseConsoleErrors(
-  errors: string[],
-  warnings: string[],
-): { errors: string[]; warnings: number; truncated_chars?: number } {
-  if (errors.length === 0) return { errors: [], warnings: 0 };
-  let trimmed = 0;
-  const out: string[] = [];
-  const slice = errors.slice(0, ERROR_MAX_TOTAL_ENTRIES);
-  for (const e of slice) {
-    if (e.length <= ERROR_MAX_CHARS_PER && !e.includes("\n")) {
-      out.push(e);
-      continue;
-    }
-    const firstLine = e.split("\n")[0]!.slice(0, ERROR_MAX_CHARS_PER);
-    out.push(firstLine + " …");
-    trimmed += Math.max(0, e.length - firstLine.length);
-  }
-  if (errors.length > ERROR_MAX_TOTAL_ENTRIES) {
-    warnings.push(
-      `console.errors truncated (showing ${ERROR_MAX_TOTAL_ENTRIES} of ${errors.length}); call console_read for the full ring buffer`,
-    );
-  }
-  const result: { errors: string[]; warnings: number; truncated_chars?: number } = {
-    errors: out,
-    warnings: 0,
+/** Open the action window: capture pre-state (url / tabs / time / a11y tree +
+ *  top-level regions), wire the cross-browser `framenavigated` listener, and mint
+ *  the per-action network tap from the engine's substrate. `detach()` removes the
+ *  listener and reports whether the main frame fully navigated. The order
+ *  (pre-tree → listener → tap) is preserved verbatim from the inline version. */
+async function openActionWindow(ctx: ActionContext): Promise<OpenWindow> {
+  const urlBefore = ctx.page.url();
+  const tabsBefore = new Set(ctx.pages().map((p) => p.url()));
+  const tBefore = Date.now();
+  const preTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
+  const preRegions = preTree ? topLevelRegions(preTree) : new Map<string, Region>();
+  // Playwright's `framenavigated` is cross-browser and fires on the same main-frame
+  // nav the CDP `Page.frameNavigated` did, so navigation detection works on every
+  // engine (the CDP `Page.enable` + raw listener it replaced was Chromium-only).
+  let frameNavigatedMain = false;
+  const onFrameNav = (frame: import("playwright-core").Frame) => {
+    if (frame === ctx.page.mainFrame()) frameNavigatedMain = true;
   };
-  if (trimmed > 0) {
-    result.truncated_chars = trimmed;
-    warnings.push(
-      `console.errors stack-traces summarised (${trimmed} chars trimmed); call console_read for the full text`,
+  ctx.page.on("framenavigated", onFrameNav);
+  // The per-action network tap comes from the engine's substrate: chromium → the
+  // CDP NetworkTap; firefox/webkit → the Playwright context-event tap. Both emit
+  // the same `{summary, requests, mutations}` close shape, so the envelope builder
+  // is engine-blind. (`ctx.secrets` was wired into the substrate at session
+  // creation; the tap inherits it.)
+  const net = ctx.network ? ctx.network.openActionTap() : null;
+  return {
+    urlBefore,
+    tabsBefore,
+    tBefore,
+    preTree,
+    preRegions,
+    net,
+    detach: () => {
+      ctx.page.off("framenavigated", onFrameNav);
+      return frameNavigatedMain;
+    },
+  };
+}
+
+interface ShapeInput {
+  ctx: ActionContext;
+  descriptor: DispatchedAction;
+  opts: ActionWindowOptions;
+  warnings: string[];
+  tBefore: number;
+  urlBefore: string;
+  urlAfter: string;
+  frameNavigatedMain: boolean;
+  preTree: A11yNode | null;
+  postTree: A11yNode | null;
+  preRegions: Map<string, Region>;
+  postRegions: Map<string, Region>;
+  tabsBefore: Set<string>;
+  network: NetworkClose;
+  policy: ReturnType<typeof capturePolicy>;
+}
+
+interface ShapedResult {
+  navigation: ReturnType<typeof describeNavigation>;
+  structure: ReturnType<typeof diffRegions>;
+  consoleSlice: ReturnType<typeof buildConsoleSlice>;
+  pageErrors: string[];
+  snapshotDelta: ReturnType<typeof computeSnapshotDelta>;
+  networkBlock: ReturnType<typeof buildNetworkBlock>;
+  blocks: ReturnType<typeof assembleOptionalBlocks>;
+  tokensEstimate: number;
+}
+
+/** Assemble the post-state result blocks (navigation, structure, console,
+ *  snapshotDelta, network, the optional policy/download blocks, token estimate).
+ *  Pure shaping over already-captured window data — pulled out of
+ *  `runInActionWindow` to keep the orchestrator under budget. */
+async function shapeActionResult(p: ShapeInput): Promise<ShapedResult> {
+  const { ctx, warnings, tBefore } = p;
+  const navigation = describeNavigation(p.urlBefore, p.urlAfter, p.frameNavigatedMain);
+  const structure = diffRegions(p.preRegions, p.postRegions);
+  for (const page of ctx.pages()) {
+    if (!p.tabsBefore.has(page.url())) {
+      structure.newTabs.push({ url: page.url(), title: await page.title().catch(() => "") });
+    }
+  }
+  const consoleSlice = buildConsoleSlice(ctx, tBefore, warnings);
+  const pageErrors = ctx.console.pageErrorsSince(tBefore);
+
+  const snapshotDelta = computeSnapshotDelta({
+    mode: p.opts.mode ?? "scoped_snapshot",
+    descriptor: p.descriptor,
+    structure,
+    preTree: p.preTree,
+    postTree: p.postTree,
+    urlBefore: p.urlBefore,
+    urlAfter: p.urlAfter,
+    maxTokens: p.opts.maxResultTokens ?? 600,
+    warnings,
+  });
+  const networkBlock = await buildActionNetworkBlock(
+    ctx,
+    p.network,
+    p.opts.networkRequestCap ?? 10,
+    tBefore,
+    warnings,
+  );
+  const blocks = assembleOptionalBlocks({
+    dialogs: buildDialogsBlock(p.policy.dialogSlice),
+    permissionRequests: buildPermissionRequestsBlock(p.policy.permissionSlice),
+    notifications: buildNotificationsBlock(p.policy.notificationSlice),
+    fsPickerRequests: buildFsPickerRequestsBlock(p.policy.fsPickerSlice),
+    downloads: buildDownloadsBlock(ctx.downloads ? ctx.downloads.since(tBefore) : []),
+  });
+
+  const tokensEstimate = estimateTokens(
+    JSON.stringify({
+      navigation,
+      structure,
+      console: consoleSlice,
+      pageErrors,
+      snapshotDelta,
+      network: networkBlock,
+      ...blocks,
+    }),
+  );
+  return {
+    navigation,
+    structure,
+    consoleSlice,
+    pageErrors,
+    snapshotDelta,
+    networkBlock,
+    blocks,
+    tokensEstimate,
+  };
+}
+
+/** Compute the egress-off-allowlist count + WS slice and fold them into the
+ *  `network` result block. The egress count feeds the security model's
+ *  network-egress-visibility surface (docs/threat-model.md §"What browxai
+ *  defends against" #2); it is 0 when no allowlist is configured. */
+async function buildActionNetworkBlock(
+  ctx: ActionContext,
+  network: NetworkClose,
+  requestCap: number,
+  tBefore: number,
+  warnings: string[],
+): Promise<ReturnType<typeof buildNetworkBlock>> {
+  const egressOffAllowlist =
+    ctx.originPolicy && ctx.originPolicy.allowed.length > 0
+      ? (await import("../policy/confirm.js")).countEgressOffAllowlist(
+          network.requests,
+          ctx.originPolicy,
+        )
+      : 0;
+  const wsSlice = ctx.ws ? ctx.ws.since(tBefore) : [];
+  return buildNetworkBlock(network, wsSlice, egressOffAllowlist, requestCap, warnings);
+}
+
+/** Run the action body, raced against the hard anti-wedge deadline. A wedged
+ *  page op (evaluate/CDP ignoring timeouts) becomes a clean ok:false within the
+ *  deadline instead of an infinite stall. Body-side mid-action warnings (e.g.
+ *  click auto-recovery) are spliced onto the result warnings and removed from
+ *  the probe so they don't leak into the `element` block. */
+async function dispatchActionBody(
+  body: () => Promise<ElementProbe | void>,
+  deadlineMs: number,
+  descriptorType: string,
+  warnings: string[],
+): Promise<{
+  ok: boolean;
+  error: string | undefined;
+  failure: import("../util/failure.js").FailureClass | undefined;
+  elementProbe: ElementProbe | undefined;
+}> {
+  try {
+    const probe = await withDeadline(Promise.resolve().then(body), deadlineMs, descriptorType);
+    let elementProbe: ElementProbe | undefined;
+    if (probe) {
+      elementProbe = probe;
+      if (probe.warnings && probe.warnings.length > 0) {
+        warnings.push(...probe.warnings);
+        delete probe.warnings;
+      }
+    }
+    return { ok: true, error: undefined, failure: undefined, elementProbe };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    return { ok: false, error, failure: classifyFailure(error), elementProbe: undefined };
+  }
+}
+
+/** Slice the four per-session policy buffers since `tBefore` and apply each
+ *  `raise` to the outcome (first raise wins, in dialog → permission →
+ *  notification → fs-picker order). Returns the slices for block-building plus
+ *  the possibly-flipped outcome. */
+function capturePolicy(
+  ctx: ActionContext,
+  tBefore: number,
+  start: ActionOutcome,
+): {
+  outcome: ActionOutcome;
+  dialogSlice: DialogRecord[];
+  permissionSlice: PermissionRecord[];
+  notificationSlice: NotificationRecord[];
+  fsPickerSlice: FsPickerRecord[];
+} {
+  const dialogSlice = ctx.dialog ? ctx.dialog.since(tBefore) : [];
+  const permissionSlice = ctx.permission ? ctx.permission.since(tBefore) : [];
+  const notificationSlice = ctx.notification ? ctx.notification.since(tBefore) : [];
+  const fsPickerSlice = ctx.fsPicker ? ctx.fsPicker.since(tBefore) : [];
+  let outcome = applyPolicyRaise(
+    start,
+    ctx.dialog?.raisedSince(tBefore) ?? false,
+    UNHANDLED_DIALOG_HINT,
+  );
+  outcome = applyPolicyRaise(
+    outcome,
+    ctx.permission?.raisedSince(tBefore) ?? false,
+    UNHANDLED_PERMISSION_HINT,
+  );
+  outcome = applyPolicyRaise(
+    outcome,
+    ctx.notification?.raisedSince(tBefore) ?? false,
+    UNHANDLED_NOTIFICATION_HINT,
+  );
+  outcome = applyPolicyRaise(
+    outcome,
+    ctx.fsPicker?.raisedSince(tBefore) ?? false,
+    UNHANDLED_FS_PICKER_HINT,
+  );
+  return { outcome, dialogSlice, permissionSlice, notificationSlice, fsPickerSlice };
+}
+
+/** Summarise long console errors inline. A single React stack-trace is routinely
+ *  ~50 lines / ~1500 tokens; the agent rarely needs the full thing in an
+ *  ActionResult, so each error is truncated to its first line + a token-budget
+ *  cap, and a warning points at `console_read` for the full text. */
+function buildConsoleSlice(
+  ctx: ActionContext,
+  tBefore: number,
+  warnings: string[],
+): ReturnType<typeof summariseConsoleErrors> {
+  const consoleSlice = summariseConsoleErrors(ctx.console.errorsSince(tBefore), warnings);
+  consoleSlice.warnings = ctx.console.warningCountSince(tBefore);
+  return consoleSlice;
+}
+
+/** Compute the snapshotDelta: promote `scoped_snapshot` to `none` when the
+ *  action produced no nav/structure change (the adopter's common case), then
+ *  serialise just the action's subtree + appeared regions (scope-down). */
+function computeSnapshotDelta(args: {
+  mode: SnapshotMode;
+  descriptor: DispatchedAction;
+  structure: { appeared: Region[]; removed: Region[] };
+  preTree: A11yNode | null;
+  postTree: A11yNode | null;
+  urlBefore: string;
+  urlAfter: string;
+  maxTokens: number;
+  warnings: string[];
+}): ActionResult["snapshotDelta"] {
+  const navigationChanged = args.urlBefore !== args.urlAfter;
+  const structureChanged =
+    !!args.postTree &&
+    !!args.preTree &&
+    (args.structure.appeared.length > 0 || args.structure.removed.length > 0);
+  let effectiveMode = args.mode;
+  if (args.mode === "scoped_snapshot" && !navigationChanged && !structureChanged) {
+    effectiveMode = "none";
+    args.warnings.push(
+      'snapshotDelta auto-omitted (mode: scoped_snapshot) — no nav/structure change; pass mode:"full" if you need the post-action tree anyway',
     );
   }
-  return result;
+  const scopeRefs: string[] = [];
+  if (args.descriptor.ref) scopeRefs.push(args.descriptor.ref);
+  for (const r of args.structure.appeared) scopeRefs.push(r.ref);
+  return buildSnapshotDelta(effectiveMode, args.postTree, args.maxTokens, args.warnings, scopeRefs);
 }

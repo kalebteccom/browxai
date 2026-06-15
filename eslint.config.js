@@ -246,12 +246,270 @@ const noInlinedCapabilityChecks = {
   },
 };
 
+// RFC 0004 D11 (function-size budget) — registration-aware variant of the
+// built-in `max-lines-per-function`. Two narrow, named categories of function
+// are inherently large for structural reasons and are exempted by an auditable
+// name pattern (never a file-level `off`):
+//
+//   1. The `registerXxxTools(host)` wrappers — description-string-dominated
+//      scaffolding: each is a flat sequence of
+//      `host.register(name, { description: "…long help text…", inputSchema }, handler)`
+//      calls. Splitting one to hit the 70-line ceiling would (a) fragment a
+//      single cohesive registration surface, and (b) risk reordering the
+//      `register` calls — which perturbs the `coreToolNames` registration-order
+//      snapshot (plugin-runtime.ts) the P3 behavior-preservation oracle pins.
+//      Matched by /^register[A-Z]\w*Tools$/.
+//
+//   2. The page-evaluate function literals — uppercase `*_FN` constants passed
+//      whole to `page.evaluate(fn, args)` (e.g. PAGE_CAPTURE_FN, PAGE_WALK_FN,
+//      PAGE_DETECT_FN, SUBTREE_DISCOVERY_FN). Playwright serializes the ENTIRE
+//      function source and re-evaluates it in the browser realm, so it MUST be
+//      self-contained: any helper it factors out has to be a nested declaration
+//      (a module-scope helper would be lost on serialization). The function's
+//      own line count therefore necessarily includes its helpers — it cannot be
+//      reduced by extraction without breaking the serialization contract. The
+//      page-eval foot-gun this convention guards against is exactly what the
+//      `no-page-eval-stringified-arrow` rule enforces. Matched by /^[A-Z][A-Z0-9_]*_FN$/.
+//
+// Every OTHER function — handler bodies, ordinary helpers, page logic — is
+// budgeted normally, so an oversized handler still warns. This is the §7
+// reviewable-config escape valve, implemented as a rule (auditable: only the two
+// named categories are skipped) rather than a blanket disable.
+const REGISTRATION_WRAPPER_RE = /^register[A-Z]\w*Tools$/;
+const PAGE_EVAL_LITERAL_RE = /^[A-Z][A-Z0-9_]*_FN$/;
+
+function functionName(node) {
+  if (node.id && node.id.name) return node.id.name;
+  const parent = node.parent;
+  if (parent && parent.type === "VariableDeclarator" && parent.id.type === "Identifier") {
+    return parent.id.name;
+  }
+  if (
+    parent &&
+    parent.type === "Property" &&
+    parent.key &&
+    parent.key.type === "Identifier"
+  ) {
+    return parent.key.name;
+  }
+  return null;
+}
+
+function countFunctionLines(node, sourceCode, { skipBlankLines, skipComments }) {
+  const lines = sourceCode.lines;
+  const start = node.loc.start.line;
+  const end = node.loc.end.line;
+  const commentLines = new Set();
+  if (skipComments) {
+    for (const c of sourceCode.getAllComments()) {
+      for (let l = c.loc.start.line; l <= c.loc.end.line; l++) commentLines.add(l);
+    }
+  }
+  let count = 0;
+  for (let l = start; l <= end; l++) {
+    const text = lines[l - 1] ?? "";
+    if (skipBlankLines && text.trim() === "") continue;
+    if (skipComments && commentLines.has(l) && text.replace(/\/\/.*$|\/\*.*$|^\s*\*.*$/g, "").trim() === "") {
+      continue;
+    }
+    count++;
+  }
+  return count;
+}
+
+const maxLinesPerFunctionRegistrationAware = {
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Like max-lines-per-function, but exempts the register*Tools registration " +
+        "wrappers (description-string-dominated scaffolding per RFC 0004 §7).",
+    },
+    schema: [
+      {
+        type: "object",
+        properties: {
+          max: { type: "integer", minimum: 0 },
+          skipBlankLines: { type: "boolean" },
+          skipComments: { type: "boolean" },
+        },
+        additionalProperties: false,
+      },
+    ],
+    messages: {
+      tooLong:
+        "{{ name }} has too many lines ({{ count }}). Maximum allowed is {{ max }}.",
+    },
+  },
+  create(context) {
+    const opts = context.options[0] ?? {};
+    const max = opts.max ?? 70;
+    const skipBlankLines = opts.skipBlankLines ?? false;
+    const skipComments = opts.skipComments ?? false;
+    const sourceCode = context.sourceCode ?? context.getSourceCode();
+
+    function check(node) {
+      const name = functionName(node);
+      if (name && REGISTRATION_WRAPPER_RE.test(name)) return; // exempt register*Tools wrappers
+      if (name && PAGE_EVAL_LITERAL_RE.test(name)) return; // exempt page-evaluate *_FN literals
+      const count = countFunctionLines(node, sourceCode, { skipBlankLines, skipComments });
+      if (count > max) {
+        const label = name ? `Function '${name}'` : "Function";
+        context.report({
+          node,
+          messageId: "tooLong",
+          data: { name: label, count, max },
+        });
+      }
+    }
+
+    return {
+      FunctionDeclaration: check,
+      FunctionExpression: check,
+      ArrowFunctionExpression: check,
+    };
+  },
+};
+
+// RFC 0004 D11 (function-complexity budget) — registration-aware variant of the
+// built-in `complexity` rule, the cyclomatic-complexity sibling of
+// `max-lines-per-function-registration-aware` above. It exempts the SAME two
+// name-matched categories (the `register*Tools` wrappers and the page-evaluate
+// `*_FN` literals) for the SAME structural reason: a page-evaluate function is
+// serialized whole and re-evaluated in the browser realm, so it must be
+// self-contained — its decision points (the per-shim global-fallback `??`
+// chains, the DataTransfer / DragEvent capability probes, the older-browser
+// fallback branches) cannot be factored into module-scope helpers without
+// breaking the serialization contract the `no-page-eval-stringified-arrow` rule
+// guards. Its complexity is therefore irreducible by extraction. Every OTHER
+// function is budgeted normally, so an over-branchy handler still warns. This is
+// the §7 reviewable-config escape valve, implemented as a rule (auditable: only
+// the two named categories are skipped) rather than a blanket `complexity: off`.
+//
+// The decision-point set mirrors ESLint's built-in `complexity` exactly so the
+// two agree on every non-exempt function: the function entry counts 1, then +1
+// for each `if`, `for` / `for-in` / `for-of`, `while`, `do-while`, `case` with a
+// test (not `default`), `catch`, `&&` / `||` / `??`, ternary `?:`, the
+// short-circuit assignments `&&=` / `||=` / `??=`, and each optional-chaining
+// `?.`. Nested functions are NOT descended into — each function owns its own
+// score, exactly as the built-in scopes it.
+const COMPLEXITY_DECISION_VISITORS = new Set([
+  "IfStatement",
+  "ForStatement",
+  "ForInStatement",
+  "ForOfStatement",
+  "WhileStatement",
+  "DoWhileStatement",
+  "CatchClause",
+  "ConditionalExpression",
+]);
+const NESTED_FUNCTION_TYPES = new Set([
+  "FunctionDeclaration",
+  "FunctionExpression",
+  "ArrowFunctionExpression",
+]);
+
+function countComplexity(fnNode, sourceCode) {
+  const visitorKeys = sourceCode.visitorKeys;
+  let complexity = 1; // function entry
+  const walk = (node, isRoot) => {
+    if (!node || typeof node.type !== "string") return;
+    // Stop at a nested function boundary — it gets its own complexity score,
+    // exactly as the built-in `complexity` rule scopes each function.
+    if (!isRoot && NESTED_FUNCTION_TYPES.has(node.type)) return;
+    if (COMPLEXITY_DECISION_VISITORS.has(node.type)) {
+      complexity++;
+    } else if (node.type === "SwitchCase") {
+      if (node.test) complexity++; // `case x:` counts; bare `default:` does not
+    } else if (node.type === "LogicalExpression") {
+      // `&&`, `||`, `??` are all short-circuit decision points.
+      complexity++;
+    } else if (
+      node.type === "AssignmentExpression" &&
+      (node.operator === "&&=" || node.operator === "||=" || node.operator === "??=")
+    ) {
+      complexity++;
+    } else if (
+      (node.type === "MemberExpression" ||
+        node.type === "CallExpression" ||
+        node.type === "Property") &&
+      node.optional === true
+    ) {
+      complexity++; // optional chaining `?.`
+    }
+    const keys = visitorKeys[node.type] ?? [];
+    for (const key of keys) {
+      const child = node[key];
+      if (Array.isArray(child)) {
+        for (const c of child) if (c && typeof c.type === "string") walk(c, false);
+      } else if (child && typeof child.type === "string") {
+        walk(child, false);
+      }
+    }
+  };
+  walk(fnNode, true);
+  return complexity;
+}
+
+const complexityRegistrationAware = {
+  meta: {
+    type: "suggestion",
+    docs: {
+      description:
+        "Like the built-in `complexity`, but exempts the register*Tools registration " +
+        "wrappers and the page-evaluate *_FN literals (serialized-whole, irreducible " +
+        "by extraction) per RFC 0004 §7.",
+    },
+    schema: [
+      {
+        type: "object",
+        properties: {
+          max: { type: "integer", minimum: 0 },
+        },
+        additionalProperties: false,
+      },
+    ],
+    messages: {
+      tooComplex:
+        "{{ name }} has a complexity of {{ complexity }}. Maximum allowed is {{ max }}.",
+    },
+  },
+  create(context) {
+    const opts = context.options[0] ?? {};
+    const max = opts.max ?? 15;
+    const sourceCode = context.sourceCode ?? context.getSourceCode();
+
+    function check(node) {
+      const name = functionName(node);
+      if (name && REGISTRATION_WRAPPER_RE.test(name)) return; // exempt register*Tools wrappers
+      if (name && PAGE_EVAL_LITERAL_RE.test(name)) return; // exempt page-evaluate *_FN literals
+      const complexity = countComplexity(node, sourceCode);
+      if (complexity > max) {
+        const label = name ? `Function '${name}'` : "Function";
+        context.report({
+          node,
+          messageId: "tooComplex",
+          data: { name: label, complexity, max },
+        });
+      }
+    }
+
+    return {
+      FunctionDeclaration: check,
+      FunctionExpression: check,
+      ArrowFunctionExpression: check,
+    };
+  },
+};
+
 const browxaiLocal = {
   rules: {
     "no-tracker-ids-in-comments": noTrackerIdsInComments,
     "no-page-eval-stringified-arrow": noPageEvalStringifiedArrow,
     "no-engine-literal-branches": noEngineLiteralBranches, // L1
     "no-inlined-capability-checks": noInlinedCapabilityChecks, // L3 (gate centralization)
+    "max-lines-per-function-registration-aware": maxLinesPerFunctionRegistrationAware,
+    "complexity-registration-aware": complexityRegistrationAware,
   },
 };
 
@@ -409,8 +667,22 @@ export default tseslint.config(
     files: ["src/tools/*-tools.ts", "src/page/**/*.ts"],
     rules: {
       "max-lines": ["warn", { max: 450, skipBlankLines: true, skipComments: true }],
-      "max-lines-per-function": ["warn", { max: 70, skipBlankLines: true, skipComments: true }],
-      complexity: ["warn", { max: 15 }],
+      // The built-in is turned OFF in favour of the registration-aware variant
+      // (browxai-local), which is identical except it exempts the register*Tools
+      // wrappers — see the rule's definition above for the rationale.
+      "max-lines-per-function": "off",
+      "browxai-local/max-lines-per-function-registration-aware": [
+        "warn",
+        { max: 70, skipBlankLines: true, skipComments: true },
+      ],
+      // The built-in `complexity` is turned OFF in favour of the
+      // registration-aware variant (browxai-local), identical except it exempts
+      // the register*Tools wrappers and the page-evaluate *_FN literals (which a
+      // page-evaluate function cannot reduce by extraction without breaking the
+      // serialization contract) — see the rule's definition above for the
+      // rationale, exactly as the line-count rule above does.
+      complexity: "off",
+      "browxai-local/complexity-registration-aware": ["warn", { max: 15 }],
       "max-params": ["warn", { max: 5 }],
     },
   },
@@ -527,6 +799,22 @@ export default tseslint.config(
       // error.
       "browxai-local/no-engine-literal-branches": "off",
       "browxai-local/no-inlined-capability-checks": "off",
+      // RFC 0004 D11 size/complexity budgets target SOURCE modules, not tests.
+      // Test files are legitimately long: a single `describe`/`it` block models
+      // one scenario end-to-end (fixtures + drive + multi-assertion), and a
+      // table-driven `it.each` body is one cohesive case-matrix — splitting
+      // either to chase a 70-line / 450-line ceiling fragments the scenario and
+      // hurts readability without reducing production risk. The budgets exist to
+      // keep the shippable surface small; test bulk is not shippable surface.
+      // Off for tests (this override also matches the `src/page/**/*.test.ts`
+      // files, which the page-budget block above would otherwise flag). The §7
+      // reviewable-config escape valve, never an inline disable.
+      "max-lines": "off",
+      "max-lines-per-function": "off",
+      "browxai-local/max-lines-per-function-registration-aware": "off",
+      complexity: "off",
+      "browxai-local/complexity-registration-aware": "off",
+      "max-params": "off",
     },
   },
   // src/server.ts + src/tools/* — MCP tool-handler registration. The MCP SDK's

@@ -6,7 +6,76 @@ import { textSearch } from "../page/text_search.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
-import type { ToolHost } from "./host.js";
+import type { ToolHost, ToolResponse } from "./host.js";
+
+type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
+type Session = SessionEntry["session"];
+type FrameTarget = ReturnType<typeof resolveFrameById>;
+
+/** Wrap a JSON-serialisable error object as a tool text-content response. */
+function jsonErrorContent(payload: Record<string, unknown>): ToolResponse {
+  return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
+}
+
+/** Resolve a child-frame target by stable id (minting ids first so the lookup
+ *  succeeds), or null when the frame is no longer attached. */
+function resolveSnapshotFrame(s: Session, e: SessionEntry, frame: string): FrameTarget {
+  listFrames(s.page(), e.frames);
+  return resolveFrameById(s.page(), e.frames, frame);
+}
+
+/** Read the header url/title. Safari has no Playwright Page — read via the
+ *  WebDriver Classic client; the main frame reads the page; a child frame reads
+ *  the frame target. */
+async function readSnapshotHeader(
+  s: Session,
+  isMainFrame: boolean,
+  targetFrame: FrameTarget,
+): Promise<{ url: string; title: string }> {
+  const safari = s.safari?.();
+  if (safari) {
+    const url = await safari.webDriver.currentUrl(safari.sessionId).catch(() => "");
+    const title = await safari.webDriver
+      .executeScript(safari.sessionId, "return document.title")
+      .then((t) => (typeof t === "string" ? t : ""))
+      .catch(() => "");
+    return { url, title };
+  }
+  if (isMainFrame) {
+    const url = s.page().url();
+    const title = await s
+      .page()
+      .title()
+      .catch(() => "");
+    return { url, title };
+  }
+  return { url: targetFrame!.url(), title: targetFrame!.name() || "" };
+}
+
+/** Scope the tree to a ref subtree (when requested), serialise it, and apply the
+ *  per-session secrets mask. A snapshot a11y tree carries node names, so a
+ *  labelled `<input value="hunter2">` would surface the value verbatim without
+ *  the mask (no-op when the registry is empty / capability is off). */
+function scopeAndSerialise(
+  tree: Parameters<typeof serialise>[0] | null,
+  opts: { scope?: string; maxNodes?: number; omit?: string[] },
+  mask: (raw: string) => string,
+): { body: string; scopeWarnings: string[] } {
+  let root = tree;
+  const scopeWarnings: string[] = [];
+  if (opts.scope && root) {
+    const sub = findByRef(root, opts.scope);
+    if (sub) root = sub;
+    else
+      scopeWarnings.push(
+        `scope=${opts.scope} not found in current snapshot; emitting full tree. Refs are per-session-stable but a navigation may have evicted the node.`,
+      );
+  }
+  const rawBody = root
+    ? serialise(root, { maxNodes: opts.maxNodes, omit: opts.omit })
+    : "(empty a11y tree)";
+  return { body: mask(rawBody), scopeWarnings };
+}
 
 /**
  * Read / observe — structural DOM reads. The non-mutating primitives an agent
@@ -73,120 +142,45 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       const s = e.session;
-      // Resolve the frame target. Omitting `frame` or passing the main-frame
-      // sentinel keeps the legacy code path byte-identical.
       const isMainFrame = !frame || frame === MAIN_FRAME_ID;
-      let targetFrame = null;
-      if (!isMainFrame) {
-        // Mint stable IDs first so `resolveFrameById` can find the requested frame.
-        listFrames(s.page(), e.frames);
-        targetFrame = resolveFrameById(s.page(), e.frames, frame);
-        if (!targetFrame) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    ok: false,
-                    error: `unknown frame "${frame}"; call frames_list() to see currently-attached frames`,
-                    hint: "Frame IDs are per-session-stable but a navigation may have detached the iframe.",
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
+      // Resolve the frame target (byte-identical legacy path for the main frame).
+      const targetFrame = isMainFrame ? null : resolveSnapshotFrame(s, e, frame);
+      if (!isMainFrame && !targetFrame) {
+        return jsonErrorContent({
+          ok: false,
+          error: `unknown frame "${frame}"; call frames_list() to see currently-attached frames`,
+          hint: "Frame IDs are per-session-stable but a navigation may have detached the iframe.",
+        });
       }
-      // The main-frame tree comes from the session's snapshot substrate (CDP on
-      // chromium, the page-side walker on firefox/webkit); the
-      // child-frame path already runs the portable frame.evaluate walker
-      // regardless of engine. Neither has an inherent timeout — a wedged
-      // renderer would stall the read — so race against the config deadline.
-      // `targetFrame!` below: when `!isMainFrame`, `targetFrame` is non-null
-      // (set above, with early-return on miss). TS can't correlate the
-      // `isMainFrame` discriminant with `targetFrame` nullability across the
-      // ternary, and the autofix removal of these assertions breaks TS
-      // (TS18047 'possibly null'). Proper narrowing would be a structural
-      // refactor (split main vs. frame branches into separate functions) —
-      // out of scope for the assertion-audit pass.
+      // The main-frame tree comes from the session's snapshot substrate; the
+      // child-frame path runs the portable frame.evaluate walker. Neither has an
+      // inherent timeout, so race against the config deadline.
+      // `targetFrame!`: when `!isMainFrame`, targetFrame is non-null (set + early
+      // return above); TS can't correlate that across the ternary.
       let composed;
       try {
         composed = await withDeadline(
           isMainFrame
-            ? e.snapshotSubstrate.compose(e.refs, config.testAttributes, {
-                pierce: includeShadow,
-              })
-            : // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-              composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame, {
+            ? e.snapshotSubstrate.compose(e.refs, config.testAttributes, { pierce: includeShadow })
+            : composeSnapshotForFrame(targetFrame!, e.refs, config.testAttributes, frame, {
                 pierce: includeShadow,
               }),
           cfgActionTimeout(),
           "snapshot",
         );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonErrorContent({ ok: false, error: err instanceof Error ? err.message : String(err) });
       }
       const { tree, stats, warnings } = composed;
-      // The header url/title. safari has no Playwright Page — read them from the
-      // Safari-native WebDriver Classic client instead.
-      let url: string;
-      let title: string;
-      const safariHandleForHeader = s.safari?.();
-      if (safariHandleForHeader) {
-        url = await safariHandleForHeader.webDriver
-          .currentUrl(safariHandleForHeader.sessionId)
-          .catch(() => "");
-        title = await safariHandleForHeader.webDriver
-          .executeScript(safariHandleForHeader.sessionId, "return document.title")
-          .then((t) => (typeof t === "string" ? t : ""))
-          .catch(() => "");
-      } else if (isMainFrame) {
-        url = s.page().url();
-        title = await s
-          .page()
-          .title()
-          .catch(() => "");
-      } else {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-        url = targetFrame!.url();
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-        title = targetFrame!.name() || "";
-      }
-      // scope to subtree if requested.
-      let root = tree;
-      const scopeWarnings: string[] = [];
-      if (scope && root) {
-        const sub = findByRef(root, scope);
-        if (sub) root = sub;
-        else
-          scopeWarnings.push(
-            `scope=${scope} not found in current snapshot; emitting full tree. Refs are per-session-stable but a navigation may have evicted the node.`,
-          );
-      }
-      const rawBody = root ? serialise(root, { maxNodes, omit }) : "(empty a11y tree)";
-      // egress masking: a snapshot a11y tree carries node names — a
-      // labelled `<input value="hunter2">` would surface "hunter2" verbatim.
-      // Apply the per-session secrets layer on the way out (no-op when the
-      // registry is empty / capability is off).
-      const body = caps.enabled.has("secrets") ? e.secrets.applyMaskInText(rawBody) : rawBody;
-      const allWarnings = [...warnings, ...scopeWarnings];
+      const { url, title } = await readSnapshotHeader(s, isMainFrame, targetFrame);
+      const masksSecrets = caps.enabled.has("secrets");
+      const scoped = scopeAndSerialise(tree, { scope, maxNodes, omit }, (raw) =>
+        masksSecrets ? e.secrets.applyMaskInText(raw) : raw,
+      );
+      const allWarnings = [...warnings, ...scoped.scopeWarnings];
       const frameLabel = isMainFrame ? "" : `\nframe: ${frame}`;
       const header = `url: ${url}\ntitle: ${title}\nstats: ${JSON.stringify(stats)}${frameLabel}${scope ? `\nscope: ${scope}` : ""}${allWarnings.length ? `\nwarnings:\n  - ${allWarnings.join("\n  - ")}` : ""}\n`;
-      return { content: [{ type: "text", text: `${header}\n${body}` }] };
+      return { content: [{ type: "text", text: `${header}\n${scoped.body}` }] };
     },
   );
 
@@ -250,35 +244,19 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const s = e.session;
       // Resolve the frame target if any — same dance as `snapshot`.
       const isMainFrame = !frame || frame === MAIN_FRAME_ID;
-      let targetFrame = null;
-      if (!isMainFrame) {
-        listFrames(s.page(), e.frames);
-        targetFrame = resolveFrameById(s.page(), e.frames, frame);
-        if (!targetFrame) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  {
-                    query,
-                    ok: false,
-                    error: `unknown frame "${frame}"; call frames_list() to see currently-attached frames`,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
+      const targetFrame = isMainFrame ? null : resolveSnapshotFrame(s, e, frame);
+      if (!isMainFrame && !targetFrame) {
+        return jsonErrorContent({
+          query,
+          ok: false,
+          error: `unknown frame "${frame}"; call frames_list() to see currently-attached frames`,
+        });
       }
       let result;
       try {
         result = await withDeadline(
           find(
-            // safari has no Playwright Page — find ranks from the substrate tree
-            // (no locator-based bbox/actionability enrichment).
+            // safari has no Playwright Page — find ranks from the substrate tree.
             s.safari ? null : s.page(),
             e.snapshotSubstrate,
             e.refs,
@@ -298,26 +276,18 @@ export function registerReadObserveDomTools(host: ToolHost): void {
               },
               ...(targetFrame ? { frame: targetFrame, frameId: frame! } : {}),
             },
-            // CDP bbox fast path on chromium; undefined off-Chromium (the
-            // walker has no backendDOMNodeId, so locatorBoundingBox computes it).
+            // CDP bbox fast path on chromium; undefined off-Chromium.
             s.cdp ? s.cdp() : undefined,
           ),
           cfgActionTimeout(),
           "find",
         );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { query, ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return jsonErrorContent({
+          query,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
       // egress masking. `find()` returns candidate `name` / `testId` /
       // `selectorHint` / `context.rowText` — all string evidence that could
