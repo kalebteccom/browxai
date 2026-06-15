@@ -660,19 +660,21 @@ export default tseslint.config(
   // RFC 0004 D11 — the size / complexity budgets (L3). Sized from the CURRENT
   // HEALTHY modules (input-tools.ts 212, canvas-tools.ts 444, tool-gate.ts 145),
   // not the god-modules — so they are a ratchet that holds AFTER the D3 split,
-  // not an aspiration. They ship `warn` in P0 (visible, non-blocking; the
-  // `pnpm lint` script is bare `eslint .`, so warns never fail the gate) and
-  // promote to `error` in P3 once the split brings the offenders under budget.
+  // not an aspiration. They shipped `warn` in P0 (visible, non-blocking) and are
+  // now `error` in P3: the D3 god-module split brought every offender under
+  // budget, so the tree is 0-violation at these thresholds and the gate can hold
+  // the ratchet at `error` — the architecture physically cannot re-bloat through
+  // a green `pnpm lint`. (RFC 0004 §4 budget table; 0004-04 §4.1 P3 DoD.)
   {
     files: ["src/tools/*-tools.ts", "src/page/**/*.ts"],
     rules: {
-      "max-lines": ["warn", { max: 450, skipBlankLines: true, skipComments: true }],
+      "max-lines": ["error", { max: 450, skipBlankLines: true, skipComments: true }],
       // The built-in is turned OFF in favour of the registration-aware variant
       // (browxai-local), which is identical except it exempts the register*Tools
       // wrappers — see the rule's definition above for the rationale.
       "max-lines-per-function": "off",
       "browxai-local/max-lines-per-function-registration-aware": [
-        "warn",
+        "error",
         { max: 70, skipBlankLines: true, skipComments: true },
       ],
       // The built-in `complexity` is turned OFF in favour of the
@@ -682,8 +684,8 @@ export default tseslint.config(
       // serialization contract) — see the rule's definition above for the
       // rationale, exactly as the line-count rule above does.
       complexity: "off",
-      "browxai-local/complexity-registration-aware": ["warn", { max: 15 }],
-      "max-params": ["warn", { max: 5 }],
+      "browxai-local/complexity-registration-aware": ["error", { max: 15 }],
+      "max-params": ["error", { max: 5 }],
     },
   },
   // The composition root gets the hardest, and only `error`, budget in P0: it is
