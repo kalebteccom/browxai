@@ -52,7 +52,7 @@ describe("ClockRegistry — freeze", () => {
       {
         method: "Emulation.setVirtualTimePolicy",
         params: {
-          policy: "pauseIfNetworkFetchesPending",
+          policy: "pause",
           initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
         },
       },
@@ -107,11 +107,7 @@ describe("ClockRegistry — advance", () => {
     expect(appliedAtIso).toBe("2030-01-15T12:01:00.000Z");
     expect(state!.nowMs).toBe(Date.parse("2030-01-15T12:01:00.000Z"));
     // Expected sequence: pause-at-current, advance(budget=60000), pause-at-target
-    expect(calls.map((c) => c.params.policy)).toEqual([
-      "pauseIfNetworkFetchesPending",
-      "advance",
-      "pauseIfNetworkFetchesPending",
-    ]);
+    expect(calls.map((c) => c.params.policy)).toEqual(["pause", "advance", "pause"]);
     expect(calls[1]!.params.budget).toBe(60_000);
     expect(calls[2]!.params.initialVirtualTime).toBe(Date.parse("2030-01-15T12:01:00.000Z") / 1000);
   });
@@ -237,7 +233,7 @@ describe("ClockRegistry — re-apply on navigation", () => {
       {
         method: "Emulation.setVirtualTimePolicy",
         params: {
-          policy: "pauseIfNetworkFetchesPending",
+          policy: "pause",
           initialVirtualTime: Date.parse("2030-01-15T12:00:00.000Z") / 1000,
         },
       },
