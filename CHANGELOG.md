@@ -8,7 +8,29 @@ surface" covers.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **Per-session engine selection — `open_session({ engine })`.** A single browxai
+  server can now drive sessions on different engines at once, instead of one
+  engine fixed per process at startup. `open_session` takes an optional `engine`
+  (`chromium` | `firefox` | `webkit` | `android` | `safari`) that overrides the
+  server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else
+  chromium) for THAT session; omit it for byte-identical legacy behaviour. The
+  effective engine threads through the single `serverEngine` choke point in the
+  session factory (`buildSessionRegistry`), so the per-session substrate bundle
+  and the capability/engine gate — already resolved per session from
+  `e.session.engine` — light up automatically (no `tool-gate.ts` edits). The
+  default mode is resolved per-session too (`defaultModeForEngine`), so an
+  explicit `engine:"android"` defaults to `attached` (android is attach-only)
+  even on a chromium-default server. An unimplemented engine is refused with a
+  structured `{ ok:false, code:"unknown-engine", implementedEngines }` envelope —
+  validated in the handler (not only via Zod) so the direct/in-process SDK path is
+  covered too, never a silent fallback to chromium. `open_session` and
+  `list_sessions` now report each session's `engine`; the SDK `OpenSessionArgs` /
+  `OpenSessionResultData` / `ListSessionsRow` carry it. `browxai serve --socket`
+  now also honours `--engine` / `BROWX_ENGINE` for its server default (it
+  previously ignored them). A mixed-engine keystone proves a chromium + firefox
+  session running side by side in one server with a per-session deep-tool gate.
 
 ## v0.8.0 — 2026-06-16 — Multi-engine: Firefox + WebKit + Android engines + BROWX_ENGINE selection
 

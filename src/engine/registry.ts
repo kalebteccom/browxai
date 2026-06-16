@@ -191,3 +191,14 @@ export { engineCapabilities };
 export function byobAttachNeedsEndpoint(kind: EngineKind): boolean {
   return kind !== "android";
 }
+
+/** Whether an engine can ONLY attach (no managed/ephemeral launch), so its
+ *  default session mode is "attached" even with no `BROWX_ATTACH_CDP`. Android is
+ *  attach-only — real Chrome-on-Android over adb; managed/ephemeral launch
+ *  returns a structured `android-launch-not-supported`. The session registry
+ *  consults this for its per-session default mode, so the one android-specific
+ *  default-mode fact lives here in the engine layer, not as a literal branch in
+ *  the session registry (mirrors `byobAttachNeedsEndpoint`). */
+export function engineIsAttachOnly(kind: EngineKind): boolean {
+  return kind === "android";
+}

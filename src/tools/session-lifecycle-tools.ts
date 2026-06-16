@@ -3,6 +3,7 @@ import { parsePermissionPolicyArg, type PermissionPolicy } from "../session/perm
 import { parseNotificationPolicyArg, type NotificationPolicy } from "../session/notification.js";
 import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
+import { validateEngine, IMPLEMENTED_ENGINES, type EngineKind } from "../engine/index.js";
 import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from "./host.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
@@ -80,6 +81,30 @@ function buildOpenSessionResultFields(
   return { ...harField, ...replayField, ...videoField };
 }
 
+/** Validate the optional per-session `engine`. Returns the validated EngineKind
+ *  (or undefined when omitted), or a structured `unknown-engine` error response.
+ *  Lives in the handler path (not only in Zod) because direct / in-process (SDK)
+ *  callers bypass the MCP schema parse — the boundary check must be here. */
+function resolveOpenSessionEngine(
+  engine: string | undefined,
+): { ok: true; engine: EngineKind | undefined } | { ok: false; response: ToolResponse } {
+  if (engine === undefined) return { ok: true, engine: undefined };
+  try {
+    return { ok: true, engine: validateEngine(engine) };
+  } catch (err) {
+    return {
+      ok: false,
+      response: lifecycleJson({
+        ok: false,
+        code: "unknown-engine",
+        engine,
+        implementedEngines: IMPLEMENTED_ENGINES,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    };
+  }
+}
+
 /**
  * Session lifecycle tools: open_session / close_session / close_sessions /
  * list_sessions. Split out of `session-policy-tools` by cohesive family (RFC 0004
@@ -103,6 +128,12 @@ export function registerSessionLifecycleTools(
           .optional()
           .describe(
             "Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent).",
+          ),
+        engine: z
+          .enum(["chromium", "firefox", "webkit", "android", "safari"])
+          .optional()
+          .describe(
+            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
           ),
         profile: z
           .string()
@@ -237,6 +268,7 @@ export function registerSessionLifecycleTools(
     async ({
       session,
       mode,
+      engine,
       profile,
       device,
       viewport,
@@ -256,6 +288,8 @@ export function registerSessionLifecycleTools(
           error: `session "${session}" already open; close_session first`,
         });
       }
+      const engineResult = resolveOpenSessionEngine(engine);
+      if (!engineResult.ok) return engineResult.response;
       let policies: ParsedOpenSessionPolicies;
       try {
         policies = parseOpenSessionPolicies({
@@ -270,6 +304,7 @@ export function registerSessionLifecycleTools(
       try {
         const e = await registry.get(session, {
           mode,
+          engine: engineResult.engine,
           profile,
           device,
           viewport,
@@ -293,6 +328,7 @@ export function registerSessionLifecycleTools(
           ok: true,
           session: e.id,
           mode: e.mode,
+          engine: e.session.engine,
           url: openedUrl,
           openedAt: new Date(e.openedAt).toISOString(),
           ...buildOpenSessionResultFields(e, hars),
