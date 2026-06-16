@@ -218,6 +218,14 @@ async function resolveLeaf(ctx: ResolveCtx): Promise<unknown> {
   }
   // 2. query path: tree-scan within scopeTree.
   const query = hint.query ?? "";
+  // Collection-item leaf with no selector/query (e.g. `{text:true}` / `{attr}`):
+  // read directly from the per-item Locator that `resolveCollection` scoped onto
+  // this item, instead of treating "no selector" as a definitive miss. Without
+  // this, an array whose items are `{type:string, x-browx-source:{text:true}}`
+  // resolves every element to a partialMiss even though the collection matched.
+  if (!query && ctx.scopeLocator) {
+    return readLeafFromLocator(ctx, ctx.scopeLocator, hint);
+  }
   if (!query) return missLeaf(ctx);
   // R-5 (v0.3.3): explicit per-field `query` is RETIRED. The implicit
   // name-as-query lowering still flows through here (marked via
