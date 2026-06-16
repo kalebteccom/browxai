@@ -89,11 +89,13 @@ export async function reapplyAll(
   }
 }
 
-// ---------------- locale (CDP-only mid-session) ----------------
+// ---------------- locale (CDP override + navigator patch) ----------------
 
-/** `Emulation.setLocaleOverride` — installs an `Accept-Language` override AND
- *  patches `navigator.language` / `Intl` for the duration of the page. Passing
- *  empty string clears the override (CDP semantics). */
+/** `Emulation.setLocaleOverride` — moves the `Accept-Language` header AND the
+ *  ICU/`Intl` default locale. It does NOT change `navigator.language` /
+ *  `navigator.languages` (those are JS getters fixed at document creation), so a
+ *  full locale emulation pairs this with `applyLocaleNavigator`. Passing empty
+ *  string clears the override (CDP semantics). */
 export async function applyLocaleCdp(cdp: CDPSession, locale: string): Promise<void> {
   await cdp.send("Emulation.setLocaleOverride", { locale });
 }
@@ -102,6 +104,56 @@ export async function clearLocaleCdp(cdp: CDPSession): Promise<void> {
   // Per CDP, omitting `locale` clears the override. Playwright's send() is
   // strict-typed so we pass empty-string which the protocol treats as clear.
   await cdp.send("Emulation.setLocaleOverride", { locale: "" });
+}
+
+/** BCP-47 tag → a `navigator.languages` chain: "fr-FR" → ["fr-FR","fr"]. */
+function localeChain(locale: string): string[] {
+  const base = locale.split("-")[0];
+  return base && base !== locale ? [locale, base] : [locale];
+}
+
+/** The page-side patch that makes `navigator.language` / `navigator.languages`
+ *  report the emulated locale — the JS signal `setLocaleOverride` leaves alone.
+ *  Idempotent via a window flag: the first run captures the originals and
+ *  installs configurable getters; every run only updates the value, so repeated
+ *  `set_locale` calls (and the context re-running the script on new documents)
+ *  never stack property redefinitions. An empty locale restores the original. */
+function localeNavigatorScript(locale: string): string {
+  const value = locale ? JSON.stringify(locale) : "null";
+  const list = locale ? JSON.stringify(localeChain(locale)) : "null";
+  return `(() => {
+  const w = window;
+  if (!w.__browxLocale) {
+    w.__browxLocale = {
+      lang: navigator.language,
+      langs: Array.prototype.slice.call(navigator.languages),
+    };
+    Object.defineProperty(navigator, "language", {
+      configurable: true,
+      get: () => (w.__browxLocale.override === undefined ? w.__browxLocale.lang : w.__browxLocale.override),
+    });
+    Object.defineProperty(navigator, "languages", {
+      configurable: true,
+      get: () => (w.__browxLocale.overrideList === undefined ? w.__browxLocale.langs : w.__browxLocale.overrideList),
+    });
+  }
+  w.__browxLocale.override = ${value} === null ? undefined : ${value};
+  w.__browxLocale.overrideList = ${list} === null ? undefined : ${list};
+})();`;
+}
+
+/** Companion to `applyLocaleCdp`: patch the JS `navigator.language(s)` signal.
+ *  Registers a context-level init script (future documents + new tabs inherit
+ *  it) AND re-runs it in the current document for immediate effect. Pass an empty
+ *  locale to restore the captured originals. */
+export async function applyLocaleNavigator(
+  context: BrowserContext,
+  page: Page,
+  locale: string,
+): Promise<void> {
+  const script = localeNavigatorScript(locale);
+  await context.addInitScript({ content: script });
+  await page.evaluate(script).catch(() => undefined);
 }
 
 // ---------------- timezone (CDP-only mid-session) ----------------
