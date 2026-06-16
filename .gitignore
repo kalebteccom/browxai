@@ -35,6 +35,10 @@ website/src/content/docs/plugins/governance.md
 .vscode/
 *.log
 
+# Dogfood harness outputs are replay artifacts, not source.
+packages/capability-testbed/dogfood/runs/*
+!packages/capability-testbed/dogfood/runs/.gitkeep
+
 # Raw client-named adopter/agent reports. The repo is public — raw reports
 # (which may carry client / app / credential context) are NEVER tracked.
 # Broad on purpose: any *-REPORT-*.md / REPORT-*.md / *-report.md /
@@ -47,3 +51,6 @@ website/src/content/docs/plugins/governance.md
 FIELD-REPORT-*.md
 USAGE-REPORT-*.md
 *-field-report.md
+
+# Local Netlify folder
+.netlify

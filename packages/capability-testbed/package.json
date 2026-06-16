@@ -9,6 +9,10 @@
   "scripts": {
     "serve": "tsx src/server/main.ts",
     "report": "tsx src/harness/run-report.ts",
+    "dogfood": "pnpm run dogfood:build && node dogfood/dist/dogfood/src/haiku.js",
+    "dogfood:build": "tsc -p dogfood/tsconfig.build.json",
+    "dogfood:typecheck": "tsc -p dogfood/tsconfig.json --noEmit",
+    "dogfood:test": "pnpm run dogfood:build && node --test dogfood/dist/dogfood/test/*.test.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
