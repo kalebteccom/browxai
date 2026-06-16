@@ -1,0 +1,22 @@
+{
+  "name": "@browxai/capability-testbed",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Agentic capability test app + harness for browxai. NOT part of CI — driven on-demand by the agentic test-suite workflow (Full Report > Diagnose > Fix). Serves a multi-surface web app that exercises every browser capability, and a harness that drives all 198 browxai tools against it.",
+  "author": "Kalebtec",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "serve": "tsx src/server/main.ts",
+    "report": "tsx src/harness/run-report.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "browxai": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0"
+  }
+}

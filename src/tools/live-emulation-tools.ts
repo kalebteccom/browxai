@@ -1,6 +1,7 @@
 import { requireCdp } from "../engine/index.js";
 import {
   applyLocaleCdp,
+  applyLocaleNavigator,
   clearLocaleCdp,
   applyTimezoneCdp,
   clearTimezoneCdp,
@@ -119,7 +120,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       batchable: true,
       deep: true,
       description:
-        "Override the session's browser locale (`navigator.language`, `Intl.*` defaults, `Accept-Language` header). Persists across navigation + new tabs in the same session. Pass `locale: null` to clear the override and restore the browser default. NOTE: Playwright's `BrowserContext.locale` is creation-time-only, so this primitive is implemented via CDP `Emulation.setLocaleOverride` — which DOES take effect mid-session on existing pages. BYOB caveat: the CDP override persists on the attached Chrome until it navigates/restarts after detach.",
+        "Override the session's browser locale (`navigator.language` / `navigator.languages`, `Intl.*` defaults, `Accept-Language` header). Persists across navigation + new tabs in the same session and takes effect on the current page immediately. Pass `locale: null` to clear the override and restore the browser default. NOTE: Playwright's `BrowserContext.locale` is creation-time-only, so this primitive combines CDP `Emulation.setLocaleOverride` (Accept-Language + Intl) with a context init-script that patches the JS `navigator.language(s)` getters — `setLocaleOverride` alone does not move them. BYOB caveat: both overrides persist on the attached Chrome until it navigates/restarts after detach.",
       inputSchema: {
         locale: z
           .union([z.string(), z.null()])
@@ -137,12 +138,15 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const eg = engineGate("set_locale", e);
       if (eg) return eg;
       try {
+        const localePage = e.session.page();
         if (locale === null || locale === undefined) {
           await clearLocaleCdp(requireCdp(e.session));
+          await applyLocaleNavigator(localePage.context(), localePage, "");
           e.deviceEmulation.locale = undefined;
           return emulationResult(e, { locale: null });
         }
         await applyLocaleCdp(requireCdp(e.session), locale);
+        await applyLocaleNavigator(localePage.context(), localePage, locale);
         e.deviceEmulation.locale = locale;
         return emulationResult(e, { locale });
       } catch (err) {

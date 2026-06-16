@@ -588,6 +588,11 @@ export default tseslint.config(
       "coverage/**",
       "artifacts/**",
       "website/**",
+      // The agentic capability-testbed is a non-CI test app + harness driven on
+      // demand (Full Report > Diagnose > Fix). It is app/harness code with its
+      // own tsconfig — not browxai source under the architecture budgets / custom
+      // rules — so it is excluded from `pnpm lint`.
+      "packages/capability-testbed/**",
       "**/*.generated.*",
       ".claude/**",
       // Reproducible probe artifacts — standalone Node scripts (console output,

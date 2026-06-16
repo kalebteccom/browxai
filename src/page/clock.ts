@@ -6,8 +6,9 @@
 //
 // Three modes:
 //   - freeze  → pause virtual time at `atIso` (or "now" if omitted). CDP
-//     policy: `pauseIfNetworkFetchesPending` (network keeps moving so the
-//     page can still load assets; the JS clock is held).
+//     policy: `pause` (virtual time is truly halted at the anchor, so a
+//     rAF/timer loop cannot race Date forward; page resource loading runs on
+//     real time and is unaffected).
 //   - advance → jump the virtual clock forward by `byMs`, or to absolute
 //     `atIso`, then re-freeze. CDP policy: `advance` with a `budget` (ms),
 //     then we re-issue a pause so subsequent JS time queries stay pinned.
@@ -186,8 +187,13 @@ export class ClockRegistry {
   }
 
   private async sendPauseAt(cdp: CDPSession, atMs: number): Promise<void> {
+    // `pause` truly halts virtual time at `initialVirtualTime`. The earlier
+    // `pauseIfNetworkFetchesPending` only held time while a fetch was in flight —
+    // once the page went network-idle the scheduler resumed and any rAF/timer
+    // loop raced the clock forward (Date jumped days per wall-second), so a
+    // "frozen" page was not actually frozen. `pause` pins Date deterministically.
     await cdp.send("Emulation.setVirtualTimePolicy", {
-      policy: "pauseIfNetworkFetchesPending",
+      policy: "pause",
       initialVirtualTime: atMs / 1000, // CDP expects seconds since epoch
     });
   }

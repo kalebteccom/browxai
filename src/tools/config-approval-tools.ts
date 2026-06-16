@@ -7,7 +7,12 @@ import type { ToolHost } from "./host.js";
  * the shared `ToolHost` seam.
  */
 export function registerConfigApprovalTools(host: ToolHost): void {
-  const { z, register, caps, configStore, approvals, pluginRecords } = host;
+  // NOTE: `pluginRecords` is NOT destructured here — `host.pluginRecords` is a
+  // LIVE getter (host-build.ts) populated AFTER this tool is registered (the
+  // plugin runtime starts later). Destructuring would snapshot the empty
+  // pre-load array, so get_config would always report `plugins: []`. Read it
+  // live inside the handler instead.
+  const { z, register, caps, configStore, approvals } = host;
 
   // ---------- config store ----------
 
@@ -57,7 +62,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
         // come from the resolved config layer. They diverge after a
         // `set_config({plugins})` until a restart — same posture as
         // capabilities.
-        const livePlugins = pluginRecords
+        const livePlugins = host.pluginRecords
           .filter((p) => p.status === "loaded")
           .map((p) => p.manifest.name)
           .sort();

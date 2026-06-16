@@ -201,12 +201,6 @@ interface DropTarget {
   readonly tagName?: string;
 }
 
-function isDropTarget(v: unknown): v is DropTarget {
-  return (
-    typeof v === "object" && v !== null && typeof (v as DropTarget).dispatchEvent === "function"
-  );
-}
-
 export const dropFilesPageScript = function PAGE_DROP_FILES_FN(args: {
   // `el` is the DOM element resolved by Locator.evaluate on the browser side
   // (ref/selector mode), or `null` for coords mode (re-resolved in-page via
@@ -238,8 +232,17 @@ export const dropFilesPageScript = function PAGE_DROP_FILES_FN(args: {
 
   // 1. Resolve the target element. For ref/selector mode the caller passed
   //    `el` directly via Locator.evaluate; for coords mode `el` is null
-  //    and we look it up via elementFromPoint.
-  let target: DropTarget | null = isDropTarget(args.el) ? args.el : null;
+  //    and we look it up via elementFromPoint. The narrowing is inlined (NOT a
+  //    module-level helper): this function is serialized to the page by
+  //    Locator.evaluate, so any sibling-scope reference is a ReferenceError in
+  //    the page realm.
+  const elCandidate = args.el as DropTarget | null;
+  let target: DropTarget | null =
+    typeof elCandidate === "object" &&
+    elCandidate !== null &&
+    typeof elCandidate.dispatchEvent === "function"
+      ? elCandidate
+      : null;
   if (args.payload.byCoords || !target) {
     target = D.elementFromPoint(args.payload.clientX, args.payload.clientY);
   }

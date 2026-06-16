@@ -1,0 +1,9 @@
+# Transient per-run artifact dirs (screenshots, PDFs, archives, heap snapshots,
+# videos, HARs) the file-io tools write under a workspace-* temp dir. The
+# report-<stamp>.{json,md} + FULL-REPORT.md ARE tracked (the deliverable).
+workspace-*/
+
+# Machine reports are reproducible (`pnpm --filter @browxai/capability-testbed
+# report`) and large (~1.4 MB JSON). The curated FULL-REPORT.md IS tracked.
+report-*.json
+report-*.md

@@ -24,5 +24,9 @@ artifacts/
 .auth/
 *.storageState.json
 
+# Agentic capability-testbed: a non-CI test app + harness (Full Report >
+# Diagnose > Fix), Codex-authored. Not subject to the repo's format gate.
+packages/capability-testbed
+
 # RFC 0002 research archive: imported reports kept verbatim for provenance.
 docs/rfcs/references/0*.md
