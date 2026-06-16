@@ -68,24 +68,42 @@ export async function textSearch(
   const matches: TextSearchMatch[] = [];
   for (const node of candidates) {
     if (matches.length >= max) break;
-    const bbox =
-      cdp !== undefined && node.backendDOMNodeId !== undefined
-        ? await visibleRect(cdp, node.backendDOMNodeId)
-        : null;
-    const visible = bbox !== null;
-    if (!visible && !includeHidden) continue;
-    const match: TextSearchMatch = {
-      ref: node.ref,
-      role: node.role,
-      text: node.name ?? "",
-      bbox,
-      clipped: !visible,
-    };
-    if (node.context) match.context = node.context;
-    matches.push(match);
+    const match = await classifyMatch(node, includeHidden, cdp);
+    if (match) matches.push(match);
   }
 
   return { count: matches.length, matches, warnings };
+}
+
+/** Resolve one candidate node to a match, applying the visible-only filter.
+ *  A node only reaches here if it's in the NON-IGNORED a11y tree (display:none /
+ *  aria-hidden subtrees are pruned upstream). WITH a backendDOMNodeId a null bbox
+ *  means off-screen → hidden. WITHOUT one — the AX tree omits it for many inline /
+ *  StaticText nodes, which is exactly what a text query matches — we cannot prove
+ *  off-screen, so we treat the rendered node as visible rather than silently
+ *  dropping every plain-text match in the default mode. The `clipped` flag still
+ *  records that the rect was indeterminate. */
+async function classifyMatch(
+  node: A11yNode,
+  includeHidden: boolean,
+  cdp?: CDPSession,
+): Promise<TextSearchMatch | null> {
+  const bbox =
+    cdp !== undefined && node.backendDOMNodeId !== undefined
+      ? await visibleRect(cdp, node.backendDOMNodeId)
+      : null;
+  const hasBackendId = cdp !== undefined && node.backendDOMNodeId !== undefined;
+  const visible = hasBackendId ? bbox !== null : true;
+  if (!visible && !includeHidden) return null;
+  const match: TextSearchMatch = {
+    ref: node.ref,
+    role: node.role,
+    text: node.name ?? "",
+    bbox,
+    clipped: !visible,
+  };
+  if (node.context) match.context = node.context;
+  return match;
 }
 
 /**
