@@ -252,6 +252,14 @@ export async function cookiesSet(
   return { ok: true };
 }
 
+/** The cookie `path` Playwright assigns when `addCookies` is given a `url`:
+ *  the parent directory of the url path ("/storage" → "/", "/a/b" → "/a/").
+ *  Used so `cookies_delete` filters by the same path the URL-form
+ *  `cookies_set` stored under. */
+function urlCookiePath(pathname: string): string {
+  return pathname.substring(0, pathname.lastIndexOf("/") + 1) || "/";
+}
+
 export async function cookiesDelete(
   context: BrowserContext,
   args: { name: string; url?: string; domain?: string; path?: string },
@@ -265,7 +273,11 @@ export async function cookiesDelete(
     try {
       const u = new URL(args.url);
       filter.domain = filter.domain ?? u.hostname;
-      filter.path = filter.path ?? (u.pathname || "/");
+      // Match Playwright's URL→cookie-path rule (the parent "directory" of the
+      // url path), so a delete by the SAME url that `cookies_set` used actually
+      // matches: addCookies({url}) stores e.g. "/storage" at path "/", so a
+      // delete filter of the raw pathname "/storage" would match nothing.
+      filter.path = filter.path ?? urlCookiePath(u.pathname);
     } catch {
       throw new Error(`cookies_delete: invalid url "${args.url}"`);
     }
