@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.8.0 — 2026-06-16 — Multi-engine: Firefox + WebKit + Android engines + BROWX_ENGINE selection
+
 ### Added
 
 - **Operator engine selection — `BROWX_ENGINE` env var + `--engine <kind>` CLI
@@ -348,6 +352,15 @@ surface" covers.
 
 ### Fixed
 
+- **`browxai serve --socket` forwards tool arguments again.** The socket
+  transport re-registered every tool with an empty input schema, so the MCP
+  layer stripped all arguments before the handler ran — `navigate` reached its
+  handler with no `url` and hung the whole call (~207s, never resolving). The
+  per-connection handler now routes raw `CallTool` arguments straight to the
+  in-process handler map via the low-level `Server.setRequestHandler`,
+  identical to the stdio path, so navigate-over-socket completes in ~560ms. A
+  regression test (`test/sdk/socket.test.ts`) asserts a forwarded argument
+  survives the round-trip.
 - **Plugin publishing actually works under OIDC trusted publishing.**
   `release.yml`'s `publish-plugins` job used `pnpm -r publish`, but pnpm
   9's registry client cannot mint OIDC trusted-publishing tokens (that
