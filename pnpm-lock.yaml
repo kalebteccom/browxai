@@ -71,6 +71,22 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.41)
 
+  packages/capability-testbed:
+    dependencies:
+      browxai:
+        specifier: workspace:*
+        version: link:../..
+    devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.41
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.5.0
+        version: 5.9.3
+
   packages/plugins/example:
     devDependencies:
       typescript:

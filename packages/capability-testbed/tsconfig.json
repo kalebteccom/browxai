@@ -1,0 +1,20 @@
+{
+  "comment": "Standalone tsconfig for the capability-testbed. It is intentionally NOT referenced by the root tsconfig (root `include` is `src` only) so `pnpm typecheck`/CI never compiles it. The testbed tests browxai across its PUBLIC SDK surface only — it imports from the built `browxai` package (workspace:*, resolved to dist/index.d.ts), never from browxai internals. Run `pnpm build` at the repo root once before typechecking/running the harness so the dist types exist.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
