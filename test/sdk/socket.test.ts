@@ -59,4 +59,17 @@ skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix 
     expect(client.exposedTools).toContain("snapshot");
     expect(client.exposedTools).not.toContain("eval_js");
   });
+
+  it("forwards tool ARGUMENTS over the wire (regression: must not strip args)", async () => {
+    // The socket serve once re-registered tools with an EMPTY input schema,
+    // which made the MCP layer strip every argument before the handler ran —
+    // so e.g. `navigate` reached its handler with no `url` and hung the call.
+    // A distinctive argument must survive the round-trip: open a named session
+    // and assert it shows up in list_sessions (the name is a forwarded arg).
+    await client.open_session({ session: "sock-arg-probe", mode: "incognito" });
+    const r = await client.list_sessions();
+    const text = JSON.stringify(r.data);
+    expect(text).toContain("sock-arg-probe");
+    await client.close_session({ session: "sock-arg-probe" }).catch(() => undefined);
+  });
 });
