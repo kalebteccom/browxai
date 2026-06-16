@@ -15,9 +15,13 @@
 
 import { chmodSync, existsSync, unlinkSync } from "node:fs";
 import { createServer as createNetServer, type Server } from "node:net";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { createServer } from "../server.js";
+import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
+import { createServer, NAME, VERSION } from "../server.js";
 import { SocketTransport } from "../sdk/socket-transport.js";
 import { log } from "../util/logging.js";
 
@@ -69,34 +73,49 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
 
   const browxai = await createServer({ attachCdp: opts.attachCdp, headless: opts.headless });
 
-  // We share ONE McpServer per attached client connection by creating a
-  // fresh adapter per connection. The simplest correct approach: each
-  // connection gets its OWN McpServer instance that re-registers against
-  // the SAME `browxai.handlers` map. Since `handlers` is shared,
-  // session-state isolation is the SessionRegistry's job (already true),
-  // and the per-connection McpServer just routes the JSON-RPC.
-  //
-  // Implementation detail: re-creating tools from scratch on every connect
-  // would require duplicating server.ts's input schemas. Instead we expose
-  // a thin tool-call proxy: the connection's McpServer registers a single
-  // catch-all? No — the MCP SDK requires tools to be registered by name.
-  // The cleanest path is: register the same tool names that the in-process
-  // server already has, with `inputSchema: { additionalProperties: true }`
-  // (open schema — the underlying handler still validates). Each tool's
-  // handler delegates to `browxai.handlers[name]`.
+  // Each attached client connection gets its OWN low-level MCP Server that
+  // routes JSON-RPC straight to the SHARED `browxai.handlers` map (session-state
+  // isolation is the SessionRegistry's job, already true). We deliberately do
+  // NOT use the high-level `McpServer.registerTool` with per-tool schemas: that
+  // path validates/strips arguments against the declared schema, and an empty
+  // schema dropped every argument (the `navigate`-hangs-forever bug). The
+  // low-level CallTool handler forwards raw arguments, exactly like the
+  // in-process transport.
   const liveConnections = new Set<{ close: () => Promise<void> }>();
 
   const netServer: Server = createNetServer((socket) => {
     void (async () => {
       try {
-        const mcp = new McpServer({ name: "browxai", version: "0.2.3" });
-        for (const [name, handler] of Object.entries(browxai.handlers)) {
-          mcp.registerTool(
+        // Route JSON-RPC straight to the in-process handler map with the RAW
+        // arguments. The previous `McpServer.registerTool(name, { inputSchema:
+        // {} }, …)` path validated each call against an EMPTY object schema,
+        // which silently STRIPPED every argument — so e.g. `navigate` reached
+        // its handler with no `url` and hung the whole call (load wait that
+        // never resolves). The per-tool handler does its own validation, so the
+        // socket layer must pass args through untouched, exactly like the
+        // in-process transport (`src/sdk/transport-in-process.ts`).
+        const mcp = new McpServer(
+          { name: NAME, version: VERSION },
+          { capabilities: { tools: {} } },
+        );
+        mcp.setRequestHandler(ListToolsRequestSchema, () => ({
+          tools: Object.keys(browxai.handlers).map((name) => ({
             name,
-            { description: `browxai/${name}`, inputSchema: {} },
-            async (args: unknown): Promise<CallToolResult> => handler(args),
-          );
-        }
+            description: `browxai/${name}`,
+            // Open schema — NOT `{}` (which strips args). The handler validates.
+            inputSchema: { type: "object" as const, additionalProperties: true },
+          })),
+        }));
+        mcp.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
+          const handler = browxai.handlers[request.params.name];
+          if (!handler) {
+            return {
+              isError: true,
+              content: [{ type: "text", text: `browxai: unknown tool "${request.params.name}"` }],
+            };
+          }
+          return await handler(request.params.arguments ?? {});
+        });
         const transport = new SocketTransport(socket);
         await mcp.connect(transport);
         const conn = {

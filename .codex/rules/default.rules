@@ -85,10 +85,20 @@ prefix_rule(
 # The Claude hook also enforces it pattern-side.
 
 prefix_rule(
-    pattern = ["gh", "pr", "merge", "--admin"],
+    pattern = ["gh", "pr", "merge"],
     decision = "forbidden",
-    justification = "Bypasses branch protection and CODEOWNERS review (baseline rules 25 / 26).",
-    match = ["gh pr merge --admin", "gh pr merge 123 --admin --squash"],
+    justification = "PR merges must not be executed by Codex. This prevents --admin from bypassing branch protection and CODEOWNERS review (baseline rules 25 / 26). Merge manually after review.",
+    match = [
+        "gh pr merge --admin",
+        "gh pr merge 123 --admin --squash",
+        "gh pr merge 123 --squash",
+        "gh pr merge 123 --merge",
+    ],
+    not_match = [
+        "gh pr view 123",
+        "gh pr checkout 123",
+        "gh pr status",
+    ],
 )
 
 # Pipe-to-shell (`curl … | bash`, `wget … | bash`) is a pipeline, not a
