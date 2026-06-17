@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+_Nothing yet._
+
+## v0.9.0 — 2026-06-17 — Per-session engine selection (open_session engine override)
+
 ### Added
 
 - **Per-session engine selection — `open_session({ engine })`.** A single browxai

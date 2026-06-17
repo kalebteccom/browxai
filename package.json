@@ -1,6 +1,6 @@
 {
   "name": "browxai",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "MCP-native, model-agnostic, agentic-first, multi-engine browser-control server.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",
