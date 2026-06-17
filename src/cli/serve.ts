@@ -22,6 +22,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, NAME, VERSION } from "../server.js";
+import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../engine/index.js";
 import { SocketTransport } from "../sdk/socket-transport.js";
 import { log } from "../util/logging.js";
 
@@ -29,6 +30,10 @@ interface ServeOptions {
   readonly socketPath: string;
   readonly attachCdp?: string;
   readonly headless?: boolean;
+  /** Server default engine for sessions (from `--engine` / `BROWX_ENGINE`).
+   *  Undefined ⇒ server.ts defaults to chromium. Per-session `open_session`
+   *  ({engine}) still overrides this default. */
+  readonly browserType?: EngineKind;
 }
 
 function parseFlagString(args: string[], flag: string): string | undefined {
@@ -51,7 +56,24 @@ export async function runServe(rawArgs: string[]): Promise<number> {
   }
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
   const headless = process.env.BROWX_HEADLESS === "1";
-  const code = await startServe({ socketPath, attachCdp, headless });
+  // Server default engine: `--engine <kind>` > `BROWX_ENGINE` > chromium (left
+  // to server.ts when undefined). An unknown engine fails loudly here, before
+  // the server starts — same posture as `browxai` stdio (src/cli.ts). Per-session
+  // `open_session({engine})` overrides this default at runtime.
+  let browserType: EngineKind | undefined;
+  try {
+    browserType = resolveEngineSelection(rawArgs);
+  } catch (err) {
+    if (
+      err instanceof UnknownEngineError ||
+      (err instanceof Error && err.message.includes("--engine"))
+    ) {
+      process.stderr.write(`${err.message}\n`);
+      return 2;
+    }
+    throw err;
+  }
+  const code = await startServe({ socketPath, attachCdp, headless, browserType });
   return code;
 }
 
@@ -71,7 +93,11 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
     }
   }
 
-  const browxai = await createServer({ attachCdp: opts.attachCdp, headless: opts.headless });
+  const browxai = await createServer({
+    attachCdp: opts.attachCdp,
+    headless: opts.headless,
+    browserType: opts.browserType,
+  });
 
   // Each attached client connection gets its OWN low-level MCP Server that
   // routes JSON-RPC straight to the SHARED `browxai.handlers` map (session-state

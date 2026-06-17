@@ -544,9 +544,16 @@ export interface NameRefResultData {
 export type NameRefResult = BrowxaiResult<NameRefResultData>;
 
 export type SessionMode = "persistent" | "incognito" | "attached";
+/** Browser engine a session runs on. Mirrors the host `EngineKind` (kept as a
+ *  local literal so the SDK surface stays free of server-internal imports). */
+export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari";
 export interface OpenSessionArgs {
   session: string;
   mode?: SessionMode;
+  /** Browser engine for this session, overriding the server default. Omit to
+   *  inherit it (unchanged legacy behaviour). See the `open_session` tool docs
+   *  for the per-engine mode constraints. */
+  engine?: EngineKind;
   profile?: string;
   device?: string;
   viewport?: { width: number; height: number };
@@ -565,6 +572,7 @@ export interface OpenSessionResultData {
   ok: boolean;
   session?: string;
   mode?: SessionMode;
+  engine?: EngineKind;
   url?: string;
   openedAt?: string;
   error?: string;
@@ -598,6 +606,7 @@ export type ListSessionsArgs = Record<string, never>;
 export interface ListSessionsRow {
   id: string;
   mode: SessionMode;
+  engine: EngineKind;
   url: string | null;
   pages: number | null;
   openedAt: string;

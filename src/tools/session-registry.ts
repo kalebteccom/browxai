@@ -4,6 +4,7 @@ import { requireCdp, type EngineKind } from "../engine/index.js";
 import {
   engineEntry,
   byobAttachNeedsEndpoint,
+  engineIsAttachOnly,
   type SubstrateDeps,
   type PostWireDeps,
 } from "../engine/registry.js";
@@ -76,6 +77,21 @@ export interface SessionRegistryDeps {
   serverDefaultMode: SessionMode;
 }
 
+/** Default launch mode for a session given its (effective, per-session) engine
+ *  and whether the server was started with a CDP attach endpoint. Mirrors the
+ *  server-level `serverDefaultMode` (createServer) but keys on the PER-SESSION
+ *  engine, so an explicit `open_session({engine:"android"})` defaults to
+ *  `attached` even on a chromium-default server (android is attach-only). For
+ *  any non-android engine the result is byte-identical to the legacy server
+ *  default, so omitting `engine` changes nothing. */
+export function defaultModeForEngine(
+  engine: EngineKind,
+  attachCdp: string | undefined,
+): SessionMode {
+  if (engineIsAttachOnly(engine)) return "attached";
+  return attachCdp ? "attached" : "persistent";
+}
+
 /**
  * Build the per-session `SessionRegistry` — the composition root's session
  * factory + teardown pair. Moved out of `createServer` verbatim: the "default"
@@ -124,7 +140,18 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
   return new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
-      const mode: SessionMode = spec?.mode ?? serverDefaultMode;
+      // The engine for THIS session: an explicit `open_session({engine})`
+      // overrides the server default; omitted ⇒ the server engine (legacy). One
+      // server can therefore drive sessions on different engines at once.
+      const effectiveEngine: EngineKind = spec?.engine ?? serverEngine;
+      // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);
+      // an explicit per-session engine resolves its own default (android ⇒
+      // attached). Non-android explicit engines match the legacy default too.
+      const mode: SessionMode =
+        spec?.mode ??
+        (spec?.engine !== undefined
+          ? defaultModeForEngine(effectiveEngine, opts.attachCdp)
+          : serverDefaultMode);
       // resolve the gated web-security flag *fresh* per session so a
       // `set_config({disableWebSecurity})` takes effect on the next
       // open_session without a server restart. Off by default.
@@ -205,9 +232,11 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         // BROWX_ATTACH_CDP; the desktop CDP-attach lane still requires it. The
         // android-specific fact lives in the engine layer (`byobAttachNeedsEndpoint`),
         // so this precondition stays engine-agnostic (no `=== "android"` literal).
-        if (byobAttachNeedsEndpoint(serverEngine) && !opts.attachCdp) {
+        if (byobAttachNeedsEndpoint(effectiveEngine) && !opts.attachCdp) {
           throw new Error(
-            `session "${id}": mode "attached" requires the server to be started with BROWX_ATTACH_CDP (per-session attach isn't supported yet)`,
+            `byob-attach-endpoint-required: session "${id}": mode "attached" on engine ` +
+              `"${effectiveEngine}" requires the server to be started with BROWX_ATTACH_CDP ` +
+              `(per-session attach endpoints aren't supported yet)`,
           );
         }
         if (creationStorageState) {
@@ -245,7 +274,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         sess = await openByobSession({
           attachCdp: opts.attachCdp,
           headless,
-          browserType: serverEngine,
+          browserType: effectiveEngine,
         });
       } else if (mode === "incognito") {
         sess = await openIncognitoSession({
@@ -255,7 +284,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
-          browserType: serverEngine,
+          browserType: effectiveEngine,
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
@@ -276,7 +305,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
-          browserType: serverEngine,
+          browserType: effectiveEngine,
         });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context

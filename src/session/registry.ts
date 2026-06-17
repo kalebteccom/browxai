@@ -7,6 +7,7 @@
 // teardown that actually wire Playwright live in server.ts.
 
 import type { BrowserSession } from "./types.js";
+import type { EngineKind } from "../engine/types.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { SnapshotSubstrate } from "../page/snapshot-substrate.js";
 import type { FrameRegistry } from "../page/frames.js";
@@ -305,6 +306,14 @@ export const DEFAULT_SESSION_ID = "default";
  *  lazily-created default, which falls back to the server's launch mode). */
 export interface OpenSpec {
   mode?: SessionMode;
+  /** Browser engine for THIS session, overriding the server default
+   *  (`createServer({browserType})` / `--engine` / `BROWX_ENGINE`, else
+   *  `chromium`). Lets one server drive sessions on different engines at once.
+   *  Omitted ⇒ inherit the server default (byte-identical legacy behaviour).
+   *  Validated at the `open_session` handler (`validateEngine`) so an
+   *  unimplemented engine fails with a structured error, never a silent
+   *  fallback. */
+  engine?: EngineKind;
   /** Persistent mode only: named profile dir under the workspace. */
   profile?: string;
   /** Playwright device-preset name (e.g. "iPhone 14"). */
