@@ -113,7 +113,18 @@ Authentication: relay-provided bearer token or OAuth flow</code></pre>
     hidden
   >
     <h3>Claude Code</h3>
-    <p>For local Claude Code, add browxai to your project MCP config:</p>
+    <p>
+      Preferred path: add the browxai repo as a custom Claude Code plugin marketplace, then
+      install the <code>browxai</code> plugin from marketplace <code>browxai</code>.
+    </p>
+    <pre><code class="language-text">/plugin marketplace add https://github.com/kalebteccom/browxai.git
+/plugin install browxai@browxai</code></pre>
+    <p>
+      The plugin bundles the <code>driving-browxai</code> skill and a local stdio MCP server config
+      that invokes <code>browxai</code> from <code>PATH</code>. It does not install browsers or
+      enable off-by-default capabilities.
+    </p>
+    <p>Manual fallback: add browxai to your project MCP config:</p>
     <pre><code class="language-jsonc">{claudeCodeConfig}</code></pre>
     <p>
       Restart Claude Code and check <code>/mcp</code>. For Claude Code cloud or any sandboxed
@@ -149,7 +160,17 @@ Authentication: relay-provided bearer token or OAuth flow</code></pre>
     hidden
   >
     <h3>Codex</h3>
-    <p>For local Codex, register browxai as a stdio MCP server:</p>
+    <p>
+      Preferred path: add the browxai repo as a Codex plugin marketplace, then install the
+      <code>browxai</code> plugin from the Codex plugin directory.
+    </p>
+    <pre><code class="language-bash">codex plugin marketplace add kalebteccom/browxai</code></pre>
+    <p>
+      The repo marketplace lives at <code>.agents/plugins/marketplace.json</code>. The plugin
+      bundles the <code>driving-browxai</code> skill and a local stdio MCP server config that
+      invokes <code>browxai</code> from <code>PATH</code>.
+    </p>
+    <p>Manual fallback: register browxai as a stdio MCP server:</p>
     <pre><code class="language-bash">codex mcp add browxai -- browxai</code></pre>
     <p>Equivalent <code>config.toml</code>:</p>
     <pre><code class="language-toml">{codexToml}</code></pre>
