@@ -9,6 +9,7 @@
 // the dispatch is byte-identical.
 
 import { registerCommand } from "./command-registry.js";
+import { runBrowser } from "./browser.js";
 import { runDoctor } from "./doctor.js";
 import { runChrome } from "./chrome.js";
 import { runInit } from "./init.js";
@@ -17,6 +18,7 @@ import { runPlugin } from "../plugin/cli.js";
 
 // `runDoctor` takes no argv (it ignored `rest`); the others consume `rest`.
 // `runPlugin` accepts a `ReadonlyArray<string>`, which `string[]` satisfies.
+registerCommand("browser", (rest) => runBrowser(rest));
 registerCommand("doctor", () => runDoctor());
 registerCommand("chrome", (rest) => runChrome(rest));
 registerCommand("init", (rest) => runInit(rest));

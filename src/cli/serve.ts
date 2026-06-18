@@ -24,6 +24,7 @@ import {
 import { createServer, NAME, VERSION } from "../server.js";
 import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../engine/index.js";
 import { SocketTransport } from "../sdk/socket-transport.js";
+import { discoverableTools } from "../tools/schema-discovery.js";
 import { log } from "../util/logging.js";
 
 interface ServeOptions {
@@ -101,12 +102,13 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
 
   // Each attached client connection gets its OWN low-level MCP Server that
   // routes JSON-RPC straight to the SHARED `browxai.handlers` map (session-state
-  // isolation is the SessionRegistry's job, already true). We deliberately do
-  // NOT use the high-level `McpServer.registerTool` with per-tool schemas: that
-  // path validates/strips arguments against the declared schema, and an empty
-  // schema dropped every argument (the `navigate`-hangs-forever bug). The
-  // low-level CallTool handler forwards raw arguments, exactly like the
-  // in-process transport.
+  // isolation is the SessionRegistry's job, already true). `tools/list` is
+  // schema-rich from live registration metadata, but `tools/call` deliberately
+  // avoids the high-level `McpServer.registerTool` path: that path
+  // validates/strips arguments against the declared schema, and an empty schema
+  // dropped every argument (the `navigate`-hangs-forever bug). The low-level
+  // CallTool handler forwards raw arguments, exactly like the in-process
+  // transport.
   const liveConnections = new Set<{ close: () => Promise<void> }>();
 
   const netServer: Server = createNetServer((socket) => {
@@ -125,12 +127,7 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
           { capabilities: { tools: {} } },
         );
         mcp.setRequestHandler(ListToolsRequestSchema, () => ({
-          tools: Object.keys(browxai.handlers).map((name) => ({
-            name,
-            description: `browxai/${name}`,
-            // Open schema — NOT `{}` (which strips args). The handler validates.
-            inputSchema: { type: "object" as const, additionalProperties: true },
-          })),
+          tools: discoverableTools(browxai.registrations),
         }));
         mcp.setRequestHandler(CallToolRequestSchema, async (request): Promise<CallToolResult> => {
           const handler = browxai.handlers[request.params.name];

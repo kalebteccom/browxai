@@ -124,6 +124,11 @@ export interface RegisterHost {
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ) => void;
 
+  /** Record a non-core tool on the shared discovery table without using the core
+   *  registration wrapper. Plugin tools use this because their capability gate is
+   *  plugin-owned while their schema still belongs in `tools/list`. */
+  recordRegistration: (name: string, registration: ToolRegistration) => void;
+
   /** The batch whitelist — the set of tool names a compound/batch tool may dispatch
    *  to. Read lazily so the host can expose it before the set is populated. Derived
    *  (RFC 0004 P2) from each `register({ batchable: true })` call. */

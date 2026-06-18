@@ -206,7 +206,7 @@ export async function runDoctor(): Promise<number> {
         name: "chromium",
         ok: false,
         detail: "playwright-core has no Chromium binary cached",
-        fix: "run `pnpm install-browser`",
+        fix: "run `browxai browser install --engine chromium`",
       });
     }
   } catch (e) {
@@ -214,7 +214,7 @@ export async function runDoctor(): Promise<number> {
       name: "chromium",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `pnpm install` and `pnpm install-browser`",
+      fix: "install browxai dependencies, then run `browxai browser install --engine chromium`",
     });
   }
 
@@ -233,7 +233,7 @@ export async function runDoctor(): Promise<number> {
         ok: true,
         info: true,
         detail: 'not installed (opt-in second engine — browserType:"firefox")',
-        fix: "run `npx playwright install firefox` to enable the firefox engine",
+        fix: "run `browxai browser install --engine firefox` to enable the firefox engine",
       });
     }
   } catch (e) {
@@ -242,7 +242,7 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
+      fix: "run `browxai browser install --engine firefox` to enable the firefox engine",
     });
   }
 
@@ -262,7 +262,7 @@ export async function runDoctor(): Promise<number> {
         ok: true,
         info: true,
         detail: 'not installed (opt-in third engine — browserType:"webkit")',
-        fix: "run `npx playwright install webkit` to enable the webkit engine",
+        fix: "run `browxai browser install --engine webkit` to enable the webkit engine",
       });
     }
   } catch (e) {
@@ -271,7 +271,7 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
+      fix: "run `browxai browser install --engine webkit` to enable the webkit engine",
     });
   }
 

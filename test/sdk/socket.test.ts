@@ -10,10 +10,13 @@
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
+import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { createBrowxai } from "../../src/sdk/index.js";
 import { startServeForTests } from "../../src/cli/serve.js";
+import { SocketTransport } from "../../src/sdk/socket-transport.js";
 import type { BrowxaiClient } from "../../src/sdk/types.js";
 
 const skipIfWindows = process.platform === "win32" ? describe.skip : describe;
@@ -23,6 +26,22 @@ let socketPath: string;
 let serveHandle: Awaited<ReturnType<typeof startServeForTests>>;
 let client: BrowxaiClient;
 const savedEnv: Record<string, string | undefined> = {};
+
+async function openRawMcpClient(): Promise<{ client: Client; close: () => Promise<void> }> {
+  const socket: Socket = await new Promise((resolve, reject) => {
+    const s = createConnection({ path: socketPath }, () => resolve(s));
+    s.once("error", reject);
+  });
+  const transport = new SocketTransport(socket);
+  const mcp = new Client({ name: "browxai-socket-test", version: "0.0.0" }, { capabilities: {} });
+  await mcp.connect(transport);
+  return {
+    client: mcp,
+    close: async () => {
+      await mcp.close().catch(() => undefined);
+    },
+  };
+}
 
 beforeAll(async () => {
   for (const k of Object.keys(process.env)) {
@@ -58,6 +77,28 @@ skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix 
     expect(client.exposedTools).toContain("navigate");
     expect(client.exposedTools).toContain("snapshot");
     expect(client.exposedTools).not.toContain("eval_js");
+  });
+
+  it("lists exact input schemas over the socket", async () => {
+    const raw = await openRawMcpClient();
+    try {
+      const listed = await raw.client.listTools();
+      const byName = new Map(listed.tools.map((tool) => [tool.name, tool]));
+      const navigate = byName.get("navigate");
+      const listSessions = byName.get("list_sessions");
+
+      expect(navigate?.inputSchema).toMatchObject({
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Absolute URL" },
+        },
+        required: ["url"],
+        additionalProperties: false,
+      });
+      expect(listSessions?.inputSchema).toEqual({ type: "object", properties: {} });
+    } finally {
+      await raw.close();
+    }
   });
 
   it("forwards tool ARGUMENTS over the wire (regression: must not strip args)", async () => {

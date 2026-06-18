@@ -22,7 +22,7 @@ import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
 import { ApprovalStore } from "./policy/confirm.js";
 import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
-import type { ToolResponse } from "./tools/host.js";
+import type { ToolRegistration, ToolResponse } from "./tools/host.js";
 import { buildHost } from "./tools/host-build.js";
 import { registerActionTools } from "./tools/action-tools.js";
 import { registerReadObserveDomTools } from "./tools/read-observe-dom-tools.js";
@@ -174,6 +174,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       >;
     }>
   >;
+  /** Live tool registration metadata, including descriptions and JSON-schema
+   *  source. Transports use this for discovery; dispatch still goes through
+   *  `handlers` so argument forwarding remains transport-neutral. */
+  registrations: ReadonlyMap<string, ToolRegistration>;
 }> {
   // config flows through the browxai-managed ConfigStore (precedence
   // defaults < env(legacy) < user < project < session). The existing env-driven
@@ -411,5 +415,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
       await server.close().catch(() => undefined);
     },
     handlers: toolHandlers,
+    registrations: host.registrations,
   };
 }

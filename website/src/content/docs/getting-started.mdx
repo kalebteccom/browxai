@@ -1,40 +1,35 @@
 ---
 title: Getting started
-description: Install browxai, wire it into an MCP client, and run a first agent flow against a real page.
+description: Install browxai, connect it to your harness, and run a first agent flow against a real page.
 ---
 
+import HarnessTabs from "../../components/harness-tabs.astro";
+
 browxai is an [MCP](https://modelcontextprotocol.io/) server that gives an AI
-agent a curated browser-control surface. It runs over stdio and is driven by
-any MCP client.
+agent a curated browser-control surface. Local harnesses can launch it over
+stdio. Cloud harnesses need a remote MCP relay that can reach a browxai host and
+browser running on your hardware.
 
 ## Install
 
 ```bash
 npm install -g browxai
-npx playwright-core install chromium    # one-time, ~150 MB
+browxai browser install --engine chromium
+browxai doctor
 ```
 
 A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the
-stdio transport.
+stdio transport. `browxai browser install` installs the browser revision pinned
+to the installed browxai package.
 
-## Wire it into an MCP client
-
-Add browxai to your client's MCP server config. For example, an `.mcp.json`:
-
-```jsonc
-{
-  "mcpServers": {
-    "browxai": {
-      "command": "browxai",
-    },
-  },
-}
-```
+## Connect it to a harness
 
 By default the server launches a **managed** Chromium with its own profile,
 headed, with the default capability set (`read`, `navigation`, `action`,
 `human`). Everything dangerous is opt-in.
+
+<HarnessTabs />
 
 ### Common environment variables
 

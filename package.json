@@ -63,7 +63,7 @@
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
     "gen:sdk-types": "tsx scripts/gen-sdk-tool-types.ts",
-    "install-browser": "playwright-core install chromium",
+    "install-browser": "tsx src/cli.ts browser install --engine chromium",
     "docs:dev": "pnpm --filter @browxai/website dev",
     "docs:build": "pnpm --filter @browxai/website build",
     "docs:preview": "pnpm --filter @browxai/website preview",
@@ -96,8 +96,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "playwright-core": "^1.48.0",
-    "zod": "^3.23.0"
+    "playwright-core": "1.60.0",
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "3.25.2"
   },
   "devDependencies": {
     "@cyclonedx/cyclonedx-npm": "^2.0.0",

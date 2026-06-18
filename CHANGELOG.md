@@ -8,7 +8,18 @@ surface" covers.
 
 ## Unreleased
 
-_Nothing yet._
+### Added
+
+- **First-party browser setup — `browxai browser install`.** Installs the
+  Playwright-managed browser binaries for browxai's pinned `playwright-core`
+  revision, defaulting to Chromium and supporting Firefox/WebKit via `--engine`
+  or all managed engines via `--all`. The command prints the browxai version,
+  Playwright version, selected engines, expected browser revision, executable
+  path, and download host before invoking the installer. `browxai doctor` and
+  the docs now point users at this command instead of raw Playwright commands.
+- **Socket schema discovery.** `browxai serve --socket` now returns the same
+  `tools/list` input schemas as the stdio MCP server while preserving the raw
+  argument-forwarding call path that prevents transport-level schema stripping.
 
 ## v0.9.0 — 2026-06-17 — Per-session engine selection (open_session engine override)
 

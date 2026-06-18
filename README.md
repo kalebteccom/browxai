@@ -31,7 +31,7 @@ headless — and shape an agent-first surface around it.
 
 ```bash
 npm install -g browxai
-npx playwright-core install chromium    # one-time, ~150 MB
+browxai browser install --engine chromium
 ```
 
 Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
@@ -112,7 +112,7 @@ explicitly experimental and not covered by the stability guarantee. See the
 
 ```bash
 corepack enable && pnpm install
-pnpm install-browser     # Chromium for playwright-core
+pnpm install-browser     # runs browxai browser install --engine chromium
 pnpm typecheck && pnpm test
 pnpm build               # builds dist/ — the `browxai` bin is dist/cli.js
 pnpm test:keystone       # headless end-to-end keystone (real Chromium)

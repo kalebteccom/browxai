@@ -25,6 +25,7 @@ import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
 const USAGE = `Usage: browxai [subcommand]
 
   browxai                       start the MCP server (stdio)            — default
+  browxai browser install       install pinned Playwright browser binaries
   browxai doctor                env + connectivity health-check
   browxai chrome start [opts]   launch an attachable Chrome (BYOB host)
   browxai chrome stop           kill the Chrome that \`chrome start\` launched

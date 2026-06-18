@@ -46,7 +46,9 @@ function startChrome(opts: string[]): Promise<number> {
 
   const chromePath = chromium.executablePath();
   if (!chromePath) {
-    process.stderr.write("no Chromium binary — run `pnpm install-browser` first\n");
+    process.stderr.write(
+      "no Chromium binary — run `browxai browser install --engine chromium` first\n",
+    );
     return Promise.resolve(1);
   }
   const args = [

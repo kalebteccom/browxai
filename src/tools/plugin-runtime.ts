@@ -48,7 +48,16 @@ export async function wirePluginRuntime(
   host: ToolHost,
   deps: PluginRuntimeDeps,
 ): Promise<ReadonlyArray<PluginRecord>> {
-  const { register, gateCheck, caps, workspace, resolvedConfig, toolHandlers, z } = host;
+  const {
+    register,
+    recordRegistration,
+    gateCheck,
+    caps,
+    workspace,
+    resolvedConfig,
+    toolHandlers,
+    z,
+  } = host;
   const { server, noteMetrics, noteDiagnostics } = deps;
 
   let pluginRecords: ReadonlyArray<PluginRecord> = [];
@@ -119,6 +128,11 @@ export async function wirePluginRuntime(
     }
     pluginToolOwner.set(name, ownerPlugin);
     pluginToolDef.set(name, def);
+    recordRegistration(name, {
+      description: def.description,
+      inputSchema: def.inputSchema,
+      capability: capability as Capability | undefined,
+    });
     // Plugin tool handler envelope: capability gate → handler → standard
     // metrics + diagnostics wrap. We don't apply the wedge tracker —
     // plugin tools aren't core page-exercising primitives, so the

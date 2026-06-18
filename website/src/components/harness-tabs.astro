@@ -1,0 +1,277 @@
+---
+const claudeCodeConfig = `{
+  "mcpServers": {
+    "browxai": {
+      "command": "browxai"
+    }
+  }
+}`;
+
+const codexToml = `[mcp_servers.browxai]
+command = "browxai"`;
+
+const codexRemoteToml = `[mcp_servers.browxai]
+url = "https://<relay-host>/mcp"
+bearer_token_env_var = "BROWXAI_RELAY_TOKEN"`;
+
+const genericConfig = `{
+  "command": "browxai",
+  "args": []
+}`;
+---
+
+<section class="harness-tabs" data-harness-tabs>
+  <div class="harness-tab-list" role="tablist" aria-label="Harness setup">
+    <button
+      class="harness-tab"
+      type="button"
+      role="tab"
+      id="harness-tab-claude-ai"
+      aria-selected="true"
+      aria-controls="harness-panel-claude-ai"
+      data-harness-tab="claude-ai"
+    >
+      Claude.ai
+    </button>
+    <button
+      class="harness-tab"
+      type="button"
+      role="tab"
+      id="harness-tab-claude-code"
+      aria-selected="false"
+      aria-controls="harness-panel-claude-code"
+      data-harness-tab="claude-code"
+      tabindex="-1"
+    >
+      Claude Code
+    </button>
+    <button
+      class="harness-tab"
+      type="button"
+      role="tab"
+      id="harness-tab-chatgpt"
+      aria-selected="false"
+      aria-controls="harness-panel-chatgpt"
+      data-harness-tab="chatgpt"
+      tabindex="-1"
+    >
+      ChatGPT
+    </button>
+    <button
+      class="harness-tab"
+      type="button"
+      role="tab"
+      id="harness-tab-codex"
+      aria-selected="false"
+      aria-controls="harness-panel-codex"
+      data-harness-tab="codex"
+      tabindex="-1"
+    >
+      Codex
+    </button>
+    <button
+      class="harness-tab"
+      type="button"
+      role="tab"
+      id="harness-tab-generic"
+      aria-selected="false"
+      aria-controls="harness-panel-generic"
+      data-harness-tab="generic"
+      tabindex="-1"
+    >
+      Generic MCP
+    </button>
+  </div>
+
+  <div
+    class="harness-panel"
+    role="tabpanel"
+    id="harness-panel-claude-ai"
+    aria-labelledby="harness-tab-claude-ai"
+    data-harness-panel="claude-ai"
+  >
+    <h3>Claude.ai, Claude Cowork, and Claude Desktop sandboxed access</h3>
+    <p>
+      These are remote MCP surfaces. They cannot launch a local stdio command on your machine, so
+      use a relay-provided HTTPS MCP endpoint connected to a browxai host running on your hardware.
+    </p>
+    <pre><code>MCP endpoint: https://&lt;relay-host&gt;/mcp
+Transport: Streamable HTTP
+Authentication: relay-provided bearer token or OAuth flow</code></pre>
+    <p>
+      Do not paste a local <code>.mcp.json</code> command into Claude.ai. The local browser and
+      browxai process stay on your hardware; the relay only gives Claude a reachable MCP endpoint.
+    </p>
+  </div>
+
+  <div
+    class="harness-panel"
+    role="tabpanel"
+    id="harness-panel-claude-code"
+    aria-labelledby="harness-tab-claude-code"
+    data-harness-panel="claude-code"
+    hidden
+  >
+    <h3>Claude Code</h3>
+    <p>For local Claude Code, add browxai to your project MCP config:</p>
+    <pre><code class="language-jsonc">{claudeCodeConfig}</code></pre>
+    <p>
+      Restart Claude Code and check <code>/mcp</code>. For Claude Code cloud or any sandboxed
+      Claude surface that cannot run your local process, use the remote MCP endpoint from your relay
+      instead of the local command.
+    </p>
+  </div>
+
+  <div
+    class="harness-panel"
+    role="tabpanel"
+    id="harness-panel-chatgpt"
+    aria-labelledby="harness-tab-chatgpt"
+    data-harness-panel="chatgpt"
+    hidden
+  >
+    <h3>ChatGPT</h3>
+    <p>ChatGPT uses remote MCP connectors. Configure it with the HTTPS MCP endpoint provided by your relay:</p>
+    <pre><code>Server URL: https://&lt;relay-host&gt;/mcp
+Authentication: relay-provided bearer token or OAuth flow</code></pre>
+    <p>
+      Installing the local package alone is not enough for ChatGPT because ChatGPT cannot reach a
+      stdio server on your machine. The relay must be paired to your local browxai/browser host.
+    </p>
+  </div>
+
+  <div
+    class="harness-panel"
+    role="tabpanel"
+    id="harness-panel-codex"
+    aria-labelledby="harness-tab-codex"
+    data-harness-panel="codex"
+    hidden
+  >
+    <h3>Codex</h3>
+    <p>For local Codex, register browxai as a stdio MCP server:</p>
+    <pre><code class="language-bash">codex mcp add browxai -- browxai</code></pre>
+    <p>Equivalent <code>config.toml</code>:</p>
+    <pre><code class="language-toml">{codexToml}</code></pre>
+    <p>Open <code>/mcp</code> in the Codex TUI to verify the server is connected.</p>
+    <p>Codex also supports Streamable HTTP MCP. For a relay endpoint:</p>
+    <pre><code class="language-toml">{codexRemoteToml}</code></pre>
+  </div>
+
+  <div
+    class="harness-panel"
+    role="tabpanel"
+    id="harness-panel-generic"
+    aria-labelledby="harness-tab-generic"
+    data-harness-panel="generic"
+    hidden
+  >
+    <h3>Generic MCP</h3>
+    <p>For any MCP client that can launch local stdio servers, configure:</p>
+    <pre><code class="language-json">{genericConfig}</code></pre>
+    <p>
+      For clients that run in the cloud or a sandbox, use the relay's Streamable HTTP endpoint
+      instead. A local stdio command only works when the harness can execute commands on the same
+      hardware where browxai and the browser run.
+    </p>
+  </div>
+</section>
+
+<script is:inline>
+  for (const root of document.querySelectorAll("[data-harness-tabs]")) {
+    const tabs = Array.from(root.querySelectorAll("[data-harness-tab]"));
+    const panels = Array.from(root.querySelectorAll("[data-harness-panel]"));
+
+    const activate = (tab) => {
+      const selected = tab.getAttribute("data-harness-tab");
+      for (const candidate of tabs) {
+        const active = candidate === tab;
+        candidate.setAttribute("aria-selected", active ? "true" : "false");
+        candidate.tabIndex = active ? 0 : -1;
+      }
+      for (const panel of panels) {
+        panel.hidden = panel.getAttribute("data-harness-panel") !== selected;
+      }
+      tab.focus();
+    };
+
+    for (const [index, tab] of tabs.entries()) {
+      tab.addEventListener("click", () => activate(tab));
+      tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+        event.preventDefault();
+        const offset = event.key === "ArrowRight" ? 1 : -1;
+        const next = tabs[(index + offset + tabs.length) % tabs.length];
+        activate(next);
+      });
+    }
+  }
+</script>
+
+<style>
+  .harness-tabs {
+    margin: 1.25rem 0 1.75rem;
+  }
+
+  .harness-tab-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+
+  .harness-tab {
+    margin: 0;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.55rem 0.8rem;
+    background: transparent;
+    color: var(--sl-color-gray-2);
+    font: inherit;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .harness-tab:hover,
+  .harness-tab:focus-visible {
+    color: var(--sl-color-text);
+    background: var(--sl-color-gray-6);
+  }
+
+  .harness-tab[aria-selected="true"] {
+    border-color: var(--sl-color-gray-5);
+    background: var(--sl-color-bg);
+    color: var(--sl-color-accent-high);
+    position: relative;
+    top: 1px;
+  }
+
+  .harness-panel {
+    border: 1px solid var(--sl-color-gray-5);
+    border-top: 0;
+    padding: 1rem;
+  }
+
+  .harness-panel[hidden] {
+    display: none;
+  }
+
+  .harness-panel h3 {
+    margin-top: 0;
+  }
+
+  .harness-panel pre {
+    overflow-x: auto;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    padding: 0.85rem;
+    background: var(--sl-color-gray-6);
+    font-size: var(--sl-text-code-sm);
+  }
+
+  .harness-panel p:last-child {
+    margin-bottom: 0;
+  }
+</style>

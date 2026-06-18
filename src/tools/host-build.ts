@@ -533,6 +533,11 @@ export function buildHost(deps: HostDeps): ToolHost {
   const BATCH_ALLOWED_TOOLS = new Set<string>();
   const registrations = new Map<string, ToolRegistration>();
 
+  const recordRegistration = (name: string, registration: ToolRegistration): void => {
+    invariant(!registrations.has(name), `tool "${name}" registered twice`);
+    registrations.set(name, registration);
+  };
+
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
     def: {
@@ -544,15 +549,6 @@ export function buildHost(deps: HostDeps): ToolHost {
     },
     handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResponse>,
   ): void => {
-    // L8/L2: a tool name registers EXACTLY once. The derived central maps
-    // (TOOL_CAPABILITY / BATCH_ALLOWED_TOOLS / DEEP_TOOLS) and `toolHandlers` all
-    // key on `name`, so a duplicate registration would silently shadow the
-    // handler AND desync the derived metadata from the live surface — the exact
-    // single-source-of-truth break L2 forbids. Every core family registers
-    // disjoint names (the registered-name freeze test pins the set), so this
-    // holds; the invariant turns "names are unique" from a convention into an
-    // asserted contract at the one seam every registration flows through.
-    invariant(!registrations.has(name), `tool "${name}" registered twice`);
     // Colocated metadata → derived central maps (RFC 0004 P2 / D2). The
     // capability/deep facts feed the lower-layer registries; `batchable` feeds the
     // local batch allow-set; the whole record (incl. the zod schema) is kept for
@@ -561,7 +557,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     if (def.capability !== undefined) declareToolCapability(name, def.capability);
     if (def.deep) declareDeepTool(name);
     if (def.batchable) BATCH_ALLOWED_TOOLS.add(name);
-    registrations.set(name, {
+    recordRegistration(name, {
       description: def.description,
       inputSchema: def.inputSchema,
       capability: def.capability,
@@ -623,6 +619,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   // registry composition root; the register() blocks live under src/tools/.
   const host: ToolHost = {
     register,
+    recordRegistration,
     entryFor,
     gateCheck,
     engineGate,
