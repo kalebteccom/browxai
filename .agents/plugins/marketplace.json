@@ -1,0 +1,12 @@
+{
+  "name": "browxai",
+  "interface": { "displayName": "browxai" },
+  "plugins": [
+    {
+      "name": "browxai",
+      "source": { "source": "local", "path": "./packages/marketplace-codex/plugins/browxai" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}

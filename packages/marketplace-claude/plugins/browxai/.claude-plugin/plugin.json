@@ -1,0 +1,17 @@
+{
+  "name": "browxai",
+  "displayName": "browxai",
+  "version": "0.1.0",
+  "description": "Adds the browxai MCP browser-control server and driving guidance for Claude Code.",
+  "author": {
+    "name": "Kalebtec",
+    "email": "security@kalebtec.com",
+    "url": "https://browxai.com"
+  },
+  "homepage": "https://browxai.com",
+  "repository": "https://github.com/kalebteccom/browxai",
+  "license": "MIT",
+  "keywords": ["mcp", "browser-automation", "browxai", "playwright", "claude-code"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

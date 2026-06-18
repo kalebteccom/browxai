@@ -7,14 +7,15 @@ Register browxai as an MCP server in Claude Code, and install the
 
 - A recent Claude Code (`claude --version`).
 - Node.js 20+.
-- One-time Chromium download: `npx playwright-core install chromium`.
+- browxai installed on `PATH`: `npm install -g browxai`.
+- Browser binaries installed explicitly: `browxai browser install --engine chromium`.
 
 ## 1. Register the MCP server
 
 From your project directory:
 
 ```bash
-claude mcp add browxai -- npx -y browxai
+claude mcp add browxai -- browxai
 ```
 
 Start `claude`, run `/mcp`, and confirm `browxai` is connected.
@@ -23,7 +24,7 @@ To share the config with your team — a committable `.mcp.json` at the project
 root — use project scope:
 
 ```bash
-claude mcp add browxai --scope project -- npx -y browxai
+claude mcp add browxai --scope project -- browxai
 ```
 
 Equivalently, copy [`mcp.json`](mcp.json) from this directory to your project
@@ -36,7 +37,7 @@ change):
 claude mcp add browxai \
   --env BROWX_HEADLESS=1 \
   --env BROWX_CAPABILITIES=read,navigation,action,human \
-  -- npx -y browxai
+  -- browxai
 ```
 
 ## 2. Install the skill

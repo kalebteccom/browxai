@@ -63,6 +63,8 @@
     "dev": "tsc -p tsconfig.json --watch",
     "browxai": "tsx src/cli.ts",
     "gen:sdk-types": "tsx scripts/gen-sdk-tool-types.ts",
+    "marketplace:generate": "node scripts/harness-marketplaces.mjs generate",
+    "marketplace:validate": "node scripts/harness-marketplaces.mjs validate",
     "install-browser": "tsx src/cli.ts browser install --engine chromium",
     "docs:dev": "pnpm --filter @browxai/website dev",
     "docs:build": "pnpm --filter @browxai/website build",

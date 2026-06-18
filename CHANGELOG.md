@@ -20,6 +20,14 @@ surface" covers.
 - **Socket schema discovery.** `browxai serve --socket` now returns the same
   `tools/list` input schemas as the stdio MCP server while preserving the raw
   argument-forwarding call path that prevents transport-level schema stripping.
+- **Claude and Codex harness marketplaces.** The repo now contains generated
+  root marketplace catalogs at `.claude-plugin/marketplace.json` and
+  `.agents/plugins/marketplace.json`, package-owned catalog sources under
+  `packages/marketplace-claude/` and `packages/marketplace-codex/`, and
+  installable `browxai` harness plugins for both Claude Code and Codex. The
+  plugins invoke `browxai` from `PATH`, bundle the `driving-browxai` skill, and
+  do not download browsers, broaden capabilities, or attach to an existing
+  browser profile during install.
 
 ## v0.9.0 — 2026-06-17 — Per-session engine selection (open_session engine override)
 

@@ -1,0 +1,12 @@
+{
+  "name": "@browxai/marketplace-claude",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Claude Code marketplace catalog source for the browxai harness plugin.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "generate": "node ../../scripts/harness-marketplaces.mjs generate --harness claude",
+    "validate": "node ../../scripts/harness-marketplaces.mjs validate --harness claude"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "browxai",
+  "version": "0.1.0",
+  "description": "Adds the browxai MCP browser-control server and driving guidance for Codex.",
+  "author": {
+    "name": "Kalebtec",
+    "email": "security@kalebtec.com",
+    "url": "https://browxai.com"
+  },
+  "homepage": "https://browxai.com",
+  "repository": "https://github.com/kalebteccom/browxai",
+  "license": "MIT",
+  "keywords": ["mcp", "browser-automation", "browxai", "playwright", "codex"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "browxai",
+    "shortDescription": "Browser-control MCP server for Codex.",
+    "longDescription": "Adds a local stdio MCP server configuration for browxai and the driving-browxai operating guidance for browser tasks in Codex.",
+    "developerName": "Kalebtec",
+    "category": "Developer Tools",
+    "capabilities": ["MCP", "Browser automation", "Skills"],
+    "websiteURL": "https://browxai.com",
+    "privacyPolicyURL": "https://browxai.com",
+    "termsOfServiceURL": "https://browxai.com",
+    "defaultPrompt": [
+      "Use browxai to inspect this page.",
+      "Run a browser QA pass with browxai.",
+      "Automate this web workflow with browxai."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

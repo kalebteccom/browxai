@@ -1,0 +1,12 @@
+{
+  "name": "@browxai/marketplace-codex",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Codex marketplace catalog source for the browxai harness plugin.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "generate": "node ../../scripts/harness-marketplaces.mjs generate --harness codex",
+    "validate": "node ../../scripts/harness-marketplaces.mjs validate --harness codex"
+  }
+}

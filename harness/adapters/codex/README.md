@@ -7,15 +7,10 @@ Register browxai as an MCP server in the OpenAI Codex CLI, and give Codex the
 
 - OpenAI Codex CLI: `npm i -g @openai/codex`, then run `codex` once to sign in.
 - Node.js 20+.
-- One-time Chromium download: `npx playwright-core install chromium`.
+- browxai installed on `PATH`: `npm install -g browxai`.
+- Browser binaries installed explicitly: `browxai browser install --engine chromium`.
 
-## 1. Install browxai
-
-```bash
-npm install -g browxai
-```
-
-## 2. Register the MCP server
+## 1. Register the MCP server
 
 ```bash
 codex mcp add browxai -- browxai
@@ -41,7 +36,7 @@ env = { BROWX_HEADLESS = "1", BROWX_CAPABILITIES = "read,navigation,action,human
 startup_timeout_sec = 30
 ```
 
-## 3. Give Codex the guidance
+## 2. Give Codex the guidance
 
 Use either or both:
 
@@ -53,7 +48,7 @@ Use either or both:
   directory to your repo-root `AGENTS.md`. Prefer the repo-root file over the
   global `~/.codex/AGENTS.md`, which has not always loaded reliably.
 
-## 4. Use it
+## 3. Use it
 
 Start `codex` in your project and ask for something browser-related — it spawns
 browxai over stdio and calls its tools.
