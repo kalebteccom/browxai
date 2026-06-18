@@ -1452,7 +1452,7 @@ click({ ref: "e51" })   // the export button — the download lands on ActionRes
 download_get({ id: "d1", pathOnly: true })
 // → { "ok": true, "id": "d1", "suggestedFilename": "report.pdf",
 //     "mimeType": "application/pdf", "sizeBytes": 18420,
-//     "path": "/…/.browxai/.downloads/default/1716…-report.pdf" }
+//     "path": "$BROWX_WORKSPACE/.downloads/default/1716...-report.pdf" }
 ```
 
 Gated by the off-by-default **`file-io`** capability. Per-session capture state
@@ -2000,7 +2000,7 @@ flake_check({
   // `download_get({id})`. Capability `file-io`.
   "downloads": [
     { "id": "d1", "suggestedFilename": "report.pdf", "mimeType": "application/pdf",
-      "sizeBytes": 18420, "path": "/Users/.../.browxai/.downloads/default/1716..-rep.pdf" }
+      "sizeBytes": 18420, "path": "$BROWX_WORKSPACE/.downloads/default/1716..-rep.pdf" }
   ],
 
   "tokensEstimate": 180,

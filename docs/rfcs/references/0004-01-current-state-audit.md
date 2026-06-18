@@ -1,7 +1,7 @@
 # RFC 0004 / Reference 01 — Current-state architecture audit
 
 **Parent:** [`0004-architecture-hardening.md`](../0004-architecture-hardening.md) — this document is its evidence base.
-**Status:** Reference. Read-only audit of `/Users/rowin/Projects/Kalebtec/browxai` @ `main`. No code changed by this document.
+**Status:** Reference. Read-only audit of the repository root @ `main`. No code changed by this document.
 
 This is the citation-heavy floor under RFC 0004's thesis: eight parallel adversarial subsystem reviews surfaced **80 concrete SOLID / spaghetti defects**, and every one of them was committed *through a green gate*. The defects are real, located to `file:line`, and they cluster into six cross-cutting themes that all trace to one meta-cause — the doctrine in [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md) is **unenforced**. The flagship claim — *"a new engine is a new adapter behind the existing port"* (architecture-principles §4) — is **false today**: a sixth engine requires editing **5–8 existing files**. This document proves that with the source.
 

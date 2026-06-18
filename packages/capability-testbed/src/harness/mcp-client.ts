@@ -1,9 +1,10 @@
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { BrowxaiResult, McpClientAdapter } from "./types.js";
 
-const repoRoot = "/Users/rowin/Projects/Kalebtec/browxai";
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..");
 
 interface CreateMcpClientOptions {
   readonly workspace: string;
