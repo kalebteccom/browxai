@@ -812,16 +812,12 @@ export default tseslint.config(
   // visibly parked, not silently passing, and is restored as its split lands.
   // No NEW file may join this list. Each split is tracked in
   // docs/ai-context/architecture/module-and-file-size.md:
-  //   src/util/credentials.ts   - lift the vendor adapters out of the port file
-  //   src/util/diagnostics.ts   - split recorder / redaction / report aggregation
   //   src/sdk/tool-types.ts     - split into a tool-types/ folder by section
   //   src/session/fs-picker.ts  - realm split: policy / page-script / attach
   //   src/session/permission.ts - realm split: policy / page-script / attach
   //   src/tools/host-build.ts   - extract the post-dispatch observation pipeline
   {
     files: [
-      "src/util/credentials.ts",
-      "src/util/diagnostics.ts",
       "src/sdk/tool-types.ts",
       "src/session/fs-picker.ts",
       "src/session/permission.ts",
