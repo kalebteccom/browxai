@@ -13,7 +13,7 @@
 import { createConnection, type Socket } from "node:net";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { NAME, VERSION } from "../server.js";
-import { SocketTransport } from "./socket-transport.js";
+import { SocketTransport } from "../transport/socket-transport.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
 import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiContentItem, BrowxaiResult } from "./types.js";

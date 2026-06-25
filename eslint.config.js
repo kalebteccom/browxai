@@ -801,6 +801,7 @@ export default tseslint.config(
       "src/policy/**/*.ts",
       "src/helper/**/*.ts",
       "src/tools/**/*.ts",
+      "src/transport/**/*.ts",
     ],
     ignores: ["**/*.test.ts"],
     rules: {
@@ -812,10 +813,9 @@ export default tseslint.config(
   // visibly parked, not silently passing, and is restored as its split lands.
   // No NEW file may join this list. Each split is tracked in
   // docs/ai-context/architecture/module-and-file-size.md:
-  //   src/sdk/tool-types.ts     - split into a tool-types/ folder by section
   //   src/tools/host-build.ts   - extract the post-dispatch observation pipeline
   {
-    files: ["src/sdk/tool-types.ts", "src/tools/host-build.ts"],
+    files: ["src/tools/host-build.ts"],
     rules: {
       "max-lines": "off",
     },
