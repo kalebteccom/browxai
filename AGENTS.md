@@ -123,8 +123,13 @@ See [`docs/ai-context/tool-registration/server-tool-registry.md`](docs/ai-contex
 
 The doctrine ([`docs/ai-context/architecture/architecture-principles.md`](docs/ai-context/architecture/architecture-principles.md)
 §4a) is **mechanized**: every architectural invariant has a fitness function, a
-custom lint rule, or a CI gate. Before a boundary, world-touching-surface, or
-engine change, the macro guardrails apply:
+custom lint rule, or a CI gate. The hexagonal layer map and the words it is
+shaped in — where new code goes, what to call it — are
+[`docs/ai-context/architecture/hexagonal-and-ddd.md`](docs/ai-context/architecture/hexagonal-and-ddd.md);
+the one-reason-to-change file/module size budget and its ratchet are
+[`docs/ai-context/architecture/module-and-file-size.md`](docs/ai-context/architecture/module-and-file-size.md).
+Before a boundary, world-touching-surface, or engine change, the macro
+guardrails apply:
 
 - **Engines are pluggable.** A new engine is a new adapter + a `CAPABILITIES` row +
   one registry registration — **never** an edit to `src/session/{managed,incognito,byob}.ts`

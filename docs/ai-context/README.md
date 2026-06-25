@@ -5,6 +5,8 @@ This subtree is the **agent-facing** companion to the public `docs/` site. It is
 ## Read this before touching the relevant area
 
 - Moving a boundary, adding a world-touching surface, or working on a hot path → read `architecture/architecture-principles.md` (the Kalebtec doctrine, macro layer) alongside `agent-process/code-quality.md` (micro layer).
+- Figuring out where new code goes, or what to call it → read `architecture/hexagonal-and-ddd.md` (the layer map, ubiquitous language, the where-does-it-go decision rule).
+- Creating or splitting a file/module → read `architecture/module-and-file-size.md` (the one-reason-to-change size budget and its ratchet).
 - Touching the browser-engine seam (session launch, `cdp()`, adding an engine) → read `architecture/engine-adapters.md` (the `BrowserEngine` port + adapter contract).
 - Editing a tool handler → read `tool-registration/server-tool-registry.md` and `page-side-functions/`.
 - Writing a test → read `testing/qa-patterns.md` and `testing/unit-vs-keystone.md`.
@@ -18,7 +20,7 @@ This subtree is the **agent-facing** companion to the public `docs/` site. It is
 | Subdir                 | Purpose                                                                                                                                                                                               |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `agent-process/`       | Cross-cutting discipline: commits, dist-rebuild, docs-impact, code-quality (the f3-inspired big one).                                                                                                 |
-| `architecture/`        | Substrate-level architecture references: the Kalebtec architecture-principles doctrine, repo map deep dive, capability posture map, documentation contracts, the `BrowserEngine` engine-adapter seam. |
+| `architecture/`        | Substrate-level architecture references: the Kalebtec architecture-principles doctrine, the hexagonal/DDD layer map + ubiquitous language, the module/file-size discipline, repo map deep dive, capability posture map, documentation contracts, the `BrowserEngine` engine-adapter seam. |
 | `tool-registration/`   | How an MCP tool gets registered, gated, returned, and tested.                                                                                                                                         |
 | `page-side-functions/` | The real-function-literal discipline + the dom_export / element_export trap lesson.                                                                                                                   |
 | `recorder-and-replay/` | Action-trace IR, no-trace contract, replayability.                                                                                                                                                    |

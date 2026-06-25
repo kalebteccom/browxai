@@ -104,6 +104,11 @@ diff as a backup to the local gate.
 
 - [`architecture-principles.md`](architecture-principles.md) — §4a, the ten laws
   these functions enforce.
+- [`module-and-file-size.md`](module-and-file-size.md) — the `max-lines` budget
+  in depth: its glob coverage, the ratchet path, and how to split along the
+  second responsibility.
+- [`hexagonal-and-ddd.md`](hexagonal-and-ddd.md) — the layer map the
+  dependency-cruiser and engine-literal rules hold in place.
 - [`../agent-process/code-quality.md`](../agent-process/code-quality.md) —
   "Architecture enforcement," the guardrail-to-command table.
 - [`../../rfcs/0004-architecture-hardening.md`](../../rfcs/0004-architecture-hardening.md)
