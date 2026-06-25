@@ -9,16 +9,16 @@ import {
   type DispatchedAction,
   type ActionResult,
   type ActionWindowOptions,
-  type ElementProbe,
 } from "./actionresult.js";
-import { locatorFor, resolveTargetChecked, type ActionTarget } from "./locator.js";
-import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
 import {
-  windowScrollGeometry,
-  elementScrollGeometry,
-  type ScrollContainerEl,
-  type WindowLike,
-} from "./actions-scroll.js";
+  locatorFor,
+  resolveTargetChecked,
+  refOrSelector,
+  targetDescriptor,
+  type ActionTarget,
+} from "./locator.js";
+import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
+import { materialiseValue, maskProbe, failedFill, failedPress } from "./actions-secrets.js";
 
 // aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
@@ -118,7 +118,7 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   // recorder appendage, and the post-probe's `valueRequested` echo the
   // alias. Plain strings pass through unchanged.
   const mat = materialiseValue(ctx, args.value);
-  if (!mat.ok) return failedFill(args, mat.error);
+  if (!mat.ok) return failedFill(args.target, args.value, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
   const descriptor: DispatchedAction = {
     type: "fill",
@@ -163,7 +163,7 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   // single chars; the `<NAME>` shape doesn't collide with either, so the
   // alias detection in the registry is unambiguous.
   const mat = materialiseValue(ctx, args.key);
-  if (!mat.ok) return failedPress(args, mat.error);
+  if (!mat.ok) return failedPress(args.target, args.key, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
   const descriptor: DispatchedAction = {
     type: "press",
@@ -258,106 +258,6 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
     const loc = locatorFor(ctx.page, ctx.refs, target);
     await loc.waitFor({ state: "visible", timeout });
     return probe(loc, target);
-  });
-}
-
-export type ScrollEdge = "top" | "bottom" | "left" | "right";
-export interface ScrollArgs extends ActionWindowOptions {
-  /** What to scroll. Omitted → the page/window. A ref/selector/named element
-   *  is either scrolled *into view* (default) or scrolled *within* (when it's
-   *  a scroll container and `to`/`by` is given). A coords target does a wheel
-   *  scroll at that point (canvas / map panning). */
-  target?: ActionTarget;
-  /** Scroll to an edge of the page (or the targeted container). */
-  to?: ScrollEdge;
-  /** Wheel-style delta in CSS px. Positive y = down, positive x = right. */
-  by?: { x?: number; y?: number };
-  /** When `target` is an element: scroll it into view. Defaults to true when a
-   *  target is given and neither `to` nor `by` is set. */
-  intoView?: boolean;
-}
-
-export type ScrollMode =
-  | { kind: "into-view" }
-  | { kind: "container" }
-  | { kind: "wheel-at" }
-  | { kind: "window" };
-
-/**
- * Resolve which of the four scroll behaviours a `ScrollArgs` selects, or throw
- * a clear error for a no-op call. Pure — exported for unit tests.
- *
- *   - target + (no to/by) | intoView:true  → scroll the element into view
- *   - target + (to|by) + intoView:false    → scroll *within* the container
- *   - coords target                        → wheel scroll at the point
- *   - no target + (to|by)                  → window scroll
- */
-export function scrollMode(args: ScrollArgs): ScrollMode {
-  if (args.target?.coords) return { kind: "wheel-at" };
-  if (args.target) {
-    const wantsInto = args.intoView ?? (args.to === undefined && args.by === undefined);
-    return wantsInto ? { kind: "into-view" } : { kind: "container" };
-  }
-  if (args.to === undefined && args.by === undefined) {
-    throw new Error(
-      "scroll: no-op — pass `to` (top|bottom|left|right) or `by` {x,y}, or a `target` to scroll into view",
-    );
-  }
-  return { kind: "window" };
-}
-
-export async function scroll(ctx: ActionContext, args: ScrollArgs): Promise<ActionResult> {
-  const descriptor: DispatchedAction = {
-    type: "scroll",
-    value: args.to ?? (args.by ? `by ${args.by.x ?? 0},${args.by.y ?? 0}` : "into-view"),
-    ...(args.target ? refOrSelector(args.target) : {}),
-  };
-  return runInActionWindow(ctx, descriptor, args, async () => {
-    const mode = scrollMode(args);
-    if (mode.kind === "wheel-at") {
-      const c = args.target!.coords!;
-      await ctx.page.mouse.move(c.x, c.y);
-      await ctx.page.mouse.wheel(args.by?.x ?? 0, args.by?.y ?? 0);
-      return { stillAttached: true, scroll: await windowScrollGeometry(ctx.page) };
-    }
-    if (mode.kind === "into-view") {
-      const loc = locatorFor(ctx.page, ctx.refs, args.target!);
-      await loc.scrollIntoViewIfNeeded({ timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
-      const p = await probe(loc, args.target!);
-      p.scroll = await windowScrollGeometry(ctx.page);
-      return p;
-    }
-    if (mode.kind === "container") {
-      const loc = locatorFor(ctx.page, ctx.refs, args.target!);
-      await loc.evaluate(
-        (el: ScrollContainerEl, a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
-          if (a.to === "top") el.scrollTop = 0;
-          else if (a.to === "bottom") el.scrollTop = el.scrollHeight;
-          else if (a.to === "left") el.scrollLeft = 0;
-          else if (a.to === "right") el.scrollLeft = el.scrollWidth;
-          if (a.by) el.scrollBy(a.by.x ?? 0, a.by.y ?? 0);
-        },
-        { to: args.to, by: args.by },
-      );
-      const p = await probe(loc, args.target!);
-      p.scroll = await elementScrollGeometry(loc);
-      return p;
-    }
-    // window
-    await ctx.page.evaluate(
-      (a: { to?: ScrollEdge; by?: { x?: number; y?: number } }) => {
-        const g: unknown = globalThis;
-        const w = g as WindowLike;
-        const doc = w.document?.documentElement;
-        if (a.to === "top") w.scrollTo(w.scrollX, 0);
-        else if (a.to === "bottom") w.scrollTo(w.scrollX, doc ? doc.scrollHeight : 1e9);
-        else if (a.to === "left") w.scrollTo(0, w.scrollY);
-        else if (a.to === "right") w.scrollTo(doc ? doc.scrollWidth : 1e9, w.scrollY);
-        if (a.by) w.scrollBy(a.by.x ?? 0, a.by.y ?? 0);
-      },
-      { to: args.to, by: args.by },
-    );
-    return { stillAttached: true, scroll: await windowScrollGeometry(ctx.page) };
   });
 }
 
@@ -482,93 +382,22 @@ export async function goForward(
   });
 }
 
-// ---------- helpers ----------
-
-/** Dispatch-side secret materialisation. Wraps `SecretRegistry.materialize`
- *  with a no-registry fallback so non-secrets callers don't need to feature-
- *  detect. Exported for composing primitives (e.g. multi-field fill). */
-export function materialiseValue(
-  ctx: ActionContext,
-  raw: string,
-): { ok: true; value: string; alias?: string } | { ok: false; error: string } {
-  if (!ctx.secrets) return { ok: true, value: raw };
-  const m = ctx.secrets.materialize(raw, ctx.page.url());
-  if (!m.ok) return { ok: false, error: m.error! };
-  return m.alias ? { ok: true, value: m.value, alias: m.alias } : { ok: true, value: m.value };
-}
-
-/** Build a clean ActionResult-shaped failure for a secrets-materialisation
- *  rejection (no Playwright op ever runs). Mirrors the action-window error
- *  envelope so the agent sees a consistent shape. */
-function failedFill(args: FillArgs, message: string): ActionResult {
-  return secretsFailure(
-    { type: "fill", value: args.value, ...refOrSelector(args.target) },
-    message,
-  );
-}
-function failedPress(args: PressArgs, message: string): ActionResult {
-  return secretsFailure(
-    { type: "press", value: args.key, ...(args.target ? refOrSelector(args.target) : {}) },
-    message,
-  );
-}
-function secretsFailure(action: DispatchedAction, message: string): ActionResult {
-  return {
-    ok: false,
-    action,
-    navigation: { changed: false, from: "", to: "", kind: null },
-    structure: { appeared: [], removed: [], newTabs: [] },
-    console: { errors: [], warnings: 0 },
-    pageErrors: [],
-    network: { summary: { total: 0, byType: {}, failed: 0 } },
-    tokensEstimate: 0,
-    warnings: [],
-    error: message,
-  };
-}
-
-/** Post-probe defence-in-depth: mask any registered real-value that leaked
- *  into the probe's `value` / `displayText` / `ownerControl` / `container`
- *  string fields. The fill / press path is the canonical source of these
- *  leaks — the field's DOM value reflects what we just typed.
- *  Exported for composing primitives (e.g. multi-field fill). */
-export function maskProbe(probed: ElementProbe | void, ctx: ActionContext): ElementProbe | void {
-  if (!probed || !ctx.secrets) return probed;
-  const out: ElementProbe = { ...probed };
-  if (typeof out.value === "string") out.value = ctx.secrets.applyMaskInText(out.value);
-  if (typeof out.displayText === "string")
-    out.displayText = ctx.secrets.applyMaskInText(out.displayText);
-  if (out.ownerControl) {
-    const oc = { ...out.ownerControl };
-    if (oc.displayTextBefore)
-      oc.displayTextBefore = ctx.secrets.applyMaskInText(oc.displayTextBefore);
-    if (oc.displayTextAfter) oc.displayTextAfter = ctx.secrets.applyMaskInText(oc.displayTextAfter);
-    if (oc.label) oc.label = ctx.secrets.applyMaskInText(oc.label);
-    out.ownerControl = oc;
-  }
-  if (out.container) {
-    const c = { ...out.container };
-    if (c.rowKey) c.rowKey = ctx.secrets.applyMaskInText(c.rowKey);
-    if (c.rowText) c.rowText = ctx.secrets.applyMaskInText(c.rowText);
-    out.container = c;
-  }
-  return out;
-}
-
-function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
-  if (t.ref) return { ref: t.ref };
-  if (t.selector) return { selector: t.selector };
-  return {};
-}
-
-function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } {
-  // DispatchedAction's `ref`/`selector` fields are advisory metadata for the
-  // recording layer; coords targets simply omit them.
-  return refOrSelector(t);
-}
-
 // The post-action element-probe machinery (preProbe / probe / captureHit /
 // captureFocusedRef + their in-page scripts) lives in `actions-probe.ts` to keep
 // this file under the size budget; re-exported here so callers import unchanged.
 export type { PreProbeData } from "./actions-probe.js";
 export { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
+
+// The secrets / mask plumbing (materialiseValue / maskProbe + the failure
+// builders) lives in `actions-secrets.ts` — the second reason-to-change,
+// separated from the verb primitives. Re-exported so `fill-form` and any other
+// composer import `materialiseValue` / `maskProbe` from this path unchanged.
+export { materialiseValue, maskProbe } from "./actions-secrets.js";
+
+// The `scroll` action surface (scroll verb + scroll-behaviour types + the pure
+// `scrollMode` dispatch resolver) lives in `actions-scroll.ts` next to its
+// post-scroll geometry helpers. Re-exported so `plan` / `action-substrate` and
+// the colocated tests import `scroll` / `ScrollArgs` / `scrollMode` from this
+// path unchanged.
+export { scroll, scrollMode } from "./actions-scroll.js";
+export type { ScrollEdge, ScrollArgs, ScrollMode } from "./actions-scroll.js";

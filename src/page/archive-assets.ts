@@ -51,6 +51,20 @@ export interface FetchedResource {
   error?: string;
 }
 
+/** One discovered resource paired with its fetch outcome. Shared by the fetch
+ *  phase (archive.ts) and the emission strategies (archive-emit.ts); it lives
+ *  here in the leaf so neither importer has to import back through the
+ *  archive.ts barrel (no cycle). */
+export type Fetched = { res: DiscoveredResource; r: FetchedResource };
+
+/** Outcome of one emission strategy — what the directory / single-file writers
+ *  report back to `pageArchive` for the result envelope. */
+export interface ArchiveEmitResult {
+  resourceCount: number;
+  droppedCount: number;
+  sizeBytes: number;
+}
+
 /** Slugify a URL into a filesystem-safe asset filename. The hash prefix
  *  disambiguates same-name resources from different origins. */
 export function assetFilename(
