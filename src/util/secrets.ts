@@ -47,9 +47,6 @@ export interface SecretEntry {
  */
 export class SecretRegistry {
   private byName = new Map<string, SecretEntry>();
-  // Cached real-value strings sorted by descending length, so a value that
-  // is a prefix of another doesn't get masked into a partial alias.
-  private cachedValuesDesc: string[] | null = null;
   private warnedOnce = false;
 
   constructor(private cap = 32) {}
@@ -76,7 +73,6 @@ export class SecretRegistry {
       );
     }
     this.byName.set(entry.name, { ...entry });
-    this.cachedValuesDesc = null;
     if (!this.warnedOnce) {
       // Mirrors the eval / network-body / disableWebSecurity loud-warn posture
       // (docs/threat-model.md "Loud one-time warnings"). The `secrets`
@@ -215,13 +211,10 @@ export class SecretRegistry {
   }
 
   /** Internal: entries sorted by descending value-length, so longer values
-   *  mask before their shorter prefixes / substrings. Cached until the next
-   *  `register()`. */
+   *  mask before their shorter prefixes / substrings. Recomputed each call —
+   *  the registry is bounded (32) and only walked per egress sink, so the
+   *  sort cost is negligible and a stale cache can never leak a partial value. */
   private entriesByValueLenDesc(): SecretEntry[] {
-    if (this.cachedValuesDesc !== null) {
-      // cache invalidation by value-string change — we cache the *sorted name
-      // order* indirectly via re-walking each call when cache is invalidated.
-    }
     const arr = [...this.byName.values()];
     arr.sort((a, b) => b.value.length - a.value.length);
     return arr;
