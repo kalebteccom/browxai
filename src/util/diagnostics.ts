@@ -49,7 +49,7 @@ import {
   appendFileSync,
 } from "node:fs";
 import { join, sep as pathSep } from "node:path";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspacePath } from "./workspace.js";
 import type { SecretRegistry } from "./secrets.js";
 import type { DiagnosticsRecord } from "./diagnostics-redact.js";
 
