@@ -781,6 +781,56 @@ export default tseslint.config(
       "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
     },
   },
+  // File-size ceiling WIDENED to the historically-uncovered tree. The 450 block
+  // above globs only `src/tools/*-tools.ts` + `src/page/**`, so god-files in
+  // util / session / sdk / plugin / cli and the non-`*-tools.ts` composition
+  // files grew unseen. This block makes the file-size gate see EVERY production
+  // source file at the same ceiling, so no new oversized file can land anywhere.
+  // The function-length / complexity budgets stay scoped to tools + page until
+  // those functions are split (a later ratchet step). Pre-existing offenders are
+  // parked in the allowlist block that follows, each tracked for a one-reason-to-
+  // change split in docs/ai-context/architecture/module-and-file-size.md.
+  {
+    files: [
+      "src/util/**/*.ts",
+      "src/session/**/*.ts",
+      "src/sdk/**/*.ts",
+      "src/plugin/**/*.ts",
+      "src/cli/**/*.ts",
+      "src/engine/**/*.ts",
+      "src/policy/**/*.ts",
+      "src/helper/**/*.ts",
+      "src/tools/**/*.ts",
+    ],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "max-lines": ["error", { max: 450, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // cap-debt allowlist — files already over the 450 ceiling at the moment the
+  // glob widened above. The ceiling is REMOVED here (not raised) so each file is
+  // visibly parked, not silently passing, and is restored as its split lands.
+  // No NEW file may join this list. Each split is tracked in
+  // docs/ai-context/architecture/module-and-file-size.md:
+  //   src/util/credentials.ts   - lift the vendor adapters out of the port file
+  //   src/util/diagnostics.ts   - split recorder / redaction / report aggregation
+  //   src/sdk/tool-types.ts     - split into a tool-types/ folder by section
+  //   src/session/fs-picker.ts  - realm split: policy / page-script / attach
+  //   src/session/permission.ts - realm split: policy / page-script / attach
+  //   src/tools/host-build.ts   - extract the post-dispatch observation pipeline
+  {
+    files: [
+      "src/util/credentials.ts",
+      "src/util/diagnostics.ts",
+      "src/sdk/tool-types.ts",
+      "src/session/fs-picker.ts",
+      "src/session/permission.ts",
+      "src/tools/host-build.ts",
+    ],
+    rules: {
+      "max-lines": "off",
+    },
+  },
   // RFC 0004 P1 — `no-engine-literal-branches` is now whole-tree clean: the four
   // session-layer dispatch files (session-registry / managed / incognito / byob)
   // were relocated behind the EngineRegistry, so they leave this list. What
