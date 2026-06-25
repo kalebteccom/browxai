@@ -22,7 +22,7 @@ multi-engine transport so it can own the full session lifecycle — managed
 profiles, attach-to-an-existing browser (BYOB), authenticated sessions, headed and
 headless — and shape an agent-first surface around it.
 
-- **Model-agnostic** — any MCP client (Claude, Codex, …), not locked to one model.
+- **Model- and harness-agnostic** — any MCP client, not tied to one model or vendor. Local harnesses (Claude Code, Codex) launch it over stdio; cloud harnesses (Claude.ai, ChatGPT) reach it through a remote MCP relay paired to a host on your hardware.
 - **Engine-agnostic** — Chromium / Firefox / WebKit / Android Chrome / Safari behind one capability-port architecture; pick with `--engine` / `BROWX_ENGINE`. The default is Chromium, so nothing changes for existing setups.
 - **Token-efficient** — `snapshot()` is a compact accessibility tree + DOM-walk, not a DOM dump; results are scoped/paginated/budgeted.
 - **Safe by default** — capability-gated tools, an origin allow/blocklist, confirmation hooks, a hard anti-wedge deadline on every call. Dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking) is off by default.
@@ -34,7 +34,7 @@ npm install -g browxai
 browxai browser install --engine chromium
 ```
 
-Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
+Wire it into a local harness over stdio — e.g. in an `.mcp.json`:
 
 ```jsonc
 {
@@ -43,6 +43,11 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
   },
 }
 ```
+
+Cloud harnesses that can't launch a local process (Claude.ai, ChatGPT) connect
+through a remote MCP relay paired to a browxai host on your hardware instead. See
+[Getting started](https://browxai.com/getting-started/) for the per-harness setup
+and the Claude Code / Codex marketplace install path.
 
 ## SDK (programmatic surface)
 

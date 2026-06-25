@@ -14,7 +14,7 @@ export default defineConfig({
     starlight({
       title: "browxai",
       description:
-        "A browser built for agents. MCP-native, model-agnostic, agentic-first browser control on Playwright and CDP.",
+        "A browser built for agents. MCP-native, model-agnostic, agentic-first, multi-engine browser control across Chromium, Firefox, WebKit, Android, and Safari.",
       tagline: "A browser, built for agents.",
       // Fail the build on broken internal links or heading anchors, so dead
       // links can never ship. This is the build-time "error boundary" for a
@@ -64,7 +64,7 @@ export default defineConfig({
             "@type": "SoftwareApplication",
             name: "browxai",
             description:
-              "MCP-native, model-agnostic, agentic-first browser-control server on Playwright and CDP.",
+              "MCP-native, model-agnostic, agentic-first, multi-engine browser-control server: Chromium, Firefox, WebKit, Android, and Safari behind one curated agent surface.",
             applicationCategory: "DeveloperApplication",
             operatingSystem: "Node.js (>=20)",
             url: "https://browxai.com",

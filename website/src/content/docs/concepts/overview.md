@@ -4,9 +4,9 @@ description: browxai is a browser-control surface designed for AI agents, not fo
 ---
 
 browxai is an [MCP](https://modelcontextprotocol.io/) server that hands an AI
-agent a curated browser. It runs over stdio, it speaks to any MCP client, and
-it is built around one idea: the consumer of this surface is a model, not a
-person.
+agent a curated browser. It speaks to any MCP client - local harnesses launch it
+over stdio, cloud harnesses reach it through a remote MCP relay - and it is built
+around one idea: the consumer of this surface is a model, not a person.
 
 That single constraint drives every design choice below.
 

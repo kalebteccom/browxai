@@ -1,22 +1,46 @@
 ---
 title: FAQ
-description: "Short answers to the questions people ask first about browxai: what it is, which clients it works with, headless and CI, how it differs from a Playwright MCP wrapper, and where the security boundaries are."
+description: "Short answers to the questions people ask first about browxai: which harnesses it works with, local stdio vs cloud relay, headless and CI, how it differs from a Playwright MCP wrapper, and where the security boundaries are."
 ---
 
-## Which MCP clients work with browxai?
+## Which harnesses and MCP clients work with browxai?
 
-Any MCP client that speaks stdio. It is model-agnostic on purpose: use it from
-Claude, from Codex, or from anything else that speaks the protocol. It is not
-tied to one model or one vendor.
+Any MCP client, across multiple harnesses. It is model-agnostic on purpose: it
+is not tied to one model or one vendor. How it connects depends on where the
+harness runs:
+
+- **Local harnesses** that can launch a process on your machine - Claude Code,
+  Codex, and any generic MCP client - run browxai over **stdio** (`command:
+  "browxai"`).
+- **Cloud harnesses** that cannot reach a local process - Claude.ai, Claude
+  Cowork, Claude Desktop sandboxed access, and ChatGPT - connect through a
+  **remote MCP relay** (Streamable HTTP) paired to a browxai host running on
+  your own hardware.
+
+The per-harness setup, including the marketplace plugin path for Claude Code and
+Codex, is in [Getting started](/getting-started/).
+
+## Can I use it with Claude.ai or ChatGPT?
+
+Yes, through a remote MCP relay. These are cloud surfaces that cannot launch a
+local stdio server on your machine, so you point them at an HTTPS MCP endpoint
+(`https://<relay-host>/mcp`) that is paired to a browxai host on your hardware.
+The browser and the browxai process stay on your machine; the relay only gives
+the cloud product a reachable MCP endpoint. Do not paste a local `.mcp.json`
+command into Claude.ai or ChatGPT - it will not work. See the Claude.ai and
+ChatGPT tabs in [Getting started](/getting-started/).
 
 ## How is this different from a Playwright MCP wrapper?
 
 browxai is not a shell over `@playwright/mcp` or any other MCP server. It owns
-its own Playwright and CDP transport. That ownership is what lets it own the
-whole session lifecycle: managed profiles, incognito contexts, attach to an
-existing Chrome, authenticated and resumable sessions, headed and headless, and
-per-session policies for dialogs, permissions, notifications, and file pickers.
-A wrapper inherits whatever the wrapped tool exposes; browxai does not.
+its own **multi-engine transport** - Chromium, Firefox, and WebKit, real
+Chrome-on-Android, and real Safari, each over the automation protocol that fits
+it (CDP, WebDriver BiDi, safaridriver) behind one capability-port seam. That
+ownership is what lets it own the whole session lifecycle: managed profiles,
+incognito contexts, attach to an existing Chrome, authenticated and resumable
+sessions, headed and headless, and per-session policies for dialogs,
+permissions, notifications, and file pickers. A wrapper inherits whatever the
+wrapped tool exposes; browxai does not.
 
 ## Does it run headless, and in CI?
 
