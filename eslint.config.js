@@ -815,10 +815,7 @@ export default tseslint.config(
   //   src/sdk/tool-types.ts     - split into a tool-types/ folder by section
   //   src/tools/host-build.ts   - extract the post-dispatch observation pipeline
   {
-    files: [
-      "src/sdk/tool-types.ts",
-      "src/tools/host-build.ts",
-    ],
+    files: ["src/sdk/tool-types.ts", "src/tools/host-build.ts"],
     rules: {
       "max-lines": "off",
     },
