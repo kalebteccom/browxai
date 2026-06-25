@@ -5,7 +5,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type EngineKind } from "./engine/index.js";
 import { type SessionMode } from "./session/registry.js";
-import { RefRegistry } from "./page/refs.js";
 import { resolveCredentialsProvider } from "./util/credentials.js";
 import { resolveConfig } from "./util/config.js";
 import { resolveWorkspace } from "./util/workspace.js";
@@ -16,7 +15,11 @@ import {
   sweepRetention,
 } from "./util/diagnostics.js";
 import { ConfigStore, resolvedToEnv } from "./util/config-store.js";
-import { resolveCapabilities, resolveConfirmHooks } from "./util/capabilities.js";
+import {
+  resolveCapabilities,
+  resolveConfirmHooks,
+  CAPABILITY_WARNINGS,
+} from "./util/capabilities.js";
 import type { PluginRecord } from "./plugin/types.js";
 import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
 import { ApprovalStore } from "./policy/confirm.js";
@@ -61,6 +64,9 @@ import "./tools/tool-metadata.js";
 // Shared input-schema fragments live in a leaf module so the per-family tool
 // modules and this composition root depend on them without an import cycle.
 import { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR } from "./tools/schemas.js";
+// Target-resolution domain helpers extracted to a leaf module so this file stays
+// pure composition/wiring; `buildHost` threads them onto the shared ToolHost.
+import { describeTarget, asTarget } from "./tools/target-resolve.js";
 
 export const NAME = "browxai";
 // Derived from package.json — see src/util/version.ts. Never hand-bump.
@@ -79,85 +85,6 @@ export interface StartOptions {
 // Re-exported (imported at the top with the other tool modules) to preserve the
 // existing public surface — the definitions now live in `tools/schemas`.
 export { SESSION_ARG, TIMEOUT_ARG, ACTION_OPTS, REF_OR_SELECTOR };
-
-/** structured one-liner alongside an element screenshot. Skips
- *  vision-reading when the agent only needs to confirm "yes the button is there." */
-async function describeTarget(
-  loc: import("playwright-core").Locator,
-  refs: RefRegistry,
-  target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
-): Promise<string> {
-  const bits: string[] = [];
-  let inputs: import("./page/refs.js").RefLocatorInputs | undefined;
-  if ("ref" in target && target.ref) {
-    inputs = refs.locatorOf(target.ref);
-    if (inputs) {
-      bits.push(inputs.role);
-      if (inputs.name) bits.push(`"${inputs.name}"`);
-      if (inputs.testId) bits.push(`[${inputs.testIdAttr ?? "data-testid"}="${inputs.testId}"]`);
-    } else {
-      bits.push(`ref=${target.ref}`);
-    }
-  } else if ("selector" in target && target.selector) {
-    bits.push(`selector=${target.selector}`);
-  } else if ("coords" in target && target.coords) {
-    bits.push(`coords=${target.coords.x},${target.coords.y}`);
-    return bits.join(" "); // no Locator to probe further for coords targets
-  }
-  try {
-    const box = await loc.boundingBox();
-    if (box)
-      bits.push(
-        `bbox=${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}×${Math.round(box.height)}`,
-      );
-    const visible = await loc.isVisible().catch(() => undefined);
-    if (visible === false) bits.push("not-visible");
-    const enabled = await loc.isEnabled().catch(() => undefined);
-    if (enabled === false) bits.push("disabled");
-  } catch {
-    /* skip — fall back to whatever we have */
-  }
-  return bits.join(" ");
-}
-
-function asTarget(
-  args: {
-    ref?: string;
-    selector?: string;
-    named?: string;
-    contextRef?: string;
-    coords?: { x: number; y: number };
-  },
-  toolName: string,
-  refs: RefRegistry,
-):
-  | { ref: string }
-  | { selector: string; contextRef?: string }
-  | { coords: { x: number; y: number } } {
-  const provided = [args.ref, args.selector, args.named, args.coords].filter(Boolean).length;
-  if (provided > 1)
-    throw new Error(
-      `${toolName}: pass exactly one of \`ref\` / \`selector\` / \`named\` / \`coords\``,
-    );
-  if (args.ref) return { ref: args.ref };
-  if (args.named) {
-    const resolved = refs.refByNameLookup(args.named);
-    if (!resolved)
-      throw new Error(
-        `${toolName}: name "${args.named}" not bound. Call name_ref({name, ref}) first.`,
-      );
-    return { ref: resolved };
-  }
-  if (args.selector) {
-    return args.contextRef
-      ? { selector: args.selector, contextRef: args.contextRef }
-      : { selector: args.selector };
-  }
-  if (args.coords) return { coords: args.coords };
-  throw new Error(
-    `${toolName}: requires one of \`ref\` (from find/snapshot), \`selector\`, \`named\`, or \`coords\``,
-  );
-}
 
 export async function createServer(opts: StartOptions = {}): Promise<{
   start: () => Promise<void>;
@@ -197,18 +124,6 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(`browxai: ${w}`);
-  if (caps.enabled.has("eval"))
-    log.warn(
-      "browxai: eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.",
-    );
-  if (caps.enabled.has("network-body"))
-    log.warn(
-      "browxai: network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.",
-    );
-  if (caps.enabled.has("secrets"))
-    log.warn(
-      "browxai: secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.",
-    );
   // Credentials provider: resolved once at server start. The provider object
   // is constructed even when the capability is off so per-deployment config
   // validation (unknown provider name → warn) happens up front. Per-call
@@ -216,51 +131,30 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // refusals on the tool result — never crash startup.
   const credentialsResolved = resolveCredentialsProvider(cfgEnv);
   for (const w of credentialsResolved.config.warnings) log.warn(`browxai: ${w}`);
-  if (caps.enabled.has("credentials")) {
-    log.warn(
-      `browxai: credentials capability is ENABLED — \`get_totp\` / \`get_credential\` will shell out to the configured "${credentialsResolved.config.provider}" backend per call. NEVER bundled, NEVER auto-installed — the operator supplies the CLI / seeds out-of-band. \`get_credential\` ADDITIONALLY requires the \`secrets\` capability so the looked-up password is auto-registered into the per-session secrets registry under \`<PASSWORD_<account>>\` and masked across every egress sink (without \`secrets\`, the lookup refuses rather than leak cleartext). Same posture class as \`eval\` / \`network-body\` / \`secrets\`. See docs/threat-model.md.`,
-    );
-  }
-  if (caps.enabled.has("extensions"))
-    log.warn(
-      "browxai: extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.",
-    );
-  if (caps.enabled.has("stealth"))
-    log.warn(
-      "browxai: stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.",
-    );
-  if (caps.enabled.has("device-emulation"))
-    log.warn(
-      "browxai: device-emulation capability is ENABLED — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` install init-script wrappers around `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` / `navigator.hid.requestDevice` so the page resolves with synthetic device objects the agent staged. THE PAGE WILL BELIEVE IT HAS ACCESS TO PHYSICAL DEVICES THAT DON'T EXIST. v1 covers the picker-clear path only — GATT service emulation (Bluetooth), USB transfer endpoints, and HID input/output reports are stubs (resolve with empty/zero-byte results). Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` — see docs/threat-model.md.",
-    );
-  if (caps.enabled.has("canvas"))
-    log.warn(
-      "browxai: canvas capability is ENABLED — `canvas_capture` reads framebuffer / 2D ImageData pixel bytes off `<canvas>` elements (subject to the platform's canvas-taint rules for cross-origin sources); `gesture_chain` dispatches multi-step pointer programs (custom paint strokes, lasso paths); `canvas_world_to_screen` / `canvas_screen_to_world` probe common app-side globals heuristically (Figma / Tldraw / Excalidraw shapes) when no explicit transform is supplied — confirm on a known landmark before relying on the result. `canvas_query` dispatches to canvas-app adapter plugins; the inner plugin tool's capability is enforced via the plugin call-graph gate. browxai is BYO-vision — `canvas_capture` is the pixel source, not a vision call; composition with the host agent's own multimodal vision is the loop. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `device-emulation` / `diagnostics` — see docs/threat-model.md.",
-    );
-  if (caps.enabled.has("captcha"))
-    log.warn(
-      "browxai: captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.",
-    );
-  // diagnostics recorder. Constructed eagerly so the dispatch
-  // wrapper can reference it; the `enabled` flag is what gates every
-  // actual side-effect. OFF → zero allocations beyond a gate check on
-  // every tool call.
+  // diagnostics recorder gate + retention window. Resolved up front so both the
+  // loud one-time warning (rendered from the table below) and the recorder
+  // construction read the same values; the `enabled` flag gates every actual
+  // side-effect. OFF → zero allocations beyond a gate check on every tool call.
   const diagnosticsEnabled = caps.enabled.has("diagnostics");
   const diagRetentionDays = resolveRetentionDays(cfgEnv);
+  // Loud one-time warnings for every ENABLED off-by-default capability, driven
+  // by the CAPABILITY_WARNINGS data table (src/util/capabilities.ts) so this
+  // composition root stays wiring-only. The table is ordered; iterating it
+  // preserves the exact emission order, text, and the set of capabilities that
+  // warn. The two dynamic rows (credentials provider, diagnostics retention)
+  // render from the runtime context.
+  for (const { capability, message } of CAPABILITY_WARNINGS) {
+    if (!caps.enabled.has(capability)) continue;
+    const text =
+      typeof message === "function"
+        ? message({
+            credentialsProvider: credentialsResolved.config.provider,
+            diagnosticsRetentionDays: diagRetentionDays,
+          })
+        : message;
+    log.warn(`browxai: ${text}`);
+  }
   if (diagnosticsEnabled) {
-    log.warn(
-      "browxai: diagnostics capability is ENABLED — every MCP tool call is " +
-        `recorded as a JSONL line under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl ` +
-        `(retention: ${diagRetentionDays} days; configure via BROWX_DIAGNOSTICS_RETENTION_DAYS). ` +
-        "Args are structurally redacted (large/sensitive payload fields → sha256 + byteLength); " +
-        "the recorder runs DOWNSTREAM of the URL sanitiser + secrets-masking egress " +
-        "chokepoint, so registered secret values never reach the store raw. The agent " +
-        "self-feedback tool `diagnostics_note` ALSO requires this capability; read-side " +
-        "queries (`diagnostics_search`, `diagnostics_report`) ride the `read` capability " +
-        "so a report can be pulled even when no further notes are being filed. Same posture " +
-        "class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` / " +
-        "`device-emulation`. See docs/threat-model.md.",
-    );
     // Create the diagnostics root + run the retention sweep up-front so a
     // long-idle workspace doesn't keep months of stale JSONL.
     try {

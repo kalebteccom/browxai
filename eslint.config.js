@@ -772,13 +772,16 @@ export default tseslint.config(
       "max-params": ["error", { max: 5 }],
     },
   },
-  // The composition root gets the hardest, and only `error`, budget in P0: it is
-  // already at 382 LOC and the architecture treats it as composition-only, so the
-  // 400-line ceiling trips immediately on any business-logic creep. (RFC 0004 §4.)
+  // The composition root gets the hardest, and only `error`, budget: it is
+  // composition-only, so the ceiling trips immediately on any business-logic
+  // creep. Tightened 400 -> 280 once the target-resolution helpers and the
+  // per-capability warning copy moved out to tools/target-resolve.ts and the
+  // CAPABILITY_WARNINGS table in util/capabilities.ts (it is ~217 code lines
+  // now). (RFC 0004 §4.)
   {
     files: ["src/server.ts"],
     rules: {
-      "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
+      "max-lines": ["error", { max: 280, skipBlankLines: true, skipComments: true }],
     },
   },
   // File-size ceiling WIDENED to the historically-uncovered tree. The 450 block
@@ -806,18 +809,6 @@ export default tseslint.config(
     ignores: ["**/*.test.ts"],
     rules: {
       "max-lines": ["error", { max: 450, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  // cap-debt allowlist — files already over the 450 ceiling at the moment the
-  // glob widened above. The ceiling is REMOVED here (not raised) so each file is
-  // visibly parked, not silently passing, and is restored as its split lands.
-  // No NEW file may join this list. Each split is tracked in
-  // docs/ai-context/architecture/module-and-file-size.md:
-  //   src/tools/host-build.ts   - extract the post-dispatch observation pipeline
-  {
-    files: ["src/tools/host-build.ts"],
-    rules: {
-      "max-lines": "off",
     },
   },
   // RFC 0004 P1 — `no-engine-literal-branches` is now whole-tree clean: the four

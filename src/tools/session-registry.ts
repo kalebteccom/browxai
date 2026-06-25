@@ -40,21 +40,12 @@ import { CoverageTrackerState } from "../page/coverage.js";
 import { RegionRegistry } from "../page/regions.js";
 import { DownloadsRegistry } from "../page/downloads.js";
 import { ArtifactsRegistry } from "../session/artifacts.js";
-import { readStorageStateFile, authLoad, type StorageStateBlob } from "../session/storage.js";
 import { SecretRegistry } from "../util/secrets.js";
 import { ClipboardBuffer } from "../page/clipboard.js";
 import { ConsoleBuffer } from "../page/console.js";
-import {
-  newHarRecorderState,
-  buildRecordHarOption,
-  applyHarReplay,
-  resolveHarReplayPaths,
-} from "../page/har.js";
-import {
-  newVideoRecorderState,
-  buildRecordVideoOption,
-  finalizeVideoOnClose,
-} from "../page/video.js";
+import { newHarRecorderState, applyHarReplay } from "../page/har.js";
+import { newVideoRecorderState, finalizeVideoOnClose } from "../page/video.js";
+import { resolveCreationOptions } from "./session-creation-options.js";
 import { BrowxBridge } from "../helper/bridge.js";
 import { Recorder } from "../page/recording.js";
 import { FeedbackMemory } from "../page/learning.js";
@@ -161,71 +152,24 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         device: spec?.device ?? resolvedConfig.defaultDevice,
         viewport: spec?.viewport ?? resolvedConfig.defaultViewport,
       });
-      // Resolve creation-time storageState (inline blob, workspace path, OR
-      // named slot). Mutually exclusive. `attached`/BYOB sessions ignore it
-      // (not-owned: we don't seed someone else's Chrome).
-      let creationStorageState: StorageStateBlob | undefined;
-      if (spec?.storageState !== undefined && spec?.authState !== undefined) {
-        throw new Error(
-          `session "${id}": pass exactly one of \`storageState\` or \`authState\` (not both)`,
-        );
-      }
-      if (spec?.authState !== undefined) {
-        creationStorageState = authLoad(workspace.root, spec.authState);
-      } else if (typeof spec?.storageState === "string") {
-        creationStorageState = readStorageStateFile(
-          workspace.root,
-          spec.storageState,
-          "open_session",
-        );
-      } else if (spec?.storageState) {
-        creationStorageState = spec.storageState;
-      }
-      // Resolve HAR recording config (native context-creation primitive). The
-      // path is workspace-rooted by construction (resolveWorkspacePath rejects
-      // escape) and the parent dir is created up-front. Ignored on attached
-      // (we don't mutate the consumer's Chrome).
-      let creationRecordHar:
-        | {
-            path: string;
-            mode?: "full" | "minimal";
-            content?: "embed" | "attach" | "omit";
-            urlFilter?: string | RegExp;
-          }
-        | undefined;
-      let creationRecordHarResolved:
-        | { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" }
-        | undefined;
-      if (spec?.har) {
-        const built = buildRecordHarOption(workspace.root, id, spec.har);
-        creationRecordHar = built.recordHar;
-        creationRecordHarResolved = { path: built.path, mode: built.mode, content: built.content };
-      }
-      // Resolve replay HAR paths (workspace-escape rejected; missing file
-      // errors loudly so a typo doesn't silently fall back to live network).
-      let creationReplayHars: string[] | undefined;
-      if (spec?.hars && spec.hars.length) {
-        creationReplayHars = resolveHarReplayPaths(workspace.root, spec.hars, "open_session");
-      }
-      // Resolve video recording config (native context-creation primitive).
-      // The target path is workspace-rooted by construction; the staging dir
-      // (where Playwright auto-names the file) is also under the workspace.
-      // Ignored on attached (we don't mutate the consumer's Chrome).
-      let creationRecordVideo:
-        | { dir: string; size?: { width: number; height: number } }
-        | undefined;
-      let creationRecordVideoResolved:
-        | { targetPath: string; stagingDir: string; size?: { width: number; height: number } }
-        | undefined;
-      if (spec?.recordVideo) {
-        const built = buildRecordVideoOption(workspace.root, id, spec.recordVideo);
-        creationRecordVideo = built.recordVideo;
-        creationRecordVideoResolved = {
-          targetPath: built.targetPath,
-          stagingDir: built.stagingDir,
-          size: built.size,
-        };
-      }
+      // Resolve the native context-creation primitives (creation-time
+      // storageState w/ storageState⊕authState exclusivity, HAR recording, HAR
+      // replay paths, video recording) from the spec. Pure — no browser yet.
+      // Resolved EXACTLY ONCE: the helper performs the workspace-path safety
+      // checks (parent-dir creation, missing-replay-file errors) as a side
+      // effect, so re-calling it would double them.
+      const creationOptions = resolveCreationOptions(id, workspace.root, spec);
+      const {
+        creationStorageState,
+        creationReplayHars,
+        creationRecordVideo,
+        creationRecordVideoResolved,
+      } = creationOptions;
+      // `creationRecordHar*` stay mutable because the attached branch below
+      // NULLS them out (BYOB Chrome is not-owned: we don't wire context-creation
+      // primitives on it); everything else is read-only after resolution.
+      let creationRecordHar = creationOptions.creationRecordHar;
+      let creationRecordHarResolved = creationOptions.creationRecordHarResolved;
       let sess: BrowserSession;
       if (mode === "attached") {
         // android attach is endpoint-DISCOVERED over adb — it does NOT need

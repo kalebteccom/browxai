@@ -14,6 +14,7 @@ import { join, resolve as resolvePath } from "node:path";
 import { ZodError } from "zod";
 import { log } from "../util/logging.js";
 import { parseManifestField, type ResolvedManifest, type TrustTier } from "./manifest.js";
+import { inferTrustFromInstallIdentity } from "./trust.js";
 
 /** Per-entry overrides in the object form of `plugins.json`. */
 export interface PluginEntryOverride {
@@ -205,7 +206,7 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       error: `browxai.register points at ${manifest.register} but resolved path ${entryPath} does not exist`,
     };
   }
-  const trust: TrustTier = decl.trust ?? manifest.trust ?? inferTrustFromName(decl.name);
+  const trust: TrustTier = decl.trust ?? manifest.trust ?? inferTrustFromInstallIdentity(decl.name);
   return {
     kind: "resolved",
     manifest: {
@@ -218,17 +219,6 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       browxai: manifest,
     },
   };
-}
-
-/**
- * Heuristic when no explicit trust tier is set: `@browxai/*` is
- * `kalebtec`; everything else is `community`. Local-path installs are
- * tagged `local` by the CLI install command (sets the trust field in
- * the plugins.json entry).
- */
-function inferTrustFromName(name: string): TrustTier {
-  if (name.startsWith("@browxai/")) return "kalebtec";
-  return "community";
 }
 
 /**

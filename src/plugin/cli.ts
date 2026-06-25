@@ -24,6 +24,7 @@ import { pluginPaths, type PluginPaths } from "./resolver.js";
 import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
 import { type LockEntry, readLock, writeLock, sha256OfPackage } from "./lock-store.js";
 import { runPm } from "./pm-runner.js";
+import { inferTrustFromInstallIdentity } from "./trust.js";
 
 // Back-compat barrel — preserve the public surface of `./cli.js` for callers
 // (`./doctor-plugins.js`, `./cli.test.ts`, `./doctor-plugins.test.ts`) that
@@ -89,12 +90,6 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
   } catch {
     return null;
   }
-}
-
-function inferTrustFromSource(source: string): "kalebtec" | "community" | "local" {
-  if (source.startsWith("file:")) return "local";
-  if (source.startsWith("@browxai/")) return "kalebtec";
-  return "community";
 }
 
 /** Resolve the plugin name a `pnpm add` spec installs.
@@ -174,7 +169,7 @@ async function cmdInstall(spec: string): Promise<number> {
   const name = findActualPackageName(paths, hintName);
   // Persist into plugins.json.
   const data = readPluginsJson(paths);
-  const trust = inferTrustFromSource(spec.startsWith("file:") ? spec : name);
+  const trust = inferTrustFromInstallIdentity(spec.startsWith("file:") ? spec : name);
   data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
   writePluginsJson(paths, data);
   // Persist into plugins-lock.json.

@@ -240,6 +240,105 @@ export interface CapabilityConfig {
   warnings: readonly string[];
 }
 
+/** Runtime context the few dynamic capability warnings need to render their
+ *  string (the static ones ignore it). `provider` feeds the `credentials`
+ *  warning; `retentionDays` feeds the `diagnostics` warning. */
+export interface CapabilityWarningContext {
+  /** The resolved credentials backend name (for the `credentials` warning). */
+  credentialsProvider: string;
+  /** Resolved diagnostics retention window in days (for the `diagnostics` warning). */
+  diagnosticsRetentionDays: number;
+}
+
+/** One row of the off-by-default-capability warning table: the capability it
+ *  belongs to and either a static warning string or a renderer that closes over
+ *  the runtime context (provider name / retention window). */
+export interface CapabilityWarning {
+  capability: Capability;
+  /** The loud one-time warning text. A function for the two warnings that
+   *  interpolate runtime values; a string for the rest. server.ts prefixes
+   *  `browxai: ` exactly as before. */
+  message: string | ((ctx: CapabilityWarningContext) => string);
+}
+
+/**
+ * The off-by-default-capability startup warning table (the data behind the
+ * formerly ~95 lines of per-capability `if (caps.enabled.has(...)) log.warn(...)`
+ * blocks in server.ts). server.ts iterates this in order, emitting one loud
+ * `log.warn("browxai: " + message)` per ENABLED capability — preserving the
+ * exact text, the exact set of capabilities that warn, the exact emission order,
+ * and the one-time-per-startup semantics. Keeping the data here (next to the
+ * `Capability` vocabulary) leaves server.ts pure composition/wiring.
+ *
+ * NOTE — ordering is load-bearing: the rows appear in the same sequence the
+ * inline blocks emitted them, so the startup log reads identically. The two
+ * dynamic rows (`credentials`, `diagnostics`) render from the runtime context;
+ * the `diagnostics` row's side effects (root creation + retention sweep) stay in
+ * server.ts and run AFTER the warning, exactly as before.
+ */
+export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
+  {
+    capability: "eval",
+    message:
+      "eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.",
+  },
+  {
+    capability: "network-body",
+    message:
+      "network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.",
+  },
+  {
+    capability: "secrets",
+    message:
+      "secrets capability is ENABLED — `register_secret` accepts sensitive values; once a secret is registered the egress masking layer engages on every sink (ActionResult.network, network_read, network_body, ws_read, console_read, snapshot, find). `screenshot` is a partial sink — see docs/tool-reference.md.",
+  },
+  {
+    capability: "credentials",
+    message: (ctx) =>
+      `credentials capability is ENABLED — \`get_totp\` / \`get_credential\` will shell out to the configured "${ctx.credentialsProvider}" backend per call. NEVER bundled, NEVER auto-installed — the operator supplies the CLI / seeds out-of-band. \`get_credential\` ADDITIONALLY requires the \`secrets\` capability so the looked-up password is auto-registered into the per-session secrets registry under \`<PASSWORD_<account>>\` and masked across every egress sink (without \`secrets\`, the lookup refuses rather than leak cleartext). Same posture class as \`eval\` / \`network-body\` / \`secrets\`. See docs/threat-model.md.`,
+  },
+  {
+    capability: "extensions",
+    message:
+      "extensions capability is ENABLED — `extensions_install` loads unpacked Chromium extensions into managed (headed, persistent) sessions. Loaded extensions can READ every page the session visits and make ARBITRARY network requests; treat the extension code itself as in-scope trust. Headed + persistent only — incognito / attached sessions refuse. install/reload/uninstall REBUILD the underlying browser context, invalidating refs + console/network buffers (profile state on disk survives). Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.",
+  },
+  {
+    capability: "stealth",
+    message:
+      "stealth capability is ENABLED — every session's context loads init-script patches that override `navigator.webdriver` / `navigator.plugins` / `navigator.languages` / `window.chrome` to defeat the common Playwright fingerprint surface. CIRCUMVENTING AUTOMATION DETECTION MAY VIOLATE A SITE'S TERMS OF SERVICE; the operator carries the legal exposure. browxai does NOT bundle a full anti-fingerprinting library — only the four well-known patches above. Same posture class as `eval` / `network-body` / `secrets` / `extensions` — see docs/threat-model.md.",
+  },
+  {
+    capability: "device-emulation",
+    message:
+      "device-emulation capability is ENABLED — `emulate_bluetooth` / `emulate_usb` / `emulate_hid` install init-script wrappers around `navigator.bluetooth.requestDevice` / `navigator.usb.requestDevice` / `navigator.hid.requestDevice` so the page resolves with synthetic device objects the agent staged. THE PAGE WILL BELIEVE IT HAS ACCESS TO PHYSICAL DEVICES THAT DON'T EXIST. v1 covers the picker-clear path only — GATT service emulation (Bluetooth), USB transfer endpoints, and HID input/output reports are stubs (resolve with empty/zero-byte results). Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` — see docs/threat-model.md.",
+  },
+  {
+    capability: "canvas",
+    message:
+      "canvas capability is ENABLED — `canvas_capture` reads framebuffer / 2D ImageData pixel bytes off `<canvas>` elements (subject to the platform's canvas-taint rules for cross-origin sources); `gesture_chain` dispatches multi-step pointer programs (custom paint strokes, lasso paths); `canvas_world_to_screen` / `canvas_screen_to_world` probe common app-side globals heuristically (Figma / Tldraw / Excalidraw shapes) when no explicit transform is supplied — confirm on a known landmark before relying on the result. `canvas_query` dispatches to canvas-app adapter plugins; the inner plugin tool's capability is enforced via the plugin call-graph gate. browxai is BYO-vision — `canvas_capture` is the pixel source, not a vision call; composition with the host agent's own multimodal vision is the loop. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `device-emulation` / `diagnostics` — see docs/threat-model.md.",
+  },
+  {
+    capability: "captcha",
+    message:
+      "captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.",
+  },
+  {
+    capability: "diagnostics",
+    message: (ctx) =>
+      "diagnostics capability is ENABLED — every MCP tool call is " +
+      `recorded as a JSONL line under $BROWX_WORKSPACE/diagnostics/<sessionId>/<ISO>.jsonl ` +
+      `(retention: ${ctx.diagnosticsRetentionDays} days; configure via BROWX_DIAGNOSTICS_RETENTION_DAYS). ` +
+      "Args are structurally redacted (large/sensitive payload fields → sha256 + byteLength); " +
+      "the recorder runs DOWNSTREAM of the URL sanitiser + secrets-masking egress " +
+      "chokepoint, so registered secret values never reach the store raw. The agent " +
+      "self-feedback tool `diagnostics_note` ALSO requires this capability; read-side " +
+      "queries (`diagnostics_search`, `diagnostics_report`) ride the `read` capability " +
+      "so a report can be pulled even when no further notes are being filed. Same posture " +
+      "class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` / `captcha` / " +
+      "`device-emulation`. See docs/threat-model.md.",
+  },
+];
+
 export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): CapabilityConfig {
   const raw = env.BROWX_CAPABILITIES?.trim();
   const list = raw

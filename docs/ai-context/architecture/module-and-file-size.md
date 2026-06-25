@@ -12,13 +12,13 @@ its TypeScript tree through the ESLint `max-lines` budget.
 Enforced in `eslint.config.js`, run via `pnpm lint`, sized with
 `skipBlankLines` + `skipComments` so the number is _code_ lines, not whitespace:
 
-| Scope | Cap (code lines) | Notes |
-| --- | --- | --- |
-| `src/server.ts` (composition root) | **400** → ratcheting to 250 | wiring-only; any business-logic creep trips it |
-| source `*.ts` across the covered tree | **450** → ratcheting to ~320 | the per-file ceiling |
-| `register*Tools` registration wrappers | **exempt** | a flat registration list has one reason to change already |
-| `*_FN` page-side function literals | **exempt** from complexity | a `page.evaluate` function cannot be reduced by extraction without breaking the serialization contract |
-| `*.test.ts` | higher / out of scope | colocated tests carry table-driven bulk legitimately |
+| Scope                                  | Cap (code lines)           | Notes                                                                                                  |
+| -------------------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/server.ts` (composition root)     | **280**                    | wiring-only; any business-logic creep trips it (~217 lines today)                                      |
+| every production `src/**/*.ts`         | **450**                    | the whole-tree per-file ceiling                                                                        |
+| `register*Tools` registration wrappers | **exempt**                 | a flat registration list has one reason to change already                                              |
+| `*_FN` page-side function literals     | **exempt** from complexity | a `page.evaluate` function cannot be reduced by extraction without breaking the serialization contract |
+| `*.test.ts`                            | higher / out of scope      | colocated tests carry table-driven bulk legitimately                                                   |
 
 The companion per-function budgets in the same block —
 `max-lines-per-function-registration-aware` (70),
@@ -28,35 +28,36 @@ dividers is two functions.
 
 ## Coverage is half the rule
 
-A budget only bites the files it is globbed onto. browxai's `max-lines: 450`
-block currently covers `src/tools/*-tools.ts` + `src/page/**` (+ `server.ts` at
-400); `src/util`, `src/session`, `src/sdk`, `src/plugin`, `src/cli`, and the
-non-`*-tools.ts` composition files under `src/tools` are **uncovered** — which is
-exactly how the largest modules grew unseen. **Widening the glob is a
-first-class part of this discipline:** the gate must _see_ every production
-source file before the ceiling means anything. New code lands inside the covered
-globs; the open work is bringing the historically-uncovered dirs under the same
-ceiling.
+A budget only bites the files it is globbed onto, and that coverage gap was the
+real defect here. The `max-lines: 450` block historically covered only
+`src/tools/*-tools.ts` + `src/page/**` (+ `server.ts`); `src/util`,
+`src/session`, `src/sdk`, `src/plugin`, `src/cli`, `src/transport`, and the
+non-`*-tools.ts` composition files under `src/tools` were **uncovered** — which
+is exactly how the largest modules (credentials 548, fs-picker 516, tool-types
+544, diagnostics 492, host-build 463, permission 452) grew unseen. The block now
+globs every production file under `src/` at 450, so the gate sees the whole tree
+and no oversized file can land anywhere. Widening the glob, not lowering the
+number, was the load-bearing move.
 
-## The ratchet, not the cliff
+## Why 450, and the ratchet that already ran
 
-The cap moves in two independent axes, and they move in this order, never in one
-jump (each step lands on a green `pnpm lint`):
+450 is not arbitrary: it is sized to the largest **legitimately cohesive** files
+in the tree — the flat `register*Tools` registration modules (e.g.
+`canvas-tools.ts` ~444), which have one reason to change already and must not be
+shredded. Several non-registration modules also sit honestly in the 330-450 band
+as one coherent thing (the selector ranker `find.ts`, the perf-audit analysers,
+the `ActionResult` orchestration, the vendor-credential adapters). Probing the
+post-refactor tree at 320 fails ~18 such files — that would be over-splitting,
+the defect the counter-rule below forbids. So the honest floor for the
+whole-tree ceiling is 450.
 
-1. **Widen coverage at 450.** Bring the uncovered dirs under the file-size
-   ceiling, holding the number. Any file already over 450 is allowlisted by exact
-   path with a `// TODO(cap): split — <reason>` so the debt is _parked and
-   visible_, never silently passing — and no **new** oversized file can be added
-   anywhere.
-2. **Lower the ceiling as modules shrink.** As god-files split, drop the global
-   ceiling in honest steps (450 → 400 → 360 → ~320) and `server.ts` toward 250.
-   A budget tightened as the tree shrinks is the legitimate edit; relaxing one to
-   land a feature is the one thing forbidden
-   ([`fitness-functions.md`](fitness-functions.md), the meta-rule).
-
-The endpoint is ~320 global / 250 server / the registration and `*_FN`
-exemptions preserved. It stops at ~320, not lower, on purpose — see the
-counter-rule.
+The composition root is the exception that _did_ ratchet: `server.ts` dropped
+from 400 to **280** once the target-resolution helpers and the per-capability
+warning copy moved out (it is ~217 code lines now). The rule for any future
+tightening is unchanged: a budget tightened as a module genuinely shrinks is the
+legitimate edit; relaxing one to land a feature is the one thing forbidden
+([`fitness-functions.md`](fitness-functions.md), the meta-rule). There is no
+cap-debt allowlist — every file is honestly under its ceiling.
 
 ## How to split — along the second responsibility
 

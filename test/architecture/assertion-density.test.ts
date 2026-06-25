@@ -27,11 +27,16 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "../..");
  *  floor applies HERE, scoped — never blanket tree-wide. */
 const LOAD_BEARING_MODULES = [
   "src/page/actionresult.ts",
-  "src/page/network.ts",
+  // network.ts is now a barrel; the load-bearing CDP runtime (the NetworkBuffer
+  // ring + its cap invariants) lives in network-cdp.ts after the domain/adapter
+  // split, so the L8 floor follows the logic to its new home.
+  "src/page/network-cdp.ts",
   "src/tools/host-build.ts",
   "src/engine/registry.ts",
   "src/util/config-store.ts",
-  "src/page/perf-audit.ts",
+  // perf-audit.ts is now the composer/scorer; the token-budget termination
+  // contracts (the L7 enforcement invariants) moved to perf-audit-budget.ts.
+  "src/page/perf-audit-budget.ts",
 ] as const;
 
 /** The floor: every load-bearing module carries at least this many `invariant()`
