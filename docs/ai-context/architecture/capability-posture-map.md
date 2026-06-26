@@ -1,10 +1,10 @@
 # Capability posture map
 
-Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted (returns a structured `capability-denied` error, not a silent no-op).
+Safe by default — no auto-broadening. Every off-by-default capability carries a per-tool keystone test asserting the gate blocks when the capability is not granted (returns a structured `capability-denied` error, not a silent no-op).
 
 ## Default-on capabilities
 
-These ship enabled. Withholding them turns browxai into a read-only crawler.
+These are enabled. Withholding them reduces browxai to a read-only crawler.
 
 | Capability   | Tools                                                                                        | Rationale                                                              |
 | ------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
@@ -20,15 +20,15 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 | Capability         | Tools                                                            | Why off by default                                                     |
 | ------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `eval`             | `eval_js`, `poll_eval`                                           | Arbitrary JS in page context bypasses curated handlers.                |
-| `network-body`     | full response bodies, network interception (W-V12 lane)          | Response bodies often contain PII / secrets.                           |
+| `network-body`     | full response bodies, network interception                       | Response bodies often contain PII / secrets.                           |
 | `byob-attach`      | attach to user's existing Chrome                                 | Skips managed-profile isolation; touches user data.                    |
 | `clipboard`        | OS clipboard read/write                                          | Cross-application data egress.                                         |
 | `file-io`          | `upload_file`, downloads to workspace                            | Filesystem touch via the workspace chokepoint.                         |
 | `secrets`          | `register_secret`, secret materialization at egress              | Secret values live in process memory; egress order matters.            |
 | `extensions`       | install/inspect Chrome extensions                                | Extension code runs with elevated browser privileges.                  |
-| `stealth`          | anti-fingerprint posture tweaks                                  | Adopter-controlled posture, not a default.                             |
+| `stealth`          | anti-fingerprint posture tweaks                                  | Posture is operator-chosen, never a default.                           |
 | `captcha`          | captcha solver glue                                              | Third-party service integration.                                       |
-| `device-emulation` | viewport / UA / geolocation overrides beyond defaults            | Spoofing surface; default profile is honest.                           |
+| `device-emulation` | viewport / UA / geolocation overrides beyond defaults            | Spoofing surface; the default profile is honest.                       |
 | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff | Captures session artifacts (workspace-scoped, but artifact-producing). |
 | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)    | Composes with `eval`; canvas-app plugins gate through this.            |
 
@@ -42,8 +42,8 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 
 1. Add the constant to `src/util/capabilities.ts` (default off).
 2. Add the threat-model row in `docs/threat-model.md`.
-3. Add the row in this file and in `AGENTS.md` capability table.
-4. Add the keystone test asserting the gate blocks when capability unset.
+3. Add the row in this file and in the `AGENTS.md` capability table.
+4. Add the keystone test asserting the gate blocks when the capability is unset.
 5. CHANGELOG entry under `## Unreleased ### Added`.
 
 ## Retirement

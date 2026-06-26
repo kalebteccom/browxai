@@ -28,34 +28,29 @@ dividers is two functions.
 
 ## Coverage is half the rule
 
-A budget only bites the files it is globbed onto, and that coverage gap was the
-real defect here. The `max-lines: 450` block historically covered only
-`src/tools/*-tools.ts` + `src/page/**` (+ `server.ts`); `src/util`,
-`src/session`, `src/sdk`, `src/plugin`, `src/cli`, `src/transport`, and the
-non-`*-tools.ts` composition files under `src/tools` were **uncovered** — which
-is exactly how the largest modules (credentials 548, fs-picker 516, tool-types
-544, diagnostics 492, host-build 463, permission 452) grew unseen. The block now
-globs every production file under `src/` at 450, so the gate sees the whole tree
-and no oversized file can land anywhere. Widening the glob, not lowering the
-number, was the load-bearing move.
+A budget only bites the files it is globbed onto. So the budget globs the whole
+tree: the `max-lines: 450` block binds every production file under `src/` at 450
+— `src/util`, `src/session`, `src/sdk`, `src/plugin`, `src/cli`, `src/transport`,
+the `*-tools.ts` modules and the non-`*-tools.ts` composition files under
+`src/tools`, `src/page/**`, and `server.ts` alike. The gate sees the whole tree,
+so no oversized file can land anywhere. Coverage, not the number, is the
+load-bearing half: a file outside the glob is a file with no ceiling.
 
-## Why 450, and the ratchet that already ran
+## Why 450, and the ratchet rule
 
 450 is not arbitrary: it is sized to the largest **legitimately cohesive** files
 in the tree — the flat `register*Tools` registration modules (e.g.
 `canvas-tools.ts` ~444), which have one reason to change already and must not be
 shredded. Several non-registration modules also sit honestly in the 330-450 band
 as one coherent thing (the selector ranker `find.ts`, the perf-audit analysers,
-the `ActionResult` orchestration, the vendor-credential adapters). Probing the
-post-refactor tree at 320 fails ~18 such files — that would be over-splitting,
-the defect the counter-rule below forbids. So the honest floor for the
-whole-tree ceiling is 450.
+the `ActionResult` orchestration, the vendor-credential adapters). A ceiling of
+320 fails ~18 such files — that would be over-splitting, the defect the
+counter-rule below forbids. So the honest floor for the whole-tree ceiling is 450.
 
-The composition root is the exception that _did_ ratchet: `server.ts` dropped
-from 400 to **280** once the target-resolution helpers and the per-capability
-warning copy moved out (it is ~217 code lines now). The rule for any future
-tightening is unchanged: a budget tightened as a module genuinely shrinks is the
-legitimate edit; relaxing one to land a feature is the one thing forbidden
+The composition root carries a tighter cap: `server.ts` is capped at 280 code
+lines, wiring-only — any business-logic creep trips it (~217 today). The ratchet
+runs one direction only: a budget tightens as a module genuinely shrinks, and is
+never relaxed to land a feature
 ([`fitness-functions.md`](fitness-functions.md), the meta-rule). There is no
 cap-debt allowlist — every file is honestly under its ceiling.
 

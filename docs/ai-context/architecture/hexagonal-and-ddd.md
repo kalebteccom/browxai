@@ -6,13 +6,12 @@ says _why_ the boundaries are where they are; this page says _where things go_
 and _what to call them_. Read it when deciding where new code belongs, or before
 moving a boundary.
 
-browxai already obeys ports-and-adapters. Dependencies point **inward**: the core
-depends on nothing outward, and every outward concern — a browser engine, a wire
-transport, a vendor CLI, the filesystem, a page realm — sits behind a port the
-core owns. The mapping below is descriptive of the code as it is, enforced by the
-fitness suite ([`fitness-functions.md`](fitness-functions.md)), not an idealized
-target. It is the unifying frame over the more specific
-[`engine-adapters.md`](engine-adapters.md) (the engine seam) and
+browxai is ports-and-adapters. Dependencies point **inward**: the core depends on
+nothing outward, and every outward concern — a browser engine, a wire transport, a
+vendor CLI, the filesystem, a page realm — sits behind a port the core owns. The
+mapping below is law, enforced by the fitness suite
+([`fitness-functions.md`](fitness-functions.md)). It is the unifying frame over
+the more specific [`engine-adapters.md`](engine-adapters.md) (the engine seam) and
 [`repo-map.md`](repo-map.md) (the directory index).
 
 ## The layers

@@ -56,7 +56,7 @@ Default to writing no comments. Only add one when the WHY is non-obvious: a hidd
 - Don't explain WHAT the code does — well-named identifiers do that.
 - Don't reference the current task / fix / callers ("used by X", "added for the Y flow", "handles the case from PR #123") — that belongs in the PR description.
 - **No internal tracking identifiers in code or comments.** Ticket / plan / iteration / PR refs (`W-X#`, `R[Oo]und-\d+`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`, `ROLLBACK-SAFETY-PLAN`, `Security-RECOMMENDED-1`, etc.) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Example: `// Kept as a zombie for safe rollback; remove in a follow-up cleanup` — not `// Kept per ROLLBACK-SAFETY-PLAN Rule 1`.
-- **Exception — load-bearing identifier schemes** like `INV-N` invariant tags whose literal text the test discovers. browxai has none today; the rule shape is documented for future-proofing.
+- **Exception — load-bearing identifier schemes** like `INV-N` invariant tags whose literal text an enforcing test discovers. An identifier a test reads is code, not provenance, and stays.
 
 A PR-time `tracker-id-auditor` agent (see `.agents/skills/tracker-id-auditor.md`) regex-scans diffs as a backup to the ESLint custom rule.
 
@@ -117,13 +117,14 @@ browxai's architecture leans on SOLID with TypeScript-idiomatic interpretations.
 ## Architecture enforcement — the automated guardrails
 
 The SOLID section above states the _rules_. This section states the _machines that
-fail when a rule is broken_ — the macro guardrails. Micro rules (comments, naming,
-async safety) have always been mechanized; until [RFC 0004](../../rfcs/0004-architecture-hardening.md)
-the macro rules were documented and unenforced, and the codebase drifted exactly
-where no machine watched. Each guardrail below names its check. **If a guardrail
-says "code-review only," that is a known gap, not a free pass.** The single index
-of every fitness function — what each proves, which law it enforces, the finding it
-closes — is [`../architecture/fitness-functions.md`](../architecture/fitness-functions.md).
+fail when a rule is broken_ — the macro guardrails. Every guardrail below names the
+machine that fails when its rule is broken; a rule with no machine is a known gap,
+not a free pass. **If a guardrail says "code-review only," that is exactly such a
+gap.** Macro guardrails carry the same enforcement weight as the micro rules
+(comments, naming, async safety); the process for adding and amending them lives in
+[RFC 0004](../../rfcs/0004-architecture-hardening.md). The single index of every
+fitness function — what each proves, which law it enforces, the finding it closes —
+is [`../architecture/fitness-functions.md`](../architecture/fitness-functions.md).
 
 | #   | Guardrail (the rule)                                                                                                                                                      | Law        | How it is checked                                                                                                     | Command                                        |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
@@ -140,9 +141,9 @@ closes — is [`../architecture/fitness-functions.md`](../architecture/fitness-f
 
 **The meta-rule.** A guardrail may be relaxed only through an RFC amendment with
 rationale — never an inline `eslint-disable`, never a one-off budget bump in a
-feature PR. This is the same norm the `no-unsafe-*` enforcement already
-established. Re-baselining a budget _down_ (tightening) as modules shrink is always
-welcome and needs no amendment. The one rule that ships advisory and never blocks
+feature PR. This is the same norm the `no-unsafe-*` enforcement holds: the gate is
+binding until the law that defines it is amended. Re-baselining a budget _down_
+(tightening) as modules shrink is always welcome and needs no amendment. The one rule that ships advisory and never blocks
 is the `bounded-resource` lint heuristic (#9) — a linter cannot prove termination,
 so it prompts at the loop; the bound's proof is the `bounded-resource` _test_ and
 the `invariant()` termination check.
