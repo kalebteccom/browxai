@@ -37,7 +37,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20, 22]
+        node-version: [26]
     steps:
       - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
         with:
@@ -61,7 +61,7 @@ jobs:
       - run: pnpm test:keystone
       - run: pnpm build
       - name: Upload dist artifact
-        if: matrix.node-version == 20
+        if: matrix.node-version == 26
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist
@@ -88,7 +88,7 @@ jobs:
       # No `cache: pnpm` — see cache-poisoning note on build job above.
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
-          node-version: 20
+          node-version: 26
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm build
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -120,7 +120,7 @@ jobs:
       # No `cache: pnpm` — see cache-poisoning note on build job above.
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
-          node-version: 20
+          node-version: 26
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm sbom
       - name: Attach SBOM to GitHub Release
@@ -155,7 +155,7 @@ jobs:
       # against the OIDC-publishing path.
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
-          node-version: 20
+          node-version: 26
           registry-url: https://registry.npmjs.org
       - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
         run: npm install -g npm@latest
@@ -196,7 +196,7 @@ jobs:
       # cache-poisoning note on the publish job above.
       - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
-          node-version: 20
+          node-version: 26
           registry-url: https://registry.npmjs.org
       - name: Upgrade npm (need >= 11.5.1 for trusted publishing)
         run: npm install -g npm@latest
