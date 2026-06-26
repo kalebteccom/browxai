@@ -14,7 +14,7 @@
   publish = "website/dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "26"
   # The repo's .npmrc sets ignore-scripts=true as a supply-chain guard, so the
   # Astro toolchain's native binaries are not compiled on install. The
   # `pnpm rebuild esbuild sharp` step in the build command compiles the two the
