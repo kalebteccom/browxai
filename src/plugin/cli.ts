@@ -10,46 +10,32 @@
 //   - <workspace>/plugins-lock.json    auto-generated pin + sha256
 //   - <workspace>/plugins/             install dir (with node_modules/)
 //
-// The lock file format is documented inline below — kept small and
-// hand-readable.
+// The lock read/write/sha256 store lives in `./lock-store.js`; the
+// package-manager process driver lives in `./pm-runner.js`. This module is the
+// CLI command surface (the verb handlers + dispatcher) and the back-compat
+// barrel: it re-exports the lock store + package-manager driver symbols so
+// `./doctor-plugins.js`, `./cli.test.ts`, and other callers keep importing them
+// from `./cli.js` unchanged.
 
-import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
-import { log } from "../util/logging.js";
 import { pluginPaths, type PluginPaths } from "./resolver.js";
-import {
-  packageManagerAdapter,
-  packageManagerAdaptersByPriority,
-  type PackageManager,
-  type PmOperation,
-} from "./package-manager.js";
 import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
+import { type LockEntry, readLock, writeLock, sha256OfPackage } from "./lock-store.js";
+import { runPm } from "./pm-runner.js";
+import { inferTrustFromInstallIdentity } from "./trust.js";
+
+// Back-compat barrel — preserve the public surface of `./cli.js` for callers
+// (`./doctor-plugins.js`, `./cli.test.ts`, `./doctor-plugins.test.ts`) that
+// import these symbols from here.
+export type { LockEntry, LockFile } from "./lock-store.js";
+export { readLock, sha256OfPackage } from "./lock-store.js";
+export type { PackageManager, PmOperation } from "./pm-runner.js";
+export { NO_PACKAGE_MANAGER_ERROR, detectPackageManager, pmArgs } from "./pm-runner.js";
 
 const RESTART_NOTICE =
   "Server restart required — plugins are resolved ONCE at server start, so changes only take effect after a fresh `browxai` start.";
-
-export interface LockEntry {
-  /** npm package name. */
-  readonly name: string;
-  /** Installed version (read from the package's package.json after install). */
-  readonly version: string;
-  /** Where the package was installed from (`npm`, `file:./path`, etc.). */
-  readonly source: string;
-  /** sha256 over the package's package.json + main entry — the
-   *  reproducibility pin. Mismatch on next install means the underlying
-   *  package contents changed. */
-  readonly contentSha256: string;
-}
-
-export interface LockFile {
-  /** Version of the lock format itself. Bumped on incompatible change. */
-  readonly lockfileVersion: 1;
-  /** Entries keyed by package name. */
-  readonly entries: Record<string, LockEntry>;
-}
 
 function readPluginsJson(paths: PluginPaths): {
   plugins: Record<string, { enabled?: boolean; trust?: string }>;
@@ -85,155 +71,6 @@ function writePluginsJson(
   writeFileSync(paths.declarationFile, JSON.stringify(data, null, 2) + "\n", "utf8");
 }
 
-/** Tolerant lock read — also consumed by `browxai doctor` for lock-health checks. */
-export function readLock(paths: PluginPaths): LockFile {
-  if (!existsSync(paths.lockFile)) return { lockfileVersion: 1, entries: {} };
-  try {
-    const raw = JSON.parse(readFileSync(paths.lockFile, "utf8")) as Partial<LockFile>;
-    if (raw && raw.lockfileVersion === 1 && raw.entries) {
-      return { lockfileVersion: 1, entries: raw.entries };
-    }
-  } catch {
-    /* fall through */
-  }
-  return { lockfileVersion: 1, entries: {} };
-}
-
-function writeLock(paths: PluginPaths, data: LockFile): void {
-  mkdirSync(paths.root, { recursive: true });
-  writeFileSync(paths.lockFile, JSON.stringify(data, null, 2) + "\n", "utf8");
-}
-
-/** Content pin over an installed package — the same hash `plugins-lock.json`
- *  stores as `contentSha256`. Exported so `browxai doctor` can recompute it
- *  and detect drift against the pinned value. */
-export function sha256OfPackage(pkgRoot: string): string {
-  const hash = createHash("sha256");
-  // Hash package.json verbatim + every file referenced by `files`/`main`/
-  // `browxai.register`. Falls back to walking package.json + main entry
-  // when the field isn't there. Keep small + deterministic.
-  const pkgJsonPath = join(pkgRoot, "package.json");
-  if (!existsSync(pkgJsonPath)) return "";
-  const pkgJson = readFileSync(pkgJsonPath);
-  hash.update(pkgJson);
-  try {
-    const parsed = JSON.parse(pkgJson.toString("utf8")) as {
-      browxai?: { register?: string };
-      main?: string;
-      files?: string[];
-    };
-    const targets = new Set<string>();
-    if (parsed.browxai?.register) targets.add(parsed.browxai.register);
-    if (parsed.main) targets.add(parsed.main);
-    for (const f of parsed.files ?? []) targets.add(f);
-    for (const rel of [...targets].sort()) {
-      const abs = join(pkgRoot, rel);
-      if (!existsSync(abs)) continue;
-      const st = statSync(abs);
-      if (st.isFile()) {
-        hash.update(rel);
-        hash.update(readFileSync(abs));
-      } else if (st.isDirectory()) {
-        for (const sub of walkDir(abs)) {
-          const subRel = relative(pkgRoot, sub).split(sep).join("/");
-          hash.update(subRel);
-          hash.update(readFileSync(sub));
-        }
-      }
-    }
-  } catch {
-    /* fall through — partial hash is still meaningful for drift detection */
-  }
-  return hash.digest("hex");
-}
-
-function* walkDir(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const p = join(dir, entry.name);
-    if (entry.isFile()) yield p;
-    else if (entry.isDirectory()) yield* walkDir(p);
-  }
-}
-
-// RFC 0004 P4 / D6 — the per-manager verb mapping moved to an add-only
-// `PackageManagerAdapter` registry (`package-manager.ts`); `pmArgs` /
-// `detectPackageManager` now resolve through it. Re-exported here so callers
-// (incl. the CLI tests) keep importing `PackageManager` / `PmOperation` from
-// `./cli.js` unchanged.
-export type { PackageManager, PmOperation } from "./package-manager.js";
-
-/** Emitted when neither pnpm nor npm is on PATH — actionable, names the
- *  requirement. Exported for the CLI tests. */
-export const NO_PACKAGE_MANAGER_ERROR =
-  "browxai plugin: no package manager found. Managing workspace plugins requires `pnpm` (preferred) or `npm` on PATH — install one (https://pnpm.io/installation or https://nodejs.org) and re-run.";
-
-function canSpawn(cmd: string): boolean {
-  const r = spawnSync(cmd, ["--version"], { stdio: "ignore" });
-  return !r.error && r.status === 0;
-}
-
-/**
- * Probe for an available package manager. The adapters are walked in ascending
- * probe priority (pnpm at 0 wins — it is the project's declared manager and what
- * CI uses; npm at 1 is the fallback so `npm install -g browxai` adopters aren't
- * dead-ended with a bare ENOENT). Returns null when none is on PATH. Adding a
- * manager is a new adapter registration, not an edit here.
- */
-export function detectPackageManager(
-  probe: (cmd: string) => boolean = canSpawn,
-): PackageManager | null {
-  for (const adapter of packageManagerAdaptersByPriority()) {
-    if (probe(adapter.name)) return adapter.name;
-  }
-  return null;
-}
-
-/** Translate an operation (+ optional target spec) into manager argv. */
-export function pmArgs(
-  pm: PackageManager,
-  op: PmOperation,
-  target?: string,
-): ReadonlyArray<string> {
-  const adapter = packageManagerAdapter(pm);
-  if (!adapter)
-    throw new Error(`browxai plugin: no adapter registered for package manager "${pm}"`);
-  const verb = adapter.verbs[op];
-  return target === undefined ? [verb] : [verb, target];
-}
-
-async function runPm(paths: PluginPaths, op: PmOperation, target?: string): Promise<number> {
-  const pm = detectPackageManager();
-  if (pm === null) {
-    process.stderr.write(`${NO_PACKAGE_MANAGER_ERROR}\n`);
-    return 127;
-  }
-  // paths.installDir is workspace-rooted by construction (see
-  // pluginPaths() in resolver.ts — `<workspace>/plugins/`).
-  mkdirSync(paths.installDir, { recursive: true });
-  // Create a stub package.json so the manager has a project root to write into.
-  const stub = join(paths.installDir, "package.json");
-  if (!existsSync(stub)) {
-    writeFileSync(
-      stub,
-      JSON.stringify({ name: "browxai-plugins", version: "0.0.0", private: true }, null, 2) + "\n",
-      "utf8",
-    );
-  }
-  const args = pmArgs(pm, op, target);
-  return new Promise<number>((resolve) => {
-    const child = spawn(pm, [...args], {
-      cwd: paths.installDir,
-      stdio: "inherit",
-    });
-    child.on("exit", (code) => resolve(code ?? 1));
-    child.on("error", (err) => {
-      log.error(`browxai plugin: ${pm} spawn failed — ${err.message}`);
-      process.stderr.write(`${NO_PACKAGE_MANAGER_ERROR}\n`);
-      resolve(127);
-    });
-  });
-}
-
 /**
  * Pin entry for `plugins-lock.json` — recompute version + sha256 after
  * an install / upgrade / sync operation.
@@ -253,12 +90,6 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
   } catch {
     return null;
   }
-}
-
-function inferTrustFromSource(source: string): "kalebtec" | "community" | "local" {
-  if (source.startsWith("file:")) return "local";
-  if (source.startsWith("@browxai/")) return "kalebtec";
-  return "community";
 }
 
 /** Resolve the plugin name a `pnpm add` spec installs.
@@ -338,7 +169,7 @@ async function cmdInstall(spec: string): Promise<number> {
   const name = findActualPackageName(paths, hintName);
   // Persist into plugins.json.
   const data = readPluginsJson(paths);
-  const trust = inferTrustFromSource(spec.startsWith("file:") ? spec : name);
+  const trust = inferTrustFromInstallIdentity(spec.startsWith("file:") ? spec : name);
   data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
   writePluginsJson(paths, data);
   // Persist into plugins-lock.json.

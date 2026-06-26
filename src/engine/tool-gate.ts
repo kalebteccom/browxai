@@ -119,65 +119,12 @@ export const DEEP_TOOLS: ReadonlySet<string> = new Proxy(DEEP_TOOLS_SET, {
   },
 });
 
-/**
- * The pre-P2 hand-maintained `DEEP_TOOLS` block, retained verbatim BELOW as a
- * documentation appendix — the per-tool rationale (which CDP surface each gates,
- * the three critic-re-resolved tools) is preserved, even though the live
- * membership now derives from each `host.register({ deep: true })` call. This
- * block is comment-only. (Reference — not the source of truth.)
- *
- * export const DEEP_TOOLS: ReadonlySet<string> = new Set<string>([
- *   // perf / tracing (CDP `Tracing.*`) — Chrome trace-event format, engine-specific
- *   "perf_start",
- *   "perf_stop",
- *   "perf_insights",
- *   "perf_audit",
- *   "layout_thrash_trace",
- *   // coverage (CDP `Profiler.*` / `CSS.*RuleUsageTracking`) — V8/Blink-specific
- *   "coverage_start",
- *   "coverage_stop",
- *   // heap (CDP `HeapProfiler.*`) — V8 `.heapsnapshot` format
- *   "heap_snapshot",
- *   "heap_retainers",
- *   "memory_diff",
- *   // CPU throttle (CDP `Emulation.setCPUThrottlingRate`) — Blink-only
- *   "cpu_emulate",
- *   // network throttle — `emulation.setNetworkConditions` spec'd over BiDi but
- *   // not implemented in this Playwright build (reason: refuse-pending)
- *   "network_emulate",
- *   // Service-Worker fetch interception (CDP `Fetch.*` on the SW target)
- *   "sw_intercept_fetch",
- *   "sw_unintercept_fetch",
- *   // virtual time clock (CDP `Emulation.setVirtualTimePolicy`)
- *   "clock",
- *   // Chromium extension management (launch flags + CDP) — no Playwright Firefox API
- *   "extensions_install",
- *   "extensions_list",
- *   "extensions_reload",
- *   "extensions_trigger",
- *   "extensions_uninstall",
- *   // print to PDF — Playwright `page.pdf()` throws off Headless Chromium (measured)
- *   "pdf_save",
- *   // live locale / timezone / UA override (CDP `Emulation.*` / `Network.*`) —
- *   // Playwright bakes these at context creation; no live off-Chromium setter
- *   "set_locale",
- *   "set_timezone",
- *   "set_user_agent",
- *   // coordinate-space wheel + the touch/gesture family (CDP `Input.dispatch*`)
- *   "mouse_wheel",
- *   "touch_start",
- *   "touch_move",
- *   "touch_end",
- *   "gesture_pinch",
- *   "gesture_swipe",
- *   // closed-shadow piercing — CDP `DOM.getDocument({pierce:true})` is the only
- *   // automation-protocol path into closed shadow roots; no off-Chromium
- *   // equivalent (the one true feature-level loss). The open-shadow
- *   // half is portable, but the tool's headline (closed-shadow introspection) is
- *   // CDP-bound, so the whole tool gates off Chromium.
- *   "shadow_trees",
- * ]);
- */
+// The pre-P2 hand-maintained `DEEP_TOOLS` list (the per-tool rationale: which CDP
+// surface each gates, the three critic-re-resolved tools) used to live here as a
+// verbatim comment appendix. It was pruned once the derived `DEEP_TOOLS` set above
+// became the single source of truth — membership now derives from each
+// `host.register({ deep: true })` call, and the per-tool WHY lives at each tool's
+// registration site (RFC 0004 P2 / D2).
 
 /** Per-tool reason fragment appended to the refusal hint. Most tools share the
  *  generic "needs raw CDP" reason; the three the critic re-resolved carry a

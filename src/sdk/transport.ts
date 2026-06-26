@@ -16,7 +16,7 @@
 //      Windows). The SDK does NOT own the server lifecycle; `close()` only
 //      tears down the local connection.
 
-import type { BrowxaiContentItem, BrowxaiResult } from "./types.js";
+import type { BrowxaiResult } from "./types.js";
 
 /** Lower-level transport contract. One method, idempotent close. */
 export interface SdkTransport {
@@ -26,20 +26,7 @@ export interface SdkTransport {
   close(): Promise<void>;
 }
 
-/** Parse the first text item of an MCP content array as JSON, when applicable. */
-export function parseEnvelope(content: ReadonlyArray<BrowxaiContentItem>): BrowxaiResult {
-  for (const item of content) {
-    if (item && item.type === "text") {
-      try {
-        const parsed: unknown = JSON.parse(item.text);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return { content, data: parsed as Record<string, unknown> };
-        }
-      } catch {
-        /* not JSON — a snapshot tree or other plain-text payload */
-      }
-      return { content };
-    }
-  }
-  return { content };
-}
+// The concrete envelope decoder now lives in the ./envelope.js leaf so the
+// transport adapters can depend on it without cycling through this barrel.
+// Re-exported here so existing `./transport.js` importers keep resolving it.
+export { parseEnvelope } from "./envelope.js";

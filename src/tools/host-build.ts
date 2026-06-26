@@ -6,18 +6,12 @@ import {
   type SessionEntry,
   type SessionRegistry,
 } from "../session/registry.js";
-import { type DispatchOutcome } from "../session/metrics.js";
 import type { RefRegistry } from "../page/refs.js";
-import { clampTimeout, withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
+import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { invariant } from "../util/invariant.js";
 import type { Workspace } from "../util/workspace.js";
-import {
-  buildEvalJsCapture,
-  redactArgs,
-  type DiagnosticsRecorder,
-  type DiagnosticsRecord,
-} from "../util/diagnostics.js";
+import { type DiagnosticsRecorder } from "../util/diagnostics.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import { type ActionSubstrate } from "../page/action-substrate.js";
 import { type CaptureSubstrate } from "../page/capture-substrate.js";
@@ -44,6 +38,7 @@ import type { ApprovalStore } from "../policy/confirm.js";
 import type { CredentialProvider, CredentialsConfig } from "../util/credentials.js";
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
+import { buildObservation } from "./host-observation.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -96,8 +91,11 @@ export interface HostDeps {
  * literal `createServer` hands to each `registerXxxTools(host)` module. Every
  * closure body is byte-identical to the inline `createServer` version; the
  * createServer locals they close over arrive through `deps`, and the
- * intra-block references between closures (register → noteWedgeOutcome, the
- * `*For` ports → ctxFor, …) stay as-is because they all move together.
+ * intra-block references between closures (the `*For` ports → ctxFor, …) stay
+ * as-is because they all move together. The post-dispatch observation pipeline
+ * (`noteWedgeOutcome` / `noteMetrics` / `noteDiagnostics` + the `isWedgeTracked`
+ * predicate `register` consults) is built by `buildObservation` and injected
+ * here, so this assembler stays lean.
  */
 export function buildHost(deps: HostDeps): ToolHost {
   const {
@@ -312,204 +310,18 @@ export function buildHost(deps: HostDeps): ToolHost {
   const actionTimeout = (args: { timeoutMs?: number }): { ms: number; warning?: string } =>
     clampTimeout(args.timeoutMs, cfgActionTimeout());
 
-  // Wedge tracking. Only tools that actually exercise the page can
-  // wedge a session; session-management / config / coordination tools are
-  // excluded so their (always fast) results don't reset the streak.
-  const WEDGE_TRACKED_CAPABILITIES = new Set<string>([
-    "read",
-    "navigation",
-    "action",
-    "eval",
-    "network-body",
-    "file-io",
-  ]);
-  /** First text item of a result, parsed as a JSON object — or null when the
-   *  result has no leading JSON object (a plain-text snapshot, an image). */
-  const firstJsonResult = (
-    res: ToolResponse,
-  ): { obj: Record<string, unknown>; idx: number } | null => {
-    for (let i = 0; i < res.content.length; i++) {
-      const item = res.content[i];
-      if (item && item.type === "text") {
-        try {
-          const parsed: unknown = JSON.parse(item.text);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            return { obj: parsed as Record<string, unknown>, idx: i };
-          }
-        } catch {
-          /* not JSON — a plain-text result, e.g. a snapshot tree */
-        }
-        return null;
-      }
-    }
-    return null;
-  };
-  /** Update the session's wedge counter from a tool result and, once the
-   *  session is wedged, splice `sessionWedged` + a recovery hint onto it.
-   *  An anti-wedge timeout increments the streak; any responsive result
-   *  (success, or a fast non-timeout error) clears it.
-   *
-   *  Before stamping `sessionWedged: true`, the threshold-trip path probes
-   *  the page with a 1s `evaluate(() => 1)` — if the page answers, the
-   *  session is alive (the timeouts were action-shaped, not page-shaped:
-   *  perpetually-busy SPAs hold WS keepalives / rAF loops that prevent
-   *  Playwright actionability from settling, but the page itself responds
-   *  fine to evaluate). A successful probe clears the streak instead of
-   *  falsely tipping the caller into a session-discard. */
-  const noteWedgeOutcome = async (args: unknown, res: ToolResponse): Promise<ToolResponse> => {
-    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
-    const entry = registry.peek(sessionId);
-    if (!entry) return res;
-    const parsed = firstJsonResult(res);
-    const timedOut =
-      !!parsed &&
-      parsed.obj.ok === false &&
-      typeof parsed.obj.error === "string" &&
-      /anti-wedge timeout/i.test(parsed.obj.error);
-    if (!timedOut || !parsed) {
-      entry.wedge.recordResponsive();
-      return res;
-    }
-    entry.wedge.recordTimeout();
-    if (!entry.wedge.wedged()) return res;
-    // Threshold tripped — confirm before stamping. Cheap liveness probe:
-    // if the page answers evaluate() within 1s, the session is alive and
-    // the timeouts were action-shaped (e.g. busy SPA blocks click
-    // actionability). Clear the streak rather than falsely wedge the
-    // caller. If the probe fails or times out, the session genuinely is
-    // wedged — stamp the response as before.
-    let aliveByProbe = false;
-    try {
-      const page = entry.session.page();
-      await withDeadline(
-        page.evaluate(() => 1),
-        1_000,
-        "wedge_probe",
-      );
-      aliveByProbe = true;
-    } catch {
-      aliveByProbe = false;
-    }
-    if (aliveByProbe) {
-      entry.wedge.recordResponsive();
-      return res;
-    }
-    const obj = { ...parsed.obj, sessionWedged: true, sessionWedgedHint: entry.wedge.hint() };
-    return {
-      content: res.content.map((item, i) =>
-        i === parsed.idx ? { type: "text" as const, text: JSON.stringify(obj, null, 2) } : item,
-      ),
-    };
-  };
-
-  // Classify a dispatched tool result for the per-session metrics
-  // counter. We piggyback on `firstJsonResult` (already defined above) so we
-  // don't pay a second parse. A capability-denied result is the JSON shape the
-  // `gateCheck` helper emits (carries `requiredCapability`); any other
-  // `ok:false` result is an error; everything else is `ok`. The
-  // `tokensEstimate` field is read straight off the envelope when present —
-  // most tools surface it via the standard helper, but image-only / non-JSON
-  // results legitimately don't and that's fine (treated as 0).
-  const classifyOutcome = (
-    res: ToolResponse,
-  ): { outcome: DispatchOutcome; tokensEstimate?: number } => {
-    const parsed = firstJsonResult(res);
-    if (!parsed) return { outcome: "ok" };
-    const obj = parsed.obj;
-    const tokens = typeof obj.tokensEstimate === "number" ? obj.tokensEstimate : undefined;
-    if (obj.ok === false) {
-      // Capability-denied shape (see `gateCheck`): carries `requiredCapability`.
-      // The denial path is a config-shape signal, not a tool-error signal —
-      // bucket it separately.
-      if (Object.prototype.hasOwnProperty.call(obj, "requiredCapability")) {
-        return { outcome: "denied", tokensEstimate: tokens };
-      }
-      return { outcome: "error", tokensEstimate: tokens };
-    }
-    return { outcome: "ok", tokensEstimate: tokens };
-  };
-
-  /** Record one dispatch on the session's metrics counter — peek-only on the
-   *  registry. Calls against a not-yet-open session (e.g. a capability denial
-   *  fired before the lazy session creation) are silently skipped: there's no
-   *  SessionEntry to accumulate against, and the denial is still visible at the
-   *  capability layer. Same posture as `noteWedgeOutcome` above. */
-  const noteMetrics = (
-    toolName: string,
-    args: unknown,
-    res: ToolResponse,
-    startedAt: number,
-  ): void => {
-    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
-    const entry = registry.peek(sessionId);
-    if (!entry) return;
-    const { outcome, tokensEstimate } = classifyOutcome(res);
-    entry.metrics.record(toolName, outcome, Date.now() - startedAt, tokensEstimate);
-  };
-
-  /** Record one dispatched call into the diagnostics JSONL store. No-op when
-   *  the diagnostics capability is OFF — the caller short-circuits on
-   *  `diagnostics.enabled` BEFORE allocating anything. The recorder runs
-   *  DOWNSTREAM of the URL sanitiser + secrets-masking chokepoint:
-   *  by the time `res` lands here, every egress sink has already rewritten
-   *  registered secret values back to `<NAME>` aliases. Args are additionally
-   *  walked through `applyMaskDeep` so a secret echoed in the call args
-   *  never reaches the JSONL raw. */
-  const noteDiagnostics = (
-    toolName: string,
-    args: unknown,
-    res: ToolResponse,
-    startedAt: number,
-  ): void => {
-    if (!diagnostics.enabled) return;
-    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
-    const entry = registry.peek(sessionId);
-    // Apply the per-session secrets mask to args BEFORE structural redaction
-    // so a registered secret value echoed in the call args never lands raw
-    // in the JSONL store.
-    const maskedArgsIn = entry?.secrets ? entry.secrets.applyMaskDeep(args) : args;
-    const parsed = firstJsonResult(res);
-    const sizeBytes = res.content.reduce((n, item) => {
-      if (item.type === "text") return n + Buffer.byteLength(item.text, "utf8");
-      if (item.type === "image") return n + (typeof item.data === "string" ? item.data.length : 0);
-      return n;
-    }, 0);
-    const obj = parsed?.obj ?? null;
-    const ok = obj ? obj.ok !== false : true;
-    const warningsCount = obj && Array.isArray(obj.warnings) ? obj.warnings.length : 0;
-    let failureKind: string | undefined;
-    if (!ok && obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, "requiredCapability")) {
-        failureKind = "capability-denied";
-        diagnostics.noteDenial();
-      } else {
-        const err = typeof obj.error === "string" ? obj.error : "";
-        if (/anti-wedge timeout/i.test(err)) failureKind = "timeout";
-        else if (/not found|no element matches|ref not found|locator did not resolve/i.test(err))
-          failureKind = "target-not-found";
-        else if (/must |invalid |unknown |expected /i.test(err)) failureKind = "bad-arg";
-        else failureKind = "internal";
-      }
-    }
-    const record: DiagnosticsRecord = {
-      kind: "call",
-      ts: new Date(startedAt).toISOString(),
-      tool: toolName,
-      sessionId,
-      argsRedacted: redactArgs(maskedArgsIn),
-      resultMeta: {
-        ok,
-        sizeBytes,
-        warningsCount,
-        ...(failureKind ? { failureKind } : {}),
-      },
-      durationMs: Date.now() - startedAt,
-      capabilityDenials: diagnostics.denialsCount(),
-    };
-    const evalCap = buildEvalJsCapture(toolName, maskedArgsIn, obj);
-    if (evalCap) record.evalJs = evalCap;
-    diagnostics.write(record);
-  };
+  // The post-dispatch OBSERVATION pipeline — the wedge / metrics / diagnostics
+  // noters `register`'s wrapper threads each result through, plus the
+  // `isWedgeTracked` predicate it consults at registration. Extracted to
+  // `host-observation.ts` so `buildHost` stays a lean pure assembler; injected
+  // here with the two stores those closures read (`registry` peeked never
+  // created from; the `diagnostics` JSONL recorder). Behaviour is byte-identical
+  // to the prior inline closures — `noteMetrics` / `noteDiagnostics` keep their
+  // host-exposed signatures so the plugin runtime reuses them unchanged.
+  const { noteWedgeOutcome, noteMetrics, noteDiagnostics, isWedgeTracked } = buildObservation({
+    registry,
+    diagnostics,
+  });
 
   // Wrapper that preserves the inner handler's parameter type for typechecking
   // (destructuring inside each registration still works) but stores a
@@ -568,7 +380,7 @@ export function buildHost(deps: HostDeps): ToolHost {
       batchable: def.batchable,
       deep: def.deep,
     });
-    const tracked = WEDGE_TRACKED_CAPABILITIES.has(def.capability ?? "");
+    const tracked = isWedgeTracked(def.capability ?? "");
     const wrapped = async (rawArgs: unknown): Promise<ToolResponse> => {
       // MCP-wire boundary: the SDK parses + validates the inbound payload against
       // this tool's `inputSchema` before dispatch, so the dispatched value IS the

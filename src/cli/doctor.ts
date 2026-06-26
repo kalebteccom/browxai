@@ -18,16 +18,10 @@ import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
+import { probeCdp } from "./doctor-cdp.js";
+import { chromiumCheck, firefoxCheck, webkitCheck, androidCheck } from "./doctor-engines.js";
 import {
   IMPLEMENTED_ENGINES,
-  AndroidCdpAdapter,
-  defaultAdbRunner,
-  defaultFetcher,
-  pickFreePort,
-  forwardArgs,
-  forwardRemoveArgs,
-  versionUrl,
-  extractWsUrl,
   resolveEngineSelection,
   UnknownEngineError,
   type EngineKind,
@@ -194,86 +188,12 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 8. Chromium installed (managed-mode dependency).
-  try {
-    // Lazy import so this command doesn't pay the playwright-core cost on bare invocation.
-    const { chromium } = await import("playwright-core");
-    const path = chromium.executablePath();
-    if (path && existsSync(path)) {
-      checks.push({ name: "chromium", ok: true, detail: `${path}` });
-    } else {
-      checks.push({
-        name: "chromium",
-        ok: false,
-        detail: "playwright-core has no Chromium binary cached",
-        fix: "run `pnpm install-browser`",
-      });
-    }
-  } catch (e) {
-    checks.push({
-      name: "chromium",
-      ok: false,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "run `pnpm install` and `pnpm install-browser`",
-    });
-  }
-
-  // 8a2. Firefox binary (opt-in second engine — `browserType:"firefox"`).
-  // Informational: Firefox is opt-in, so a missing binary never FAILS doctor —
-  // it just tells the operator how to enable the engine. Mirrors the Chromium
-  // check above but against the Firefox build (Playwright's bundled Juggler).
-  try {
-    const { firefox } = await import("playwright-core");
-    const path = firefox.executablePath();
-    if (path && existsSync(path)) {
-      checks.push({ name: "firefox", ok: true, info: true, detail: `${path}` });
-    } else {
-      checks.push({
-        name: "firefox",
-        ok: true,
-        info: true,
-        detail: 'not installed (opt-in second engine — browserType:"firefox")',
-        fix: "run `npx playwright install firefox` to enable the firefox engine",
-      });
-    }
-  } catch (e) {
-    checks.push({
-      name: "firefox",
-      ok: true,
-      info: true,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
-    });
-  }
-
-  // 8a3. WebKit binary (opt-in third engine — `browserType:"webkit"`).
-  // Informational: WebKit is opt-in, so a missing binary never FAILS doctor —
-  // it just tells the operator how to enable the engine. Mirrors the Chromium +
-  // Firefox checks above but against the WebKit build (Playwright's bundled
-  // WebKit — the WebKit-engine correctness lane, NOT Safari).
-  try {
-    const { webkit } = await import("playwright-core");
-    const path = webkit.executablePath();
-    if (path && existsSync(path)) {
-      checks.push({ name: "webkit", ok: true, info: true, detail: `${path}` });
-    } else {
-      checks.push({
-        name: "webkit",
-        ok: true,
-        info: true,
-        detail: 'not installed (opt-in third engine — browserType:"webkit")',
-        fix: "run `npx playwright install webkit` to enable the webkit engine",
-      });
-    }
-  } catch (e) {
-    checks.push({
-      name: "webkit",
-      ok: true,
-      info: true,
-      detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
-    });
-  }
+  // 8. Chromium installed (managed-mode dependency). 8a2/8a3 follow with the
+  // opt-in firefox + webkit binary probes. All three are per-engine availability
+  // probes — see src/cli/doctor-engines.ts.
+  checks.push(await chromiumCheck());
+  checks.push(await firefoxCheck());
+  checks.push(await webkitCheck());
 
   // 8a4. Android availability (opt-in fourth engine — `browserType:"android"`).
   // The full-fidelity real-profile BYOB lane: real Chrome-on-Android over adb +
@@ -363,73 +283,4 @@ export async function runDoctor(): Promise<number> {
   }
   process.stdout.write(`\n${allOk ? "all checks passed" : "fix the ✗ items above"}\n`);
   return allOk ? 0 : 1;
-}
-
-// Android availability — how far the adb + CDP chain reaches, without opening a
-// session. adb present? → a device ready? → the Chrome DevTools socket
-// reachable? Always informational (Android is opt-in + device-gated). The probe
-// forwards the socket to a transient loopback port, GETs /json/version, then
-// removes the forward — no session, no leaked forward.
-async function androidCheck(): Promise<Check> {
-  const name = "android";
-  const adapter = new AndroidCdpAdapter();
-  let serial: string;
-  try {
-    serial = await adapter.discoverDevice(process.env.BROWX_ANDROID_SERIAL?.trim() || undefined);
-  } catch (e) {
-    // adb-missing / no-device / ambiguous — report the structured message's first
-    // clause; never fails doctor.
-    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
-    return {
-      name,
-      ok: true,
-      info: true,
-      detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
-      fix: "connect an Android phone over USB, enable USB debugging, open Chrome",
-    };
-  }
-  // Device ready — try to reach the Chrome socket so the operator knows whether
-  // Chrome is open + web-debugging is on.
-  let localPort = 0;
-  try {
-    localPort = await pickFreePort();
-    await defaultAdbRunner(forwardArgs(localPort, serial));
-    const body = await defaultFetcher(versionUrl(localPort));
-    extractWsUrl(body);
-    const browser = (body as { Browser?: string }).Browser ?? "unknown";
-    return {
-      name,
-      ok: true,
-      info: true,
-      detail: `device ${serial} ready, Chrome reachable (${browser}) — browserType:"android" attach-ready`,
-    };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
-    return {
-      name,
-      ok: true,
-      info: true,
-      detail: `device ${serial} ready but Chrome socket not reachable: ${msg}`,
-      fix: "open Chrome on the device + enable USB web-debugging (chrome://inspect should list its tabs)",
-    };
-  } finally {
-    if (localPort) {
-      await defaultAdbRunner(forwardRemoveArgs(localPort, serial)).catch(() => undefined);
-    }
-  }
-}
-
-async function probeCdp(
-  endpoint: string,
-): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
-  try {
-    const url = new URL(endpoint);
-    const probeUrl = `${url.origin}/json/version`;
-    const res = await fetch(probeUrl, { signal: AbortSignal.timeout(2000) });
-    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-    const body = (await res.json()) as { Browser?: string };
-    return { ok: true, version: body.Browser ?? "unknown" };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
 }

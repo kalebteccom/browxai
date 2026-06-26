@@ -772,13 +772,43 @@ export default tseslint.config(
       "max-params": ["error", { max: 5 }],
     },
   },
-  // The composition root gets the hardest, and only `error`, budget in P0: it is
-  // already at 382 LOC and the architecture treats it as composition-only, so the
-  // 400-line ceiling trips immediately on any business-logic creep. (RFC 0004 §4.)
+  // The composition root gets the hardest, and only `error`, budget: it is
+  // composition-only, so the ceiling trips immediately on any business-logic
+  // creep. Tightened 400 -> 280 once the target-resolution helpers and the
+  // per-capability warning copy moved out to tools/target-resolve.ts and the
+  // CAPABILITY_WARNINGS table in util/capabilities.ts (it is ~217 code lines
+  // now). (RFC 0004 §4.)
   {
     files: ["src/server.ts"],
     rules: {
-      "max-lines": ["error", { max: 400, skipBlankLines: true, skipComments: true }],
+      "max-lines": ["error", { max: 280, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // File-size ceiling WIDENED to the historically-uncovered tree. The 450 block
+  // above globs only `src/tools/*-tools.ts` + `src/page/**`, so god-files in
+  // util / session / sdk / plugin / cli and the non-`*-tools.ts` composition
+  // files grew unseen. This block makes the file-size gate see EVERY production
+  // source file at the same ceiling, so no new oversized file can land anywhere.
+  // The function-length / complexity budgets stay scoped to tools + page until
+  // those functions are split (a later ratchet step). Pre-existing offenders are
+  // parked in the allowlist block that follows, each tracked for a one-reason-to-
+  // change split in docs/ai-context/architecture/module-and-file-size.md.
+  {
+    files: [
+      "src/util/**/*.ts",
+      "src/session/**/*.ts",
+      "src/sdk/**/*.ts",
+      "src/plugin/**/*.ts",
+      "src/cli/**/*.ts",
+      "src/engine/**/*.ts",
+      "src/policy/**/*.ts",
+      "src/helper/**/*.ts",
+      "src/tools/**/*.ts",
+      "src/transport/**/*.ts",
+    ],
+    ignores: ["**/*.test.ts"],
+    rules: {
+      "max-lines": ["error", { max: 450, skipBlankLines: true, skipComments: true }],
     },
   },
   // RFC 0004 P1 — `no-engine-literal-branches` is now whole-tree clean: the four

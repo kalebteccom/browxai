@@ -23,7 +23,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { createServer, NAME, VERSION } from "../server.js";
 import { resolveEngineSelection, UnknownEngineError, type EngineKind } from "../engine/index.js";
-import { SocketTransport } from "../sdk/socket-transport.js";
+import { SocketTransport } from "../transport/socket-transport.js";
 import { log } from "../util/logging.js";
 
 interface ServeOptions {

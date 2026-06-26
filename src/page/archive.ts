@@ -46,24 +46,28 @@
 //   the archive as sensitive material. Documented in tool-reference + flagged
 //   on every result through `warnings[]`.
 
-import { resolve as resolvePath, dirname, join } from "node:path";
-import { mkdirSync, writeFileSync, statSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import { resolveWorkspacePath } from "../session/storage.js";
 import {
   buildFetchScript,
-  assetFilename,
-  subdirForKind,
-  rewriteHtml,
-  mimeFromKind,
-  directorySize,
   type DiscoveredResource,
   type FetchedResource,
+  type Fetched,
 } from "./archive-assets.js";
+import {
+  emitArchiveDirectory,
+  emitArchiveSingleFile,
+  SINGLE_FILE_SOFT_WARN_MB,
+} from "./archive-emit.js";
 
 // The asset-naming + fetch + rewrite helpers (and their types) live in
 // `archive-assets.ts`; re-export `DiscoveredResource` so callers that imported
 // it from `./archive.js` are unchanged.
 export type { DiscoveredResource } from "./archive-assets.js";
+
+// The two emission strategies live in `archive-emit.ts`; re-export them so any
+// caller that reaches for them through `./archive.js` is unchanged.
+export { emitArchiveDirectory, emitArchiveSingleFile } from "./archive-emit.js";
 
 /** Archive format. `directory` writes index.html + assets/ sidecar; `single-file`
  *  inlines every linked resource as a `data:` URI in one HTML file. */
@@ -73,12 +77,6 @@ export type ArchiveFormat = "directory" | "single-file";
  *  a runaway page (infinite-scroll, video stream) doesn't fill the
  *  workspace. Override with `maxSizeMb`. */
 const DEFAULT_MAX_SIZE_MB = 200;
-
-/** Hard ceiling for single-file mode beyond the user's cap. Browsers
- *  routinely struggle to load HTML > ~150 MB into a single document — the
- *  in-memory `data:` URI cost compounds. We surface a warning when the
- *  single-file output exceeds this, but never refuse: the cap is the cap. */
-const SINGLE_FILE_SOFT_WARN_MB = 150;
 
 /** Resource hard ceiling per fetch — refuse to inline a single 500 MB video
  *  even if `maxSizeMb` would permit it. The point of an archive is fidelity,
@@ -285,8 +283,6 @@ export async function pageArchive(
   };
 }
 
-type Fetched = { res: DiscoveredResource; r: FetchedResource };
-
 interface ArchiveFetchPhase {
   fetched: Fetched[];
   cspBlocked: number;
@@ -387,86 +383,4 @@ function appendArchiveWarnings(
         " MB.",
     );
   }
-}
-
-interface ArchiveEmitResult {
-  resourceCount: number;
-  droppedCount: number;
-  sizeBytes: number;
-}
-
-/** Emit the multi-file directory archive — each asset under `assets/<kind>/`,
- *  the HTML rewritten to relative paths. Workspace-rooted by construction
- *  (`resolved` ⊆ $BROWX_WORKSPACE). */
-function emitArchiveDirectory(
-  resolved: string,
-  html: string,
-  fetched: Fetched[],
-  runningBytes: number,
-): ArchiveEmitResult {
-  mkdirSync(resolved, { recursive: true });
-  const assetsRoot = join(resolved, "assets");
-  mkdirSync(assetsRoot, { recursive: true });
-  let resourceCount = 0;
-  let droppedCount = 0;
-  const replacements: Array<{ rawRef: string; replacement: string }> = [];
-  for (const f of fetched) {
-    if (!f.r.ok || !f.r.base64) {
-      droppedCount++;
-      continue;
-    }
-    const subdir = subdirForKind(f.res.kind);
-    const dir = join(assetsRoot, subdir);
-    mkdirSync(dir, { recursive: true });
-    const filename = assetFilename(f.res.url, f.res.kind, f.r.contentType ?? "");
-    writeFileSync(join(dir, filename), Buffer.from(f.r.base64, "base64"));
-    replacements.push({ rawRef: f.res.rawRef, replacement: `assets/${subdir}/${filename}` });
-    resourceCount++;
-  }
-  const rewritten = rewriteHtml(html, replacements);
-  // workspace-rooted: `resolved` ⊆ $BROWX_WORKSPACE (resolveWorkspacePath gated it).
-  writeFileSync(join(resolved, "index.html"), rewritten, "utf8");
-  let sizeBytes: number;
-  try {
-    sizeBytes = directorySize(resolved);
-  } catch {
-    sizeBytes = Buffer.byteLength(rewritten, "utf8") + runningBytes;
-  }
-  return { resourceCount, droppedCount, sizeBytes };
-}
-
-/** Emit the single-file archive — assets inlined as data: URIs in the HTML.
- *  Workspace-rooted by construction (`resolved` ⊆ $BROWX_WORKSPACE). */
-function emitArchiveSingleFile(
-  resolved: string,
-  html: string,
-  fetched: Fetched[],
-  warnings: string[],
-): ArchiveEmitResult {
-  // workspace-rooted: dirname(resolved) is the parent of a $BROWX_WORKSPACE path.
-  mkdirSync(dirname(resolved), { recursive: true });
-  let resourceCount = 0;
-  let droppedCount = 0;
-  const replacements: Array<{ rawRef: string; replacement: string }> = [];
-  for (const f of fetched) {
-    if (!f.r.ok || !f.r.base64) {
-      droppedCount++;
-      continue;
-    }
-    const mime = (f.r.contentType ?? "").split(";")[0]!.trim() || mimeFromKind(f.res.kind);
-    replacements.push({ rawRef: f.res.rawRef, replacement: `data:${mime};base64,${f.r.base64}` });
-    resourceCount++;
-  }
-  const rewritten = rewriteHtml(html, replacements);
-  // workspace-rooted: `resolved` ⊆ $BROWX_WORKSPACE (resolveWorkspacePath gated it).
-  writeFileSync(resolved, rewritten, "utf8");
-  const sizeBytes = statSync(resolved).size;
-  if (sizeBytes > SINGLE_FILE_SOFT_WARN_MB * 1024 * 1024) {
-    warnings.push(
-      `single-file archive is ${(sizeBytes / 1024 / 1024).toFixed(1)} MB. ` +
-        `Browsers commonly struggle to open inline-data HTML beyond ~${SINGLE_FILE_SOFT_WARN_MB} MB ` +
-        '(the data: URI cost compounds in-memory). Use `format:"directory"` for large pages.',
-    );
-  }
-  return { resourceCount, droppedCount, sizeBytes };
 }

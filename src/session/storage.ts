@@ -30,7 +30,7 @@
 // future secrets-masking pass will mask them on egress. For now the gap
 // is documented; no extra work here.
 
-import { resolve, sep, join } from "node:path";
+import { sep, join } from "node:path";
 import {
   readFileSync,
   writeFileSync,
@@ -41,6 +41,7 @@ import {
   rmSync,
 } from "node:fs";
 import type { BrowserContext, Page } from "playwright-core";
+import { assertSafeName, isSafeName, resolveWorkspacePath } from "../util/workspace.js";
 
 /** Playwright's `storageState()` return shape (re-stated locally so callers
  *  don't need to depend on playwright-core directly). */
@@ -76,33 +77,11 @@ export interface CookieInput {
 }
 
 // ---- workspace path / name validators -------------------------------------
-
-/** Names for named-states + similar file-naming use. No path separators,
- *  no leading dots, no `..`. Same posture as `profile-snapshot.ts`. */
-const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
-
-export function assertSafeName(kind: string, name: string): void {
-  if (!name || !SAFE_NAME.test(name) || name === "." || name === "..") {
-    throw new Error(
-      `${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' ` +
-        `(no path separators, no "..")`,
-    );
-  }
-}
-
-/** Resolve a workspace-rooted path. Rejects any path that escapes the root
- *  (`..` segments, absolute paths pointing outside, etc.). Mirrors the
- *  `upload_file` contract. */
-export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: string): string {
-  const resolved = resolve(workspaceRoot, p);
-  if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(
-      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}". ` +
-        `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
-    );
-  }
-  return resolved;
-}
+// Moved to src/util/workspace.ts (the no-trace chokepoint now lives beside the
+// root resolver, so util-layer modules depend on it inward instead of reaching
+// up into session). Re-exported here so the storage-state callers that import
+// them from this module keep working unchanged.
+export { assertSafeName, resolveWorkspacePath };
 
 // ---- layer 1: bulk --------------------------------------------------------
 
@@ -468,7 +447,7 @@ export function authList(
   for (const entry of readdirSync(dir)) {
     if (!entry.endsWith(".json")) continue;
     const name = entry.slice(0, -".json".length);
-    if (!SAFE_NAME.test(name)) continue;
+    if (!isSafeName(name)) continue;
     const path = join(dir, entry);
     try {
       const st = statSync(path);

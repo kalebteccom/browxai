@@ -52,7 +52,7 @@ through one `resolveWorkspacePath` chokepoint; remotxai's
 harness adapter (Claude Code, Codex, Pi) and the daemon build against - the
 hexagonal host-core/adapters split made concrete.
 
-### The honest tension: abstract only at a proven seam
+### Abstract only at a proven seam
 
 A port you do not need is tech debt, the same as a missing one. Speculative
 generality is the more seductive failure because it looks like good architecture.
@@ -84,15 +84,14 @@ must stay clean), no more (every speculative port is deleted). The two pulls
 resolve cleanly once you separate proven from speculative: hold the proven seams
 without compromise, and refuse every unproven one.
 
-The family's own cautionary tale is docsxai's dropped `DiscoveryStage` /
-`MappingStage` / `CommitStage` pipeline (a deleted `pipeline.ts`). The original
-design put the agent-orchestration loop **inside the engine** as resumable stage
-objects. In practice, browxai's own MCP surface plus the calibrate-skill playbook
-covered the same ground with no bespoke in-engine state machine. The lesson:
-agent orchestration belongs in the agent's tooling layer, not duplicated in a
-substrate. browxai holds the same line - the server is a curated tool surface,
-not an agent loop; the inference loop lives in the host. Removing the premature
-abstraction made the system smaller **and** more correct.
+Agent orchestration belongs in the agent's tooling layer; the engine is the
+deterministic floor (parse, run, emit) plus write-time signal - not an agent loop.
+The substrate does not duplicate an orchestration state machine the tooling layer
+already provides: browxai's MCP surface plus the calibrate-skill playbook cover
+that ground without a bespoke in-engine pipeline. browxai holds the same line -
+the server is a curated tool surface, not an agent loop; the inference loop lives
+in the host. The simplest design that honors the proven seams is both smaller and
+more correct: hold the proven seams, refuse the speculative orchestration layer.
 
 Concrete rules that follow:
 
@@ -171,16 +170,18 @@ Statelessness and bounded concurrency are the runtime side of this. Where
 concurrency exists, it is bounded with backpressure (deadlines, step caps, poll
 windows), never unbounded fan-out.
 
-## 4a. The ten laws - the seams, mechanized
+## 4a. The ten laws - the seams, each backed by an enforcer
 
 §4 names the seams the system grows along. A seam the machine does not guard is a
-seam that drifts: the audit behind [RFC 0004](../../rfcs/0004-architecture-hardening.md)
-found the flagship claim of §4 - _"new engine = new adapter behind the existing
-port"_ - was **false in practice**, because the adapter _wiring_ (not the adapters)
-was hardcoded across the session factories. The fix is not more prose; it is an
-**enforcer per invariant**. The ten laws below are the standard; each is backed by
-a fitness function, a custom lint rule, or a CI gate. **A law with no green check
-is not in the standard.** The full rationale and safety-critical lineage
+seam that drifts. Every seam §4 names is guarded by an enforcer: a fitness
+function, a custom lint rule, or a CI gate. The standing rule is an **enforcer per
+invariant** - prose is not a guard. The ten laws below are the standard; each is
+one of those seams plus the machine that fails on regression. **A law with no
+green check is not in the standard.** [RFC 0004](../../rfcs/0004-architecture-hardening.md)
+is the design record for these enforcers - the flagship claim _"new engine = new
+adapter behind the existing port"_ holds only when the adapter _wiring_, not just
+the adapters, is guarded, so the wiring carries its own enforcer too. The full
+rationale and safety-critical lineage
 (Power-of-Ten, JPL, DO-178C) live in
 [`../../rfcs/references/0004-02-maintainability-standard.md`](../../rfcs/references/0004-02-maintainability-standard.md);
 the executable specs in
@@ -200,10 +201,10 @@ the single index of every check in [`fitness-functions.md`](fitness-functions.md
 | **L9 - Traceable**                   | Every world-touching tool ⇒ a capability declaration ⇒ a keystone denial test. Every engine ⇒ a capability row ⇒ a keystone lane.         | Traceability fitness tests (tool↔capability↔keystone; engine↔caps↔lane: `tool-capability-completeness`, `deep-tools-engine-matrix`).            |
 | **L10 - Deterministic & observable** | The surface is deterministic where it pays (replay, diffing) and self-diagnosing; determinism is keystone-verified.                       | The keystone determinism gates + the dependency-cruiser layering rules (no nondeterministic cross-layer leak), extended to the new seams.       |
 
-The laws are not new doctrine bolted on - they are §1's dependency direction, §2's
-proven-seam test, §3's bounded-buffer rule, and §4's seams, each given the machine
-that §1-§5 always implied but never named. When you change a boundary, you are
-changing the thing one of these laws guards; run the architecture lane (the
+The ten laws are the seams of §1-§4 with their enforcers named: §1's dependency
+direction, §2's proven-seam test, §3's bounded-buffer rule, and §4's seams, each
+paired with the machine that fails on regression. When you change a boundary, you
+are changing the thing one of these laws guards; run the architecture lane (the
 `test/architecture/**` suite + `pnpm depcruise`) before you assume your change is
 add-only.
 
@@ -269,8 +270,8 @@ against this:
       non-obvious.
 
 The machine-checked items below sit beneath the human-judgment items above -
-they are the ones a reviewer can now stop hand-checking, because the gate does it.
-They are the ten laws (§4a) at the point of review:
+they are the ones a reviewer does not hand-check, because the gate does it. They
+are the ten laws (§4a) at the point of review:
 
 - [ ] **Closed to the core?** (L1) No new `engine === "<literal>"` branch above the
       engine seam; no handler imports a concrete adapter or transport. The

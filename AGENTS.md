@@ -14,7 +14,7 @@ browxai is an MCP-native, model-agnostic, agentic-first browser-control server o
 - **Preserve user work.** Never run `git reset`, `git checkout <path>`, `git clean`, or `git revert` without explicit user request. If a working tree looks broken, surface it — don't sweep it.
 - **Search with `rg`.** Prefer `rg` / `rg --files` over `grep` / `find` for searching.
 - **Code is the source of truth.** Before naming an API, import, schema field, config key, or generated type — read the file. Plan snippets, memory, and old review notes can be stale. Hallucinated APIs are a recurring failure mode.
-- **No internal tracker IDs in source or comments.** Ticket / plan / round / PR refs (`W-X#`, `Round-N`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Exception: load-bearing identifier schemes tied to enforcing tests (e.g. `INV-N`-style invariant tags). browxai has none today; the rule shape is documented for future-proofing.
+- **No internal tracker IDs in source or comments.** Ticket / plan / round / PR refs (`W-X#`, `Round-N`, `ask #N`, `TICKET-N`, `JIRA-N`, `#1234`) are project-management artifacts, not code context — they rot, mean nothing to a future reader, and belong in the commit/PR body. State the actual reason instead: write _why_ the code is the way it is, not _which ticket asked for it_. Exception: load-bearing identifier schemes tied to enforcing tests (e.g. `INV-N`-style invariant tags) — an identifier whose literal text a test reads is code, not provenance, and stays.
 
 ## Commands the agent must not run
 
@@ -121,10 +121,17 @@ See [`docs/ai-context/tool-registration/server-tool-registry.md`](docs/ai-contex
 
 ## Architecture enforcement
 
-The doctrine ([`docs/ai-context/architecture/architecture-principles.md`](docs/ai-context/architecture/architecture-principles.md)
-§4a) is **mechanized**: every architectural invariant has a fitness function, a
-custom lint rule, or a CI gate. Before a boundary, world-touching-surface, or
-engine change, the macro guardrails apply:
+Every architectural invariant in the doctrine
+([`docs/ai-context/architecture/architecture-principles.md`](docs/ai-context/architecture/architecture-principles.md)
+§4a) has a machine that fails on regression — a fitness function, a custom lint
+rule, or a CI gate; prose is not a guard. The hexagonal layer map and the words it
+is shaped in — where new code goes, what to call it — are
+[`docs/ai-context/architecture/hexagonal-and-ddd.md`](docs/ai-context/architecture/hexagonal-and-ddd.md);
+the one-reason-to-change file/module size budget, and the ratchet rule that tightens
+it only as modules shrink, are
+[`docs/ai-context/architecture/module-and-file-size.md`](docs/ai-context/architecture/module-and-file-size.md).
+Before a boundary, world-touching-surface, or engine change, the macro
+guardrails apply:
 
 - **Engines are pluggable.** A new engine is a new adapter + a `CAPABILITIES` row +
   one registry registration — **never** an edit to `src/session/{managed,incognito,byob}.ts`

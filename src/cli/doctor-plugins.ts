@@ -12,7 +12,7 @@
 //   ✗ — drift or contract violation (fails doctor overall, fix hint attached)
 //   − — informational (nothing declared / declared-but-disabled); never fails
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Check } from "./doctor.js";
 import type { Capability } from "../util/capabilities.js";
@@ -27,10 +27,10 @@ import {
   readDeclaration,
   resolveDeclaredPlugin,
   type DeclaredPlugin,
-  type PluginPaths,
 } from "../plugin/resolver.js";
 import { buildDepGraph, DepGraphCycleError } from "../plugin/depgraph.js";
 import { readLock, sha256OfPackage } from "../plugin/cli.js";
+import { installedPluginNames } from "./doctor-plugins-scan.js";
 
 const CHECK_NAME = "plugins";
 
@@ -333,52 +333,4 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
 
   checks.push(...lockChecks);
   return checks;
-}
-
-interface InstalledPlugin {
-  /** node_modules-relative name (`pkg` or `@scope/pkg`) — the identity the
-   *  declaration + lock files key on. */
-  readonly dirName: string;
-  /** package.json#name when readable (may differ for file: installs). */
-  readonly pkgName?: string;
-}
-
-/**
- * Scan `<workspace>/plugins/node_modules/` for installed browxai plugins —
- * packages whose `package.json` carries a `browxai` field. Skips dot-dirs
- * (`.pnpm`, `.bin`) and plain dependencies.
- */
-function installedPluginNames(paths: PluginPaths): InstalledPlugin[] {
-  if (!existsSync(paths.nodeModulesDir)) return [];
-  const out: InstalledPlugin[] = [];
-  const consider = (dirName: string): void => {
-    const pkgJsonPath = join(paths.nodeModulesDir, dirName, "package.json");
-    if (!existsSync(pkgJsonPath)) return;
-    try {
-      const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
-        name?: string;
-        browxai?: unknown;
-      };
-      if (!parsed.browxai) return;
-      out.push({ dirName, ...(parsed.name ? { pkgName: parsed.name } : {}) });
-    } catch {
-      /* unreadable package.json — not a resolvable plugin, not an orphan */
-    }
-  };
-  for (const entry of readdirSync(paths.nodeModulesDir, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) continue;
-    if (entry.name.startsWith("@")) {
-      const scopeDir = join(paths.nodeModulesDir, entry.name);
-      let subs: string[];
-      try {
-        subs = readdirSync(scopeDir);
-      } catch {
-        continue;
-      }
-      for (const sub of subs) consider(`${entry.name}/${sub}`);
-    } else {
-      consider(entry.name);
-    }
-  }
-  return out.sort((a, b) => a.dirName.localeCompare(b.dirName));
 }

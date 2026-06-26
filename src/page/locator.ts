@@ -28,6 +28,24 @@ export type ResolvedTarget =
   | { kind: "locator"; loc: Locator }
   | { kind: "coords"; x: number; y: number };
 
+/** Project an `ActionTarget` onto the advisory `{ ref?, selector? }` metadata a
+ *  `DispatchedAction` records. Coords targets carry no ref/selector. Shared by
+ *  every action primitive's descriptor build (and the secrets failure
+ *  builders), so it lives here on the target leaf rather than in any one
+ *  primitive module — keeps the verb files cycle-free. */
+export function refOrSelector(t: ActionTarget): { ref?: string; selector?: string } {
+  if (t.ref) return { ref: t.ref };
+  if (t.selector) return { selector: t.selector };
+  return {};
+}
+
+/** Same projection as `refOrSelector`, named for the descriptor sites that want
+ *  to spell out the intent (the recording layer treats these fields as advisory
+ *  metadata; coords targets simply omit them). */
+export function targetDescriptor(t: ActionTarget): { ref?: string; selector?: string } {
+  return refOrSelector(t);
+}
+
 export function resolveTarget(page: Page, refs: RefRegistry, target: ActionTarget): ResolvedTarget {
   if (target.coords) {
     return { kind: "coords", x: target.coords.x, y: target.coords.y };
