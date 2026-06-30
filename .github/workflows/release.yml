@@ -50,7 +50,7 @@ jobs:
       # action's presence as a "cache enabled by default" heuristic (Low
       # confidence) — the suppression below documents that the real
       # mitigation is the absent `cache:` opt-in.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
@@ -86,7 +86,7 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       # No `cache: pnpm` — see cache-poisoning note on build job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 26
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -118,7 +118,7 @@ jobs:
           persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
       # No `cache: pnpm` — see cache-poisoning note on build job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 26
       - run: pnpm install --frozen-lockfile --ignore-scripts
@@ -153,7 +153,7 @@ jobs:
       # No `cache` opt-in on setup-node — tag-triggered publish job avoids
       # any package-manager cache to stay immune to cache-poisoning attacks
       # against the OIDC-publishing path.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
@@ -194,7 +194,7 @@ jobs:
       # lifecycle scripts and no production dependencies, so the OIDC job
       # only needs node + the upgraded npm CLI. No `cache` opt-in — see
       # cache-poisoning note on the publish job above.
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0 # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.2.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 26
           registry-url: https://registry.npmjs.org
