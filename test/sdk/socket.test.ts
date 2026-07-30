@@ -64,12 +64,16 @@ skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix 
     // The socket serve once re-registered tools with an EMPTY input schema,
     // which made the MCP layer strip every argument before the handler ran —
     // so e.g. `navigate` reached its handler with no `url` and hung the call.
-    // A distinctive argument must survive the round-trip: open a named session
-    // and assert it shows up in list_sessions (the name is a forwarded arg).
-    await client.open_session({ session: "sock-arg-probe", mode: "incognito" });
-    const r = await client.list_sessions();
-    const text = JSON.stringify(r.data);
-    expect(text).toContain("sock-arg-probe");
-    await client.close_session({ session: "sock-arg-probe" }).catch(() => undefined);
+    // A distinctive argument must survive the round-trip. `close_session` on an
+    // id that was never opened is a no-op that ECHOES the id it was asked to
+    // close (`{ok:true, session:<id>, wasOpen:false}`); when the args are
+    // stripped it returns `{ok:true, wasOpen:false}` with no `session` field at
+    // all. So the echoed id is a direct probe of argument forwarding.
+    //
+    // Deliberately browser-free: `pnpm test` is the hermetic suite and its CI
+    // job installs no Chromium, so nothing here may open a real session. The
+    // browser-backed paths are covered by test/keystone/.
+    const r = await client.close_session({ session: "sock-arg-probe" });
+    expect((r.data as { session?: string }).session).toBe("sock-arg-probe");
   });
 });
