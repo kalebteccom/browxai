@@ -28,6 +28,14 @@ surface" covers.
   Safari (needs macOS + Safari.app) still skip on a Linux runner and are
   exercised manually.
 
+- **Production dependencies refreshed.** `playwright-core` 1.61 -> 1.62 and
+  `@modelcontextprotocol/sdk` 1.29 -> 1.30. Verified against the full keystone
+  on the matching browser builds: 22 of 23 keystone files green, including real
+  Firefox, real WebKit and real Safari.app; only the Android keystone skips, as
+  it needs a USB-connected device. The pinned GitHub Actions
+  (`actions/checkout`, `actions/setup-node`, `trufflesecurity/trufflehog`) moved
+  to current releases at the same time.
+
 ### Fixed
 
 - **Two high-severity advisories in the production dependency tree.**
