@@ -24,7 +24,7 @@
     "url": "https://github.com/kalebteccom/browxai/issues"
   },
   "engines": {
-    "node": ">=26"
+    "node": ">=22"
   },
   "packageManager": "pnpm@9.0.0",
   "bin": {

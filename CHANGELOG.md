@@ -8,7 +8,40 @@ surface" covers.
 
 ## Unreleased
 
-_Nothing yet._
+### Changed
+
+- **Supported Node range widened back to `>=22`** (from the `>=26` that v0.9.0
+  shipped). `>=26` excluded every maintained LTS line for no technical reason:
+  the build targets ES2022 and the only Node built-ins imported are `crypto`,
+  `fs`, `module`, `net`, `os`, `path`, and `url`. The real floor is Node 22,
+  because the Safari BiDi client uses Node's global `WebSocket`, which is
+  stable from 22 on (it was flag-gated in 20). Both ends of the range are now
+  tested — CI runs the unit job on Node 22 and Node 26 — so the floor is a
+  verified claim rather than a declaration.
+
+- **The multi-engine claim is now verified on every commit.** The keystone CI
+  job installed Chromium only, so the Firefox, WebKit, and mixed-engine
+  keystones skipped silently — "drives five browser engines" had no automated
+  proof behind it. The job now installs Firefox and WebKit too, which turns 13
+  previously-skipped cross-engine assertions on, including one server running a
+  Chromium and a Firefox session side by side. Android (needs a USB device) and
+  Safari (needs macOS + Safari.app) still skip on a Linux runner and are
+  exercised manually.
+
+### Fixed
+
+- **Two high-severity advisories in the production dependency tree.**
+  `fast-uri` reached the tree at 3.1.2 via `@modelcontextprotocol/sdk` ->
+  `ajv`, carrying two host-confusion advisories. Pinned to `>=3.1.4 <4`
+  through `pnpm.overrides`, alongside the existing `hono` / `qs` entries.
+  `pnpm audit --prod --audit-level=high` now exits 0.
+- **The unit suite is hermetic again.** `test/sdk/socket.test.ts` opened a real
+  incognito session, so `pnpm test` needed a browser the CI unit job
+  deliberately does not install — it failed on CI while passing locally.
+  Argument forwarding is now probed through `close_session`, which echoes the
+  id it was asked to close and omits the field entirely when arguments are
+  stripped. Same regression coverage, no browser, and the case runs in 14ms
+  instead of 2.9s.
 
 ## v0.9.0 — 2026-06-17 — Per-session engine selection (open_session engine override)
 
