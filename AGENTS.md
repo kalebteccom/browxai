@@ -48,6 +48,7 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 - `src/policy/` — origin allow/blocklist, confirmation hooks, capability lattice.
 - `harness/` — `driving-browxai/SKILL.md` (portable "drive browxai well" agent skill) + per-harness adapters (`adapters/claude-code/`, `adapters/codex/`, `adapters/pi/`).
 - `packages/plugins/{example, figma, tldraw, excalidraw}/` — workspace plugins demonstrating the v0.7 plugin contract.
+- `packages/capability-testbed/` — a multi-surface web app plus an agentic harness that drives **every** tool against it, and a `dogfood/` runner that hands the same missions to a real agent over MCP. Deliberately **outside CI** (heavy: real browsers, every off-by-default capability enabled) and run on demand. `reports/FULL-REPORT.md` holds the latest full pass. This is the lane that finds defects unit tests structurally cannot — the last run took 181/196 to 196/196 and surfaced six real bugs (`clock` virtual-time race, `cookies_delete` path filter, `extract` array leaf, `text_search` visibility filter, `drop_files` page-function serialization, `set_locale`).
 - `docs/` — public adopter contract (tool-reference, threat-model, plugin-authoring, plugins, sdk, getting-started, byo-vision, capabilities), published via the Astro + Starlight site in `website/` (Netlify).
 - `docs/ai-context/` — agent-facing routing layer. Discipline, architecture notes, lessons captured. **Never published to the docs site.** Read before touching the corresponding area.
 - `docs/rfcs/` — numbered design RFCs.

@@ -16,14 +16,14 @@ browxai is a browser-control server designed for agents, not for human programme
 - **Drive a live web app.** Have a coding agent `navigate` to a page, `find` a control by natural-language query, `fill` a form, `click`, and verify the outcome from a structured `ActionResult` — without burning tokens on a full DOM dump.
 - **Work inside an authenticated session.** Open a `persistent` or `attached` (bring-your-own-browser) session so the agent operates inside a real, logged-in profile and can automate multi-step flows that need the existing cookies.
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
-- **Run cross-engine checks.** Drive the identical tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari — pick the engine per session and validate a flow beyond just Chromium.
+- **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari — pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason rather than failing oddly (see the per-engine table in the [tool reference](docs/tool-reference.md)).
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run.
 - **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium) — e.g. an orchestrating agent plus a helper script.
 
 ## Why browxai
 
 - **Model-agnostic** — works with any MCP client (Claude, Codex, …); not locked to one model.
-- **Engine-agnostic** — the same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium.
+- **Engine-agnostic** — the same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is honest rather than uniform: navigation, actions, snapshot/find, screenshots and storage work everywhere, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason.
 - **Token-efficient** — `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
 - **Safe by default** — capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking, attaching to your real Chrome) is off until you opt in.
 - **Owns the full session lifecycle** — managed profiles, BYOB attach, and authenticated, headed, or headless sessions — rather than wrapping someone else's automation API.
@@ -99,6 +99,19 @@ pnpm build               # builds dist/ — the `browxai` bin is dist/cli.js
 pnpm test:keystone       # headless end-to-end keystone (real Chromium)
 pnpm docs:dev            # the documentation site, locally
 ```
+
+Three test lanes, in ascending cost. `pnpm test` is hermetic and browser-free.
+`pnpm test:keystone` drives real browsers — Chromium, Firefox and WebKit in CI;
+Android and Safari need a device and a Mac, so they run manually. Then
+`packages/capability-testbed/` is a multi-surface web app plus a harness that
+drives **every** tool against it, run on demand rather than in CI because it
+needs real browsers with every off-by-default capability switched on. That last
+lane is where the interesting failures live: its most recent pass went from
+181/196 to 196/196 and turned up six real defects a mocked unit test cannot see
+— a virtual-time race in `clock`, a cookie path-filter mismatch, an `extract`
+array leaf resolving empty, a `text_search` visibility filter discarding every
+match, a page-function serialization error in `drop_files`, and `set_locale`
+never moving `navigator.language`.
 
 Project docs:
 

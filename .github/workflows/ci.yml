@@ -19,13 +19,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [26]
+        # Both ends of the supported range. 22 is the declared floor in
+        # `engines` (the Safari BiDi client uses Node's global `WebSocket`,
+        # stable since 22); 26 is what development runs on. Testing only the
+        # top would let the floor claim rot.
+        node-version: [22, 26]
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
@@ -42,11 +46,11 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
-      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 26
           cache: pnpm
@@ -58,7 +62,12 @@ jobs:
           restore-keys: |
             playwright-${{ runner.os }}-
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright-core install --with-deps chromium
+      # chromium + firefox + webkit: the three engines whose keystones can run
+      # on a Linux runner. Without firefox/webkit installed those suites skip
+      # silently, which left the multi-engine claim untested on every commit.
+      # android needs a USB device and safari needs macOS + Safari.app, so
+      # those two keystones still skip here and are run manually.
+      - run: pnpm exec playwright-core install --with-deps chromium firefox webkit
       # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/
       # into a staged workspace and fails with ENOENT if dist/ is missing.
       # The unit `pnpm test` doesn't need it but the keystone does.
