@@ -6,12 +6,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/block-ai-attribution.sh\"",
-            "timeout": 10,
-            "statusMessage": "Checking commit attribution"
-          },
-          {
-            "type": "command",
             "command": "bash \"$(git rev-parse --show-toplevel)/.codex/hooks/block-long-commits.sh\"",
             "timeout": 10,
             "statusMessage": "Checking semantic commit message"

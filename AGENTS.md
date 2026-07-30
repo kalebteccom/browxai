@@ -8,7 +8,7 @@ browxai is an MCP-native, model-agnostic, agentic-first browser-control server o
 
 ## Operating rules
 
-- **Commits.** Single-line conventional-commit subjects (`type(scope): subject` or `type: subject`), **≤72 characters**, no body, **no AI-attribution trailers**. The repo's `.claude/hooks/block-*.sh` enforces this on visible `git commit -m` invocations. Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`.
+- **Commits.** Single-line conventional-commit subjects (`type(scope): subject` or `type: subject`), **≤72 characters**, no body. The repo's `.claude/hooks/block-*.sh` enforces this on visible `git commit -m` invocations. Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`.
 - **Package manager.** Use `pnpm` (≥9). Never `npm` or `yarn`. The repo declares `packageManager: "pnpm@9.0.0"` via Corepack.
 - **Filenames.** kebab-case for all new files and directories.
 - **Preserve user work.** Never run `git reset`, `git checkout <path>`, `git clean`, or `git revert` without explicit user request. If a working tree looks broken, surface it — don't sweep it.

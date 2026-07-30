@@ -26,8 +26,8 @@ interaction, the session model, or capabilities.
 ## Conventions
 
 - **Commits** — single-line [Conventional Commits](https://www.conventionalcommits.org/)
-  subject, **≤72 chars**, no body, no AI-attribution trailers. Repo hooks
-  enforce all three; don't bypass them.
+  subject, **≤72 chars**, no body. Repo hooks enforce all three; don't
+  bypass them.
 - **Design for the problem class.** When a consumer asks for a specific
   feature, build the _generic primitive_ for the underlying problem, not the
   literal ask. Keep dependency / framework / app names out of code, comments,
