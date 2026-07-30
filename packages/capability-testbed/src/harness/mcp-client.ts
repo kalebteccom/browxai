@@ -1,9 +1,26 @@
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { BrowxaiResult, McpClientAdapter } from "./types.js";
 
-const repoRoot = "/Users/rowin/Projects/Kalebtec/browxai";
+/** Walk up from this module to the workspace root, identified by the
+ *  `pnpm-workspace.yaml` marker. Anchored on `import.meta.url` rather than
+ *  `process.cwd()` so the harness resolves the same root no matter where it is
+ *  invoked from. cap: 10 levels — the repo is nowhere near that deep. */
+function findRepoRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let level = 0; level < 10; level += 1) {
+    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
+    const parent = resolve(dir, "..");
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error("could not locate the browxai workspace root (no pnpm-workspace.yaml found)");
+}
+
+const repoRoot = findRepoRoot();
 
 interface CreateMcpClientOptions {
   readonly workspace: string;

@@ -4,9 +4,9 @@
 //
 // Skipped on Windows: the test relies on POSIX socket file semantics.
 //
-// This is the smallest end-to-end exercise of the multi-client scenario
-// wrightxai's loop refactor will lean on: server-side `browxai serve` +
-// SDK-side `createBrowxai({ endpoint: "unix://..." })`.
+// This is the smallest end-to-end exercise of the multi-client scenario:
+// server-side `browxai serve` + SDK-side
+// `createBrowxai({ endpoint: "unix://..." })`.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";

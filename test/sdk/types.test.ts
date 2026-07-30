@@ -1,6 +1,6 @@
 // Compile-time probes for the typed `BrowxaiClient` surface. The shapes
 // declared in `src/sdk/tool-types.ts` are the canonical reference an
-// LLM-authoring consumer (wrightxai) reads from `.d.ts`, so we keep a few
+// LLM-authoring consumer (the adopter) reads from `.d.ts`, so we keep a few
 // minimal runtime expressions whose TYPE CHECK is the test. Deliberate-
 // violation probes that prove the wrong shape fails to compile live in
 // `test/sdk/types.probe.failing.ts.skip` (kept out of the build).

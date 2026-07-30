@@ -4,7 +4,7 @@
 // `(args: BrowxaiArgs) => Promise<BrowxaiResult>` — opaque, generic. Stage A.5
 // specialises each method against the curated SDK surface from
 // `registry.ts` so the emitted `.d.ts` is the canonical reference for
-// LLM-authoring consumers (wrightxai ).
+// LLM-authoring consumers.
 //
 // **Pure type-layer addition.** The runtime path
 // (`buildClient`/`callTool`/transports/capability gates) is unchanged. The
