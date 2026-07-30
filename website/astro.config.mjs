@@ -2,6 +2,7 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 import starlightLinksValidator from "starlight-links-validator";
+import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
 
 // The browxai documentation site, served at browxai.com.
 // Static Astro + Starlight. The published content lives in
@@ -10,6 +11,13 @@ import starlightLinksValidator from "starlight-links-validator";
 export default defineConfig({
   site: "https://browxai.com",
   trailingSlash: "always",
+  // Remove agent-facing "For agents" callouts from the rendered HTML. The same
+  // guidance stays in the page source and is served from the plaintext .md
+  // endpoint, so the human site stays end-user-focused while agents still get
+  // it via llms.txt.
+  markdown: {
+    rehypePlugins: [rehypeStripAgentAsides],
+  },
   integrations: [
     starlight({
       title: "browxai",
@@ -133,7 +141,6 @@ export default defineConfig({
           items: [
             { label: "Configuration", slug: "guides/configuration" },
             { label: "Recipes", slug: "guides/recipes" },
-            { label: "Agent guidance", slug: "guides/agent-guidance" },
           ],
         },
         {

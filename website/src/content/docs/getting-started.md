@@ -65,5 +65,5 @@ flaky or transient UI use `wait_for`, `sample`, and `act_and_sample`.
 ## Where to go next
 
 - **[Tool reference](/reference/tool-reference/)** is every tool, its inputs and outputs, example calls, the configuration and session model, and the stability policy.
-- **[Agent guidance](/guides/agent-guidance/)** is the reach-for-this-not-that map: the footguns agents hit and the curated tool that avoids each one.
+- **[Agent guidance](https://github.com/kalebteccom/browxai/blob/main/docs/agent-guidance.md)** is the reach-for-this-not-that map: the footguns agents hit and the curated tool that avoids each one.
 - **[Security and threat model](/security/threat-model/)** is the capability model, what browxai defends against, and what it explicitly does not.
