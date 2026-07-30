@@ -2,7 +2,7 @@
 // on a Unix domain socket (or named pipe on Windows) and accepts MCP-over-
 // socket connections. The wire framing is byte-identical to the stdio path
 // (same JSON-lines + ReadBuffer), but the listener lets multiple SDK
-// clients attach to ONE browser/session registry — the wrightxai
+// clients attach to ONE browser/session registry — the adopter
 // loop-plus-script scenario.
 //
 // Off by default: there is no `serve` exposed unless the operator explicitly

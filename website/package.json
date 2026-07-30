@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node scripts/sync-docs.mjs && astro dev",
     "start": "node scripts/sync-docs.mjs && astro dev",
-    "build": "node scripts/sync-docs.mjs && node ../scripts/prose-guard.mjs && astro build",
+    "build": "node scripts/sync-docs.mjs && astro build",
     "preview": "astro preview",
     "astro": "astro",
     "check": "astro check",

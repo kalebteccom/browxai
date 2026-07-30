@@ -1,5 +1,5 @@
 // Investigation smoke for `screenshot_marks` — substantiates the
-// wrightxai tool-fit question:
+// the adopter tool-fit question:
 //
 //   1. Verify the namespace-sharing claim end-to-end (snapshot → pick refs →
 //      screenshot_marks → mapping["N"] === eM AND painted bbox == find()
@@ -122,7 +122,7 @@ beforeAll(async () => {
   server = await createServer({ headless: true });
   handlers = server.handlers;
   // Bump the per-call deadline — cross-internet first-paint + tree walk easily
-  // beats the 5 s default. Same posture wrightxai uses (30 s).
+  // beats the 5 s default. Same posture the adopter uses (30 s).
   await callJson("set_config", { scope: "project", patch: { actionTimeoutMs: 90_000 } });
 }, TIMEOUT);
 
@@ -155,7 +155,7 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
 
         // (a) Snapshot is the canonical, deterministic ref minter — find()'s
         // NL ranker can return 0 on cold large pages. We use snapshot for the
-        // wall-clock test (snapshot+marks-bare is the realistic wrightxai-loop
+        // wall-clock test (snapshot+marks-bare is the realistic the adopter-loop
         // perception step). find() is only invoked when we want the
         // bbox-equality fast-path arm; on heavy targets (mdn) it can blow
         // past the 90s budget, in which case we report tFindWithBboxMs:null.
@@ -222,7 +222,7 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         // N-th candidate, AND must equal entry.ref for that index. The
         // bare-ref path internally re-walks the a11y/DOM tree; on heavy DOMs
         // (mdn) that compose can blow past the per-call deadline and the
-        // handler returns `{ok:false, error}`. That's a real wrightxai-loop
+        // handler returns `{ok:false, error}`. That's a real the adopter-loop
         // finding — caller-supplied bbox (fast-path) avoids it entirely. We
         // record the outcome both ways.
         const sourceRefs = fastPath ? withBbox.map((c) => c.ref) : useRefs;
@@ -298,7 +298,7 @@ describe.skipIf(SKIP)("screenshot_marks investigation — namespace sharing + wa
         }
 
         // Profile line — two distinct comparisons:
-        //   Flow A (vision-grounded action choice, realistic wrightxai loop):
+        //   Flow A (vision-grounded action choice, realistic the adopter loop):
         //     snapshot → screenshot_marks(bare refs)   = tSnapshot + tBare
         //   Flow B (alternative): find(query) → screenshot                = tFind + tSnap
         //   Flow C (pure baseline): screenshot only                       = tSnap

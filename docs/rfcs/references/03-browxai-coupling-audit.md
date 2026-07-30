@@ -1,6 +1,6 @@
 # browxai protocol-coupling audit — multi-engine (Firefox/WebKit/BiDi) readiness
 
-Read-only audit of `/Users/rowin/Projects/Kalebtec/browxai` @ `main` (`d248ef8`). No commits made.
+Read-only audit of this repo @ `main` (`d248ef8`). No commits made.
 
 **Scope read:** `src/server.ts` (12,889 lines, all 198 tool registrations), `src/session/*` (byob/managed/incognito/registry/types/emulation/permission/notification/dialog/fs-picker/extensions/device-emu/storage/cache-storage/idb-storage/profile-snapshot/wedge/metrics), `src/page/*` (all 60+ modules), `src/helper/*` (bridge/browx-page/stealth/overlay-hide), `src/plugin/*`, `src/sdk/*`, `src/util/capabilities.ts`, `src/cli/*`, `packages/plugins/*`, `test/keystone/*`, `vitest.keystone.config.ts`, `docs/ai-context/page-side-functions/*`.
 

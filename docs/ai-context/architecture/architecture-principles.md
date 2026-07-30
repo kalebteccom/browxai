@@ -1,7 +1,8 @@
 # Architecture principles - the Kalebtec doctrine
 
-The macro layer of how we build. Identical across browxai, docsxai, and remotxai;
-each repo leads with its own exemplars, but the principles are the same doctrine.
+The macro layer of how we build. Identical across browxai, docsxai, and our
+other projects; each repo leads with its own exemplars, but the principles are
+the same doctrine.
 New Kalebtec projects adopt it on day one.
 
 ## Purpose, and how this relates to code-quality.md
@@ -47,8 +48,8 @@ browxai illustrates this through its seams:
 
 The family echoes this everywhere: docsxai's engine sits behind a `BrowserDriver`
 port (only `playwright-driver.ts` imports `playwright-core`) and routes all IO
-through one `resolveWorkspacePath` chokepoint; remotxai's
-`packages/adapter-contract` is the single Zod-schema source of truth that every
+through one `resolveWorkspacePath` chokepoint; our harness-orchestration work
+keeps a single Zod-schema contract package as the source of truth that every
 harness adapter (Claude Code, Codex, Pi) and the daemon build against - the
 hexagonal host-core/adapters split made concrete.
 
@@ -64,7 +65,7 @@ concrete thing and inline it.
   today. The plugin runtime's `PluginApi` is **proven**: the workspace plugins
   (`example`, `figma`, `tldraw`, `excalidraw`) are real second implementations.
 - docsxai's `BrowserDriver` is **proven**: `PlaywrightDriver` plus browxai as the
-  real second driver. remotxai's adapter-contract is **proven**: three adapters.
+  real second driver. The harness adapter-contract is **proven**: three adapters.
 - A single-implementation interface with no second consumer on the horizon is
   **usually not** - it adds an indirection, a file, and a lie ("this is
   swappable") for no payoff. Note the deliberate exceptions browxai _does_ allow,
@@ -154,7 +155,7 @@ don't edit the core. The family's seams:
 - **New engine / driver / backend = new adapter behind the existing port.** A new
   CDP backend behind `Page` / `BrowserContext`, a new SDK transport behind
   `Transport`, a second `BrowserDriver` in docsxai, a new harness adapter against
-  remotxai's contract - none touch the core.
+  the harness contract - none touch the core.
 - **New capability = a new gated interface.** Anything posture-broadening (eval,
   network-body, byob-attach, clipboard, file-io, secrets, extensions, canvas, …)
   lands off-by-default behind a declared capability, with a per-tool keystone test

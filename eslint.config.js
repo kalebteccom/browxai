@@ -25,7 +25,7 @@ import importPlugin from "eslint-plugin-import-x";
 import globals from "globals";
 
 const TRACKER_ID_PATTERN =
-  "\\b(W-[A-Z]\\d+|Round-?\\d+|ask\\s*#\\d+|TICKET-\\d+|JIRA-\\d+|LINEAR-\\d+|GEN-\\d+|T-\\d+|R\\d+-#\\d+)\\b";
+  "\\b(W-[A-Z]\\d+|Round-?\\d+|ask\\s*#\\d+|TICKET-\\d+|JIRA-\\d+|LINEAR-\\d+|GEN-\\d+|T-\\d+|R-\\d+|R\\d+-#\\d+)\\b";
 
 // Custom rule: ban tracker-style IDs in comments.
 const noTrackerIdsInComments = {
@@ -33,7 +33,7 @@ const noTrackerIdsInComments = {
     type: "problem",
     docs: {
       description:
-        "Disallow project-management tracker IDs in comments (Webwright / Round / ask / JIRA / LINEAR / GEN / T / Rnd-# style).",
+        "Disallow project-management tracker IDs in comments (W- / Round / ask / JIRA / LINEAR / GEN / T / R- / Rnd-# style).",
     },
     schema: [],
     messages: {

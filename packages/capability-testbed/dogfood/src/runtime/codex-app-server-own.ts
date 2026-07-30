@@ -262,7 +262,7 @@ export class InlineCodexAppServerOwn {
       // APPROVE the agent's actions. The dogfood agent's whole job is to drive
       // browxai MCP tools; DECLINING approval requests made every browxai call
       // come back as "user rejected MCP tool call". The proven codex reply shape
-      // is `{decision:"accept"}` (remotxai adapter). The read-only sandbox +
+      // is `{decision:"accept"}`. The read-only sandbox +
       // the mission prompt (no shell / no local browser) are the real guardrails.
       this.reply(frame.id, { decision: "accept" });
       return;

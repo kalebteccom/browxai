@@ -81,7 +81,7 @@ describe("validateSchema", () => {
   });
 
   it('rejects `integer` with a "did you mean number?" hint', () => {
-    // Regression — wrightxai trial-1 turn 2 burned a full retry cycle here.
+    // Regression — the adopter trial-1 turn 2 burned a full retry cycle here.
     // The validator still rejects (contract preserved); the message now
     // tells the agent the closest valid alias on the first hop.
     // @ts-expect-error — deliberately invalid
@@ -341,7 +341,7 @@ describe("extract() — top-level failure shapes", () => {
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
   it('retired `mode:"llm-assisted"` is tolerated — warn + fall through to deterministic (v0.3.2)', async () => {
-    // Regression for R-1: wrightxai's bench agent saw `mode` in the SDK type,
+    // Regression — the retired `mode` input: an adopter's bench agent saw it in the SDK type,
     // tried `"llm-assisted"` as a fallback, and wasted LLM turns on the old
     // `kind:"llm-assisted-not-implemented"` rejection. As of v0.3.2 the arg
     // is RETIRED at the typed boundary and tolerated at runtime — passing
@@ -423,7 +423,7 @@ describe("extract() — top-level failure shapes", () => {
   });
 });
 
-describe("collectUnknownHintKeys — wrightxai trial-1 silent-typo regression", () => {
+describe("collectUnknownHintKeys — the adopter trial-1 silent-typo regression", () => {
   // Regression target: trial-1 turn 6 emitted `attribute:"href"` and
   // `transform:"int"` inside `x-browx-source`. The resolver only reads
   // `attr`, `prop`, `value`, etc., so both keys were silently dropped and
@@ -509,8 +509,8 @@ describe("collectUnknownHintKeys — wrightxai trial-1 silent-typo regression", 
   });
 });
 
-describe("resolveAgainstTree — wrightxai trial-1 schema-discovery regressions", () => {
-  // The exact schema the wrightxai agent emitted on turn 6 (trimmed to the
+describe("resolveAgainstTree — the adopter trial-1 schema-discovery regressions", () => {
+  // The exact schema the adopter agent emitted on turn 6 (trimmed to the
   // tree-side properties — `selector` paths need a real Page). Before this
   // patch, the schema would resolve, the leaf values would be partly
   // wrong (silently), and `evidence.partialMisses` would be empty — i.e.
@@ -616,7 +616,7 @@ describe("applySchemaRelaxations — Proposal A: integer → number auto-coerce"
     expect(notes.some((n) => n.startsWith("points:"))).toBe(true);
   });
 
-  it("coerces `integer` inside an array's items.properties (wrightxai trial-1 turn-2 shape)", () => {
+  it("coerces `integer` inside an array's items.properties (the adopter trial-1 turn-2 shape)", () => {
     // Pinned to the exact trial-1 turn-2 schema shape — `integer` on
     // rank/points/comments_count under a per-row items.properties.
     const s: ExtractSchema = {
@@ -849,15 +849,15 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
   });
 });
 
-describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (R-5, v0.3.3)", () => {
+describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (v0.3.3)", () => {
   it("tolerates an explicit per-field `query:` — warns once + records a partialMisses entry naming the field", async () => {
-    // Regression for R-5: wrightxai's smoke trial saw the LLM author a
+    // Regression: an adopter's smoke trial saw the LLM author a
     // prose-style `x-browx-source.query` for a per-row numeric field on
     // Hacker News and the resolver returned null for every row with no
     // partialMiss surfaced (one stale ref re-used across 30 row scopes —
     // the agent burned 14 revisions before the judge rejected it).
     //
-    // Post-R-5 contract: passing an explicit per-field `query:` must NOT
+    // Post-retirement contract: passing an explicit per-field `query:` must NOT
     // throw, must warn ONCE per process (one-shot guard), and MUST emit a
     // partialMisses entry for each field that uses it so the diagnostic
     // surfaces in `evidence` — the caller / authoring LLM now sees the
@@ -933,7 +933,7 @@ describe("resolveAgainstTree — RETIRED `x-browx-source.query` per-field hint (
     // `{ query: <name> }` on the hint, but it carries a private marker
     // so the resolver knows it's the implicit lowering (not a
     // user-authored prose query). This test pins that the implicit path
-    // still works on testid-rich pages without firing the R-5 warning.
+    // still works on testid-rich pages without firing the retired-query warning.
     seq = 0;
     const tree = n("WebArea", undefined, [n("text", "title", [], { name: "title" })]);
 

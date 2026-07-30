@@ -23,11 +23,11 @@ export function __resetLlmAssistedWarnedForTests(): void {
 
 /** One-shot warn for the RETIRED `x-browx-source.query` per-field hint
  *  (v0.3.3). The natural-language tree-scan ranker is unreliable in
- *  production — wrightxai's smoke trial saw the LLM author a prose query
+ *  production — an adopter's smoke trial saw the LLM author a prose query
  *  for a per-row numeric field on Hacker News, and the resolver returned
  *  null for every row (one stale ref re-used across all 30 row scopes,
  *  no partialMiss surfaced — the agent burned 14 revisions). Same shape
- *  of defect as R-1's `mode:"llm-assisted"`: advertised in the typed SDK,
+ *  of defect as the retired `mode:"llm-assisted"`: advertised in the typed SDK,
  *  unreliable at runtime. Retired at the typed boundary; tolerated at
  *  runtime with a one-shot warn + per-call `partialMisses` entry so the
  *  caller sees the actionable diagnostic.
@@ -45,7 +45,7 @@ export function warnExplicitNlQueryRetired(): void {
     "browxai: extract() — explicit per-field `x-browx-source.query` is " +
       "RETIRED as of v0.3.3. The NL tree-scan ranker is unreliable on " +
       "prose-style queries (uniform null/0 across rows, no partialMiss " +
-      "surfaced — see R-5 / wrightxai smoke trial). Use " +
+      "surfaced). Use " +
       "`x-browx-source.selector` (raw CSS / selectorHint) for per-field " +
       "targeting; the implicit property-name lowering still works for " +
       "testid-friendly pages. The runtime still attempts resolution and " +

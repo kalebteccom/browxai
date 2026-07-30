@@ -176,7 +176,7 @@ export function validateSchema(schema: ExtractSchema | undefined, path: string):
 /** Walk the schema tree and emit one diagnostic per unknown
  *  `x-browx-source` key. Pure inspection — does not modify the schema.
  *  Adopters who use, e.g., `attribute` instead of `attr` today see the
- *  schema "succeed" with silently-wrong leaf values (wrightxai trial-1
+ *  schema "succeed" with silently-wrong leaf values (the adopter trial-1
  *  turn 6: `url` came back as the title text because `attribute:"href"`
  *  was silently dropped). The diagnostic surfaces the typo in
  *  `evidence.partialMisses` so the agent can self-correct on the next
