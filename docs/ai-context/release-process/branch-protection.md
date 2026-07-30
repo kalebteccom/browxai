@@ -13,6 +13,11 @@ PoC). Rulesets close that path: bypass is named-account-scoped and audited.
 
 ## `main` ruleset (required)
 
+**Status: partially applied.** The ruleset named `main` exists and is
+`active`. What is live, and what is deliberately still open, is recorded in
+"Applied vs pending" at the end of this section — read that before assuming a
+property is enforced.
+
 Apply at: GitHub repo → Settings → Rules → Rulesets → New ruleset → "main".
 
 - **Target branches:** `main`.
@@ -27,17 +32,47 @@ Apply at: GitHub repo → Settings → Rules → Rulesets → New ruleset → "m
   - Dismiss stale pull request approvals when new commits are pushed.
   - Require review from CODEOWNERS.
   - Require approval of the most recent reviewable push.
-- **Require status checks to pass:**
-  - `ci / build (20)`
-  - `ci / build (22)`
-  - `ci / keystone`
-  - `quality / lint`
-  - `quality / audit`
-  - `quality / secret-scan`
-  - `quality / zizmor`
-  - `quality / package-contents`
+- **Require status checks to pass:** use the exact check names GitHub
+  reports, which are the job names — not `<workflow> / <job>`. Requiring a
+  name that no job produces blocks every PR forever, so verify against a real
+  run (`gh pr view <n> --json statusCheckRollup`) before adding one.
+  - `build (22)` — the declared `engines` floor
+  - `build (26)` — the current development version
+  - `keystone`
+  - `lint`
+  - `audit`
+  - `secret-scan`
+  - `zizmor`
+  - `package-contents`
   - `CodeQL` (added once default setup is enabled — sibling task)
   - Require branches to be up to date before merging: on.
+- **Allowed merge methods:** squash only, which is what "require linear
+  history" above implies.
+
+### Applied vs pending
+
+Live on `main` today:
+
+| Property                                                 | State               |
+| -------------------------------------------------------- | ------------------- |
+| Restrict deletions                                       | enforced            |
+| Restrict force pushes (`non_fast_forward`)               | enforced            |
+| Require linear history                                   | enforced            |
+| Require a PR before merging                              | enforced            |
+| Squash-only merges                                       | enforced            |
+| The eight status checks above, branch must be up to date | enforced            |
+| Bypass list                                              | empty, as specified |
+
+Deliberately **not** yet enforced, because each one can lock the repo:
+
+- **Required approvals: 1 + review from CODEOWNERS.** There are two admin
+  accounts, so this is satisfiable, but it makes every merge a two-account
+  operation. Turn on once the second maintainer is a separate human rather
+  than a second account held by the same person; until then it buys audit
+  trail, not review.
+- **Require signed commits.** Nothing in the current history is verifiably
+  signed. Enable only alongside a signing key on every account that pushes,
+  or the first push after enabling is rejected with nothing to fall back on.
 
 ## Path-scoped ruleset (`.github/**`)
 
