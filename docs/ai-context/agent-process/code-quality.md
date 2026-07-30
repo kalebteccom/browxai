@@ -23,11 +23,11 @@ If a residual issue remains (e.g. an external dependency emits a warning you can
 
 - Conventional Commit subjects: `type(scope): subject` or `type: subject`.
 - Allowed types: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style`, `test`.
-- Single-line, **≤72 characters**, no body, no AI-attribution trailers.
+- Single-line, **≤72 characters**, no body.
 - Hooks enforce this on visible `git commit -m` / `--message=` invocations.
 - Use `--no-edit` only when amending or rebasing a commit whose existing subject already satisfies the contract.
 
-Rationale: terse, scannable git log; AI trailer noise dilutes attribution; ticket / iteration / plan references rot — state the why in the PR description or in `docs/ai-context/`, not the commit body.
+Rationale: terse, scannable git log; ticket / iteration / plan references rot — state the why in the PR description or in `docs/ai-context/`, not the commit body.
 
 ## Improve existing code
 

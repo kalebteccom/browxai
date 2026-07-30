@@ -7,7 +7,7 @@
 // Two flows live here:
 //
 //   1. The in-process SDK happy-path — every stable stable tool method
-//      called by the wrightxai-Stage-B loop should work and return the
+//      called by the adopter-Stage-B loop should work and return the
 //      structured shapes the script expects.
 //
 //   2. Egress hygiene regression — navigate to a URL whose query string

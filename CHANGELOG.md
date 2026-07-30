@@ -1317,7 +1317,7 @@ Patch release on the path to v1.0. Four small additive primitives lead the new-f
 
 ## v0.3.3 — 2026-05-30 — `x-browx-source.query` retired
 
-Reconciliation round (R-5) follow-up from wrightxai bench adoption: a
+Reconciliation round (R-5) follow-up from adopter bench adoption: a
 smoke trial saw an LLM-authoring SDK consumer author
 `x-browx-source: { query: "the number of comments on this story…" }` for
 a per-row numeric field on Hacker News. The resolver returned `null` for
@@ -1369,12 +1369,12 @@ diagnostic on the first failure.
   failure-kind taxonomy) are untouched.
 - Array `x-browx-source.collection` still accepts a CSS selector OR a
   tree-scan query (the array-level NL fallback was not the failure mode
-  R-5 traced — the wrightxai smoke trial's `collection` was the
+  R-5 traced — the adopter smoke trial's `collection` was the
   reliable `"tr.athing"` CSS).
 
 ## v0.3.2 — 2026-05-29 — `extract.mode` retired
 
-Reconciliation round (R-1) follow-up from wrightxai bench adoption: the
+Reconciliation round (R-1) follow-up from adopter bench adoption: the
 LLM-authoring SDK consumer saw `mode` in the typed `ExtractArgs`
 signature, tried `"llm-assisted"` as a fallback when deterministic
 returned partial results, and burned multiple LLM turns on the resulting
@@ -1418,7 +1418,7 @@ behaviour change. The `BrowxaiClient` interface now carries per-tool
 argument and result-data types instead of the Stage-A
 `(args: BrowxaiArgs) => Promise<BrowxaiResult>` uniform shape, because the
 emitted `.d.ts` is the canonical reference for LLM-authoring consumers
-(wrightxai's lowering step generates TypeScript that imports from this surface).
+(the adopter's lowering step generates TypeScript that imports from this surface).
 
 ### Added
 
@@ -1511,7 +1511,7 @@ diagnostics into hard rejections when enabled.
 ### Tests
 
 - 14 new regression tests in `src/page/extract.test.ts` pin the new
-  behavior, including the exact wrightxai trial-1 turn-2 schema shape
+  behavior, including the exact the adopter trial-1 turn-2 schema shape
   (`integer` for rank/points/comments_count). One existing test
   (`returns invalid-schema when type is unsupported`) updated to use
   `type:"null"` since `type:"integer"` no longer rejects. Suite total:
@@ -1545,7 +1545,7 @@ Patch release. Public-API contract is **unchanged** — `extract()` args, return
 shape, and `{ok, data, evidence, tokensEstimate}` / `{ok:false, failure}`
 semantics are byte-identical to v0.2.1. Validator error messages and
 `evidence.partialMisses` diagnostics improve; nothing previously-succeeding
-now fails, and nothing previously-failing now succeeds. Trigger: wrightxai
+now fails, and nothing previously-failing now succeeds. Trigger: the adopter
 early-trial schema-discovery burned ~3-5k output tokens across three turns
 learning the schema convention from scratch (rejected `integer`, learned
 arrays need `x-browx-source.collection`, silently mis-spelled `attr` as
@@ -1597,7 +1597,7 @@ arrays need `x-browx-source.collection`, silently mis-spelled `attr` as
 
 - 9 new regression tests in `src/page/extract.test.ts` pin the new
   diagnostic behavior + validator suggestions, including the exact
-  schema shape the wrightxai trial-1 agent emitted on turn 6
+  schema shape the adopter trial-1 agent emitted on turn 6
   (`attribute` + `transform` typos). Suite total: 912 → 920 (8 net new
   after one existing test gained a stricter assertion).
 

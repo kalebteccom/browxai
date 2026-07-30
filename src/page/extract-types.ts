@@ -43,7 +43,7 @@ export interface ExtractSchema {
 export interface ExtractSourceHint {
   /** RETIRED in v0.3.3 — the NL tree-scan ranker is unreliable for
    *  explicit prose-style per-field queries (uniform null/0 across rows
-   *  with no partialMiss surfaced; see R-5). The typed SDK no longer
+   *  with no partialMiss surfaced). The typed SDK no longer
    *  exposes this field; passing it at runtime emits a one-shot warn and
    *  records a partialMisses entry so the diagnostic surfaces. Use
    *  `selector` (raw CSS) instead — the implicit property-name lowering

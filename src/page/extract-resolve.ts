@@ -227,7 +227,7 @@ async function resolveLeaf(ctx: ResolveCtx): Promise<unknown> {
     return readLeafFromLocator(ctx, ctx.scopeLocator, hint);
   }
   if (!query) return missLeaf(ctx);
-  // R-5 (v0.3.3): explicit per-field `query` is RETIRED. The implicit
+  // v0.3.3: explicit per-field `query` is RETIRED. The implicit
   // name-as-query lowering still flows through here (marked via
   // IMPLICIT_QUERY) and works fine on testid-rich pages; the prose-style
   // explicit query path is the unreliable one we're deprecating. Emit a

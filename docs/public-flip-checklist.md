@@ -63,8 +63,8 @@ are generated from `docs/*.md` at build time by `website/scripts/sync-docs.mjs`;
    - Publish: `website/dist`. Node 20; pnpm via the root `packageManager` field.
    - For a private repo, grant Netlify's GitHub app read access, or do a manual
      deploy of the prebuilt output: `netlify deploy --prod --dir=website/dist`.
-2. Trigger a deploy and confirm it is green. The build runs prose-guard, the
-   link validator, and Pagefind - the same gates as local.
+2. Trigger a deploy and confirm it is green. The build runs the link
+   validator and Pagefind - the same gates as local.
 3. Add the custom domain (Netlify -> Domain management): set `browxai.com` as the
    primary domain and add `www.browxai.com`; Netlify auto-redirects www -> apex.
 4. Point DNS for `browxai.com`:

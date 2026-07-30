@@ -11,38 +11,34 @@ computes coverage and friction reports across repeated runs.
 
 ### Dependency Decision
 
-Do not depend on published `@remotxai/adapter-codex`. Mirror the minimal
+Do not depend on any private, in-house Codex adapter. Mirror the minimal
 app-server JSON-RPC client inline in `packages/capability-testbed/dogfood/`.
 
-Reasons from the remotxai source:
+Reasons:
 
-- `adapters/codex/package.json` marks `@remotxai/adapter-codex` as
-  `"private": true`, uses `LicenseRef-Proprietary`, and depends on the
-  workspace-only `@remotxai/adapter-contract`. It is not a stable public package
-  the browxai repo should depend on.
-- The exported `./session` entry contains the useful `CodexAppServerOwn` class,
-  but its default `SpawnFn` always spawns `codex app-server` with no additional
-  CLI config arguments. This dogfood runner must inject a run-scoped MCP server
-  config for browxai before the app-server starts.
-- The remotxai `app-server-own.ts` and `app-server.ts` prove the protocol shape
-  we should mirror: stdio newline-delimited JSON-RPC for owned app-servers,
-  `initialize`, `initialized`, `thread/start`, `turn/start`, `turn/interrupt`,
-  server requests for approvals, item notifications, plan updates, reasoning
-  items, and `turn/completed` usage.
-- `packages/codex-mcp-forwarder` proves an important negative: Codex has no
-  dynamic tool-registration channel in `ThreadStartParams`; MCP tools must be
-  known from Codex config before `codex app-server` starts. The forwarder itself
-  only exposes remotxai-specific `expose_artifact` and `track_process`, so it is
-  not part of this runner.
+- A private, proprietary-licensed workspace package is not a stable public
+  dependency the browxai repo should take. This repo is MIT and public; every
+  dependency it declares has to be too.
+- An off-the-shelf owned-app-server class spawns `codex app-server` with no
+  additional CLI config arguments. This dogfood runner must inject a
+  run-scoped MCP server config for browxai before the app-server starts, so it
+  needs its own spawn boundary regardless.
+- The protocol shape to mirror is small and stable: stdio newline-delimited
+  JSON-RPC for owned app-servers, `initialize`, `initialized`, `thread/start`,
+  `turn/start`, `turn/interrupt`, server requests for approvals, item
+  notifications, plan updates, reasoning items, and `turn/completed` usage.
+- An important negative: Codex has no dynamic tool-registration channel in
+  `ThreadStartParams`. MCP tools must be known from Codex config before
+  `codex app-server` starts. A forwarder process cannot work around this.
 
-The inline mirror should keep the remotxai names where useful, but not import
-them:
+The inline mirror keeps conventional names where useful, but imports nothing
+private:
 
 - `CodexOwnOptions`: `cwd`, `model`, `effort`, `sandbox`, `approvalPolicy`.
 - `CodexChild` and `SpawnFn`: injectable child process boundary for tests.
-- `InlineCodexAppServerOwn`: a local class compatible with the useful subset of
-  remotxai `CodexAppServerOwn`.
-- Methods mirrored from remotxai: `onRaw(handler)`, `events()`, `startTurn()`,
+- `InlineCodexAppServerOwn`: a local class covering the useful subset of an
+  owned-app-server client.
+- Methods it exposes: `onRaw(handler)`, `events()`, `startTurn()`,
   `interrupt()`, `stop()`, `nativeId()`, `onNativeId(handler)`, `pid()`.
 - Event helpers mirrored locally: `buildCodexTurnInput`, `extractCodexUsage`,
   `extractCodexPlanItems`, `extractCodexProse`, and the `mcpToolCall` subset of
@@ -130,7 +126,7 @@ codex app-server \
   -c 'mcp_servers.browxai.tool_timeout_sec=180'
 ```
 
-The child uses stdio JSON-RPC frames, matching remotxai `CodexAppServerOwn`.
+The child uses stdio JSON-RPC frames, the standard owned-app-server shape.
 The inline client sends:
 
 ```json
@@ -158,8 +154,7 @@ These defaults are runner config, not mission data. They can be overridden by
 explicit wrapper flags, but every override is written into the trace and report.
 
 The client captures the native thread id from the `thread/start` result or a
-`thread/started` notification, just as remotxai `setThreadId()` does. The
-mission `sessionId` used in the report is:
+`thread/started` notification. The mission `sessionId` used in the report is:
 
 ```text
 dogfood-<missionId>-r<runIndex>-<codexThreadIdSuffix>
@@ -205,10 +200,10 @@ normalizes the subset needed by dogfood:
   become per-tool events. If `item.server` or `item.serverName` is `browxai`,
   the normalized label is exactly `mcp browxai:<tool>`.
 - `item/completed` with `params.item.type == "reasoning"` becomes a reasoning
-  item using the same extraction as remotxai `extractCodexProse("reasoning")`.
+  item via the local `extractCodexProse("reasoning")` helper.
 - `turn/plan/updated` and older completed `plan` items become plan item
-  snapshots using the same accepted fields as remotxai
-  `extractCodexPlanItems`: `step`, `content`, or `text`; status values
+  snapshots via the local `extractCodexPlanItems` helper, which accepts
+  `step`, `content`, or `text`; status values
   `pending`, `inProgress`/`in_progress`, and `completed`.
 - `turn/started` marks the run active; `turn/completed` marks it idle and ends
   the mission turn.
@@ -1081,7 +1076,7 @@ Sandbox posture risk:
   The wrapper rejects direct `command = "browxai"` dogfood wiring because that
   would make browser launch depend on Codex subprocess policy.
 
-`@remotxai/adapter-codex` publish lag:
+In-house adapter publish lag:
 
 - The package is private and workspace-bound today. Mirroring the minimal
   JSON-RPC client avoids waiting for a public package and avoids pulling in the

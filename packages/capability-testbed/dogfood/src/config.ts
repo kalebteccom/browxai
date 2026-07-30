@@ -52,7 +52,7 @@ export const DEFAULT_EFFORT: CodexEffort = "xhigh";
 // elicitation (read-only + the elicit gate rejected all calls as "user rejected
 // MCP tool call"). The mission prompt (browxai tools only, no shell) is the
 // behavioural guardrail; tighten the sandbox once the elicitation/trust path is
-// validated. Mirrors remotxai's auto-accept permission model.
+// validated.
 export const DEFAULT_SANDBOX: CodexSandbox = "danger-full-access";
 export const DEFAULT_APPROVAL_POLICY: CodexApprovalPolicy = "never";
 export const DEFAULT_K = 5;

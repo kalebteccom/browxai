@@ -1,14 +1,14 @@
 # `screenshot_marks` — tool-fit investigation (2026-05-27)
 
-This investigation was scoped from a wrightxai early-discovery tool-fit question:
-the wrightxai spec at `projects/webwright-on-browxai/spec.md` line 57 says
-wrightxai "never re-exposes …`screenshot_marks`", yet wrightxai's curated
+This investigation was scoped from an adopter early-discovery tool-fit question:
+an adopter's spec said
+the adopter "never re-exposes …`screenshot_marks`", yet the adopter's curated
 `BrowxaiToolName` union includes `screenshot_marks` in the agent-callable
 set. Builder C interpreted the spec line as forbidding _re-exposing_
-(wrightxai-level duplicate surface) NOT _calling_ — same reading applied
+(adopter-level duplicate surface) NOT _calling_ — same reading applied
 to `extract` / `verify_*` / `plan` / `execute` which the loop also calls.
 The owner asked for a substantive read on whether `screenshot_marks` is
-the right fit for wrightxai's loop usage pattern.
+the right fit for the adopter's loop usage pattern.
 
 ## Contract recap
 
@@ -73,7 +73,7 @@ Total investigation suite time: 458 s → 53 s.
 
 The residual ~2-3 s for bare-ref bare-page targets is the bounded
 fallback cost (each unresolvable bare ref burns up to its 1 s cap).
-A wrightxai-loop pattern that pipes `find()` rows straight into
+An adopter-loop pattern that pipes `find()` rows straight into
 `screenshot_marks` (fast-path) hits **~30-40 ms regardless of target
 size** — see the perf-probe `tM3` measurement (`38 ms` on
 `example.com`).
@@ -130,7 +130,7 @@ Unit test locked in: `src/page/bbox.test.ts` — asserts the `{ timeout:
 
 ## Verdict: KEEP-WITH-CAVEAT
 
-`screenshot_marks` is strictly useful for wrightxai's perception step:
+`screenshot_marks` is strictly useful for the adopter's perception step:
 the vision-grounded action choice ("click 2") is the prototypical
 multimodal-agent pattern, and the namespace-sharing design makes the
 LLM↔harness handoff one-line (`click({ ref: mapping[choice] })`). The
@@ -144,7 +144,7 @@ fast-path remains the right default — the caller already has bboxes
 from the `find()` it just ran, and piping them through avoids any
 fallback risk entirely.
 
-**Recommended wrightxai loop pattern:**
+**Recommended adopter loop pattern:**
 
 1. `find(query) → candidates[]` (already in the curated union).
 2. Pick the K candidates the loop wants to ground visually.
@@ -155,27 +155,27 @@ fallback risk entirely.
    translates back to `eN` for the next action.
 
 The bare-`{ref}` form remains available for ad-hoc "I have a ref
-from somewhere else, paint me a box" usage, but the wrightxai loop
+from somewhere else, paint me a box" usage, but the adopter loop
 should standardise on the fast-path.
 
 ## Spec-line-57 ambiguity — drop-in replacement
 
-The current wording — "wrightxai never re-exposes …`screenshot_marks`"
-— invites the misreading that wrightxai also can't _call_ it. Builder
+The current wording — "the adopter never re-exposes …`screenshot_marks`"
+— invites the misreading that the adopter also can't _call_ it. Builder
 C, Reviewer C, and the owner all flagged the same ambiguity. Suggested
-rewrite for wrightxai's `spec.md`:
+rewrite for the adopter's `spec.md`:
 
 ```markdown
-- **Browxai surface duplication** — wrightxai never re-exposes a
+- **Browxai surface duplication** — the adopter never re-exposes a
   parallel implementation of `extract(schema)`, `verify_*`, `plan` /
   `execute`, storage-state CRUD, `generate_locator`, or
-  `screenshot_marks`. These remain browxai-owned surfaces; wrightxai's
+  `screenshot_marks`. These remain browxai-owned surfaces; the adopter's
   loop calls them through the curated `BrowxaiToolName` union but
   does not wrap, re-skin, or reimplement them.
 ```
 
 Diff summary: replaces "never re-exposes X" with "never re-exposes a
-parallel implementation of X … wrightxai's loop calls them through the
+parallel implementation of X … the adopter's loop calls them through the
 curated union". Removes the ambiguity by being explicit that _calling
 via the curated union is the intended path_, and _re-implementing /
 wrapping is what's forbidden_.
@@ -201,7 +201,7 @@ wrapping is what's forbidden_.
 
 - No public-contract change to `screenshot_marks` (same args, same
   return shape, same namespace semantics).
-- No edit to the wrightxai repo or the project-ideas portfolio — both
+- No edit to the adopter's repo or our internal portfolio — both
   are read-only references for this investigation.
 - No new tool added.
 - No CHANGELOG bump beyond the Unreleased ▸ Fixed entry; v0.2.0 stays

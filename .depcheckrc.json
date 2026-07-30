@@ -20,7 +20,8 @@
     "lint-staged",
     "@cyclonedx/cyclonedx-npm",
     "license-checker-rseidelsohn",
-    "depcheck"
+    "depcheck",
+    "dependency-cruiser"
   ],
   "skip-missing": false
 }

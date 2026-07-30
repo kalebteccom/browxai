@@ -4,7 +4,7 @@ A file over its budget is almost always doing two jobs. The size cap is a proxy
 for the real rule — **one reason to change per module**
 ([`architecture-principles.md`](architecture-principles.md) §7, law L3) — and a
 mechanically-enforced backstop for it. This is the Kalebtec family standard
-(browxai-cloud enforces the same shape on its Rust crates); browxai applies it to
+(the same shape is enforced on our Rust crates elsewhere); browxai applies it to
 its TypeScript tree through the ESLint `max-lines` budget.
 
 ## The budget
