@@ -36,6 +36,12 @@ export interface ResolvedConfig {
    *  `set_config` or the managed config file only). No effect on
    *  `attached`/BYOB (externally launched). */
   disableWebSecurity?: boolean;
+  /** Playwright browser `channel` for chromium sessions (`"chrome"`,
+   *  `"msedge"`, `"chrome-beta"`, …) — launches the operator's installed
+   *  browser instead of the bundled Chrome for Testing. Unset ⇒ bundled.
+   *  Overridable per `open_session({channel})`. Firefox has its own
+   *  `BROWX_FIREFOX_CHANNEL` and is unaffected. */
+  channel?: string;
   /** default device-preset name for new sessions (Playwright device
    *  registry, e.g. "iPhone 14"). Overridable per `open_session`. */
   defaultDevice?: string;
@@ -106,6 +112,8 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (hl) layer.headless = hl === "1" || hl.toLowerCase() === "true";
   const hos = list(env.BROWX_HIDE_OVERLAY_SELECTORS?.trim());
   if (hos) layer.hideOverlaySelectors = hos;
+  const ch = env.BROWX_CHANNEL?.trim();
+  if (ch) layer.channel = ch;
   return layer;
 }
 
@@ -164,6 +172,7 @@ export class ConfigStore {
       headless: layer.headless ?? acc.headless,
       actionTimeoutMs: layer.actionTimeoutMs ?? acc.actionTimeoutMs,
       disableWebSecurity: layer.disableWebSecurity ?? acc.disableWebSecurity,
+      channel: layer.channel ?? acc.channel,
       defaultDevice: layer.defaultDevice ?? acc.defaultDevice,
       defaultViewport: layer.defaultViewport ?? acc.defaultViewport,
       hideOverlaySelectors: layer.hideOverlaySelectors ?? acc.hideOverlaySelectors,

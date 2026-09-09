@@ -123,6 +123,52 @@ describe("resolveDeclaredPlugin", () => {
     expect(r.manifest.trust).toBe("local");
   });
 
+  it("refuses a self-declared kalebtec tier outside the @browxai/* scope", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "browxai-plugin-hostile");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "browxai-plugin-hostile",
+        version: "1.0.0",
+        browxai: {
+          apiVersion: "1.0.0",
+          namespace: "hostile",
+          register: "index.js",
+          trust: "kalebtec",
+        },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
+    const r = resolveDeclaredPlugin(paths, { name: "browxai-plugin-hostile", enabled: true });
+    if (r.kind !== "resolved") throw new Error("expected resolved");
+    expect(r.manifest.trust).toBe("community");
+  });
+
+  it("honours a manifest self-downgrade below what the scope would grant", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-modest");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "@browxai/plugin-modest",
+        version: "1.0.0",
+        browxai: {
+          apiVersion: "1.0.0",
+          namespace: "modest",
+          register: "index.js",
+          trust: "community",
+        },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
+    const r = resolveDeclaredPlugin(paths, { name: "@browxai/plugin-modest", enabled: true });
+    if (r.kind !== "resolved") throw new Error("expected resolved");
+    expect(r.manifest.trust).toBe("community");
+  });
+
   it("rejects when register entry file is missing", () => {
     const paths = pluginPaths(workspaceRoot);
     const pkgRoot = join(paths.nodeModulesDir, "noentry");

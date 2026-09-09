@@ -53,7 +53,7 @@ single-session callers need to know none of this.
 
 ### Managing sessions
 
-- `open_session({ session, mode?, profile?, device?, viewport?, har?, hars? })`
+- `open_session({ session, mode?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`
   eagerly creates an id. Re-opening a live id is an error.
 - `close_session({ session })` tears one down.
 - `close_sessions({ prefix?, all?, idleMs? })` is the bulk reap primitive for
@@ -96,6 +96,27 @@ BROWX_ATTACH_CDP=http://127.0.0.1:9222
 
 An attached Chrome is not owned by browxai: it is never closed on shutdown and
 it survives browxai restarts cleanly.
+
+## Browser channel and background throttling
+
+Two launch-time knobs on a chromium session, both off by default:
+
+- `open_session({ channel: "chrome" })` launches the operator's installed
+  Chrome or Edge instead of Playwright's bundled Chrome for Testing. Reach for
+  it when the app needs something the testing build lacks, or when a site
+  treats that build as automation. The binary must already be installed, and
+  the browser version then follows that install. Server-wide default via the
+  `channel` config key.
+- `open_session({ backgroundThrottling: "disabled" })` launches with Chrome's
+  three background-lifecycle flags off, so a backgrounded session keeps timers
+  and `requestAnimationFrame` running at full rate. Worth turning on for pooled
+  multi-agent work, where an agent polling a backgrounded tab otherwise stalls
+  to its deadline and the stall looks like a page bug. The default keeps
+  Chrome's own throttling, because reproducing a background-lifecycle bug needs
+  a genuinely throttled tab.
+
+Both are launch-time, so an attached session ignores them — pass
+`--disable-background-throttling` to `browxai chrome start` instead.
 
 ## Device and viewport
 

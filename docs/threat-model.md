@@ -144,15 +144,49 @@ contract. Defenses:
   paths. Verified in `workspace.test.ts` and the (deferred) no-trace CI test will spawn the
   server against a fake-consumer-repo cwd and assert it stays untouched.
 
+### 6. Clicking a control the operator cannot see
+
+`click({force:true})` and `click({dispatch:"direct"})` both skip Playwright's
+actionability checks — the visibility / stability / enabled / receives-events
+guards that normally stop an agent activating a control the human in front of the
+screen could not activate. `dispatch:"direct"` goes further: it skips the locator
+engine entirely and pushes the pointer sequence at a coordinate through CDP.
+Defenses:
+
+- **Opt-in per call, off by default.** An unset `dispatch` is the ordinary
+  actionability path. Neither mode is a server-level or session-level setting, so
+  it cannot be turned on once and then forgotten — every bypassed click is a
+  distinct, auditable tool call that named the bypass in its own arguments.
+- **A mandatory warning on every result.** A direct dispatch always returns a
+  `warnings[]` entry naming the coordinate it fired at, stating that the events
+  were trusted, and stating that no visibility / stability / enabled /
+  receives-events guarantee was made.
+- **Coordinate evidence, not just a claim.** `element.hit.before` / `.after`
+  report `document.elementFromPoint` at the dispatched coordinate before and after
+  the click, so "the click landed under a consent scrim" is visible in the result
+  rather than inferred.
+- **The platform's own checks still apply.** CDP dispatch feeds the browser's real
+  input pipeline, so the browser still hit-tests the coordinate: an overlay above
+  the target receives the click instead of it, and a `disabled` control fires
+  nothing. What is bypassed is Playwright's waiting and retrying, not the
+  platform's. Pinned by `test/keystone/direct-dispatch.keystone.test.ts`.
+- **No new capability.** Both modes sit under capability `action`, alongside the
+  `click` they modify. They reach no data, origin, or device the same `action`
+  capability did not already reach; a separate gate would suggest a boundary
+  crossing that does not happen, while leaving `force:true` — which has the same
+  see-through-the-user property and is additionally applied automatically as a
+  recovery — ungated.
+
 ## What browxai explicitly does NOT defend against
 
-| Concern                                                                               | Why we don't defend                                                                                                                                                                                      | What to do instead                                                                              |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **Malicious MCP client** (compromised host agent driving browxai)                     | The MCP wire is the trust boundary; if the agent's compromised, browxai is just executing its will.                                                                                                      | Trust your host agent. Don't install MCP servers from untrusted sources.                        |
-| **Compromised local machine**                                                         | The operator's user account owns the workspace; everything in it is reachable.                                                                                                                           | OS-level controls (FileVault, full-disk encryption, etc.).                                      |
-| **BYOB attach to a `--disable-web-security` Chrome with the operator's real profile** | The operator opted in (`BROWX_ATTACH_CDP` is off-by-default; `browxai chrome start --insecure` is explicit). SOP is off; the operator's session cookies are in scope of every page; there's no recovery. | Use BYOB only against test/dev targets. Use the managed-profile default for anything sensitive. |
-| **Network-level attacks** (MitM on the CDP port, DNS poisoning)                       | CDP is bound to loopback only — same-machine attacker can still attach, OS-level controls apply.                                                                                                         | Run on a non-shared machine.                                                                    |
-| **Page content** rendered as PNG that contains visual prompt injection                | Vision-reading is the host agent's call; browxai just serves the image. The `screenshot({describe})` caption is structured (role/name/bbox), not OCR.                                                    | Treat screenshot text like any other untrusted page content at the host-agent layer.            |
+| Concern                                                                                  | Why we don't defend                                                                                                                                                                                                                                                                                          | What to do instead                                                                              |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| **Malicious MCP client** (compromised host agent driving browxai)                        | The MCP wire is the trust boundary; if the agent's compromised, browxai is just executing its will.                                                                                                                                                                                                          | Trust your host agent. Don't install MCP servers from untrusted sources.                        |
+| **Compromised local machine**                                                            | The operator's user account owns the workspace; everything in it is reachable.                                                                                                                                                                                                                               | OS-level controls (FileVault, full-disk encryption, etc.).                                      |
+| **BYOB attach to a `--disable-web-security` Chrome with the operator's real profile**    | The operator opted in (`BROWX_ATTACH_CDP` is off-by-default; `browxai chrome start --insecure` is explicit). SOP is off; the operator's session cookies are in scope of every page; there's no recovery.                                                                                                     | Use BYOB only against test/dev targets. Use the managed-profile default for anything sensitive. |
+| **Network-level attacks** (MitM on the CDP port, DNS poisoning)                          | CDP is bound to loopback only — same-machine attacker can still attach, OS-level controls apply.                                                                                                                                                                                                             | Run on a non-shared machine.                                                                    |
+| **Page content** rendered as PNG that contains visual prompt injection                   | Vision-reading is the host agent's call; browxai just serves the image. The `screenshot({describe})` caption is structured (role/name/bbox), not OCR.                                                                                                                                                        | Treat screenshot text like any other untrusted page content at the host-agent layer.            |
+| **Anti-bot challenges** (Cloudflare managed challenge / Turnstile, Anubis, and the rest) | Circumventing an access control is the site owner's call to make, not ours: browxai ships no solver, no token service, and no fingerprint patch. It only observes the current page read-only and names what it found on `ActionResult.challenge` — detection broadens no posture, so it needs no capability. | `await_human` — a person clears the gate in the live browser, then the run continues.           |
 
 ## The capability set
 
@@ -160,9 +194,11 @@ Tools group into capabilities. Default-enabled / -disabled marked. (Read-side
 detail tools — `text_search`, `inspect`, `ws_read` — also fall under `read`;
 `scroll`/`set_viewport` under `navigation`.)
 
-- **`read`** — default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`.
+- **`read`** — default **on**. Tools: `snapshot`, `find`, `text_search`, `inspect`, `screenshot`, `console_read`, `network_read`, `ws_read`, `list_named_refs`, `profile_status`.
 
   Read-only; can't change page state. Always safe to enable.
+
+  `profile_status` is the one workspace-introspection member: it enumerates the managed profile directories under `$BROWX_WORKSPACE/profiles`, reporting each one's name, workspace-rooted path, size, file count, and last-modified time, plus the ids of any live session open on it. It launches nothing and contacts no page. Disclosure is bounded to two origin-ish surfaces, both strictly narrower than what `cookies_list` already returns under this same capability: cookie **domains** (never names, never values) of a context that is **already open**, and the domains/origins recorded in a same-named `auth_save` slot. It does NOT decrypt a closed profile's cookie store and does not claim authentication state — see `docs/tool-reference.md` for the per-field provenance table. Profile names are workspace-rooted through `resolveWorkspacePath`, so a traversing name is refused rather than resolved; symlinks inside a profile directory are skipped, never followed out of the workspace; and the directory walk carries an entry budget so a pathological workspace cannot stall the agent loop.
 
 - **`navigation`** — default **on**. Tools: `navigate`, `go_back`, `go_forward`, `scroll`, `set_viewport`.
 
@@ -183,6 +219,10 @@ detail tools — `text_search`, `inspect`, `ws_read` — also fall under `read`;
 - **`byob-attach`** — default **off**. Tools: session via `BROWX_ATTACH_CDP`.
 
   Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning.
+
+  **Pooled sessions share one identity.** Each attached session leases its own CDP page target, so two sessions never write to the same tab. What they do share is the browser: one Chrome means one cookie jar, so every session in the pool acts as the same logged-in user. That is fine for one operator driving their own accounts and wrong for multi-tenant testing — use separate `persistent` profiles when sessions must be different identities. Context-level surfaces are shared too: dialogs, downloads, permission grants and file pickers are per-context, so two sessions downloading at once land in one directory. Web apps that elect a leader across tabs (Slack, Figma, Gmail) will still contend.
+
+  Leases are keyed by session id, capped at `BROWX_ATTACH_POOL_MAX` (default 8) per endpoint, and reclaimed after `BROWX_ATTACH_LEASE_TTL_MS` (default 5 min) of no calls. Elapsed time alone never ends a lease — reclamation only happens when another session needs a target — and a session whose lease was reclaimed is refused on its next call rather than allowed to write to a tab another session now owns.
 
 - **`network-body`** — default **off**. Tools: `network_body`.
 

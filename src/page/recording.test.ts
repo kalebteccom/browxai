@@ -55,6 +55,62 @@ describe("Recorder", () => {
     expect(() => r.end()).toThrow(/no active recording/);
   });
 
+  it("records read tools as their own step kind", () => {
+    const r = new Recorder();
+    r.start("read-thread");
+    r.recordRead({ type: "snapshot", scope: "e4" }, "https://m.example.com/t/1");
+    r.recordRead({ type: "find", query: "the reply button" }, "https://m.example.com/t/1", {
+      selectorHint: 'role=button[name="Reply"]',
+      stability: "medium",
+    });
+    r.recordRead(
+      {
+        type: "extract",
+        schema: { type: "object", properties: { sender: { type: "string" } } },
+        scope: "e12",
+      },
+      "https://m.example.com/t/1",
+    );
+    r.recordRead({ type: "eval_js", expr: "document.title" }, "https://m.example.com/t/1");
+
+    const snap = r.inspect();
+    expect(snap!.steps.map((s) => s.kind)).toEqual(["read", "read", "read", "read"]);
+    expect(snap!.steps.map((s) => s.id)).toEqual([
+      "snapshot-1",
+      "find-2",
+      "extract-3",
+      "eval_js-4",
+    ]);
+
+    const { yaml, stepCount } = r.end();
+    expect(stepCount).toBe(4);
+    expect(yaml).toContain("read: snapshot");
+    expect(yaml).toContain("read: find");
+    expect(yaml).toContain('query: "the reply button"');
+    expect(yaml).toContain("read: extract");
+    expect(yaml).toContain('schema: {"type":"object","properties":{"sender":{"type":"string"}}}');
+    expect(yaml).toContain('scope: "e12"');
+    expect(yaml).toContain("read: eval_js");
+    expect(yaml).toMatch(/expr: "document\.title" +# requires the `eval` capability/);
+    // The locator a `find` resolved is a named locator like any action target.
+    expect(yaml).toContain('button_reply: "role=button[name=\\"Reply\\"]"');
+    expect(yaml).toContain("target: $button_reply");
+  });
+
+  it("ignores reads when no recording is active", () => {
+    const r = new Recorder();
+    r.recordRead({ type: "find", query: "anything" }, "https://a.example.com");
+    expect(r.inspect()).toBeNull();
+  });
+
+  it("annotates a read step", () => {
+    const r = new Recorder();
+    r.start("read-thread");
+    r.recordRead({ type: "extract", schema: { type: "object" } }, "https://a.example.com");
+    expect(r.annotate({ copy: "the sender lands here" })).toEqual({ ok: true });
+    expect(r.end().yaml).toContain('copy: "the sender lands here"');
+  });
+
   it("flags medium/low stability with a review comment", () => {
     const r = new Recorder();
     r.start("smoke");
