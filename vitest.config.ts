@@ -17,6 +17,13 @@ export default defineConfig({
       // Fix), with real browsers and every capability enabled. Never let
       // `pnpm test` pick up anything under it.
       "packages/capability-testbed/**",
+      // Agent worktrees (AGENTS.md "Worktree conventions") are full checkouts.
+      // Without this the default suite collects every test twice — once from
+      // the main tree and once per live worktree — so a sibling agent's
+      // in-progress edit fails the gate here for reasons unrelated to it.
+      // eslint/prettier already ignore `.claude`; the keystone + investigation
+      // configs are include-scoped to `test/` and unaffected.
+      ".claude/**",
     ],
   },
 });
