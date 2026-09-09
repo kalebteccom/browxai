@@ -36,7 +36,260 @@ surface" covers.
   (`actions/checkout`, `actions/setup-node`, `trufflesecurity/trufflehog`) moved
   to current releases at the same time.
 
+### Added
+
+- **`click({ dispatch: "direct" })` — a click that skips Playwright's locator
+  engine entirely.** Off by default; an unset call behaves exactly as before.
+  The default path already retries with `force: true` when its actionability
+  budget expires, and that covers most busy-SPA clicks. What it cannot cover is a
+  view that replaces its own subtree while the main thread is saturated: there,
+  every resolution through the locator engine — including the one `force: true`
+  still performs — lands on a node that has already been re-rendered away, and
+  the click times out no matter how much budget it is given. `dispatch:"direct"`
+  measures the target with a single CSS query in the page, then dispatches
+  `pointerdown` → `mousedown` → `pointerup` → `mouseup` → `click` at its box
+  centre through CDP. The events are trusted (`isTrusted: true`), so framework
+  handlers fire as they do for a real user — a page-JS `MouseEvent` would not.
+
+  It makes no visibility / stability / enabled / receives-events guarantee and it
+  does not scroll, so every use returns a `warnings[]` entry naming the
+  coordinate and the checks it skipped, plus `element.hit.before` / `.after` from
+  `document.elementFromPoint` as evidence of what was actually there. It does not
+  bypass the browser: an overlay above the target still receives the click, and a
+  `disabled` control still fires nothing. Chromium-family engines only —
+  elsewhere the call returns a structured `direct-dispatch-needs-cdp` refusal
+  rather than silently downgrading. Reach for it only after the default path and
+  `force: true` have both failed on the same target; see the dispatch-modes
+  section of `docs/tool-reference.md` and §6 of `docs/threat-model.md`.
+
+- **`profile_status` — the managed profile inventory (capability `read`).** A
+  workspace accumulates one directory per named profile under
+  `<workspace>/profiles/` with no TTL and no collection, and nothing enumerated
+  them: `auth_list` reports named auth-state slots, which is a different
+  question. Opening a profile expecting an authenticated session and getting the
+  signed-out page cost two round trips with no way to check first.
+  `profile_status({ profile? })` returns, per profile, the name, the
+  workspace-rooted path, size on disk, file count, and last-modified time — the
+  staleness signal that makes an abandoned directory collectable — plus the ids
+  of any live session currently open on it. Read-only: it launches nothing and
+  contacts no page.
+
+  It deliberately does **not** report whether a profile is logged in anywhere.
+  Chromium encrypts cookie values with an OS-provided key (Keychain, DPAPI), so
+  a closed profile's authentication state is unreadable without launching the
+  browser, and a field that guessed would be worse than no field. Two
+  substitutes ship instead, each labelled with its provenance: `live.cookieDomains`
+  (domains the already-open context holds cookies for, as of this call) and
+  `savedAuthState` (the contents of a same-named `auth_save` slot as of its
+  `savedAt` — browxai does not record which profile a slot came from, so that
+  link is the matching name only). Profile names resolve through
+  `resolveWorkspacePath`, so a traversing name is refused; symlinks inside a
+  profile are skipped rather than followed out of the workspace; and the
+  directory walk carries an entry budget, so a row that hit it is flagged
+  `scanTruncated` rather than reported as exact.
+
+- **The recorder captures read operations, not just dispatched actions.**
+  `extract`, `find`, `snapshot` and `eval_js` produce no action, so a recording
+  of a session whose purpose was to _read_ something used to export as a script
+  that performed the navigation and returned nothing. The trace now carries a
+  second step kind alongside actions — a recorded read — and both
+  `end_recording`'s YAML draft and `export_playwright_script`'s `.spec.ts` lower
+  it:
+  - `extract` becomes a live per-field re-read bound to a `const`, built from
+    the recorded schema's `x-browx-source.selector` (`attr` → `getAttribute`,
+    `value` / `prop:"value"` → `inputValue`, otherwise visible text). Fields
+    that resolved through the implicit name-as-query rule have no selector to
+    lower, so they emit `null` with a TODO and the step counts as `unhandled`.
+  - `find` becomes a named locator `const`, using the same name the YAML
+    `locators:` block gives it.
+  - `eval_js` becomes `await page.evaluate("<recorded expression>")`, and its
+    provenance — browxai gates `eval_js` behind the off-by-default `eval`
+    capability, Playwright does not — is stated in the generated header.
+  - `snapshot` becomes a comment naming its scope. A serialised a11y tree is
+    not a script step, so there is nothing to run and the step counts as
+    `unhandled`.
+
+  The declared values are logged at the end of the generated test body, so an
+  exported read flow prints what it read instead of running silently. The trace
+  records what each read _asked for_ (schema / query / expression / scope) and
+  the locator it resolved — never the page data it returned.
+
+- **Generated specs name the one-time browser install.** A fresh
+  `@playwright/test` install ships no browsers, so the first run of an exported
+  spec died on "Executable doesn't exist" before it reached the page. The
+  generated header now says to run `npx playwright install chromium` once.
+
+- **`open_session({ channel })` — launch the operator's installed Chrome.**
+  Playwright's `channel` option is now exposed on `SessionOptions`, on
+  `open_session`, and as the config key `channel` / `BROWX_CHANNEL`. Set it to
+  `"chrome"`, `"msedge"`, `"chrome-beta"`, … and a chromium session launches
+  that installed browser instead of the bundled Chrome for Testing build; unset
+  (the default) is unchanged. Worth knowing on both counts: Chrome for Testing
+  reports `navigator.webdriver` true and ships without several components a
+  shipping Chrome carries, so some sites behave differently against it; and the
+  browser version then tracks the operator's install rather than the version
+  browxai pins. This is the stock Playwright option and nothing else — no
+  fingerprint patching, and the `stealth` capability is untouched. Chromium
+  only: Firefox keeps its own `BROWX_FIREFOX_CHANNEL`, and WebKit / Safari /
+  Android ignore it.
+
+- **`open_session({ backgroundThrottling })` — per-session background-tab
+  lifecycle control.** `"disabled"` launches a chromium session with
+  `--disable-background-timer-throttling`,
+  `--disable-backgrounding-occluded-windows` and
+  `--disable-renderer-backgrounding`, so a session sitting in the background
+  keeps timers and `requestAnimationFrame` running at full rate. Recommended
+  for pooled multi-agent attached work, where an agent polling a backgrounded
+  tab otherwise stalls to its deadline and the stall reads as a page bug. The
+  default stays `"default"` — Chrome's own throttling — because the opposite
+  need is equally real: reproducing a background-lifecycle bug requires a
+  genuinely throttled tab, and no existing launch changes behaviour. The same
+  knob is on the attach-target launcher as
+  `browxai chrome start --disable-background-throttling`.
+
+- **Anti-bot challenges are now named on the `ActionResult`.** Every action
+  reports `challenge: { kind, vendor, evidence[] }` when gate markers are on the
+  page — `kind: "interstitial"` when the document itself is the gate,
+  `kind: "widget"` when a real page carries a gated control (a Turnstile on a
+  login form); `vendor` is `cloudflare`, `anubis`, or `unknown`. Markers read:
+  the `cdn-cgi/challenge-platform` script, a `cf-mitigated: challenge` response
+  header, a 403/503 on the document, the document title, a
+  `.cf-turnstile[data-sitekey]` element, and the Anubis asset path. The block is
+  absent when nothing matched, so the common path costs no tokens, and it never
+  changes `ok`. When an action's deadline expires with markers present, the
+  error names the gate and points at `await_human` in place of the generic
+  anti-wedge timeout — the endless spinner becomes an actionable result.
+  Detection only: browxai ships no solver, no token service, and no fingerprint
+  patch, and a person clearing the gate under `await_human` is the intended
+  flow. Read-only observation of the current page, so it is in the default
+  capability set. Covered by a colocated classifier suite and a keystone against
+  real Chromium.
+
+- **Attached-session pool limits and lease reclamation.** Building on the
+  target-lease fix below: an endpoint holds at most `BROWX_ATTACH_POOL_MAX`
+  leases (default 8) and refuses past that with `attach-pool-exhausted` naming
+  the live ones, so a runaway loop cannot open tabs until the operator's browser
+  dies. A session idle longer than `BROWX_ATTACH_LEASE_TTL_MS` (default 5 min)
+  can have its tab reclaimed when another session needs one. Elapsed time alone
+  never ends a lease — reclamation happens only under contention, so a long
+  think between calls costs nothing — and tool dispatch is itself the heartbeat,
+  so there is no timer and no sweeper. A session whose lease was reclaimed is
+  refused on its next call instead of being allowed to write to a tab another
+  session now owns. `docs/tool-reference.md` also corrects a false claim that
+  different session ids are always isolated browser contexts regardless of mode:
+  attached sessions get distinct tabs but share one cookie jar, so they are one
+  identity.
+
+- **A boot warning naming non-first-party plugins.** The server now lists every
+  loaded plugin outside the `@browxai/*` scope with its trust tier and declared
+  capabilities, and states that browxai does not sandbox plugins and that a
+  declared capability list is disclosure rather than enforcement. First-party
+  plugins load quietly. `docs/plugin-governance.md` previously described this
+  warning as if it existed; now it does.
+
+- **A reference container deployment.** [`deploy/Dockerfile`](deploy/Dockerfile) —
+  Playwright's base image, a non-root user, `--ignore-scripts`, and a workspace
+  volume. The README and the adopter best-practices page now say plainly what
+  the capability gate is and is not: policy governing what the tool surface will
+  do on request, not a boundary around the process. Plugins run in-process with
+  full Node access, so for any deployment beyond driving your own machine, the
+  containment that actually contains is infrastructure. Adds a deployment
+  checklist and drops the suggestion that Node's `--permission` model could
+  substitute — it is process-wide, and browxai needs exactly the filesystem and
+  child-process permissions that would have to be revoked.
+
 ### Fixed
+
+- **`find()` ranking ignored every candidate on a semantically thin page.** When
+  the accessibility tree is near-empty — table-based layouts, SPAs built from
+  unlabelled `div`s — candidates come from the DOM-walk fallback, which puts the
+  element's own tag in `role`: a link arrives as `a`, a top bar as `nav`. Both
+  ranking rules that read `role` compare against ARIA role names, so on exactly
+  the pages where ranking matters most, the interactive bonus never fired and
+  structural wrappers were never demoted below the controls they enclose. Both
+  rules now resolve the tag to its implicit ARIA role at the point of use, with
+  `<a>` read from `href` and `<input>` from `type`. Measured on a Hacker
+  News-shaped fixture (`a11yInteractive: 0`), the query "the past link in the top
+  navigation bar" returned the enclosing nav bar first and the `past` link
+  second; it now returns the link first, at score 5 rather than 3. The reported
+  `role` is unchanged — it feeds the content hash behind every `ref`, so refs
+  from an earlier `find` or `snapshot` still resolve.
+
+- **Chromium launch flags reached the browser again on managed sessions.** The
+  engine-registry extraction left `buildManagedLaunch`'s chromium argument list
+  computed but never passed to `launchPersistentContext`, so on a `persistent`
+  chromium session `disableWebSecurity` emitted no `--disable-web-security` and
+  `extensions_install` emitted no `--load-extension` — both silently did
+  nothing while logging that they had applied. The chromium engine module now
+  splices the argument list into the launch, and a unit test pins every flag
+  reaching the launch spec. `incognito` was never affected.
+
+- **`find` ranked the element you named below the headlines that merely shared
+  its filler words.** The accessible-name bonus compared the name against the
+  *entire* query string, so for any natural-language query — the documented
+  input — it never fired: on a Hacker News front page, `find("the past link in
+  the top navigation bar")` scored the nav link named exactly `past` at 1 and
+  three story headlines at 1-5, because the per-token pass paid +1 for every
+  `the` and `top` found anywhere in a name. The name is now matched against a
+  **contiguous run of query tokens** (+7, plus +3 per content word in the run),
+  and closed-class function words score nothing on their own. Same page, same
+  query: the `past` link goes from 1 to 11 and ranks first; the top headline
+  drops from 5 to 3.
+
+- **Every candidate on a table-shaped page came back `clipped: true` /
+  `actionable: "off-screen"` while plainly on screen.** Not a viewport or
+  layout-timing problem: when the CDP accessibility tree is thin (Hacker News
+  reports zero interactive nodes), candidates come from the DOM-walk fallback,
+  which reports an element's **bare tag** in `role`. A named `<a>` therefore
+  built the hint `role=a[name="past"]` — a locator Playwright's role engine
+  rejects — so both bbox probes failed and every rendered link was classified
+  off-screen, which `visibleOnly: true` then dropped entirely. A hint that
+  resolves to nothing now falls back to the candidate's positional CSS path
+  (tier 5, `stability: "low"`), which resolves; the bbox and `actionable`
+  probes report the truth and the emitted hint is one a caller can transcribe.
+
+- **The "no visible candidate" warning pointed at coordinates.** The warning's
+  own premise is that `find` matched the wrong element, and clicking a
+  coordinate computed from a wrong element's rect converts a miss into a
+  confident click on whatever occupies that point. It now recommends re-querying
+  or falling through to `snapshot`, and names coordinates (`point_probe`, then
+  `coords`) only as the last resort for canvas / painted UI that has no DOM
+  element to address.
+
+- **Attached sessions no longer share one browser tab.** Every attach to an
+  external Chrome resolved the first context's first page, so N sessions against
+  one browser were handed the same `Page` — one agent's `fill` landed on
+  another agent's form, silently and with no error. Sessions now lease a
+  distinct CDP page target: one shared connection per endpoint, a lease table
+  keyed by session id, and a claimed target skipped for everyone else. A session
+  that had to create its tab closes it on release; a tab the operator already
+  had open is left exactly as it was found. When the leased tab is closed out
+  from under a session, the next call reports `attach-target-gone` instead of
+  resolving to nothing. Applies to both attached lanes — desktop Chrome over
+  `BROWX_ATTACH_CDP` and real Chrome-on-Android over adb.
+
+- **A plugin could self-declare the `kalebtec` trust tier.** The resolver took
+  `package.json#browxai.trust` at face value, so any third-party package could
+  tag itself first-party and read as such on `plugins_list` — the surface an
+  operator audits to decide what they are running. The scope match that
+  `docs/plugin-governance.md` documented as mandatory was never checked. A
+  manifest may no longer raise its own tier above what its package identity
+  substantiates: `kalebtec` now requires the `@browxai/*` scope, and a rejected
+  claim is warned with both the claimed and the derived tier. Self-downgrades
+  still pass through, and an operator override in `plugins.json` still wins.
+  Trust tiers gate identically at dispatch, so this was audit integrity rather
+  than privilege escalation.
+
+- **`navigate` reported `ok:true` when it landed somewhere else.** An
+  authentication bounce (requesting an inbox while signed out and landing on a
+  marketing page) produced a successful `ActionResult` with no signal that the
+  requested and landed URLs differed, because `describeNavigation` only ever
+  compared the URL before the action to the URL after — the caller's requested
+  URL was never passed in. `ActionResult.navigation` gains an optional
+  `offOrigin: { requested, landed }`, present only when the landed host differs
+  from the requested one. Hosts are compared, not origins, so an http→https
+  upgrade stays quiet while a www/apex or subdomain hop fires, since that moves
+  cookie scope. Additive field; nothing existing changes shape.
 
 - **Two high-severity advisories in the production dependency tree.**
   `fast-uri` reached the tree at 3.1.2 via `@modelcontextprotocol/sdk` ->

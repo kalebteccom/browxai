@@ -403,6 +403,62 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
   );
 });
 
+// Same fixture node, the visibility half. A DOM-walk-sourced candidate reports
+// its bare tag in `role` ("a"), so the built hint is `role=a[name="…"]` — a
+// locator Playwright's role engine rejects. Both bbox probes then fail and a
+// rendered link is reported bbox:null / clipped:true / actionable:"off-screen",
+// which `visibleOnly:true` drops entirely. Only a real browser proves the
+// emitted hint resolves, so the assertion runs the hint back through
+// `verify_visible` rather than trusting the shape.
+describe("headless-CI keystone — DOM-walk candidates are not falsely off-screen", () => {
+  it(
+    "a bare-tag <a> candidate carries a real bbox, actionable:true, and a resolvable hint",
+    async () => {
+      const session = "ks-find-visible";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      const found = await callJson<{
+        candidates: Array<{
+          role: string;
+          name?: string;
+          selectorHint: string;
+          selectorTier: number;
+          bbox: unknown;
+          clipped: boolean;
+          actionable: unknown;
+        }>;
+        warnings: string[];
+      }>("find", { session, query: "More info link" });
+
+      const domWalked = found.candidates.find((c) => c.role === "a");
+      expect(domWalked, "DOM-walk-sourced <a> candidate present").toBeTruthy();
+      expect(domWalked!.bbox).not.toBeNull();
+      expect(domWalked!.clipped).toBe(false);
+      expect(domWalked!.actionable).toBe(true);
+      expect(domWalked!.selectorHint).not.toContain("role=a");
+      expect(found.warnings.join(" ")).not.toContain("no visible candidate");
+
+      const seen = await callJson<{ ok: boolean }>("verify_visible", {
+        session,
+        selector: domWalked!.selectorHint,
+      });
+      expect(seen.ok, `emitted hint must resolve: ${domWalked!.selectorHint}`).toBe(true);
+
+      // visibleOnly must not drop it now that the probe reports the truth.
+      const visibleOnly = await callJson<{ candidates: Array<{ role: string }> }>("find", {
+        session,
+        query: "More info link",
+        visibleOnly: true,
+      });
+      expect(visibleOnly.candidates.some((c) => c.role === "a")).toBe(true);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 // permission_policy keystone: the simplest non-camera path (geolocation).
 // Exercises the full stack — CDP `Browser.setPermission` baseline + in-page
 // init-script wrapper around `navigator.geolocation.getCurrentPosition` —

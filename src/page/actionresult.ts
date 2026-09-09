@@ -10,13 +10,19 @@
 import type { A11yNode } from "./a11y.js";
 import type { NetworkEntry, NetworkSummary, MutationEntry } from "./network.js";
 import { estimateTokens } from "../util/tokens.js";
-import { withDeadline, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
+import { withDeadline, DeadlineError, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { invariant } from "../util/invariant.js";
 import { classifyFailure } from "../util/failure.js";
 import { type DialogRecord, UNHANDLED_DIALOG_HINT } from "../session/dialog.js";
 import { type PermissionRecord, UNHANDLED_PERMISSION_HINT } from "../session/permission.js";
 import { type NotificationRecord, UNHANDLED_NOTIFICATION_HINT } from "../session/notification.js";
 import { type FsPickerRecord, UNHANDLED_FS_PICKER_HINT } from "../session/fs-picker.js";
+import {
+  challengeDeadlineFailure,
+  watchForChallenge,
+  type ChallengeBlock,
+  type ChallengeWatch,
+} from "./challenge.js";
 import {
   type ActionOutcome,
   applyPolicyRaise,
@@ -44,6 +50,9 @@ import {
   summariseConsoleErrors,
   topLevelRegions,
 } from "./actionresult-shape.js";
+
+/** Playwright's own timeout shape — the inner-op half of a deadline expiry. */
+const TIMEOUT_MESSAGE = /timeout( \d+ms)? exceeded|timeouterror/i;
 
 /** The network slice when there is no CDP tap (off Chromium, where the
  *  Playwright-event network tap is used instead). Matches `NetworkTap.close()`'s
@@ -119,12 +128,7 @@ export async function runInActionWindow(
   const elementProbe = dispatch.elementProbe;
 
   // --- settle ---
-  await sleep(settleMs);
-  try {
-    await ctx.page.waitForLoadState("networkidle", { timeout: 1500 });
-  } catch {
-    /* noisy SPAs never idle */
-  }
+  await settleAfterDispatch(ctx, settleMs);
 
   // --- post-state ---
   const frameNavigatedMain = pre.detach();
@@ -132,6 +136,12 @@ export async function runInActionWindow(
   const postTree = await ctx.snapshot.a11yTree(ctx.refs, ctx.testAttributes).catch(() => null);
   const postRegions = postTree ? topLevelRegions(postTree) : new Map<string, Region>();
   const network = pre.net ? await pre.net.close() : EMPTY_NETWORK;
+
+  // anti-bot gate detection — reported, never solved. A deadline that expired
+  // behind a detected gate is re-explained: the generic anti-wedge message would
+  // send the caller into a retry loop that cannot clear a challenge.
+  const challenge = await pre.challenge.detect();
+  if (challenge && dispatch.timedOut) ({ error, failure } = challengeDeadlineFailure(challenge));
 
   // policy capture — dialogs / permission requests / notifications / fs-picker
   // calls that fired in the window; a `raise` flips ok→false (see capturePolicy).
@@ -155,6 +165,7 @@ export async function runInActionWindow(
     tabsBefore,
     network,
     policy,
+    challenge,
   });
   const { navigation, structure, consoleSlice, pageErrors, snapshotDelta, networkBlock, blocks } =
     shaped;
@@ -187,6 +198,18 @@ export async function runInActionWindow(
   };
 }
 
+/** Let CDP events and framework reconciliations drain before the post-state is
+ *  read: a fixed delay, then a bounded networkidle wait that noisy SPAs never
+ *  satisfy — so the wait is best-effort and its expiry is not a failure. */
+async function settleAfterDispatch(ctx: ActionContext, settleMs: number): Promise<void> {
+  await sleep(settleMs);
+  try {
+    await ctx.page.waitForLoadState("networkidle", { timeout: 1500 });
+  } catch {
+    /* noisy SPAs never idle */
+  }
+}
+
 /** The network slice shape `NetworkTap.close()` (and its Playwright twin) emit. */
 type NetworkClose = {
   summary: NetworkSummary;
@@ -201,6 +224,7 @@ interface OpenWindow {
   preTree: A11yNode | null;
   preRegions: Map<string, Region>;
   net: ReturnType<NonNullable<ActionContext["network"]>["openActionTap"]> | null;
+  challenge: ChallengeWatch;
   detach: () => boolean;
 }
 
@@ -229,6 +253,7 @@ async function openActionWindow(ctx: ActionContext): Promise<OpenWindow> {
   // is engine-blind. (`ctx.secrets` was wired into the substrate at session
   // creation; the tap inherits it.)
   const net = ctx.network ? ctx.network.openActionTap() : null;
+  const challenge = watchForChallenge(ctx.page);
   return {
     urlBefore,
     tabsBefore,
@@ -236,6 +261,7 @@ async function openActionWindow(ctx: ActionContext): Promise<OpenWindow> {
     preTree,
     preRegions,
     net,
+    challenge,
     detach: () => {
       ctx.page.off("framenavigated", onFrameNav);
       return frameNavigatedMain;
@@ -259,6 +285,7 @@ interface ShapeInput {
   tabsBefore: Set<string>;
   network: NetworkClose;
   policy: ReturnType<typeof capturePolicy>;
+  challenge: ChallengeBlock | undefined;
 }
 
 interface ShapedResult {
@@ -278,7 +305,12 @@ interface ShapedResult {
  *  `runInActionWindow` to keep the orchestrator under budget. */
 async function shapeActionResult(p: ShapeInput): Promise<ShapedResult> {
   const { ctx, warnings, tBefore } = p;
-  const navigation = describeNavigation(p.urlBefore, p.urlAfter, p.frameNavigatedMain);
+  const navigation = describeNavigation(
+    p.urlBefore,
+    p.urlAfter,
+    p.frameNavigatedMain,
+    p.descriptor.url,
+  );
   const structure = diffRegions(p.preRegions, p.postRegions);
   for (const page of ctx.pages()) {
     if (!p.tabsBefore.has(page.url())) {
@@ -312,6 +344,7 @@ async function shapeActionResult(p: ShapeInput): Promise<ShapedResult> {
     notifications: buildNotificationsBlock(p.policy.notificationSlice),
     fsPickerRequests: buildFsPickerRequestsBlock(p.policy.fsPickerSlice),
     downloads: buildDownloadsBlock(ctx.downloads ? ctx.downloads.since(tBefore) : []),
+    challenge: p.challenge,
   });
 
   const tokensEstimate = estimateTokens(
@@ -374,6 +407,7 @@ async function dispatchActionBody(
   error: string | undefined;
   failure: import("../util/failure.js").FailureClass | undefined;
   elementProbe: ElementProbe | undefined;
+  timedOut: boolean;
 }> {
   // L7/L8: the action window is bounded — the body is raced against `deadlineMs`
   // (the anti-wedge bound, deadline.ts) so a wedged page op cannot stall forever.
@@ -393,10 +427,13 @@ async function dispatchActionBody(
         delete probe.warnings;
       }
     }
-    return { ok: true, error: undefined, failure: undefined, elementProbe };
+    return { ok: true, error: undefined, failure: undefined, elementProbe, timedOut: false };
   } catch (e) {
     const error = e instanceof Error ? e.message : String(e);
-    return { ok: false, error, failure: classifyFailure(error), elementProbe: undefined };
+    // The outer race and the inner Playwright op share `deadlineMs`, so either
+    // can be the one that fires — both are the same deadline expiry to a caller.
+    const timedOut = e instanceof DeadlineError || TIMEOUT_MESSAGE.test(error);
+    return { ok: false, error, failure: classifyFailure(error), elementProbe: undefined, timedOut };
   }
 }
 

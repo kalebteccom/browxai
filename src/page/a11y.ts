@@ -34,6 +34,15 @@ export interface A11yNode {
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;
+  /** Positional CSS path (DOM-walk only). The DOM-walk reports an element's bare
+   *  tag in `role`, so a role-based locator built from such a node is often one
+   *  Playwright cannot resolve; this is the resolvable last-resort locator. */
+  cssPath?: string;
+  /** `<a>` / `<area>` carries an `href` attribute (DOM-walk only). Discriminates the
+   *  implicit ARIA role the bare tag can't — see `effectiveAriaRole`. */
+  hasHref?: boolean;
+  /** Lowercased `<input type>` (DOM-walk only). Same purpose as `hasHref`. */
+  inputType?: string;
   /**  selectorHint tier-4 source: HTML `id=` attribute if present. */
   id?: string;
   /**  selectorHint tier-3 source: trimmed text content (truncated, single-line),

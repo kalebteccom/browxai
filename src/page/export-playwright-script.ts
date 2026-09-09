@@ -23,12 +23,25 @@
 //   - Coords-mode actions are not recorded by the action window (see
 //     actions.ts: NON_TARGETED_ACTIONS / hasReplayableTarget), so the export
 //     never has to lower a non-replayable target — by construction.
+//   - Recorded READS lower too, so a read-shaped session exports as a function
+//     rather than a macro: `extract` becomes a live per-field re-read bound to
+//     a const, `find` becomes a named locator, `eval_js` becomes a
+//     `page.evaluate` of the recorded expression, and `snapshot` becomes a
+//     comment (a serialised a11y tree is not a script step). The declared
+//     values are logged at the end of the test body — that log IS the
+//     exported function's return.
 //
 // Output shape: a single `.spec.ts` source string. The caller can return it
 // inline AND/OR write it to a workspace-rooted path (same posture as
 // `dump_storage_state` — workspace-rooted, escape-rejected).
 
-import type { RecordedStep } from "./recording.js";
+import { locatorNameFor } from "./recording.js";
+import type {
+  RecordedStep,
+  RecordedActionStep,
+  RecordedReadStep,
+  RecordedRead,
+} from "./recording.js";
 import type { DispatchedAction } from "./actionresult.js";
 
 /** Tier-1/tier-2 selectorHints recorded at the time of the call. The
@@ -50,6 +63,11 @@ export interface LoweredStep {
    *  type? Drives the result's `unhandled` counter so the agent can see
    *  whether the export captured everything. */
   handled: boolean;
+  /** Identifier this step binds a read VALUE to (`extract` / `eval_js`).
+   *  Collected into the trailing result log so the spec emits what it read. */
+  resultVar?: string;
+  /** Identifier this step binds a LOCATOR to (`find`). */
+  locatorVar?: string;
 }
 
 export interface LowerResult {
@@ -78,12 +96,16 @@ export function lowerTraceToSpec(
   let fragile = 0;
 
   if (steps.length === 0) {
-    body.push("    // No steps recorded. Run actions while a recording is active,");
-    body.push("    // then re-export to populate this spec.");
+    body.push("    // No steps recorded. Run actions or reads while a recording is");
+    body.push("    // active, then re-export to populate this spec.");
   }
 
+  const varNames = assignVarNames(steps);
+  const locatorVars: string[] = [];
+  const resultVars: string[] = [];
+
   for (const step of steps) {
-    const lowered = lowerStep(step);
+    const lowered = lowerStep(step, varNames.get(step.id));
     if (lowered.fragile) {
       fragile += 1;
       body.push(
@@ -96,15 +118,60 @@ export function lowerTraceToSpec(
     for (const line of lowered.lines) {
       body.push("    " + line);
     }
+    if (lowered.locatorVar) locatorVars.push(lowered.locatorVar);
+    if (lowered.resultVar) resultVars.push(lowered.resultVar);
     if (lowered.handled) handled += 1;
     else unhandled += 1;
   }
+  body.push(...renderReadTail(locatorVars, resultVars));
 
-  const source = renderSpec(flowName, body);
+  const source = renderSpec(flowName, body, specNotes(steps));
   return {
     source,
     stats: { steps: steps.length, handled, unhandled, fragile },
   };
+}
+
+/** Trailing lines that make the declared reads load-bearing: the result log is
+ *  the exported function's return value, and the `void` line keeps a
+ *  `noUnusedLocals` tsconfig quiet about locators the flow never acted on. */
+function renderReadTail(locatorVars: string[], resultVars: string[]): string[] {
+  const lines: string[] = [];
+  if (locatorVars.length > 0) {
+    lines.push(`    void [${locatorVars.join(", ")}];`);
+  }
+  if (resultVars.length > 0) {
+    lines.push("    // What this flow read.");
+    lines.push(`    console.log(JSON.stringify({ ${resultVars.join(", ")} }, null, 2));`);
+  }
+  return lines;
+}
+
+/** Per-step identifiers for the reads that bind one, deduped across the trace
+ *  (two `find`s on the same target would otherwise redeclare a const). */
+function assignVarNames(steps: ReadonlyArray<RecordedStep>): Map<string, string> {
+  const used = new Set<string>();
+  const names = new Map<string, string>();
+  for (const step of steps) {
+    if (step.kind !== "read" || step.read.type === "snapshot") continue;
+    const base = varNameFor(step);
+    let name = base;
+    // bound: `used` only ever holds one name per earlier step, so the suffix
+    // can collide at most `steps.length - 1` times before it is free.
+    for (let n = 2; used.has(name); n += 1) name = `${base}_${n}`;
+    used.add(name);
+    names.set(step.id, name);
+  }
+  return names;
+}
+
+function varNameFor(step: RecordedReadStep): string {
+  return identifier(step.read.type === "find" ? locatorNameFor(step) : step.id);
+}
+
+function identifier(raw: string): string {
+  const s = raw.replace(/[^A-Za-z0-9_]/g, "_");
+  return /^[A-Za-z_]/.test(s) ? s : `_${s}`;
 }
 
 /** Pure step lowering. Exported for the unit tests. */
@@ -122,7 +189,8 @@ function lowerNavigation(a: DispatchedAction): LoweredStep | null {
   }
 }
 
-export function lowerStep(step: RecordedStep): LoweredStep {
+export function lowerStep(step: RecordedStep, varName?: string): LoweredStep {
+  if (step.kind === "read") return lowerRead(step, varName ?? varNameFor(step));
   const a = step.action;
   const nav = lowerNavigation(a);
   if (nav) return nav;
@@ -157,7 +225,7 @@ export function lowerStep(step: RecordedStep): LoweredStep {
 
 /** `select` records values as a comma-joined string; lower to `selectOption([...])`
  *  (the array form is unambiguous and accepts a single value too). */
-function lowerSelect(step: RecordedStep, value: string): LoweredStep {
+function lowerSelect(step: RecordedActionStep, value: string): LoweredStep {
   const values = value
     .split(",")
     .map((v) => v.trim())
@@ -167,7 +235,7 @@ function lowerSelect(step: RecordedStep, value: string): LoweredStep {
 }
 
 /** `press` may target an element (`locator.press`) or the page (`page.keyboard.press`). */
-function lowerPress(step: RecordedStep, key: string): LoweredStep {
+function lowerPress(step: RecordedActionStep, key: string): LoweredStep {
   if (step.selectorHint) {
     return targeted(step, (loc) => [`await ${loc}.press(${jsString(key)});`]);
   }
@@ -176,7 +244,7 @@ function lowerPress(step: RecordedStep, key: string): LoweredStep {
 
 /** `waitFor` lowers to a page-level visible-text wait (`text:<...>`) or an
  *  element-visible wait. */
-function lowerWaitFor(step: RecordedStep, value: string): LoweredStep {
+function lowerWaitFor(step: RecordedActionStep, value: string): LoweredStep {
   if (value.startsWith("text:")) {
     const text = value.slice("text:".length);
     return handledLines([
@@ -188,7 +256,7 @@ function lowerWaitFor(step: RecordedStep, value: string): LoweredStep {
 
 /** `choose_option` is a compound (open-trigger → click-option) emitted as two
  *  clicks with a review-the-wait comment. */
-function lowerChooseOption(step: RecordedStep, optionText: string): LoweredStep {
+function lowerChooseOption(step: RecordedActionStep, optionText: string): LoweredStep {
   const loc = locatorExprFor(step);
   return {
     lines: [
@@ -201,7 +269,160 @@ function lowerChooseOption(step: RecordedStep, optionText: string): LoweredStep 
   };
 }
 
-function targeted(step: RecordedStep, build: (locatorExpr: string) => string[]): LoweredStep {
+type ExtractRead = Extract<RecordedRead, { type: "extract" }>;
+
+function lowerRead(step: RecordedReadStep, varName: string): LoweredStep {
+  const read = step.read;
+  switch (read.type) {
+    case "find":
+      return lowerFind(step, read.query, varName);
+    case "extract":
+      return lowerExtract(step, read, varName);
+    case "eval_js":
+      return lowerEvalJs(read.expr, varName);
+    case "snapshot":
+      return lowerSnapshotRead(read.scope);
+  }
+}
+
+/** `find` lowers to the named locator the YAML draft would call it by. */
+function lowerFind(step: RecordedReadStep, query: string, varName: string): LoweredStep {
+  if (!step.selectorHint) {
+    return {
+      lines: [
+        `// TODO: find(${jsString(query)}) resolved no candidate at record time — ` +
+          `no locator to lower; write one by hand.`,
+      ],
+      fragile: true,
+      handled: false,
+    };
+  }
+  return {
+    lines: [`// find(${jsString(query)})`, `const ${varName} = ${locatorExprFor(step)};`],
+    fragile: isFragile(step),
+    handled: true,
+    locatorVar: varName,
+  };
+}
+
+/** A serialised a11y tree is not a script step — `snapshot` is the agent
+ *  orienting itself, and there is nothing to run. It lowers to a comment and
+ *  is counted unhandled so the stats stay honest about that. */
+function lowerSnapshotRead(scope?: string): LoweredStep {
+  // The scope is agent-supplied; a newline in it would split the comment and
+  // leave the rest of the line as invalid TypeScript.
+  const where = scope ? ` (scope: ${scope.replace(/[\r\n]/g, " ")})` : "";
+  return {
+    lines: [`// snapshot${where} — agent orientation read; no runtime equivalent in a spec.`],
+    fragile: false,
+    handled: false,
+  };
+}
+
+/** The expression is passed through as a string, exactly as `eval_js` hands it
+ *  to the page, so the exported call has the same semantics browxai ran. */
+function lowerEvalJs(expr: string, varName: string): LoweredStep {
+  return {
+    lines: [
+      "// Recorded from `eval_js` — see the eval-capability note in the header.",
+      `const ${varName} = await page.evaluate(${jsString(expr)});`,
+    ],
+    fragile: false,
+    handled: true,
+    resultVar: varName,
+  };
+}
+
+/** `extract` is the read that carries a return value, so it lowers to a live
+ *  per-field re-read bound to a const. Only fields with an explicit
+ *  `x-browx-source.selector` can lower — the implicit name-as-query rule is
+ *  browxai's ranker, which a plain Playwright spec has no access to. */
+function lowerExtract(step: RecordedReadStep, read: ExtractRead, varName: string): LoweredStep {
+  const properties = asRecord(read.schema.properties);
+  if (asString(read.schema.type) !== "object" || !properties) {
+    return {
+      lines: [
+        `// TODO: extract schema is not a top-level object — only object schemas with ` +
+          `scalar leaves lower today. Recorded schema: ${JSON.stringify(read.schema)}.`,
+      ],
+      fragile: false,
+      handled: false,
+    };
+  }
+  const refScope = read.scope !== undefined && /^e\d+$/.test(read.scope);
+  const root = read.scope && !refScope ? `page.locator(${jsString(read.scope)})` : "page";
+  const fields = Object.entries(properties).map(([key, sub]) => extractField(key, sub, root));
+  const lines = [
+    `// extract → \`${varName}\`. Leaf values come back as page text; browxai's`,
+    `// per-type coercion ("$1,234.50" → 1234.5) is not reproduced here.`,
+  ];
+  if (refScope) {
+    lines.push(
+      `// TODO: the recorded scope was ref "${read.scope}" — refs are session-local, so ` +
+        `the fields below read page-wide. Narrow the root locator.`,
+    );
+  }
+  lines.push(`const ${varName} = {`, ...fields.map((f) => f.line), `};`);
+  return {
+    lines,
+    // `fragile` is the selector-stability signal; a ref scope is a different
+    // problem and carries its own TODO above.
+    fragile: false,
+    handled: fields.every((f) => f.handled),
+    resultVar: varName,
+  };
+}
+
+function extractField(key: string, sub: unknown, root: string): { line: string; handled: boolean } {
+  const prop = asRecord(sub);
+  const type = prop ? asString(prop.type) : undefined;
+  const name = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : jsString(key);
+  if (type === "object" || type === "array") {
+    return {
+      line: `  ${name}: null, // TODO: nested ${type} — only scalar leaves lower today.`,
+      handled: false,
+    };
+  }
+  const hint = prop ? asRecord(prop["x-browx-source"]) : null;
+  const selector = hint === null ? undefined : asString(hint.selector);
+  if (hint === null || selector === undefined) {
+    return {
+      line:
+        `  ${name}: null, // TODO: no selector recorded — this field resolved by ` +
+        `browxai's name-as-query rule; add an \`x-browx-source.selector\` or a locator.`,
+      handled: false,
+    };
+  }
+  return {
+    line: `  ${name}: ${leafReadExpr(`${root}.locator(${jsString(selector)}).first()`, hint)},`,
+    handled: true,
+  };
+}
+
+/** Mirrors the read-mode precedence in the extract resolver: attr → prop /
+ *  value → visible text. */
+function leafReadExpr(target: string, hint: Record<string, unknown>): string {
+  const attr = asString(hint.attr);
+  if (attr !== undefined) return `await ${target}.getAttribute(${jsString(attr)})`;
+  const prop = asString(hint.prop);
+  if (hint.value === true || prop === "value") return `await ${target}.inputValue()`;
+  if (prop !== undefined) {
+    return `await ${target}.evaluate((el) => (el as unknown as Record<string, unknown>)[${jsString(prop)}])`;
+  }
+  return `(await ${target}.innerText()).trim()`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function targeted(step: RecordedActionStep, build: (locatorExpr: string) => string[]): LoweredStep {
   if (!step.selectorHint) {
     // The recorder only stores a step without a selectorHint for
     // navigation-class actions, which are handled above. If we land here
@@ -279,19 +500,40 @@ function jsString(value: string): string {
   return JSON.stringify(value);
 }
 
+/** Header notes that depend on what the trace contains. `eval_js` sits behind
+ *  browxai's off-by-default `eval` capability; the exported `page.evaluate`
+ *  call has no such gate, so the provenance has to be stated in-source. */
+function specNotes(steps: ReadonlyArray<RecordedStep>): string[] {
+  const hasEval = steps.some((s) => s.kind === "read" && s.read.type === "eval_js");
+  if (!hasEval) return [];
+  return [
+    `// This spec contains steps lowered from \`eval_js\`, which browxai gates`,
+    `// behind the off-by-default \`eval\` capability — the recording could only`,
+    `// have produced them with \`eval\` granted, and replaying the flow through`,
+    `// browxai needs it again. Playwright runs the expressions ungated: read`,
+    `// them before you run this.`,
+    `//`,
+  ];
+}
+
 /** Render the final `.spec.ts` source. Body lines are inserted verbatim
  *  (already indented by the caller). */
-function renderSpec(flowName: string, bodyLines: string[]): string {
+function renderSpec(flowName: string, bodyLines: string[], notes: string[]): string {
   const safeName = flowName.replace(/[\r\n]/g, " ").replace(/`/g, "\\`");
   const lines: string[] = [
     `import { test, expect } from "@playwright/test";`,
     ``,
     `// Generated by browxai \`export_playwright_script\`. Each step below was`,
-    `// lowered from a recorded browxai action; selectors come from the`,
+    `// lowered from a recorded browxai action or read; selectors come from the`,
     `// recorder's selectorHint at the time of the call. \`// TODO: fragile`,
     `// selector\` comments flag tier-5 / role-only fallbacks — review before`,
     `// relying on this spec in CI.`,
     `//`,
+    `// First run in a fresh project: \`npx playwright install chromium\`. A fresh`,
+    `// \`@playwright/test\` install ships no browsers, so without it the run dies`,
+    `// on "Executable doesn't exist" before it reaches the page.`,
+    `//`,
+    ...notes,
     `// \`expect\` is imported so adding assertions does not require editing`,
     `// the import line; the generated body does not assert by itself.`,
     `void expect;`,
@@ -304,77 +546,8 @@ function renderSpec(flowName: string, bodyLines: string[]): string {
   return lines.join("\n");
 }
 
-// Bare-minimum TypeScript parse-check. We don't pull `typescript` in as a
-// dependency for a single-file syntax pass — the lowered output is small,
-// well-bounded, and we control every emitted line, so a structural sanity
-// check is enough: matched braces / parens / quotes, the expected import
-// line at the top, the expected test shell. Catches the "I emitted a line
-// without closing the call" class of bug the cycle invariant calls out.
-type Depth = { paren: number; brace: number; bracket: number };
-
-/** Skip a comment or string token starting at `i`; returns the index just past
- *  it, or `i` unchanged when `i` doesn't start a comment/string. */
-function skipCommentOrString(source: string, i: number): number {
-  const c = source[i];
-  if (c === "/" && source[i + 1] === "/") {
-    const nl = source.indexOf("\n", i);
-    return nl === -1 ? source.length : nl + 1;
-  }
-  if (c === "/" && source[i + 1] === "*") {
-    const end = source.indexOf("*/", i + 2);
-    return end === -1 ? source.length : end + 2;
-  }
-  if (c === '"' || c === "'" || c === "`") {
-    let j = i + 1;
-    while (j < source.length && source[j] !== c) j += source[j] === "\\" ? 2 : 1;
-    return j + 1;
-  }
-  return i;
-}
-
-const OPEN_DELIMS: Record<string, keyof Depth> = { "(": "paren", "{": "brace", "[": "bracket" };
-const CLOSE_DELIMS: Record<string, keyof Depth> = { ")": "paren", "}": "brace", "]": "bracket" };
-
-/** Apply one character's delimiter effect to `depth`. */
-function applyDelimiter(c: string, depth: Depth): void {
-  const open = OPEN_DELIMS[c];
-  if (open) depth[open] += 1;
-  const close = CLOSE_DELIMS[c];
-  if (close) depth[close] -= 1;
-}
-
-export function parseCheck(source: string): { ok: true } | { ok: false; reason: string } {
-  if (!source.startsWith('import { test, expect } from "@playwright/test";')) {
-    return { ok: false, reason: "missing @playwright/test import header" };
-  }
-  if (!/\ntest\(/.test(source)) {
-    return { ok: false, reason: "missing test(...) shell" };
-  }
-  // matched-delimiter pass — strings + comments are skipped so a `{` inside a
-  // string literal isn't a false positive.
-  let i = 0;
-  const depth: Depth = { paren: 0, brace: 0, bracket: 0 };
-  while (i < source.length) {
-    const skipped = skipCommentOrString(source, i);
-    if (skipped !== i) {
-      i = skipped;
-      continue;
-    }
-    applyDelimiter(source[i]!, depth);
-    if (depth.paren < 0 || depth.brace < 0 || depth.bracket < 0) {
-      return { ok: false, reason: `unbalanced delimiter at offset ${i}` };
-    }
-    i += 1;
-  }
-  if (depth.paren !== 0 || depth.brace !== 0 || depth.bracket !== 0) {
-    return {
-      ok: false,
-      reason: `unbalanced delimiters at EOF (paren=${depth.paren}, brace=${depth.brace}, bracket=${depth.bracket})`,
-    };
-  }
-  return { ok: true };
-}
-
-// Type-only re-export so callers can import `RecordedStep` from this module
-// without a second import line.
+// Re-exports so callers keep a single import line: the structural parse-check
+// lives in its own module, and `RecordedStep` / `DispatchedAction` are the
+// types every caller of the lowering needs.
+export { parseCheck } from "./export-playwright-parse-check.js";
 export type { RecordedStep, DispatchedAction };

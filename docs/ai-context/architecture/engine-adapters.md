@@ -429,7 +429,7 @@ code is the adb plumbing (`adapters/adb.ts`), not a substrate.
 **connectOverCDP, not `playwright._android`.** Both reach the same CDP. The
 adapter uses `chromium.connectOverCDP(<ws-from-adb-forwarded-socket>)` because it
 returns the exact `Browser` + `newCDPSession` handles the desktop BYOB path wires
-(`attachOverCdp` in `playwright-chromium.ts`), so the substrate selectors, the
+(`connectOverCdp` in `playwright-chromium.ts`), so the substrate selectors, the
 network tap, the a11y substrate, and teardown all work **unchanged**.
 `playwright._android` is a separate experimental **device** API
 (`_android.devices()` → `AndroidDevice`) that owns its own adb orchestration and

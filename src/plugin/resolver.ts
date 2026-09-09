@@ -14,7 +14,7 @@ import { join, resolve as resolvePath } from "node:path";
 import { ZodError } from "zod";
 import { log } from "../util/logging.js";
 import { parseManifestField, type ResolvedManifest, type TrustTier } from "./manifest.js";
-import { inferTrustFromInstallIdentity } from "./trust.js";
+import { clampDeclaredTrust, inferTrustFromInstallIdentity } from "./trust.js";
 
 /** Per-entry overrides in the object form of `plugins.json`. */
 export interface PluginEntryOverride {
@@ -206,7 +206,14 @@ export function resolveDeclaredPlugin(paths: PluginPaths, decl: DeclaredPlugin):
       error: `browxai.register points at ${manifest.register} but resolved path ${entryPath} does not exist`,
     };
   }
-  const trust: TrustTier = decl.trust ?? manifest.trust ?? inferTrustFromInstallIdentity(decl.name);
+  const pkgName = raw.name ?? decl.name;
+  const claimed = clampDeclaredTrust(manifest.trust, pkgName);
+  if (claimed.rejected) {
+    log.warn(
+      `plugin "${pkgName}": manifest declares trust "${claimed.rejected}" but the package is not under the @browxai/* scope — ignoring the claim and deriving the tier from the install identity.`,
+    );
+  }
+  const trust: TrustTier = decl.trust ?? claimed.trust ?? inferTrustFromInstallIdentity(decl.name);
   return {
     kind: "resolved",
     manifest: {
