@@ -93,7 +93,7 @@ jobs:
       # v0.4.0 shipped broken — its action.sh looks for a `support/versions`
       # file that isn't in the tag, so the audit never ran at all. 0.6.1 is the
       # first tag that works; do not go back below it.
-      - uses: zizmorcore/zizmor-action@6fc4b006235f201fdab3722e17240ab420d580e5 # v0.6.1
+      - uses: zizmorcore/zizmor-action@70fb788f84895a7701f5643d103d587e460b5c99 # v0.6.3
         with:
           persona: auditor
           # Gate on low-and-above; auditor-persona informational findings
