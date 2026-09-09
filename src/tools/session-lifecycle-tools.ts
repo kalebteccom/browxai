@@ -81,6 +81,14 @@ function buildOpenSessionResultFields(
   return { ...harField, ...replayField, ...videoField };
 }
 
+/** The URL a freshly-opened session landed on. safari has no Playwright Page, so
+ *  its URL comes from the WebDriver Classic client instead. */
+async function openedUrlFor(e: SessionEntry): Promise<string> {
+  const safariOpened = e.session.safari?.();
+  if (!safariOpened) return e.session.page().url();
+  return safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "");
+}
+
 /** Validate the optional per-session `engine`. Returns the validated EngineKind
  *  (or undefined when omitted), or a structured `unknown-engine` error response.
  *  Lives in the handler path (not only in Zod) because direct / in-process (SDK)
@@ -140,6 +148,18 @@ export function registerSessionLifecycleTools(
           .optional()
           .describe(
             "persistent mode only: named profile dir under <workspace>/profiles/. Default = the session id. Lets two ids share a profile, or one id pin a stable profile name.",
+          ),
+        channel: z
+          .string()
+          .optional()
+          .describe(
+            'Playwright browser channel for a chromium session ("chrome", "msedge", "chrome-beta", "chrome-dev", "msedge-beta", …). Launches the operator\'s INSTALLED browser instead of Playwright\'s bundled Chrome for Testing build — the binary must already be on the machine (there is no download step). Falls back to config `channel` / `BROWX_CHANNEL`; unset everywhere ⇒ the bundled build, byte-identical to before. Ignored on `attached` (already launched) and on firefox/webkit/safari/android (firefox has its own `BROWX_FIREFOX_CHANNEL`). Note that the browser version then tracks the operator\'s install, not the version browxai pins.',
+          ),
+        backgroundThrottling: z
+          .enum(["default", "disabled"])
+          .optional()
+          .describe(
+            'Background-tab lifecycle for a chromium session. "default" (DEFAULT) keeps Chrome\'s own behaviour: `requestAnimationFrame` pauses in a background tab, timers throttle to once a minute after five minutes, and a hidden+occluded tab can be frozen. "disabled" launches with `--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding` so a backgrounded session keeps running at full rate — recommended for pooled multi-agent attached work, where an agent polling a backgrounded tab otherwise stalls to its deadline and the stall reads as a page bug. Left at "default" because the opposite need is equally real: reproducing a lifecycle bug requires a genuinely throttled tab. Ignored on `attached` (launch-time flags).',
           ),
         device: z
           .string()
@@ -270,6 +290,8 @@ export function registerSessionLifecycleTools(
       mode,
       engine,
       profile,
+      channel,
+      backgroundThrottling,
       device,
       viewport,
       dialogPolicy,
@@ -306,6 +328,8 @@ export function registerSessionLifecycleTools(
           mode,
           engine: engineResult.engine,
           profile,
+          channel,
+          backgroundThrottling,
           device,
           viewport,
           dialogPolicy: policies.dialogPolicy,
@@ -318,18 +342,12 @@ export function registerSessionLifecycleTools(
           hars,
           recordVideo: recordVideo,
         });
-        // safari has no Playwright Page — read the opened URL from its WebDriver
-        // Classic client instead.
-        const safariOpened = e.session.safari?.();
-        const openedUrl = safariOpened
-          ? await safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "")
-          : e.session.page().url();
         return lifecycleJson({
           ok: true,
           session: e.id,
           mode: e.mode,
           engine: e.session.engine,
-          url: openedUrl,
+          url: await openedUrlFor(e),
           openedAt: new Date(e.openedAt).toISOString(),
           ...buildOpenSessionResultFields(e, hars),
         });

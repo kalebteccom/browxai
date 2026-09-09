@@ -29,18 +29,19 @@ persisted layers for that session only.
 
 ## Config keys
 
-| Key                                 | What it does                                                                                            |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.    |
-| `capabilities`                      | The enabled capability set. See [Capabilities and safety](/concepts/capabilities-and-safety/).          |
-| `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                    |
-| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                  |
-| `headless`                          | Launch managed Chromium headless.                                                                       |
-| `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                      |
-| `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                               |
-| `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default. |
-| `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.       |
-| `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                               |
+| Key                                 | What it does                                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.                     |
+| `capabilities`                      | The enabled capability set. See [Capabilities and safety](/concepts/capabilities-and-safety/).                           |
+| `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                     |
+| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                   |
+| `headless`                          | Launch managed Chromium headless.                                                                                        |
+| `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, …). Unset launches the bundled Chrome for Testing. |
+| `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                       |
+| `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                |
+| `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                  |
+| `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                        |
+| `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                |
 
 ### A few keys worth understanding
 
@@ -55,6 +56,16 @@ ceiling.
 only through `set_config` or the managed config file, so it can never be
 ambiently enabled. It applies to managed and incognito sessions; an attached
 Chrome keeps whatever flags it was launched with.
+
+**`channel`** picks which browser binary a chromium session launches. Unset,
+you get Playwright's bundled Chrome for Testing. Set it to `chrome` or `msedge`
+and you get the operator's installed browser instead — useful when the app
+depends on something the testing build lacks, and when a site treats Chrome for
+Testing as automation. The binary must already be installed; browxai does not
+download it, and the browser version then follows that install rather than the
+version browxai pins. Firefox has its own `BROWX_FIREFOX_CHANNEL`; WebKit,
+Safari and Android ignore the key. Override per session with
+`open_session({ channel })`.
 
 **`hideOverlaySelectors`** injects a CSS-only init script that applies
 `pointer-events: none; display: none` to matches on every navigation. It is
@@ -79,6 +90,7 @@ not config.
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Policy hooks that route through human confirmation.                               |
 | `BROWX_ALLOWED_ORIGINS`  | unset                                   | Allow list for `navigate`. Wildcards allowed.                                     |
 | `BROWX_BLOCKED_ORIGINS`  | unset                                   | Block list; overrides the allow list.                                             |
+| `BROWX_CHANNEL`          | unset                                   | Playwright browser channel for chromium sessions. Unset uses the bundled build.   |
 
 For the complete configuration and session surface, see the
 [tool reference](/reference/tool-reference/).

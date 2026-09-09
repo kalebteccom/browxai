@@ -32,6 +32,17 @@ browxai is a browser-control server designed for agents, not for human programme
 
 browxai follows semver. The public tool surface — tool names, documented input/output shapes, the `ActionResult` shape, and the default capability set — is frozen and semver-governed, so you can adopt it freely and pin your version. Anything behind an off-by-default capability is explicitly experimental and not covered by the stability guarantee. See the [Stability and semver](https://browxai.com/reference/tool-reference/#stability-and-semver) policy.
 
+## What "safe by default" does and does not mean
+
+The capability gate, origin allow/blocklist and confirmation hooks are **policy**: they govern what the tool surface will do when an agent asks. They are not a sandbox around the process.
+
+Two consequences worth knowing before you deploy:
+
+- **Plugins run in-process with full Node access.** The trust tier tells you where a plugin came from; the loader treats every tier identically at runtime, and nothing intercepts a plugin's calls. Adopting a plugin is exactly as consequential as adding an npm dependency, transitive deps included. See [plugin governance](docs/plugin-governance.md).
+- **The containment that contains is infrastructure.** For anything beyond driving your own machine against sites you own, run browxai in a container or VM as a non-root user with no route to your local network. [`deploy/Dockerfile`](deploy/Dockerfile) is a working starting point, and the [deployment checklist](docs/security-best-practices-for-adopters.md) is short.
+
+Chromium's own sandbox still isolates _page_ content the whole time — that boundary is real and is what the [threat model](docs/threat-model.md) is mostly about. The gap is between the browxai process and your host.
+
 ## Install
 
 ```bash

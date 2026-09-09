@@ -29,6 +29,28 @@ export const PLUGIN_INFO_TOOL_CAPABILITY: Readonly<Record<string, Capability>> =
   plugins_info: "read",
 };
 
+/** Name every non-first-party plugin that loaded, with the capabilities it
+ *  declared. Plugins run in-process with full Node access and the runtime gates
+ *  every trust tier identically, so this is the operator's only unprompted
+ *  notice that third-party code is now inside the server process. */
+export function warnNonFirstPartyPlugins(loaded: ReadonlyArray<PluginRecord>): void {
+  const outside = loaded.filter((p) => p.manifest.trust !== "kalebtec");
+  if (outside.length === 0) return;
+  const lines = outside.map((p) => {
+    const caps = p.declaredCapabilities.length
+      ? p.declaredCapabilities.join(", ")
+      : "none declared";
+    return `  - ${p.manifest.name}@${p.manifest.version} [${p.manifest.trust}] capabilities: ${caps}`;
+  });
+  log.warn(
+    `${outside.length} non-first-party plugin(s) loaded IN-PROCESS with full Node access:\n` +
+      `${lines.join("\n")}\n` +
+      "browxai does not sandbox plugins and gates every trust tier identically — a declared " +
+      "capability list is disclosure, not enforcement. Audit with `plugins_list`. See " +
+      "docs/plugin-governance.md.",
+  );
+}
+
 /**
  * Plugin runtime wiring — the LAST step of `createServer`, run after every core
  * `register*Tools(host)` call so the `coreToolNames` snapshot below counts the
@@ -211,6 +233,7 @@ export async function wirePluginRuntime(
         log.warn(`plugin runtime: ${p.manifest.name} status=${p.status} — ${p.statusReason ?? ""}`);
       }
     }
+    warnNonFirstPartyPlugins(loaded);
   } catch (e) {
     // Cycle errors and only cycle errors abort startup loudly. All other
     // failures get downgraded inside startPluginRuntime to a per-plugin

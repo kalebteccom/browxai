@@ -2,17 +2,25 @@
 // (adapters/<engine>.engine.ts) call from their `makeAdapter` byob branch. Split
 // out of byob.ts so the engine-registration graph (register-engines → the engine
 // modules → here) does NOT cycle back through `byob.ts`'s `openByobSession` (which
-// imports the registry + register-engines for its mode dispatch). Every body here
-// is verbatim from the pre-P1 `openByobSession` chromium/android branches.
+// imports the registry + register-engines for its mode dispatch).
 //
 // Off by default; the canonical entrypoint must opt in via BROWX_ATTACH_CDP=<loopback>.
 // Loopback-only (127.0.0.1 / localhost / ::1) — refuses non-loopback hosts.
 // Not-owned semantics: on close we detach the CDP session, but never close the
 // browser or reset its storage — that's the consumer's Chrome, not ours.
 
-import type { CDPSession } from "playwright-core";
+import { randomUUID } from "node:crypto";
+import type { CDPSession, Page } from "playwright-core";
 import { log } from "../util/logging.js";
 import { AndroidCdpAdapter, PlaywrightChromiumAdapter } from "../engine/index.js";
+import { acquireConnection, browserTargetSource } from "./attach-endpoint.js";
+import {
+  acquireTarget,
+  attachLeases,
+  attachTargetGone,
+  releaseTarget,
+  type AcquiredTarget,
+} from "./attach-pool.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
@@ -104,24 +112,57 @@ const ANDROID_ATTACH_WARNING = [
   "================================================================",
 ].join("\n");
 
+/** The session id the lease is filed under. Every server-opened session carries
+ *  one; a direct API caller that omits it still gets a distinct target. */
+function leaseSessionId(opts: SessionOptions): string {
+  return opts.sessionId ?? `attached-${randomUUID()}`;
+}
+
+function boundPage(sessionId: string, target: AcquiredTarget): () => Page {
+  return () => {
+    if (target.page.isClosed()) throw attachTargetGone(sessionId, target.targetId);
+    return target.page;
+  };
+}
+
 /** Android BYOB — discover real Chrome-on-Android over adb + CDP and attach.
  *  Distinct from the desktop URL-attach path: the endpoint is DISCOVERED
  *  (adb forward → /json/version → wsUrl), not configured. The forwarded socket is
  *  loopback by construction (adb forwards to 127.0.0.1), so the same not-owned
  *  policy applies; close additionally removes the adb forward. Full CDP, so the
- *  session carries `cdp()` and the substrates pick the CDP path automatically. */
-export async function openAndroidByobSession(): Promise<BrowserSession> {
+ *  session carries `cdp()` and the substrates pick the CDP path automatically.
+ *
+ *  Leases are keyed on the device serial, not the forwarded port: each session
+ *  forwards its own port to the same device Chrome, so the port would make two
+ *  sessions look like two browsers and hand them the same tab. */
+export async function openAndroidByobSession(opts: SessionOptions = {}): Promise<BrowserSession> {
   log.warn(ANDROID_ATTACH_WARNING);
   const adapter = new AndroidCdpAdapter();
   const serial = process.env.BROWX_ANDROID_SERIAL?.trim() || undefined;
   // Keep the handles object intact (don't destructure `removeForward` — it is the
   // adapter's bound teardown, called below).
   const handles = await adapter.attach({ serial });
-  const { page, cdp } = handles;
+  const sessionId = leaseSessionId(opts);
+  const endpoint = `android://${handles.serial}`;
+
+  let target: AcquiredTarget;
+  let cdp: CDPSession;
+  try {
+    target = await acquireTarget(attachLeases, browserTargetSource(handles.browser), {
+      sessionId,
+      endpoint,
+    });
+    cdp = await target.page.context().newCDPSession(target.page);
+  } catch (err) {
+    await handles.removeForward();
+    throw err;
+  }
   log.info("session.byob: attached to Chrome-on-Android", {
     serial: handles.serial,
     localPort: handles.localPort,
     engine: "android",
+    targetId: target.targetId,
+    createdTarget: target.created,
   });
   await ensureViewport(cdp);
 
@@ -130,7 +171,8 @@ export async function openAndroidByobSession(): Promise<BrowserSession> {
     mode: "byob",
     ownsBrowser: false,
     engine: "android",
-    page: () => page,
+    page: boundPage(sessionId, target),
+    targetId: () => target.targetId,
     // Android Chrome speaks full CDP — the eager session is always present.
     cdp: () => cdp,
     close: async () => {
@@ -138,6 +180,7 @@ export async function openAndroidByobSession(): Promise<BrowserSession> {
       closed = true;
       log.info("session.byob: detaching Chrome-on-Android (device stays open — not-owned)");
       await cdp.detach().catch(() => undefined);
+      await releaseTarget(attachLeases, sessionId, target.page);
       await handles.removeForward();
       // Do NOT call browser.close() — not-owned (it's the user's phone Chrome).
     },
@@ -159,32 +202,42 @@ export function assertByobAttach(opts: SessionOptions & { attachCdp?: string }):
   return assertLoopback(opts.attachCdp).toString();
 }
 
-/** The Chromium CDP-attach (BYOB) lane — the desktop URL-attach path, extracted
- *  verbatim from the old `openByobSession` chromium body. Asserts the loopback
- *  endpoint, attaches over CDP, ensures a usable viewport, and builds the
- *  not-owned `BrowserSession`. The chromium engine module's `makeAdapter` byob
- *  branch calls this; firefox/webkit/safari surface their own structured attach
- *  refusals from their own engine modules, and android attaches over adb via
+/** The Chromium CDP-attach (BYOB) lane — the desktop URL-attach path. Asserts the
+ *  loopback endpoint, joins the endpoint's shared connection, leases one page
+ *  target, ensures a usable viewport, and builds the not-owned `BrowserSession`.
+ *  The chromium engine module's `makeAdapter` byob branch calls this;
+ *  firefox/webkit/safari surface their own structured attach refusals from their
+ *  own engine modules, and android attaches over adb via
  *  `openAndroidByobSession` — so no engine-name branch survives here. */
 export async function attachByobChromium(
   opts: SessionOptions & { attachCdp?: string },
 ): Promise<BrowserSession> {
-  if (!opts.attachCdp) {
-    throw new Error(
-      "session.byob: the CDP-attach lane requires BROWX_ATTACH_CDP (a loopback CDP endpoint). " +
-        'For the android engine use browserType:"android" (endpoint discovered over adb).',
-    );
-  }
-  const url = assertLoopback(opts.attachCdp);
+  const endpoint = assertByobAttach(opts);
   log.warn(ATTACH_WARNING);
-  log.info("session.byob: attaching", {
-    endpoint: url.toString(),
-    owner: "external",
-    engine: "chromium",
-  });
+  log.info("session.byob: attaching", { endpoint, owner: "external", engine: "chromium" });
 
+  const sessionId = leaseSessionId(opts);
   const adapter = new PlaywrightChromiumAdapter();
-  const { page, cdp } = await adapter.attachOverCdp(url.toString());
+  const connection = await acquireConnection(endpoint, (e) => adapter.connectOverCdp(e));
+
+  let target: AcquiredTarget;
+  let cdp: CDPSession;
+  try {
+    target = await acquireTarget(attachLeases, browserTargetSource(connection.browser), {
+      sessionId,
+      endpoint: connection.endpoint,
+    });
+    cdp = await target.page.context().newCDPSession(target.page);
+  } catch (err) {
+    await connection.release();
+    throw err;
+  }
+  log.info("session.byob: leased target", {
+    endpoint: connection.endpoint,
+    sessionId,
+    targetId: target.targetId,
+    createdTarget: target.created,
+  });
 
   await ensureViewport(cdp);
 
@@ -193,7 +246,8 @@ export async function attachByobChromium(
     mode: "byob",
     ownsBrowser: false,
     engine: "chromium",
-    page: () => page,
+    page: boundPage(sessionId, target),
+    targetId: () => target.targetId,
     // chromium always mints a CDP session; `cdp` is non-undefined here.
     cdp: () => cdp,
     close: async () => {
@@ -201,7 +255,8 @@ export async function attachByobChromium(
       closed = true;
       log.info("session.byob: detaching (browser stays open — not-owned)");
       await cdp.detach().catch(() => undefined);
-      // Do NOT call browser.close() / context.close() — not-owned.
+      await releaseTarget(attachLeases, sessionId, target.page);
+      await connection.release();
     },
   };
 }

@@ -18,6 +18,11 @@ export interface NavigationInfo {
   from: string;
   to: string;
   kind: "hash" | "full_load" | "spa" | null;
+  /** Present only when the action requested a URL and the landed host differs
+   *  from it — an auth bounce, a challenge interstitial, or a captive portal.
+   *  Hosts are compared, not origins, so an http→https upgrade does not fire;
+   *  a www/apex or subdomain hop does, because it moves cookie scope. */
+  offOrigin?: { requested: string; landed: string };
 }
 
 export interface SnapshotDeltaInfo {
@@ -67,12 +72,30 @@ export function diffRegions(pre: Map<string, Region>, post: Map<string, Region>)
   return { appeared, removed, newTabs: [] };
 }
 
+function describeOffOrigin(
+  requested: string | undefined,
+  landed: string,
+): NavigationInfo["offOrigin"] {
+  if (!requested) return undefined;
+  try {
+    const a = new URL(requested);
+    const b = new URL(landed);
+    if (a.host === b.host) return undefined;
+    return { requested: a.origin, landed: b.origin };
+  } catch {
+    return undefined;
+  }
+}
+
 export function describeNavigation(
   from: string,
   to: string,
   frameNavigated: boolean,
+  requestedUrl?: string,
 ): NavigationInfo {
-  if (from === to) return { changed: false, from, to, kind: null };
+  const offOrigin = describeOffOrigin(requestedUrl, to);
+  const off = offOrigin ? { offOrigin } : {};
+  if (from === to) return { changed: false, from, to, kind: null, ...off };
   try {
     const a = new URL(from);
     const b = new URL(to);
@@ -82,12 +105,12 @@ export function describeNavigation(
       a.search === b.search &&
       a.hash !== b.hash
     ) {
-      return { changed: true, from, to, kind: "hash" };
+      return { changed: true, from, to, kind: "hash", ...off };
     }
   } catch {
     /* invalid URL — fall through */
   }
-  return { changed: true, from, to, kind: frameNavigated ? "full_load" : "spa" };
+  return { changed: true, from, to, kind: frameNavigated ? "full_load" : "spa", ...off };
 }
 
 /** Serialise the scoped subtrees for the snapshotDelta, truncated to the token
