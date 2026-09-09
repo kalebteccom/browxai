@@ -45,7 +45,7 @@ async function freePort(): Promise<number> {
   });
 }
 
-async function waitForCdp(url: string): Promise<void> {
+async function waitForCdp(url: string, proc: ChildProcess, stderr: () => string): Promise<void> {
   const deadline = Date.now() + 30_000;
   for (;;) {
     try {
@@ -54,7 +54,17 @@ async function waitForCdp(url: string): Promise<void> {
     } catch {
       /* not up yet */
     }
-    if (Date.now() > deadline) throw new Error(`CDP endpoint ${url} never came up`);
+    // A Chrome that died is the common failure and it never recovers, so report
+    // its exit code and stderr instead of burning the full deadline on a
+    // timeout that says nothing about why.
+    if (proc.exitCode !== null) {
+      throw new Error(
+        `Chrome exited with code ${proc.exitCode} before opening ${url}: ${stderr().trim() || "(no stderr)"}`,
+      );
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`CDP endpoint ${url} never came up: ${stderr().trim() || "(no stderr)"}`);
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
 }
@@ -97,11 +107,19 @@ beforeAll(async () => {
       "--no-first-run",
       "--no-default-browser-check",
       "--remote-allow-origins=*",
+      // CI runners have no user namespaces and a small /dev/shm; without these
+      // Chrome exits before it ever opens the debug port.
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
       "about:blank",
     ],
-    { stdio: "ignore" },
+    { stdio: ["ignore", "ignore", "pipe"] },
   );
-  await waitForCdp(endpoint);
+  let stderr = "";
+  chrome.stderr?.on("data", (c: Buffer) => {
+    stderr += c.toString();
+  });
+  await waitForCdp(endpoint, chrome, () => stderr);
 }, KEYSTONE_TIMEOUT);
 
 afterAll(async () => {
