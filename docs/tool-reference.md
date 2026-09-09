@@ -1226,7 +1226,7 @@ Reach for `dispatch: "direct"` only after levels 1 and 2 have both failed on the
 
 Do not reach for it as a general speed-up. It makes **no** visibility, stability, enabled, or receives-events guarantee, and it does not scroll — a target outside the viewport is not clicked. Verify the target with `find` or `point_probe` first, and read `element.hit` on the result to see what was actually under the coordinate.
 
-What it does **not** bypass: the browser still hit-tests the coordinate. An overlay above your target receives the click instead of it, and a `disabled` control fires nothing. See [docs/threat-model.md](threat-model.md) §6 for the posture.
+What it does **not** bypass: the browser still hit-tests the coordinate. An overlay above your target receives the click instead of it, and a `disabled` control fires nothing. See [docs/threat-model.md](./threat-model.md) §6 for the posture.
 
 Constraints:
 
