@@ -277,6 +277,15 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
           cfgActionTimeout(),
           "extract",
         );
+        // Only successful reads, and the schema rather than the returned data:
+        // the trace stays free of page content, and the schema is what the
+        // export lowers to per-field reads.
+        if (result.ok) {
+          e.recorder.recordRead(
+            { type: "extract", schema: args.schema, scope: args.scope ?? args.ref },
+            s.page().url(),
+          );
+        }
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
       } catch (err) {
         return {
