@@ -80,16 +80,11 @@ export class PlaywrightChromiumAdapter {
     return { browser, context, page, cdp };
   }
 
-  /** BYOB attach over CDP — wraps `connectOverCDP` + the eager `newCDPSession`.
-   *  The loopback / not-owned policy stays in byob.ts because it is
-   *  protocol-neutral; only this transport hop is engine-specific. Mirrors
-   *  openByobSession's pre-seam connect body verbatim. */
-  async attachOverCdp(endpoint: string): Promise<ChromiumLaunchHandles> {
-    const browserType = resolveBrowserType(this.engine);
-    const browser = await browserType.connectOverCDP(endpoint);
-    const context: BrowserContext = browser.contexts()[0] ?? (await browser.newContext());
-    const page = context.pages()[0] ?? (await context.newPage());
-    const cdp = await context.newCDPSession(page);
-    return { browser, context, page, cdp };
+  /** BYOB attach over CDP — the transport hop only. The connection is owned by
+   *  the session layer's endpoint registry (one per endpoint, shared across
+   *  sessions) and target selection is the lease pool's job, so this returns the
+   *  bare `Browser` and picks neither a context nor a page. */
+  connectOverCdp(endpoint: string): Promise<Browser> {
+    return resolveBrowserType(this.engine).connectOverCDP(endpoint);
   }
 }

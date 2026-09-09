@@ -143,10 +143,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         (spec?.engine !== undefined
           ? defaultModeForEngine(effectiveEngine, opts.attachCdp)
           : serverDefaultMode);
-      // resolve the gated web-security flag *fresh* per session so a
-      // `set_config({disableWebSecurity})` takes effect on the next
-      // open_session without a server restart. Off by default.
-      const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
+      // resolve the gated launch knobs *fresh* per session so a `set_config`
+      // takes effect on the next open_session without a server restart.
+      // `disableWebSecurity` is off by default; `channel` unset keeps the
+      // bundled Chrome for Testing build, and the per-session spec wins.
+      const launchConfig = configStore.resolve();
+      const disableWebSecurity = launchConfig.disableWebSecurity === true;
+      const channel = spec?.channel ?? launchConfig.channel;
+      const backgroundThrottling = spec?.backgroundThrottling;
       // resolve device/viewport — spec overrides config-store defaults.
       const device = resolveDevice({
         device: spec?.device ?? resolvedConfig.defaultDevice,
@@ -212,6 +216,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
               "with {recordVideo:{...}} to record.",
           );
         }
+        if (spec?.channel || backgroundThrottling) {
+          log.warn(
+            `session "${id}": ignoring \`channel\` / \`backgroundThrottling\` for attached/BYOB ` +
+              "session — both are launch-time settings and the consumer's Chrome was already " +
+              "launched by whoever started it. Use `browxai chrome start` (which takes " +
+              "--disable-background-throttling) or your own launch flags for the attach target.",
+          );
+        }
         // Attached Chrome is not-owned: device emulation is best-effort
         // (viewport via Emulation in byob.ts); isMobile/touch/UA can't be
         // retro-applied to an existing context.
@@ -219,12 +231,15 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           attachCdp: opts.attachCdp,
           headless,
           browserType: effectiveEngine,
+          sessionId: id,
         });
       } else if (mode === "incognito") {
         sess = await openIncognitoSession({
           headless,
           device,
           disableWebSecurity,
+          channel,
+          backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
@@ -246,6 +261,8 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           profileDir,
           device,
           disableWebSecurity,
+          channel,
+          backgroundThrottling,
           storageState: creationStorageState,
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
