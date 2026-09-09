@@ -60,6 +60,7 @@ import { registerCanvasTools } from "./canvas-tools.js";
 import { registerStorageTools } from "./storage-tools.js";
 import { registerFormsRecordingTools } from "./forms-recording-tools.js";
 import { registerSessionPolicyTools } from "./session-policy-tools.js";
+import { registerSessionProfileTools } from "./session-profile-tools.js";
 import { registerDeviceEmulationTools } from "./device-emulation-tools.js";
 import { registerLiveEmulationTools } from "./live-emulation-tools.js";
 import { registerConfigApprovalTools } from "./config-approval-tools.js";
@@ -154,6 +155,7 @@ export function collectToolMetadata(): ReadonlyMap<string, ToolRegistration> {
   registerStorageTools(host);
   registerFormsRecordingTools(host);
   registerSessionPolicyTools(host);
+  registerSessionProfileTools(host);
   registerDeviceEmulationTools(host);
   registerLiveEmulationTools(host);
   registerConfigApprovalTools(host);

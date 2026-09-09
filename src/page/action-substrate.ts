@@ -21,6 +21,7 @@ import type { ActionContext, ActionResult } from "./actionresult.js";
 import type { RefRegistry } from "./refs.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 import * as actions from "./actions.js";
+import { directDispatchUnsupported } from "./actions-direct-dispatch.js";
 import {
   safariNavigate,
   safariClick,
@@ -64,7 +65,11 @@ export class PlaywrightActionSubstrate implements ActionSubstrate {
     return actions.navigate(this.ctx(), args);
   }
   click(args: actions.ClickArgs): Promise<ActionResult> {
-    return actions.click(this.ctx(), args);
+    const ctx = this.ctx();
+    if (args.dispatch === "direct" && !ctx.cdp) {
+      return Promise.resolve(directDispatchUnsupported(args.target, this.engine));
+    }
+    return actions.click(ctx, args);
   }
   fill(args: actions.FillArgs): Promise<ActionResult> {
     return actions.fill(this.ctx(), args);
@@ -111,6 +116,9 @@ export class SafariActionSubstrate implements ActionSubstrate {
     return safariNavigate(this.handle, args.url);
   }
   click(args: actions.ClickArgs): Promise<ActionResult> {
+    if (args.dispatch === "direct") {
+      return Promise.resolve(directDispatchUnsupported(args.target, this.engine));
+    }
     return safariClick(this.handle, this.refs, args.target);
   }
   fill(args: actions.FillArgs): Promise<ActionResult> {

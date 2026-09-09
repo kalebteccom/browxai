@@ -3,7 +3,7 @@
 // and byob.ts (we attach to an externally-launched Chrome via CDP; not-owned —
 // no close, no storage reset on shutdown).
 
-import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import type { EngineKind, SafariSessionHandle } from "../engine/index.js";
 
 export type SessionMode = "managed" | "byob";
@@ -68,6 +68,23 @@ export interface SessionOptions {
    *  at the tool layer (`extensions_install`); this option is the trusted
    *  internal pipe. Refused on incognito / attached at the tool layer. */
   extensionPaths?: readonly string[];
+  /** Playwright browser `channel` for the chromium launch — `"chrome"`,
+   *  `"msedge"`, `"chrome-beta"`, … Launches the operator's installed browser
+   *  instead of Playwright's bundled Chrome for Testing build. Unset (default)
+   *  keeps the bundled build, so the option is inert until asked for. Read only
+   *  by the chromium engine module: firefox resolves its own channel from
+   *  `BROWX_FIREFOX_CHANNEL`, and webkit / safari / android have none. */
+  channel?: string;
+  /** Chrome pauses `requestAnimationFrame`, throttles timers to once a minute
+   *  after five minutes, and can freeze a hidden+occluded tab. `"disabled"`
+   *  launches chromium with `--disable-background-timer-throttling
+   *  --disable-backgrounding-occluded-windows --disable-renderer-backgrounding`
+   *  so a session that sits in the background keeps running at full rate —
+   *  recommended for pooled multi-agent attached work, where an agent polling a
+   *  backgrounded tab otherwise stalls to its deadline and reads as a page bug.
+   *  Default `"default"` (Chrome's own behaviour), because the opposite need is
+   *  real: reproducing a lifecycle bug requires a genuinely throttled tab. */
+  backgroundThrottling?: "default" | "disabled";
   /** Which browser engine to launch. Defaults to `"chromium"` everywhere — the
    *  default makes every launch byte-identical to the pre-seam behavior.
    *  chromium, firefox, webkit, and android are all implemented (each via its
@@ -85,6 +102,10 @@ export interface SessionOptions {
    *  example). Internal: never set from the wire — `open_session` carries
    *  `mode`, which the factory maps to this. */
   launchMode?: "managed" | "incognito" | "byob";
+  /** The registry id this session is being opened under. Attached (BYOB) modes
+   *  file their target lease against it, so two sessions on one Chrome never
+   *  claim the same tab. Internal: never set from the wire. */
+  sessionId?: string;
 }
 
 export interface BrowserSession {
@@ -92,7 +113,14 @@ export interface BrowserSession {
   readonly ownsBrowser: boolean;
   /** The engine backing this session. Always `"chromium"` today. */
   readonly engine: EngineKind;
+  /** The on-disk profile directory this session launched with. Present on
+   *  managed (persistent) launches only — incognito and attached sessions have
+   *  no profile of their own. */
+  readonly profileDir?: string;
   page(): Page;
+  /** The CDP target this session is leased to. Present on the attached (BYOB)
+   *  engines, absent where there is no CDP target (Safari). */
+  targetId?(): string;
   /** Raw CDP handle. Optional: present + fully functional on chromium (the only
    *  engine wired today), absent on engines without a CDP escape hatch. This is
    *  the one mandatory interface member that used to hard-gate multi-engine.
@@ -107,11 +135,4 @@ export interface BrowserSession {
    *  capability gate refuses the rest up front. Absent on every other engine. */
   safari?(): SafariSessionHandle;
   close(): Promise<void>;
-}
-
-export interface SessionInternals {
-  browser?: Browser;
-  context: BrowserContext;
-  page: Page;
-  cdp: CDPSession;
 }

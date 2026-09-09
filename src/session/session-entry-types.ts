@@ -317,6 +317,18 @@ export interface OpenSpec {
   engine?: EngineKind;
   /** Persistent mode only: named profile dir under the workspace. */
   profile?: string;
+  /** Playwright browser `channel` for a chromium session (`"chrome"`,
+   *  `"msedge"`, …) — launches the operator's installed browser instead of the
+   *  bundled Chrome for Testing. Falls back to config `channel` /
+   *  `BROWX_CHANNEL`; unset everywhere ⇒ the bundled build. Ignored on
+   *  `attached` (externally launched) and on the non-chromium engines. */
+  channel?: string;
+  /** `"disabled"` launches chromium with the three background-lifecycle flags
+   *  off, so a backgrounded tab keeps timers and rAF running. Default
+   *  `"default"` — Chrome's own throttling, which some QA work needs to
+   *  reproduce. Ignored on `attached` (launch-time flags on a not-owned
+   *  browser). */
+  backgroundThrottling?: "default" | "disabled";
   /** Playwright device-preset name (e.g. "iPhone 14"). */
   device?: string;
   /** explicit viewport; overrides a preset's viewport. */

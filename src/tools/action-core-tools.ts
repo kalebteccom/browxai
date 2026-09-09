@@ -55,7 +55,7 @@ export function registerActionCoreTools(
       capability: "action",
       batchable: true,
       description:
-        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). `force:true` skips Playwright's actionability checks (visibility / stability / receives-events / hit-test) — escape hatch for perpetually-busy SPAs where rAF loops + frequent re-renders make the stability check thrash forever; use only on targets you've verified clickable via snapshot/find first. Returns an ActionResult.",
+        "Click an element by `ref` (preferred — from snapshot/find), `selector`, `named`, or page `coords` ({x,y} viewport pixels — escape hatch for canvas / custom-painted UIs). `force:true` skips Playwright's actionability checks (visibility / stability / receives-events / hit-test) — escape hatch for perpetually-busy SPAs where rAF loops + frequent re-renders make the stability check thrash forever; use only on targets you've verified clickable via snapshot/find first. `dispatch:\"direct\"` goes further and skips the locator engine's pre-dispatch path entirely (chromium only) — reach for it only after the default path AND `force:true` have both failed. Returns an ActionResult.",
       inputSchema: {
         ...REF_OR_SELECTOR,
         button: z
@@ -68,6 +68,12 @@ export function registerActionCoreTools(
           .describe(
             "Skip actionability checks (visibility/stability/receives-events). Use sparingly — only for known-clickable targets on perpetually-busy SPAs where Playwright's stability check thrashes forever.",
           ),
+        dispatch: z
+          .enum(["actionability", "direct"])
+          .optional()
+          .describe(
+            'How the click reaches the element. Default "actionability" — Playwright\'s locator path, with the automatic `force:true` recovery. "direct" resolves the target ONCE, then dispatches pointerdown/mousedown/pointerup/mouseup/click through CDP at its box centre, skipping the locator engine\'s pre-dispatch path (actionability checks, scroll-into-view, hit-target interceptor, and its retry loop). Events are TRUSTED (isTrusted:true), so framework handlers fire. Chromium-family engines only — structured refusal elsewhere, never a silent downgrade. This is the LAST resort, after the default path and `force:true` have both failed on a view whose layout or DOM never settles: it makes no visibility / stability / enabled / receives-events guarantee, so verify the target with snapshot/find or point_probe first and read `element.hit` on the result to see what was actually under the coordinate. Ignored for `coords` targets — those already dispatch through the same raw input path.',
+          ),
         ...ACTION_OPTS,
       },
     },
@@ -76,6 +82,7 @@ export function registerActionCoreTools(
         target,
         button: args.button,
         force: args.force,
+        dispatch: args.dispatch,
         mode: args.mode,
         maxResultTokens: args.maxResultTokens,
         recordingHint,
