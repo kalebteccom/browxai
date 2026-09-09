@@ -1,12 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { assertEngineSupports } from "../engine/index.js";
+import { assertEngineSupports, requireCdp } from "../engine/index.js";
 import {
   DEFAULT_SESSION_ID,
   type SessionEntry,
   type SessionRegistry,
 } from "../session/registry.js";
 import type { RefRegistry } from "../page/refs.js";
+import { touchAttachLease } from "../session/attach-pool.js";
 import { clampTimeout, DEFAULT_ACTION_TIMEOUT_MS } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { invariant } from "../util/invariant.js";
@@ -119,8 +120,15 @@ export function buildHost(deps: HostDeps): ToolHost {
     asTarget,
   } = deps;
 
-  const entryFor = (sessionId?: string): Promise<SessionEntry> =>
-    registry.get(sessionId ?? DEFAULT_SESSION_ID);
+  // Dispatch is the lease heartbeat: no timer, no sweeper. A session making
+  // calls never goes idle, and one that stopped stops renewing immediately.
+  const entryFor = async (sessionId?: string): Promise<SessionEntry> => {
+    const id = sessionId ?? DEFAULT_SESSION_ID;
+    const entry = await registry.get(id);
+    const targetId = entry.session.targetId?.();
+    if (targetId !== undefined) touchAttachLease(id, targetId);
+    return entry;
+  };
 
   const confirmCtxFor = (e: SessionEntry) => ({
     hooks: confirmHooks,
@@ -234,6 +242,10 @@ export function buildHost(deps: HostDeps): ToolHost {
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
     page: e.session.page(),
+    // Threaded by presence, not by engine name: an engine that declares the
+    // `deep` escape hatch exposes `cdp()`, and the CDP-only action paths refuse
+    // when it is absent.
+    ...(e.session.cdp ? { cdp: () => requireCdp(e.session) } : {}),
     // The action window mints its per-action network tap from this substrate
     // by engine capability: chromium → the CDP NetworkTap; firefox/webkit → the
     // Playwright context-event tap. So the envelope's network slice is real on

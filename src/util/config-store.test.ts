@@ -140,6 +140,12 @@ describe("envLayer", () => {
     });
     expect(l.disableWebSecurity).toBeUndefined();
   });
+
+  it("maps BROWX_CHANNEL onto `channel`, and omits it when blank", () => {
+    expect(envLayer({ BROWX_CHANNEL: " chrome " }).channel).toBe("chrome");
+    expect(envLayer({ BROWX_CHANNEL: "" }).channel).toBeUndefined();
+    expect(envLayer({}).channel).toBeUndefined();
+  });
 });
 
 describe("actionTimeoutMs precedence", () => {

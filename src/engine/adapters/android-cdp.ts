@@ -4,7 +4,7 @@
 // adapter:
 //   - declares `deep: true` (ANDROID_CAPABILITIES) — every tool works, including
 //     the CDP-deep ones (perf / coverage / heap / cpu / clock / CDP input);
-//   - mints an eager CDP session on attach, just like the Chromium adapter;
+//   - hands the session layer a raw connected Browser, just like the Chromium adapter;
 //   - reuses the EXISTING CdpSnapshotSubstrate / CdpNetworkSubstrate verbatim
 //     (the substrate selectors key on CDP presence, so Android falls into the
 //     chromium-substrate path automatically — NO new substrate code).
@@ -26,7 +26,7 @@
 // orchestration and returns a device-shaped object, NOT a `Browser`/`CDPSession`
 // pair the rest of browxai is built on. connectOverCDP returns the exact
 // `Browser` + `newCDPSession` handles the Chromium adapter already wires
-// (attachOverCdp in playwright-chromium.ts), so the substrate selectors, the
+// (connectOverCdp in playwright-chromium.ts), so the substrate selectors, the
 // network tap, the a11y substrate, and teardown all work UNCHANGED. We keep the
 // adb orchestration explicit (./adb.ts) rather than hand it to `_android`, which
 // reuses the most existing code and keeps the seam at the same boundary as the
@@ -39,7 +39,7 @@
 // sense — the user opens Chrome on their device. So launch returns a structured
 // `android-launch-not-supported`; Android is attach-only.
 
-import type { Browser, CDPSession, Page } from "playwright-core";
+import type { Browser } from "playwright-core";
 import { resolveBrowserType } from "../select.js";
 import { capabilitiesFor } from "../capabilities.js";
 import type { EngineCapabilities, EngineKind } from "../types.js";
@@ -58,13 +58,11 @@ import {
   type Fetcher,
 } from "./adb.js";
 
-/** The handles an Android attach surfaces — the same shape as the Chromium
- *  adapter's (a `Browser` + an eager `CDPSession`), plus the bookkeeping the
- *  session layer needs to tear the adb forward down on close. */
+/** The handles an Android attach surfaces — the connected `Browser`, plus the
+ *  bookkeeping the session layer needs to tear the adb forward down on close.
+ *  Target selection is the lease pool's job, so no page is picked here. */
 export interface AndroidAttachHandles {
   browser: Browser;
-  page: Page;
-  cdp: CDPSession;
   /** The loopback port the device socket was forwarded to. */
   localPort: number;
   /** The device serial the forward was scoped to (for `forward --remove`). */
@@ -108,9 +106,9 @@ export class AndroidCdpAdapter {
 
   /** The real BYOB path: discover device → forward the Chrome DevTools socket to
    *  a free loopback port → GET /json/version → webSocketDebuggerUrl →
-   *  `chromium.connectOverCDP(wsUrl)`. Returns the `Browser` + eager `CDPSession`
-   *  the session layer wires its bookkeeping onto, exactly like the Chromium
-   *  attach, plus the forward-teardown handle. On any failure after the forward
+   *  `chromium.connectOverCDP(wsUrl)`. Returns the `Browser` the session layer
+   *  wires its bookkeeping onto, exactly like the Chromium attach, plus the
+   *  forward-teardown handle. On any failure after the forward
    *  is established, the forward is removed before the error propagates (no leaked
    *  adb forwards). */
   async attach(opts: { serial?: string } = {}): Promise<AndroidAttachHandles> {
@@ -126,14 +124,11 @@ export class AndroidCdpAdapter {
       const versionBody = await this.fetchJson(versionUrl(localPort));
       const wsUrl = extractWsUrl(versionBody);
       // `android` resolves to the chromium BrowserType — connectOverCDP returns
-      // the exact Browser the desktop BYOB path uses (attachOverCdp), so the
+      // the exact Browser the desktop BYOB path uses (connectOverCdp), so the
       // eager CDP session, the substrates, and teardown all work unchanged.
       const browserType = resolveBrowserType(this.engine);
       const browser = await browserType.connectOverCDP(wsUrl);
-      const context = browser.contexts()[0] ?? (await browser.newContext());
-      const page = context.pages()[0] ?? (await context.newPage());
-      const cdp = await context.newCDPSession(page);
-      return { browser, page, cdp, localPort, serial, removeForward };
+      return { browser, localPort, serial, removeForward };
     } catch (err) {
       await removeForward();
       throw err;

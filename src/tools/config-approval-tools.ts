@@ -25,6 +25,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     headless: z.boolean().optional(),
     actionTimeoutMs: z.number().int().positive().max(3_600_000).optional(),
     disableWebSecurity: z.boolean().optional(),
+    channel: z.string().optional(),
     defaultDevice: z.string().optional(),
     defaultViewport: z
       .object({ width: z.number().int().positive(), height: z.number().int().positive() })
