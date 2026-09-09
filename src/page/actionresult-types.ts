@@ -2,7 +2,7 @@
 // consumes. Split out of actionresult.ts to keep that file under the size
 // budget; re-exported from `./actionresult.js` so callers import unchanged.
 
-import type { Page } from "playwright-core";
+import type { CDPSession, Page } from "playwright-core";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import type { NetworkSubstrate } from "./network-substrate.js";
 import type { RefRegistry } from "./refs.js";
@@ -76,7 +76,9 @@ export interface ElementProbe {
     rowText?: string;
     changed?: boolean;
   };
-  /** coordinate-action evidence. Only populated for `coords` targets.
+  /** coordinate-action evidence. Populated for `coords` targets and for
+   *  `click({dispatch:"direct"})`, which resolves the element to a point and
+   *  dispatches there.
    *  `before` is `document.elementFromPoint(x, y)` immediately before the
    *  action; `after` is the same point after settling (the page may have
    *  re-rendered or scrolled). `focusChanged` flags whether the active
@@ -118,6 +120,7 @@ export interface ActionResult {
     from: string;
     to: string;
     kind: "full_load" | "spa" | "hash" | null;
+    offOrigin?: { requested: string; landed: string };
   };
   structure: {
     appeared: Array<{ role: string; name?: string; ref: string }>;
@@ -247,6 +250,13 @@ export interface ActionResult {
     sizeBytes: number;
     path: string;
   }>;
+  /** Present only when an anti-bot challenge was detected on the page during
+   *  this action window; absent otherwise. Reporting only — browxai ships no
+   *  solver, and `ok` is unaffected. `kind:"interstitial"` means the document
+   *  IS the gate; `kind:"widget"` means a real page carries a gated control
+   *  (a Turnstile on a login form). The honest next step for either is
+   *  `await_human`. */
+  challenge?: import("./challenge-types.js").ChallengeBlock;
   tokensEstimate: number;
   warnings: string[];
   error?: string;
@@ -267,6 +277,11 @@ export interface ActionResult {
 
 export interface ActionContext {
   page: Page;
+  /** Raw CDP handle, present iff the session's engine declares the `deep`
+   *  escape hatch. Supplied as a capability, never keyed on an engine name;
+   *  absent means the CDP-only action paths (`click({dispatch:"direct"})`)
+   *  refuse rather than degrade. */
+  cdp?: () => CDPSession;
   /** Engine-agnostic network substrate. The action window mints
    *  its per-action tap from here (`openActionTap()`): chromium → the verbatim
    *  CDP NetworkTap; firefox/webkit → the Playwright context-event tap. The

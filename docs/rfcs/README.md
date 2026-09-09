@@ -10,6 +10,8 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | [0002](0002-multi-engine-bidi.md)           | Multi-engine browser support (driver-port abstraction; Firefox/Safari/mobile, WebDriver BiDi)     | Draft — research complete ([references/](references/)); Safari real-device lane pending reference 05.                                                                    |
 | [0003](0003-capability-ports-decoupling.md) | Capability-ports decoupling (engine-blind tool surface via capability substrates)                 | Landed — Action/Capture/Storage/Script/Emulation substrates shipped; see CHANGELOG.                                                                                      |
 | [0004](0004-architecture-hardening.md)      | Architecture hardening (a safety-critical maintainability standard + fitness-function guardrails) | Draft — proposal; adversarial audit + the ten-law standard + the phased plan complete, held to an iterate-until-clean review ([references/](references/) `0004-01..09`). |
+| [0005](0005-attached-target-pool.md)        | Attached-target pool (per-session target identity, leases, heartbeat)                             | Landed — target identity, refcounted connection, lease table, ceiling, reclamation, dispatch-as-heartbeat, real-Chromium keystone, public docs.                          |
+| [0006](0006-flow-files-as-connectors.md)    | Flow files as connectors (typed inputs/outputs, assertions, compile to MCP)                       | Draft — proposal. Prerequisite 1 (recording read tools into the trace) has landed; the format additions and compile targets are unbuilt.                                 |
 
 ## Reference corrections
 

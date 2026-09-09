@@ -171,6 +171,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const scoped = scopeAndSerialise(tree, { scope, maxNodes, omit }, (raw) =>
         masksSecrets ? e.secrets.applyMaskInText(raw) : raw,
       );
+      e.recorder.recordRead({ type: "snapshot", scope }, url);
       const allWarnings = [...warnings, ...scoped.scopeWarnings];
       const frameLabel = isMainFrame ? "" : `\nframe: ${frame}`;
       const header = `url: ${url}\ntitle: ${title}\nstats: ${JSON.stringify(stats)}${frameLabel}${scope ? `\nscope: ${scope}` : ""}${allWarnings.length ? `\nwarnings:\n  - ${allWarnings.join("\n  - ")}` : ""}\n`;
@@ -283,6 +284,14 @@ export function registerReadObserveDomTools(host: ToolHost): void {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+      // The recorder keeps the query and the locator the top candidate
+      // resolved to — that pair is what a named locator lowers from on export.
+      const top = result.candidates[0];
+      e.recorder.recordRead(
+        { type: "find", query },
+        s.safari ? "" : s.page().url(),
+        top ? { selectorHint: top.selectorHint, stability: top.stability } : undefined,
+      );
       // egress masking. `find()` returns candidate `name` / `testId` /
       // `selectorHint` / `context.rowText` — all string evidence that could
       // echo a registered secret if the page rendered it (e.g. an
