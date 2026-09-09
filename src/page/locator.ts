@@ -108,6 +108,27 @@ export async function resolveTargetChecked(
   };
 }
 
+/**
+ * Derive a plain CSS selector for a target: the caller's own `selector`, else
+ * the strongest test-attribute selector the ref carries, else the structural
+ * path captured when the ref was discovered. Null when the element is only
+ * reachable through the locator engine (a role/name-only ref) or is a coords
+ * target.
+ *
+ * Shared by the paths that must query the DOM without Playwright's locator
+ * engine — Safari's WebDriver client, and the direct-dispatch click, whose
+ * whole point is that resolution through the engine is the cost.
+ */
+export function cssSelectorForTarget(refs: RefRegistry, target: ActionTarget): string | null {
+  if (target.selector) return target.selector;
+  if (!target.ref) return null;
+  const inputs = refs.locatorOf(target.ref);
+  if (!inputs) return null;
+  if (inputs.testId && inputs.testIdAttr)
+    return `[${inputs.testIdAttr}="${inputs.testId.replace(/(["\\])/g, "\\$1")}"]`;
+  return inputs.cssPath ?? null;
+}
+
 export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
   if (target.coords) {
     throw new Error(

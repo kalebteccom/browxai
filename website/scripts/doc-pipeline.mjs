@@ -38,6 +38,7 @@ export const linkMap = [
   [/\]\(\/plugin-authoring\/?\)/g, "](/plugins/authoring/)"],
   [/\]\(\/plugin-governance\/?\)/g, "](/plugins/governance/)"],
   [/\]\(\/security-best-practices-for-adopters\/?\)/g, "](/security/best-practices/)"],
+  [/\]\(\.\/security-best-practices-for-adopters\.md\)/g, "](/security/best-practices/)"],
 ];
 
 // Pages rendered as HTML on the site (and mirrored as a plaintext .md twin).

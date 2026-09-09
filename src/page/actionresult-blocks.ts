@@ -12,6 +12,7 @@ import type { PermissionRecord } from "../session/permission.js";
 import type { NotificationRecord } from "../session/notification.js";
 import type { FsPickerRecord } from "../session/fs-picker.js";
 import type { CapturedDownload } from "./downloads.js";
+import type { ChallengeBlock } from "./challenge-types.js";
 
 /** The mutable action outcome a `raise`-policy slice can flip. */
 export interface ActionOutcome {
@@ -188,6 +189,7 @@ export interface OptionalBlocks {
   notifications?: NotificationBlock[];
   fsPickerRequests?: FsPickerRequestBlock[];
   downloads?: DownloadBlock[];
+  challenge?: ChallengeBlock;
 }
 
 export function assembleOptionalBlocks(parts: {
@@ -196,6 +198,7 @@ export function assembleOptionalBlocks(parts: {
   notifications: NotificationBlock[] | undefined;
   fsPickerRequests: FsPickerRequestBlock[] | undefined;
   downloads: DownloadBlock[] | undefined;
+  challenge: ChallengeBlock | undefined;
 }): OptionalBlocks {
   const out: OptionalBlocks = {};
   if (parts.dialogs) out.dialogs = parts.dialogs;
@@ -203,6 +206,7 @@ export function assembleOptionalBlocks(parts: {
   if (parts.notifications) out.notifications = parts.notifications;
   if (parts.fsPickerRequests) out.fsPickerRequests = parts.fsPickerRequests;
   if (parts.downloads) out.downloads = parts.downloads;
+  if (parts.challenge) out.challenge = parts.challenge;
   return out;
 }
 

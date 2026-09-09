@@ -24,6 +24,6 @@ describe("PlaywrightChromiumAdapter — declarative surface", () => {
     const adapter = new PlaywrightChromiumAdapter();
     expect(typeof adapter.launchPersistent).toBe("function");
     expect(typeof adapter.launchEphemeral).toBe("function");
-    expect(typeof adapter.attachOverCdp).toBe("function");
+    expect(typeof adapter.connectOverCdp).toBe("function");
   });
 });

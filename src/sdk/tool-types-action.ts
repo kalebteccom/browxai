@@ -36,6 +36,13 @@ export interface ActionResultData {
   network?: Record<string, unknown>;
   dialogs?: ReadonlyArray<Record<string, unknown>>;
   downloads?: ReadonlyArray<Record<string, unknown>>;
+  /** Present only when an anti-bot challenge was detected on the page.
+   *  Reporting only — `ok` is unaffected and browxai ships no solver. */
+  challenge?: {
+    kind: "interstitial" | "widget";
+    vendor: "cloudflare" | "anubis" | "unknown";
+    evidence: ReadonlyArray<string>;
+  };
   failure?: { source: string; hint?: string };
   warnings?: ReadonlyArray<string>;
   error?: string | null;
@@ -75,7 +82,12 @@ export type SetViewportResult = ActionResult;
 
 // --- click / hover / fill / press / select / shortcut --------------------
 
-export type ClickArgs = Target & ActionOpts & { button?: "left" | "right" | "middle" };
+export type ClickArgs = Target &
+  ActionOpts & {
+    button?: "left" | "right" | "middle";
+    force?: boolean;
+    dispatch?: "actionability" | "direct";
+  };
 export type ClickResult = ActionResult;
 
 export type HoverArgs = Target & ActionOpts;

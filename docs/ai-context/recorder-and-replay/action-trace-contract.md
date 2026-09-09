@@ -15,6 +15,37 @@ Each tool call that mutates page or session state produces an action-trace entry
 
 Read-only tools (`snapshot`, `find`, `inspect`, `text_search`, `network_read` metadata, `console_read`, `screenshot`) do not produce action-trace entries unless `diagnostics` capability is active.
 
+## The flow recorder's two step kinds
+
+The `start_recording` / `end_recording` / `export_playwright_script` trace
+(`src/page/recording.ts`, `RecordedStep`) is a discriminated union:
+
+- `kind: "action"` — a `DispatchedAction` plus the URL and the resolved
+  `selectorHint` / `stability`.
+- `kind: "read"` — a `RecordedRead`: `extract` (schema + scope), `find`
+  (query, with the chosen locator in the step's `selectorHint`), `snapshot`
+  (scope), `eval_js` (expression).
+
+A read arm rather than a widened `DispatchedAction`, because a read dispatches
+nothing: forcing `{type:"extract"}` into the action union would put a
+non-action into `ActionResult.action` and into every action-shaped consumer.
+
+**Reads record the request, never the response.** The trace holds the schema,
+the query, the expression and the scope — not the extracted data, not the
+snapshot tree, not the eval return value. That keeps the recorder out of the
+secrets-and-PII path: no page content reaches the YAML draft or the exported
+`.spec.ts`.
+
+The flow-file YAML gained a `read: <tool>` step key alongside `action: <type>`,
+with `schema` / `query` / `scope` / `expr` beneath it. Consumers that parse the
+draft need to handle the new key; existing action steps are byte-identical.
+
+Lowering to Playwright: `extract` → a per-field live re-read bound to a
+`const`, `find` → a named locator `const`, `eval_js` → `page.evaluate` of the
+recorded expression, `snapshot` → a comment. The exporter's `unhandled` counter
+stays honest: a `snapshot`, and an `extract` field with no recorded selector,
+lower to no executable step and are counted as unhandled.
+
 ## The no-trace contract
 
 When the `diagnostics` capability is **not** active, browxai leaves no artifact outside the workspace. Specifically:

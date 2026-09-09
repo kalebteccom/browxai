@@ -381,6 +381,43 @@ const IFRAME_HOST = `<!doctype html>
 </body>
 </html>`;
 
+// Challenge-detection fixtures. Each reproduces the PUBLIC markers of one gate
+// shape so the keystone drives the real page-side marker function against real
+// Chromium. No vendor code, no solving path — these are static stand-ins for
+// what the gate serves.
+const CLOUDFLARE_INTERSTITIAL = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Just a moment...</title>
+<script src="/cdn-cgi/challenge-platform/h/b/jsd"></script></head>
+<body>
+  <h1>Verifying you are human. This may take a few seconds.</h1>
+  <p>example.test needs to review the security of your connection before proceeding.</p>
+</body>
+</html>`;
+
+const TURNSTILE_LOGIN = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Sign in</title></head>
+<body>
+  <form id="login" onsubmit="return false">
+    <label for="email">Email</label>
+    <input data-testid="login-email" id="email" name="email" type="text" />
+    <div class="cf-turnstile" data-sitekey="1x00000000000000000000AA">Verify you are human</div>
+    <button data-testid="login-submit" type="submit">Sign in</button>
+  </form>
+</body>
+</html>`;
+
+const ANUBIS_INTERSTITIAL = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Making sure you're not a bot!</title>
+<script src="/.within.website/x/cmd/anubis/static/js/main.mjs"></script></head>
+<body>
+  <h1>Making sure you're not a bot!</h1>
+  <p>Calculating...</p>
+</body>
+</html>`;
+
 const CHILD_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>child</title></head>
@@ -479,6 +516,48 @@ const WORKERS_PAGE = `<!doctype html>
 // Also: a fully off-screen `clipped` element (#ks-offscreen) the
 // `scope:"viewport"` test asserts gets skipped. The page sets `width:100vw`
 // on body so the viewport-horizontal check fires reliably.
+// Table-shaped, semantically thin markup — the Hacker News shape. The layout is
+// `<table>`/`<td>` with a `<nav>`-less top bar of bare `<a href>` links, so the
+// CDP a11y tree carries almost no interactive nodes and `find` candidates arrive
+// from the DOM-walk fallback with the bare HTML tag in `role`. That is the only
+// configuration in which the tag-vs-ARIA-role resolution is observable; a mocked
+// a11y tree cannot reproduce it.
+const THIN_A11Y_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>thin a11y keystone</title></head>
+<body>
+<center>
+<table id="hnmain" width="85%">
+  <tbody>
+    <tr>
+      <td>
+        <nav id="topbar" data-testid="top-navigation-bar">
+          <table><tbody><tr><td>
+            <a href="/news">Hacker News</a>
+            <a href="/newest">new</a> |
+            <a href="/front" data-testid="past">past</a> |
+            <a href="/newcomments">comments</a> |
+            <a href="/ask">ask</a> |
+            <a href="/show">show</a> |
+            <a href="/jobs">jobs</a> |
+            <a href="/submit">submit</a>
+          </td></tr></tbody></table>
+        </nav>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table><tbody>
+          <tr><td>1.</td><td><a href="/item?id=1">A story about the past</a></td></tr>
+          <tr><td>2.</td><td><a href="/item?id=2">Another story</a></td></tr>
+        </tbody></table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+</center>
+</body></html>`;
+
 const OVERFLOW_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>overflow keystone</title>
@@ -673,6 +752,123 @@ const PERF_AUDIT_PAGE = `<!doctype html>
 </body>
 </html>`;
 
+// Direct-dispatch keystone — a view whose target subtree is torn down and
+// rebuilt on a timer while a rAF loop saturates the main thread with forced
+// layout. That combination is what defeats Playwright's locator path AND its
+// `force: true` recovery: every resolution through the locator engine lands on
+// a node that has already been replaced. `?churn=0` freezes it so the same page
+// serves the static posture checks (an overlay-covered target and a disabled
+// target, neither of which direct dispatch may activate).
+const UNSETTLED_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>unsettled layout keystone</title>
+<style>
+  html, body { margin: 0; padding: 0; font: 14px sans-serif; }
+  #churn-host { position: relative; height: 120px; }
+  #churn-target { position: absolute; top: 40px; left: 40px; width: 180px; height: 44px; }
+  #covered-host { position: relative; height: 120px; }
+  #covered-target { position: absolute; top: 40px; left: 40px; width: 180px; height: 44px; }
+  #cover { position: absolute; top: 0; left: 0; width: 360px; height: 120px; background: #cfd8ff; }
+  #filler div { padding: 2px; }
+</style>
+</head>
+<body>
+  <h1 data-testid="unsettled-title">Unsettled layout fixture</h1>
+  <div id="churn-host"></div>
+  <div data-testid="dispatch-log" id="dispatch-log">clicks=0 trusted=none seq=</div>
+
+  <div id="covered-host">
+    <button data-testid="covered-target" id="covered-target">Covered</button>
+    <div data-testid="cover" id="cover"></div>
+  </div>
+  <div data-testid="covered-log" id="covered-log">covered=0</div>
+
+  <button data-testid="disabled-target" id="disabled-target" disabled>Disabled</button>
+  <div data-testid="disabled-log" id="disabled-log">disabled=0</div>
+
+  <div id="filler"></div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const churnOn = params.get("churn") !== "0";
+    const burnMs = Number(params.get("burn") || 25);
+    const everyMs = Number(params.get("every") || 45);
+
+    const state = { clicks: 0, trusted: null, seq: [] };
+    window.__ksDispatch = state;
+    const host = document.getElementById("churn-host");
+    const log = document.getElementById("dispatch-log");
+
+    function render() {
+      log.textContent =
+        "clicks=" + state.clicks + " trusted=" + state.trusted + " seq=" + state.seq.join(",");
+    }
+
+    // Delegated on the host so the readout survives the subtree rebuild, and
+    // records the whole pointer sequence so the keystone can prove the full
+    // pointerdown -> mousedown -> pointerup -> mouseup -> click chain fired.
+    for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+      host.addEventListener(type, function (e) {
+        if (state.seq.indexOf(type) === -1) state.seq.push(type);
+        if (type === "click") {
+          state.clicks++;
+          state.trusted = e.isTrusted;
+        }
+        render();
+      });
+    }
+
+    document.getElementById("covered-target").addEventListener("click", function () {
+      const el = document.getElementById("covered-log");
+      el.textContent = "covered=" + (Number(el.textContent.split("=")[1]) + 1);
+    });
+    document.getElementById("disabled-target").addEventListener("click", function () {
+      const el = document.getElementById("disabled-log");
+      el.textContent = "disabled=" + (Number(el.textContent.split("=")[1]) + 1);
+    });
+
+    function mkTarget() {
+      const b = document.createElement("button");
+      b.id = "churn-target";
+      b.setAttribute("data-testid", "churn-target");
+      b.textContent = "Send";
+      host.appendChild(b);
+      return b;
+    }
+    mkTarget();
+
+    const filler = document.getElementById("filler");
+    for (let i = 0; i < 400; i++) {
+      const d = document.createElement("div");
+      d.textContent = "row " + i;
+      filler.appendChild(d);
+    }
+
+    let lastSwap = 0;
+    function frame(t) {
+      if (t - lastSwap >= everyMs) {
+        lastSwap = t;
+        const old = document.getElementById("churn-target");
+        if (old) old.remove();
+        mkTarget();
+      }
+      // Box never settles, so Playwright's stability check never converges.
+      document.getElementById("churn-target").style.transform =
+        "translateX(" + ((t / 7) % 9).toFixed(2) + "px)";
+      // Saturate the main thread with forced synchronous layout so the injected
+      // locator-engine script is starved between its resolve and its measure.
+      const end = performance.now() + burnMs;
+      let n = 0;
+      while (performance.now() < end) {
+        filler.style.paddingTop = (n % 3) + "px";
+        n += filler.offsetHeight ? 1 : 1;
+      }
+      requestAnimationFrame(frame);
+    }
+    if (churnOn) requestAnimationFrame(frame);
+  </script>
+</body>
+</html>`;
+
 const LAYOUT_THRASH_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>layout-thrash keystone</title>
@@ -838,7 +1034,9 @@ function handleUpgrade(
 /** Start the fixture on an ephemeral loopback port. Routes:
  *   GET /                 → the primitives page; `?setcookie=1` also sets `ks`
  *   GET /echo             → renders the request's Cookie header (isolation)
+ *   GET /challenge-*      → the three challenge-marker pages (detection keystone)
  *   GET /ws-page          → page that opens a WebSocket against /ws
+ *   GET /thin-a11y-page   → table-shaped markup with a thin a11y tree
  *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
@@ -847,6 +1045,33 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/echo") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(echoPage(req.headers.cookie ?? ""));
+      return;
+    }
+    if (u.pathname === "/challenge-cloudflare") {
+      res.writeHead(503, {
+        "content-type": "text/html; charset=utf-8",
+        "cf-mitigated": "challenge",
+      });
+      res.end(CLOUDFLARE_INTERSTITIAL);
+      return;
+    }
+    if (u.pathname === "/challenge-turnstile") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(TURNSTILE_LOGIN);
+      return;
+    }
+    if (u.pathname === "/challenge-anubis") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(ANUBIS_INTERSTITIAL);
+      return;
+    }
+    if (
+      u.pathname.startsWith("/cdn-cgi/challenge-platform/") ||
+      u.pathname.startsWith("/.within.website/")
+    ) {
+      // The gates' own scripts: served empty so the fixture pages load cleanly.
+      res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
+      res.end("");
       return;
     }
     if (u.pathname === "/with-iframe") {
@@ -867,6 +1092,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/workers-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(WORKERS_PAGE);
+      return;
+    }
+    if (u.pathname === "/thin-a11y-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(THIN_A11Y_PAGE);
       return;
     }
     if (u.pathname === "/overflow-page") {
@@ -893,6 +1123,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/perf-dead.js") {
       res.writeHead(200, { "content-type": "application/javascript; charset=utf-8" });
       res.end(PERF_DEAD_JS);
+      return;
+    }
+    if (u.pathname === "/unsettled-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(UNSETTLED_PAGE);
       return;
     }
     if (u.pathname === "/layout-thrash-page") {

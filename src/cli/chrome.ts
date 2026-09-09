@@ -14,6 +14,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { resolveWorkspace } from "../util/workspace.js";
+import { backgroundThrottlingArgs } from "../session/launch-options.js";
 
 const DEFAULT_PORT = 9222;
 
@@ -22,13 +23,16 @@ export async function runChrome(args: string[]): Promise<number> {
   if (sub === "start") return startChrome(args.slice(1));
   if (sub === "stop") return stopChrome();
   if (sub === "status") return statusChrome();
-  process.stderr.write("usage: browxai chrome <start [--port N] [--insecure] | stop | status>\n");
+  process.stderr.write(
+    "usage: browxai chrome <start [--port N] [--insecure] [--disable-background-throttling] | stop | status>\n",
+  );
   return 2;
 }
 
 function startChrome(opts: string[]): Promise<number> {
   const port = parseFlagNum(opts, "--port") ?? DEFAULT_PORT;
   const insecure = opts.includes("--insecure"); // opt-in security-lowered (BYOB recipe's `--disable-web-security`)
+  const noBackgroundThrottling = opts.includes("--disable-background-throttling");
   const ws = resolveWorkspace();
   const profileDir = ws.sub("chrome-profile");
   const pidFile = join(ws.root, "chrome.pid");
@@ -59,6 +63,12 @@ function startChrome(opts: string[]): Promise<number> {
     args.push("--disable-web-security", "--disable-site-isolation-trials");
     process.stdout.write(
       "⚠  --insecure: launching Chrome with --disable-web-security. SOP is OFF for the whole browser session. Use only against test/dev targets.\n",
+    );
+  }
+  if (noBackgroundThrottling) {
+    args.push(...backgroundThrottlingArgs({ backgroundThrottling: "disabled" }));
+    process.stdout.write(
+      "background-tab throttling disabled: timers, rAF and renderer priority keep running when a tab is backgrounded. Leave it off if you need to REPRODUCE background-throttling bugs.\n",
     );
   }
   const child = spawn(chromePath, args, { detached: true, stdio: "ignore" });

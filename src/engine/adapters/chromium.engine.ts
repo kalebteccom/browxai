@@ -15,6 +15,7 @@ import {
   buildManagedLaunch,
   buildIncognitoContextOptions,
   buildIncognitoLaunchOptions,
+  chromiumChannelOption,
   finalizeManagedSession,
   finalizeIncognitoSession,
 } from "../../session/launch-options.js";
@@ -34,14 +35,24 @@ async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession
   if (mode === "incognito") {
     const adapter = new PlaywrightChromiumAdapter();
     const { browser, context, page, cdp } = await adapter.launchEphemeral({
-      launchOptions: buildIncognitoLaunchOptions("chromium", opts),
+      launchOptions: {
+        ...buildIncognitoLaunchOptions("chromium", opts),
+        ...chromiumChannelOption(opts),
+      },
       contextOptions: buildIncognitoContextOptions(opts),
     });
     return finalizeIncognitoSession("chromium", { browser, context, page, cdp });
   }
-  const { profileDir, options } = buildManagedLaunch("chromium", opts);
+  const { profileDir, options, chromiumArgs } = buildManagedLaunch("chromium", opts);
   const adapter = new PlaywrightChromiumAdapter();
-  const { context, page, cdp } = await adapter.launchPersistent({ profileDir, options });
+  const { context, page, cdp } = await adapter.launchPersistent({
+    profileDir,
+    options: {
+      ...options,
+      ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
+      ...chromiumChannelOption(opts),
+    },
+  });
   return finalizeManagedSession("chromium", opts, profileDir, { context, page, cdp });
 }
 
