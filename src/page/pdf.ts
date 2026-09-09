@@ -31,17 +31,7 @@ import { resolveWorkspacePath } from "../session/storage.js";
  *  set; surface every one rather than re-curating — adopters that need
  *  jurisdiction-specific paper get it without a roundtrip back to us. */
 export type PdfFormat =
-  | "Letter"
-  | "Legal"
-  | "Tabloid"
-  | "Ledger"
-  | "A0"
-  | "A1"
-  | "A2"
-  | "A3"
-  | "A4"
-  | "A5"
-  | "A6";
+  "Letter" | "Legal" | "Tabloid" | "Ledger" | "A0" | "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
 
 export interface PdfSaveArgs {
   /** Workspace-rooted file path. Default `pdfs/<sessionId>-<ts>.pdf`. Caller

@@ -85,8 +85,7 @@ import type {
 
 /** Discriminated content item the SDK forwards from MCP results. */
 export type BrowxaiContentItem =
-  | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string };
+  { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
 /**
  * Standard SDK result envelope. Mirrors the MCP `{ content: [...] }` shape

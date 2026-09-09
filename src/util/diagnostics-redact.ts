@@ -16,11 +16,7 @@ import { createHash } from "node:crypto";
 
 /** Categories a `diagnostics_note` insight can carry. Default `other`. */
 export type NoteCategory =
-  | "missing-primitive"
-  | "workaround"
-  | "perf-concern"
-  | "ergonomic-friction"
-  | "other";
+  "missing-primitive" | "workaround" | "perf-concern" | "ergonomic-friction" | "other";
 
 /** Severity a `diagnostics_note` can carry. Default `info`. */
 export type NoteSeverity = "info" | "warn" | "blocker";

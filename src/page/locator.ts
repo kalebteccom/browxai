@@ -25,8 +25,7 @@ export type ActionTarget =
     };
 
 export type ResolvedTarget =
-  | { kind: "locator"; loc: Locator }
-  | { kind: "coords"; x: number; y: number };
+  { kind: "locator"; loc: Locator } | { kind: "coords"; x: number; y: number };
 
 /** Project an `ActionTarget` onto the advisory `{ ref?, selector? }` metadata a
  *  `DispatchedAction` records. Coords targets carry no ref/selector. Shared by
