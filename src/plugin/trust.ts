@@ -35,3 +35,21 @@ export function inferTrustFromInstallIdentity(identity: string): TrustTier {
   if (identity.startsWith("@browxai/")) return "kalebtec";
   return "community";
 }
+
+/**
+ * Clamp a manifest's self-declared trust tier to what its package identity can
+ * substantiate. `kalebtec` additionally requires the `@browxai/*` scope, so a
+ * third-party package cannot self-tag as first-party and read as such on
+ * `plugins_list` — the surface an operator audits. Any other declared tier
+ * passes through, including a self-downgrade.
+ *
+ * Returns the clamped tier plus the rejected claim when one was dropped, so the
+ * caller can warn with both values.
+ */
+export function clampDeclaredTrust(
+  declared: TrustTier | undefined,
+  packageName: string,
+): { trust: TrustTier | undefined; rejected?: TrustTier } {
+  if (declared !== "kalebtec" || packageName.startsWith("@browxai/")) return { trust: declared };
+  return { trust: undefined, rejected: declared };
+}
