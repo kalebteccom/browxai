@@ -16,7 +16,7 @@
 import type { SafariSessionHandle } from "../engine/index.js";
 import type { RefRegistry } from "./refs.js";
 import type { ActionResult, DispatchedAction, ElementProbe } from "./actionresult.js";
-import type { ActionTarget } from "./locator.js";
+import { cssSelectorForTarget, type ActionTarget } from "./locator.js";
 
 const EMPTY_NETWORK = { summary: { total: 0, byType: {}, failed: 0 } };
 const ENVELOPE_NOTE =
@@ -62,19 +62,6 @@ function result(
     ...(extra.element ? { element: extra.element } : {}),
     ...(extra.error ? { error: extra.error } : {}),
   };
-}
-
-/** Resolve an action target to a CSS selector the WebDriver `findElement` can use,
- *  or null when the target is not addressable on Safari (coords, or a ref whose
- *  snapshot locator carries neither a test attribute nor a css path). */
-function selectorForTarget(refs: RefRegistry, target: ActionTarget): string | null {
-  if (target.selector) return target.selector;
-  if (!target.ref) return null;
-  const loc = refs.locatorOf(target.ref);
-  if (!loc) return null;
-  if (loc.testId && loc.testIdAttr)
-    return `[${loc.testIdAttr}="${loc.testId.replace(/(["\\])/g, "\\$1")}"]`;
-  return loc.cssPath ?? null;
 }
 
 function unaddressable(action: DispatchedAction): ActionResult {
@@ -132,7 +119,7 @@ export async function safariClick(
   target: ActionTarget,
 ): Promise<ActionResult> {
   const descriptor = descriptorFor("click", target);
-  const selector = selectorForTarget(refs, target);
+  const selector = cssSelectorForTarget(refs, target);
   if (!selector) return unaddressable(descriptor);
   const el = await resolveElement(handle, selector);
   if (!el) return result(descriptor, false, { error: `no element matches "${selector}"` });
@@ -147,7 +134,7 @@ export async function safariFill(
   value: string,
 ): Promise<ActionResult> {
   const descriptor: DispatchedAction = { ...descriptorFor("fill", target), value };
-  const selector = selectorForTarget(refs, target);
+  const selector = cssSelectorForTarget(refs, target);
   if (!selector) return unaddressable(descriptor);
   const el = await resolveElement(handle, selector);
   if (!el) return result(descriptor, false, { error: `no element matches "${selector}"` });
@@ -168,7 +155,7 @@ export async function safariPress(
   key: string,
 ): Promise<ActionResult> {
   const descriptor: DispatchedAction = { ...descriptorFor("press", target), value: key };
-  const selector = selectorForTarget(refs, target);
+  const selector = cssSelectorForTarget(refs, target);
   if (!selector) return unaddressable(descriptor);
   const el = await resolveElement(handle, selector);
   if (!el) return result(descriptor, false, { error: `no element matches "${selector}"` });
