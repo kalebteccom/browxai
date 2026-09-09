@@ -142,8 +142,7 @@ export const PAGE_DISCOVER_TRANSFORM_FN = (): {
   //    affine (a,b,c,d,e,f → [[a,c,e],[b,d,f],[0,0,1]]) or as a uniform
   //    scale matrix.
   const m = (w.app as Record<string, unknown> | undefined)?.transform as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const mat = m?.matrix;
   if (
     Array.isArray(mat) &&

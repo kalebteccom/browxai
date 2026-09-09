@@ -35,8 +35,7 @@ export interface ResolvedCreationOptions {
       }
     | undefined;
   creationRecordHarResolved:
-    | { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" }
-    | undefined;
+    { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" } | undefined;
   creationReplayHars: string[] | undefined;
   creationRecordVideo: { dir: string; size?: { width: number; height: number } } | undefined;
   creationRecordVideoResolved:
@@ -85,8 +84,7 @@ export function resolveCreationOptions(
       }
     | undefined;
   let creationRecordHarResolved:
-    | { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" }
-    | undefined;
+    { path: string; mode: "full" | "minimal"; content: "embed" | "attach" | "omit" } | undefined;
   if (spec?.har) {
     const built = buildRecordHarOption(workspaceRoot, id, spec.har);
     creationRecordHar = built.recordHar;

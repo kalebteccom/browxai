@@ -127,10 +127,7 @@ export interface ScrollArgs extends ActionWindowOptions {
 }
 
 export type ScrollMode =
-  | { kind: "into-view" }
-  | { kind: "container" }
-  | { kind: "wheel-at" }
-  | { kind: "window" };
+  { kind: "into-view" } | { kind: "container" } | { kind: "wheel-at" } | { kind: "window" };
 
 /**
  * Resolve which of the four scroll behaviours a `ScrollArgs` selects, or throw

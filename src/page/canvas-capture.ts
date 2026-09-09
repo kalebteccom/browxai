@@ -46,9 +46,7 @@ export interface CanvasCaptureRgbaResult {
 }
 
 export type CanvasCaptureResult =
-  | CanvasCapturePngResult
-  | CanvasCaptureRgbaResult
-  | { ok: false; error: string; code?: string };
+  CanvasCapturePngResult | CanvasCaptureRgbaResult | { ok: false; error: string; code?: string };
 
 /** Max canvas dimensions accepted by `canvas_capture`. Larger canvases
  *  refuse with a structured error rather than allocating a giant byte

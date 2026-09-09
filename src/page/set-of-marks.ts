@@ -35,8 +35,7 @@ export interface MarkCandidateRef {
 /** A pre-computed `find()` candidate. The caller can pass the full object
  *  through — we only consume `ref`, `role`, `name`, `testId`, and `bbox`. */
 export type MarkCandidate =
-  | MarkCandidateRef
-  | Pick<FindCandidate, "ref" | "role" | "name" | "testId" | "bbox">;
+  MarkCandidateRef | Pick<FindCandidate, "ref" | "role" | "name" | "testId" | "bbox">;
 
 export interface SetOfMarksOptions {
   candidates: MarkCandidate[];

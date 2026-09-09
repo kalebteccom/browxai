@@ -240,8 +240,7 @@ function hasForcedFlag(e: TraceEvent): boolean {
   // for the count. The aggregation by originating stack handles
   // distinguishing per-origin contribution.
   const args = e.args as
-    | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
-    | undefined;
+    { beginData?: Record<string, unknown>; data?: Record<string, unknown> } | undefined;
   if (!args) return false;
   if (args.beginData && typeof args.beginData === "object") return true;
   const data = args.data ?? {};
@@ -253,8 +252,7 @@ function hasForcedFlag(e: TraceEvent): boolean {
  *  `"<anonymous>"` when no stack is available. */
 function extractOriginStack(e: TraceEvent): string {
   const args = e.args as
-    | { data?: Record<string, unknown>; beginData?: Record<string, unknown> }
-    | undefined;
+    { data?: Record<string, unknown>; beginData?: Record<string, unknown> } | undefined;
   if (!args) return "<anonymous>";
   const data = args.data ?? args.beginData ?? {};
   const stack = data.stackTrace as Array<Record<string, unknown>> | undefined;

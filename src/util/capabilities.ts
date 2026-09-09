@@ -388,10 +388,7 @@ export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
  *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action` when
  *  `BROWX_ALLOWED_ORIGINS` is set / `BROWX_ATTACH_CDP` is set respectively. */
 export type ConfirmHook =
-  | "navigate_off_allowlist"
-  | "file_download"
-  | "file_upload"
-  | "byob_action";
+  "navigate_off_allowlist" | "file_download" | "file_upload" | "byob_action";
 
 const ALL_CONFIRM_HOOKS: readonly ConfirmHook[] = [
   "navigate_off_allowlist",

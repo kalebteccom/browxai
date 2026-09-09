@@ -16,10 +16,7 @@ import type { ToolHost } from "./host.js";
  *  one-glance "is this trace worth running insights on?" without parsing
  *  twice. Matches the surfaces extractInsights exposes. */
 type PerfCountKey =
-  | "longTaskCount"
-  | "layoutShiftCount"
-  | "renderBlockingCount"
-  | "lcpCandidateCount";
+  "longTaskCount" | "layoutShiftCount" | "renderBlockingCount" | "lcpCandidateCount";
 
 /** Whether a `ResourceSendRequest` event is render-blocking. */
 function isRenderBlockingEvent(ev: import("../page/perf.js").TraceEvent): boolean {

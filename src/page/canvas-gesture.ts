@@ -46,8 +46,7 @@ export interface ValidateGestureChainResult {
  *  hard-refusal error (with code). Soft-clamp warnings are pushed onto the
  *  shared `warnings` accumulator. */
 type StepOutcome =
-  | { ok: true; step: GestureChainStep }
-  | { ok: false; error: string; code: string };
+  { ok: true; step: GestureChainStep } | { ok: false; error: string; code: string };
 
 function badStep(error: string): StepOutcome {
   return { ok: false, error, code: "bad-step" };

@@ -266,8 +266,7 @@ export function registerReadObserveCaptureTools(
       const resolveTarget = elementScoped
         ? () =>
             asTarget(args, "screenshot", e.refs) as
-              | { ref: string }
-              | { selector: string; contextRef?: string }
+              { ref: string } | { selector: string; contextRef?: string }
         : undefined;
       const cap = await captureFor(e).screenshot({
         format: args.format ?? "png",

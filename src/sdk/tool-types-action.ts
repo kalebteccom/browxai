@@ -97,8 +97,7 @@ export type FillArgs = RefTarget & ActionOpts & { value: string };
 export type FillResult = ActionResult;
 
 export type PressArgs = (
-  | RefTarget
-  | (SessionArg & { ref?: undefined; selector?: undefined; named?: undefined })
+  RefTarget | (SessionArg & { ref?: undefined; selector?: undefined; named?: undefined })
 ) &
   ActionOpts & { key: string };
 export type PressResult = ActionResult;

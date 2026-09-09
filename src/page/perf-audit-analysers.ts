@@ -251,8 +251,7 @@ export function analyseLayoutThrashing(ctx: AuditContext): CategoryResult {
 
 function hasForcedFlag(e: TraceEvent): boolean {
   const args = e.args as
-    | { beginData?: Record<string, unknown>; data?: Record<string, unknown> }
-    | undefined;
+    { beginData?: Record<string, unknown>; data?: Record<string, unknown> } | undefined;
   if (!args) return false;
   const data = args.data ?? args.beginData ?? {};
   return Array.isArray(data.stackTrace) && (data.stackTrace as unknown[]).length > 0;
