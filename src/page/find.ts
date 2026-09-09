@@ -9,6 +9,7 @@ import { composeSnapshotForFrame } from "./compose.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
+import { effectiveAriaRole } from "./aria-role.js";
 import type { FeedbackMemory } from "./learning.js";
 
 export interface FindCandidate {
@@ -162,11 +163,11 @@ const CONTAINER_ROLES = new Set([
  * whitespace; each token is matched (case-insensitively, as substring) against
  * a haystack of role + name + testId. Scoring:
  *
- *   - exact-name match:     +10
- *   - name contains query:   +5
- *   - testId contains query: +5
- *   - role contains query:   +2
- *   - per-token hit anywhere: +1 each
+ *   - accessible name == a contiguous run of query tokens: +7, +3 per content word
+ *   - name contains the whole query:  +5
+ *   - testId contains the whole query: +10 (exact: +15)
+ *   - role contains the whole query:   +2
+ *   - per-content-token hit anywhere:  +1 each (name) / +2 (testId)
  *   - interactive-role bonus: +2 (the agent's usually after a clickable thing)
  *
  * Candidates with score 0 are dropped. Top `maxCandidates` (default 5) returned.
@@ -214,10 +215,12 @@ async function probeCandidate(
   ctx: { locatorRoot: Page | Frame | null; cdp?: CDPSession; frame?: Frame },
 ): Promise<FindCandidate> {
   const { locatorRoot, cdp, frame } = ctx;
-  const { hint: bareHint, tier, stability } = buildSelectorHint(node);
-  // disambiguate when the bare hint matches multiple DOM nodes (needs a locator
-  // root; on safari there is none, so use the bare hint as-is).
-  const hint = locatorRoot ? await disambiguateHint(locatorRoot, bareHint) : bareHint;
+  const built = buildSelectorHint(node);
+  // needs a locator root to check the hint against the live DOM; on safari there
+  // is none, so use the bare hint as-is.
+  const { hint, tier, stability } = locatorRoot
+    ? await resolveHint(locatorRoot, built, node.cssPath)
+    : built;
   // Frame-scoped finds skip the CDP visible-rect path (its backendDOMNodeIds are
   // rooted at the top target and don't resolve into OOPIFs); the portable
   // locator-bounding-box path is identical-behaviour.
@@ -376,9 +379,10 @@ export function rankByVisibility(
   let visible = candidates.filter((c) => c.actionable === true);
   const hidden = candidates.filter((c) => c.actionable !== true);
 
+  const roleOf = (c: FindCandidate) => effectiveAriaRole({ role: c.role });
   const isContainer = (c: FindCandidate) =>
-    CONTAINER_ROLES.has(c.role) && !INTERACTIVE_ROLES.has(c.role);
-  if (visible.some((c) => INTERACTIVE_ROLES.has(c.role))) {
+    CONTAINER_ROLES.has(roleOf(c)) && !INTERACTIVE_ROLES.has(roleOf(c));
+  if (visible.some((c) => INTERACTIVE_ROLES.has(roleOf(c)))) {
     const leaves = visible.filter((c) => !isContainer(c));
     const containers = visible.filter(isContainer);
     visible = [...leaves, ...containers];
@@ -391,45 +395,76 @@ export function rankByVisibility(
 }
 
 /**
- * the "all candidates off-screen → probably the wrong match" warning.
- * Capability-aware — only names a fallback tool the caller actually has
- * enabled (`coords` ⇐ `action`, `eval_js` ⇐ `eval`). Pure; exported for tests.
+ * the "all candidates off-screen → probably the wrong match" warning. The
+ * recovery it names has to survive its own premise: the likely reading of this
+ * warning is that `find` matched the wrong element, and clicking a coordinate
+ * derived from a wrong element's rect turns a miss into a confident click on
+ * whatever occupies that point. So the advice is re-query / `snapshot`, and
+ * coordinates are named only as the canvas / painted-UI last resort.
+ * Capability-aware — only names a tool the caller actually has enabled
+ * (`coords` ⇐ `action`, `eval_js` ⇐ `eval`). Pure; exported for tests.
  */
 export function noVisibleCandidateWarning(
   count: number,
   fallbackHints?: { coords: boolean; evalJs: boolean },
 ): string {
-  const suggestions: string[] = [];
-  if (fallbackHints?.coords)
-    suggestions.push("compute the element rect and use `coords` on click/hover");
+  const suggestions = [
+    "re-run `find` with the element's accessible name or test-attribute value",
+    "fall through to `snapshot` and act on the ref",
+  ];
   if (fallbackHints?.evalJs) suggestions.push("read state directly via `eval_js`");
-  const tail = suggestions.length ? ` You may want to: ${suggestions.join("; or ")}.` : "";
+  const lastResort = fallbackHints?.coords
+    ? " Last resort, and only for canvas / painted UI with no DOM element to address: " +
+      "`point_probe` to identify what is painted at a point, then `coords` on click/hover."
+    : "";
   return (
     `no visible candidate — all ${count} match(es) are off-screen / clipped / covered ` +
     `(actionable ≠ true). This usually means the query matched the wrong element ` +
-    `(e.g. a hidden modal).${tail}`
+    `(e.g. a hidden modal), so re-identify it before acting: ${suggestions.join("; or ")}.` +
+    lastResort
   );
 }
 
-/**
- * . After find() produces a `selectorHint` for the visible candidate,
- * check whether that bare hint matches multiple DOM nodes; if it does, append a
- * disambiguator (`:visible` first, `:nth-match(..., 1)` last resort) so that a
- * caller who transcribes the hint into a flow-file doesn't re-introduce the
- * hidden-duplicate `boundingBox` hang. Best-effort: any error returns the bare hint.
- */
-async function disambiguateHint(root: Page | Frame, hint: string): Promise<string> {
+type BuiltHint = ReturnType<typeof buildSelectorHint>;
+
+/** `-1` when the selector is one Playwright's engine rejects outright. */
+async function countMatches(root: Page | Frame, selector: string): Promise<number> {
   try {
-    const count = await root.locator(hint).count();
-    if (count <= 1) return hint;
-    const visibleHint = `${hint}:visible`;
-    const visibleCount = await root.locator(visibleHint).count();
-    if (visibleCount === 1) return visibleHint;
-    if (visibleCount > 1) return `:nth-match(${visibleHint}, 1)`;
-    return `:nth-match(${hint}, 1)`;
+    return await root.locator(selector).count();
   } catch {
-    return hint;
+    return -1;
   }
+}
+
+/**
+ * Reconcile the built hint with the live DOM. Two corrections:
+ *
+ * - **A hint that resolves to nothing.** The DOM-walk fallback reports an
+ *   element's bare tag in `role` (`a`, `td`, `span`), so a named `<a>` yields
+ *   `role=a[name="past"]` — a locator Playwright's role engine rejects. Every
+ *   probe downstream then fails, and a rendered nav link comes back
+ *   `bbox: null` / `clipped: true` / `actionable: "off-screen"`. The node's
+ *   positional CSS path resolves, and positional is tier 5 on the same
+ *   preference order.
+ * - **A hint that resolves to several nodes** gets a disambiguator (`:visible`
+ *   first, `:nth-match(..., 1)` last resort) so a caller who transcribes it into
+ *   a flow-file doesn't re-introduce the hidden-duplicate `boundingBox` hang.
+ */
+async function resolveHint(
+  root: Page | Frame,
+  built: BuiltHint,
+  cssPath: string | undefined,
+): Promise<BuiltHint> {
+  const count = await countMatches(root, built.hint);
+  if (count === 1) return built;
+  if (count <= 0) {
+    return cssPath ? { hint: cssPath, tier: 5, stability: "low" } : built;
+  }
+  const visibleHint = `${built.hint}:visible`;
+  const visibleCount = await countMatches(root, visibleHint);
+  if (visibleCount === 1) return { ...built, hint: visibleHint };
+  if (visibleCount > 1) return { ...built, hint: `:nth-match(${visibleHint}, 1)` };
+  return { ...built, hint: `:nth-match(${built.hint}, 1)` };
 }
 
 /**
@@ -470,12 +505,52 @@ async function probeActionable(
 
 const INPUT_LIKE_ROLES = new Set(["input", "textbox", "searchbox", "combobox", "spinbutton"]);
 
-/** Direct name / testId / role match scoring (exact + substring). testId hits
- *  weigh heavier — `<input>`-shaped roles typically have an empty accessible
- *  name, so the testId is the load-bearing signal. */
+/** Closed-class function words. A per-token hit on one of these is not evidence
+ *  that a node is the thing the query named: every long body-text string on the
+ *  page contains "the" and "of", so scoring them the same as a content word
+ *  hands the ranking to whichever candidate has the most prose in its name. */
+const STOPWORDS = new Set(
+  (
+    "an and are as at be but by do for from has have in into is it its me my no not of on onto " +
+    "or our so that the their then there these they this to up us was we were what when where " +
+    "which who will with would you your"
+  ).split(" "),
+);
+
+function isContentToken(t: string): boolean {
+  return t.length >= 2 && !STOPWORDS.has(t);
+}
+
+/** Strip the punctuation prose wraps a target in (`past,` / `"past"`) so a query
+ *  token compares equal to the accessible name it quotes. */
+function bareToken(t: string): string {
+  return t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+}
+
+/**
+ * Accessible name == a contiguous run of query tokens. `find` takes a
+ * natural-language phrase, so comparing the name against the *whole* query never
+ * fires for a real query: the name of the thing the user asked for sits inside a
+ * sentence ("the past link in the top navigation bar" names a link called
+ * "past"). Weighted by how many content words the run carries, so a name that is
+ * one function word stays worth nothing.
+ */
+function scorePhraseMatch(nameLower: string, qTokens: string[]): number {
+  const nameTokens = nameLower.split(/\s+/).map(bareToken).filter(Boolean);
+  const contentWords = nameTokens.filter(isContentToken).length;
+  if (contentWords === 0) return 0;
+  const bare = qTokens.map(bareToken);
+  for (let i = 0; i + nameTokens.length <= bare.length; i++) {
+    if (nameTokens.every((t, j) => t === bare[i + j])) return 7 + 3 * contentWords;
+  }
+  return 0;
+}
+
+/** Direct name / testId / role match scoring against the whole query string.
+ *  testId hits weigh heavier — `<input>`-shaped roles typically have an empty
+ *  accessible name, so the testId is the load-bearing signal. */
 function scoreDirect(nameLower: string, testIdLower: string, roleLower: string, q: string): number {
   let s = 0;
-  if (nameLower === q) s += 10;
   if (nameLower.includes(q)) s += 5;
   if (testIdLower === q) s += 15;
   if (testIdLower.includes(q)) s += 10;
@@ -494,7 +569,7 @@ function scoreTokens(
 ): number {
   let s = 0;
   for (const t of qTokens) {
-    if (t.length < 2) continue;
+    if (!isContentToken(t)) continue;
     if (nameLower.includes(t)) s += 1;
     if (testIdLower.includes(t)) s += isIconOnly ? 3 : 2;
   }
@@ -502,10 +577,10 @@ function scoreTokens(
 }
 
 /** Input-shaped boost: +3 once when the node is input-like AND any testId token
- *  matched (the round-3 case). */
+ *  matched. */
 function scoreInputTestIdBoost(node: A11yNode, testIdLower: string, qTokens: string[]): number {
   if (!testIdLower || !INPUT_LIKE_ROLES.has(node.role)) return 0;
-  return qTokens.some((t) => t.length >= 2 && testIdLower.includes(t)) ? 3 : 0;
+  return qTokens.some((t) => isContentToken(t) && testIdLower.includes(t)) ? 3 : 0;
 }
 
 /** Trimmed text-content scoring (title tooltip / sr-only label / glyph-adjacent
@@ -516,7 +591,7 @@ function scoreText(textLower: string, q: string, qTokens: string[], isIconOnly: 
   if (textLower === q) s += 6;
   else if (textLower.includes(q)) s += 3;
   for (const t of qTokens) {
-    if (t.length < 2) continue;
+    if (!isContentToken(t)) continue;
     if (textLower.includes(t)) s += isIconOnly ? 2 : 1;
   }
   return s;
@@ -527,8 +602,9 @@ export function scoreNode(node: A11yNode, q: string, qTokens: string[]): number 
   const testIdLower = (node.testId ?? "").toLowerCase();
   const isIconOnly = !nameLower && !!testIdLower;
   let s = scoreDirect(nameLower, testIdLower, node.role.toLowerCase(), q);
+  s += scorePhraseMatch(nameLower, qTokens);
   s += scoreTokens(nameLower, testIdLower, qTokens, isIconOnly);
-  if (s > 0 && INTERACTIVE_ROLES.has(node.role)) s += 2;
+  if (s > 0 && INTERACTIVE_ROLES.has(effectiveAriaRole(node))) s += 2;
   s += scoreInputTestIdBoost(node, testIdLower, qTokens);
   s += scoreText((node.text ?? "").toLowerCase(), q, qTokens, isIconOnly);
   // Active / selected state bonuses an existing match (the live feature area the

@@ -46,6 +46,7 @@ import { registerCanvasTools } from "./tools/canvas-tools.js";
 import { registerStorageTools } from "./tools/storage-tools.js";
 import { registerFormsRecordingTools } from "./tools/forms-recording-tools.js";
 import { registerSessionPolicyTools } from "./tools/session-policy-tools.js";
+import { registerSessionProfileTools } from "./tools/session-profile-tools.js";
 import { registerDeviceEmulationTools } from "./tools/device-emulation-tools.js";
 import { registerLiveEmulationTools } from "./tools/live-emulation-tools.js";
 import { registerConfigApprovalTools } from "./tools/config-approval-tools.js";
@@ -271,6 +272,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   registerStorageTools(host);
   registerFormsRecordingTools(host);
   registerSessionPolicyTools(host);
+  registerSessionProfileTools(host);
   registerDeviceEmulationTools(host);
   registerLiveEmulationTools(host);
   registerConfigApprovalTools(host);

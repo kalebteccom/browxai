@@ -17,7 +17,7 @@ import { openAndroidByobSession } from "../../session/byob-attach.js";
 async function makeAndroidAdapter(opts: SessionOptions): Promise<BrowserSession> {
   const mode = opts.launchMode ?? "managed";
   if (mode === "byob") {
-    return openAndroidByobSession();
+    return openAndroidByobSession(opts);
   }
   // managed / incognito — spawning a browser we own is not a thing on a phone;
   // the adapter's launch path returns the structured `android-launch-not-supported`
