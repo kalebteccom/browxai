@@ -8,6 +8,16 @@ import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
+type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
+
+/** `eval_js` is a read, so an active recording keeps the expression — an
+ *  exported script that drops it would silently lose the value the flow was
+ *  run for. Called only after the evaluate succeeded. */
+function recordEval(e: SessionEntry, expr: string): void {
+  const s = e.session;
+  e.recorder.recordRead({ type: "eval_js", expr }, s.safari ? "" : s.page().url());
+}
+
 /**
  * Read / observe — buffer reads + element diagnostics. The session ring-buffer
  * reads (console_read / network_read / ws_read / network_body), the DOM-metric
@@ -447,6 +457,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       try {
         if (returnType === "void") {
           await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js").catch(() => undefined);
+          recordEval(e, expr);
           return {
             content: [
               {
@@ -461,6 +472,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
           };
         }
         const value = await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js");
+        recordEval(e, expr);
         return {
           content: [
             {

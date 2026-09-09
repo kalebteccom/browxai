@@ -23,6 +23,11 @@ export interface DomWalkEntry {
   testId: string;
   testIdAttr: string;
   tag: string;
+  /** `href` attribute present. Only meaningful on `<a>` / `<area>`; `false` elsewhere. */
+  hasHref?: boolean;
+  /** Lowercased `<input type>` (defaulted to "text" when the attribute is absent);
+   *  empty for every other tag. */
+  inputType?: string;
   id: string;
   structuralPath: string;
   /** Valid CSS selector built from the `:nth-child` chain at walk time.
@@ -282,6 +287,8 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
       testId: tid ? tid.value : '',
       testIdAttr: tid ? tid.attr : '',
       tag: tag,
+      hasHref: el.hasAttribute('href'),
+      inputType: tag === 'input' ? (el.getAttribute('type') || 'text').toLowerCase() : '',
       id: el.id || '',
       structuralPath: structuralPath(el),
       cssPath: cssPath(el)
@@ -342,7 +349,10 @@ export function mergeDomWalkIntoTree(
       testId,
       testIdAttr,
       tag: e.tag,
+      ...(e.hasHref !== undefined ? { hasHref: e.hasHref } : {}),
+      ...(e.inputType ? { inputType: e.inputType } : {}),
       id: e.id || undefined,
+      cssPath: e.cssPath || undefined,
       source: wasNew ? "dom" : "both",
       children: [],
     };

@@ -60,6 +60,20 @@ stalling forever**. That error is a **recoverable signal**, not a crash:
 
 Raising `timeoutMs` **never** un-wedges a session.
 
+## When the page is a challenge gate
+
+A result carrying `challenge: { kind, vendor, evidence[] }` means an anti-bot
+gate is on the page: `kind:"interstitial"` — the document you got is the gate,
+not the page you asked for; `kind:"widget"` — the page is real but one control
+(typically a Turnstile on a login form) is gated. A timeout behind a gate says
+so in the error text, and none of the timeout playbook above applies: retrying,
+raising `timeoutMs`, and discarding the session all leave the gate in place.
+
+browxai reports challenges and does not solve them. Hand the session to a person
+with `await_human`, who clears the gate in the live browser, then re-run the
+action. A proof-of-work interstitial usually clears itself in about a second —
+re-check once before escalating.
+
 ## Recovering a wedged session: discard, don't repair
 
 A wedged session is not recoverable in place. Re-navigating it, retrying, or

@@ -21,6 +21,27 @@ import { resolveWorkspace } from "../util/workspace.js";
 import type { EngineKind } from "../engine/index.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
+/** The three flags that switch off Chrome's background-tab lifecycle machinery:
+ *  timer throttling, occluded-window backgrounding, and renderer backgrounding. */
+const BACKGROUND_THROTTLING_OFF_ARGS = [
+  "--disable-background-timer-throttling",
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+] as const;
+
+/** Chromium launch args for the session's `backgroundThrottling` setting. Empty
+ *  for `"default"` / unset, so an existing launch is unchanged. */
+export function backgroundThrottlingArgs(opts: SessionOptions): string[] {
+  return opts.backgroundThrottling === "disabled" ? [...BACKGROUND_THROTTLING_OFF_ARGS] : [];
+}
+
+/** The optional Playwright `channel` splice for a chromium launch. Kept out of
+ *  the shared options bag below because firefox resolves its own channel and the
+ *  other engines have none. */
+export function chromiumChannelOption(opts: SessionOptions): { channel?: string } {
+  return opts.channel ? { channel: opts.channel } : {};
+}
+
 /** Resolve the managed-launch profile dir + the shared context options, building
  *  the `--disable-web-security` + extension launch args exactly as the managed
  *  factory did. The chromium-only `args` splice (insecure + extension flags) is
@@ -75,7 +96,7 @@ export function buildManagedLaunch(
       paths: opts.extensionPaths,
     });
   }
-  const chromiumArgs = [...insecureArgs, ...extensionArgs];
+  const chromiumArgs = [...insecureArgs, ...extensionArgs, ...backgroundThrottlingArgs(opts)];
   log.info("session.managed: launching", { profileDir, headless: !!opts.headless, engine });
   // Launch options common to both engines. Chromium-only `args` are spliced in
   // for the chromium path only (Firefox rejects Chromium `--` flags).
@@ -131,6 +152,7 @@ export async function finalizeManagedSession(
     mode: "managed",
     ownsBrowser: true,
     engine,
+    profileDir,
     page: () => page,
     // chromium mints a CDP session; firefox has none (`cdp` stays optional and
     // absent — consumers route through `requireCdp`, which refuses cleanly).
@@ -173,13 +195,14 @@ export function buildIncognitoLaunchOptions(
       );
     }
   }
+  const args = [...insecureArgs, ...backgroundThrottlingArgs(opts)];
   return {
     headless: !!opts.headless,
     // No lowered-security flags unless the gated flag is explicitly on. The
     // firefox/webkit ephemeral launches never carry Chromium `--` args (their
     // adapters take only `{ headless }`), so the splice is chromium-only by
     // construction — the engine module passes only what its adapter accepts.
-    ...(insecureArgs.length ? { args: insecureArgs } : {}),
+    ...(args.length ? { args } : {}),
   };
 }
 

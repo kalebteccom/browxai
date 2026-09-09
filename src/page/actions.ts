@@ -19,6 +19,8 @@ import {
 } from "./locator.js";
 import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
 import { materialiseValue, maskProbe, failedFill, failedPress } from "./actions-secrets.js";
+import { directClick, type ClickDispatch } from "./actions-direct-dispatch.js";
+import { invariant } from "../util/invariant.js";
 
 // aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
@@ -29,6 +31,11 @@ export interface ClickArgs extends ActionWindowOptions {
   target: ActionTarget;
   button?: "left" | "right" | "middle";
   force?: boolean;
+  /** Unset / `"actionability"` is the default path below, byte-identical to a
+   *  call that never names it. `"direct"` skips the locator engine's
+   *  pre-dispatch work — the action substrate refuses it on an engine with no
+   *  CDP handle before this function is reached. */
+  dispatch?: ClickDispatch;
 }
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "click", ...targetDescriptor(args.target) };
@@ -55,6 +62,21 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
           focusChanged: focusBefore !== focusAfter,
         },
       };
+    }
+    if (args.dispatch === "direct") {
+      const cdp = ctx.cdp?.();
+      invariant(
+        cdp,
+        'click({dispatch:"direct"}) reached the CDP dispatch path on a session with no CDP ' +
+          "handle; the action substrate refuses this combination before dispatch",
+      );
+      // No pre-probe on this path: it resolves through the locator engine, the
+      // very cost the mode exists to skip, and it would delay the dispatch.
+      return directClick(ctx.page, cdp, resolved.loc, {
+        target: args.target,
+        refs: ctx.refs,
+        button: args.button,
+      });
     }
     const pre = await preProbe(resolved.loc);
     // Click strategy: try the standard actionability path first with a

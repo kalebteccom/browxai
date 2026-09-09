@@ -19,7 +19,7 @@ export function registerFormsRecordingModeTools(
     {
       capability: "human",
       description:
-        "Begin recording subsequent action tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds a step (with the resolved selectorHint when a target was given). Call `end_recording` to emit a YAML draft. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding.",
+        "Begin recording subsequent tool calls as a draft flow-file. Every successful navigate/click/fill/press/hover/select/wait_for adds an action step (with the resolved selectorHint when a target was given); every successful extract/find/snapshot/eval_js adds a read step carrying what the call asked for (schema+scope / query / scope / expression) and, for `find`, the locator it resolved. Returned page data is never recorded. Call `end_recording` to emit a YAML draft, or `export_playwright_script` to lower the trace to a runnable `.spec.ts` without ending the recording. `record_annotate` attaches annotations to the most-recent step. Calibration-walk → flow-file scaffolding.",
       inputSchema: {
         flowName: z.string().describe('Name of the flow being recorded, e.g. "login-and-search"'),
         ...SESSION_ARG,
