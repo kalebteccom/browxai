@@ -35,10 +35,26 @@ a version bump.
 ## Documentation site
 
 The public docs site is an Astro + Starlight build in `website/` (which
-syncs its content from `docs/` at build time), deployed by **Netlify** on
-every push to `main` per `netlify.toml` — no manual step and no GitHub
-Actions involvement. Preview locally with `pnpm docs:dev`; build with
-`pnpm docs:build`. Site-related launch gates live in
+syncs its content from `docs/` at build time), hosted on **Netlify**.
+
+**It does not auto-deploy.** The Netlify project has no repository
+connected — `build_settings` is empty, so `netlify.toml` is never read and
+nothing rebuilds on a push to `main`. The site went five months without a
+deploy before this was noticed, serving documentation that no longer matched
+the code. Until a repo is connected in the Netlify UI, publishing is a
+manual step in the release ritual:
+
+```bash
+pnpm docs:build     # builds website/dist, and fails on any broken internal link
+pnpm docs:deploy    # pushes website/dist to production
+```
+
+Run both from the repo root. `docs:deploy` runs the Netlify CLI from a
+neutral directory on purpose: invoked inside this pnpm workspace the CLI
+misreads the workspace and crashes with "Netlify CLI has terminated
+unexpectedly".
+
+Preview locally with `pnpm docs:dev`. Site-related launch gates live in
 [`docs/public-flip-checklist.md`](docs/public-flip-checklist.md).
 
 ## Release authority
