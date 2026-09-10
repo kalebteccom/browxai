@@ -6,7 +6,7 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
-## Unreleased
+## v0.10.0 — 2026-09-10 — Attached-session isolation, challenge detection, plugin trust
 
 ### Changed
 
