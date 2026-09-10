@@ -66,6 +66,7 @@
     "install-browser": "playwright-core install chromium",
     "docs:dev": "pnpm --filter @browxai/website dev",
     "docs:build": "pnpm --filter @browxai/website build",
+    "docs:deploy": "D=\"$PWD/website/dist\"; cd /tmp && netlify deploy --prod --dir=\"$D\" --site=e8f35a91-ef1f-422b-996f-e4ea42a35d8d",
     "docs:preview": "pnpm --filter @browxai/website preview",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
