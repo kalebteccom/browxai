@@ -1,6 +1,6 @@
 {
   "name": "@browxai/plugin-example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reference browxai plugin — exercises every registry feature (tool registration, capability declaration, dependency declaration). Canonical source for plugin authors.",
   "author": "Kalebtec",
   "license": "MIT",
