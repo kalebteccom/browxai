@@ -36,9 +36,25 @@ LOCAL="$(git rev-parse @)"
 REMOTE="$(git rev-parse "@{u}")"
 [ "$LOCAL" = "$REMOTE" ] || die "local main and origin/main differ — pull or push first"
 
-git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && die "tag $TAG already exists locally"
-if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-  die "tag $TAG already exists on origin — bump the version instead of retagging"
+# An existing tag is only fatal when that version actually shipped. A tag whose
+# release run died before the publish job is a dead marker no consumer can have,
+# and burning a version number on a CI bug is worse than reusing it.
+TAG_LOCAL=false
+TAG_REMOTE=false
+git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && TAG_LOCAL=true
+git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1 && TAG_REMOTE=true
+
+if [ "$TAG_LOCAL" = true ] || [ "$TAG_REMOTE" = true ]; then
+  PKG_NAME="$(node -p "require('./package.json').name")"
+  if npm view "$PKG_NAME@$PKG_VERSION" version >/dev/null 2>&1; then
+    die "$PKG_NAME@$PKG_VERSION is already published — bump the version, never retag a released one"
+  fi
+  printf '\033[33mtag %s exists but %s@%s is NOT on the registry — the previous run never published.\033[0m\n' \
+    "$TAG" "$PKG_NAME" "$PKG_VERSION"
+  read -r -p "Delete the dead tag and re-cut it here? [y/N] " retag
+  [ "$retag" = "y" ] || die "aborted — bump the version, or delete the tag yourself"
+  [ "$TAG_LOCAL" = true ] && git tag -d "$TAG"
+  [ "$TAG_REMOTE" = true ] && git push --delete origin "$TAG"
 fi
 
 grep -q "^## v${PKG_VERSION} " CHANGELOG.md ||
