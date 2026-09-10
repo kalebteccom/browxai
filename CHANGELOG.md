@@ -8,6 +8,14 @@ surface" covers.
 
 ## v0.10.0 — 2026-09-10 — Attached-session isolation, challenge detection, plugin trust
 
+### Plugin packages
+
+- **`@browxai/plugin-{example,figma,tldraw,excalidraw}` 0.1.0 -> 0.1.1.** No code
+  change: their `engines.node` floor moved `>=20` -> `>=22` when the workspace
+  standardised on it, and that is published metadata npm enforces at install
+  time. The registry still advertised `>=20` because the versions were never
+  bumped, so the correction only reaches consumers under a new version.
+
 ### Changed
 
 - **Supported Node range widened back to `>=22`** (from the `>=26` that v0.9.0
