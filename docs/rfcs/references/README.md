@@ -1,8 +1,8 @@
 # RFC references
 
-Supporting research and design records for the numbered RFCs. Each RFC's deep companion material lives here — the architecture-hardening suite prefixed by its RFC number (`0004-NN-*.md`), the original multi-engine archive by a bare sequence number.
+Supporting research and design records for the numbered RFCs. Each RFC's deep companion material lives here: the architecture-hardening suite prefixed by its RFC number (`0004-NN-*.md`), the original multi-engine archive by a bare sequence number.
 
-## RFC 0002 — the multi-engine research record
+## RFC 0002: the multi-engine research record
 
 The full research that backs [RFC 0002](../0002-multi-engine-bidi.md). Captured verbatim in the repo (the owner's directive: track the whole research record as the working base for the multi-engine workstream). Produced by an orchestrated research workflow, June 2026; primary-source-led, dated claims.
 
@@ -13,11 +13,13 @@ The full research that backs [RFC 0002](../0002-multi-engine-bidi.md). Captured 
 | [`03-browxai-coupling-audit.md`](03-browxai-coupling-audit.md)     | Tool-by-tool A/B/C/D classification of browxai's ~198 tools (engine-agnostic / CDP-hard / adaptable / impossible-per-engine) with `file:line` evidence, the launch/attach hardcodings, and the substrate-module sizing.                                                                                                                                                         |
 | [`04-decision-matrix.md`](04-decision-matrix.md)                   | The critic synthesis: cross-report contradictions (resolved with live re-fetch), the missing product/empirical inputs, and the eight architecture decisions with evidence leans.                                                                                                                                                                                                |
 | `05-safari-xpc.md`                                                 | Real-Safari feasibility: safaridriver IS the Remote Web Inspector protocol over `webinspectord` XPC, closed to third parties by Apple-private entitlements + CoreTrust/AMFI + peer code-signing validation (local-machine evidence); the AppleScript `do JavaScript` + Safari Web Extension companion tiers are the only Apple-supported real-Safari channels (eval+DOM-grade). |
-| `selenium-driver-protocols.webp`                                   | The Selenium per-driver-protocol diagram (chromedriver→CDP, msedgedriver→CDP, geckodriver→Marionette, safaridriver→XPC) — the mental model RFC 0002 reasons over.                                                                                                                                                                                                               |
+| `selenium-driver-protocols.webp`                                   | The Selenium per-driver-protocol diagram (chromedriver→CDP, msedgedriver→CDP, geckodriver→Marionette, safaridriver→XPC): the mental model RFC 0002 reasons over.                                                                                                                                                                                                                |
 
-These are a research snapshot, not living docs: they reflect the state of the standards and the codebase in June 2026. Where a later finding supersedes one (e.g. a spec command that the audit marked unavailable but the critic re-fetched as spec'd), the RFC carries the reconciled ruling; the references are kept as-was for provenance.
+These are a research snapshot, not living docs: they reflect the state of the standards and the codebase in June 2026.
 
-## RFC 0004 — the architecture-hardening record
+Where a later finding supersedes one (e.g. a spec command that the audit marked unavailable but the critic re-fetched as spec'd), the RFC carries the reconciled ruling; the references are kept as-was for provenance.
+
+## RFC 0004: the architecture-hardening record
 
 The deep companion suite for [RFC 0004](../0004-architecture-hardening.md): the adversarial audit, the safety-critical maintainability standard, the target patterns, the phased plan, the fitness-function/guardrail specs, the AI-documentation and harness changes, the prior art, the future-proofing roadmap, and the adversarial review log. Produced June 2026 from an eight-subsystem adversarial audit; evidence-backed with verified `file:line` citations, and held to an iterate-until-clean adversarial review (`0004-09`).
 
