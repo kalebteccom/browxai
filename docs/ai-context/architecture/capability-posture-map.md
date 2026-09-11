@@ -1,6 +1,6 @@
 # Capability posture map
 
-Safe by default — no auto-broadening. Every off-by-default capability carries a per-tool keystone test asserting the gate blocks when the capability is not granted (returns a structured `capability-denied` error, not a silent no-op).
+Safe by default, with no auto-broadening. Every off-by-default capability carries a per-tool keystone test asserting the gate blocks when the capability is not granted. The gate returns a structured `capability-denied` error, never a silent no-op.
 
 ## Default-on capabilities
 
@@ -52,5 +52,5 @@ Deprecating a capability: see [`../release-process/retired-registry-pattern.md`]
 
 ## Related
 
-- [`../../threat-model.md`](../../threat-model.md) — per-capability threat-model rows.
-- [`../secrets-and-egress/network-body-and-secrets.md`](../secrets-and-egress/network-body-and-secrets.md) — egress composition order.
+- [`../../threat-model.md`](../../threat-model.md): per-capability threat-model rows.
+- [`../secrets-and-egress/network-body-and-secrets.md`](../secrets-and-egress/network-body-and-secrets.md): egress composition order.

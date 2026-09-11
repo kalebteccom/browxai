@@ -1,12 +1,12 @@
-# Unit, plugin-integration, keystone — three test layers
+# Three test layers: unit, plugin-integration, keystone
 
-browxai has three test layers. Pick the right one — picking wrong silently passes broken page-side code or fails to exercise the contract.
+browxai has three test layers. Pick the right one. Picking wrong silently passes broken page-side code, or never exercises the contract at all.
 
 ## Unit tests (`*.test.ts` colocated with handlers)
 
 - Run on `pnpm test`.
 - Hermetic: mocked Playwright (`page.evaluate`, `locator.evaluate`, network, console).
-- **Fast, but blind to page-side bugs.** A unit test with a mocked `locator.evaluate` calls the page-side function directly in Node. That works fine even when the function is a broken stringified expression. The dom_export / element_export class silently passes here.
+- Fast, and blind to page-side bugs. A unit test with a mocked `locator.evaluate` calls the page-side function directly in Node. That works fine even when the function is a broken stringified expression. The dom_export / element_export class silently passes here.
 - Use unit tests for: input validation, output shaping, capability-gate routing, ActionResult construction, error-path branching, deadline composition.
 
 ## Plugin-integration tests (`packages/plugins/<name>/test/`)
@@ -19,7 +19,7 @@ browxai has three test layers. Pick the right one — picking wrong silently pas
 
 - Run on `pnpm test:keystone`.
 - Real headless Chromium. Real page navigation. Real DOM.
-- **Mandatory for any tool calling `page.evaluate` / `locator.evaluate`.**
+- Mandatory for any tool calling `page.evaluate` / `locator.evaluate`.
 - Use keystone tests for: page-side function regression, end-to-end flow against a fixture page, ActionResult shape against real navigation / structure-change signals, capability-gate denial path (asserting `capability-denied` envelope shape).
 
 ## The decision rule

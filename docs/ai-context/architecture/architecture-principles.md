@@ -1,4 +1,4 @@
-# Architecture principles - the Kalebtec doctrine
+# Architecture principles: the Kalebtec doctrine
 
 The macro layer of how we build. Identical across browxai, docsxai, and our
 other projects; each repo leads with its own exemplars, but the principles are
@@ -33,14 +33,14 @@ browxai illustrates this through its seams:
 - **Handlers depend on abstractions, not concrete backends.** Server handlers
   take abstract `Page` / `BrowserContext`, not a concrete CDP implementation;
   swapping the backend doesn't change handler code. The SDK depends on a
-  `Transport` abstraction, not WebSocket / stdio specifics - the three transports
+  `Transport` abstraction, not WebSocket / stdio specifics. The three transports
   (in-process, stdio-child, socket-attached) all conform to one port.
 - **The plugin runtime is a dependency-inverted port.** Plugins call
   `api.callTool(...)` / `api.registerTool(...)` through the `PluginApi`
   interface; they never reach into browxai internals. An external package adds
-  tools without any change to the core - substrate-level open/closed.
+  tools without any change to the core. That is substrate-level open/closed.
 - **browxai is BYO-vision by design.** It does not bundle OCR or a hosted vision
-  API. browxai's job is the substrate - pixels (`canvas_capture`), gestures,
+  API. browxai's job is the substrate: pixels (`canvas_capture`), gestures,
   transform math, plugin dispatch; _understanding_ the pixels is the host agent's
   multimodal call. The model provider is an outward concern that lives in the
   caller, not in the server. This is the same boundary discipline docsxai applies
@@ -50,15 +50,15 @@ The family echoes this everywhere: docsxai's engine sits behind a `BrowserDriver
 port (only `playwright-driver.ts` imports `playwright-core`) and routes all IO
 through one `resolveWorkspacePath` chokepoint; our harness-orchestration work
 keeps a single Zod-schema contract package as the source of truth that every
-harness adapter (Claude Code, Codex, Pi) and the daemon build against - the
-hexagonal host-core/adapters split made concrete.
+harness adapter (Claude Code, Codex, Pi) and the daemon build against. That is
+the hexagonal host-core/adapters split made concrete.
 
 ### Abstract only at a proven seam
 
 A port you do not need is tech debt, the same as a missing one. Speculative
 generality is the more seductive failure because it looks like good architecture.
 **The test:** is there a second real implementation today, or a committed
-near-term need? If yes, the seam is proven - build the port. If no, write the
+near-term need? If yes, the seam is proven, so build the port. If no, write the
 concrete thing and inline it.
 
 - browxai's `Transport` abstraction is **proven**: three transports conform to it
@@ -67,7 +67,7 @@ concrete thing and inline it.
 - docsxai's `BrowserDriver` is **proven**: `PlaywrightDriver` plus browxai as the
   real second driver. The harness adapter-contract is **proven**: three adapters.
 - A single-implementation interface with no second consumer on the horizon is
-  **usually not** - it adds an indirection, a file, and a lie ("this is
+  **usually not**. It adds an indirection, a file, and a lie ("this is
   swappable") for no payoff. Note the deliberate exceptions browxai _does_ allow,
   like `canvas_query({adapter, op, args})`'s inner-`op` dispatch at the canvas
   substrate layer: that is a substrate seam with real adapters behind it, not a
@@ -80,25 +80,25 @@ around is not.
 ## 2. Simplicity and YAGNI, reconciled with "perfect architecture"
 
 "Perfect architecture" does not mean maximal architecture. It means **the
-simplest design that honors the proven seams** - no fewer boundaries (the core
-must stay clean), no more (every speculative port is deleted). The two pulls
+simplest design that honors the proven seams**: no fewer boundaries (the core
+must stay clean), and no more (every speculative port is deleted). The two pulls
 resolve cleanly once you separate proven from speculative: hold the proven seams
 without compromise, and refuse every unproven one.
 
 Agent orchestration belongs in the agent's tooling layer; the engine is the
-deterministic floor (parse, run, emit) plus write-time signal - not an agent loop.
+deterministic floor (parse, run, emit) plus write-time signal, never an agent loop.
 The substrate does not duplicate an orchestration state machine the tooling layer
 already provides: browxai's MCP surface plus the calibrate-skill playbook cover
-that ground without a bespoke in-engine pipeline. browxai holds the same line -
-the server is a curated tool surface, not an agent loop; the inference loop lives
-in the host. The simplest design that honors the proven seams is both smaller and
+that ground without a bespoke in-engine pipeline. browxai holds the same line:
+the server is a curated tool surface, not an agent loop, and the inference loop
+lives in the host. The simplest design that honors the proven seams is both smaller and
 more correct: hold the proven seams, refuse the speculative orchestration layer.
 
 Concrete rules that follow:
 
 - Three similar lines beat a premature abstraction. The `perf_audit` analyser
   registry exists because LCP / CLS / layout-thrash / memory are real, distinct
-  categories - not because a registry looked clean. Extract on real divergence.
+  categories, not because a registry looked clean. Extract on real divergence.
 - No feature flags or compat shims when you can just change the code. Graceful
   input deprecation goes through the `RETIRED_*` registry pattern, not scattered
   shims. No `// removed`, no `_var` re-exports.
@@ -109,7 +109,7 @@ Concrete rules that follow:
 ## 3. Performance at the core
 
 Performance is a design input. It shapes the boundary you draw, the buffer you
-bound, the data you copy. But it is **measured, not guessed** - profile before
+bound, the data you copy. But it is **measured, not guessed**: profile before
 you optimize, and never trade a proven seam for a micro-optimization you can't
 demonstrate.
 
@@ -120,14 +120,14 @@ constantly, so they are bounded by anti-wedge deadlines; a `diagnostics` run
 (recorder, `perf_audit`, coverage, `layout_thrash_trace`, `memory_diff`) is
 off-by-default and tolerates cost because it's rare. docsxai makes the same split
 structural: calibration is rare and latency-tolerant, execution is continuous and
-deterministic - and only the continuous loop earns careful allocation discipline.
+deterministic, and only the continuous loop earns careful allocation discipline.
 
 **Bound the buffer; stream over slurp.** Unbounded reads are a latency and memory
 bug waiting for a big input. The family bounds at the edge:
 
 - browxai caps `canvas_capture` at 16384×16384 px, floors `gesture_chain`'s
   `move` at 5 ms and clamps `wait` at 5000 ms, and prefers a bounded-window
-  `watch` poll over unbounded repeated calls - never regress to unbounded calls.
+  `watch` poll over unbounded repeated calls. Never regress to unbounded calls.
 - `network-body` (full response bodies) is off-by-default partly because
   unbounded body capture is a cost; metadata-only `network_read` is the on path.
 - docsxai truncates page-DOM snippets before they enter halt context and applies
@@ -135,8 +135,8 @@ bug waiting for a big input. The family bounds at the edge:
   content-addressed by sha256, so identical content is stored once.
 
 **The cost of abstraction on a hot path.** A port indirection is nearly free on a
-cold path and worth it for the seam. On a tight inner loop - a page-side function
-running per element, a gesture program dispatching per step - an extra allocation
+cold path and worth it for the seam. On a tight inner loop (a page-side function
+running per element, a gesture program dispatching per step), an extra allocation
 per iteration can matter, but only measurably. The rule: keep the seam at the
 boundary; if a hot inner loop needs the concrete type, inline within the adapter,
 never by collapsing the boundary the whole system depends on.
@@ -147,7 +147,7 @@ replay path and docsxai's byte-identical `docsxai run` both lean on this; both a
 keystone-tested against real Chromium so the determinism claim is verified, not
 asserted.
 
-## 4. Scalability seams - where the system grows
+## 4. Scalability seams: where the system grows
 
 Growth should be **open/closed**: add a new file at a known extension point,
 don't edit the core. The family's seams:
@@ -155,15 +155,15 @@ don't edit the core. The family's seams:
 - **New engine / driver / backend = new adapter behind the existing port.** A new
   CDP backend behind `Page` / `BrowserContext`, a new SDK transport behind
   `Transport`, a second `BrowserDriver` in docsxai, a new harness adapter against
-  the harness contract - none touch the core.
+  the harness contract. None of them touch the core.
 - **New capability = a new gated interface.** Anything posture-broadening (eval,
   network-body, byob-attach, clipboard, file-io, secrets, extensions, canvas, …)
   lands off-by-default behind a declared capability, with a per-tool keystone test
-  asserting the gate blocks when not granted - in the same diff that adds it. See
+  asserting the gate blocks when not granted, in the same diff that adds it. See
   [`capability-posture-map.md`](capability-posture-map.md).
 - **New tool = compose existing ports.** A new MCP tool is one handler file plus a
   capability-map entry plus a registry line in `server.ts` (composition only, no
-  business logic) - the existing tools are unchanged.
+  business logic). The existing tools are unchanged.
 - **New plugin = `register(api)`.** An external package extends the surface
   through the plugin runtime without a core change.
 
@@ -171,17 +171,17 @@ Statelessness and bounded concurrency are the runtime side of this. Where
 concurrency exists, it is bounded with backpressure (deadlines, step caps, poll
 windows), never unbounded fan-out.
 
-## 4a. The ten laws - the seams, each backed by an enforcer
+## 4a. The ten laws: the seams, each backed by an enforcer
 
 §4 names the seams the system grows along. A seam the machine does not guard is a
 seam that drifts. Every seam §4 names is guarded by an enforcer: a fitness
 function, a custom lint rule, or a CI gate. The standing rule is an **enforcer per
-invariant** - prose is not a guard. The ten laws below are the standard; each is
+invariant**. Prose is not a guard. The ten laws below are the standard; each is
 one of those seams plus the machine that fails on regression. **A law with no
 green check is not in the standard.** [RFC 0004](../../rfcs/0004-architecture-hardening.md)
-is the design record for these enforcers - the flagship claim _"new engine = new
-adapter behind the existing port"_ holds only when the adapter _wiring_, not just
-the adapters, is guarded, so the wiring carries its own enforcer too. The full
+is the design record for these enforcers. The flagship claim _"new engine = new
+adapter behind the existing port"_ holds only when the adapter _wiring_ is guarded
+as well as the adapters themselves, so the wiring carries its own enforcer too. The full
 rationale and safety-critical lineage
 (Power-of-Ten, JPL, DO-178C) live in
 [`../../rfcs/references/0004-02-maintainability-standard.md`](../../rfcs/references/0004-02-maintainability-standard.md);
@@ -197,7 +197,7 @@ the single index of every check in [`fitness-functions.md`](fitness-functions.md
 | **L4 - Segregated contracts**        | No god-object. Consumers depend on the narrow port they use, not a 35-member bag.                                                         | Interface-member budget (`interface-member-budget`) + the dependency-cruiser "host split" rules.                                                |
 | **L5 - Substitutable adapters**      | Every adapter honors its port's full contract or **declares the gap as a capability**; no adapter throws where the port promises a value. | The `port-conformance` contract test, run against every adapter including a synthetic one.                                                      |
 | **L6 - Validate at the edge**        | Untyped data is narrowed at the boundary (MCP wire, config, CDP/Playwright edge) and fully typed thereafter.                              | The five `no-unsafe-*` rules + `no-explicit-any` + `no-page-eval-stringified-arrow`.                                                            |
-| **L7 - Bounded everything**          | Every loop, buffer, ring, recursion, and wait has an explicit, tested bound.                                                              | The `bounded-resource` budget test (`error`) + the `bounded-resource` lint rule (**advisory `warn`** - it cannot prove termination).            |
+| **L7 - Bounded everything**          | Every loop, buffer, ring, recursion, and wait has an explicit, tested bound.                                                              | The `bounded-resource` budget test (`error`) + the `bounded-resource` lint rule (**advisory `warn`**, since it cannot prove termination).       |
 | **L8 - Assert the invariants**       | Internal invariants are asserted, not assumed; a violated invariant surfaces as a structured refusal, never a crash.                      | The `invariant()` helper (`src/util/invariant.ts`) + the `assertion-density` check on the load-bearing modules.                                 |
 | **L9 - Traceable**                   | Every world-touching tool ⇒ a capability declaration ⇒ a keystone denial test. Every engine ⇒ a capability row ⇒ a keystone lane.         | Traceability fitness tests (tool↔capability↔keystone; engine↔caps↔lane: `tool-capability-completeness`, `deep-tools-engine-matrix`).            |
 | **L10 - Deterministic & observable** | The surface is deterministic where it pays (replay, diffing) and self-diagnosing; determinism is keystone-verified.                       | The keystone determinism gates + the dependency-cruiser layering rules (no nondeterministic cross-layer leak), extended to the new seams.       |
@@ -222,7 +222,7 @@ next reader navigates by intuition.
 - **The next-reader test.** Write for the agent or engineer who opens this file
   cold in six months with no context. Names carry the meaning; comments state the
   non-obvious constraint, never narrate the code (the full comment discipline,
-  plus the public-surface hygiene rules, are in code-quality.md - follow them,
+  plus the public-surface hygiene rules, are in code-quality.md; follow them,
   don't restate them here).
 - **Docs-impact is part of the change.** Every behavior-change diff updates
   `tool-reference.md`, the relevant `threat-model.md` row and capability table,
@@ -231,20 +231,20 @@ next reader navigates by intuition.
 
 ## 6. The decision record
 
-When an architecture decision is non-obvious - a new boundary, a port extracted
-or refused, a posture change, a seam moved - **write down why.** Code shows what;
+When an architecture decision is non-obvious (a new boundary, a port extracted
+or refused, a posture change, a seam moved), **write down why.** Code shows what;
 the record preserves the reasoning a future reader (or a future you) needs to not
 re-litigate it.
 
 - Substantive decisions get a numbered RFC under [`../../rfcs/`](../../rfcs/).
 - Root-cause findings and one-off diagnoses go in `investigations/` under this
   `ai-context/` tree (e.g. the screenshot-marks latency investigation).
-- Captured lessons - the dom_export / element_export page-side-function trap, the
-  adopter-report-driven surface changes - live in their topical `ai-context/`
+- Captured lessons (the dom_export / element_export page-side-function trap, the
+  adopter-report-driven surface changes) live in their topical `ai-context/`
   subdirs so the rationale travels with the code it governs.
 
 Keep provenance out of the code and the public docs (no ticket IDs, no phase
-tags - code-quality.md's public-surface hygiene rule is explicit on this); keep it
+tags; code-quality.md's public-surface hygiene rule is explicit on this); keep it
 in the commit body, the RFC, and this `ai-context/` tree.
 
 ## 7. Review checklist
@@ -270,9 +270,9 @@ against this:
       CHANGELOG / AGENTS.md reflect the change; the decision is recorded if it was
       non-obvious.
 
-The machine-checked items below sit beneath the human-judgment items above -
-they are the ones a reviewer does not hand-check, because the gate does it. They
-are the ten laws (§4a) at the point of review:
+The machine-checked items below sit beneath the human-judgment items above. A
+reviewer does not hand-check them, because the gate already does. They are the
+ten laws (§4a) at the point of review:
 
 - [ ] **Closed to the core?** (L1) No new `engine === "<literal>"` branch above the
       engine seam; no handler imports a concrete adapter or transport. The
@@ -291,19 +291,19 @@ are the ten laws (§4a) at the point of review:
       contract is asserted via `invariant()` (a structured refusal, never a crash).
       The `test/architecture/**` lane + `pnpm depcruise` pass. If a fitness function
       is _intended_ to change (a budget re-baselined, a law amended), that is an RFC
-      amendment with rationale - never an inline disable. See the meta-rule in
+      amendment with rationale, never an inline disable. See the meta-rule in
       [`fitness-functions.md`](fitness-functions.md).
 
 ## Related
 
-- [`code-quality.md`](../agent-process/code-quality.md) - the micro layer (SOLID,
+- [`code-quality.md`](../agent-process/code-quality.md): the micro layer (SOLID,
   naming, function shape, comments, public-surface hygiene).
-- [`repo-map.md`](repo-map.md) - the source map and the load-bearing boundaries
+- [`repo-map.md`](repo-map.md): the source map and the load-bearing boundaries
   this doctrine protects.
-- [`fitness-functions.md`](fitness-functions.md) - the index of executable
+- [`fitness-functions.md`](fitness-functions.md): the index of executable
   architecture invariants: every fitness function, what it proves, how to run it,
   and which law it enforces. The machine behind §4a.
-- [`capability-posture-map.md`](capability-posture-map.md) - the on-by-default /
+- [`capability-posture-map.md`](capability-posture-map.md): the on-by-default /
   gated capability lattice.
-- [`../testing/unit-vs-keystone.md`](../testing/unit-vs-keystone.md) - why
+- [`../testing/unit-vs-keystone.md`](../testing/unit-vs-keystone.md): why
   boundary behavior is keystone-tested against real Chromium.

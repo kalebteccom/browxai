@@ -11,12 +11,12 @@ Additive: any new value, new tool, new capability, new enum variant. No deprecat
 Never a deletion. The progression:
 
 1. **Move the value to a `RETIRED_*` registry.** The parser accepts the retired value, ignores it semantically, and emits a non-fatal deprecation warning that says what to do instead.
-2. **Genuine typos still error loudly.** A value that was _never_ valid must be rejected — `BROWX_CAPABILITIES=evel` (typo) errors; `BROWX_CAPABILITIES=unstable` (formerly valid, now retired) warns.
+2. **Genuine typos still error loudly.** A value that was _never_ valid must be rejected: `BROWX_CAPABILITIES=evel` (typo) errors; `BROWX_CAPABILITIES=unstable` (formerly valid, now retired) warns.
 3. **Full removal** happens only at a **major** version bump, with a CHANGELOG entry under `### Removed`.
 
-The distinction is **"formerly valid" (tolerate + warn) vs. "never valid" (reject)**.
+The distinction is "formerly valid" (tolerate + warn) vs. "never valid" (reject).
 
-## Reference implementation — `RETIRED_CAPABILITIES`
+## Reference implementation: `RETIRED_CAPABILITIES`
 
 `src/util/capabilities.ts` is the canonical example. When the `unstable` capability was retired:
 
@@ -51,5 +51,5 @@ Design inputs so this rarely bites. Favour additive evolution; keep the set of b
 
 ## Related
 
-- [`semver-clock.md`](semver-clock.md) — when the API-stable clock resets.
+- [`semver-clock.md`](semver-clock.md): when the API-stable clock resets.
 - [`../architecture/capability-posture-map.md`](../architecture/capability-posture-map.md)

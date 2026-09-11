@@ -4,14 +4,14 @@ Read this before writing or reviewing tests, fixtures, mocks, or capability-gate
 
 ## Testing philosophy
 
-Follow the Testing Trophy. For browxai, the trophy's biggest layer is **keystone**, because page-side regressions only surface against real Chromium. Unit tests support — they catch input-validation / output-shaping / capability-routing regressions. Plugin-integration tests cover the workspace plugin contract.
+Follow the Testing Trophy. For browxai, the trophy's biggest layer is **keystone**, because page-side regressions only surface against real Chromium. Unit tests support that layer: they catch input-validation, output-shaping and capability-routing regressions. Plugin-integration tests cover the workspace plugin contract.
 
-| Layer                                 | What it catches                                                              | What it can't                                         |
-| ------------------------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Static (TypeScript, ESLint, Prettier) | Type errors, lint violations, stringified-arrow-to-evaluate (ESLint rule).   | Behavior.                                             |
-| Unit                                  | Input validation, output shaping, capability-gate routing, error paths.      | Page-side function correctness.                       |
-| Plugin-integration                    | Plugin manifest contract, `register(api)` flow, namespace exposure.          | Real-page behavior.                                   |
-| Keystone                              | Real-Chromium DOM + navigation + ActionResult + capability-denial envelopes. | (Authoritative — the floor under which a tool ships.) |
+| Layer                                 | What it catches                                                              | What it can't                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Static (TypeScript, ESLint, Prettier) | Type errors, lint violations, stringified-arrow-to-evaluate (ESLint rule).   | Behavior.                                            |
+| Unit                                  | Input validation, output shaping, capability-gate routing, error paths.      | Page-side function correctness.                      |
+| Plugin-integration                    | Plugin manifest contract, `register(api)` flow, namespace exposure.          | Real-page behavior.                                  |
+| Keystone                              | Real-Chromium DOM + navigation + ActionResult + capability-denial envelopes. | (Authoritative: the floor under which a tool ships.) |
 
 Core principle: "The more your tests resemble the way browxai is used, the more confidence they can give you." The way browxai is used is: an agent drives a real Chromium. Keystone is closest to that.
 
@@ -53,7 +53,7 @@ Litmus test: "If I refactored the internals without changing the tool's MCP cont
 
 ## Capturing-mock pattern (required)
 
-When you must verify a side effect that has no observable return value (an event captured, a network intercept fired), capture the value in the mock implementation, then assert on the captured value — not on `mock.calls`:
+When you must verify a side effect that has no observable return value (an event captured, a network intercept fired), capture the value in the mock implementation and assert on what you captured. Don't assert on `mock.calls`:
 
 ```ts
 // Bad
@@ -99,13 +99,13 @@ expect(result.error.code).toBe(CAPABILITY_DENIED_CODE);
 expect(result.error.code).toBe("capability-denied");
 ```
 
-**Exception:** import constants for **inputs** (test data, fixture keys), not assertions.
+One exception: import constants for inputs such as test data and fixture keys. Assertions stay literal.
 
 ## Fixture readability
 
 - Durable constants and reusable fixture builders near the top of the test file.
 - One-off scenario values inline.
-- Named after the domain contract (`EXPECTED_DOM_EXPORT_SHAPE`, `DEFAULT_SNAPSHOT_REF_RANGE`) — not incidental setup (`fixture1`, `mockData`).
+- Named after the domain contract (`EXPECTED_DOM_EXPORT_SHAPE`, `DEFAULT_SNAPSHOT_REF_RANGE`). Incidental setup names like `fixture1` or `mockData` don't qualify.
 - Avoid giant inline objects in assertions; assign them to named expected constants when the shape is part of the contract.
 
 ```ts
@@ -116,12 +116,12 @@ it("returns capability-denied without eval", () => {
 });
 ```
 
-## AHA testing — avoid hasty abstractions
+## AHA testing: avoid hasty abstractions
 
 Balance between no abstraction (duplication) and over-abstraction (conditional logic in helpers).
 
-- **3+ tests with identical setup** justifies a builder.
-- Builders are **transparent** factory functions with an `overrides` parameter — no conditional logic.
+- Three or more tests with identical setup justify a builder.
+- Builders are transparent factory functions with an `overrides` parameter. No conditional logic inside.
 - Inline setup for one-off cases.
 
 ```ts
@@ -141,11 +141,11 @@ const browxai = await buildBrowxaiForKeystone({
 
 Avoid: factories with `if/else` on a `kind` parameter; >2 levels of `describe` nesting; shared `beforeEach` state that obscures what each test needs.
 
-## browxai-specific rule — page-side functions require keystone
+## browxai-specific rule: page-side functions require keystone
 
-**Any new tool calling `page.evaluate` / `locator.evaluate` MUST have a keystone test against real Chromium.**
+Any new tool calling `page.evaluate` / `locator.evaluate` MUST have a keystone test against real Chromium.
 
-Unit tests with a mocked `locator.evaluate` silently pass when the page-side code is broken — the dom_export / element_export bug class. See [`../page-side-functions/dom-export-trap.md`](../page-side-functions/dom-export-trap.md).
+Unit tests with a mocked `locator.evaluate` silently pass when the page-side code is broken, which is the dom_export / element_export bug class. See [`../page-side-functions/dom-export-trap.md`](../page-side-functions/dom-export-trap.md).
 
 This is not negotiable. A PR adding a page-side tool without a keystone test is incomplete, regardless of unit-test coverage.
 
@@ -171,11 +171,11 @@ Good acceptance criteria for a browxai feature:
 
 ## Heap / runtime-presence anti-pattern
 
-Asserting heap counts of an interface-typed value is meaningless — interfaces compile to no runtime artifact. If the assertion needs a runtime presence, verify the asserted type has it (class, constructor, Map/Set) before approving.
+Asserting heap counts of an interface-typed value is meaningless: interfaces compile to no runtime artifact. If the assertion needs a runtime presence, verify the asserted type has it (class, constructor, Map/Set) before approving.
 
 ## Test verification protocol
 
-When writing or reviewing tests, verify the test is actually working. **All verification by hand** — do not install or run external testing tools.
+When writing or reviewing tests, check that the test actually works. Verify by hand. Don't install or run external testing tools.
 
 **False positive check** (manual, inline):
 
@@ -187,7 +187,7 @@ When writing or reviewing tests, verify the test is actually working. **All veri
 
 - `pnpm lint` clean on modified test files.
 - `pnpm typecheck` clean.
-- No `as any` or `@ts-ignore` in test code — fix the root cause.
+- No `as any` or `@ts-ignore` in test code. Fix the root cause.
 
 ## Related
 

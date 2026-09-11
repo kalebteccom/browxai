@@ -14,7 +14,7 @@ code actually does, which in two cases is worse than reported.
 
 ## Items
 
-### 1. Attached-mode session ids do not isolate — CRITICAL
+### 1. Attached-mode session ids do not isolate (CRITICAL)
 
 Four agents against one attached Chrome; every session id resolved to the same
 page. One agent had roughly half its calls land on another agent's page. The
@@ -76,13 +76,13 @@ Measured against every unsettled-layout shape that could be built (rAF box
 jitter, scroll churn, node rebuild at rAF rate): on a target whose **node
 identity is stable**, `force` succeeds in 3–216 ms every time. It fails only
 when the target's node identity churns faster than one pointer action can
-complete — which is exactly the SPA re-render shape the reporter hit. So the gap
+complete, which is exactly the SPA re-render shape the reporter hit. So the gap
 is narrower than reported and real.
 
 Two things fell out of that measurement and shaped the fix. `boundingBox()`
 returned `null` 4/4 and `locator.evaluate(el => el.getBoundingClientRect())`
 returned a 0×0 rect 6/6 on the failure shape, because both split resolution from
-measurement across two round trips and the handle is already detached — so the
+measurement across two round trips and the handle is already detached. So the
 mode needs a single `page.evaluate` that queries and measures atomically, and
 therefore a CSS-addressable target. And awaiting the three CDP sends separately
 leaves a round trip between `mousePressed` and `mouseReleased` long enough for
@@ -93,7 +93,7 @@ targets having no connected common ancestor.
 
 The first blocked action does not name the call that unblocks it.
 
-**Not reproduced — already fixed.** The same finding is
+**Not reproduced. Already fixed.** The same finding is
 `2026-05-19-fanfest-qa.md` §2, and it was addressed by `472acfe feat:
 approve_actions discoverability`. Every confirm-gated action routes through
 `denyContent` (`src/tools/host-build.ts:193`), whose hint names
@@ -120,7 +120,7 @@ page bug. Asks for `--disable-background-timer-throttling`,
 launcher (`src/cli/chrome.ts:55`).
 
 **Design conflict worth naming:** `2026-05-19-fanfest-qa.md` §1 asked for the
-_opposite_ — the ability to genuinely throttle a backgrounded tab to reproduce
+_opposite_: the ability to genuinely throttle a backgrounded tab to reproduce
 lifecycle bugs. Same knob, two directions. Neither is a global flag; this is a
 per-session default with an override.
 
@@ -202,14 +202,14 @@ http→https upgrade stays quiet while a www/apex hop fires.
 **Item 3 → landed.** `profile_status`. Scoped honestly: a closed profile's
 cookie store is OS-key-encrypted, so the tool reports size, file count, newest
 mtime, live-session binding, and the already-open context's cookie **domains**
-where a session happens to be open — and says in its own description that it
+where a session happens to be open. It says in its own description that it
 cannot tell you whether a closed profile is authenticated. `modifiedAt` is what
 makes 140 directories collectable.
 
 **Item 4 → landed.** `click({ dispatch: "direct" })` resolves the target to a
 point and dispatches `mouseMoved`/`mousePressed`/`mouseReleased` through CDP,
 skipping the locator engine's pre-dispatch path. Events are trusted (real input
-pipeline, not page-side synthesis), and the browser still hit-tests — a keystone
+pipeline, not page-side synthesis), and the browser still hit-tests. A keystone
 asserts an overlay eats the click and a disabled control fires nothing, so it
 cannot punch through a consent scrim. Kept out of the capability lattice
 deliberately: it reaches no data, origin or device that capability `action` did
@@ -220,7 +220,7 @@ mitigation is evidence: every direct dispatch returns a warning naming the
 coordinate and the skipped checks, plus `element.hit.before`/`.after`.
 
 Refuses with a named reason on non-CDP engines and on targets that are not
-CSS-addressable (role/name-only refs, child-frame refs — an iframe's
+CSS-addressable (role/name-only refs, child-frame refs; an iframe's
 `getBoundingClientRect()` is frame-relative while CDP dispatches in main-frame
 viewport coordinates).
 
@@ -242,8 +242,8 @@ unbuilt.
 Ranking compared the accessible name against the _entire_ query, so the bonus
 never fired for natural-language input; the `past` link went from score 1 (rank 4) to 11 (rank 1). The visibility half was not a viewport or timing problem: a
 thin CDP a11y tree pushes candidates to the DOM-walk fallback, which reports an
-element's bare tag as `role`, producing `role=a[name="past"]` — a locator
-Playwright's role engine rejects — so every bbox probe failed and every visible
+element's bare tag as `role`, producing `role=a[name="past"]`, a locator
+Playwright's role engine rejects, so every bbox probe failed and every visible
 link read as off-screen. The coordinate-suggesting warning is reworded.
 
 **Item 9 → detection landed, evasion declined.** `ActionResult.challenge` names
@@ -253,7 +253,7 @@ generic timeout. `open_session({ channel: "chrome" })` addresses the stated root
 cause (managed mode drives Chrome for Testing) with a stock Playwright option.
 A 2026 benchmark measured `rebrowser-playwright` at parity with vanilla
 Playwright against live Cloudflare, and the only tool that cleared it is
-AGPL-3.0 Python that is not a Playwright drop-in — so no anti-detect dependency
+AGPL-3.0 Python that is not a Playwright drop-in. So no anti-detect dependency
 was adopted, and none is recommended.
 
 **Process lessons, both about trusting stale premises:**
@@ -267,6 +267,6 @@ was adopted, and none is recommended.
 2. **Documented invariants drift silently.** `docs/tool-reference.md` claimed
    "different ids are always isolated browser contexts regardless of mode",
    which was false for attached mode and is _still_ only half-true after the
-   fix — sessions get distinct tabs but share one cookie jar. The adopter
+   fix: sessions get distinct tabs but share one cookie jar. The adopter
    reasonably believed the doc. A claim of isolation is exactly the kind that
    needs a test behind it, and now has one.

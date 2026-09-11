@@ -47,9 +47,9 @@ Capabilities after Codex restart:
 This confirmed the startup capability gate had picked up `file-io`, not just the persisted
 managed config layer.
 
-## Workflow Covered
+## Workflow covered
 
-### 1. Startup Capability Check
+### 1. Startup capability check
 
 After Codex restart, `get_config({ scope: "env" })` included `file-io`, and tool discovery
 exposed `upload_file`.
@@ -57,7 +57,7 @@ exposed `upload_file`.
 This fixed the previous issue where `get_config({ scope: "resolved" })` could show a newly
 persisted capability while the live server-level gate still lacked it.
 
-### 2. Clipro Session Restore
+### 2. Clipro session restore
 
 Opened:
 
@@ -83,7 +83,7 @@ toolbar arrow-up button and opened the AI Voiceover tab via:
 [data-testid="side-panel-audio-recap-tab"]
 ```
 
-### 3. Drag Preflight On Narrow Replay Clip
+### 3. Drag preflight on a narrow replay clip
 
 I used the new `drag` preflight on a narrow replay timeline item:
 
@@ -120,7 +120,7 @@ This directly explained the earlier accidental resize during the first Browxai r
 preflight now gives an agent a reliable way to avoid dragging from a resize handle on small
 timeline clips.
 
-### 4. CSV Upload Via `upload_file`
+### 4. CSV upload via `upload_file`
 
 Used `upload_file` against the hidden CSV input:
 
@@ -182,7 +182,7 @@ Redux verification after upload:
 The replay clip at index 2 was skipped as a CSV match target, and script 2 extended through
 that replay segment. This matches the expected Clipro behavior for the ticket under test.
 
-### 5. Mismatch Error Path Via `upload_file`
+### 5. Mismatch error path via `upload_file`
 
 Uploaded an 18-row CSV through `upload_file`:
 
@@ -219,7 +219,7 @@ Redux confirmation:
 }
 ```
 
-### 6. Session Cleanup
+### 6. Session cleanup
 
 Closed the Browxai session:
 
@@ -231,7 +231,7 @@ Closed the Browxai session:
 }
 ```
 
-## Prior Run Coverage For Context
+## Prior run coverage for context
 
 The earlier Browxai run, before `upload_file` and drag preflight were available in this
 session, also verified the full replay edge-case matrix with real timeline drags:
@@ -261,7 +261,7 @@ path without `eval_js` file injection and with better drag safety diagnostics.
 
 ## Findings
 
-### `upload_file` Works Well For Hidden Inputs
+### `upload_file` works well for hidden inputs
 
 `upload_file` worked against a hidden CSV input using a selector. This is a meaningful
 improvement over the previous `eval_js` workaround that manually constructed `File` and
@@ -278,7 +278,7 @@ Remaining untested path:
 
 - `path` mode was not tested. The run only used inline base64 `content`.
 
-### `drag` Preflight Directly Solves The Timeline Resize Hazard
+### `drag` preflight directly solves the timeline resize hazard
 
 The preflight result caught exactly the problem encountered earlier: the agent thought it
 was dragging a replay clip body, but the press point was inside overlapping resize handles.
@@ -291,7 +291,7 @@ Recommended usage pattern for future media-editor flows:
 2. If `resizeRisk` is true, choose a safer selector/coordinate or avoid dragging that item.
 3. Only call the actual `drag` after the preflight hit stack is acceptable.
 
-### Persistent Profile State Is Useful But Can Carry Test Mutations
+### Persistent profile state is useful but can carry test mutations
 
 The persistent Clipro profile preserved authentication and the previously loaded project.
 That made the rerun fast. It also preserved manipulated timeline state from earlier tests,
@@ -306,7 +306,7 @@ Wishlist:
 - A profile reset/restore helper would make these tests easier to repeat without asking the
   human to reload a fresh project manually.
 
-### Config Precedence Is Now Clear In The Runbook
+### Config precedence is now clear in the runbook
 
 The runbook now documents that capabilities are resolved once at server startup and that
 persisted capability arrays replace the env layer. The rerun confirmed the correct setup:
@@ -320,7 +320,7 @@ The important diagnostic was checking both:
 If either omits a startup-gated capability, the agent should expect disabled-tool failures
 until the MCP server is restarted with the correct grant.
 
-### Tool Discovery Reflected The New Surface Correctly
+### Tool discovery reflected the new surface correctly
 
 After restart, tool discovery exposed:
 
@@ -331,16 +331,16 @@ After restart, tool discovery exposed:
 This made it clear that the live MCP process was using the updated Browxai build and
 startup capabilities.
 
-## Errors Or Friction
+## Errors or friction
 
-### Clipro Opened With A Modal Blocking The Workspace
+### Clipro opened with a modal blocking the workspace
 
 The persistent profile opened with a `Games Table` modal over the workspace. This was easy
 to clear with a real click, but it is a recurring prerequisite for this target app.
 
 Not a Browxai issue.
 
-### Preflight On Very Narrow Clips Can Still Point At Handles By Default
+### Preflight on very narrow clips can still point at handles by default
 
 Element-center targeting on a very narrow clip can still land inside handle overlap,
 because the resize handles themselves are wider than the clip body.
@@ -353,7 +353,7 @@ Possible future enhancement:
 - Return a suggested safer point when `resizeRisk` is true, if Browxai can infer one from
   the stack geometry.
 
-### `upload_file` Result Is Minimal
+### `upload_file` result is minimal
 
 The result shape was enough:
 
@@ -403,7 +403,7 @@ Preflight before dragging timeline clips:
 }
 ```
 
-### Future Browxai Enhancements
+### Future Browxai enhancements
 
 - `upload_file` could return file size/MIME/input visibility/file count.
 - `drag` preflight could optionally suggest a safer drag coordinate when `resizeRisk` is true.
@@ -412,7 +412,7 @@ Preflight before dragging timeline clips:
   - workspace-relative accepted path works
   - path escape is rejected
 
-## Final Assessment
+## Final assessment
 
 The new Browxai tools are a clear improvement for media-editor QA.
 
