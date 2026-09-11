@@ -1,9 +1,9 @@
-# browxai — plugin authoring guide (v1)
+# browxai plugin authoring guide (v1)
 
 This guide is for plugin authors. If you're an operator looking to
 _install_ a plugin, see [`docs/plugins.md`](./plugins.md). If you're
 looking to extend browxai's core surface (not write a plugin), the
-contribution path is `src/page/` / `src/session/` — plugins are for
+contribution path is `src/page/` / `src/session/`. Plugins are for
 self-contained surfaces an outside team owns.
 
 The plugin runtime ships as part of browxai's v1.0
@@ -43,36 +43,36 @@ five-key `package.json#browxai` field.
 
 Every field:
 
-- **`apiVersion`** (required) — semver of the plugin-runtime contract
+- **`apiVersion`** (required): semver of the plugin-runtime contract
   this plugin codes against. The runtime advertises
   `RUNTIME_API_VERSION = "1.0.0"`. Your plugin's `apiVersion` must
   share the runtime's major + have a minor ≤ runtime's minor. A
   plugin built for `1.0.0` runs under runtime `1.5.0`; a plugin built
   for `2.0.0` does NOT run under runtime `1.x` (rejected at load).
-- **`browxaiVersion`** (optional, advisory) — semver range of the
+- **`browxaiVersion`** (optional, advisory): semver range of the
   browxai host the plugin was tested against. Surfaced on
   `plugins_list`; never used to reject loading. If the running host's
   version falls outside the range, the runtime logs a warning at load
   time (untested combination) and loads the plugin anyway.
-- **`namespace`** (required) — the tool prefix. Every tool the
+- **`namespace`** (required): the tool prefix. Every tool the
   plugin registers MUST be `<namespace>.<tool>`. Namespace must
   match `/^[a-z][a-z0-9_]*$/` (lowercase, alphanumeric + underscore,
   starts with a letter). Reserved namespaces: `browxai`, `browx`,
   `core`, `system`, `plugins`. Two plugins claiming the same
-  namespace BOTH fail with a clear error — pick something project-
-  unique.
-- **`register`** (required) — relative path to the JS entry module.
+  namespace BOTH fail with a clear error. Pick something
+  project-unique.
+- **`register`** (required): relative path to the JS entry module.
   The module must export a `register(api)` function (named OR
   default). The runtime imports the module once at server start and
   calls `register(api)` exactly once.
-- **`capabilities`** (default `[]`) — capabilities the plugin's tools
+- **`capabilities`** (default `[]`): capabilities the plugin's tools
   need. Subset of the operator's enabled set at load time. Mismatch
   → plugin disabled (`status: "disabled-by-capability-mismatch"`),
   server still starts.
-- **`trust`** (optional) — `kalebtec | community | local`. Set
+- **`trust`** (optional): `kalebtec | community | local`. Set
   explicitly on Kalebtec-maintained plugins. The CLI overrides on
   community / local installs based on the install source.
-- **`dependsOn`** (default `[]`) — other browxai plugins this one
+- **`dependsOn`** (default `[]`): other browxai plugins this one
   calls into. Each entry is `{plugin: <npm-name>, version: <semver-range>}`.
 
 ## The `register(api)` function
@@ -95,25 +95,25 @@ export default register; // either named OR default export works
 
 The `api` argument exposes:
 
-- `api.namespace` — your plugin's namespace string.
-- `api.declaredCapabilities` — the array you set in the manifest.
-- `api.registerTool(name, def, handler)` — register a tool.
+- `api.namespace` is your plugin's namespace string.
+- `api.declaredCapabilities` is the array you set in the manifest.
+- `api.registerTool(name, def, handler)` registers a tool.
   - `name` MUST start with `<namespace>.`. Anything else throws
     synchronously.
-  - `def.description` — what the tool does, surfaced in MCP
+  - `def.description`: what the tool does, surfaced in MCP
     `tools/list`.
-  - `def.inputSchema` (optional) — a `Record<string, ZodTypeAny>`
+  - `def.inputSchema` (optional): a `Record<string, ZodTypeAny>`
     object. Same shape as core browxai tools use. Pass an empty
     object (or omit) for argless tools.
   - `handler(args)` returns the MCP envelope `{content:[...]}`.
     Handlers should produce `{ok:true,...}` or `{ok:false, error,...}`
-    JSON in the first text item — matches the convention every core
-    tool uses.
-- `api.callTool(targetName, args?)` — call another tool by name.
+    JSON in the first text item, which matches the convention every
+    core tool uses.
+- `api.callTool(targetName, args?)` calls another tool by name.
   Subject to call-graph enforcement (see below).
-- `api.log.{info,warn,error}` — plugin-scoped logger. Output is
+- `api.log.{info,warn,error}` is the plugin-scoped logger. Output is
   funnelled through the host's structured logger with `plugin=<name>`
-  attached. Plugins MUST NOT write to stdout/stderr directly — stdout
+  attached. Plugins MUST NOT write to stdout/stderr directly: stdout
   is the MCP wire.
 
 ## Namespace rule (why mandatory)
@@ -122,8 +122,8 @@ Every plugin tool is `<namespace>.<tool>`. The bare name without a
 prefix is **rejected** at `registerTool` time, even if the suffix
 would otherwise be unique. This rule:
 
-- Prevents plugins from overriding or wrapping core browxai tools —
-  the core surface lives in the implicit-root namespace and a plugin
+- Prevents plugins from overriding or wrapping core browxai tools.
+  The core surface lives in the implicit-root namespace, and a plugin
   trying to register `click` would fail.
 - Makes it obvious from a tool name alone which plugin owns it
   (`figma.move_node` vs `core_click`).
@@ -166,7 +166,7 @@ with a version range:
 
 The dep graph is built at server start; cycles abort startup loudly.
 A missing dep, or one whose installed version doesn't satisfy your
-range, downgrades YOUR plugin to `disabled-by-dep-missing` — the
+range, downgrades YOUR plugin to `disabled-by-dep-missing`. The
 target plugin still loads.
 
 ## Capability declarations
@@ -184,7 +184,7 @@ server's active set. Mismatch → your plugin is disabled with status
 `disabled-by-capability-mismatch` and the reason surfaces on
 `plugins_list`. The operator can fix by adding the capability to
 `BROWX_CAPABILITIES` (or `set_config({capabilities:[...]})`) and
-restarting the server — capabilities are resolved ONCE at server
+restarting the server. Capabilities are resolved ONCE at server
 start.
 
 At dispatch time every tool you register goes through the host's
@@ -194,19 +194,19 @@ the active set returns the same structured `requiredCapability` shape
 core browxai tools return.
 
 The v1 plugin-runtime contract gates the WHOLE plugin against the
-declared `capabilities` list — fine-grained per-tool capability
+declared `capabilities` list. Fine-grained per-tool capability
 declarations may come in a future minor version.
 
 ## Trust tiers
 
-- **`kalebtec`** — published by Kalebtec under `@browxai/plugin-*`.
+- `kalebtec`: published by Kalebtec under `@browxai/plugin-*`.
   Reference plugins; same release/CI hygiene as browxai itself.
-- **`community`** — third-party npm packages
+- `community`: third-party npm packages
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
-- **`local`** — file-path-installed plugins. Used during plugin
+- `local`: file-path-installed plugins. Used during plugin
   development (`browxai plugin install file:./my-plugin/`).
 
-Trust is **advisory** — the runtime gates all three tiers identically
+Trust is **advisory**: the runtime gates all three tiers identically
 at capability + call-graph time. Surfaced on `plugins_list` so the
 operator can audit.
 
@@ -223,11 +223,11 @@ This shells out to `pnpm add file:./my-plugin/` in the workspace's
 plugin install dir, writes the entry to `plugins.json`, pins the
 content hash in `plugins-lock.json`, and tags the plugin's trust
 tier as `local`. **Restart the browxai server** for the change to
-take effect — plugin lifecycle is resolved-once-at-server-start.
+take effect: plugin lifecycle is resolved-once-at-server-start.
 
 Local mode is the right shape for fast iteration: edit the plugin's
 source, rebuild it (`pnpm build` inside the plugin's own dir),
-restart the browxai server. There is **no hot reload** — the
+restart the browxai server. There is **no hot reload**. The
 restart is intentional, mirrors the capability lifecycle, and keeps
 the per-plugin call-graph deterministic across requests.
 
@@ -244,7 +244,7 @@ For Kalebtec plugins:
 For community plugins:
 
 1. Use the package name shape `browxai-plugin-<name>` or
-   `@<org>/browxai-plugin-<name>` — operators install by this name.
+   `@<org>/browxai-plugin-<name>`. Operators install by this name.
 2. Ship a built `dist/` directory and a typed `schema.d.ts`
    describing your tools' arg/result shapes (see "SDK typing" below).
 3. Publish the same way you'd publish any npm package
@@ -329,19 +329,18 @@ plugin actually does.
 
 ## Real-world plugins
 
-The example plugin is the toy / learning path. For a look at how real
-first-party plugins consume the runtime — declared capabilities, an
-`api.callTool("eval_js", …)` inner loop, structured app-not-loaded
-errors, the typed schema overlay — see the three canvas-app
-adapter plugins:
+The example plugin is the toy / learning path. The three canvas-app
+adapter plugins show how a real first-party plugin consumes the
+runtime: declared capabilities, an `api.callTool("eval_js", …)` inner
+loop, structured app-not-loaded errors, and the typed schema overlay.
 
-- [`@browxai/plugin-figma`](../packages/plugins/figma/) —
+- [`@browxai/plugin-figma`](../packages/plugins/figma/):
   selection / viewport / node mutate / rectangle create over Figma's
   page-side `figma.*` global.
-- [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/) —
+- [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/):
   shapes / viewport / create / delete / select over Tldraw's
   `window.editor` global.
-- [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) —
+- [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/):
   scene state / viewport / add / delete / scroll over Excalidraw's
   `window.excalidrawAPI` global.
 
@@ -353,6 +352,6 @@ return a clear `code:"<adapter>-not-loaded"` error when the host app
 isn't on the page. That shape is the recommended pattern for any new
 canvas-app adapter.
 
-The operator-facing reference for these plugins — every op with args,
-return shape, and error codes, plus a usage walkthrough — is
-[`docs/plugins-first-party.md`](./plugins-first-party.md).
+[`docs/plugins-first-party.md`](./plugins-first-party.md) is the
+operator-facing reference for these plugins: every op with args,
+return shape, and error codes, plus a usage walkthrough.

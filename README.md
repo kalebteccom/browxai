@@ -7,30 +7,30 @@
 <p align="center"><strong>A browser, built for agents.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read, and act on — over the Model Context Protocol or a typed TypeScript SDK.**
+**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK.**
 
-browxai is a browser-control server designed for agents, not for human programmers. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools — navigate, find, click, fill, read, screenshot — that return small, structured results instead of raw DOM dumps. It works with any model, drives five browser engines, and keeps the dangerous powers off until you turn them on.
+browxai is a browser-control server designed for agents, not for human programmers. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results instead of raw DOM dumps. It works with any model, drives five browser engines, and keeps the dangerous powers off until you turn them on.
 
 ## What your agent can do with it
 
-- **Drive a live web app.** Have a coding agent `navigate` to a page, `find` a control by natural-language query, `fill` a form, `click`, and verify the outcome from a structured `ActionResult` — without burning tokens on a full DOM dump.
+- **Drive a live web app.** Have a coding agent `navigate` to a page, `find` a control by natural-language query, `fill` a form, `click`, and verify the outcome from a structured `ActionResult`, without burning tokens on a full DOM dump.
 - **Work inside an authenticated session.** Open a `persistent` or `attached` (bring-your-own-browser) session so the agent operates inside a real, logged-in profile and can automate multi-step flows that need the existing cookies.
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
-- **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari — pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason rather than failing oddly (see the per-engine table in the [tool reference](docs/tool-reference.md)).
+- **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](docs/tool-reference.md)).
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run.
-- **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium) — e.g. an orchestrating agent plus a helper script.
+- **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium), say a parent agent plus a helper script.
 
 ## Why browxai
 
-- **Model-agnostic** — works with any MCP client (Claude, Codex, …); not locked to one model.
-- **Engine-agnostic** — the same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is honest rather than uniform: navigation, actions, snapshot/find, screenshots and storage work everywhere, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason.
-- **Token-efficient** — `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
-- **Safe by default** — capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking, attaching to your real Chrome) is off until you opt in.
-- **Owns the full session lifecycle** — managed profiles, BYOB attach, and authenticated, headed, or headless sessions — rather than wrapping someone else's automation API.
+- **Model-agnostic.** It works with any MCP client (Claude, Codex, …), so nothing here ties you to one model.
+- **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work everywhere, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason.
+- **Token-efficient.** `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
+- **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking, attaching to your real Chrome) is off until you opt in.
+- **Owns the full session lifecycle.** Managed profiles, BYOB attach, and sessions that can be authenticated, headed, or headless.
 
 ## Stability
 
-browxai follows semver. The public tool surface — tool names, documented input/output shapes, the `ActionResult` shape, and the default capability set — is frozen and semver-governed, so you can adopt it freely and pin your version. Anything behind an off-by-default capability is explicitly experimental and not covered by the stability guarantee. See the [Stability and semver](https://browxai.com/reference/tool-reference/#stability-and-semver) policy.
+browxai follows semver. The public tool surface (tool names, documented input/output shapes, the `ActionResult` shape, and the default capability set) is frozen and semver-governed, so you can adopt it freely and pin your version. Anything behind an off-by-default capability is explicitly experimental and not covered by the stability guarantee. See the [Stability and semver](https://browxai.com/reference/tool-reference/#stability-and-semver) policy.
 
 ## What "safe by default" does and does not mean
 
@@ -41,7 +41,7 @@ Two consequences worth knowing before you deploy:
 - **Plugins run in-process with full Node access.** The trust tier tells you where a plugin came from; the loader treats every tier identically at runtime, and nothing intercepts a plugin's calls. Adopting a plugin is exactly as consequential as adding an npm dependency, transitive deps included. See [plugin governance](docs/plugin-governance.md).
 - **The containment that contains is infrastructure.** For anything beyond driving your own machine against sites you own, run browxai in a container or VM as a non-root user with no route to your local network. [`deploy/Dockerfile`](deploy/Dockerfile) is a working starting point, and the [deployment checklist](docs/security-best-practices-for-adopters.md) is short.
 
-Chromium's own sandbox still isolates _page_ content the whole time — that boundary is real and is what the [threat model](docs/threat-model.md) is mostly about. The gap is between the browxai process and your host.
+Chromium's own sandbox still isolates _page_ content the whole time, which is the boundary the [threat model](docs/threat-model.md) is mostly about. The gap is between the browxai process and your host.
 
 ## Install
 
@@ -50,7 +50,7 @@ npm install -g browxai
 npx playwright-core install chromium    # one-time, ~150 MB
 ```
 
-Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
+Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
 ```jsonc
 {
@@ -60,11 +60,11 @@ Wire it into an MCP client (stdio transport) — e.g. in an `.mcp.json`:
 }
 ```
 
-That's it — your agent now has a browser. For drop-in setup per harness, see [Harness setup](#harness-setup) below.
+That's it. Your agent now has a browser. For drop-in setup per harness, see [Harness setup](#harness-setup) below.
 
 ## SDK (programmatic surface)
 
-To author a single TypeScript script and run it autonomously, browxai ships a typed SDK. Same tool registry, same capability gates, same egress hygiene — different transport.
+To author a single TypeScript script and run it autonomously, browxai ships a typed SDK. Same tool registry, same capability gates, same egress hygiene, over a different transport.
 
 ```ts
 import { createBrowxai } from "browxai";
@@ -79,24 +79,24 @@ await browxai.close();
 
 Three transports:
 
-- **In-process** (default) — single Node process; the SDK drives the server in-process. `close()` shuts the embedded server.
-- **Stdio child** (`transport: "stdio-child"`) — spawns the `browxai` bin as a subprocess and speaks MCP-over-stdio. `close()` ends the child.
-- **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`) — connects to a long-running `browxai serve --socket /tmp/foo.sock` process. Multiple clients can attach to ONE server (e.g. a parent agent plus a child script sharing one Chromium). `close()` ends only the local connection.
+- **In-process** (default). One Node process, with the SDK driving the server inside it. `close()` shuts the embedded server.
+- **Stdio child** (`transport: "stdio-child"`). Spawns the `browxai` bin as a subprocess and speaks MCP-over-stdio. `close()` ends the child.
+- **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`). Connects to a long-running `browxai serve --socket /tmp/foo.sock` process. Multiple clients can attach to ONE server (e.g. a parent agent plus a child script sharing one Chromium). `close()` ends only the local connection.
 
-The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })`. Calling a non-exposed tool — even via `client.callTool("eval_js", …)` — fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire.
+The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })`. Calling a non-exposed tool, even via `client.callTool("eval_js", …)`, fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire.
 
 ## Harness setup
 
-Ready-to-use setup for the common agent harnesses — MCP-server registration plus a portable "driving browxai well" Agent Skill — lives in **[`harness/`](harness/)**: [Claude Code](harness/adapters/claude-code/), [Codex](harness/adapters/codex/), [Pi](harness/adapters/pi/).
+**[`harness/`](harness/)** holds ready-to-use setup for the common agent harnesses: MCP-server registration plus a portable "driving browxai well" Agent Skill. One adapter each for [Claude Code](harness/adapters/claude-code/), [Codex](harness/adapters/codex/) and [Pi](harness/adapters/pi/).
 
 ## The surface
 
-- **`snapshot`** — compact accessibility tree + DOM-walk pass; every node gets a stable `[ref=eN]`.
-- **`find`** — natural-language query → ranked candidate locators with `selectorHint`, `stability`, a visible-rect `bbox`, and an `actionable` verdict.
-- **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) — each returns a structured `ActionResult`: what navigated, what structure changed, a console/network slice, and a post-action element probe.
-- **read tools** — `text_search`, `inspect`, `console_read`, `network_read`, `ws_read`, `screenshot`.
-- **sessions** — isolated per-session contexts (own cookie jar / refs); `persistent`, `incognito`, or `attached` (BYOB) modes; MCP-driven config.
-- **capabilities** — `read`, `navigation`, `action`, `human` on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, `secrets`, `extensions`, … are explicit opt-ins.
+- **`snapshot`** returns a compact accessibility tree plus a DOM-walk pass, and every node carries a stable `[ref=eN]`.
+- **`find`** turns a natural-language query into ranked candidate locators with `selectorHint`, `stability`, a visible-rect `bbox`, and an `actionable` verdict.
+- **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) each return a structured `ActionResult`: what navigated, what structure changed, a console/network slice, and a post-action element probe.
+- **read tools** cover `text_search`, `inspect`, `console_read`, `network_read`, `ws_read` and `screenshot`.
+- **sessions** each get an isolated context (own cookie jar and refs), come in `persistent`, `incognito` or `attached` (BYOB) flavours, and are configured over MCP.
+- **capabilities**: `read`, `navigation`, `action` and `human` are on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, `secrets`, `extensions`, … are explicit opt-ins.
 
 The full per-tool reference, the security model, and the stability policy are on the **[documentation site](https://browxai.com/)**.
 
@@ -112,30 +112,30 @@ pnpm docs:dev            # the documentation site, locally
 ```
 
 Three test lanes, in ascending cost. `pnpm test` is hermetic and browser-free.
-`pnpm test:keystone` drives real browsers — Chromium, Firefox and WebKit in CI;
+`pnpm test:keystone` drives real browsers: Chromium, Firefox and WebKit in CI.
 Android and Safari need a device and a Mac, so they run manually. Then
 `packages/capability-testbed/` is a multi-surface web app plus a harness that
-drives **every** tool against it, run on demand rather than in CI because it
-needs real browsers with every off-by-default capability switched on. That last
-lane is where the interesting failures live: its most recent pass went from
-181/196 to 196/196 and turned up six real defects a mocked unit test cannot see
-— a virtual-time race in `clock`, a cookie path-filter mismatch, an `extract`
-array leaf resolving empty, a `text_search` visibility filter discarding every
-match, a page-function serialization error in `drop_files`, and `set_locale`
-never moving `navigator.language`.
+drives **every** tool against it, run on demand because it needs real browsers
+with every off-by-default capability switched on. The testbed lane is where the
+interesting failures live. Its most recent pass went from 181/196 to 196/196 and
+turned up six real defects a mocked unit test cannot see: a virtual-time race in
+`clock`, a cookie path-filter mismatch, an `extract` array leaf resolving empty,
+a `text_search` visibility filter discarding every match, a page-function
+serialization error in `drop_files`, and `set_locale` never moving
+`navigator.language`.
 
 Project docs:
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — contributor workflow + DCO.
-- [AGENTS.md](AGENTS.md) — operating rules for AI-harness contributors.
-- [SECURITY.md](SECURITY.md) — vulnerability reporting + disclosure policy.
-- [MAINTAINERS.md](MAINTAINERS.md) — maintainer roster + responsibilities.
-- [RELEASING.md](RELEASING.md) — release ritual + OIDC publish flow.
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant adoption.
+- [CONTRIBUTING.md](CONTRIBUTING.md): contributor workflow + DCO.
+- [AGENTS.md](AGENTS.md): operating rules for AI-harness contributors.
+- [SECURITY.md](SECURITY.md): vulnerability reporting + disclosure policy.
+- [MAINTAINERS.md](MAINTAINERS.md): maintainer roster + responsibilities.
+- [RELEASING.md](RELEASING.md): release ritual + OIDC publish flow.
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md): Contributor Covenant adoption.
 
 ## License
 
-Code is MIT — see [LICENSE](LICENSE).
+Code is MIT. See [LICENSE](LICENSE).
 
 The **browxai name and logo are trademarks of Kalebtec** and are not
 covered by the MIT License. The brand assets under [`brand/`](brand/)
