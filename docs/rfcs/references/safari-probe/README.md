@@ -3,7 +3,7 @@
 First-party, reproducible probes of real `safaridriver`. They are the empirical basis for
 [`../06-safari-bidi-probe.md`](../06-safari-bidi-probe.md) and the implementation
 plan [`../07-safari-adapter-implementation-plan.md`](../07-safari-adapter-implementation-plan.md).
-Node v22+ only: they use the built-in global `WebSocket`, so there is no `ws` dependency.
+Node v22+ only. They use the built-in global `WebSocket`, so nothing needs installing.
 
 ```bash
 # 1. start safaridriver (HTTP on 4444; --bidi enables BiDi for hosted sessions)
