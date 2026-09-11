@@ -1,8 +1,8 @@
-# RFC 0004 / Reference 03 — Open/closed registry & port patterns (the target architecture)
+# RFC 0004 / Reference 03: Open/closed registry & port patterns (the target architecture)
 
-This is the **pattern catalogue** for RFC 0004 — the eight before/after designs that turn browxai's documented-but-unenforced doctrine into structure. Each pattern names a smell from the audit ([`0004-01-current-state-audit.md`](0004-01-current-state-audit.md)) with file:line evidence, states the target shape as compiling-shaped TypeScript over the real symbols (`EngineKind`, `BrowserSession`, `ToolHost`, `SessionEntry`, the substrate ports), and quantifies the OCP win as *files-to-edit before → after*. The patterns realize decisions **D1–D7** of the parent RFC ([`../0004-architecture-hardening.md`](../0004-architecture-hardening.md)); the fitness functions that keep each one true are specified in [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md); the sequenced, behavior-preserving rollout is in [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md).
+This is the **pattern catalogue** for RFC 0004: the eight before/after designs that turn browxai's documented-but-unenforced doctrine into structure. Each pattern names a smell from the audit ([`0004-01-current-state-audit.md`](0004-01-current-state-audit.md)) with file:line evidence, states the target shape as compiling-shaped TypeScript over the real symbols (`EngineKind`, `BrowserSession`, `ToolHost`, `SessionEntry`, the substrate ports), and quantifies the OCP win as *files-to-edit before → after*. The patterns realize decisions **D1–D7** of the parent RFC ([`../0004-architecture-hardening.md`](../0004-architecture-hardening.md)); the fitness functions that keep each one true are specified in [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md); the sequenced, behavior-preserving rollout is in [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md).
 
-> **Reading rule.** This catalogue is the *target*, not the *diff*. Every AFTER block is the shape the seam converges to; the refactor plan reaches it strangler-fig, byte-identical per engine, gate-green at every step. Where a BEFORE block is abbreviated, the citation locates the verbatim source. The doctrine these patterns extend — the proven-seam test, the dependency direction, the one-tool-one-file rule — is [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md); this document is its mechanization at the wiring layer, not a restatement.
+> **Reading rule.** This catalogue is the *target*, not the *diff*. Every AFTER block is the shape the seam converges to; the refactor plan reaches it strangler-fig, byte-identical per engine, gate-green at every step. Where a BEFORE block is abbreviated, the citation locates the verbatim source. The doctrine these patterns extend (the proven-seam test, the dependency direction, the one-tool-one-file rule) is [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md); this document is its mechanization at the wiring layer, not a restatement.
 
 ---
 
@@ -31,24 +31,24 @@ The eight patterns and the extension each one closes:
 
 ---
 
-## 1. THE `EngineRegistry` (D1) — the flagship
+## 1. THE `EngineRegistry` (D1): the flagship
 
-### Smell — engine *wiring* is hardcoded `if (engine === …)` in five-to-eight places
+### Smell: engine *wiring* is hardcoded `if (engine === …)` in five-to-eight places
 
-The five engine **adapters** are well-isolated classes (`PlaywrightChromiumAdapter`, `PlaywrightFirefoxAdapter`, `PlaywrightWebKitAdapter`, `AndroidCdpAdapter`, `SafaridriverHybridAdapter` — all exported from `src/engine/index.ts:31-54`). Their *instantiation and post-creation wiring* are not isolated; they are spread across the session layer as literal `engine === "…"` branches. Category **OCP**, severity **critical**. The audit's evidence, consolidated:
+The five engine **adapters** are well-isolated classes (`PlaywrightChromiumAdapter`, `PlaywrightFirefoxAdapter`, `PlaywrightWebKitAdapter`, `AndroidCdpAdapter`, `SafaridriverHybridAdapter`, all exported from `src/engine/index.ts:31-54`). Their *instantiation and post-creation wiring* are not isolated; they are spread across the session layer as literal `engine === "…"` branches. Category **OCP**, severity **critical**. The audit's evidence, consolidated:
 
 | Site | Evidence | What it does |
 |------|----------|--------------|
 | Managed factory | `src/session/managed.ts:22-42` (`engine === "android"`, `engine === "safari"`, else Playwright) | picks + launches the adapter |
 | Incognito factory | `src/session/incognito.ts` (same launch chain) | same engine dispatch, ephemeral mode |
 | BYOB factory | `src/session/byob.ts` (attach/refusal dispatch, *not* the same launch chain) | engine-literal dispatch over attach (`openAndroidByobSession`) / Safari refusal / Firefox-WebKit attach refusals / Chromium CDP attach |
-| Substrate selectors | `src/tools/host-build.ts:288-357` — `actionsFor` / `captureFor` / `storageFor` / `scriptFor` / `emulationFor` each do `e.session.safari?.()` then fall through to the Playwright class | picks the per-capability substrate |
-| Session post-wire | `src/tools/session-registry.ts:266,280,292,301,332,338,349,383,408,441,451,457,479,536,550,584,589` — 17 `sess.engine !== "safari"` guards | attaches console / HAR / video / bridge / policies / downloads / stealth / device-emu / workers |
-| Deep gate | `src/engine/tool-gate.ts:38-88` — `DEEP_TOOLS` is a hand-maintained `Set<string>` of 31 names | refuses CDP-hard tools off Chromium |
+| Substrate selectors | `src/tools/host-build.ts:288-357`: `actionsFor` / `captureFor` / `storageFor` / `scriptFor` / `emulationFor` each do `e.session.safari?.()` then fall through to the Playwright class | picks the per-capability substrate |
+| Session post-wire | `src/tools/session-registry.ts:266,280,292,301,332,338,349,383,408,441,451,457,479,536,550,584,589`, 17 `sess.engine !== "safari"` guards | attaches console / HAR / video / bridge / policies / downloads / stealth / device-emu / workers |
+| Deep gate | `src/engine/tool-gate.ts:38-88`, where `DEEP_TOOLS` is a hand-maintained `Set<string>` of 31 names | refuses CDP-hard tools off Chromium |
 
-The headline consequence is the falsification of the project's own flagship claim. architecture-principles §4 promises *"new engine = new adapter behind the existing port."* Today a sixth engine forces edits to `managed.ts`, `incognito.ts`, `byob.ts`, the five `host-build.ts` selectors, and the `session-registry.ts` post-wire — **5–8 existing files**, every one a merge-conflict surface and a place to forget a guard.
+The headline consequence is the falsification of the project's own flagship claim. architecture-principles §4 promises *"new engine = new adapter behind the existing port."* Today a sixth engine forces edits to `managed.ts`, `incognito.ts`, `byob.ts`, the five `host-build.ts` selectors, and the `session-registry.ts` post-wire: **5–8 existing files**, every one a merge-conflict surface and a place to forget a guard.
 
-The dispatch repeats across **three engine-literal dispatch sites**. `managed.ts` and `incognito.ts` share the same launch chain; `byob.ts` is *not* the same chain — it dispatches over attach/refusal paths (`openAndroidByobSession` attach, Safari refusal, Firefox/WebKit attach refusals, then Chromium CDP attach) — but it branches on the same engine literals, so it is the third site a sixth engine must touch. From `managed.ts:26-42`:
+The dispatch repeats across **three engine-literal dispatch sites**. `managed.ts` and `incognito.ts` share the same launch chain; `byob.ts` is *not* the same chain; it dispatches over attach/refusal paths (`openAndroidByobSession` attach, Safari refusal, Firefox/WebKit attach refusals, then Chromium CDP attach). But it branches on the same engine literals, so it is the third site a sixth engine must touch. From `managed.ts:26-42`:
 
 ```typescript
 // BEFORE — src/session/managed.ts:22-42 (abbreviated; incognito.ts shares this launch
@@ -64,7 +64,7 @@ if (engine === "safari") {
 // … Playwright launch path: firefox / webkit channel resolution, then chromium as the implicit else
 ```
 
-And the substrate selectors (`host-build.ts:288-357`) are five verbatim copies of one shape — the audit flags this as both OCP and DRY:
+And the substrate selectors (`host-build.ts:288-357`) are five verbatim copies of one shape, which the audit flags as both OCP and DRY:
 
 ```typescript
 // BEFORE — src/tools/host-build.ts:288-357 (5 selectors, identical skeleton)
@@ -83,11 +83,11 @@ const captureFor = (e: SessionEntry): CaptureSubstrate => {
 
 A sixth substrate (a future `DiagnosticsSubstrate`) copies the skeleton a sixth time; a sixth *engine* (a non-Playwright WebDriver engine) forces a new branch into all five selectors *and* the seventeen registry guards *and* the three dispatch sites.
 
-### Intent — the **Registry** pattern (Gamma et al.; the "replace conditional with polymorphism + lookup table" refactoring)
+### Intent: the **Registry** pattern (Gamma et al.; the "replace conditional with polymorphism + lookup table" refactoring)
 
-One `EngineEntry` per engine, registered in *one* file, captures the four things the session layer needs from an engine: how to make the adapter, how to make the per-capability substrates, what the engine declares as capabilities, and what post-creation wiring it wants. The factories, selectors, and gate become **data-driven lookups keyed by `session.engine`** — no literal branches anywhere above the seam. This is the literal realization of architecture-principles §4 and the single highest-leverage refactor in the RFC.
+One `EngineEntry` per engine, registered in *one* file, captures the four things the session layer needs from an engine: how to make the adapter, how to make the per-capability substrates, what the engine declares as capabilities, and what post-creation wiring it wants. The factories, selectors, and gate become **data-driven lookups keyed by `session.engine`**, with no literal branches anywhere above the seam. This is the literal realization of architecture-principles §4 and the single highest-leverage refactor in the RFC.
 
-### After — `EngineEntry` + `ENGINE_REGISTRY`, data-driven everywhere
+### After: `EngineEntry` + `ENGINE_REGISTRY`, data-driven everywhere
 
 The contract (new file, `src/engine/registry.ts`), built over the real `EngineKind`, `EngineCapabilities`, `BrowserSession`, `SessionEntry`, and the substrate-port types:
 
@@ -198,7 +198,7 @@ export function engineEntry(kind: EngineKind): EngineEntry {
 }
 ```
 
-Each adapter file ends with its registration — the only line that mentions the engine by name:
+Each adapter file ends with its registration, the only line that mentions the engine by name:
 
 ```typescript
 // AFTER — bottom of src/engine/adapters/safaridriver-hybrid.ts (mirrored in each adapter file)
@@ -250,7 +250,7 @@ const actionsFor = substrates.actions;   // SessionEntry => ActionSubstrate
 const captureFor = substrates.capture;   // … etc; the ToolHost shape is unchanged
 ```
 
-And the seventeen `sess.engine !== "safari"` guards in `session-registry.ts` collapse into one call — each engine's definition owns what it attaches:
+And the seventeen `sess.engine !== "safari"` guards in `session-registry.ts` collapse into one call, and each engine's definition owns what it attaches:
 
 ```typescript
 // AFTER — src/tools/session-registry.ts (the 17 guards are gone)
@@ -258,7 +258,7 @@ const entry = buildEntry(session /* … */);
 engineEntry(session.engine).postWire(entry); // Playwright: full set; Safari: minimal
 ```
 
-`DEEP_TOOLS` becomes derivable too — see Pattern 2 — but even before that, the gate's *engine* dimension reads `engineEntry(kind).capabilities.deep` instead of carrying engine knowledge.
+`DEEP_TOOLS` becomes derivable too (see Pattern 2), but even before that, the gate's *engine* dimension reads `engineEntry(kind).capabilities.deep` instead of carrying engine knowledge.
 
 ### OCP win
 
@@ -267,13 +267,13 @@ engineEntry(session.engine).postWire(entry); // Playwright: full set; Safari: mi
 | Add a sixth engine | edit `managed.ts` + `incognito.ts` + `byob.ts` + 5 selectors in `host-build.ts` + 17 guards in `session-registry.ts` (**5–8 files**) | **1 new file** (`adapters/<engine>.ts`) with one `registerEngine(...)` call |
 | Add a sixth substrate | copy the 5-line selector skeleton a 6th time across every engine | add one field to `SubstrateBundle`, implement it in each `makeSubstrates` |
 
-Enforced by **L1 — Closed core** (`no-engine-literal-branches` lint rule banning `engine === "<literal>"` above the seam) and the **engine-adapter-contract keystone** — a synthetic sixth engine registered with `registerEngine(...)` that must drive the engine-agnostic core (navigate / snapshot / find / click) with **zero core edits**. That keystone is the executable proof of architecture-principles §4; today the claim is documented and unverified (audit harness-and-docs#3).
+Enforced by **L1: Closed core** (`no-engine-literal-branches` lint rule banning `engine === "<literal>"` above the seam) and the **engine-adapter-contract keystone**: a synthetic sixth engine registered with `registerEngine(...)` that must drive the engine-agnostic core (navigate / snapshot / find / click) with **zero core edits**. That keystone is the executable proof of architecture-principles §4; today the claim is documented and unverified (audit harness-and-docs#3).
 
 ---
 
 ## 2. METADATA-AT-REGISTRATION + DERIVED MAPS (D2)
 
-### Smell — every tool's facts are hand-listed in up to five disjoint god-lists
+### Smell: every tool's facts are hand-listed in up to five disjoint god-lists
 
 A tool today carries no metadata about itself; instead, *facts about the tool* live in central lists the author must remember to edit. Category **OCP**, severity **critical**. The lists:
 
@@ -284,9 +284,9 @@ A tool today carries no metadata about itself; instead, *facts about the tool* l
 | CDP-deep (refuse off Chromium)? | `DEEP_TOOLS` (31 names) | `src/engine/tool-gate.ts:38-88` | tool runs on Firefox/WebKit and **crashes mid-call** instead of refusing (audit engine-adapters#2,#7) |
 | SDK type surface | `src/sdk/tool-types.ts` (673 LOC, hand-mirrored) | admits zod is source of truth, mirrors it anyway | drift between SDK types and the wire schema (audit plugin-sdk#2; see D7) |
 
-The defining property of all four: the fact lives *away from* the `host.register(...)` call that defines the tool, so adding a tool means editing the tool module **and** up to four central files — and every miss is silent, not a compile error. `isToolEnabled` (`capabilities.ts:574`) returns the permissive default for an unmapped tool; the batch set simply doesn't contain it; the deep gate doesn't know about it until a Firefox user hits a runtime crash.
+The defining property of all four: the fact lives *away from* the `host.register(...)` call that defines the tool, so adding a tool means editing the tool module **and** up to four central files, and every miss is silent, never a compile error. `isToolEnabled` (`capabilities.ts:574`) returns the permissive default for an unmapped tool; the batch set simply doesn't contain it; the deep gate doesn't know about it until a Firefox user hits a runtime crash.
 
-The current `register` signature already proves the colocation is *almost* there — it takes `description` and `inputSchema`, just not the gating facts (`src/tools/host.ts:60-64`):
+The current `register` signature already proves the colocation is *almost* there: it takes `description` and `inputSchema`, just not the gating facts (`src/tools/host.ts:60-64`):
 
 ```typescript
 // BEFORE — src/tools/host.ts:60-64 (register takes description + schema, but no gating metadata)
@@ -299,11 +299,11 @@ register: <S extends z.ZodRawShape = Record<string, never>>(
 
 So `click` declares its schema inline at `action-tools.ts:45-64`, but its capability (`"action"`) is asserted 480 lines away in `capabilities.ts`, its batchability in a 71-entry `Set` in `host-build.ts`, and its (non-)deepness by absence from `tool-gate.ts`. Three sources of truth for one tool's three facts.
 
-### Intent — **colocated declaration + derived maps** (DO-178C configuration-data discipline: declare once, derive the rest)
+### Intent: **colocated declaration + derived maps** (DO-178C configuration-data discipline: declare once, derive the rest)
 
 Extend `register` so a tool states its own gating facts where it is defined; build the central maps by **iterating the registry at startup** instead of hand-maintaining them. The single source of truth becomes the registration call.
 
-### After — metadata on `register`, maps derived
+### After: metadata on `register`, maps derived
 
 ```typescript
 // AFTER — src/tools/host.ts (register gains a metadata bundle)
@@ -364,32 +364,32 @@ The SDK type-types file (D7) is the fourth derivation: codegen reads the same re
 
 ### The completeness invariant this enables
 
-Once the facts are colocated, a fitness function can assert the property that no human-maintained list can: **every registered tool has a metadata row, and every name in every derived map traces back to a real registration.** No orphan in `TOOL_CAPABILITY` (a renamed tool whose stale row lingers), no tool defaulting to `human` by oversight, no `DEEP_TOOLS` entry for a tool that no longer exists. The check is a few lines over `registeredTools()` — see [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md) (L2 — Single source of truth).
+Once the facts are colocated, a fitness function can assert the property that no human-maintained list can: **every registered tool has a metadata row, and every name in every derived map traces back to a real registration.** No orphan in `TOOL_CAPABILITY` (a renamed tool whose stale row lingers), no tool defaulting to `human` by oversight, no `DEEP_TOOLS` entry for a tool that no longer exists. The check is a few lines over `registeredTools()`; see [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md) (L2: Single source of truth).
 
 ### OCP win
 
 | Extension | Before | After |
 |-----------|--------|-------|
-| Add a tool with a capability/batch/deep posture | edit the tool module + `capabilities.ts` + `host-build.ts` + `tool-gate.ts` (+ `sdk/tool-types.ts`) — **up to 5 files**, each miss silent | edit **1 file** (the `host.register` call); maps + types derive |
+| Add a tool with a capability/batch/deep posture | edit the tool module + `capabilities.ts` + `host-build.ts` + `tool-gate.ts` (+ `sdk/tool-types.ts`): **up to 5 files**, each miss silent | edit **1 file** (the `host.register` call); maps + types derive |
 
-Enforced by **L2 — Single source of truth** (the completeness fitness tests + the tool-types codegen drift check). This single change closes four OCP findings at once (capabilities, batch, deep, SDK types).
+Enforced by **L2: Single source of truth** (the completeness fitness tests + the tool-types codegen drift check). This single change closes four OCP findings at once (capabilities, batch, deep, SDK types).
 
 ---
 
 ## 3. PORT SEGREGATION (D3 / ISP)
 
-### Smell — a 35-member `ToolHost` and a 40-field `SessionEntry`, both passed whole
+### Smell: a 35-member `ToolHost` and a 40-field `SessionEntry`, both passed whole
 
 Two god-objects sit at the center of the tool layer. Category **ISP**, severity **medium-to-high**.
 
-- **`ToolHost`** declares 35 members (`src/tools/host.ts:54-189` — `register`, `entryFor`, `gateCheck`, `engineGate`, `confirmCtxFor`, `ctxFor`, `actionsFor`, `captureFor`, `storageFor`, `scriptFor`, `emulationFor`, `asTarget`, `actionTimeout`, `okText`, `errText`, `denyContent`, `asActionResultText`, …). A handler uses 8–12 of them (audit tools-and-seam#8): `click` touches exactly `gateCheck`, `entryFor`, `confirmCtxFor`, `denyContent`, `asTarget`, `actionTimeout`, `actionsFor`, `hintFromTarget`, `asActionResultText` (`action-tools.ts:66-85`). Adding a helper to the host forces an edit to the 35-member interface and recompiles every consumer.
-- **`SessionEntry`** carries 40 fields (`src/session/registry.ts:48-224` — `session`, `refs`, `snapshotSubstrate`, `networkSubstrate`, `frames`, `console`, `network`, `ws`, `wsInteractive`, `workers`, `bridge`, `recorder`, `feedback`, `clipboard`, `routes`, `regions`, `emulation`, `clock`, `seededRandom`, `perf`, `coverage`, `wedge`, `metrics`, `dialog`, `permission`, `notification`, `fsPicker`, `deviceEmulation`, …). A tool that reads `e.refs` and `e.dialog` still depends on the whole bag and recompiles when any field changes (audit session#3).
+- **`ToolHost`** declares 35 members (`src/tools/host.ts:54-189`: `register`, `entryFor`, `gateCheck`, `engineGate`, `confirmCtxFor`, `ctxFor`, `actionsFor`, `captureFor`, `storageFor`, `scriptFor`, `emulationFor`, `asTarget`, `actionTimeout`, `okText`, `errText`, `denyContent`, `asActionResultText`, …). A handler uses 8–12 of them (audit tools-and-seam#8): `click` touches exactly `gateCheck`, `entryFor`, `confirmCtxFor`, `denyContent`, `asTarget`, `actionTimeout`, `actionsFor`, `hintFromTarget`, `asActionResultText` (`action-tools.ts:66-85`). Adding a helper to the host forces an edit to the 35-member interface and recompiles every consumer.
+- **`SessionEntry`** carries 40 fields (`src/session/registry.ts:48-224`: `session`, `refs`, `snapshotSubstrate`, `networkSubstrate`, `frames`, `console`, `network`, `ws`, `wsInteractive`, `workers`, `bridge`, `recorder`, `feedback`, `clipboard`, `routes`, `regions`, `emulation`, `clock`, `seededRandom`, `perf`, `coverage`, `wedge`, `metrics`, `dialog`, `permission`, `notification`, `fsPicker`, `deviceEmulation`, …). A tool that reads `e.refs` and `e.dialog` still depends on the whole bag and recompiles when any field changes (audit session#3).
 
-### Intent — **Interface Segregation** (Martin): a consumer depends on the narrow role it uses, not the bag
+### Intent: **Interface Segregation** (Martin), where a consumer depends on the narrow role it uses, not the bag
 
-Split `ToolHost` into composable sub-ports a handler takes à la carte; split `SessionEntry` into role-bundles its consumers actually use. The host *implementation* stays one object — segregation is about the **contract** the handler depends on, not the object's identity.
+Split `ToolHost` into composable sub-ports a handler takes à la carte; split `SessionEntry` into role-bundles its consumers actually use. The host *implementation* stays one object; segregation is about the **contract** the handler depends on, not the object's identity.
 
-### After — sub-ports and role bundles
+### After: sub-ports and role bundles
 
 ```typescript
 // AFTER — src/tools/host-ports.ts (the 35-member ToolHost composed from narrow roles)
@@ -454,7 +454,7 @@ function registerClick(host: RegisterHost & GateHost & SessionHost & ActionHost 
 }
 ```
 
-`SessionEntry` segregates the same way — consumers depend on a role bundle, not the 40-field interface:
+`SessionEntry` segregates the same way: consumers depend on a role bundle, not the 40-field interface:
 
 ```typescript
 // AFTER — src/session/roles.ts (role bundles over the existing fields; SessionEntry composes them)
@@ -471,15 +471,15 @@ export type SessionEntry = SessionCore & ObserveRole & NetworkRole & PolicyRole 
 | Extension | Before | After |
 |-----------|--------|-------|
 | Add a host helper used by one family | edit the 35-member `ToolHost` interface; every consumer recompiles | add the member to the one sub-port that family depends on |
-| A handler's contract | implicitly "all 35" — a reader cannot tell what it touches | the function signature *is* the dependency list (GateHost & SessionHost & …) |
+| A handler's contract | implicitly "all 35", and a reader cannot tell what it touches | the function signature *is* the dependency list (GateHost & SessionHost & …) |
 
-Enforced by **L4 — Segregated contracts** (an interface-member budget that fails the build when a single port exceeds its cap, plus the dependency-cruiser "ToolHost split" rule). The win is also documentary: the segregated signature makes a handler's real dependencies legible to the next agent without reading the body.
+Enforced by **L4: Segregated contracts** (an interface-member budget that fails the build when a single port exceeds its cap, plus the dependency-cruiser "ToolHost split" rule). The win is also documentary: the segregated signature makes a handler's real dependencies legible to the next agent without reading the body.
 
 ---
 
 ## 4. THE `PolicyBuffer` BASE (D4)
 
-### Smell — five policy classes share a verbatim buffer+record body
+### Smell: five policy classes share a verbatim buffer+record body
 
 Five sibling policy classes each maintain an identical bounded ring with the same four methods. Category **DRY**, severity **high**. Evidence (audit session#0):
 
@@ -509,13 +509,13 @@ raisedSince(since: number): boolean {
 }
 ```
 
-A bug in the cap logic (off-by-one, timestamp comparison) must be fixed in five places; a sixth policy (`StoragePolicyState`) copies the pattern a sixth time. The bound is also load-bearing — this is L7 territory — so five independent copies of the bound is five places it can drift.
+A bug in the cap logic (off-by-one, timestamp comparison) must be fixed in five places; a sixth policy (`StoragePolicyState`) copies the pattern a sixth time. The bound is also load-bearing, L7 territory, so five independent copies of the bound is five places it can drift.
 
-### Intent — **Template Method via composition** (a generic `PolicyBuffer<TRecord>` the five classes delegate to)
+### Intent: **Template Method via composition** (a generic `PolicyBuffer<TRecord>` the five classes delegate to)
 
 Extract the bounded ring once as a generic over any record with a `ts: number`; each policy class composes one instance and forwards. Composition over inheritance keeps each policy free to own its policy-specific state (`policy`, `wired` WeakSet) while sharing the buffer.
 
-### After — `PolicyBuffer<TRecord>` + thin policy classes
+### After: `PolicyBuffer<TRecord>` + thin policy classes
 
 ```typescript
 // AFTER — src/session/policy-buffer.ts (new; the one home for the bounded record ring)
@@ -575,15 +575,15 @@ The other four collapse the same way; the policy-specific predicate (`handledAs 
 | Fix a buffer-cap bug | edit the body in 5 classes | edit `PolicyBuffer` once |
 | Add a 6th policy class | copy the full buffer+record body | compose `new PolicyBuffer<TRecord>()` and forward |
 
-Enforced by the **`jscpd` duplication budget** (L-derived; see D11) — the five-fold copy is exactly the duplication a budget catches and bans from re-accruing. The bound moving into one place also satisfies **L7 — Bounded everything** with a single tested cap instead of five.
+Enforced by the **`jscpd` duplication budget** (L-derived; see D11): the five-fold copy is exactly the duplication a budget catches and bans from re-accruing. The bound moving into one place also satisfies **L7: Bounded everything** with a single tested cap instead of five.
 
 ---
 
 ## 5. THE `actionTool()` WRAPPER (D4)
 
-### Smell — a seven-step action body repeated ~50×
+### Smell: a seven-step action body repeated ~50×
 
-Every action handler runs the same seven-step pipeline (audit tools-and-seam#9). Category **DRY**, severity **medium**, but high-leverage because the repeat count is ~50 and because the steps include the *error-handling and gating* posture — if the refusal shape changes, fifty handlers must change. The seven steps, verbatim from `click` (`src/tools/action-tools.ts:66-85`):
+Every action handler runs the same seven-step pipeline (audit tools-and-seam#9). Category **DRY**, severity **medium**, but high-leverage because the repeat count is ~50 and because the steps include the *error-handling and gating* posture: if the refusal shape changes, fifty handlers must change. The seven steps, verbatim from `click` (`src/tools/action-tools.ts:66-85`):
 
 ```typescript
 // BEFORE — src/tools/action-tools.ts:66-85 (the same 7 steps in click/fill/press/shortcut/hover/select/…)
@@ -601,13 +601,13 @@ async (args) => {
 }
 ```
 
-`fill` (`:95-115`), `press` (`:128-146`), `shortcut` (`:164+`), and ~46 others are the same skeleton with the verb and arg-mapping swapped. The engine-gate step (`engineGate`) is sometimes present, sometimes forgotten — the inconsistency the audit also flags (tools-and-seam#10): unwrapped handlers can leak an unhandled rejection.
+`fill` (`:95-115`), `press` (`:128-146`), `shortcut` (`:164+`), and ~46 others are the same skeleton with the verb and arg-mapping swapped. The engine-gate step (`engineGate`) is sometimes present, sometimes forgotten, the inconsistency the audit also flags (tools-and-seam#10): unwrapped handlers can leak an unhandled rejection.
 
-### Intent — **higher-order wrapper / Decorator** (one `actionTool()` owns the pipeline; the body supplies only step 6)
+### Intent: **higher-order wrapper / Decorator** (one `actionTool()` owns the pipeline; the body supplies only step 6)
 
-A single higher-order function takes the tool name, its options (which gates/confirm it needs), and a `body` that does only the engine-agnostic dispatch. The wrapper guarantees the gate → entry → confirm → target → timeout → engineGate sequence and the envelope, uniformly, for every action tool — making the catch-all and the engine-gate *structural* rather than per-handler discipline.
+A single higher-order function takes the tool name, its options (which gates/confirm it needs), and a `body` that does only the engine-agnostic dispatch. The wrapper guarantees the gate → entry → confirm → target → timeout → engineGate sequence and the envelope, uniformly, for every action tool, which makes the catch-all and the engine-gate *structural* rather than per-handler discipline.
 
-### After — `actionTool(name, opts, body)`
+### After: `actionTool(name, opts, body)`
 
 ```typescript
 // AFTER — src/tools/action-tool.ts (new; the one home for the 7-step pipeline)
@@ -674,27 +674,27 @@ actionTool(host, "click",
 | Change the action pipeline (e.g. add a metrics step) | edit ~50 handler bodies | edit `actionTool` once |
 | Add a new action tool | copy the 7-step skeleton, hope you include `engineGate` and the catch-all | one `actionTool(...)` call; the pipeline is guaranteed |
 
-Enforced by **L3 — One reason to change** (the `max-lines-per-function` budget — a handler that re-inlines the pipeline exceeds it) and by a lint rule that flags an action handler calling `host.register` directly instead of `actionTool`. The wrapper also closes the error-handling inconsistency (tools-and-seam#10): the catch-all is now structural.
+Enforced by **L3: One reason to change** (the `max-lines-per-function` budget, which a handler that re-inlines the pipeline exceeds) and by a lint rule that flags an action handler calling `host.register` directly instead of `actionTool`. The wrapper also closes the error-handling inconsistency (tools-and-seam#10): the catch-all is now structural.
 
 ---
 
 ## 6. THE `EgressSanitiser` CHOKEPOINT (D4)
 
-### Smell — masking is hand-called at each sink; forgetting it leaks
+### Smell: masking is hand-called at each sink; forgetting it leaks
 
 Secrets-masking + URL-sanitisation is a *discipline*, not a *guarantee*. Category **error-handling / spaghetti**, severity **medium**, but the consequence is a data leak. Evidence:
 
-- The composition helper exists but is **optional**: `composeUrlAndSecretsInText` (`src/util/secrets.ts:256`) applies URL-sanitiser then secrets-masking in the right order — but a caller must *remember* to invoke it (audit policy-util#3).
-- `src/page/network.ts` reimplements the fold+mask three times (`foldInteresting` at `:140`; `NetworkTap.close` inlines it at `:259-263`; `NetworkBuffer.recent`/`iter` again at `:677`) — and `iter()` (`network.ts:66`, `:663`, `:933`) returns a **raw, unmasked snapshot** by design, so a handler that returns `iter()` results leaks raw URLs (audit page-features#1,#7).
-- Diagnostics masks args by calling `applyMaskDeep` directly (`src/util/secrets.ts:183`) without the URL pass — different sinks apply different subsets of the masking.
+- The composition helper exists but is **optional**: `composeUrlAndSecretsInText` (`src/util/secrets.ts:256`) applies URL-sanitiser then secrets-masking in the right order, but a caller must *remember* to invoke it (audit policy-util#3).
+- `src/page/network.ts` reimplements the fold+mask three times (`foldInteresting` at `:140`; `NetworkTap.close` inlines it at `:259-263`; `NetworkBuffer.recent`/`iter` again at `:677`), and `iter()` (`network.ts:66`, `:663`, `:933`) returns a **raw, unmasked snapshot** by design, so a handler that returns `iter()` results leaks raw URLs (audit page-features#1,#7).
+- Diagnostics masks args by calling `applyMaskDeep` directly (`src/util/secrets.ts:183`) without the URL pass, so different sinks apply different subsets of the masking.
 
 The pattern is "remember to call the masker at every output path." There is no compile-time signal that an output path is unmasked.
 
-### Intent — **the Chokepoint pattern** (one injected `EgressSanitiser` every output path routes through; absence is a type error)
+### Intent: **the Chokepoint pattern** (one injected `EgressSanitiser` every output path routes through; absence is a type error)
 
-Introduce one `EgressSanitiser` that owns the URL-sanitiser + the `SecretRegistry` and exposes the only masking surface. Inject it into every sink. A new output path *cannot compile* without a sanitiser argument — masking moves from discipline to type-enforced guarantee.
+Introduce one `EgressSanitiser` that owns the URL-sanitiser + the `SecretRegistry` and exposes the only masking surface. Inject it into every sink. A new output path *cannot compile* without a sanitiser argument: masking moves from discipline to type-enforced guarantee.
 
-### After — `EgressSanitiser` injected into sinks
+### After: `EgressSanitiser` injected into sinks
 
 ```typescript
 // AFTER — src/util/egress.ts (new; the single masking surface)
@@ -751,16 +751,16 @@ class NetworkBuffer {
 
 | Extension | Before | After |
 |-----------|--------|-------|
-| Add a new output sink | remember to call `composeUrlAndSecretsInText` (or leak) | the sink's constructor *requires* an `EgressSanitiser` — omitting it is a compile error |
+| Add a new output sink | remember to call `composeUrlAndSecretsInText` (or leak) | the sink's constructor *requires* an `EgressSanitiser`, and omitting it is a compile error |
 | Change the masking order/rule | edit each hand-call site (4+ in network.ts alone) | edit `EgressSanitiser` once |
 
-Enforced by **L2 / L6 — Validate at the edge** (the masking becomes a *compile-time* guarantee, the parent RFC's exact phrasing for D4(d)) and a dependency-cruiser rule that forbids a tool-layer module from importing `SecretRegistry` directly — output goes through the chokepoint, never around it.
+Enforced by **L2 / L6: Validate at the edge** (the masking becomes a *compile-time* guarantee, the parent RFC's exact phrasing for D4(d)) and a dependency-cruiser rule that forbids a tool-layer module from importing `SecretRegistry` directly, so output goes through the chokepoint, never around it.
 
 ---
 
 ## 7. SWITCH → REGISTRY (D6)
 
-### Smell — five extensibility points are `switch`/stringly-map over real, multi-case seams
+### Smell: five extensibility points are `switch`/stringly-map over real, multi-case seams
 
 Every one of these has multiple real cases *today* (so the seam is proven, not speculative), yet each adds a case by editing a central conditional. Category **OCP**, severity **medium**.
 
@@ -772,7 +772,7 @@ Every one of these has multiple real cases *today* (so the seam is proven, not s
 | Perf analysers | `src/page/perf-audit.ts:88-97` (`ANALYSERS` record) **+** `AuditCategory` union (`:23-31`) **+** `ALL_AUDIT_CATEGORIES` array (`:33-42`) | 8 categories, **3 edit sites each** |
 | Session mode / PM verbs | `src/session/types.ts:9` mode literals; `src/plugin/cli.ts:151-160` `PM_VERBS` | managed/byob; pnpm/npm |
 
-The perf analyser registry is the sharpest case because architecture-principles §2 *cites it as browxai's OCP exemplar* — yet its implementation needs three coordinated edits to add a category (the `ANALYSERS` record, the `AuditCategory` union, the `ALL_AUDIT_CATEGORIES` array), and a typo in a category string is silently dropped at `composeReport` (audit page-features#3). The exemplar is not exemplary.
+The perf analyser registry is the sharpest case because architecture-principles §2 *cites it as browxai's OCP exemplar*, yet its implementation needs three coordinated edits to add a category (the `ANALYSERS` record, the `AuditCategory` union, the `ALL_AUDIT_CATEGORIES` array), and a typo in a category string is silently dropped at `composeReport` (audit page-features#3). The exemplar is not exemplary.
 
 ```typescript
 // BEFORE — src/page/perf-audit.ts:23-97 (one fact — "the audit categories" — stated three times)
@@ -793,9 +793,9 @@ switch (mode) {
 }
 ```
 
-### Intent — **Registry** (the `Map<key, factory>` registered add-only). The perf case additionally uses **derive-from-the-source** so the union and array stop being a second/third source of truth.
+### Intent: **Registry** (the `Map<key, factory>` registered add-only). The perf case additionally uses **derive-from-the-source** so the union and array stop being a second/third source of truth.
 
-### After — the analyser registry made actually data-driven, and a transport factory map
+### After: the analyser registry made actually data-driven, and a transport factory map
 
 The perf-audit exemplar, fixed so the category set is declared **once** and the type + array derive (the audit's own `as const` fix):
 
@@ -816,7 +816,7 @@ export type AuditCategory = keyof typeof ANALYSERS;                          // 
 export const ALL_AUDIT_CATEGORIES = Object.keys(ANALYSERS) as AuditCategory[]; // derived — was :33-42
 ```
 
-The SDK transport switch becomes a factory registry — a fourth transport is a registration, not a composition-root edit:
+The SDK transport switch becomes a factory registry: a fourth transport is a registration, not a composition-root edit:
 
 ```typescript
 // AFTER — src/sdk/transport-registry.ts (add-only; the SdkTransport contract is the real one from transport.ts)
@@ -856,9 +856,9 @@ Enforced by **D6 / L1** and the **dependency-cruiser layering rule** (the SDK co
 
 ## 8. THE SAFARI `page()` CAPABILITY (D5)
 
-### Smell — `page()` throws on Safari → 17 defensive guards leak the no-Page seam everywhere
+### Smell: `page()` throws on Safari → 17 defensive guards leak the no-Page seam everywhere
 
-`BrowserSession.page()` is typed as a total method returning `Page` (`src/session/types.ts:86`, documented as throwing at `src/session/types.ts:95`), but the Safari implementation *throws unconditionally* at `src/session/safari-session.ts:35` (`NO_PLAYWRIGHT_PAGE`). That is a Liskov violation: a `BrowserSession` is not substitutable, because calling a contract method crashes on one implementation. The symptom is 17 defensive `sess.engine !== "safari"` guards scattered through `session-registry.ts` (`:266,280,292,301,332,338,349,383,408,441,451,457,479,536,550,584,589`) — every caller that wants `page()` must first check the engine by name. Category **LSP**, severity **high** (audit session#2, engine-adapters#4).
+`BrowserSession.page()` is typed as a total method returning `Page` (`src/session/types.ts:86`, documented as throwing at `src/session/types.ts:95`), but the Safari implementation *throws unconditionally* at `src/session/safari-session.ts:35` (`NO_PLAYWRIGHT_PAGE`). That is a Liskov violation: a `BrowserSession` is not substitutable, because calling a contract method crashes on one implementation. The symptom is 17 defensive `sess.engine !== "safari"` guards scattered through `session-registry.ts` (`:266,280,292,301,332,338,349,383,408,441,451,457,479,536,550,584,589`). Every caller that wants `page()` must first check the engine by name. Category **LSP**, severity **high** (audit session#2, engine-adapters#4).
 
 ```typescript
 // BEFORE — src/session/types.ts:86 — a total method one implementation can't honour
@@ -876,13 +876,13 @@ export interface BrowserSession {
 if (sess.engine !== "safari") attachDialogPolicy(sess.page().context(), dialogState); // :338
 ```
 
-Note the codebase already got `cdp?()` right — it is optional and consumers route through `requireCdp()` with a structured error (`types.ts:87-92`). And `safari?()` is *already* the correct capability shape (`src/session/types.ts`). The residual defect is that `page()` is still typed total, so the no-Page seam leaks as 17 runtime guards rather than a compile-time narrowing.
+Note the codebase already got `cdp?()` right: it is optional and consumers route through `requireCdp()` with a structured error (`types.ts:87-92`). And `safari?()` is *already* the correct capability shape (`src/session/types.ts`). The residual defect is that `page()` is still typed total, so the no-Page seam leaks as 17 runtime guards rather than a compile-time narrowing.
 
-### Intent — **make absence a type, not a throw** (the capability is *declared*, callers must *narrow*; the no-Page handling lives once in `EngineRegistry.postWire`)
+### Intent: **make absence a type, not a throw** (the capability is *declared*, callers must *narrow*; the no-Page handling lives once in `EngineRegistry.postWire`)
 
-Type `page()` as optional — present only when the engine has a Playwright Page — so the type system *forces* a caller that needs it to narrow, exactly as `cdp?()` already does. The 17 guards move into the single `EngineRegistry.postWire` (Pattern 1), where each engine's definition attaches only the bookkeeping it supports. The port-conformance contract test then forbids any port method that throws unconditionally — the smell can never recur.
+Type `page()` as optional, present only when the engine has a Playwright Page, so the type system *forces* a caller that needs it to narrow, exactly as `cdp?()` already does. The 17 guards move into the single `EngineRegistry.postWire` (Pattern 1), where each engine's definition attaches only the bookkeeping it supports. The port-conformance contract test then forbids any port method that throws unconditionally, so the smell can never recur.
 
-### After — `page?()` optional + the guards relocated to `postWire`
+### After: `page?()` optional + the guards relocated to `postWire`
 
 ```typescript
 // AFTER — src/session/types.ts (page is a capability; absence is typed, like cdp/safari already are)
@@ -917,35 +917,35 @@ postWire: (entry) => {
 postWire: (entry) => attachSafariConsoleBidi(entry), // console over BiDi; nothing Page-bound
 ```
 
-The audit's "remove the runtime refusal from `SafariActionSubstrate`" recommendation (page-core#5) is the same principle one layer down: with the capability gate (`engineGate`) refusing unsupported tool/engine pairs *before* dispatch, a substrate method should never be reached for an action it can't do — so it implements only what it supports rather than returning `safariUnsupportedAction(...)` at runtime. The ISP split of `ActionSubstrate` into `BaseActionSubstrate` (navigate/click/fill/press) + role interfaces (page-core#1) means Safari *can't* be forced to implement methods it refuses — unsupported becomes a compile error, not a runtime envelope.
+The audit's "remove the runtime refusal from `SafariActionSubstrate`" recommendation (page-core#5) is the same principle one layer down: with the capability gate (`engineGate`) refusing unsupported tool/engine pairs *before* dispatch, a substrate method should never be reached for an action it can't do, so it implements only what it supports rather than returning `safariUnsupportedAction(...)` at runtime. The ISP split of `ActionSubstrate` into `BaseActionSubstrate` (navigate/click/fill/press) + role interfaces (page-core#1) means Safari *can't* be forced to implement methods it refuses: unsupported becomes a compile error, not a runtime envelope.
 
 ### OCP win
 
 | Extension | Before | After |
 |-----------|--------|-------|
 | Add a non-Playwright engine (no Page) | add a 19th, 20th, … `engine !== "<engine>"` guard at every `page()` site | the type forces narrowing; the engine's `postWire` attaches its own set; **zero guards** |
-| A caller that needs `page()` | nothing stops it calling `page()` on Safari → runtime crash | `page` is `Page | undefined` — the compiler requires the narrow |
+| A caller that needs `page()` | nothing stops it calling `page()` on Safari → runtime crash | `page` is `Page | undefined`, so the compiler requires the narrow |
 
-Enforced by **L5 — Substitutable adapters** (the port-conformance contract test runs against *every* adapter, including a synthetic one, and **fails on any port method that throws unconditionally**) and **L1** (no caller may branch on engine name to compensate for a leaky port). This makes the Safari no-Page seam — which RFC 0002/0003 introduced as the project's first non-Playwright engine — a typed capability rather than 17 places to remember.
+Enforced by **L5: Substitutable adapters** (the port-conformance contract test runs against *every* adapter, including a synthetic one, and **fails on any port method that throws unconditionally**) and **L1** (no caller may branch on engine name to compensate for a leaky port). This makes the Safari no-Page seam, which RFC 0002/0003 introduced as the project's first non-Playwright engine, a typed capability rather than 17 places to remember.
 
 ---
 
 ## Cross-cutting: why these eight, and how they compose
 
-The patterns are not independent fixes; they reinforce. **Pattern 1 (`EngineRegistry`)** is the keystone — it absorbs the substrate selectors (the DRY half of its own smell), gives Pattern 8 its home for the relocated guards, and reads `capabilities.deep` so the deep gate stops carrying engine knowledge. **Pattern 2 (metadata-at-registration)** makes `DEEP_TOOLS` derivable, which closes the last engine-aware central list. **Pattern 3 (port segregation)** is what makes **Pattern 5 (`actionTool`)** legible — the wrapper's `body` depends on `ActionHost & EnvelopeHost`, not the 35-member bag. **Pattern 6 (`EgressSanitiser`)** and **Pattern 4 (`PolicyBuffer`)** are the two DRY extractions that turn discipline into structure (a compile-time masking guarantee; a single bounded ring). **Pattern 7 (switch → registry)** generalizes the registry move to the CLI/transport/analyser/mode seams the audit proved are multi-case today.
+The patterns are not independent fixes; they reinforce. **Pattern 1 (`EngineRegistry`)** is the keystone: it absorbs the substrate selectors (the DRY half of its own smell), gives Pattern 8 its home for the relocated guards, and reads `capabilities.deep` so the deep gate stops carrying engine knowledge. **Pattern 2 (metadata-at-registration)** makes `DEEP_TOOLS` derivable, which closes the last engine-aware central list. **Pattern 3 (port segregation)** is what makes **Pattern 5 (`actionTool`)** legible: the wrapper's `body` depends on `ActionHost & EnvelopeHost`, not the 35-member bag. **Pattern 6 (`EgressSanitiser`)** and **Pattern 4 (`PolicyBuffer`)** are the two DRY extractions that turn discipline into structure (a compile-time masking guarantee; a single bounded ring). **Pattern 7 (switch → registry)** generalizes the registry move to the CLI/transport/analyser/mode seams the audit proved are multi-case today.
 
-Every AFTER block above is a *target shape*, reached strangler-fig: the registry lands behind the existing call sites, the maps derive alongside the hand-lists until the completeness test confirms parity, then the hand-lists are deleted. No pattern changes external behavior; the five-engine keystone suite is the regression gate throughout. The fitness function that *keeps* each pattern true — the lint rule, the contract test, the budget — is the inseparable other half, specified in [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md). Without it, these patterns are documentation that the next agent can drift past; with it, the drift is a red build.
+Every AFTER block above is a *target shape*, reached strangler-fig: the registry lands behind the existing call sites, the maps derive alongside the hand-lists until the completeness test confirms parity, then the hand-lists are deleted. No pattern changes external behavior; the five-engine keystone suite is the regression gate throughout. The fitness function that *keeps* each pattern true (the lint rule, the contract test, the budget) is the inseparable other half, specified in [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md). Without it, these patterns are documentation that the next agent can drift past; with it, the drift is a red build.
 
 ---
 
 ## References
 
-- [`../0004-architecture-hardening.md`](../0004-architecture-hardening.md) — the parent RFC: the thesis, the ten laws (L1–L10), the decisions (D1–D12), the phasing. This catalogue realizes **D1–D7**.
-- [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md) — the adversarial audit: the 80 findings with file:line evidence and the OCP extension-scenario tables this document's "before" columns draw from.
-- [`0004-02-maintainability-standard.md`](0004-02-maintainability-standard.md) — the ten laws in full, with the safety-critical lineage each enforcer derives from.
-- [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md) — the sequenced, behavior-preserving rollout from each "before" to each "after," with per-phase file inventories and rollback.
-- [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md) — the executable enforcer for every pattern here: `no-engine-literal-branches`, the engine-adapter-contract keystone, the completeness/port-conformance tests, the size/complexity/duplication budgets, the dependency-cruiser layering.
-- [`../0002-multi-engine-bidi.md`](../0002-multi-engine-bidi.md) — the `BrowserEngine` port these registries close over.
-- [`../0003-capability-ports-decoupling.md`](../0003-capability-ports-decoupling.md) — the capability substrates Patterns 1, 3, and 8 build on; its line-range module decomposition is the SRP debt Pattern 3 (D3) pays down.
-- [`../../ai-context/architecture/architecture-principles.md`](../../ai-context/architecture/architecture-principles.md) — the doctrine extended here: §1 (proven-seam test), §4 ("new engine = new adapter" — the claim Pattern 1 makes true), §2 (the perf-analyser OCP exemplar Pattern 7 makes real).
-- [`../../ai-context/agent-process/code-quality.md`](../../ai-context/agent-process/code-quality.md) — the micro-rules these macro patterns sit above; the comment-hygiene and no-inline-disable norms apply to every AFTER block.
+- [`../0004-architecture-hardening.md`](../0004-architecture-hardening.md) is the parent RFC: the thesis, the ten laws (L1–L10), the decisions (D1–D12), the phasing. This catalogue realizes **D1–D7**.
+- [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md), the adversarial audit: the 80 findings with file:line evidence and the OCP extension-scenario tables this document's "before" columns draw from.
+- [`0004-02-maintainability-standard.md`](0004-02-maintainability-standard.md): the ten laws in full, with the safety-critical lineage each enforcer derives from.
+- [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md): the sequenced, behavior-preserving rollout from each "before" to each "after," with per-phase file inventories and rollback.
+- [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md), the executable enforcer for every pattern here: `no-engine-literal-branches`, the engine-adapter-contract keystone, the completeness/port-conformance tests, the size/complexity/duplication budgets, the dependency-cruiser layering.
+- [`../0002-multi-engine-bidi.md`](../0002-multi-engine-bidi.md): the `BrowserEngine` port these registries close over.
+- [`../0003-capability-ports-decoupling.md`](../0003-capability-ports-decoupling.md): the capability substrates Patterns 1, 3, and 8 build on; its line-range module decomposition is the SRP debt Pattern 3 (D3) pays down.
+- [`../../ai-context/architecture/architecture-principles.md`](../../ai-context/architecture/architecture-principles.md), the doctrine extended here: §1 (proven-seam test), §4 ("new engine = new adapter", the claim Pattern 1 makes true), §2 (the perf-analyser OCP exemplar Pattern 7 makes real).
+- [`../../ai-context/agent-process/code-quality.md`](../../ai-context/agent-process/code-quality.md): the micro-rules these macro patterns sit above; the comment-hygiene and no-inline-disable norms apply to every AFTER block.

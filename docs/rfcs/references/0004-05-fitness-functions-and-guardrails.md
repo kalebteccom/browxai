@@ -1,14 +1,14 @@
-# RFC 0004 / Reference 05 — Fitness functions & guardrails (the executable architecture)
+# RFC 0004 / Reference 05: Fitness functions & guardrails (the executable architecture)
 
-**Parent:** [`0004-architecture-hardening.md`](../0004-architecture-hardening.md). This is the guardrail spec — the concrete config and code for every mechanized enforcer named in the parent's ten laws (L1–L10) and decisions D8–D12. Where the parent says "enforced by an executable fitness function," this document is that function: the custom ESLint rules, the `test/architecture/**` fitness suite, the `dependency-cruiser` layering config, the numeric budgets, the tool-types codegen, the CI wiring, and the meta-rule that keeps a guardrail from quietly dying via an inline disable.
+**Parent:** [`0004-architecture-hardening.md`](../0004-architecture-hardening.md). This is the guardrail spec: the concrete config and code for every mechanized enforcer named in the parent's ten laws (L1–L10) and decisions D8–D12. Where the parent says "enforced by an executable fitness function," this document is that function: the custom ESLint rules, the `test/architecture/**` fitness suite, the `dependency-cruiser` layering config, the numeric budgets, the tool-types codegen, the CI wiring, and the meta-rule that keeps a guardrail from quietly dying via an inline disable.
 
-The thesis of RFC 0004 is that browxai's **doctrine is excellent and unenforced** — every one of the 80 audited defects ([`0004-01-current-state-audit.md`](0004-01-current-state-audit.md)) was committed *through a green gate*. The refactor ([`0004-04-refactor-plan.md`](0004-04-refactor-plan.md)) pays down the debt; **this document is what stops it re-accruing.** It is the answer to theme T7 (the guardrail vacuum) and to decision D9 ("every architectural invariant gets an executable fitness function"). It does not restate the doctrine — for the principles see [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md); for the micro-rules see [`code-quality.md`](../../ai-context/agent-process/code-quality.md); this is the *enforcement layer* those two documents have lacked.
+The thesis of RFC 0004 is that browxai's **doctrine is excellent and unenforced**: every one of the 80 audited defects ([`0004-01-current-state-audit.md`](0004-01-current-state-audit.md)) was committed *through a green gate*. The refactor ([`0004-04-refactor-plan.md`](0004-04-refactor-plan.md)) pays down the debt; **this document is what stops it re-accruing.** It is the answer to theme T7 (the guardrail vacuum) and to decision D9 ("every architectural invariant gets an executable fitness function"). It does not restate the doctrine. For the principles see [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md); for the micro-rules see [`code-quality.md`](../../ai-context/agent-process/code-quality.md); this is the *enforcement layer* those two documents have lacked.
 
 ---
 
 ## 0. The enforcement model: four layers, fastest-feedback-first
 
-A guardrail is only useful at the speed it fires. browxai's existing harness already proves this instinct — `no-tracker-ids-in-comments` and `no-page-eval-stringified-arrow` are lint rules, not review notes, because lint fires in the editor and review fires days later. We extend the same instinct across all four feedback layers, and we place each invariant at the *earliest* layer that can express it:
+A guardrail is only useful at the speed it fires. browxai's existing harness already proves this instinct: `no-tracker-ids-in-comments` and `no-page-eval-stringified-arrow` are lint rules, not review notes, because lint fires in the editor and review fires days later. We extend the same instinct across all four feedback layers, and we place each invariant at the *earliest* layer that can express it:
 
 | Layer | Fires | Mechanism | Catches | Cost |
 |-------|-------|-----------|---------|------|
@@ -17,9 +17,9 @@ A guardrail is only useful at the speed it fires. browxai's existing harness alr
 | **L-fit** | `pnpm test` (fast lane) | `test/architecture/**` vitest, static analysis | OCP regression, completeness/traceability, port-conformance, codegen-drift, assertion density | sub-second, no browser |
 | **L-keystone** | `pnpm test:keystone` | real-browser `test/keystone/**` | behavior preservation across five engines; the mock-engine OCP contract | minutes, one fork |
 
-The load-bearing design choice — restated from RFC 0004 §8's "the fitness suite is slow" risk — is that **the entire `test/architecture/**` suite is static.** It reads source as text/AST, reads the registration maps as values, and walks the import graph. It never launches a browser. It runs inside the hermetic `pnpm test` lane ([`vitest.config.ts`](../../../vitest.config.ts), which excludes `test/keystone/**`), so an agent gets OCP/completeness feedback in the same sub-second loop as a unit test. Exactly **one** fitness function touches the runtime — the engine-adapter-contract (§2b) — and it uses an in-memory fake `BrowserEngine`, no Chromium download, so it can live in either lane; we site it in the keystone lane only because it exercises the real session-registry wiring.
+The load-bearing design choice, restated from RFC 0004 §8's "the fitness suite is slow" risk, is that **the entire `test/architecture/**` suite is static.** It reads source as text/AST, reads the registration maps as values, and walks the import graph. It never launches a browser. It runs inside the hermetic `pnpm test` lane ([`vitest.config.ts`](../../../vitest.config.ts), which excludes `test/keystone/**`), so an agent gets OCP/completeness feedback in the same sub-second loop as a unit test. Exactly **one** fitness function touches the runtime, the engine-adapter-contract (§2b), and it uses an in-memory fake `BrowserEngine`, no Chromium download, so it can live in either lane; we site it in the keystone lane only because it exercises the real session-registry wiring.
 
-A note on the existing flat-config shape this extends: `eslint.config.js` already defines its two custom rules as plain objects with `meta`/`create`, bundles them under a local plugin namespace `browxai-local` (`eslint.config.js:108-113`), and wires them as `error` in both the JS block (`:148-149`) and the type-aware TS block (`:242-243`). Every new rule below mirrors that exact structure — same `meta.type: "problem"`, same `schema: []`, same `create(context)` visitor shape, same `browxai-local/` prefix — so there is one rule idiom in the tree, not two.
+A note on the existing flat-config shape this extends: `eslint.config.js` already defines its two custom rules as plain objects with `meta`/`create`, bundles them under a local plugin namespace `browxai-local` (`eslint.config.js:108-113`), and wires them as `error` in both the JS block (`:148-149`) and the type-aware TS block (`:242-243`). Every new rule below mirrors that exact structure: same `meta.type: "problem"`, same `schema: []`, same `create(context)` visitor shape, same `browxai-local/` prefix. There is one rule idiom in the tree, not two.
 
 ---
 
@@ -27,11 +27,11 @@ A note on the existing flat-config shape this extends: `eslint.config.js` alread
 
 Three new custom rules join `no-tracker-ids-in-comments` and `no-page-eval-stringified-arrow`: `no-engine-literal-branches` (L1), `no-inlined-capability-checks` (the SRP gate-centralization half of L3), and `bounded-resource` (L7, best-effort). The size/complexity budgets in §1.5 ride the built-in ESLint rules, not custom code. The two custom OCP/SRP rules ship `warn` in P0 (scoped to *new* violations against today's tree), promoted to `error` in the phase that lands the matching refactor (P1 for engine-literal, P2 for capability-gate); the `bounded-resource` rule is advisory and stays `warn`, per RFC 0004 §6.
 
-### 1.1 `no-engine-literal-branches` — enforces L1 (the closed core)
+### 1.1 `no-engine-literal-branches`: enforces L1 (the closed core)
 
-The single most important rule. The audit's headline defect (T1) is that engine *wiring* is hardcoded `if (engine === "literal")` across three session factories, the 17 scattered Safari guards in `session-registry.ts`, and the substrate selectors — so a sixth engine requires editing 5–8 existing files. The flagship claim *"new engine = new adapter behind the existing port"* (architecture-principles §4) is false today, and the audit found **no lint rule prevents a future handler author from inlining the same anti-pattern** (`harness-and-docs` finding, [`0004-01`](0004-01-current-state-audit.md)).
+The single most important rule. The audit's headline defect (T1) is that engine *wiring* is hardcoded `if (engine === "literal")` across three session factories, the 17 scattered Safari guards in `session-registry.ts`, and the substrate selectors, so a sixth engine requires editing 5–8 existing files. The flagship claim *"new engine = new adapter behind the existing port"* (architecture-principles §4) is false today, and the audit found **no lint rule prevents a future handler author from inlining the same anti-pattern** (`harness-and-docs` finding, [`0004-01`](0004-01-current-state-audit.md)).
 
-This rule flags a string comparison against a known `EngineKind` literal (`"chromium" | "firefox" | "webkit" | "android" | "safari"`, from `src/engine/types.ts:25`) — `engine === "safari"`, `session.engine !== "chromium"`, `e.session.engine === "firefox"`, and the `switch (engine) { case "firefox": }` form — **outside an allowlist of files whose job is engine selection.** The allowlist is the substrate selectors and the (post-D1) `EngineRegistry`, the only legitimate homes for engine dispatch:
+This rule flags a string comparison against a known `EngineKind` literal (`"chromium" | "firefox" | "webkit" | "android" | "safari"`, from `src/engine/types.ts:25`): `engine === "safari"`, `session.engine !== "chromium"`, `e.session.engine === "firefox"`, and the `switch (engine) { case "firefox": }` form, all **outside an allowlist of files whose job is engine selection.** The allowlist is the substrate selectors and the (post-D1) `EngineRegistry`, the only legitimate homes for engine dispatch:
 
 ```js
 // eslint.config.js — joins noTrackerIdsInComments / noPageEvalStringifiedArrow
@@ -106,15 +106,15 @@ const noEngineLiteralBranches = {
 };
 ```
 
-Note the rule deliberately keys on the **literal value being an `EngineKind`**, not on the identifier name being `engine` — so `mode === "incognito"` (a session mode, audited separately under D6) is untouched, but `x === "safari"` is caught regardless of what `x` is called. The allowlist regexes are the rule's escape valve; widening the allowlist is itself a guardrail-relaxation event subject to the §7 meta-rule.
+Note the rule deliberately keys on the **literal value being an `EngineKind`**, not on the identifier name being `engine`, so `mode === "incognito"` (a session mode, audited separately under D6) is untouched, but `x === "safari"` is caught regardless of what `x` is called. The allowlist regexes are the rule's escape valve; widening the allowlist is itself a guardrail-relaxation event subject to the §7 meta-rule.
 
 This rule is the lint half of L1; its test half is the engine-adapter-contract keystone (§2b). Together they make the OCP claim *checkable* rather than *documented*.
 
-### 1.2 `no-inlined-capability-checks` — enforces SRP (L3) at the gate
+### 1.2 `no-inlined-capability-checks`: enforces SRP (L3) at the gate
 
-`code-quality.md` states "a tool handler MUST NOT inline capability checks" — the shared gate lives in `ToolHost.gateCheck` (`src/tools/host.ts:71`, implemented at `host-build.ts:152`) and the engine gate in `ToolHost.engineGate` (`host.ts:75`). The audit found **no rule flags `if (capabilities.includes(...))` inside a handler** (`harness-and-docs`); a developer can scatter gate logic across N handlers with zero lint failure, which is both an SRP violation and an audit-surface hazard (the gate exists precisely to centralize the security decision).
+`code-quality.md` states "a tool handler MUST NOT inline capability checks". The shared gate lives in `ToolHost.gateCheck` (`src/tools/host.ts:71`, implemented at `host-build.ts:152`) and the engine gate in `ToolHost.engineGate` (`host.ts:75`). The audit found **no rule flags `if (capabilities.includes(...))` inside a handler** (`harness-and-docs`); a developer can scatter gate logic across N handlers with zero lint failure, which is both an SRP violation and an audit-surface hazard (the gate exists precisely to centralize the security decision).
 
-The rule flags member access against the resolved capability set — `caps.enabled.has(...)`, `capabilities.includes(...)`, `caps.enabled.includes(...)` — and direct reads of the `TOOL_CAPABILITY` map (`src/util/capabilities.ts:87`) inside the handler layer (`src/page/**`, `src/tools/*-tools.ts`), with the gate's own home files (`host.ts`, `host-build.ts`, `util/capabilities.ts`) allowlisted:
+The rule flags member access against the resolved capability set (`caps.enabled.has(...)`, `capabilities.includes(...)`, `caps.enabled.includes(...)`) and direct reads of the `TOOL_CAPABILITY` map (`src/util/capabilities.ts:87`) inside the handler layer (`src/page/**`, `src/tools/*-tools.ts`), with the gate's own home files (`host.ts`, `host-build.ts`, `util/capabilities.ts`) allowlisted:
 
 ```js
 const GATE_OWNER_ALLOWLIST = [
@@ -175,11 +175,11 @@ const noInlinedCapabilityChecks = {
 };
 ```
 
-### 1.3 `bounded-resource` — enforces L7 (bounded everything), best-effort
+### 1.3 `bounded-resource`: enforces L7 (bounded everything), best-effort
 
-L7 — *"every loop, buffer, ring, recursion, and wait has an explicit, tested bound"* — is the Power-of-Ten "bounded loops" rule adapted to TypeScript. The two concrete gaps the audit surfaced are exactly the two genuinely-unbounded sites (the network/console rings are *not* among them — they already cap at 500, `network.ts:338`): `perf-audit.ts`'s `enforceSummaryBudget` runs nested `while` loops re-estimating tokens with "no hard safety bound" and an O(N²) risk (`page-features` finding, `perf-audit.ts:524-583`), and the a11y tree-walk's *undeclared depth* — the `walk` generator (`src/page/a11y.ts:205-211`) is iterative but carries no declared depth cap, so a pathological tree is bounded only by memory (02 §4.2).
+L7, *"every loop, buffer, ring, recursion, and wait has an explicit, tested bound"*, is the Power-of-Ten "bounded loops" rule adapted to TypeScript. The two concrete gaps the audit surfaced are exactly the two genuinely-unbounded sites (the network/console rings are *not* among them; they already cap at 500, `network.ts:338`): `perf-audit.ts`'s `enforceSummaryBudget` runs nested `while` loops re-estimating tokens with "no hard safety bound" and an O(N²) risk (`page-features` finding, `perf-audit.ts:524-583`), and the a11y tree-walk's *undeclared depth*: the `walk` generator (`src/page/a11y.ts:205-211`) is iterative but carries no declared depth cap, so a pathological tree is bounded only by memory (02 §4.2).
 
-A linter cannot prove termination (halting problem), so this rule is honestly **best-effort and advisory** — it ships `warn`, never `error`, and exists to *force a human decision at the loop*, not to verify the bound. It flags a `while` / `for` (classic) / `for…of` / `do-while` loop that lacks **both** an obvious counter-comparison test (`i < N`, `i < arr.length`) **and** a `cap`/`bound`/`limit`/`max` comment within two lines — so a counted `for (let i = 0; i < n; i++)` passes, while `for (;;)`, `for (; cond;)`, and an uncommented `for…of`/`while` are flagged. Same "make the author state the bound" posture as the tracker-id rule:
+A linter cannot prove termination (halting problem), so this rule is honestly **best-effort and advisory**: it ships `warn`, never `error`, and exists to *force a human decision at the loop*, not to verify the bound. It flags a `while` / `for` (classic) / `for…of` / `do-while` loop that lacks **both** an obvious counter-comparison test (`i < N`, `i < arr.length`) **and** a `cap`/`bound`/`limit`/`max` comment within two lines, so a counted `for (let i = 0; i < n; i++)` passes, while `for (;;)`, `for (; cond;)`, and an uncommented `for…of`/`while` are flagged. Same "make the author state the bound" posture as the tracker-id rule:
 
 ```js
 const noBoundComment = /\b(cap|bound|bounded|limit|max|guard)\b/i;
@@ -251,9 +251,9 @@ const browxaiLocal = {
 "browxai-local/bounded-resource": "warn",              // advisory, stays warn
 ```
 
-### 1.5 The budget rules (built-ins) — enforces L3 / D11
+### 1.5 The budget rules (built-ins): enforces L3 / D11
 
-The size and complexity budgets (D11 — "budgets, not vibes") ride the built-in ESLint rules, no custom code needed. They are sized from the **current healthy modules**, not the god-modules, so they are a ratchet that holds *after* the D3 split lands rather than an aspiration the god-modules already blow through. They ship `warn` in P0 (visible, non-blocking) and promote to `error` in P3 once the split brings the offenders under budget:
+The size and complexity budgets (D11, "budgets, not vibes") ride the built-in ESLint rules, no custom code needed. They are sized from the **current healthy modules**, not the god-modules, so they are a ratchet that holds *after* the D3 split lands rather than an aspiration the god-modules already blow through. They ship `warn` in P0 (visible, non-blocking) and promote to `error` in P3 once the split brings the offenders under budget:
 
 ```js
 // scoped to the tool/handler layer; server.ts gets a tighter ceiling (§4).
@@ -276,11 +276,11 @@ The numeric rationale is in §4. The `max-lines-per-function` budget also has an
 
 ---
 
-## 2. The fitness-test suite (L-fit) — `test/architecture/**`
+## 2. The fitness-test suite (L-fit): `test/architecture/**`
 
-Plain vitest, static analysis, fast lane. The suite is the executable form of L2 (single source of truth), L5 (substitutable adapters), L9 (traceability), and the OCP heart of D9. It imports the **real** exported registration values (`TOOL_CAPABILITY`, `DEEP_TOOLS`, `ENGINE_KINDS`, `capabilitiesFor`) and reads the real `createServer` handler table. Note `BATCH_ALLOWED_TOOLS` is **not** exported — it is a local `const` (`src/tools/host-build.ts:640-712`, 71 entries) surfaced only via the `ToolHost.batchAllowedTools` member (`host.ts:160`), so the batch test reads it off a built host, never by import. The suite asserts the invariants the audit found unguarded.
+Plain vitest, static analysis, fast lane. The suite is the executable form of L2 (single source of truth), L5 (substitutable adapters), L9 (traceability), and the OCP heart of D9. It imports the **real** exported registration values (`TOOL_CAPABILITY`, `DEEP_TOOLS`, `ENGINE_KINDS`, `capabilitiesFor`) and reads the real `createServer` handler table. Note `BATCH_ALLOWED_TOOLS` is **not** exported; it is a local `const` (`src/tools/host-build.ts:640-712`, 71 entries) surfaced only via the `ToolHost.batchAllowedTools` member (`host.ts:160`), so the batch test reads it off a built host, never by import. The suite asserts the invariants the audit found unguarded.
 
-A scaffolding helper every test reuses — read the registered surface once, statically, by building a server with no browser opens:
+A scaffolding helper every test reuses, to read the registered surface once, statically, by building a server with no browser opens:
 
 ```ts
 // test/architecture/_surface.ts — the static surface under test
@@ -311,11 +311,11 @@ export async function batchAllowedTools(): Promise<ReadonlySet<string>> {
 }
 ```
 
-### 2a. Completeness fitness tests — enforces L2
+### 2a. Completeness fitness tests: enforces L2
 
 These freeze the central maps today (P0) and become *derivation checks* after D2 colocates metadata at `host.register` (P2). Each closes a named guardrail gap from the audit.
 
-**Every registered tool has a capability** (audit: *"no test enforces TOOL_CAPABILITY completeness"*; *"a tool can be registered but missing from the map, causing isToolEnabled to silently default to 'human'"*). The fallback-to-`human` is a *silently weaker gate* — the exact failure mode L9 forbids:
+**Every registered tool has a capability** (audit: *"no test enforces TOOL_CAPABILITY completeness"*; *"a tool can be registered but missing from the map, causing isToolEnabled to silently default to 'human'"*). The fallback-to-`human` is a *silently weaker gate*, the exact failure mode L9 forbids:
 
 ```ts
 // test/architecture/completeness.test.ts
@@ -349,7 +349,7 @@ describe("L2 — every registered tool declares a capability", () => {
 });
 ```
 
-**This test earns its keep on first run.** Written against today's surface it immediately flags **seven** live tools that carry their capability _in the description_ but have **no `TOOL_CAPABILITY` row**, so `isToolEnabled` (`capabilities.ts:574` — `if (!cap) return true`) silently passes them through the human default — the exact L9 silent-weaker-gate failure: `plugins_list`, `plugins_info`, `workers_list`, `worker_messages_read` (all declare _"gates under `read`"_ / _"Capability: `read`"_ at `plugin-runtime.ts:216,246` / `gesture-network-tools.ts:504,578`) and `worker_message_send`, `sw_intercept_fetch`, `sw_unintercept_fetch` (all declare _"Capability: `action`"_ at `gesture-network-tools.ts:538,615,662`). They are **not** human-default coordination primitives and are deliberately absent from the allowlist above; P0 closes the gap by adding their four `read` + three `action` rows, after which the freeze holds green (D2 later _derives_ each row from the capability the description already declares, so the miss cannot recur). The fitness function found a real, security-relevant gate gap the moment it existed — which is the whole argument for writing it.
+**This test earns its keep on first run.** Written against today's surface it immediately flags **seven** live tools that carry their capability _in the description_ but have **no `TOOL_CAPABILITY` row**, so `isToolEnabled` (`capabilities.ts:574`, `if (!cap) return true`) silently passes them through the human default, the exact L9 silent-weaker-gate failure: `plugins_list`, `plugins_info`, `workers_list`, `worker_messages_read` (all declare _"gates under `read`"_ / _"Capability: `read`"_ at `plugin-runtime.ts:216,246` / `gesture-network-tools.ts:504,578`) and `worker_message_send`, `sw_intercept_fetch`, `sw_unintercept_fetch` (all declare _"Capability: `action`"_ at `gesture-network-tools.ts:538,615,662`). They are **not** human-default coordination primitives and are deliberately absent from the allowlist above; P0 closes the gap by adding their four `read` + three `action` rows, after which the freeze holds green (D2 later _derives_ each row from the capability the description already declares, so the miss cannot recur). The fitness function found a real, security-relevant gate gap the moment it existed, which is the whole argument for writing it.
 
 **Every batchable tool is in the batch set; every deep tool is gated; every `EngineKind` has a `CAPABILITIES` row.** Three more invariants, each a one-liner over a real exported value:
 
@@ -375,7 +375,7 @@ describe("L2 — derived sets stay in sync with the surface", () => {
 });
 ```
 
-**The batch allow-set is complete and real** (the `batch-allow-completeness.test.ts` 0004-04 P0 requires — *"freezes `BATCH_ALLOWED_TOOLS` against the registered set"*). Every name in the 71-entry batch set must be a registered tool (no ghost), and the set is read off a built host, not imported — because the const is not exported:
+**The batch allow-set is complete and real** (the `batch-allow-completeness.test.ts` 0004-04 P0 requires, *"freezes `BATCH_ALLOWED_TOOLS` against the registered set"*). Every name in the 71-entry batch set must be a registered tool (no ghost), and the set is read off a built host, not imported, because the const is not exported:
 
 ```ts
 // test/architecture/batch-allow-completeness.test.ts
@@ -399,7 +399,7 @@ describe("L2 — the batch allow-set is real and frozen", () => {
 });
 ```
 
-**Every deep tool refuses off the non-deep engines and runs on the deep ones** (the `deep-tools-engine-matrix.test.ts` 0004-04 P0 requires — closing the engine-adapters gap *"no suite validates every `DEEP_TOOLS` entry is unavailable on Firefox/WebKit"*). This is the engine dimension the DEEP_TOOLS-ghost test above does not cover; it drives the real `assertEngineSupports` (`tool-gate.ts:131`) across the full `EngineKind × DEEP_TOOLS` matrix:
+**Every deep tool refuses off the non-deep engines and runs on the deep ones** (the `deep-tools-engine-matrix.test.ts` 0004-04 P0 requires, closing the engine-adapters gap *"no suite validates every `DEEP_TOOLS` entry is unavailable on Firefox/WebKit"*). This is the engine dimension the DEEP_TOOLS-ghost test above does not cover; it drives the real `assertEngineSupports` (`tool-gate.ts:131`) across the full `EngineKind × DEEP_TOOLS` matrix:
 
 ```ts
 // test/architecture/deep-tools-engine-matrix.test.ts
@@ -425,15 +425,15 @@ describe("L2/L5 — every deep tool is gated by engine capability, not engine na
 });
 ```
 
-Post-D2, the batch and deep checks invert: instead of "every entry in the hand-list is real," they become "every tool that registered `{ batchable: true }` appears in the derived `batchAllowedTools` set, and nothing else does" — proving the *derivation*, which is what makes the hand-list disappearable. The `ToolHost.batchAllowedTools` member (`host.ts:160`) already exposes the set read-only, so the derived-set test reads it off a built host with no new plumbing.
+Post-D2, the batch and deep checks invert: instead of "every entry in the hand-list is real," they become "every tool that registered `{ batchable: true }` appears in the derived `batchAllowedTools` set, and nothing else does", proving the *derivation*, which is what makes the hand-list disappearable. The `ToolHost.batchAllowedTools` member (`host.ts:160`) already exposes the set read-only, so the derived-set test reads it off a built host with no new plumbing.
 
 **Tool-types ≡ schemas (post-codegen):** covered by the codegen-drift test in §5, which is L2 applied to `sdk/tool-types.ts`.
 
-### 2b. The OCP regression tests — the heart of D9
+### 2b. The OCP regression tests: the heart of D9
 
 Two tests. Together they are *the* fitness function for the open-closed claim: they prove a new capability and a new engine can be added **without editing core source.**
 
-**Capability-extensibility** (audit: *"add test/unit/capabilities-ocp.test.ts that registers a synthetic capability in the gate via mocked ToolHost… prove extensibility WITHOUT touching src/util/capabilities.ts source"*). The test constructs a synthetic capability + a tool requiring it through a mock host, and asserts the gate **blocks when unset and allows when set** — with zero edits to `capabilities.ts`:
+**Capability-extensibility** (audit: *"add test/unit/capabilities-ocp.test.ts that registers a synthetic capability in the gate via mocked ToolHost… prove extensibility WITHOUT touching src/util/capabilities.ts source"*). The test constructs a synthetic capability + a tool requiring it through a mock host, and asserts the gate **blocks when unset and allows when set**, with zero edits to `capabilities.ts`:
 
 ```ts
 // test/architecture/ocp-capability.test.ts
@@ -469,9 +469,9 @@ describe.todo("OCP — a capability gate is extensible without source edits (pos
 });
 ```
 
-> The third argument to `isToolEnabled` is **post-D2 and illustrative** — the signature today is the 2-arg `isToolEnabled(tool, caps)` (`src/util/capabilities.ts:574`). The override-map form `isToolEnabled(tool, caps, overrides?)` is the D2 surface change that lets the binding be supplied by the registration rather than only read from the module-global `TOOL_CAPABILITY`. Because the 3-arg form does not exist until D2, the test above lands `.todo`/`.skip` in P0 (keeping P0 gate-green) and activates green when D2 introduces the override seam.
+> The third argument to `isToolEnabled` is **post-D2 and illustrative**: the signature today is the 2-arg `isToolEnabled(tool, caps)` (`src/util/capabilities.ts:574`). The override-map form `isToolEnabled(tool, caps, overrides?)` is the D2 surface change that lets the binding be supplied by the registration rather than only read from the module-global `TOOL_CAPABILITY`. Because the 3-arg form does not exist until D2, the test above lands `.todo`/`.skip` in P0 (keeping P0 gate-green) and activates green when D2 introduces the override seam.
 
-**The engine-adapter-contract keystone** (audit: *"add test/keystone/engine-adapter-contract.keystone.test.ts that mocks a new engine via a mock BrowserEngine adapter, registers it in the session WITHOUT editing src/session/*.ts, runs core tools (navigate, snapshot, find, click), asserts the mock engine's session.engine tag is reported correctly… This is the fitness function for OCP"*). This is **the** keystone of the whole RFC. It is the executable form of L1: a synthetic in-memory `BrowserSession` (`src/session/types.ts` — the type `makeAdapter` returns) that declares `deep: false` capabilities, registered through the post-D1 `EngineRegistry`, must drive the engine-agnostic core with **zero core edits** and report its `session.engine` tag correctly.
+**The engine-adapter-contract keystone** (audit: *"add test/keystone/engine-adapter-contract.keystone.test.ts that mocks a new engine via a mock BrowserEngine adapter, registers it in the session WITHOUT editing src/session/*.ts, runs core tools (navigate, snapshot, find, click), asserts the mock engine's session.engine tag is reported correctly… This is the fitness function for OCP"*). This is **the** keystone of the whole RFC. It is the executable form of L1: a synthetic in-memory `BrowserSession` (`src/session/types.ts`, the type `makeAdapter` returns) that declares `deep: false` capabilities, registered through the post-D1 `EngineRegistry`, must drive the engine-agnostic core with **zero core edits** and report its `session.engine` tag correctly.
 
 ```ts
 // test/keystone/engine-adapter-contract.keystone.test.ts
@@ -561,9 +561,9 @@ describe.todo("L1 — a new engine adapter plugs in with zero core edits", () =>
 
 The refusal assertion reuses the *exact* shape `engineGate` emits today (`host-build.ts:185-192`, which calls `assertEngineSupports` at `tool-gate.ts:131` and formats `tool "${tool}" is not supported on the "${engine}" engine`). That is the point: the synthetic engine flows through the unmodified gate. Sited in the keystone lane because it exercises the real `createServer` → `EngineRegistry` → session-registry path, but it uses an in-memory fake, so it needs no browser download and runs in a fork in seconds.
 
-### 2c. Port-conformance contract test — enforces L5
+### 2c. Port-conformance contract test: enforces L5
 
-L5 — *"no adapter throws where the port promises a value"* — is the Safari LSP leak (D5): `BrowserSession.page(): Page` is documented as throwing at `src/session/types.ts:95` and the actual throw is at `src/session/safari-session.ts:35`, forcing the 17 scattered guards in `session-registry.ts`. The contract test runs **one shared suite against every adapter, including the synthetic one**, and forbids a port method that throws unconditionally — catching the Safari LSP class at the seam instead of via 17 defensive `engine !== "safari"` guards downstream:
+L5, *"no adapter throws where the port promises a value"*, is the Safari LSP leak (D5): `BrowserSession.page(): Page` is documented as throwing at `src/session/types.ts:95` and the actual throw is at `src/session/safari-session.ts:35`, forcing the 17 scattered guards in `session-registry.ts`. The contract test runs **one shared suite against every adapter, including the synthetic one**, and forbids a port method that throws unconditionally, catching the Safari LSP class at the seam instead of via 17 defensive `engine !== "safari"` guards downstream:
 
 ```ts
 // test/architecture/port-conformance.test.ts
@@ -627,9 +627,9 @@ describe("L5 — every adapter honors its declared port contract", () => {
 
 This is the test that makes D5's fix verifiable: once `page()` is a declared capability and the 17 guards collapse into the `EngineRegistry.postWire`, the conformance suite is what keeps a future non-Playwright engine (Appium, BiDi-only) from re-introducing the throwing-method pattern.
 
-### 2d. Assertion-density + bounded-resource budget on load-bearing modules — L7 / L8
+### 2d. Assertion-density + bounded-resource budget on load-bearing modules: L7 / L8
 
-L8 — *"assert the invariants"* — is the Power-of-Ten assertion-density rule (≥2 per function on safety-critical code). browxai's analog is an `invariant()` helper (lands in P5) plus a density floor on the **load-bearing** modules only (the gate, the registry, the action window, the deadline) — not a blanket rule, which would be noise. The check is static (count `invariant(` / `assert(` call sites against function count via AST):
+L8, *"assert the invariants"*, is the Power-of-Ten assertion-density rule (≥2 per function on safety-critical code). browxai's analog is an `invariant()` helper (lands in P5) plus a density floor on the **load-bearing** modules only (the gate, the registry, the action window, the deadline), not a blanket rule, which would be noise. The check is static (count `invariant(` / `assert(` call sites against function count via AST):
 
 ```ts
 // test/architecture/assertion-density.test.ts
@@ -658,13 +658,13 @@ describe("L8 — load-bearing modules assert their invariants", () => {
 });
 ```
 
-The bounded-resource budget complements the L7 lint rule (§1.3) with a *tested* bound on the named offenders — e.g. `perf-audit.ts`'s `enforceSummaryBudget` gets a property test asserting "report size never exceeds 2.5× `SUMMARY_TOKEN_BUDGET`" and "terminates in ≤ N iterations for N issues," closing the audit's *"no fuzzing or property-based test validates the algorithm's termination."*
+The bounded-resource budget complements the L7 lint rule (§1.3) with a *tested* bound on the named offenders: e.g. `perf-audit.ts`'s `enforceSummaryBudget` gets a property test asserting "report size never exceeds 2.5× `SUMMARY_TOKEN_BUDGET`" and "terminates in ≤ N iterations for N issues," closing the audit's *"no fuzzing or property-based test validates the algorithm's termination."*
 
 ---
 
-## 3. Dependency-cruiser (L-graph) — `.dependency-cruiser.cjs`
+## 3. Dependency-cruiser (L-graph): `.dependency-cruiser.cjs`
 
-The single highest-leverage guardrail against DIP rot (D10). The audit found `.depcheckrc.json` checks *unused* dependencies but **nothing checks import layering** — "a developer could import a transport-specific detail into a core handler, or SDK could import handler internals" with no regression gate. This is Lakos-style levelization made executable. The layering rules encode exactly the direction the doctrine asserts (architecture-principles §1) but no machine checks:
+The single highest-leverage guardrail against DIP rot (D10). The audit found `.depcheckrc.json` checks *unused* dependencies but **nothing checks import layering**: "a developer could import a transport-specific detail into a core handler, or SDK could import handler internals" with no regression gate. This is Lakos-style levelization made executable. The layering rules encode exactly the direction the doctrine asserts (architecture-principles §1) but no machine checks:
 
 ```js
 // .dependency-cruiser.cjs
@@ -735,21 +735,21 @@ Each rule maps to an audited gap: the `server→sdk` rule to the SRP-creep findi
 
 ---
 
-## 4. The budgets — numeric values, sized from the healthy modules (D11)
+## 4. The budgets: numeric values, sized from the healthy modules (D11)
 
-Budgets are the ratchet that keeps L3/L4/L7 true after the refactor. **Every number below is derived from a currently-healthy module, not invented** — that is the difference between a ratchet and an aspiration. The god-modules blow through these today (that is the point — they are the debt); the budgets become `error` only once D3 brings them under.
+Budgets are the ratchet that keeps L3/L4/L7 true after the refactor. **Every number below is derived from a currently-healthy module, not invented**. That is the difference between a ratchet and an aspiration. The god-modules blow through these today (that is the point; they are the debt); the budgets become `error` only once D3 brings them under.
 
 | Budget | Value | Sized from | Enforced by | Promotes |
 |--------|-------|-----------|-------------|----------|
 | `server.ts` lines | **≤ 400** (hard) | current `server.ts` = **382** (verified) | `max-lines` error, scoped to `src/server.ts` | already `error` (P0) |
-| tool module lines | **≤ 450** | `input-tools.ts` (**212**) / `canvas-tools.ts` (**444**) (healthy, ≤ 450, verified); the four god-modules (1965 / 1514 / 1107 / 1033) — plus several mid-size modules the ratchet also pressures, e.g. `action-tools.ts` (632), `host-build.ts` (760), `storage-tools.ts` (1360) — are the debt | `max-lines` warn → error | P3 |
+| tool module lines | **≤ 450** | `input-tools.ts` (**212**) / `canvas-tools.ts` (**444**) (healthy, ≤ 450, verified); the four god-modules (1965 / 1514 / 1107 / 1033), plus several mid-size modules the ratchet also pressures, e.g. `action-tools.ts` (632), `host-build.ts` (760), `storage-tools.ts` (1360), are the debt | `max-lines` warn → error | P3 |
 | function lines | **≤ 70** | the action-window helpers + gate closures sit well under | `max-lines-per-function` | P3 |
 | cyclomatic complexity | **≤ 15** | the substrate selectors + `assertEngineSupports` (`tool-gate.ts:131`) are ~3–6 | `complexity` | P3 |
 | function params | **≤ 5** | the `register` signature is 3 (`host-build.ts:578`); handlers take one `args` | `max-params` | P3 |
-| `ToolHost` members | **≤ 35** (freeze the real current count, ratcheting down); **post-split target ≤ ~12 per sub-port** | current `ToolHost` = **35 members** (`host.ts:54-189`) — the ISP debt | the interface-member fitness test (below) | P3 (after D3 segregation into `GateHost`/`SessionHost`/`ActionHost`) |
+| `ToolHost` members | **≤ 35** (freeze the real current count, ratcheting down); **post-split target ≤ ~12 per sub-port** | current `ToolHost` = **35 members** (`host.ts:54-189`), the ISP debt | the interface-member fitness test (below) | P3 (after D3 segregation into `GateHost`/`SessionHost`/`ActionHost`) |
 | duplication | **≤ 1% / ≥ 0 new clones** | the five policy classes + five substrate selectors are the cloned families (D4) | `jscpd` threshold | P3 |
 
-`server.ts ≤ 400` is the hardest number and it is the *only* budget that ships `error` in P0 — because `server.ts` is already at 382 and the composition-root invariant (D11, architecture-principles §4, repo-map.md) is the one the audit flagged as having "NO file-size budget" despite being load-bearing. The 18-line headroom is deliberately tight: any business-logic creep into the composition root trips the ceiling immediately.
+`server.ts ≤ 400` is the hardest number and it is the *only* budget that ships `error` in P0, because `server.ts` is already at 382 and the composition-root invariant (D11, architecture-principles §4, repo-map.md) is the one the audit flagged as having "NO file-size budget" despite being load-bearing. The 18-line headroom is deliberately tight: any business-logic creep into the composition root trips the ceiling immediately.
 
 The **`ToolHost` member budget** needs a fitness test, not a built-in rule (ESLint has no "interface member count"):
 
@@ -782,13 +782,13 @@ describe("L4 — no god-interface", () => {
 });
 ```
 
-The **`jscpd` duplication** budget targets the clones the five-identical-policy-classes (`dialog.ts`/`permission.ts`/`notification.ts`/`fs-picker.ts`/`device-emu.ts`, audit `session` finding) and five-identical-substrate-selectors (`host-build.ts:288-357`) create — they are exactly the D4 `PolicyBuffer<T>` / `EngineRegistry` extractions. In **P0 it is reporting-only** (`pnpm jscpd`, no `--threshold` ⇒ it prints the duplication report but never exits non-zero, so it cannot fail the gate while those clones still exist — consistent with 0004-04 P0 "jscpd as reporting-only"). It **promotes in P3** to `pnpm jscpd:strict` (`--threshold 1`), failing on >1% duplication, once D4 has collapsed the clones — so the threshold lands the moment the tree can pass it, never before.
+The **`jscpd` duplication** budget targets the clones the five-identical-policy-classes (`dialog.ts`/`permission.ts`/`notification.ts`/`fs-picker.ts`/`device-emu.ts`, audit `session` finding) and five-identical-substrate-selectors (`host-build.ts:288-357`) create. They are exactly the D4 `PolicyBuffer<T>` / `EngineRegistry` extractions. In **P0 it is reporting-only** (`pnpm jscpd`, no `--threshold` ⇒ it prints the duplication report but never exits non-zero, so it cannot fail the gate while those clones still exist, consistent with 0004-04 P0 "jscpd as reporting-only"). It **promotes in P3** to `pnpm jscpd:strict` (`--threshold 1`), failing on >1% duplication, once D4 has collapsed the clones, so the threshold lands the moment the tree can pass it, never before.
 
 ---
 
-## 5. Codegen — the tool-types generator (D7, enforces L2)
+## 5. Codegen: the tool-types generator (D7, enforces L2)
 
-`src/sdk/tool-types.ts` is **673 LOC** (verified) that hand-mirror the zod schemas its own header admits are the source of truth — guaranteed drift, the audit's "no codegen test validates tool-types.ts matches server zod schemas." The fix is a build-time generator that reads the registrations (post-D2 they carry their schemas) and emits the types, plus a fitness test that fails if the committed file diverges from the regenerated one:
+`src/sdk/tool-types.ts` is **673 LOC** (verified) that hand-mirror the zod schemas its own header admits are the source of truth: guaranteed drift, the audit's "no codegen test validates tool-types.ts matches server zod schemas." The fix is a build-time generator that reads the registrations (post-D2 they carry their schemas) and emits the types, plus a fitness test that fails if the committed file diverges from the regenerated one:
 
 ```ts
 // scripts/gen-tool-types.ts — reads the tool REGISTRATIONS (not a server method),
@@ -834,13 +834,13 @@ describe("L2 — generated SDK types match the live schemas", () => {
 });
 ```
 
-The generated file matches the `**/*.generated.*` ignore already in `eslint.config.js:125` (so it is not linted), and the `gen:tool-types` script slots into `package.json` next to `build`. The drift test composes with the type-safety work already landed — handler args are already `z.infer` of the `inputSchema` (`host-build.ts:588`), so the SDK types are *the same inference, generated*, closing the loop.
+The generated file matches the `**/*.generated.*` ignore already in `eslint.config.js:125` (so it is not linted), and the `gen:tool-types` script slots into `package.json` next to `build`. The drift test composes with the type-safety work already landed: handler args are already `z.infer` of the `inputSchema` (`host-build.ts:588`), so the SDK types are *the same inference, generated*, closing the loop.
 
 ---
 
-## 6. CI wiring — where the gates slot in
+## 6. CI wiring: where the gates slot in
 
-The existing gate is two workflows: `ci.yml` (the `build` job runs `pnpm typecheck` + `pnpm test`; the `keystone` job runs `pnpm test:keystone`) and `quality.yml` (the `lint` job runs `pnpm lint` + `pnpm format:check` + `pnpm run depcheck`). The new checks attach with **zero new jobs** in the common case — the fitness suite rides the existing `pnpm test` lane; the layering and duplication checks ride the existing `lint` job.
+The existing gate is two workflows: `ci.yml` (the `build` job runs `pnpm typecheck` + `pnpm test`; the `keystone` job runs `pnpm test:keystone`) and `quality.yml` (the `lint` job runs `pnpm lint` + `pnpm format:check` + `pnpm run depcheck`). The new checks attach with **zero new jobs** in the common case: the fitness suite rides the existing `pnpm test` lane; the layering and duplication checks ride the existing `lint` job.
 
 New `package.json` scripts:
 
@@ -864,7 +864,7 @@ New `package.json` scripts:
 }
 ```
 
-`test/architecture/**` is **not** excluded by `vitest.config.ts` (only `test/keystone/**` and `test/investigation/**` are), so it runs automatically inside `pnpm test` — the `build` job in `ci.yml` gains nothing to edit; the fitness suite is simply part of the default run. The explicit `test:arch` script exists for the editor loop, not CI. The `quality.yml` `lint` job gains two lines after `pnpm lint`:
+`test/architecture/**` is **not** excluded by `vitest.config.ts` (only `test/keystone/**` and `test/investigation/**` are), so it runs automatically inside `pnpm test`, and the `build` job in `ci.yml` gains nothing to edit; the fitness suite is simply part of the default run. The explicit `test:arch` script exists for the editor loop, not CI. The `quality.yml` `lint` job gains two lines after `pnpm lint`:
 
 ```yaml
 # .github/workflows/quality.yml — lint job, after `- run: pnpm lint`
@@ -879,59 +879,59 @@ New `package.json` scripts:
 # - run: pnpm jscpd:strict   # --threshold 1 — fails on >1% duplication
 ```
 
-The engine-adapter-contract keystone (§2b) joins `test/keystone/**` and rides the existing `keystone` job in `ci.yml` — that job already runs `pnpm build` then `pnpm test:keystone`, so the new contract test is picked up by the glob with no workflow edit.
+The engine-adapter-contract keystone (§2b) joins `test/keystone/**` and rides the existing `keystone` job in `ci.yml`; that job already runs `pnpm build` then `pnpm test:keystone`, so the new contract test is picked up by the glob with no workflow edit.
 
-**Optional, deferred to P5+ (not P0):** *mutation testing* (Stryker, `pnpm test:mutation`) run against `src/engine/tool-gate.ts` + `src/tools/host-build.ts` proves the fitness tests actually *bite* — a surviving mutant in the gate means the completeness/OCP tests do not constrain it. This is the meta-fitness-function (does the harness test the harness?) and is opt-in, run periodically, not on every PR (Stryker is slow). It is the honest answer to "are the guardrails real or theater."
-
----
-
-## 7. The meta-rule — relaxation is an RFC amendment, never an inline disable
-
-A guardrail that can be silenced by `// eslint-disable-next-line` at the point of violation is not a guardrail — it is a suggestion with a snooze button. The `no-unsafe-*` enforcement work already established the binding norm in this codebase: those five rules went to `error` and the boundary was *typed* rather than disabled per-site (`eslint.config.js:210-216` documents the boundary-narrowing that made the blanket `error` honest). RFC 0004's guardrails inherit that norm verbatim. The meta-rule (RFC 0004 §8's mitigation; restated here as the audit-trail expectation):
-
-1. **No inline disable of an architecture guardrail.** `no-engine-literal-branches`, `no-inlined-capability-checks`, the budgets, and the `dependency-cruiser` rules may **not** be relaxed with a per-line `eslint-disable` / `depcruise-disable` / `// jscpd:ignore`. The whitelists (the `ENGINE_SELECT_ALLOWLIST`, the `GATE_OWNER_ALLOWLIST`, the budget `files` scopes) are the *only* sanctioned escape valves, and they live in the config where they are reviewable as a unit — not scattered at violation sites.
-
-2. **Relaxation requires an RFC amendment with rationale.** Widening an allowlist, raising a budget, or downgrading a `dependency-cruiser` rule from `error` is a change to *this document* (or its successor), with a stated reason, reviewed as an architecture decision — exactly as adding a `D`-decision is. The budget numbers in §4 are versioned here precisely so a change to them is a visible diff against a committed standard.
-
-3. **The audit trail is the config diff plus the RFC amendment.** Because relaxation cannot happen at the violation site, it cannot happen *silently*. Every loosening is a diff to `eslint.config.js` / `.dependency-cruiser.cjs` / this reference, paired with the rationale — a permanent, greppable record of *which* invariant was relaxed, *when*, and *why*. This is the DO-178C traceability discipline (L9) applied to the guardrails themselves: the standard's own evolution is traceable.
-
-4. **`ban-ts-comment` is the precedent and the backstop.** browxai already requires every `ts-expect-error` / `ts-ignore` to carry a ≥5-char description (`eslint.config.js:226-235`). The same posture generalizes: if a guardrail genuinely *must* yield at a site, the honest move is to fix the design (extract the seam, narrow the type, split the module) — the guardrails are calibrated from the *healthy* modules precisely so that yielding is almost always a signal the code is wrong, not the rule.
-
-The consequence is the property RFC 0004 promises in its thesis: the codebase *physically cannot* decay back to its current state through a green gate, because the gate now fails on the decay — and the gate cannot be quietly told to stop failing.
+**Optional, deferred to P5+ (not P0):** *mutation testing* (Stryker, `pnpm test:mutation`) run against `src/engine/tool-gate.ts` + `src/tools/host-build.ts` proves the fitness tests actually *bite*: a surviving mutant in the gate means the completeness/OCP tests do not constrain it. This is the meta-fitness-function (does the harness test the harness?) and is opt-in, run periodically, not on every PR (Stryker is slow). It is the honest answer to "are the guardrails real or theater."
 
 ---
 
-## 8. Coverage map — every law to its enforcer
+## 7. The meta-rule: relaxation is an RFC amendment, never an inline disable
+
+A guardrail that can be silenced by `// eslint-disable-next-line` at the point of violation is not a guardrail; it is a suggestion with a snooze button. The `no-unsafe-*` enforcement work already established the binding norm in this codebase: those five rules went to `error` and the boundary was *typed* rather than disabled per-site (`eslint.config.js:210-216` documents the boundary-narrowing that made the blanket `error` honest). RFC 0004's guardrails inherit that norm verbatim. The meta-rule (RFC 0004 §8's mitigation; restated here as the audit-trail expectation):
+
+1. **No inline disable of an architecture guardrail.** `no-engine-literal-branches`, `no-inlined-capability-checks`, the budgets, and the `dependency-cruiser` rules may **not** be relaxed with a per-line `eslint-disable` / `depcruise-disable` / `// jscpd:ignore`. The whitelists (the `ENGINE_SELECT_ALLOWLIST`, the `GATE_OWNER_ALLOWLIST`, the budget `files` scopes) are the *only* sanctioned escape valves, and they live in the config where they are reviewable as a unit, never scattered at violation sites.
+
+2. **Relaxation requires an RFC amendment with rationale.** Widening an allowlist, raising a budget, or downgrading a `dependency-cruiser` rule from `error` is a change to *this document* (or its successor), with a stated reason, reviewed as an architecture decision, exactly as adding a `D`-decision is. The budget numbers in §4 are versioned here precisely so a change to them is a visible diff against a committed standard.
+
+3. **The audit trail is the config diff plus the RFC amendment.** Because relaxation cannot happen at the violation site, it cannot happen *silently*. Every loosening is a diff to `eslint.config.js` / `.dependency-cruiser.cjs` / this reference, paired with the rationale: a permanent, greppable record of *which* invariant was relaxed, *when*, and *why*. This is the DO-178C traceability discipline (L9) applied to the guardrails themselves: the standard's own evolution is traceable.
+
+4. **`ban-ts-comment` is the precedent and the backstop.** browxai already requires every `ts-expect-error` / `ts-ignore` to carry a ≥5-char description (`eslint.config.js:226-235`). The same posture generalizes: if a guardrail genuinely *must* yield at a site, the honest move is to fix the design (extract the seam, narrow the type, split the module). The guardrails are calibrated from the *healthy* modules precisely so that yielding is almost always a signal the code is wrong, not the rule.
+
+The consequence is the property RFC 0004 promises in its thesis: the codebase *physically cannot* decay back to its current state through a green gate, because the gate now fails on the decay, and the gate cannot be quietly told to stop failing.
+
+---
+
+## 8. Coverage map: every law to its enforcer
 
 The bookkeeping that makes this document auditable against the parent. Each of the ten laws (RFC 0004 §4) and each guardrail decision (D8–D12) maps to a concrete artifact in this reference:
 
 | Law / Decision | Enforcer in this document | Layer | Phase to `error` |
 |----------------|---------------------------|-------|------------------|
-| L1 — closed core | `no-engine-literal-branches` (§1.1) + engine-adapter-contract keystone (§2b) | lint + keystone | P1 |
-| L2 — single source of truth | completeness tests (§2a) + codegen-drift (§5) | fit | P2 |
-| L3 — one reason to change | `max-lines`/`-per-function`/`complexity` budgets (§1.5, §4) + `no-inlined-capability-checks` (§1.2) | lint | server.ts P0; rest P3 |
-| L4 — segregated contracts | `ToolHost` member budget (§4) + `dependency-cruiser` ToolHost-split intent (§3) | fit + graph | P3 |
-| L5 — substitutable adapters | port-conformance contract test (§2c) | fit | P1 (with D5) |
-| L6 — validate at the edge | the five `no-unsafe-*` + `no-explicit-any` (already `error`, `eslint.config.js:196,212-216`) | lint | landed |
-| L7 — bounded everything | `bounded-resource` rule (§1.3) + bounded-resource budget tests (§2d) | lint + fit | advisory + P5 |
-| L8 — assert the invariants | assertion-density test on load-bearing modules (§2d) | fit | P5 |
-| L9 — traceable | completeness/traceability tests (§2a) + the §7 audit trail | fit + process | P2 |
-| L10 — deterministic & observable | existing keystone determinism gates, extended to the new seams | keystone | continuous |
-| D10 — enforce the dependency graph | `.dependency-cruiser.cjs` (§3) | graph | P4 |
-| D11 — budgets, not vibes | §4 budgets + `jscpd` | lint + fit | server.ts P0; rest P3 |
-| D7 — generate SDK tool-types | codegen + drift test (§5) | fit | P2 |
-| D12 — discoverable + harnessed | the `code-quality.md` "Architecture enforcement" section + `fitness-functions.md` index | docs | P5 ([`0004-06`](0004-06-ai-documentation-and-harness.md)) |
+| L1: closed core | `no-engine-literal-branches` (§1.1) + engine-adapter-contract keystone (§2b) | lint + keystone | P1 |
+| L2: single source of truth | completeness tests (§2a) + codegen-drift (§5) | fit | P2 |
+| L3: one reason to change | `max-lines`/`-per-function`/`complexity` budgets (§1.5, §4) + `no-inlined-capability-checks` (§1.2) | lint | server.ts P0; rest P3 |
+| L4: segregated contracts | `ToolHost` member budget (§4) + `dependency-cruiser` ToolHost-split intent (§3) | fit + graph | P3 |
+| L5: substitutable adapters | port-conformance contract test (§2c) | fit | P1 (with D5) |
+| L6: validate at the edge | the five `no-unsafe-*` + `no-explicit-any` (already `error`, `eslint.config.js:196,212-216`) | lint | landed |
+| L7: bounded everything | `bounded-resource` rule (§1.3) + bounded-resource budget tests (§2d) | lint + fit | advisory + P5 |
+| L8: assert the invariants | assertion-density test on load-bearing modules (§2d) | fit | P5 |
+| L9: traceable | completeness/traceability tests (§2a) + the §7 audit trail | fit + process | P2 |
+| L10: deterministic & observable | existing keystone determinism gates, extended to the new seams | keystone | continuous |
+| D10: enforce the dependency graph | `.dependency-cruiser.cjs` (§3) | graph | P4 |
+| D11: budgets, not vibes | §4 budgets + `jscpd` | lint + fit | server.ts P0; rest P3 |
+| D7: generate SDK tool-types | codegen + drift test (§5) | fit | P2 |
+| D12: discoverable + harnessed | the `code-quality.md` "Architecture enforcement" section + `fitness-functions.md` index | docs | P5 ([`0004-06`](0004-06-ai-documentation-and-harness.md)) |
 
-The discoverability half of D12 — making every guardrail in this document *findable by the next agent* — is specified in [`0004-06-ai-documentation-and-harness.md`](0004-06-ai-documentation-and-harness.md): `code-quality.md` gains the "Architecture enforcement" section that lists these checks, and a new `fitness-functions.md` indexes the executable invariants. This reference is the *spec*; that one wires it into the harness an agent reads first.
+The discoverability half of D12, making every guardrail in this document *findable by the next agent*, is specified in [`0004-06-ai-documentation-and-harness.md`](0004-06-ai-documentation-and-harness.md): `code-quality.md` gains the "Architecture enforcement" section that lists these checks, and a new `fitness-functions.md` indexes the executable invariants. This reference is the *spec*; that one wires it into the harness an agent reads first.
 
 ---
 
 ## Related
 
-- [`0004-architecture-hardening.md`](../0004-architecture-hardening.md) — the parent RFC. This reference is the concrete realization of its ten laws' "Enforcer" column and of decisions D8–D12.
-- [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md) — the 80 findings and the guardrail-gap inventory each rule/test above closes.
-- [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md) — the `EngineRegistry`, metadata-at-registration, and `PolicyBuffer`/`EgressSanitiser` patterns these fitness functions verify.
-- [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md) — the phased plan; this document's `warn`→`error` promotions are keyed to its P0–P5 sequencing.
-- [`0004-06-ai-documentation-and-harness.md`](0004-06-ai-documentation-and-harness.md) — the discoverability + harness half of D12: where these guardrails are documented and indexed for the next agent.
-- [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md) — the doctrine these guardrails enforce (extended, not restated).
-- [`code-quality.md`](../../ai-context/agent-process/code-quality.md) — the micro-rule discipline this enforcement layer joins.
+- [`0004-architecture-hardening.md`](../0004-architecture-hardening.md) is the parent RFC. This reference is the concrete realization of its ten laws' "Enforcer" column and of decisions D8–D12.
+- [`0004-01-current-state-audit.md`](0004-01-current-state-audit.md): the 80 findings and the guardrail-gap inventory each rule/test above closes.
+- [`0004-03-ocp-registry-patterns.md`](0004-03-ocp-registry-patterns.md): the `EngineRegistry`, metadata-at-registration, and `PolicyBuffer`/`EgressSanitiser` patterns these fitness functions verify.
+- [`0004-04-refactor-plan.md`](0004-04-refactor-plan.md): the phased plan; this document's `warn`→`error` promotions are keyed to its P0–P5 sequencing.
+- [`0004-06-ai-documentation-and-harness.md`](0004-06-ai-documentation-and-harness.md), the discoverability + harness half of D12: where these guardrails are documented and indexed for the next agent.
+- [`architecture-principles.md`](../../ai-context/architecture/architecture-principles.md): the doctrine these guardrails enforce (extended, not restated).
+- [`code-quality.md`](../../ai-context/agent-process/code-quality.md): the micro-rule discipline this enforcement layer joins.
