@@ -1,5 +1,8 @@
 # browxai feedback: FanFest contest/simulfest QA campaign (2026-05-19)
 
+<!-- composerxai-lint disable struct/closing-summary -->
+<!-- leading abstract in an external adopter's own report -->
+
 Field report from a multi-day agentic QA campaign (FanFest plans 076/077:
 live multi-session contest + simulfest reliability, host+fan, staging).
 Many qa-expert agents drove browxai under a team-lead. Below: what worked,

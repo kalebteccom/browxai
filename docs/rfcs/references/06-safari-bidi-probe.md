@@ -1,5 +1,8 @@
 # Safari 26.5 ships WebDriver BiDi: empirical real-device probe (CORRECTS RFC 0002)
 
+<!-- composerxai-lint disable struct/closing-summary -->
+<!-- the TL;DR carries the verdict a reader needs before the evidence -->
+
 **Date:** 2026-06-13 · **Author:** Deep-research lane (Claude Code) · **Scope:** Does the *shipping* desktop Safari actually expose WebDriver BiDi, and if so, how much of the BiDi surface is live? Direct, reproducible automation of real `safaridriver` on this Mac, not docs inference. **This reference CORRECTS the RFC's "Safari has not shipped BiDi" claim** (see §6).
 
 **Evidence base:** First-party empirical probing of the stock `safaridriver` shipped with macOS 26.5 / Safari 26.5 on this host, driven from Node v22.15.0 over the real HTTP/WebDriver endpoint and a live BiDi `ws://` socket. Every capability claim below was executed against the actual binary, not read from a spec or a man page. All findings are local-machine and marked **`[LOCAL]`**; they are authoritative for this exact OS/Safari build and supersede the prose-level prediction in [`05-safari-xpc.md`](05-safari-xpc.md) §4 Rank 4 and in [RFC 0002](../0002-multi-engine-bidi.md). Where this reference disagrees with an earlier one, **this one wins on the empirical point** (BiDi presence); the earlier XPC/BYOB conclusions are unaffected (see §5–§6).

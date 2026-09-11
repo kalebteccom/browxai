@@ -1,5 +1,8 @@
 # RFC 0004: Architecture hardening (a safety-critical maintainability standard for browxai)
 
+<!-- composerxai-lint disable typo/spaced-em-dash -->
+<!-- the em dash is inside a verbatim quotation of the owner's directive -->
+
 **Date:** 2026-06-14
 **Status:** Draft proposal. No code changed by this RFC; it is the design record + the standard + the phased plan. The companion references under [`references/`](references/) carry the evidence, the target patterns, the fitness-function specs, the AI-doc/harness changes, the prior art, and the future-proofing roadmap.
 **Author:** Claude (adversarial audit across 8 subsystems + synthesis, June 2026)

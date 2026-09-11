@@ -1,5 +1,8 @@
 # XPC as the Path to Automating REAL Safari: Feasibility Report for browxai (BYOB-attach-first)
 
+<!-- composerxai-lint disable struct/closing-summary -->
+<!-- the TL;DR carries the verdict a reader needs before the evidence -->
+
 **Date:** 2026-06-13 · **Author:** Deep-research lane (Claude Code) · **Scope:** Can browxai attach to the user's *real, logged-in* Safari on macOS the way it attaches to Chrome? What is the XPC surface, who is allowed to speak it, and what is the realistic ranked strategy?
 
 **Evidence base:** Apple developer docs + WebKit source (`Source/JavaScriptCore/inspector/remote`, `Source/WebKit/UIProcess/Automation`, `Source/WebDriver`), WebKit blog (Apple WebKit team), WebKit Bugzilla, `safaridriver(1)` man page, Apple Developer Forums (Quinn "The Eskimo!" / DTS), pymobiledevice3 + ios-webkit-debug-proxy source, GitHub prior art, and **read-only inspection of this Mac** (macOS platform identifier 26, June 2026). Local-machine findings are marked **`[LOCAL]`** and are authoritative for this OS version. Inference (not a single quotable Apple sentence) is marked **`[INFERENCE]`**.

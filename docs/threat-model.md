@@ -1,5 +1,8 @@
 # browxai threat model
 
+<!-- composerxai-lint disable struct/closing-summary -->
+<!-- the TL;DR here is a leading abstract, not the trailing wrap-up this rule targets -->
+
 > Defines what browxai defends against, what it doesn't, and the boundary between the two.
 > The security baseline (managed-profile default, loopback-only CDP, untrusted page
 > content) plus the **full model** that the capability-toggle / allowlist /
