@@ -803,6 +803,7 @@ export default tseslint.config(
       "src/engine/**/*.ts",
       "src/policy/**/*.ts",
       "src/helper/**/*.ts",
+      "src/replay/**/*.ts",
       "src/tools/**/*.ts",
       "src/transport/**/*.ts",
     ],

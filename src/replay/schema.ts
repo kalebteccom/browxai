@@ -127,9 +127,20 @@ export interface ReplayManifest {
   engine: string;
   viewport?: { width: number; height: number };
   userAgent?: string;
-  /** Present when the cap truncated capture. A silently short replay is worse
-   *  than a refused one, so this is load-bearing and the player surfaces it. */
-  truncated?: { at: number; reason: "size-cap" | "event-cap"; droppedEvents: number };
+  /** Present when capture stopped or dropped events. A silently short replay is
+   *  worse than a refused one, so this is load-bearing and the player surfaces
+   *  it.
+   *
+   *  `backpressure` is distinct on purpose: the caps were never reached, the
+   *  disk could not keep up. Folding it into `size-cap` would misreport why the
+   *  replay is short, and why is the whole point of recording it. Unlike the two
+   *  caps, backpressure does not stop capture, so a log can carry dropped events
+   *  and still run to the end of the session. */
+  truncated?: {
+    at: number;
+    reason: "size-cap" | "event-cap" | "backpressure";
+    droppedEvents: number;
+  };
   counts: Record<string, number>;
   /** sha256 of events.jsonl before compression. */
   eventsDigest: string;
