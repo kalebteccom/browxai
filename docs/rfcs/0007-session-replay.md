@@ -172,11 +172,12 @@ The DOM stream uses **rrweb** (2.1.4, MIT, on the npm registry so it satisfies t
 It does **not** become the artifact format. An rrweb event is carried as the payload of one browxai event type:
 
 ```jsonc
-{ "t": 1432, "type": "dom/rrweb", "v": 1, "payload": { /* rrweb event, verbatim */ } }
+{ "t": 1432, "type": "dom/rrweb", "v": 1, "payload": {/* rrweb event, verbatim */} }
 ```
 
 So the envelope, the clock, the schema version and the forward-compatibility rule stay ours, every other source sits in the same log on the same clock, and the DOM recorder is swappable later without changing the format or breaking old logs. A player reads our envelope and hands `payload` to whatever replays it.
 
 One implementation note: rrweb's recorder is a bundle injected via `addInitScript`, not a browxai page-side function literal. The `dom_export` trap does not apply, but the bundle must be injected before any page script runs or the initial full snapshot is wrong.
+
 - Multi-tab and cross-origin iframes: the session pool from RFC 0005 gives per-tab identity, but a replay spanning tabs also needs a presentation decision.
 - Playwright `trace.zip` interop is cheap to emit alongside and worth doing, but it is a second-class path and should not shape the primary format.
