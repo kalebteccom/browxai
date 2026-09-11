@@ -1,5 +1,8 @@
 # Browxai Report - 2026-05-20 - Codex File IO Rerun
 
+<!-- composerxai-lint disable struct/closing-summary -->
+<!-- leading abstract in an external adopter's own report -->
+
 ## Summary
 
 This report covers the second Codex Browxai run against Clipro after enabling the newer

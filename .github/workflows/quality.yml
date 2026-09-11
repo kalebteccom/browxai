@@ -28,6 +28,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
+      # Prose register gate. Fails on machine-register tells in docs/ and the
+      # README; the seven sanctioned exceptions carry an inline
+      # `composerxai-lint disable <rule>` directive with its reason.
+      - run: pnpm lint:prose
       - run: pnpm run depcheck
       # RFC 0004 architecture guardrails, REPORTING-ONLY in P0. depcruise rules
       # ship severity "warn" (.dependency-cruiser.cjs) and jscpd carries no
