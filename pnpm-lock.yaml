@@ -33,9 +33,6 @@ importers:
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.41
-      composerxai-lint:
-        specifier: github:kalebteccom/composerxai#49532ab2b69f8f0a5a0dff14217551fc8655ea1a
-        version: https://codeload.github.com/kalebteccom/composerxai/tar.gz/49532ab2b69f8f0a5a0dff14217551fc8655ea1a
       depcheck:
         specifier: ^1.4.7
         version: 1.4.7
@@ -2105,12 +2102,6 @@ packages:
   common-ancestor-path@2.0.0:
     resolution: {integrity: sha512-dnN3ibLeoRf2HNC+OlCiNc5d2zxbLJXOtiZUudNFSXZrNSydxcCsSpRzXwfu7BBWCIfHPw+xTayeBvJCP/D8Ng==}
     engines: {node: '>= 18'}
-
-  composerxai-lint@https://codeload.github.com/kalebteccom/composerxai/tar.gz/49532ab2b69f8f0a5a0dff14217551fc8655ea1a:
-    resolution: {tarball: https://codeload.github.com/kalebteccom/composerxai/tar.gz/49532ab2b69f8f0a5a0dff14217551fc8655ea1a}
-    version: 0.1.0
-    engines: {node: '>=18.18'}
-    hasBin: true
 
   compressible@2.0.18:
     resolution: {integrity: sha512-AF3r7P5dWxL8MxyITRMlORQNaOA2IkAFaTr4k7BUumjPtRpGDTZpl0Pb1XCO6JeDCBdp126Cgs9sMxqSjgYyRg==}
@@ -6561,8 +6552,6 @@ snapshots:
   common-ancestor-path@1.0.1: {}
 
   common-ancestor-path@2.0.0: {}
-
-  composerxai-lint@https://codeload.github.com/kalebteccom/composerxai/tar.gz/49532ab2b69f8f0a5a0dff14217551fc8655ea1a: {}
 
   compressible@2.0.18:
     dependencies:
