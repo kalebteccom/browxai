@@ -1,4 +1,4 @@
-# Hexagonal architecture and DDD — the layer map
+# Hexagonal architecture and DDD: the layer map
 
 How browxai is shaped, and the words it is shaped in. The macro doctrine
 ([`architecture-principles.md`](architecture-principles.md), §4a, laws L1–L10)
@@ -7,8 +7,8 @@ and _what to call them_. Read it when deciding where new code belongs, or before
 moving a boundary.
 
 browxai is ports-and-adapters. Dependencies point **inward**: the core depends on
-nothing outward, and every outward concern — a browser engine, a wire transport, a
-vendor CLI, the filesystem, a page realm — sits behind a port the core owns. The
+nothing outward, and every outward concern (a browser engine, a wire transport, a
+vendor CLI, the filesystem, a page realm) sits behind a port the core owns. The
 mapping below is law, enforced by the fitness suite
 ([`fitness-functions.md`](fitness-functions.md)). It is the unifying frame over
 the more specific [`engine-adapters.md`](engine-adapters.md) (the engine seam) and
@@ -18,8 +18,8 @@ the more specific [`engine-adapters.md`](engine-adapters.md) (the engine seam) a
 
 Five roles, dependencies pointing inward. browxai is one npm package, not a crate
 graph, so the dependency rule is enforced by dependency-cruiser
-(`.dependency-cruiser.cjs`) and the custom lint rules rather than by the compiler
-— see [`fitness-functions.md`](fitness-functions.md) for the exact checks.
+(`.dependency-cruiser.cjs`) and the custom lint rules rather than by the compiler.
+See [`fitness-functions.md`](fitness-functions.md) for the exact checks.
 
 | Role          | Where                                                                                                                                                                                                                                                                                                                                                                                                                | Holds                                                  | Never holds                                   |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------------------------- |
@@ -43,51 +43,51 @@ change. It is an adapter to the page, not core logic, and is split out as such
 
 ## Ports and adapters
 
-A **port** is a contract the core owns because it has a real, _proven_ need —
+A **port** is a contract the core owns because it has a real, _proven_ need:
 a second implementation today or a committed one (the proven-seam test,
 [`architecture-principles.md`](architecture-principles.md) §2). browxai's proven
 ports, each with multiple implementations:
 
-- **the engine port** — `chromium / firefox / webkit / safari / android` all
+- **the engine port**: `chromium / firefox / webkit / safari / android` all
   implement it; engine identity lives only as data in `src/engine` tables, never
   as an `engine === "…"` branch in a handler (`no-engine-literal-branches`).
 - **the capability substrate ports** (`Action` / `Capture` / `Storage` /
-  `Script` / `Emulation` / `Snapshot` / `Network`) — Playwright and Safari
+  `Script` / `Emulation` / `Snapshot` / `Network`), with Playwright and Safari
   implementations behind each.
-- **`SdkTransport`** — in-process, socket, and stdio-child transports.
-- **`ToolHost`** and its segregated sub-ports — the interface-segregation seam a
-  handler depends on a narrow slice of, never the whole host.
-- **`CredentialProvider`**, **`PluginApi`** — the vendor-credential and plugin
-  seams.
+- **`SdkTransport`**: in-process, socket, and stdio-child transports.
+- **`ToolHost`** and its segregated sub-ports carry the interface-segregation
+  seam. A handler depends on a narrow slice of it, never the whole host.
+- **`CredentialProvider`** and **`PluginApi`** are the vendor-credential and
+  plugin seams.
 
 The **composition root** is `src/server.ts`: the one place that knows both the
 concrete adapters and the use cases and wires one to the other. It resolves
 config, policy, and workspace, builds the `ToolHost`, runs every
 `register*Tools`, wires the plugin runtime, and returns start / shutdown /
-handlers. It is wiring-only — business logic in the root is a smell the size
-budget (`max-lines` ≤ 280 on `server.ts`) catches.
+handlers. It is wiring-only. Business logic in the root is a smell, and the size
+budget (`max-lines` ≤ 280 on `server.ts`) catches it.
 
 ## DDD building blocks, as used here
 
-- **Value object** — immutable, compared by value. The **capability** is the
+- **Value object**: immutable, compared by value. The **capability** is the
   load-bearing one: a closed vocabulary (`src/util/capabilities.ts`) that gates
   what every tool may do, checked **once** at the shared gate
   (`ToolHost.gateCheck`), never inlined in a handler
   (`no-inlined-capability-checks`).
-- **Aggregate** — owns its invariants and is the unit of consistency. The
+- **Aggregate**: owns its invariants and is the unit of consistency. The
   **session** is the worked example: `SessionRegistry` owns identity and the
   per-session state bundle (policy, storage, recording, capability state), in one
   of three **modes** (managed / incognito / byob-attach). Lifecycle invariants
   live on the session, not as scattered `if` checks.
-- **Domain error vs IO failure** — a violated invariant is a structured
+- **Domain error vs IO failure**: a violated invariant is a structured
   `InvariantError` (`src/util/invariant.ts`) the dispatch boundary renders as a
   `ToolResponse` refusal; an IO/engine failure surfaces as a shaped failure in
   the `ActionResult`. Callers branch on a typed shape, never a string.
-- **Use case** — one user-meaningful operation (click, snapshot, extract,
+- **Use case**: one user-meaningful operation (click, snapshot, extract,
   open_session): a handler in `src/page` or `src/session` that orchestrates ports
   and domain and holds no rule that belongs on the session aggregate or the
   capability vocabulary.
-- **`ActionResult`** — the structured envelope an action emits (pre-state,
+- **`ActionResult`**: the structured envelope an action emits (pre-state,
   dispatch, settle, post-state, shaped sub-blocks). Its _shaping and types_ are
   domain; its _lifecycle orchestration_ (`actionresult.ts`) is application.
 
@@ -95,19 +95,18 @@ budget (`max-lines` ≤ 280 on `server.ts`) catches.
 
 Use these terms exactly, in code and prose:
 
-- **session** — a live browser context with identity, owned by `SessionRegistry`.
-  **mode** — how it was created (managed / incognito / byob-attach).
-- **capability** — the closed gating vocabulary; **the gate** — the single check
-  at `ToolHost.gateCheck`.
-- **engine** — a browser backend, present only as data in `src/engine` tables.
-- **port** — a contract the core owns; **substrate** — the capability-shaped port
-  family a session exposes (`Action` / `Capture` / …).
-- **tool handler** — the use-case unit; **`register*Tools`** — its MCP
-  registration wrapper (size-exempt by design).
-- **`ActionResult`** — the structured action envelope. **composition root** —
-  `src/server.ts`.
+A **session** is a live browser context with identity, owned by
+`SessionRegistry`, and its **mode** is how it was created (managed, incognito or
+byob-attach). A **capability** is the closed gating vocabulary, and **the gate**
+is the single check at `ToolHost.gateCheck`. An **engine** is a browser backend,
+present only as data in `src/engine` tables. A **port** is a contract the core
+owns; the **substrate** is the capability-shaped port family a session exposes
+(`Action` / `Capture` / …). A **tool handler** is the use-case unit, and
+**`register*Tools`** is its MCP registration wrapper, size-exempt by design.
+**`ActionResult`** is the structured action envelope, and the **composition
+root** is `src/server.ts`.
 
-## Where new work goes — a decision rule
+## Where new work goes: a decision rule
 
 - A new invariant or business rule → a method on the owning thing (the session
   aggregate, the capability vocabulary), in the domain.
@@ -125,11 +124,11 @@ Use these terms exactly, in code and prose:
 
 ## Related
 
-- [`architecture-principles.md`](architecture-principles.md) — the macro
+- [`architecture-principles.md`](architecture-principles.md): the macro
   doctrine and the ten laws (L1–L10) these layers serve.
-- [`module-and-file-size.md`](module-and-file-size.md) — the one-reason-to-change
+- [`module-and-file-size.md`](module-and-file-size.md): the one-reason-to-change
   size discipline and its budget.
-- [`fitness-functions.md`](fitness-functions.md) — the executable checks that
+- [`fitness-functions.md`](fitness-functions.md): the executable checks that
   hold every boundary above in place.
-- [`engine-adapters.md`](engine-adapters.md) — the engine port and its adapters
-  in depth. [`repo-map.md`](repo-map.md) — the directory index.
+- [`engine-adapters.md`](engine-adapters.md): the engine port and its adapters
+  in depth. [`repo-map.md`](repo-map.md) is the directory index.

@@ -1,4 +1,4 @@
-# RFC 0005 — Attached-target pool (per-session target identity, leases, heartbeat)
+# RFC 0005: Attached-target pool (per-session target identity, leases, heartbeat)
 
 **Date:** 2026-09-09
 **Status:** Landed. Target identity, refcounted per-endpoint connection, lease table, structured errors, pool ceiling, lease reclamation, dispatch-as-heartbeat, and public docs. A real-Chromium keystone is the regression gate.
@@ -26,7 +26,7 @@ The result is not a race the caller can retry through. N sessions share one `Pag
 
 ## Scope
 
-Attached (BYOB) chromium and android. Managed and incognito already isolate correctly — each owns its context — and are out of scope except where the shared types move.
+Attached (BYOB) chromium and android. Managed and incognito already isolate correctly (each owns its context) and are out of scope except where the shared types move.
 
 Safari is out of scope: `safaridriver` hard-isolates automation into ephemeral windows, so there is no shared target to contend for.
 
@@ -38,7 +38,7 @@ Safari is out of scope: `safaridriver` hard-isolates automation into ephemeral w
 
 (An earlier draft also added `targetId` to `SessionInternals`. That interface turned out to have zero consumers anywhere in the tree and is not in the public export surface, so it was deleted instead of grown.)
 
-`page()` stays synchronous and returns the bound `Page`, but it does check `page.isClosed()` first — a local boolean with no protocol round-trip. Without that check `attach-target-gone` has nowhere to fire and the stale-handle failure stays opaque, which is the defect this RFC exists to remove.
+`page()` stays synchronous and returns the bound `Page`, but it does check `page.isClosed()` first, a local boolean with no protocol round-trip. Without that check `attach-target-gone` has nowhere to fire and the stale-handle failure stays opaque, which is the defect this RFC exists to remove.
 
 ### Browser-connection registry
 
@@ -71,7 +71,7 @@ Endpoint keys are normalized before use, so `localhost:9222` and `127.0.0.1:9222
 
 ### Heartbeat
 
-`renewedAt` updates on every tool dispatch for the session. No separate timer, no background task — dispatch is the heartbeat, so a working agent never expires and a dead one stops renewing immediately.
+`renewedAt` updates on every tool dispatch for the session. No separate timer, no background task. Dispatch is the heartbeat, so a working agent never expires and a dead one stops renewing immediately.
 
 A lease is reclaimable once `now - renewedAt` exceeds the TTL. Reclamation happens lazily at the next acquisition, so a dead agent's tab returns to the pool without a sweeper.
 
@@ -116,18 +116,18 @@ Context-level surfaces stay shared: dialogs, downloads, permission grants, file 
 
 ## Phasing
 
-- **P1** — target identity + connection registry + lease table + the four structured errors. Keystone against real Chromium: two sessions on one endpoint touch two targets.
-- **P2** — ceiling, lease reclamation, dispatch-as-heartbeat. Landed.
+- **P1** covers target identity, the connection registry, the lease table and the four structured errors. Keystone against real Chromium: two sessions on one endpoint touch two targets.
+- **P2** adds the ceiling, lease reclamation and dispatch-as-heartbeat. Landed.
 
   The heartbeat had to be wired before the sweep: reclamation against a
   `renewedAt` that nothing advances would have expired every live session at the
   TTL, busy ones included. Implementation also changed the reclamation semantics
-  from the original draft — elapsed time alone never ends a lease. A lease is
+  from the original draft: elapsed time alone never ends a lease. A lease is
   only dropped when another session actually needs a target, so an idle agent is
   not punished for thinking, and `renew` reports reclamation after the fact by
   checking the session still holds the target it was bound to.
 
-- **P3** — docs: `tool-reference.md` session table, `threat-model.md` byob row, the shared-cookie-jar limit stated plainly.
+- **P3** is the docs pass: `tool-reference.md` session table, `threat-model.md` byob row, the shared-cookie-jar limit stated plainly.
 
 ## Enforcement
 

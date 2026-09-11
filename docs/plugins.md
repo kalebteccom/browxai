@@ -1,4 +1,4 @@
-# browxai plugins — marketplace index
+# browxai plugin marketplace index
 
 This is the operator-facing index of browxai plugins. For **authoring
 a plugin**, see [`docs/plugin-authoring.md`](./plugin-authoring.md).
@@ -6,8 +6,8 @@ For the per-tool reference on the shipped first-party plugins, see
 [`docs/plugins-first-party.md`](./plugins-first-party.md).
 
 The plugin runtime ships as part of browxai's v1.0 foundations.
-The first wave of plugins — the reference plugin plus the three
-canvas-app adapters — consumes the runtime today; this index grows as
+The first wave of plugins (the reference plugin plus the three
+canvas-app adapters) consumes the runtime today; this index grows as
 further plugins (e.g. the diagnostics-report plugin) land.
 
 ## How to install a plugin
@@ -20,7 +20,8 @@ $ browxai plugin install @browxai/plugin-figma
 
 During plugin development (or pre-publish, e.g. working from a checkout
 of this repo before the public flip), install from a local working
-directory instead — same CLI, `file:` source, trust-tagged `local`:
+directory instead, over the same CLI with a `file:` source and the
+`local` trust tag:
 
 ```sh
 # Dev-loop: build the plugin, then install its directory by path.
@@ -30,12 +31,12 @@ $ browxai plugin install file:./packages/plugins/figma/
 
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):
 
-- `plugins.json` — the declarative truth (which plugins should load).
-- `plugins/node_modules/` — package-manager-managed install dir. The CLI
+- `plugins.json`: the declarative truth (which plugins should load).
+- `plugins/node_modules/`: the package-manager-managed install dir. The CLI
   uses `pnpm` when it is on PATH and falls back to `npm` otherwise (so
   npm-installed adopters need no extra tooling); with neither present it
   exits with an actionable error.
-- `plugins-lock.json` — auto-generated pin (version + sha256 of the
+- `plugins-lock.json`: an auto-generated pin (version + sha256 of the
   installed package) for reproducibility.
 
 **Server restart required after every install/remove/upgrade.** Plugin
@@ -43,7 +44,7 @@ lifecycle is resolved-once-at-server-start. `get_config({scope:"resolved"})`
 returns the LIVE enabled set; a divergence between live and persisted
 surfaces as the `pluginsPendingRestart` flag.
 
-## `plugins.json` — a complete example
+## A complete `plugins.json`
 
 The declarative file at `<workspace>/plugins.json` after installing the
 example plugin plus all three canvas adapters:
@@ -59,7 +60,7 @@ example plugin plus all three canvas adapters:
 }
 ```
 
-- `enabled: false` means "declared but skipped at server start" — a
+- `enabled: false` means "declared but skipped at server start", a
   way to switch a plugin off without uninstalling it.
 - A `trust` field per entry overrides the trust tier (the CLI writes
   `"trust": "local"` on `file:` installs automatically).
@@ -87,13 +88,13 @@ browxai plugin: sync done. Server restart required — …
 Use it when the install dir has drifted (a wiped `node_modules/`, a
 workspace restored from backup) or to re-pin after out-of-band changes.
 A `contentSha256` mismatch against the previous pin means the installed
-package's contents changed — audit before restarting the server.
+package's contents changed. Audit before restarting the server.
 
 `browxai doctor` reports this whole surface as its plugins section:
 declaration parseability, declared-but-not-installed drift, orphan
 installs, lock health (missing lock, `contentSha256` mismatch, stale
 pins), and per-plugin manifest sanity (apiVersion, namespace,
-capabilities, `dependsOn`) — all without executing any plugin code.
+capabilities, `dependsOn`), all without executing any plugin code.
 Each `✗` comes with a one-line fix, usually `browxai plugin sync`.
 
 ## Other CLI subcommands
@@ -108,25 +109,24 @@ $ browxai plugin sync                       # reconcile installed dir with plugi
 
 ## MCP introspection
 
-- **`plugins_list()`** — every declared plugin's load status. Read-only
-  (gates under `read`).
-- **`plugins_info({name})`** — full manifest dump + tool registry for
-  one plugin. Read-only (`read`).
+- `plugins_list()` returns every declared plugin's load status. It is
+  read-only and gates under `read`.
+- `plugins_info({name})` returns the full manifest dump plus the tool
+  registry for one plugin. Also read-only, also `read`.
 
 ## First-party plugins
 
 Four Kalebtec-maintained plugins ship from this repo and publish as
-`@browxai/plugin-*`. **The per-tool reference — every op, its args, its
-return shape, the not-loaded envelopes, and a usage walkthrough — lives
-in [`docs/plugins-first-party.md`](./plugins-first-party.md).** The
-one-line summary:
+`@browxai/plugin-*`. **[`docs/plugins-first-party.md`](./plugins-first-party.md) carries the
+per-tool reference: every op, its args, its return shape, the not-loaded
+envelopes, and a usage walkthrough.** The one-line summary:
 
-| Name                                                            | Tier       | Description                                                                                                                                                                                                                                                  |
-| --------------------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [`@browxai/plugin-example`](../packages/plugins/example/)       | `kalebtec` | Reference plugin — exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors.                                                                                                                     |
-| [`@browxai/plugin-figma`](../packages/plugins/figma/)           | `kalebtec` | Figma canvas-app adapter — selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`.                               |
-| [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/)         | `kalebtec` | Tldraw canvas-app adapter — shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`.                                |
-| [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) | `kalebtec` | Excalidraw canvas-app adapter — scene state, viewport, element add/delete, scroll (`excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element`, `excalidraw.set_scroll`). Capabilities `eval` + `canvas`. |
+| Name                                                            | Tier       | Description                                                                                                                                                                                                                                                 |
+| --------------------------------------------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@browxai/plugin-example`](../packages/plugins/example/)       | `kalebtec` | Reference plugin. Exercises every registry feature (`example.echo`, `example.add`, `example.now`). Canonical source for plugin authors.                                                                                                                     |
+| [`@browxai/plugin-figma`](../packages/plugins/figma/)           | `kalebtec` | Figma canvas-app adapter: selection, viewport, node mutate, rectangle create (`figma.get_selection`, `figma.get_viewport`, `figma.select_node`, `figma.move_node`, `figma.create_rectangle`). Capabilities `eval` + `canvas`.                               |
+| [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/)         | `kalebtec` | Tldraw canvas-app adapter: shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`.                                |
+| [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) | `kalebtec` | Excalidraw canvas-app adapter: scene state, viewport, element add/delete, scroll (`excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element`, `excalidraw.set_scroll`). Capabilities `eval` + `canvas`. |
 
 The three canvas-app adapter plugins are the v1.0 proof that the plugin
 runtime + canvas substrate compose into a real ecosystem story. The
@@ -135,14 +135,14 @@ the keystone fodder for the runtime itself.
 
 ## Trust tiers
 
-- **`kalebtec`** — Kalebtec-maintained plugins
+- `kalebtec`: Kalebtec-maintained plugins
   (`@browxai/plugin-*` on npm).
-- **`community`** — third-party npm plugins
+- `community`: third-party npm plugins
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
-- **`local`** — installed from a file path during development
+- `local`: installed from a file path during development
   (`browxai plugin install file:./path/`).
 
-Trust is advisory — the runtime gates all three tiers identically at
+Trust is advisory: the runtime gates all three tiers identically at
 capability + call-graph time. Surfaced on `plugins_list` so the
 operator can audit.
 

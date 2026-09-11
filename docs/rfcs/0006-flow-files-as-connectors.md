@@ -1,7 +1,7 @@
-# RFC 0006 — Flow files as connectors (typed inputs, outputs, assertions, compile to MCP)
+# RFC 0006: Flow files as connectors (typed inputs, outputs, assertions, compile to MCP)
 
 **Date:** 2026-09-09
-**Status:** Draft — proposal. Depends on a prerequisite that has not landed.
+**Status:** Draft proposal. Depends on a prerequisite that has not landed.
 **Trigger:** [`2026-09-09-rowin-profile.md`](../ai-context/adopter-reports/2026-09-09-rowin-profile.md) item 7. An adopter drove a dozen platforms daily for six months, exported a recording successfully, and found the export could not express the thing the session was actually for.
 
 ## The gap
@@ -31,7 +31,7 @@ steps:
     value: "https://mail.google.com/mail/u/0/#inbox"
 ```
 
-That block is a seam. A flow file with typed inputs and outputs **is** an MCP tool definition — name, description, input schema, handler. The mapping is mechanical; nothing has to be invented.
+That block is a seam. A flow file with typed inputs and outputs **is** an MCP tool definition: name, description, input schema, handler. The mapping is mechanical; nothing has to be invented.
 
 ## Proposal
 
@@ -79,7 +79,7 @@ Substitution happens at run time against the resolved inputs. Unresolved referen
   onFail: abort
 ```
 
-This one earns its place from field evidence rather than symmetry. The reporter sent two real emails through browxai, and guarded both by re-reading the page inside the same script that acted — checking the thread subject before clicking reply, and the composed body before clicking send. Both guards were hand-written `eval_js` calls. Given attached-mode sessions did not isolate at the time (RFC 0005), that guard was the only thing standing between an automated send and the wrong thread, and it was written by hand twice.
+This one earns its place from field evidence rather than symmetry. The reporter sent two real emails through browxai, and guarded both by re-reading the page inside the same script that acted: checking the thread subject before clicking reply, and the composed body before clicking send. Both guards were hand-written `eval_js` calls. Given attached-mode sessions did not isolate at the time (RFC 0005), that guard was the only thing standing between an automated send and the wrong thread, and it was written by hand twice.
 
 Reuse the predicate vocabulary that `batch`'s `expect` already defines rather than inventing a second assertion DSL.
 
@@ -91,9 +91,9 @@ Reuse the predicate vocabulary that `batch`'s `expect` already defines rather th
 
 ## Prerequisites
 
-**1. Record the reads. — LANDED.** `RecordedStep` is now a discriminated union of an action step and a read step, covering `extract` / `find` / `snapshot` / `eval_js`. Both the YAML draft and the `.spec.ts` export lower them, and an exported spec now returns values instead of nothing. `outputs` has something to bind to. See `docs/ai-context/recorder-and-replay/action-trace-contract.md` for the recorded shape.
+**1. Record the reads: LANDED.** `RecordedStep` is now a discriminated union of an action step and a read step, covering `extract` / `find` / `snapshot` / `eval_js`. Both the YAML draft and the `.spec.ts` export lower them, and an exported spec now returns values instead of nothing. `outputs` has something to bind to. See `docs/ai-context/recorder-and-replay/action-trace-contract.md` for the recorded shape.
 
-Two fidelity limits that constrain `outputs` and should be designed around rather than discovered later: `extract` lowering reads the recorded schema's `x-browx-source.selector`, so nested object/array properties are not lowered; and a ref-scoped `extract({ref:"eN"})` lowers page-wide with a TODO, because refs are session-local and mean nothing on replay. `snapshot` lowers to a comment by design — a serialised a11y tree is not a script step — and is counted as unhandled rather than inflating the `handled` stat.
+Two fidelity limits that constrain `outputs` and should be designed around rather than discovered later: `extract` lowering reads the recorded schema's `x-browx-source.selector`, so nested object/array properties are not lowered; and a ref-scoped `extract({ref:"eN"})` lowers page-wide with a TODO, because refs are session-local and mean nothing on replay. `snapshot` lowers to a comment by design (a serialised a11y tree is not a script step) and is counted as unhandled rather than inflating the `handled` stat.
 
 **2. Locators need a stability contract.** A compiled flow must refuse, or warn loudly, when a low-stability locator misses, instead of silently matching something else. `end_recording` already emits `stability: medium|low`, so the data is present and unused. Note the existing semantics: `stability: "high"` means "uniquely identifies this element in **this snapshot**", not "survives a deploy". A compiled flow that runs next month needs the second property, and the format should not imply it has it.
 

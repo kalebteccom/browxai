@@ -1,12 +1,12 @@
-# `screenshot_marks` — tool-fit investigation (2026-05-27)
+# `screenshot_marks` tool-fit investigation (2026-05-27)
 
 This investigation was scoped from an adopter early-discovery tool-fit question:
 an adopter's spec said
 the adopter "never re-exposes …`screenshot_marks`", yet the adopter's curated
 `BrowxaiToolName` union includes `screenshot_marks` in the agent-callable
 set. Builder C interpreted the spec line as forbidding _re-exposing_
-(adopter-level duplicate surface) NOT _calling_ — same reading applied
-to `extract` / `verify_*` / `plan` / `execute` which the loop also calls.
+(adopter-level duplicate surface) NOT _calling_. The same reading applied
+to `extract` / `verify_*` / `plan` / `execute`, which the loop also calls.
 The owner asked for a substantive read on whether `screenshot_marks` is
 the right fit for the adopter's loop usage pattern.
 
@@ -21,15 +21,15 @@ bbox}` (fast-path, no extra walk). `label` ∈ `"index"` (default) / `"ref"`
 mapping:{"1":"eN", …}, warnings }` + a base64 PNG of the viewport with a
   numbered overlay painted at each candidate's bbox.
 - **Capability**: `read`. Also in the `batch` whitelist. Pure compose over
-  `find()` / `snapshot()` — only browser side-effect is a transient in-page
-  overlay installed for the duration of the screenshot and removed before
-  return.
+  `find()` / `snapshot()`, so the only browser side-effect is a transient
+  in-page overlay installed for the duration of the screenshot and removed
+  before return.
 
-## Namespace-sharing claim — verified
+## Namespace-sharing claim: verified
 
-CHANGELOG v0.2.0: "The numbering scheme SHARES the existing `name_ref` /
-`eN` namespace — no parallel ID space — so `mapping["2"] === "e7"` and the
-agent can address either way."
+CHANGELOG v0.2.0 claims the numbering scheme shares the existing `name_ref`
+/ `eN` namespace, with no parallel ID space, so `mapping["2"] === "e7"` and
+the agent can address either way.
 
 End-to-end smoke (live, against `example.com` / `developer.mozilla.org` /
 `en.wikipedia.org/wiki/Main_Page`) confirms:
@@ -38,20 +38,20 @@ End-to-end smoke (live, against `example.com` / `developer.mozilla.org` /
 candidate.ref`. The map is built by appending each entry in order;
   there's no shuffle.
 - For full-candidate fast-path inputs, `marks[i].bbox === candidates[i].bbox`
-  (object equality) — the bbox is passed through unmodified, so by
-  construction matches `find().evidence.bbox`.
+  (object equality). The bbox is passed through unmodified, so by
+  construction it matches `find().evidence.bbox`.
 - For bare-`{ref}` inputs, `marks[i].bbox` comes from the same
   `composeSnapshot` + `visibleRect` path `find()` uses; same calibration,
   same numeric result.
 
 Artifacts captured (under `artifacts/`):
 
-- `marks-example.png` — 16.6 KB. Single ref painted with index `1`.
-- `marks-wiki.png` — 198 KB. Index `1` painted on the matched link.
-- `marks-overlap.png` — 18 KB. Two index labels painted on overlapping
+- `marks-example.png`: 16.6 KB. Single ref painted with index `1`.
+- `marks-wiki.png`: 198 KB. Index `1` painted on the matched link.
+- `marks-overlap.png`: 18 KB. Two index labels painted on overlapping
   bboxes (e1, e2 at near-identical coords). Both readable.
 
-## Wall-clock — before/after the fix this investigation surfaced
+## Wall-clock before and after the fix this investigation surfaced
 
 Before fix (`tools/profile-*.json`, first run):
 
@@ -75,7 +75,7 @@ The residual ~2-3 s for bare-ref bare-page targets is the bounded
 fallback cost (each unresolvable bare ref burns up to its 1 s cap).
 An adopter-loop pattern that pipes `find()` rows straight into
 `screenshot_marks` (fast-path) hits **~30-40 ms regardless of target
-size** — see the perf-probe `tM3` measurement (`38 ms` on
+size** (see the perf-probe `tM3` measurement, `38 ms` on
 `example.com`).
 
 ## Root cause of the 30-s-per-unresolvable-ref wedge
@@ -100,12 +100,12 @@ heavier MDN page blew past the per-call deadline entirely.
 ### Fix shipped
 
 `src/page/bbox.ts:locatorBoundingBox` grows a `{ timeoutMs? }` option.
-`screenshot_marks` passes `timeoutMs: 1000` — synthetic-ref fallbacks
+`screenshot_marks` passes `timeoutMs: 1000`, so synthetic-ref fallbacks
 fail in ≤ 1 s instead of waiting out the 30 s. Default behavior
 (other call sites) unchanged: omitting the option preserves Playwright's
 default.
 
-Unit test locked in: `src/page/bbox.test.ts` — asserts the `{ timeout:
+Unit test locked in at `src/page/bbox.test.ts`. It asserts the `{ timeout:
 1000 }` arg is forwarded, and that omitting the option calls
 `boundingBox()` with no args (Playwright default).
 
@@ -114,16 +114,16 @@ Unit test locked in: `src/page/bbox.test.ts` — asserts the `{ timeout:
 - **Unresolvable bare-ref** (e.g. `e999999`): `marks` row populated with
   `painted: false`, `bbox: null`, and a per-ref warning. No throw. The
   per-skipped-candidate warning is a single "N of M candidate(s) had no
-  bbox" line, not one per entry — terser than `find()`'s pattern but
-  consistent.
+  bbox" line, not one per entry. Terser than `find()`'s pattern, and
+  consistent with it.
 - **Caller-provided `bbox: null`** (clipped/off-screen): same as
-  unresolvable — `painted: false`, kept in `marks` so the index↔ref
+  unresolvable. `painted: false`, kept in `marks` so the index↔ref
   mapping stays complete.
 - **Overlapping bboxes**: rendered legibly. Each box's label badge
   flips to the inside corner when the box sits within 22 px of the
   viewport edge, so adjacent labels don't clip; overlapping interiors
   still get distinct badges. See `artifacts/marks-overlap.png`.
-- **Label modes** — all three documented modes behave as documented.
+- **Label modes**: all three behave as documented.
   `label:"index"` paints the array position 1..N. `label:"ref"` paints
   the existing `eN` directly. `label:"role"` paints the candidate's
   role (falling back to `ref` when role is absent).
@@ -140,7 +140,7 @@ calling" is consistent with how the same line treats `extract` /
 
 **The caveat that emerged**: the bare-`{ref}` path is meaningfully
 slower than the fast-path. Even after the 30-s wedge fix, the
-fast-path remains the right default — the caller already has bboxes
+fast-path remains the right default. The caller already has bboxes
 from the `find()` it just ran, and piping them through avoids any
 fallback risk entirely.
 
@@ -148,8 +148,8 @@ fallback risk entirely.
 
 1. `find(query) → candidates[]` (already in the curated union).
 2. Pick the K candidates the loop wants to ground visually.
-3. `screenshot_marks({ candidates: pickedFindRows, label:"index" })`
-   — the **full-candidate fast path**.
+3. `screenshot_marks({ candidates: pickedFindRows, label:"index" })`,
+   the **full-candidate fast path**.
 4. Send the painted PNG to the vision-judge along with the
    `{index → ref}` mapping; the judge picks an index; the harness
    translates back to `eN` for the next action.
@@ -158,10 +158,10 @@ The bare-`{ref}` form remains available for ad-hoc "I have a ref
 from somewhere else, paint me a box" usage, but the adopter loop
 should standardise on the fast-path.
 
-## Spec-line-57 ambiguity — drop-in replacement
+## Spec-line-57 ambiguity and a drop-in replacement
 
-The current wording — "the adopter never re-exposes …`screenshot_marks`"
-— invites the misreading that the adopter also can't _call_ it. Builder
+The current wording ("the adopter never re-exposes …`screenshot_marks`")
+invites the misreading that the adopter also can't _call_ it. Builder
 C, Reviewer C, and the owner all flagged the same ambiguity. Suggested
 rewrite for the adopter's `spec.md`:
 
@@ -182,26 +182,26 @@ wrapping is what's forbidden_.
 
 ## Files touched in this cycle
 
-- `src/page/bbox.ts` — `locatorBoundingBox` grows `{ timeoutMs }`.
-- `src/page/bbox.test.ts` — locks in `{ timeout: 1000 }` forwarding.
-- `src/page/set-of-marks.ts` — bare-ref fallback passes
+- `src/page/bbox.ts`: `locatorBoundingBox` grows `{ timeoutMs }`.
+- `src/page/bbox.test.ts`: locks in `{ timeout: 1000 }` forwarding.
+- `src/page/set-of-marks.ts`: bare-ref fallback passes
   `timeoutMs: 1000`.
-- `CHANGELOG.md` — Unreleased ▸ Fixed entry.
-- `test/investigation/screenshot-marks.investigation.test.ts` — live
+- `CHANGELOG.md`: Unreleased ▸ Fixed entry.
+- `test/investigation/screenshot-marks.investigation.test.ts`: live
   smoke for namespace sharing + edge cases (run via the dedicated
   `vitest.investigation.config.ts`; excluded from `pnpm test`).
-- `test/investigation/perf-probe.test.ts` — wall-clock probe used to
+- `test/investigation/perf-probe.test.ts`: wall-clock probe used to
   surface the defect.
-- `test/investigation/trace-runner.ts` — standalone-CLI tracer.
-- `vitest.investigation.config.ts` — config for the live-network suite.
-- `vitest.config.ts` — exclude `test/investigation/**` from the unit
+- `test/investigation/trace-runner.ts`: standalone-CLI tracer.
+- `vitest.investigation.config.ts`: config for the live-network suite.
+- `vitest.config.ts`: exclude `test/investigation/**` from the unit
   run so `pnpm test` stays hermetic.
 
 ## What I did NOT do
 
 - No public-contract change to `screenshot_marks` (same args, same
   return shape, same namespace semantics).
-- No edit to the adopter's repo or our internal portfolio — both
+- No edit to the adopter's repo or our internal portfolio. Both
   are read-only references for this investigation.
 - No new tool added.
 - No CHANGELOG bump beyond the Unreleased ▸ Fixed entry; v0.2.0 stays

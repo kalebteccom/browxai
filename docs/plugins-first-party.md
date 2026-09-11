@@ -1,16 +1,16 @@
-# browxai — first-party plugins
+# browxai first-party plugins
 
 The four Kalebtec-maintained plugins that ship from this repo
 (`packages/plugins/*`) and publish on npm under the `@browxai/*` scope.
 This page is the adopter-facing reference for each plugin's full tool
-surface — what it adapts, what it returns, and what it needs enabled on
+surface: what it adapts, what it returns, and what it needs enabled on
 the host. For the install model and CLI see
 [`docs/plugins.md`](./plugins.md); for writing your own plugin see
 [`docs/plugin-authoring.md`](./plugin-authoring.md).
 
 | Plugin                                                          | Namespace    | Capabilities      | What it adapts                                            |
 | --------------------------------------------------------------- | ------------ | ----------------- | --------------------------------------------------------- |
-| [`@browxai/plugin-example`](../packages/plugins/example/)       | `example`    | _(none)_          | Nothing — the canonical runtime-contract reference.       |
+| [`@browxai/plugin-example`](../packages/plugins/example/)       | `example`    | _(none)_          | Nothing. It is the canonical runtime-contract reference.  |
 | [`@browxai/plugin-figma`](../packages/plugins/figma/)           | `figma`      | `eval` + `canvas` | Figma, via the page-side `figma.*` plugin-context global. |
 | [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/)         | `tldraw`     | `eval` + `canvas` | Tldraw v2+, via the `window.editor` global.               |
 | [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) | `excalidraw` | `eval` + `canvas` | Excalidraw 0.17+, via the `window.excalidrawAPI` global.  |
@@ -23,7 +23,7 @@ app-API expression (`figma.currentPage.selection`,
 `editor.createShapes([...])`, `excalidrawAPI.updateScene({...})`),
 dispatches it through the host's `eval_js` tool, and parses the JSON
 envelope back into a structured `{ok, …}` result. That inner `eval_js`
-call goes through the same capability gate a direct MCP call would —
+call goes through the same capability gate a direct MCP call would,
 so the plugin honestly declares `eval` (arbitrary JS in page context)
 plus `canvas` (the canvas-app automation lane that also gates
 `canvas_query`). If either capability is missing from the server's
@@ -38,18 +38,18 @@ $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 ```
 
 (or persist via `set_config({scope:"user", patch:{capabilities:[...]}})`
-and restart — capabilities and plugins are both resolved once at server
+and restart: capabilities and plugins are both resolved once at server
 start.)
 
-The example plugin declares **no** capabilities — it runs on a server
+The example plugin declares **no** capabilities. It runs on a server
 with the default set and exists to prove the runtime end-to-end.
 
-## Host-app detection — the `<adapter>-not-loaded` envelope
+## Host-app detection: the `<adapter>-not-loaded` envelope
 
 Each canvas adapter probes for its host app's global before doing any
 work (`typeof figma !== "undefined"`, `window.editor`,
-`window.excalidrawAPI`). When the app isn't on the page — wrong tab,
-editor still booting, or the deployment doesn't expose the global —
+`window.excalidrawAPI`). When the app isn't on the page (wrong tab,
+editor still booting, or the deployment doesn't expose the global),
 every tool returns the same structured envelope instead of throwing:
 
 ```json
@@ -60,23 +60,23 @@ every tool returns the same structured envelope instead of throwing:
 }
 ```
 
-The `code` is stable per adapter — `figma-not-loaded`,
-`tldraw-not-loaded`, `excalidraw-not-loaded` — so an agent loop can
+The `code` is stable per adapter (`figma-not-loaded`,
+`tldraw-not-loaded`, `excalidraw-not-loaded`), so an agent loop can
 match on it and recover (navigate to the app, wait, retry). The other
 structured codes the adapters share: `bad-arg` (missing/invalid
-argument — checked _before_ the page is touched), `eval-failed` (the
+argument, checked _before_ the page is touched), `eval-failed` (the
 page-side expression threw), plus per-tool codes noted below.
 
 ## Calling adapter tools
 
 Two equivalent routes:
 
-- **Direct** — the tools are plain namespaced MCP tools:
+- **Direct.** The tools are plain namespaced MCP tools:
   `figma.get_selection`, `tldraw.create_shape`, … on `tools/list`.
   On the SDK: `client.plugins.figma.get_selection({})` (typed via each
-  plugin's `schema.d.ts` overlay — see
+  plugin's `schema.d.ts` overlay; see
   [`docs/plugin-authoring.md`](./plugin-authoring.md)).
-- **Via `canvas_query`** — the canvas-substrate dispatcher maps
+- **Via `canvas_query`.** The canvas-substrate dispatcher maps
   `canvas_query({adapter, op, args})` to the `<adapter>.<op>` registry
   entry. Useful for adapter-generic agent loops; if the plugin isn't
   installed the dispatcher returns the structured `code:"no-adapter"`
@@ -85,15 +85,15 @@ Two equivalent routes:
 ## `@browxai/plugin-example`
 
 The canonical reference plugin. Exercises every primitive of the v1
-runtime contract — `register(api)` entry, namespaced registration, no
-capabilities, empty `dependsOn` — and is the fixture the plugin-runtime
+runtime contract (`register(api)` entry, namespaced registration, no
+capabilities, empty `dependsOn`) and is the fixture the plugin-runtime
 keystone test loads end-to-end. Install it to smoke-test your plugin
 wiring; copy it to start your own plugin.
 
 | Tool           | Args                     | Returns                                                               |
 | -------------- | ------------------------ | --------------------------------------------------------------------- |
-| `example.echo` | `{msg: string}`          | `{ok: true, result}` — echoes `msg` back (missing `msg` echoes `""`). |
-| `example.add`  | `{a: number, b: number}` | `{ok: true, sum}` — non-numeric args coerce to `0`.                   |
+| `example.echo` | `{msg: string}`          | `{ok: true, result}`, echoing `msg` back (missing `msg` echoes `""`). |
+| `example.add`  | `{a: number, b: number}` | `{ok: true, sum}`, with non-numeric args coerced to `0`.              |
 | `example.now`  | _(none)_                 | `{ok: true, iso, epochMs}`.                                           |
 
 ## `@browxai/plugin-figma`
@@ -104,13 +104,13 @@ plugin API: `figma.viewport.{center,zoom}`,
 `figma.currentPage.selection`, `figma.getNodeById()`,
 `figma.createRectangle()`, and mutable `x`/`y`/`fills` on scene nodes.
 
-| Tool                     | Args                                                                                                                             | Returns                                                                |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `figma.get_selection`    | _(none)_                                                                                                                         | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                 |
-| `figma.get_viewport`     | _(none)_                                                                                                                         | `{ok, center: {x, y}, zoom}`                                           |
-| `figma.select_node`      | `{nodeId: string}`                                                                                                               | `{ok, nodeId}` — or `code:"node-not-found"`                            |
-| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                       | `{ok, nodeId, x, y}` (post-move position) — or `code:"node-not-found"` |
-| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats — Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                         |
+| Tool                     | Args                                                                                                                            | Returns                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `figma.get_selection`    | _(none)_                                                                                                                        | `{ok, nodes: [{id, name, type, x, y, width, height}]}`                |
+| `figma.get_viewport`     | _(none)_                                                                                                                        | `{ok, center: {x, y}, zoom}`                                          |
+| `figma.select_node`      | `{nodeId: string}`                                                                                                              | `{ok, nodeId}`, or `code:"node-not-found"`                            |
+| `figma.move_node`        | `{nodeId: string, dx: number, dy: number}`                                                                                      | `{ok, nodeId, x, y}` (post-move position), or `code:"node-not-found"` |
+| `figma.create_rectangle` | `{x, y, width, height, fillColor?: {r, g, b}}` (`r/g/b` are 0–1 floats, Figma's color convention; `width`/`height` must be > 0) | `{ok, nodeId}`                                                        |
 
 Error codes: `figma-not-loaded`, `bad-arg`, `node-not-found`,
 `eval-failed`.
@@ -123,20 +123,20 @@ exposes when an Editor component is mounted. Targets the v2 Editor API:
 `editor.getZoomLevel()`, `editor.createShapes()`,
 `editor.deleteShapes()`, `editor.setSelectedShapes()`.
 
-| Tool                         | Args                                                   | Returns                                                                                                                    |
-| ---------------------------- | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| `tldraw.get_selected_shapes` | _(none)_                                               | `{ok, shapes: [{id, type, x, y, props}]}`                                                                                  |
-| `tldraw.get_viewport`        | _(none)_                                               | `{ok, x, y, w, h, zoom}` (page-space viewport bounds)                                                                      |
-| `tldraw.create_shape`        | `{type: string, x: number, y: number, props?: object}` | `{ok, shapeId}` — id resolved by diffing the page shape list before/after; `code:"create-failed"` if no new shape appeared |
-| `tldraw.delete_shape`        | `{shapeId: string}`                                    | `{ok, shapeId}`                                                                                                            |
-| `tldraw.select_shapes`       | `{shapeIds: string[]}`                                 | `{ok, shapeIds}`                                                                                                           |
+| Tool                         | Args                                                   | Returns                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `tldraw.get_selected_shapes` | _(none)_                                               | `{ok, shapes: [{id, type, x, y, props}]}`                                                                                 |
+| `tldraw.get_viewport`        | _(none)_                                               | `{ok, x, y, w, h, zoom}` (page-space viewport bounds)                                                                     |
+| `tldraw.create_shape`        | `{type: string, x: number, y: number, props?: object}` | `{ok, shapeId}`, id resolved by diffing the page shape list before/after; `code:"create-failed"` if no new shape appeared |
+| `tldraw.delete_shape`        | `{shapeId: string}`                                    | `{ok, shapeId}`                                                                                                           |
+| `tldraw.select_shapes`       | `{shapeIds: string[]}`                                 | `{ok, shapeIds}`                                                                                                          |
 
 Error codes: `tldraw-not-loaded`, `bad-arg`, `create-failed`,
 `eval-failed`.
 
 ## `@browxai/plugin-excalidraw`
 
-Adapts Excalidraw 0.17+ through the `window.excalidrawAPI` global —
+Adapts Excalidraw 0.17+ through the `window.excalidrawAPI` global,
 the imperative ref the Excalidraw React component hands to its host
 page (the public excalidraw.com deployment forwards it by default;
 self-hosted embeds must do the same for this plugin to find it).
@@ -148,7 +148,7 @@ Targets `excalidrawAPI.getSceneElements()`,
 | `excalidraw.get_scene_state` | _(none)_                                                                                                                                               | `{ok, elements: [{id, type, x, y, width, height}], appState: {viewBackgroundColor, viewModeEnabled, zoom}}` |
 | `excalidraw.get_viewport`    | _(none)_                                                                                                                                               | `{ok, scrollX, scrollY, zoom}`                                                                              |
 | `excalidraw.add_element`     | `{type, x, y, width, height, ...passthrough}` (extra fields forwarded to Excalidraw verbatim; `id` minted via `crypto.randomUUID()` when not supplied) | `{ok, elementId}`                                                                                           |
-| `excalidraw.delete_element`  | `{elementId: string}`                                                                                                                                  | `{ok, elementId}` — or `code:"element-not-found"`                                                           |
+| `excalidraw.delete_element`  | `{elementId: string}`                                                                                                                                  | `{ok, elementId}`, or `code:"element-not-found"`                                                            |
 | `excalidraw.set_scroll`      | `{scrollX: number, scrollY: number}`                                                                                                                   | `{ok, scrollX, scrollY}`                                                                                    |
 
 Error codes: `excalidraw-not-loaded`, `bad-arg`, `element-not-found`,
@@ -157,7 +157,7 @@ Error codes: `excalidraw-not-loaded`, `bad-arg`, `element-not-found`,
 ## Usage walkthrough
 
 End-to-end, using Tldraw as the example (the same flow works for any
-adapter — swap the install name, the URL, and the ops):
+adapter: swap the install name, the URL, and the ops):
 
 ```sh
 # 1. Install the plugin (workspace-rooted; see docs/plugins.md).
@@ -206,25 +206,25 @@ canvas_query({ adapter: "excalidraw", op: "add_element",
                        width: 200, height: 120 } })
 ```
 
-If a step-5 call returns `code:"no-adapter"`, the plugin isn't loaded —
-check `plugins_list()` for the status + reason, and remember the
+If a step-5 call returns `code:"no-adapter"`, the plugin isn't loaded.
+Check `plugins_list()` for the status + reason, and remember the
 runtime is resolved once at server start (install → restart → retry).
 If it returns `code:"<adapter>-not-loaded"`, the plugin is fine but the
 app isn't on the current page.
 
-For deeper introspection on one plugin — full manifest, lock pin,
-transitive deps, registered tool schemas — call
+For deeper introspection on one plugin (full manifest, lock pin,
+transitive deps, registered tool schemas) call
 `plugins_info({name: "@browxai/plugin-tldraw"})`.
 
 ## Trust note
 
-All four plugins are trust tier **`kalebtec`** — maintained in the
+All four plugins are trust tier **`kalebtec`**: maintained in the
 browxai monorepo, released through the same OIDC-trusted-publishing
 pipeline as the host package, npm-provenance signed. But trust is
 **advisory, not a sandbox**: browxai plugins run **in-process** with
 full Node access, and the runtime gates every tier identically at
-capability + call-graph time. Treat installing any plugin — including
-these — like adding an npm dependency: review what it declares
+capability + call-graph time. Treat installing any plugin, these four
+included, like adding an npm dependency: review what it declares
 (`browxai plugin info <pkg>`), grant only the capabilities it needs,
 and audit the live set with `plugins_list`. See
 [`docs/plugin-governance.md`](./plugin-governance.md) for the tier
@@ -234,7 +234,7 @@ definitions and review process.
 
 Each plugin's manifest carries an advisory `browxaiVersion` range (the
 host versions it was tested against) and a binding `apiVersion` (the
-plugin-runtime contract major — see
+plugin-runtime contract major; see
 [`docs/plugin-authoring.md`](./plugin-authoring.md)). The canvas
 adapters track the upstream app APIs noted per section above; if an
 upstream app renames a method, the fix is an eval-expression swap in

@@ -1,12 +1,12 @@
-# browxai feedback — FanFest contest/simulfest QA campaign (2026-05-19)
+# browxai feedback: FanFest contest/simulfest QA campaign (2026-05-19)
 
 Field report from a multi-day agentic QA campaign (FanFest plans 076/077:
 live multi-session contest + simulfest reliability, host+fan, staging).
 Many qa-expert agents drove browxai under a team-lead. Below: what worked,
 the friction that produced false negatives or wasted runs, and the missing
-primitives — ordered by impact on test outcomes.
+primitives. Ordered by impact on test outcomes.
 
-## TL;DR — highest-impact asks
+## TL;DR: highest-impact asks
 
 1. **Backgrounded/hidden-tab control.** The single biggest gap. A whole class
    of real bugs only reproduces when the host tab is backgrounded; agents
@@ -17,7 +17,7 @@ primitives — ordered by impact on test outcomes.
 3. **First-class act-then-capture-window primitive.** Roundtrip latency makes
    transient UI (spinners, bounded reveals) unobservable with separate calls.
 
-## 1. Cannot simulate a backgrounded / hidden tab — CRITICAL
+## 1. Cannot simulate a backgrounded / hidden tab (CRITICAL)
 
 The most severe contest bug this campaign (recurring "ghost" stage + a false
 "could not finish syncing" toast + cross-quiz state bleed) only occurs when
@@ -44,11 +44,11 @@ Ask: primitives to
 ## 2. `approve_actions` is a hidden prerequisite; failures look like a human gate
 
 Multiple agents reported UI flows "blocked by a confirmation gate /
-`BROWX_CONFIRM_REQUIRED`" and left them **unverified** — when the actual
+`BROWX_CONFIRM_REQUIRED`" and left them **unverified**. The actual
 requirement was calling `approve_actions` at session start, and a
-non-responding click is a **selector** problem, not a gate. This produced an
-incorrect "not testable" verdict on a real feature (a two-tap producer
-control) that was in fact fine.
+non-responding click is a **selector** problem, not a gate. That produced an
+incorrect "not testable" verdict on a real feature, a two-tap producer
+control that was in fact fine.
 
 Ask: in managed/incognito QA mode, either default actions to approved, or
 make the blocked-result message explicitly state `call approve_actions to
@@ -72,9 +72,9 @@ an ergonomic assertion helper for "indicator was SHOWN then CLEARED".
 ## 4. `eval_js` `element.click()` does not fire framework handlers
 
 Recurring false negative: `eval_js` `el.click()` does not trigger Vue
-(`@click`) handlers — no mutation dispatched — so agents concluded a feature
-was broken. The real `click()` tool works. This cost several misdiagnoses
-until it was written into our runbook.
+(`@click`) handlers. No mutation is dispatched, so agents concluded a
+feature was broken. The real `click()` tool works, and the gap cost several
+misdiagnoses before it went into our runbook.
 
 Ask: document this prominently at the `eval_js` tool level; ideally have
 `eval_js`-initiated clicks dispatch trusted-equivalent events, or emit a
@@ -87,14 +87,14 @@ pre-timeout). The team-lead had to `list_sessions` → `close_session` to reap
 orphans, and once found 2 sessions left open ~hours.
 
 Ask: idle-session TTL/auto-expiry for managed sessions; a bulk "close all
-sessions with label/prefix X" (we already use per-agent id prefixes — a
+sessions with label/prefix X" (we already use per-agent id prefixes, so a
 label-scoped teardown would make reaping reliable).
 
 ## 6. Real crash vs browxai context teardown is ambiguous
 
 Earlier agents reported "page crashed to about:blank" after a realtime
 (Ably) message burst; this turned out to be a browxai incognito context
-artifact, not an app crash — but it took a dedicated re-run with an in-page
+artifact, not an app crash. It took a dedicated re-run with an in-page
 error trap to disprove. False "CRITICAL crash" findings are expensive.
 
 Ask: distinguish, in tool output, an application navigation/crash from a
@@ -108,9 +108,9 @@ emulation worked well and is a strength. But asserting "an action on session
 A propagates to session B within a freshness budget" requires manual
 interleaving of calls across sessions and is timing-fragile.
 
-Ask: a cross-session capture primitive — drive an action in session A and
-sample session B over a window in one call — for realtime-propagation
-assertions (the core of multi-user contest QA).
+Ask: a cross-session capture primitive for realtime-propagation assertions,
+the core of multi-user contest QA. Drive an action in session A and sample
+session B over a window, all in one call.
 
 ## What worked well (keep)
 
@@ -119,11 +119,11 @@ assertions (the core of multi-user contest QA).
   returns `ok:false` and the agent retries-once-then-aborts. This single
   change made unattended overnight agent runs viable. Keep it mandatory /
   default; never regress to unbounded calls.
-- Managed incognito sessions with isolated cookie jars + device emulation —
+- Managed incognito sessions with isolated cookie jars + device emulation:
   solid for host/fan isolation.
 - `find` / `inspect` / `snapshot` for relocating elements after DOM changes.
-- `network_read` / `network_body` for confirming GraphQL op status — used to
-  verify mutation outcomes (200 + payload) when UI state was ambiguous.
+- `network_read` / `network_body` for confirming GraphQL op status. We used
+  it to verify mutation outcomes (200 + payload) when UI state was ambiguous.
 
 ## Concrete incidents (for repro/prioritization)
 

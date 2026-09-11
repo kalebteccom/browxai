@@ -4,7 +4,7 @@ Operational practices for teams integrating browxai. Each practice carries its r
 
 ## Install
 
-- `npm install browxai --ignore-scripts` — browxai has no install-time scripts; the flag enforces it as defense in depth.
+- `npm install browxai --ignore-scripts`: browxai has no install-time scripts; the flag enforces it as defense in depth.
 - Pin exact versions in `package.json` for high-assurance deployments (`"browxai": "1.2.3"`, not `^1.2.3`).
 - Commit your lockfile. Use `npm ci` or `pnpm install --frozen-lockfile` in CI; never loose `install`.
 
@@ -34,11 +34,11 @@ The trust tier is a label describing where code came from. It is not enforcement
 
 This is the one control on this page that is a boundary rather than a policy.
 
-Everything else browxai ships — capability gates, the origin allow/blocklist, confirmation hooks, trust tiers — is administrative. It governs what the tool surface will do on request. None of it constrains what already-running code in the host process can reach, because none of it can: the process has whatever the OS gave it. A capability gate documents what a tool is allowed to reach. It does not contain a plugin that has reached past it.
+Everything else browxai ships (capability gates, the origin allow/blocklist, confirmation hooks, trust tiers) is administrative. It governs what the tool surface will do on request. None of it constrains what already-running code in the host process can reach, because none of it can: the process has whatever the OS gave it. A capability gate documents what a tool is allowed to reach. It does not contain a plugin that has reached past it.
 
 So for any deployment where you did not write every plugin yourself, or where an off-by-default capability is on, put the process inside something the OS enforces:
 
-- Run in an ephemeral container or VM. [`deploy/Dockerfile`](https://github.com/kalebteccom/browxai/blob/main/deploy/Dockerfile) is a working starting point — Playwright's base image, a non-root user, `--ignore-scripts`, and a workspace volume.
+- Run in an ephemeral container or VM. [`deploy/Dockerfile`](https://github.com/kalebteccom/browxai/blob/main/deploy/Dockerfile) is a working starting point: Playwright's base image, a non-root user, `--ignore-scripts`, and a workspace volume.
 - Run as a non-root user. The reference Dockerfile already does.
 - Give the container no route to your local network. A plugin or a page that reaches your internal services is the lateral-movement case, and network policy is where you stop it.
 - Mount `$BROWX_WORKSPACE` as a volume so profiles, screenshots, downloads and diagnostics live outside the writable layer and can be inspected or discarded independently.

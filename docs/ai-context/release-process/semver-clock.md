@@ -1,4 +1,4 @@
-# Semver clock — the API-stable-clock
+# Semver clock: the API-stable-clock
 
 browxai is pre-1.0. The path to 1.0 runs through an "API stable ~1 week" clock that gates the public flip.
 
@@ -44,10 +44,10 @@ If you're not sure whether a change resets the clock, assume it does and discuss
 
 ## Pre-1.0 minor bumps
 
-Every minor bump pre-1.0 may include surface changes. The clock guards against _frequent_ surface changes — not against any change. The "~1 week" target is for the API surface to be quiet enough that adopters can integrate without a moving target.
+Every minor bump pre-1.0 may include surface changes. The clock guards against _frequent_ surface changes. It is not a ban on changing the surface. The "~1 week" target is for the API surface to be quiet enough that adopters can integrate without a moving target.
 
 ## Related
 
 - [`retired-registry-pattern.md`](retired-registry-pattern.md)
 - [`branch-protection.md`](branch-protection.md)
-- [`../../tool-reference.md`](../../tool-reference.md) — public Stability & semver section.
+- [`../../tool-reference.md`](../../tool-reference.md): public Stability & semver section.

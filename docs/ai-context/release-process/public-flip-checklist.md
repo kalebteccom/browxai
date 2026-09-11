@@ -1,14 +1,12 @@
-# Public flip — operational checklist
+# Public flip: operational checklist
 
-The literal click-by-click sequence the owner works through on flip day. Tick
-each box as you go. Designed to be opened on one screen with the npm and
-GitHub UIs on the other.
+The click-by-click sequence for flip day. Tick each box as you go.
 
 > Planning-level companion: [`docs/public-flip-checklist.md`](../../public-flip-checklist.md)
-> tracks the pre-flight artefact closure — it answers _"are we ready to
-> flip?"_. This document answers _"how do I flip?"_.
+> tracks the pre-flight artefact closure. It answers _"are we ready to flip?"_,
+> and this document answers _"how do I flip?"_.
 
-Cross-references used throughout:
+Cross-references used throughout, worth keeping open on a second screen next to the npm and GitHub UIs:
 
 - Branch ruleset config: [`branch-protection.md`](./branch-protection.md)
 - Release-cutting steps: [`../../../RELEASING.md`](../../../RELEASING.md)
@@ -20,10 +18,11 @@ Cross-references used throughout:
 
 ## 1. Pre-flip code-state verification
 
-- [ ] `pnpm lint` — 0 errors, 0 warnings
-- [ ] `pnpm test` — 1602/1602 passing
-- [ ] `pnpm build` — clean
-- [ ] `zizmor --persona=auditor --min-severity=high .github/workflows/` — 0 high-severity findings
+- [ ] `pnpm lint`: 0 errors, 0 warnings
+- [ ] `pnpm test`: 1602/1602 passing
+- [ ] `pnpm build`: clean
+- [ ] `zizmor --persona=auditor --min-severity=high .github/workflows/`:
+      0 high-severity findings
 - [ ] All pre-flip governance, lint convergence, and CI-hardening work
       merged to `main`
 - [ ] `CHANGELOG.md` `## Unreleased` matches what is about to release (no
@@ -57,7 +56,7 @@ Cross-references used throughout:
 - [ ] Settings → Rules → Rulesets → branch ruleset for `main` per
       [`branch-protection.md`](./branch-protection.md) (signed commits,
       CODEOWNERS review, no admin bypass, no force push, no deletion)
-- [ ] Settings → Rules → Rulesets → branch ruleset for `release/*` — same
+- [ ] Settings → Rules → Rulesets → branch ruleset for `release/*`, same
       rules as `main`
 - [ ] Settings → Actions → General → Workflow permissions →
       "Read repository contents and packages permissions" +
@@ -118,43 +117,45 @@ Full release ritual + Changesets handling for plugins:
 
 ## 7. Adopter readiness
 
-- [ ] `README.md` is the right entry point — leads with **what browxai is**
-      plus a quickstart, not internal jargon
-- [ ] `SECURITY.md` vuln-reporting channel is real and monitored — see
-      [`SECURITY.md`](../../../SECURITY.md)
+- [ ] `README.md` is the right entry point: it leads with what browxai is,
+      plus a quickstart, and carries no internal jargon
+- [ ] `SECURITY.md` vuln-reporting channel is real and monitored (see
+      [`SECURITY.md`](../../../SECURITY.md))
 - [ ] [`docs/security-best-practices-for-adopters.md`](../../security-best-practices-for-adopters.md)
       linked from `README.md`
 - [ ] `AGENTS.md` discoverable for AI-driven contributors
-- [ ] Issue templates exist (`.github/ISSUE_TEMPLATE/`) — or explicitly note
-      they don't yet (candidate for a post-flip follow-up)
-- [ ] PR template exists (`.github/PULL_REQUEST_TEMPLATE.md`) — or note that
-      it doesn't yet
+- [ ] Issue templates exist (`.github/ISSUE_TEMPLATE/`), or you explicitly
+      note they don't yet (candidate for a post-flip follow-up)
+- [ ] PR template exists (`.github/PULL_REQUEST_TEMPLATE.md`), or you note
+      that it doesn't yet
 
 ## 8. Rollback plan
 
-**Publish breaks adopters:**
+If the publish breaks adopters:
 
 - [ ] Within 72h of publish: `npm unpublish` + republish patched
-- [ ] Beyond 72h: `npm deprecate <pkg>@<version> "Upgrade to <patched>."`
-      — never `unpublish` after the 72h window
+- [ ] Beyond 72h: `npm deprecate <pkg>@<version> "Upgrade to <patched>."`,
+      and never `unpublish` after the 72h window
 
-**Public flip surfaces a leak:**
+If the public flip surfaces a leak:
 
 - [ ] Settings → General → Danger Zone → **Change visibility → Private**
-      (reverts visibility immediately — but assume anything exposed during
+      (reverts visibility immediately, though assume anything exposed during
       the window is permanently exposed: git history, CI logs, and the
       dependency graph were all public)
 - [ ] Audit what was exposed during the public window
 - [ ] Document the incident in `projects/oss-security/incident-log.md`
       (portfolio repo)
 
-**Branch rule emergency override:** NO — there is no admin bypass on the
-`main` or `release/*` rulesets (universal-baseline rule 26). If a rule must
-genuinely change, it changes via PR + ruleset edit, not by bypass.
+On a branch rule emergency override: there isn't one. No admin bypass exists
+on the `main` or `release/*` rulesets (universal-baseline rule 26), and that
+is the whole point of the ruleset. If a rule genuinely has to change during
+an incident, it changes the same way it changes on any other day, through a
+PR and a ruleset edit that leaves an audit trail.
 
 ## 9. Communication
 
-- [ ] _(Intentionally blank — owner decides channels: launch tweet, blog
-      post, OSS-news submission, etc.)_
+- [ ] _(Intentionally blank. The owner decides channels: launch tweet, blog
+      post, OSS-news submission, and so on.)_
 - [ ] Notify FanFest of public availability (early adopter; sign-off on
       adopter-report attribution)

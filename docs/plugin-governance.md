@@ -12,17 +12,17 @@ mechanically that is what it is.
 
 The tier is **derived from the package identity**, never asserted by the plugin.
 
-- **`kalebtec`** — published under the `@browxai/*` npm scope, released from the
+- **`kalebtec`**: published under the `@browxai/*` npm scope, released from the
   browxai monorepo through the same OIDC trusted-publishing pipeline as the host
   package, npm-provenance signed. A manifest may declare `"trust": "kalebtec"`,
   but the declaration is honoured **only** when the package name is also under
   `@browxai/*`. A claim without the matching scope is dropped with a warning and
   the tier falls back to what the install identity supports.
 
-- **`community`** — any third-party npm package. The default for anything not
+- **`community`**: any third-party npm package. The default for anything not
   under the `@browxai/*` scope and not installed from a local path.
 
-- **`local`** — installed from a `file:` path. Used during plugin development
+- **`local`**: installed from a `file:` path. Used during plugin development
   (`browxai plugin install file:./my-plugin/`).
 
 An operator can override the tier per entry in `plugins.json`:

@@ -1,13 +1,13 @@
-# `docs/ai-context/` — agent-facing routing layer
+# `docs/ai-context/`: the agent-facing routing layer
 
-This subtree is the **agent-facing** companion to the public `docs/` site. It is **not** part of the published VitePress documentation (excluded via `srcExclude`); it lives in the repo so every harness has the same context and so the discipline is version-controlled with the code it governs.
+This subtree is the agent-facing companion to the public `docs/` site. It is **not** part of the published VitePress documentation (excluded via `srcExclude`). It lives in the repo so every harness gets the same context, and so the discipline stays version-controlled with the code it governs.
 
 ## Read this before touching the relevant area
 
-- Moving a boundary, adding a world-touching surface, or working on a hot path → read `architecture/architecture-principles.md` (the Kalebtec doctrine, macro layer) alongside `agent-process/code-quality.md` (micro layer).
+- Moving a boundary, opening a world-touching surface, or working on a hot path → read `architecture/architecture-principles.md` (the Kalebtec doctrine, macro layer) alongside `agent-process/code-quality.md` (micro layer).
 - Figuring out where new code goes, or what to call it → read `architecture/hexagonal-and-ddd.md` (the layer map, ubiquitous language, the where-does-it-go decision rule).
 - Creating or splitting a file/module → read `architecture/module-and-file-size.md` (the one-reason-to-change size budget and its ratchet).
-- Touching the browser-engine seam (session launch, `cdp()`, adding an engine) → read `architecture/engine-adapters.md` (the `BrowserEngine` port + adapter contract).
+- Touching the browser-engine seam (session launch, `cdp()`, a new engine) → read `architecture/engine-adapters.md` (the `BrowserEngine` port + adapter contract).
 - Editing a tool handler → read `tool-registration/server-tool-registry.md` and `page-side-functions/`.
 - Writing a test → read `testing/qa-patterns.md` and `testing/unit-vs-keystone.md`.
 - Working on capabilities or any posture-broadening surface → read `architecture/capability-posture-map.md` and `secrets-and-egress/network-body-and-secrets.md`.
