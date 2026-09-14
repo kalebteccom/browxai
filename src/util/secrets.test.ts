@@ -157,13 +157,77 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
     expect(out.total).toBe(2); // non-string passes through
   });
 
-  it("is bounded — extremely deep nesting doesn't blow the stack", () => {
+  it("masks the leaf of a 20-deep object, and doesn't blow the stack", () => {
+    // This test used to assert only `not.toThrow()`, which passed while the
+    // masker returned everything below depth 8 verbatim. Assert the leaf is
+    // actually rewritten — that is the property register_secret promises.
     const r = new SecretRegistry();
     r.register({ name: "X", value: "x" });
-    // build a 20-deep object
     let obj: unknown = "leaf with x";
     for (let i = 0; i < 20; i++) obj = { nested: obj };
-    expect(() => r.applyMaskDeep(obj)).not.toThrow();
+    let out: unknown;
+    expect(() => (out = r.applyMaskDeep(obj))).not.toThrow();
+    expect(JSON.stringify(out)).not.toContain("leaf with x");
+    expect(JSON.stringify(out)).toContain("leaf with <X>");
+  });
+
+  it("masks a leaf at depth 50 — no depth cap", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    let obj: unknown = { value: "the password is hunter2" };
+    for (let i = 0; i < 50; i++) obj = { child: obj };
+    const json = JSON.stringify(r.applyMaskDeep(obj));
+    expect(json).not.toContain("hunter2");
+    expect(json).toContain("the password is <PASSWORD>");
+  });
+
+  it("masks through arrays as well as objects at depth", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok-xyz" });
+    let obj: unknown = ["carrying tok-xyz"];
+    for (let i = 0; i < 15; i++) obj = [{ rows: obj }];
+    const json = JSON.stringify(r.applyMaskDeep(obj));
+    expect(json).not.toContain("tok-xyz");
+    expect(json).toContain("carrying <TOKEN>");
+  });
+
+  it("a cyclic graph terminates, masks every reachable leaf, and stays cyclic", () => {
+    // The cycle-guard replaces the old depth cap. Before the fix this walk
+    // bounced off `depth > 8` and returned the raw (unmasked) input node as
+    // the tail of the copy — a silent partial leak, not a safe bound.
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const node: Record<string, unknown> = { secret: "value hunter2" };
+    node.self = node;
+    node.children = [{ also: "hunter2 here", parent: node }];
+
+    const out = r.applyMaskDeep(node);
+
+    expect(out.secret).toBe("value <PASSWORD>");
+    // The back-edge points at the MASKED copy, not at the raw input.
+    expect(out.self).toBe(out);
+    expect(out).not.toBe(node);
+    const child = (out.children as Record<string, unknown>[])[0]!;
+    expect(child.also).toBe("<PASSWORD> here");
+    expect(child.parent).toBe(out);
+    // Walk 200 hops of the cycle: no unmasked value survives anywhere on it.
+    let cur: Record<string, unknown> = out;
+    for (let i = 0; i < 200; i++) {
+      expect(cur.secret).toBe("value <PASSWORD>");
+      cur = cur.self as Record<string, unknown>;
+    }
+    // The input is untouched — masking never mutates its argument.
+    expect(node.secret).toBe("value hunter2");
+  });
+
+  it("collapses a shared (non-cyclic) sub-tree to one masked copy", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OTP", value: "987654" });
+    const shared = { code: "otp 987654" };
+    const out = r.applyMaskDeep({ a: shared, b: shared });
+    expect(out.a.code).toBe("otp <OTP>");
+    expect(out.b.code).toBe("otp <OTP>");
+    expect(out.a).toBe(out.b);
   });
 });
 
