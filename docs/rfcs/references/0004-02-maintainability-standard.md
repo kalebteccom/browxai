@@ -266,32 +266,35 @@ This is browxai's strongest existing axis. The inventory of bounds it **already*
 | Network body parse ceiling | `MAX_BODY_BYTES_TO_PARSE = 256_000` (~256 KB) | `src/page/network.ts:96,480,719` | slurp guard |
 | `network_read` response-shape keys | `MAX_RESPONSE_SHAPE_KEYS = 20` | `src/page/network.ts:95` | buffer |
 | Secrets registry capacity | `cap = 32` (keeps per-sink scan O(secrets × len) sane) | `src/util/secrets.ts:55,72-76` | buffer |
-| Secrets mask recursion depth | `depth > 8` → return as-is (can't blow the stack) | `src/util/secrets.ts:183-203`, guard at `:192` | recursion |
+| Secrets mask walk | iterative, explicit heap stack + `WeakMap` cycle guard (bounded by memory, no call-stack limit) | `src/util/secrets.ts` `maskValue` | recursion |
 | `batch` / `flake_check` inner-call cap | `BATCH_MAX_CALLS = 32` | `src/tools/extensions-batch-tools.ts:738,773,1064` | loop |
 
 The **gaps** the standard names (full list in [`0004-05-fitness-functions-and-guardrails.md`](0004-05-fitness-functions-and-guardrails.md)):
 
 - `perf-audit.ts` `enforceSummaryBudget` uses iterative token re-estimation with nested severity loops and aggressive `while` loops calling `estimateTokens()` per iteration, with *no hard iteration ceiling*; it relies on a "trimmed" flag to avoid an infinite loop rather than an explicit bound (`src/page/perf-audit.ts:524-583`). An O(N²) risk on a large report, and the only loop in the bounded inventory that lacks an explicit cap.
-- The `extract.ts` tree-walk depth: the a11y `walk` generator (`src/page/a11y.ts:205-211`) is iterative (an explicit stack, so no native stack-overflow risk) but carries *no declared depth cap*, so a pathological tree is bounded only by memory. The standard requires the cap be made explicit and tested, matching the `secrets.ts:192` `depth > 8` exemplar.
+- The `extract.ts` tree-walk depth: the a11y `walk` generator (`src/page/a11y.ts:205-211`) is iterative (an explicit stack, so no native stack-overflow risk) but carries *no declared depth cap*, so a pathological tree is bounded only by memory. Being iterative, it is the shape the secrets mask walk was rewritten to adopt; what it still owes is a declared and tested ceiling on tree size.
 
-**The rule.** Every loop, buffer, ring, recursion, and wait above carries an explicit, named bound *and a test that asserts the bound holds*. The `secrets.ts` `depth > 8` guard is the model: a one-line cap with an obvious comment ("Bounded depth (8) so a malformed input can't blow the stack", `src/util/secrets.ts:182`), and the fitness test freezes it so a refactor cannot silently remove it. Power-of-Ten's "no recursion" becomes browxai's "**bounded recursion with an explicit, tested depth cap**". The TypeScript adaptation is not to ban recursion (idiomatic and safe over bounded trees) but to require the cap be a tested constant.
+**The rule.** Every loop, buffer, ring, recursion, and wait above carries an explicit, named bound *and a test that asserts the bound holds*. Power-of-Ten's "no recursion" becomes browxai's "**bounded recursion with an explicit, tested bound**".
+
+**What the bound is allowed to do when it trips is part of the rule**, and the secrets mask is the cautionary case rather than the model. It used to guard with `depth > 8` and return the deep tail untouched. For a walk that *reads*, truncating is a safe answer. `maskValue` rewrites, and its whole job is that no registered secret survives it, so truncating turned a crash into a silently wrong result: a secret below depth 8 reached the sink in cleartext, and the reachable path was a real one (`verify_predicate`'s `failure.actual` inherits caller-supplied depth). A cyclic input was worse, splicing the unmasked original onto the end of a partial copy.
+
+So a rewriting walk gets its bound from memory, not from truncation: an iterative walk over an explicit heap stack, which has no call-stack ceiling, plus a `WeakMap` cycle guard. One assumption made the old cap look reasonable: that a tree we can `JSON.stringify` is a tree we can recurse over. It is false. V8's `JSON.stringify` does not use the JS call stack. Measured, a recursive walk dies around 3,000 levels while `stringify` clears 4,000,000.
 
 The freeze is what makes a bound a *property* rather than a comment. The shape of the test is a direct behavioral assertion against the cap. For the secrets recursion guard:
 
 ```ts
-// A bound is verified by exhibiting that exceeding it is contained, not crashed.
-it("applyMaskDeep is bounded — a pathological depth does not blow the stack", () => {
+// Exceeding the bound must be survived AND still correct. Asserting only that
+// the call returns is what let a silent truncation leak sit here for months.
+it("applyMaskDeep masks a leaf far below any plausible cap", () => {
   const reg = new SecretRegistry();
   reg.register({ name: "PASSWORD", value: "hunter2" });
-  // Build a nesting deeper than the depth>8 guard; the guard must stop the
-  // recursion and return the deep tail untouched, never throw RangeError.
   let deep: unknown = "hunter2";
   for (let i = 0; i < 64; i++) deep = { inner: deep };
-  expect(() => reg.applyMaskDeep(deep)).not.toThrow();
+  expect(JSON.stringify(reg.applyMaskDeep(deep))).not.toContain("hunter2");
 });
 ```
 
-This is the Power-of-Ten "exhibit the bound" discipline in TypeScript: the test does not read the constant `8` and assert it equals `8` (a tautology a refactor would update in lockstep); it *exercises* the boundary and asserts the contained behavior, so removing the guard fails the test for the right reason. The same shape covers the ring caps (push `cap + 1` entries, assert the ring is `cap`), the batch cap (submit `BATCH_MAX_CALLS + 1`, assert refusal), and the deadline clamp (request beyond the ceiling, assert the warning).
+This is the Power-of-Ten "exhibit the bound" discipline in TypeScript: the test does not read a constant and assert it equals itself (a tautology a refactor would update in lockstep); it *exercises* the boundary and asserts the behaviour there. The assertion has to be the property the code exists to provide. `not.toThrow()` was the original here, and it passed throughout the period the masker was leaking, because not throwing was never the thing that mattered. The same shape covers the ring caps (push `cap + 1` entries, assert the ring is `cap`), the batch cap (submit `BATCH_MAX_CALLS + 1`, assert refusal), and the deadline clamp (request beyond the ceiling, assert the warning).
 
 ### 4.3 Validate-at-edge (L6)
 
