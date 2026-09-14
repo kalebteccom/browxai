@@ -65,8 +65,8 @@ export interface DomCaptureOptions {
    *  mask does NOT run here — the ONE chokepoint is `Redactor.mask` in
    *  `src/replay/redact.ts`, and `session.ts` routes this callback's output
    *  through `redactEvent` before appending to the log. Keeping the mask off
-   *  this file was the fix for the drift that leaked page text past the
-   *  bounded-depth cap. */
+   *  this file was the fix for a drift that had this module calling
+   *  `applyMaskDeep` directly instead of through the shared redactor. */
   onEvent: (event: ReplayEvent<unknown>) => void;
   /** Extra CSS selectors masked on top of `input[type=password]`. */
   maskSelectors?: string[];

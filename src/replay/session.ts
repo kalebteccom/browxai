@@ -405,13 +405,13 @@ export class ReplaySession {
         clockOrigin: src.clock.origin,
         maskSelectors: [...maskSelectors],
         onEvent: (ev) => {
-          // The DOM stream is the one payload shape that legitimately nests
-          // deeper than `applyMaskDeep`'s bounded-depth cap: `{childNodes:
-          // [{childNodes:[...]}]}` reaches ~2 JS levels per DOM level, so
-          // masking through the bounded call left everything below ~3 DOM
-          // levels in the clear. Routing through `redactEvent` (which now
-          // calls the full-depth variant) is the ONE chokepoint every other
-          // source adapter already uses.
+          // The DOM stream is a deep tree — rrweb serialises the page as
+          // `{childNodes:[{childNodes:[...]}]}`, so masking has to reach the
+          // leaf of every subtree. `redactEvent` runs the ONE chokepoint
+          // (`SecretRegistry.applyMaskDeep`) every source adapter uses;
+          // `applyMaskDeep` walks an explicit heap stack with a WeakMap
+          // cycle-guard, so a deep or cyclic input masks correctly without a
+          // depth cap and without a call-stack ceiling.
           rlog.append(redactEvent(ev, redactor));
         },
       });
