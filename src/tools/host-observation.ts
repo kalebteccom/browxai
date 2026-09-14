@@ -35,6 +35,14 @@ export interface Observation {
   noteMetrics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
   /** Record one dispatched call into the diagnostics JSONL store. */
   noteDiagnostics: (toolName: string, args: unknown, res: ToolResponse, startedAt: number) => void;
+  /** Emit action/call on tool dispatch when a replay is engaged on this
+   *  session. Peek-only on the registry, and a no-op when no ReplaySession is
+   *  active — the hot path on a server without `replay` is one property read. */
+  noteReplayCall: (toolName: string, args: unknown) => void;
+  /** Emit action/result (or assert/result) into the replay log for the same
+   *  set of sessions. `noteReplayCall` and this run at the pre/post dispatch
+   *  bookends so an action/call is always followed by its own action/result. */
+  noteReplayResult: (toolName: string, args: unknown, res: ToolResponse) => void;
   /** Whether a tool with this capability routes its result through the wedge
    *  tracker. `register` calls `isWedgeTracked(def.capability ?? "")` once at
    *  registration to set the per-tool `tracked` flag. */
@@ -253,5 +261,44 @@ export function buildObservation(deps: ObservationDeps): Observation {
   const isWedgeTracked = (capability: string): boolean =>
     WEDGE_TRACKED_CAPABILITIES.has(capability);
 
-  return { noteWedgeOutcome, noteMetrics, noteDiagnostics, isWedgeTracked };
+  // start_recording / end_recording own the replay lifecycle themselves; the
+  // dispatch wrapper must not double-emit around them, or their own call/result
+  // would land inside the log they just opened or closed.
+  const REPLAY_LIFECYCLE_SKIP = new Set(["start_recording", "end_recording", "record_annotate"]);
+
+  const noteReplayCall = (toolName: string, args: unknown): void => {
+    if (REPLAY_LIFECYCLE_SKIP.has(toolName)) return;
+    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
+    const entry = registry.peek(sessionId);
+    if (!entry?.replay?.active?.()) return;
+    entry.replay.noteCall(toolName, args);
+  };
+
+  const noteReplayResult = (toolName: string, args: unknown, res: ToolResponse): void => {
+    if (REPLAY_LIFECYCLE_SKIP.has(toolName)) return;
+    const sessionId = (args as { session?: string } | undefined)?.session ?? DEFAULT_SESSION_ID;
+    const entry = registry.peek(sessionId);
+    if (!entry?.replay?.active?.()) return;
+    const parsed = firstJsonResult(res);
+    const obj = parsed?.obj;
+    const outcome = obj
+      ? {
+          ok: obj.ok !== false,
+          ...(typeof obj.error === "string" ? { error: obj.error } : {}),
+          ...(obj.failure && typeof obj.failure === "object"
+            ? { failure: obj.failure as Record<string, unknown> }
+            : {}),
+        }
+      : { ok: true };
+    entry.replay.noteResult(toolName, outcome);
+  };
+
+  return {
+    noteWedgeOutcome,
+    noteMetrics,
+    noteDiagnostics,
+    noteReplayCall,
+    noteReplayResult,
+    isWedgeTracked,
+  };
 }

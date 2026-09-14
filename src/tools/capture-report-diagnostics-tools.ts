@@ -67,6 +67,11 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       const net = e.network.recent(50);
+      // Link the most-recent completed .browx replay when the session ran one.
+      // Absent when no recording ever engaged the writer (the artifact is the
+      // sensitive companion of this evidence bundle — the description repeats
+      // that so a downstream consumer sees the caveat too).
+      const lastReplay = e.replay?.lastArtifact?.();
       const report = {
         ok: true,
         session: e.id,
@@ -83,6 +88,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         network: net.summary,
         regions: e.regions.list().map((r) => r.name),
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
+        ...(lastReplay ? { replayArtifact: lastReplay } : {}),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(report, null, 2) }] };
     },

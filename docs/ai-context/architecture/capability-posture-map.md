@@ -17,20 +17,21 @@ These are enabled. Withholding them reduces browxai to a read-only crawler.
 
 Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({ capabilities })` (SDK). A loud warning is emitted on first activation.
 
-| Capability         | Tools                                                            | Why off by default                                                     |
-| ------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `eval`             | `eval_js`, `poll_eval`                                           | Arbitrary JS in page context bypasses curated handlers.                |
-| `network-body`     | full response bodies, network interception                       | Response bodies often contain PII / secrets.                           |
-| `byob-attach`      | attach to user's existing Chrome                                 | Skips managed-profile isolation; touches user data.                    |
-| `clipboard`        | OS clipboard read/write                                          | Cross-application data egress.                                         |
-| `file-io`          | `upload_file`, downloads to workspace                            | Filesystem touch via the workspace chokepoint.                         |
-| `secrets`          | `register_secret`, secret materialization at egress              | Secret values live in process memory; egress order matters.            |
-| `extensions`       | install/inspect Chrome extensions                                | Extension code runs with elevated browser privileges.                  |
-| `stealth`          | anti-fingerprint posture tweaks                                  | Posture is operator-chosen, never a default.                           |
-| `captcha`          | captcha solver glue                                              | Third-party service integration.                                       |
-| `device-emulation` | viewport / UA / geolocation overrides beyond defaults            | Spoofing surface; the default profile is honest.                       |
-| `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff | Captures session artifacts (workspace-scoped, but artifact-producing). |
-| `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)    | Composes with `eval`; canvas-app plugins gate through this.            |
+| Capability         | Tools                                                              | Why off by default                                                     |
+| ------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `eval`             | `eval_js`, `poll_eval`                                             | Arbitrary JS in page context bypasses curated handlers.                |
+| `network-body`     | full response bodies, network interception                         | Response bodies often contain PII / secrets.                           |
+| `byob-attach`      | attach to user's existing Chrome                                   | Skips managed-profile isolation; touches user data.                    |
+| `clipboard`        | OS clipboard read/write                                            | Cross-application data egress.                                         |
+| `file-io`          | `upload_file`, downloads to workspace                              | Filesystem touch via the workspace chokepoint.                         |
+| `secrets`          | `register_secret`, secret materialization at egress                | Secret values live in process memory; egress order matters.            |
+| `extensions`       | install/inspect Chrome extensions                                  | Extension code runs with elevated browser privileges.                  |
+| `stealth`          | anti-fingerprint posture tweaks                                    | Posture is operator-chosen, never a default.                           |
+| `captcha`          | captcha solver glue                                                | Third-party service integration.                                       |
+| `device-emulation` | viewport / UA / geolocation overrides beyond defaults              | Spoofing surface; the default profile is honest.                       |
+| `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff   | Captures session artifacts (workspace-scoped, but artifact-producing). |
+| `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)      | Composes with `eval`; canvas-app plugins gate through this.            |
+| `replay`           | `.browx` session-replay artifact capture (DOM + network + console) | Archive carries real page content; as sensitive as the session was.    |
 
 ## Composition rules
 

@@ -14,6 +14,11 @@ Direct production dependencies:
   Copyright Microsoft Corporation.
   <https://github.com/microsoft/playwright>
   (ships its own `NOTICE` file, installed alongside the package)
+- **`rrweb`** — MIT.
+  Copyright rrweb contributors.
+  <https://github.com/rrweb-io/rrweb>
+  (the DOM stream for session replay; its UMD bundle is injected into the
+  recorded page, so it ships inside a replay artifact as well as in `dist/`)
 - **`zod`** — MIT.
   Copyright Colin McDonnell.
   <https://github.com/colinhacks/zod>

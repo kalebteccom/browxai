@@ -44,6 +44,7 @@ import type { VideoRecorderState, VideoStartConfig } from "../page/video.js";
 import type { ExtensionRegistry } from "./extensions.js";
 import type { DownloadsRegistry } from "../page/downloads.js";
 import type { ArtifactsRegistry } from "./artifacts.js";
+import type { ReplaySession } from "../replay/session.js";
 
 export type SessionMode = "persistent" | "incognito" | "attached";
 
@@ -283,6 +284,13 @@ export interface SessionCaptureRole {
    *  cap). The on-disk dir is wiped on session teardown — sessions that
    *  never wrote an artifact leave no trace. */
   artifacts: ArtifactsRegistry;
+  /** Per-session replay-artifact orchestrator (capability `replay`). Off by
+   *  default — a fresh `ReplaySession` allocated at session creation whose
+   *  `active()` returns false until `start_recording({replay})` engages it.
+   *  The orchestrator holds the ReplayLog, redactor, DOM capture handle and
+   *  the network/console subscriptions; `end_recording` writes the `.browx`
+   *  artifact under the workspace. */
+  replay: ReplaySession;
 }
 
 /** Per-session state. Everything here was a server-singleton pre-multi-session;

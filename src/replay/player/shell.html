@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>browxai session replay</title>
+    <style>
+      /*__BROWX_STYLE__*/
+    </style>
+  </head>
+  <body data-player-state="boot">
+    <header id="header">
+      <h1>browxai session replay</h1>
+      <div id="meta"></div>
+    </header>
+
+    <div id="banners"></div>
+
+    <main id="layout">
+      <div id="stage-col">
+        <section id="stage-wrap">
+          <div id="stage"></div>
+          <p id="stage-empty" hidden>
+            This artifact carries no DOM stream. The timeline, the step list and jump-to-failure
+            still work; the page itself was not recorded.
+          </p>
+          <div id="dropzone">
+            <p>Drop a <code>.browx</code> artifact here</p>
+            <input id="file-picker" type="file" accept=".browx,application/zip" />
+          </div>
+        </section>
+
+        <section id="panels">
+          <div id="panel-tabs" role="tablist"></div>
+          <div id="panel-body"></div>
+        </section>
+      </div>
+
+      <aside id="steps-pane">
+        <div id="steps-head">
+          <span>Steps</span>
+          <button id="jump-failure" type="button" disabled>Jump to failure</button>
+        </div>
+        <ol id="steps"></ol>
+        <div id="step-detail"></div>
+      </aside>
+    </main>
+
+    <footer id="transport">
+      <button id="play-pause" type="button" disabled>Play</button>
+      <span id="clock" data-t="0">0.0s / 0.0s</span>
+      <div id="strip" data-marker-count="0"><div id="playhead"></div></div>
+      <label class="control"
+        >Speed
+        <select id="speed">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+          <option value="8">8x</option>
+        </select>
+      </label>
+      <label class="control"><input id="skip-idle" type="checkbox" /> Skip idle</label>
+      <span id="progress"></span>
+    </footer>
+
+    <script type="application/octet-stream;base64" id="browx-embedded-artifact">
+      /*__BROWX_ARTIFACT__*/
+    </script>
+    <script>
+      /*__BROWX_RRWEB__*/
+    </script>
+    <script>
+      /*__BROWX_PLAYER__*/
+    </script>
+  </body>
+</html>

@@ -13,6 +13,12 @@
   // compiled into dist/ by `include: ["src"]`. The publish gate rejects
   // *.test.js — exclude them at the tsc level.
   "exclude": [
+    // The replay player is a BUILD ARTIFACT, not shipped source: browser-only
+    // code that `scripts/build-replay-player.ts` bundles + inlines into one
+    // HTML file under dist/player/. Emitting it as loose ES modules into dist/
+    // would ship DOM code nothing imports. `pnpm typecheck` (tsconfig.json)
+    // still covers it.
+    "src/replay/player/**",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",
     "src/**/__tests__/**",

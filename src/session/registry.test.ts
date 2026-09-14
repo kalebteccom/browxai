@@ -38,6 +38,8 @@ function fakeEntry(id: string): SessionEntry {
 
     recorder: {} as any,
 
+    replay: {} as any,
+
     feedback: {} as any,
 
     clipboard: {} as any,

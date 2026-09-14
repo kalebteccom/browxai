@@ -55,7 +55,8 @@
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
     "prepublishOnly": "node scripts/audit-package-contents.mjs && pnpm typecheck && pnpm test && pnpm build",
-    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js && pnpm --filter './packages/plugins/*' build",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/cli.js && pnpm --filter './packages/plugins/*' build && pnpm build:player",
+    "build:player": "tsx scripts/build-replay-player.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:keystone": "vitest run --config vitest.keystone.config.ts",
@@ -85,7 +86,9 @@
       "hono": ">=4.12.21",
       "qs": ">=6.15.2",
       "fast-uri": ">=3.1.6 <4",
-      "ip-address": ">=10.4.0"
+      "ip-address": ">=10.4.0",
+      "postcss": ">=8.5.18",
+      "nanoid": ">=3.3.18"
     }
   },
   "lint-staged": {
@@ -100,6 +103,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
     "playwright-core": "^1.62.0",
+    "rrweb": "2.1.4",
     "zod": "^3.23.0"
   },
   "devDependencies": {
@@ -108,6 +112,7 @@
     "@types/node": "^20.14.0",
     "depcheck": "^1.4.7",
     "dependency-cruiser": "^17.4.3",
+    "esbuild": "^0.28.2",
     "eslint": "^9.12.0",
     "eslint-plugin-import-x": "^4.3.0",
     "globals": "^15.11.0",

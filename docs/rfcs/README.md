@@ -12,6 +12,7 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | [0004](0004-architecture-hardening.md)      | Architecture hardening (a safety-critical maintainability standard + fitness-function guardrails) | Draft. Adversarial audit, ten-law standard and phased plan complete, held to an iterate-until-clean review ([references/](references/) `0004-01..09`). |
 | [0005](0005-attached-target-pool.md)        | Attached-target pool (per-session target identity, leases, heartbeat)                             | Landed. Target identity, refcounted connection, lease table, ceiling, reclamation, dispatch-as-heartbeat, real-Chromium keystone, public docs.         |
 | [0006](0006-flow-files-as-connectors.md)    | Flow files as connectors (typed inputs/outputs, assertions, compile to MCP)                       | Draft. Prerequisite 1 (recording read tools into the trace) has landed; the format additions and compile targets are unbuilt.                          |
+| [0007](0007-session-replay.md)              | Session replay: append-only capture log, offline player, retroactive devtools                     | Draft — design only, nothing built. Tier (b) re-execution estimated separately.                                                                        |
 
 ## Reference corrections
 

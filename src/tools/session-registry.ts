@@ -48,6 +48,7 @@ import { newVideoRecorderState, finalizeVideoOnClose } from "../page/video.js";
 import { resolveCreationOptions } from "./session-creation-options.js";
 import { BrowxBridge } from "../helper/bridge.js";
 import { Recorder } from "../page/recording.js";
+import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
 import type { CapabilityConfig } from "../util/capabilities.js";
@@ -433,7 +434,12 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         ...(mode === "persistent" ? { launchProfile: spec?.profile ?? id } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
+        // Fresh replay orchestrator per session (capability `replay`). Inactive
+        // until `start_recording({replay})` engages it; assigned after the
+        // literal because it captures `entry` by reference.
+        replay: null as unknown as ReplaySession,
       };
+      entry.replay = new ReplaySession(entry);
       // Post-creation wiring — the engine owns its own bookkeeping (RFC 0004 D1).
       // The four Playwright engines attach the full console/bridge/policy/download/
       // stealth/device-emulation/ws-interactive/workers set + await it; safari
@@ -465,6 +471,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       } catch {
         /* best-effort */
       }
+      // Replay session teardown BEFORE the CDP/page handle goes away, so the
+      // subscription off() calls the abort path issues still land on a live
+      // context. Never runs the artifact writer — an abandoned recording
+      // becomes a no-trace unlink of the intermediate JSONL, so a
+      // `close_session` on an active recording never leaves plaintext page
+      // data on disk. `abort()` is a no-op when nothing is recording.
+      await e.replay.abort().catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
       // Capture page reference BEFORE close — `page.video()` resolves the
       // Video handle, but the actual .webm is only flushed by the underlying
