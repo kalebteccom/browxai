@@ -6,7 +6,7 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
-## Unreleased
+## v0.10.1 — 2026-09-14 — Security: deep secret masking
 
 ### Security
 
