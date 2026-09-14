@@ -78,6 +78,7 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | OFF + loud-warn | `device-emulation` | viewport / UA / geolocation overrides beyond defaults                                        |
 | OFF + loud-warn | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                             |
 | OFF + loud-warn | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                |
+| OFF + loud-warn | `replay`           | `.browx` session-replay artifact capture (DOM stream + network + console)                     |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

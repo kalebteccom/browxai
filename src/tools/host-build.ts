@@ -330,7 +330,14 @@ export function buildHost(deps: HostDeps): ToolHost {
   // created from; the `diagnostics` JSONL recorder). Behaviour is byte-identical
   // to the prior inline closures — `noteMetrics` / `noteDiagnostics` keep their
   // host-exposed signatures so the plugin runtime reuses them unchanged.
-  const { noteWedgeOutcome, noteMetrics, noteDiagnostics, isWedgeTracked } = buildObservation({
+  const {
+    noteWedgeOutcome,
+    noteMetrics,
+    noteDiagnostics,
+    noteReplayCall,
+    noteReplayResult,
+    isWedgeTracked,
+  } = buildObservation({
     registry,
     diagnostics,
   });
@@ -399,11 +406,16 @@ export function buildHost(deps: HostDeps): ToolHost {
       // handler's declared arg shape. This is the one place that boundary narrows.
       const args = rawArgs as z.infer<z.ZodObject<S>>;
       const startedAt = Date.now();
+      // Emit action/call before the handler runs so a call that throws or
+      // wedges still lands in the replay log. `noteReplayCall` is a no-op
+      // when the session has no active recording, so the hot path stays cheap.
+      noteReplayCall(name, args);
       const inner = tracked
         ? await noteWedgeOutcome(args, await handler(args))
         : await handler(args);
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
+      noteReplayResult(name, args, inner);
       return inner;
     };
     toolHandlers[name] = wrapped;

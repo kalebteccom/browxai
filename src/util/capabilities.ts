@@ -31,7 +31,8 @@ export type Capability =
   | "credentials"
   | "device-emulation"
   | "diagnostics"
-  | "canvas";
+  | "canvas"
+  | "replay";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -51,6 +52,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "device-emulation",
   "diagnostics",
   "canvas",
+  "replay",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -318,6 +320,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
       "canvas capability is ENABLED — `canvas_capture` reads framebuffer / 2D ImageData pixel bytes off `<canvas>` elements (subject to the platform's canvas-taint rules for cross-origin sources); `gesture_chain` dispatches multi-step pointer programs (custom paint strokes, lasso paths); `canvas_world_to_screen` / `canvas_screen_to_world` probe common app-side globals heuristically (Figma / Tldraw / Excalidraw shapes) when no explicit transform is supplied — confirm on a known landmark before relying on the result. `canvas_query` dispatches to canvas-app adapter plugins; the inner plugin tool's capability is enforced via the plugin call-graph gate. browxai is BYO-vision — `canvas_capture` is the pixel source, not a vision call; composition with the host agent's own multimodal vision is the loop. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `device-emulation` / `diagnostics` — see docs/threat-model.md.",
   },
   {
+    capability: "replay",
+    message:
+      "replay capability is ENABLED — `start_recording({replay})` writes a `.browx` session-replay artifact that carries the DOM stream, network + WS metadata (bodies at the re-executable tier), console output and action calls. Registered secrets are masked at capture time before anything reaches disk, but the artifact still carries real page content and is as sensitive as the session it recorded. Store under $BROWX_WORKSPACE and treat every archive as production data. Same posture class as `network-body` / `secrets` / `diagnostics`.",
+  },
+  {
     capability: "captcha",
     message:
       "captcha capability is ENABLED — `solve_captcha` will delegate challenges to the provider configured via BROWX_CAPTCHA_PROVIDER + BROWX_CAPTCHA_API_KEY. SOLVING CAPTCHAS MAY VIOLATE THE TARGET SITE'S TERMS OF SERVICE and (depending on jurisdiction) computer-misuse / unauthorised-access law; the operator carries the legal exposure. browxai does NOT bundle a solver and does NOT auto-purchase credits — the operator chooses a provider, funds the account, configures the server. Same posture class as `eval` / `network-body` / `secrets` / `extensions` / `stealth` — see docs/threat-model.md.",
@@ -381,6 +388,19 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
 export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
   const cap = toolCapabilityMap().get(tool);
   if (!cap) return true; // unknown tool: pass through (human-coordination default)
+  return caps.enabled.has(cap);
+}
+
+/**
+ * Compound-capability check for a tool whose default gate is one capability but
+ * whose optional feature branch requires a second. Only pattern: an arg opts in
+ * to posture-broadening behaviour (write to disk / write a replay artifact /
+ * ...) that is orthogonal to the tool's own gate. Returns true iff the extra
+ * capability is on. Callers form the structured refusal (with the tool's own
+ * hint copy) when this returns false; the check is centralised so tool files
+ * do not read `caps.enabled` directly.
+ */
+export function hasCapability(caps: CapabilityConfig, cap: Capability): boolean {
   return caps.enabled.has(cap);
 }
 
