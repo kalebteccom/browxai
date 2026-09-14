@@ -6,6 +6,52 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
+## Unreleased
+
+### Added
+
+- **Session replay: an append-only capture log and an offline player (RFC 0007,
+  phases 1-3).** `start_recording({ replay: { tier } })` writes a
+  `session-replay.browx` archive, and `end_recording()` returns its path and
+  size on disk. The archive opens in a single self-contained HTML player that
+  runs from `file://` with no server and no account, which is what makes it
+  usable as a CI artifact attached to a pull request.
+
+  Everything lands in one append-only, schema-versioned log on one clock: the
+  DOM stream (rrweb, carried verbatim as the payload of a browxai event so the
+  recorder stays swappable), CDP network and WebSocket traffic, SSE frames,
+  console output, page errors, and the agent's own tool calls and assertions.
+  Nothing is summarised into panel shape at capture time, so a panel written
+  later still has data to render. The player ships a timeline with action and
+  assertion markers, a step list synced to the DOM replay, jump-to-failure,
+  and network, WebSocket, console and coverage panels.
+
+  The coverage panel groups `record_annotate({ label })` spans by label, which
+  is how a reviewer answers whether the agent exercised the paths they care
+  about. It shows every label whatever the playhead reads, and marks a span the
+  recording never closed as unclosed.
+
+  Three capture tiers: `actions` (no DOM stream), `replay` (the default), and
+  `reexecutable` (adds bodies and content-addressed assets). Size and event
+  caps stop capture and record the reason in `manifest.truncated`; disk
+  backpressure records its own reason without stopping capture, because a
+  recording that ran to the end having dropped events is a different thing from
+  one that stopped early, and a silently short replay is worse than a refused
+  one.
+
+  Capture reaches page content, network bodies and storage, so it sits behind
+  an off-by-default `replay` capability in the same posture class as
+  `network-body` and `diagnostics`. Registered secrets are masked at capture
+  time before anything reaches disk, across every tier including WebSocket
+  frames, through the same `SecretRegistry` chokepoint every other egress sink
+  uses. The archive records **that** a value was removed and never the value.
+  An artifact carrying real session data is as sensitive as the session was.
+
+  Forward compatibility is the rule the format rests on: a player must ignore
+  event types and fields it does not recognise, and must never fail to open a
+  log because of them. A panel that throws is contained to its own tab, and the
+  rest of the player keeps working.
+
 ## v0.10.0 — 2026-09-10 — Attached-session isolation, challenge detection, plugin trust
 
 ### Plugin packages
