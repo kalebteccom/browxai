@@ -35,6 +35,9 @@ import {
   pageErrorEvent,
   pageLifecycleEvent,
   resultEvent,
+  wsCloseEvent,
+  wsFrameEvent,
+  wsOpenEvent,
   type AnnotateSource,
   type EventClock,
   type SourceContext,
@@ -386,13 +389,78 @@ export class ReplaySession {
     cdp.on("Network.requestWillBeSent", onRequest);
     cdp.on("Network.responseReceived", onResponse);
     cdp.on("Network.loadingFailed", onFailed);
+    const wsDetach = this.attachWs(cdp);
     this.subscriptions.push({
       detach: (): void => {
         cdp.off("Network.requestWillBeSent", onRequest);
         cdp.off("Network.responseReceived", onResponse);
         cdp.off("Network.loadingFailed", onFailed);
+        wsDetach();
       },
     });
+  }
+
+  /** Mirror the network-ws.ts CDP tap onto the replay log. WsBuffer's own
+   *  listeners keep running for `ws_read` / ActionResult; adding a parallel set
+   *  here is one CDP event per frame, no cross-module coupling. */
+  private attachWs(cdp: CDPSession): () => void {
+    const src = this.ctx;
+    const rlog = this.replayLog;
+    if (!src || !rlog) return () => undefined;
+    const urls = new Map<string, string>();
+    const onCreated = (payload: unknown): void => {
+      const e = payload as { requestId: string; url: string };
+      urls.set(e.requestId, e.url);
+      rlog.append(wsOpenEvent(src, { requestId: e.requestId, url: e.url }));
+    };
+    const onFrame =
+      (dir: "sent" | "recv") =>
+      (payload: unknown): void => {
+        const e = payload as {
+          requestId: string;
+          response: { opcode: number; payloadData: string };
+        };
+        rlog.append(
+          wsFrameEvent(src, {
+            url: urls.get(e.requestId) ?? "",
+            dir,
+            kind: "ws",
+            opcode: e.response.opcode,
+            payload: e.response.payloadData ?? "",
+          }),
+        );
+      };
+    const onSse = (payload: unknown): void => {
+      const e = payload as { requestId: string; eventName?: string; data: string };
+      rlog.append(
+        wsFrameEvent(src, {
+          url: urls.get(e.requestId) ?? "",
+          dir: "recv",
+          kind: "sse",
+          ...(e.eventName ? { event: e.eventName } : {}),
+          payload: e.data ?? "",
+        }),
+      );
+    };
+    const onClosed = (payload: unknown): void => {
+      const e = payload as { requestId: string };
+      urls.delete(e.requestId);
+      rlog.append(wsCloseEvent(src, { requestId: e.requestId }));
+    };
+    const sent = onFrame("sent");
+    const recv = onFrame("recv");
+    cdp.on("Network.webSocketCreated", onCreated);
+    cdp.on("Network.webSocketFrameSent", sent);
+    cdp.on("Network.webSocketFrameReceived", recv);
+    cdp.on("Network.eventSourceMessageReceived", onSse);
+    cdp.on("Network.webSocketClosed", onClosed);
+    return () => {
+      cdp.off("Network.webSocketCreated", onCreated);
+      cdp.off("Network.webSocketFrameSent", sent);
+      cdp.off("Network.webSocketFrameReceived", recv);
+      cdp.off("Network.eventSourceMessageReceived", onSse);
+      cdp.off("Network.webSocketClosed", onClosed);
+    };
   }
 }
 

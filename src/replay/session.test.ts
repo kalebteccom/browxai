@@ -13,6 +13,7 @@ import { SecretRegistry } from "../util/secrets.js";
 import { BACKPRESSURE_DROP_KEY } from "./log.js";
 import type { Workspace } from "../util/workspace.js";
 import type { SessionEntry } from "../session/registry.js";
+import type { SourceContext } from "./sources.js";
 
 /** Minimal SessionEntry stand-in — the orchestrator only reads `id`, `secrets`,
  *  and `session.engine`/`session.cdp?()`/`session.page()`. Anything else stays
@@ -121,6 +122,38 @@ describe("ReplaySession", () => {
     const stringified = JSON.stringify(art.events);
     expect(stringified.includes(SECRET)).toBe(false);
     expect(stringified.includes("<PASSWORD>")).toBe(true);
+  });
+
+  it("masks registered secrets in WS frame payloads via the ONE chokepoint", async () => {
+    // The RFC calls this out specifically: a stream that echoes an auth blob
+    // the client sent is the same disclosure as the POST that sent it, so
+    // WS/SSE frames go through the same registered-secret mask as HTTP
+    // bodies. Drive the frame source adapter directly (a real WS handshake
+    // is a keystone concern, not a unit one) and prove the mask ran.
+    const secrets = new SecretRegistry();
+    const SECRET = "auth-blob-9e28f";
+    secrets.register({ name: "AUTHBLOB", value: SECRET });
+    const s = new ReplaySession(stubEntry({ secrets }));
+    await s.start({ tier: "replay" }, ws.workspace);
+    // The orchestrator uses the redactor's `payload` path for every frame;
+    // drive the same sources.ts helper the CDP tap calls, with the live
+    // context the orchestrator built.
+    const src = (s as unknown as { ctx: SourceContext }).ctx;
+    const rlog = (s as unknown as { replayLog: { append: (ev: unknown) => boolean } }).replayLog;
+    const { wsFrameEvent } = await import("./sources.js");
+    rlog.append(
+      wsFrameEvent(src, {
+        url: "wss://a.test/s",
+        dir: "recv",
+        kind: "ws",
+        payload: `{"token":"${SECRET}"}`,
+      }),
+    );
+    const end = await s.end(ws.workspace);
+    const art = await readArtifact(ws.workspace.root, end.path);
+    const stringified = JSON.stringify(art.events);
+    expect(stringified.includes(SECRET)).toBe(false);
+    expect(stringified.includes("<AUTHBLOB>")).toBe(true);
   });
 
   it("reports size-cap truncation on manifest without stopping the recording", async () => {
