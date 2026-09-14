@@ -173,29 +173,88 @@ export class SecretRegistry {
     return out;
   }
 
-  /** Convenience: mask the string fields of an object/array recursively.
-   *  Non-string leaves pass through. Bounded depth (8) so a malformed input
-   *  can't blow the stack. Returns a new object — the input is not mutated. */
-  applyMaskDeep<T>(obj: T, depth = 0): T {
+  /** Convenience: mask the string fields of an object/array, at any depth.
+   *  Non-string leaves pass through. Returns a new object — the input is not
+   *  mutated.
+   *
+   *  There is no depth cap, and there must not be one. A cap here is not a
+   *  safety bound, it is a leak: the previous `depth > 8` guard returned the
+   *  sub-tree VERBATIM, so a registered value sitting deeper than 8 reached
+   *  the sink in cleartext — the exact inverse of what register_secret
+   *  promises. It is reachable: `verify_predicate` lifts `failure.actual`
+   *  out of a caller-supplied `data` bag typed `z.record(z.unknown())`, and
+   *  the documented use is piping a prior snapshot or ActionResult back in.
+   *
+   *  What the cap was supposed to buy — no unbounded walk, no stack
+   *  overflow — is bought properly instead:
+   *    - `maskValue` walks an EXPLICIT heap stack, not the call stack, so
+   *      input nesting depth cannot overflow. (Recursion here would: a
+   *      recursive version dies around 3k levels of nesting, and a caller
+   *      controls the nesting, so a cap-free recursive walk would just swap
+   *      a leak for a RangeError.)
+   *    - Masking only rewrites primitive string leaves. Strings, numbers,
+   *      booleans, null and undefined all terminate the walk, so no
+   *      value-shaped input drives it deeper than the input actually nests.
+   *    - The one shape that walks forever is a cyclic object graph, and the
+   *      `seen` map neutralises it: a node already visited resolves to its
+   *      own masked copy, so a back-edge closes the cycle in the output
+   *      instead of being re-descended. Work is therefore bounded by the
+   *      number of DISTINCT nodes, which is finite for any input that fits
+   *      in memory.
+   *  `seen` also collapses a shared (non-cyclic) sub-tree to one masked
+   *  copy, so a DAG costs one walk per node, not one per reference. */
+  applyMaskDeep<T>(obj: T): T {
     // Masking only rewrites string leaves, so the result has the same structure
-    // as the input. The recursion runs on `unknown` (every branch narrows with a
+    // as the input. The walk runs on `unknown` (every branch narrows with a
     // real runtime check); the single `as T` is that structure-preserving contract.
-    return this.maskValue(obj, depth) as T;
+    if (this.byName.size === 0) return obj;
+    return this.maskValue(obj) as T;
   }
 
-  private maskValue(obj: unknown, depth: number): unknown {
-    if (this.byName.size === 0) return obj;
-    if (depth > 8) return obj;
-    if (typeof obj === "string") return this.applyMaskInText(obj);
-    if (Array.isArray(obj)) return (obj as unknown[]).map((v) => this.maskValue(v, depth + 1));
-    if (obj && typeof obj === "object") {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        out[k] = this.maskValue(v, depth + 1);
+  /** Iterative deep-copy-with-masking. `seen` maps each input node to the
+   *  masked node standing in for it; the entry is recorded BEFORE that node's
+   *  children are queued, which is what makes a self-reference resolvable. */
+  private maskValue(root: unknown): unknown {
+    if (typeof root === "string") return this.applyMaskInText(root);
+    if (!root || typeof root !== "object") return root;
+
+    const seen = new WeakMap<object, unknown>();
+    /** Allocate the masked counterpart of `src` and register it before its
+     *  children are walked. */
+    const shellFor = (src: object): unknown => {
+      const shell: unknown = Array.isArray(src) ? [] : {};
+      seen.set(src, shell);
+      return shell;
+    };
+    /** Resolve one child value: mask a string, pass a non-object through, and
+     *  for an object either reuse its already-allocated shell or allocate one
+     *  and queue it for a later pass. */
+    const pending: Array<{ src: object; dst: unknown }> = [];
+    const childOf = (v: unknown): unknown => {
+      if (typeof v === "string") return this.applyMaskInText(v);
+      if (!v || typeof v !== "object") return v;
+      const hit = seen.get(v);
+      if (hit !== undefined) return hit;
+      const shell = shellFor(v);
+      pending.push({ src: v, dst: shell });
+      return shell;
+    };
+
+    const out = shellFor(root);
+    pending.push({ src: root, dst: out });
+    while (pending.length > 0) {
+      const { src, dst } = pending.pop()!;
+      if (Array.isArray(src)) {
+        const arr = dst as unknown[];
+        for (const v of src) arr.push(childOf(v));
+        continue;
       }
-      return out;
+      const rec = dst as Record<string, unknown>;
+      for (const [k, v] of Object.entries(src as Record<string, unknown>)) {
+        rec[k] = childOf(v);
+      }
     }
-    return obj;
+    return out;
   }
 
   /** Best-effort detection: does `text` contain any registered real-value?

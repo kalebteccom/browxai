@@ -6,6 +6,51 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
+## Unreleased
+
+### Security
+
+- **A registered secret nested more than 8 levels deep reached the agent
+  unmasked (all versions up to and including v0.10.0).** The deep masker,
+  `SecretRegistry.applyMaskDeep`, carried a `depth > 8` guard that returned the
+  sub-tree **verbatim** once the walk passed that depth. The guard was written
+  as stack protection, but past the cap it emitted cleartext, so the thing it
+  was protecting against never happened and the thing `register_secret`
+  promises — a registered value never reaches an egress sink — silently did not
+  hold below the cap.
+
+  **Reach.** One shipped tool: `verify_predicate`. Its `failure.actual` is a
+  sub-tree lifted from the caller-supplied `data` bag, which is typed
+  `z.record(z.unknown())` and therefore of unbounded depth; the documented use
+  is piping a prior `snapshot` or `ActionResult` back in, which is exactly the
+  case the handler's re-mask exists to cover. Every other deep-masked sink was
+  audited and is structurally too shallow to reach depth 8 (`find` 4,
+  `text_search` 4, `act_and_diff` 5, `watch` 4, `point_probe` 3-4, the other
+  `verify_*` 2, `solve_captcha` 1, forms plan 4). `snapshot` and `network_body`
+  mask a flat string and never used the deep path. Saved diagnostics args are
+  structurally redacted at depth 6 before masking, so nothing survives to depth
+  8 there either.
+
+  **Severity.** Narrow. It needs the off-by-default `secrets` capability
+  granted, at least one value registered, and a `verify_predicate` call whose
+  `data` bag carries the registered value below depth 8. There is no mass
+  disclosure path and no unauthenticated path. But within that setup, the leak
+  is the registry's headline guarantee failing silently, and it also failed on
+  cyclic input: a cycle bounced off the cap after 8 hops and returned the raw
+  input node, so part of the "masked" result was the unmasked original.
+
+  **Fix.** `applyMaskDeep` now walks the whole structure with no depth cap. It
+  runs on an explicit heap stack instead of the call stack, so input nesting
+  cannot overflow (measured: it survives 4,000,000 levels, where a recursive
+  walk dies near 3,000), and a `WeakMap` cycle guard bounds the work by the
+  number of distinct nodes, which also collapses a shared sub-tree to a single
+  masked copy. There is still exactly one deep-masking implementation; no
+  second, weaker one was added alongside it. On the payload shapes that exist
+  today the cost is unchanged in practice — they are wide and shallow, so the
+  cap was barely truncating them: `find` with 50 candidates 0.10 -> 0.14 ms,
+  `watch` with 60 samples 0.43 -> 0.49 ms, `network_read` with 500 entries 0.46
+  -> 0.55 ms.
+
 ## v0.10.0 — 2026-09-10 — Attached-session isolation, challenge detection, plugin trust
 
 ### Plugin packages

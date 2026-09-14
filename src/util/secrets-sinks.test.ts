@@ -7,6 +7,7 @@ import { describe, it, expect, vi } from "vitest";
 import { SecretRegistry } from "./secrets.js";
 import { ConsoleBuffer } from "../page/console.js";
 import { NetworkBuffer, NetworkTap, WsBuffer, fetchResponseBody } from "../page/network.js";
+import { verifyPredicate } from "../page/verify.js";
 
 // Minimal CDP stub: records `on` handlers by event name and lets the test
 // fire them. `send` resolves (Network.enable is idempotent).
@@ -475,6 +476,63 @@ describe("sink: verify_* — failure.actual masking (CRITICAL — direct value d
     r.register({ name: "PASSWORD", value: "hunter2" });
     const verifyResult = { ok: true as const };
     expect(r.applyMaskDeep(verifyResult)).toEqual({ ok: true });
+  });
+});
+
+describe("sink: verify_predicate — deep failure.actual masking (the unbounded-depth sink)", () => {
+  // Every other fixture in this file is shallow (the deepest, act_and_diff,
+  // reaches 5). verify_predicate is the one shipped sink with no depth
+  // ceiling: `data` is `z.record(z.unknown())` and `failure.actual` is a
+  // subtree lifted straight out of it, so the caller controls how deep the
+  // masker has to walk. Piping a prior snapshot or ActionResult back into
+  // `data` is the documented use, which is exactly how a pre-masking value
+  // ends up down there.
+  it("masks a registered value nested ~10 deep in the caller's data bag", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const data = {
+      actionResult: {
+        page: {
+          frames: [
+            {
+              dom: {
+                form: {
+                  fields: [
+                    { element: { attrs: { value: "hunter2" } } },
+                    { element: { attrs: { value: "not-a-secret" } } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+    // Real predicate engine, not a hand-built failure: `equals` against a
+    // non-scalar key lifts the whole resolved subtree into `failure.actual`.
+    const res = verifyPredicate({ kind: "equals", key: "actionResult", value: "never" }, data);
+    expect(res.ok).toBe(false);
+    const rawBody = res.ok ? { ok: true as const } : { ok: false as const, failure: res.failure };
+    const masked = r.applyMaskDeep(rawBody);
+    const json = JSON.stringify(masked);
+    expect(json).not.toContain("hunter2");
+    expect(json).toContain("<PASSWORD>");
+    expect(json).toContain("not-a-secret"); // non-secret leaves survive intact
+  });
+
+  it("masks a registered value in a long accessor chain (depth 30)", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OTP", value: "987654" });
+    let deep: unknown = { code: "your code is 987654" };
+    for (let i = 0; i < 30; i++) deep = { level: deep };
+    const res = verifyPredicate(
+      { kind: "equals", key: "snapshot", value: "never" },
+      { snapshot: deep },
+    );
+    const rawBody = res.ok ? { ok: true as const } : { ok: false as const, failure: res.failure };
+    const json = JSON.stringify(r.applyMaskDeep(rawBody));
+    expect(json).not.toContain("987654");
+    expect(json).toContain("your code is <OTP>");
   });
 });
 
