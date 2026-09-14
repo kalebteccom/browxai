@@ -21,8 +21,16 @@ import type { ReplayEvent } from "./schema.js";
 /** Page-side globals. Kept in one place because the init script, the stop
  *  script and the Node-side binding registration all have to agree. */
 const EMIT_BINDING = "__browx_rrweb_emit";
+
 const INSTALL_FLAG = "__browx_rrweb_installed";
 const STOP_FN = "__browx_rrweb_stop";
+
+/** A page that has not navigated yet. `page.url()` is synchronous and reads the
+ *  last committed URL, so this never races the emit path. */
+function isBlankDocument(page: Page): boolean {
+  const url = page.url();
+  return url === "" || url === "about:blank";
+}
 
 export const DOM_EVENT_TYPE = "dom/rrweb";
 export const DOM_PAYLOAD_VERSION = 1;
@@ -238,6 +246,13 @@ export async function attachDomCapture(
 
   const sink = (json: string, page: Page | undefined): void => {
     if (detached) return;
+    // Capture attaches to the CONTEXT, so a page sitting on `about:blank`
+    // records a meta + full snapshot before the session navigates anywhere.
+    // rrweb replays from the last snapshot at or before the playhead, so those
+    // two events make every replay open on a blank frame. Dropping them costs
+    // nothing: there is no page state worth reviewing, and the real navigation
+    // emits its own snapshot immediately after.
+    if (page !== undefined && isBlankDocument(page)) return;
     let payload: unknown;
     try {
       payload = JSON.parse(json);

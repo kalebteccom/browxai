@@ -18,10 +18,11 @@ interface FakeContext {
   exposeCalls: number;
 }
 
-function fakePage(): Page {
+function fakePage(url = "https://fixture.test/"): Page {
   return {
     evaluate: async () => undefined,
     isClosed: () => false,
+    url: () => url,
   } as unknown as Page;
 }
 
@@ -277,5 +278,46 @@ describe("attachDomCapture — targetId against a live context", () => {
     expect(out[0]!.targetId).toBeTruthy();
     expect(out[1]!.targetId).not.toBe(out[0]!.targetId);
     expect(out[2]!.targetId).toBe(out[0]!.targetId);
+  });
+});
+
+describe("about:blank suppression", () => {
+  // Capture attaches to the CONTEXT, so a page that has not navigated records a
+  // meta + full snapshot. rrweb replays from the last snapshot at or before the
+  // playhead, so without this every replay opens on a blank frame.
+  const snapshot = JSON.stringify({ type: 2, timestamp: 1_000_100, data: {} });
+
+  it("drops events from a page that has not navigated", async () => {
+    const f = fakeContext();
+    const out: unknown[] = [];
+    await attachDomCapture(f.context, { clockOrigin: 1_000_000, onEvent: (e) => out.push(e) });
+    const emit = f.bindings.get("__browx_rrweb_emit")!;
+
+    emit({ page: fakePage("about:blank") }, snapshot);
+    emit({ page: fakePage("") }, snapshot);
+
+    expect(out).toHaveLength(0);
+  });
+
+  it("keeps events once the page has navigated", async () => {
+    const f = fakeContext();
+    const out: unknown[] = [];
+    await attachDomCapture(f.context, { clockOrigin: 1_000_000, onEvent: (e) => out.push(e) });
+    const emit = f.bindings.get("__browx_rrweb_emit")!;
+
+    emit({ page: fakePage("https://app.test/checkout") }, snapshot);
+
+    expect(out).toHaveLength(1);
+  });
+
+  it("keeps events when the binding reports no page at all", async () => {
+    const f = fakeContext();
+    const out: unknown[] = [];
+    await attachDomCapture(f.context, { clockOrigin: 1_000_000, onEvent: (e) => out.push(e) });
+    const emit = f.bindings.get("__browx_rrweb_emit")!;
+
+    emit({}, snapshot);
+
+    expect(out).toHaveLength(1);
   });
 });
