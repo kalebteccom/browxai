@@ -17,6 +17,12 @@ import {
   type Step,
   type TimelineModel,
 } from "./model.js";
+import { consolePanel } from "./panels/console-panel.js";
+import { coveragePanel } from "./panels/coverage-panel.js";
+import { indexEvents } from "./panels/event-index.js";
+import { networkPanel } from "./panels/network-panel.js";
+import { mountPanels, type PanelHost } from "./panels/panel-host.js";
+import { wsPanel } from "./panels/ws-panel.js";
 import { ReplayStage } from "./replay-stage.js";
 import {
   bindShell,
@@ -38,6 +44,9 @@ export const EMBEDDED_ARTIFACT_ID = "browx-embedded-artifact";
 interface Session {
   model: TimelineModel;
   stage: ReplayStage | undefined;
+  /** The network / WS / console / coverage views. Synced to the playhead like
+   *  the stage, and the only other thing a seek has to tell. */
+  panels: PanelHost | undefined;
   t: number;
   skipIdle: boolean;
 }
@@ -70,6 +79,7 @@ function seek(shell: Shell, session: Session, t: number, fromStrip = false): voi
   }
   session.t = target;
   session.stage?.seek(target);
+  session.panels?.seek(target);
   renderPlayhead(shell, target, session.model);
   const index = stepIndexAt(session.model, target);
   highlightStep(shell, index);
@@ -156,7 +166,13 @@ async function load(shell: Shell, bytes: Uint8Array): Promise<void> {
     onProgress: (p) => renderProgress(shell, progressText(p)),
   });
   const model = buildTimeline(artifact.events, { malformed: artifact.malformed });
-  const session: Session = { model, stage: undefined, t: 0, skipIdle: false };
+  const session: Session = {
+    model,
+    stage: undefined,
+    panels: undefined,
+    t: 0,
+    skipIdle: false,
+  };
 
   renderMeta(shell, artifact.manifest, model);
   renderBanners(shell, healthOf(artifact.manifest, model, artifact.digestVerified));
@@ -169,6 +185,7 @@ async function load(shell: Shell, bytes: Uint8Array): Promise<void> {
     clockOrigin: artifact.manifest.clockOrigin,
     onTime: (t) => {
       session.t = t;
+      session.panels?.seek(t);
       renderPlayhead(shell, t, model);
       highlightStep(shell, stepIndexAt(model, t));
     },
@@ -178,6 +195,17 @@ async function load(shell: Shell, bytes: Uint8Array): Promise<void> {
   });
   shell.stageEmpty.hidden = session.stage !== undefined;
   shell.playPause.disabled = session.stage === undefined;
+
+  // The panels are a pure function of the log and the playhead: they get the
+  // event index and a way to move the playhead, and nothing else. That
+  // constraint is what P4 exposes as `registerPanel`.
+  session.panels = mountPanels({
+    tabs: shell.panelTabs,
+    body: shell.panelBody,
+    index: indexEvents(artifact.events),
+    panels: [networkPanel(), wsPanel(), consolePanel(), coveragePanel()],
+    seekTo: (t) => seek(shell, session, t),
+  });
 
   wireStrip(shell, session);
   wireSteps(shell, session);

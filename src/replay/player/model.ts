@@ -208,6 +208,20 @@ function collectSpans(open: Map<string, Span>, closed: Span[], event: ReplayEven
   closed.push(span);
 }
 
+/**
+ * Spans folded out of the `annotate/span` events alone. `buildTimeline` folds
+ * them inline in its one pass over the whole log; the coverage panel, which
+ * sees only the annotation bucket, comes through here — so there is one rule
+ * for what an open span is and both readings agree on it.
+ */
+export function buildSpans(events: readonly ReplayEvent[], duration: number): Span[] {
+  const open = new Map<string, Span>();
+  const spans: Span[] = [];
+  for (const event of events) collectSpans(open, spans, event);
+  for (const span of open.values()) span.to = duration;
+  return spans;
+}
+
 function idleRanges(times: number[], duration: number, gap: number): IdleRange[] {
   const idle: IdleRange[] = [];
   let prev = 0;

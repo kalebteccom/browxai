@@ -20,6 +20,8 @@ export interface Shell {
   steps: HTMLElement;
   stepDetail: HTMLElement;
   jumpFailure: HTMLButtonElement;
+  panelTabs: HTMLElement;
+  panelBody: HTMLElement;
   strip: HTMLElement;
   playhead: HTMLElement;
   clock: HTMLElement;
@@ -47,6 +49,8 @@ export function bindShell(): Shell {
     steps: need("steps"),
     stepDetail: need("step-detail"),
     jumpFailure: need<HTMLButtonElement>("jump-failure"),
+    panelTabs: need("panel-tabs"),
+    panelBody: need("panel-body"),
     strip: need("strip"),
     playhead: need("playhead"),
     clock: need("clock"),

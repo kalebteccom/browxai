@@ -19,6 +19,9 @@
 //   - an unknown event type is marked and announced, and the replay still
 //     plays. That is the forward-compatibility rule from `src/replay/schema.ts`
 //     under test rather than asserted in a comment.
+//   - the network / WS / console / coverage panels mount inside the built file,
+//     correlate the log, resolve against the playhead, and render a redacted
+//     field as the marker instead of as a blank or the raw object.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -39,11 +42,19 @@ import { writeArtifact } from "../../src/replay/artifact.js";
 import {
   actionCallEvent,
   annotateSpanEvent,
+  consoleMessageEvent,
   createClock,
+  netFailedEvent,
+  netRequestEvent,
+  netResponseEvent,
+  pageErrorEvent,
   resultEvent,
+  wsCloseEvent,
+  wsFrameEvent,
+  wsOpenEvent,
   type SourceContext,
 } from "../../src/replay/sources.js";
-import { Redactor } from "../../src/replay/redact.js";
+import { DEFAULT_DROPPED_HEADERS, Redactor, ROOT_PATH } from "../../src/replay/redact.js";
 import { buildPlayerHtml, packPlayerHtml } from "../../scripts/build-replay-player.js";
 
 const KEYSTONE_TIMEOUT = 180_000;
@@ -203,6 +214,74 @@ interface Captured {
 }
 
 /**
+ * Network, WebSocket and console events written through the REAL source
+ * adapters in `src/replay/sources.ts`, so the payload shapes the panels read
+ * are the ones capture emits and the redaction runs through the shipped
+ * `Redactor` rather than a hand-written marker.
+ *
+ * What is synthesised here is the CDP input to those adapters. The live taps
+ * that feed them during a session are capture-side wiring; this file is the
+ * gate for the PLAYER half, and what it has to prove is what the four panels do
+ * with a log that carries these shapes.
+ *
+ * The three requests are the three states the network panel has to tell apart:
+ * one that completes, one that is still in flight when the log ends, and one
+ * that fails.
+ */
+function recordPanelSources(log: ReplayLog, ctx: SourceContext, origin: string): void {
+  log.append(
+    netRequestEvent(ctx, {
+      requestId: "r1",
+      request: { url: `${origin}/api/items`, method: "GET" },
+      type: "XHR",
+    }),
+  );
+  log.append(consoleMessageEvent(ctx, { type: "warning", text: "fixture console warning" }));
+  log.append(wsOpenEvent(ctx, { requestId: "w1", url: `${origin.replace("http", "ws")}/live` }));
+  log.append(
+    netResponseEvent(ctx, {
+      requestId: "r1",
+      response: {
+        url: `${origin}/api/items`,
+        status: 200,
+        headers: { "content-length": "4096", "set-cookie": "sid=secret" },
+        mimeType: "application/json",
+      },
+      type: "XHR",
+    }),
+  );
+  log.append(
+    wsFrameEvent(ctx, {
+      url: `${origin.replace("http", "ws")}/live`,
+      dir: "recv",
+      kind: "ws",
+      payload: JSON.stringify({ token: "never-in-the-artifact" }),
+    }),
+  );
+  log.append(
+    netRequestEvent(ctx, {
+      requestId: "r2",
+      request: { url: `${origin}/api/slow`, method: "POST", postData: '{"q":1}' },
+      type: "Fetch",
+    }),
+  );
+  log.append(
+    netRequestEvent(ctx, {
+      requestId: "r3",
+      request: { url: `${origin}/api/missing`, method: "GET" },
+      type: "Fetch",
+    }),
+  );
+  log.append(
+    netFailedEvent(ctx, { requestId: "r3", errorText: "net::ERR_ABORTED", type: "Fetch" }),
+  );
+  log.append(
+    pageErrorEvent(ctx, { text: "Uncaught TypeError: fixture page error", stack: "at fixture" }),
+  );
+  log.append(wsCloseEvent(ctx, { requestId: "w1", code: 1001, reason: "going away" }));
+}
+
+/**
  * Drive a browxai session against the fixture through the MCP handlers while
  * the P1 capture path records it, then write the `.browx`.
  */
@@ -211,7 +290,17 @@ async function captureSession(): Promise<Captured> {
   const call = callerFor(server.handlers);
   const clockOrigin = Date.now();
   const clock = createClock(clockOrigin);
-  const ctx: SourceContext = { clock, redact: new Redactor() };
+  // A redaction config a reviewer really can set, chosen so the artifact
+  // carries both marker kinds the panels have to render: `content-length` in
+  // the dropped headers (so the network panel has a size it must not show), and
+  // "drop every body" (so a WS frame arrives as the marker, not as its text).
+  const ctx: SourceContext = {
+    clock,
+    redact: new Redactor({
+      headers: [...DEFAULT_DROPPED_HEADERS, "content-length"],
+      bodyPaths: [ROOT_PATH],
+    }),
+  };
 
   const log = await ReplayLog.open({ workspaceRoot: workspace, path: "replay/events.jsonl" });
   let browser: Browser | undefined;
@@ -238,6 +327,7 @@ async function captureSession(): Promise<Captured> {
     await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
     await call("open_session", { session: "capture", mode: "attached" });
 
+    recordPanelSources(log, ctx, fixture.url);
     log.append(annotateSpanEvent(ctx, { label: "AC-SAVE", phase: "start" }));
     await step("navigate", { session: "capture", url: `${fixture.url}/` });
     await step("fill", {
@@ -259,6 +349,9 @@ async function captureSession(): Promise<Captured> {
       text: "This text is never on the page",
     });
     log.append(annotateSpanEvent(ctx, { label: "AC-SAVE", phase: "end" }));
+    // Entered and never left: the coverage view has to show this as unclosed,
+    // which is the signal a summary counting only closed spans would hide.
+    log.append(annotateSpanEvent(ctx, { label: "AC-UNFINISHED", phase: "start" }));
 
     // An event type from a browxai that does not exist yet, written straight
     // into the log the way a future capture source or a plugin would.
@@ -450,6 +543,128 @@ describePlayer("replay player keystone — capture with browxai, review with bro
           expr: `Number(document.getElementById('clock').dataset.t)`,
         });
         expect(Number(clock.value)).toBeGreaterThan(0);
+      } finally {
+        await server.shutdown().catch(() => undefined);
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "renders the four panels over the same log, synced to the playhead",
+    async () => {
+      const server = await createServer({ attachCdp: endpoint, headless: true });
+      const call = callerFor(server.handlers);
+      const read = async (expr: string): Promise<unknown> =>
+        (await call<{ value?: unknown }>("eval_js", { session: "panels", expr })).value;
+      try {
+        await call("approve_actions", { scopes: ["byob_action"], ttlSeconds: 600 });
+        await call("open_session", { session: "panels", mode: "attached" });
+        await call("navigate", { session: "panels", url: playerUrl });
+        await call("wait_for", {
+          session: "panels",
+          selector: 'body[data-player-state="ready"]',
+          timeoutMs: 30_000,
+        });
+
+        // Every panel mounts, whether or not the log carries its event types.
+        const tabs = await call<{ ok: boolean }>("verify_count", {
+          session: "panels",
+          selector: "#panel-tabs .panel-tab",
+          n: 4,
+        });
+        expect(tabs.ok).toBe(true);
+
+        // At t=0 nothing had happened yet, so the panel is an empty state.
+        expect(
+          await read(`document.querySelector('.panel-network .panel-empty') ? 'empty' : 'rows'`),
+        ).toBe("empty");
+
+        // Put the playhead past everything the sources recorded.
+        const last = captured.expectedSteps.length - 1;
+        await call("click", {
+          session: "panels",
+          selector: `#steps li.step[data-step-index="${last}"]`,
+        });
+
+        // The three states a request can be in at a point on the timeline. The
+        // POST never got a response in the log, so it is still in flight.
+        expect(
+          await read(`Array.from(
+            document.querySelectorAll('.panel-network .prow-net:not(.prow-head)')
+          ).map(r => r.dataset.state + ':' + r.querySelector('.pcell-method').textContent)`),
+        ).toEqual(["ok:GET", "pending:POST", "failed:GET"]);
+
+        // The redacted content-length renders as the marker: never blank, never
+        // the literal object.
+        expect(
+          await read(`Array.from(
+            document.querySelectorAll('.panel-network .pcell[data-redacted]')
+          ).map(n => n.textContent)`),
+        ).toEqual(["[redacted: header]"]);
+
+        await call("click", { session: "panels", selector: '.panel-tab[data-panel-id="ws"]' });
+        expect(
+          await read(`(() => {
+            const head = document.querySelector('.panel-ws .prow-ws-head:not(.prow-head)');
+            const frame = document.querySelector('.panel-ws .prow-ws-frame');
+            return {
+              state: head.dataset.state,
+              close: head.querySelector('.pcell-state').textContent,
+              dir: frame.dataset.dir,
+              frame: frame.querySelector('.pcell-frame').textContent,
+            };
+          })()`),
+        ).toEqual({
+          state: "closed",
+          close: "closed: 1001 going away",
+          dir: "recv",
+          frame: "[redacted: body-rule]",
+        });
+
+        await call("click", { session: "panels", selector: '.panel-tab[data-panel-id="console"]' });
+        expect(
+          await read(`Array.from(
+            document.querySelectorAll('.panel-console .prow-console:not(.prow-head)')
+          ).map(r => r.dataset.source + ':' + r.dataset.level)`),
+        ).toEqual(["console:warn", "page:error"]);
+
+        // The level filter is the panel's own state, not the playhead's.
+        await call("select", { session: "panels", selector: "#console-level", values: ["error"] });
+        expect(
+          await read(
+            `document.querySelectorAll('.panel-console .prow-console:not(.prow-head)').length`,
+          ),
+        ).toBe(1);
+
+        await call("click", {
+          session: "panels",
+          selector: '.panel-tab[data-panel-id="coverage"]',
+        });
+        expect(
+          await read(`Array.from(document.querySelectorAll('.panel-coverage .cov-group'))
+            .map(g => g.dataset.label + ':' + g.dataset.unclosed)`),
+        ).toEqual(["AC-SAVE:false", "AC-UNFINISHED:true"]);
+        // An unclosed span is a real signal, and it says the word.
+        expect(await read(`document.querySelector('[data-badge="unclosed"]').textContent`)).toBe(
+          "unclosed",
+        );
+        expect(
+          await read(
+            `document.querySelectorAll('.cov-group[data-label="AC-SAVE"] .prow-cov-step').length`,
+          ),
+        ).toBe(captured.expectedSteps.length);
+
+        // A row click seeks the timeline to that event.
+        await call("click", { session: "panels", selector: '.panel-tab[data-panel-id="network"]' });
+        expect(
+          await read(`(() => {
+            const row = document.querySelector('.panel-network .prow-net:not(.prow-head)');
+            const at = row.dataset.t;
+            row.click();
+            return at === document.getElementById('clock').dataset.t;
+          })()`),
+        ).toBe(true);
       } finally {
         await server.shutdown().catch(() => undefined);
       }

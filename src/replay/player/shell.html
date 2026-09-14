@@ -17,17 +17,24 @@
     <div id="banners"></div>
 
     <main id="layout">
-      <section id="stage-wrap">
-        <div id="stage"></div>
-        <p id="stage-empty" hidden>
-          This artifact carries no DOM stream. The timeline, the step list and jump-to-failure still
-          work; the page itself was not recorded.
-        </p>
-        <div id="dropzone">
-          <p>Drop a <code>.browx</code> artifact here</p>
-          <input id="file-picker" type="file" accept=".browx,application/zip" />
-        </div>
-      </section>
+      <div id="stage-col">
+        <section id="stage-wrap">
+          <div id="stage"></div>
+          <p id="stage-empty" hidden>
+            This artifact carries no DOM stream. The timeline, the step list and jump-to-failure
+            still work; the page itself was not recorded.
+          </p>
+          <div id="dropzone">
+            <p>Drop a <code>.browx</code> artifact here</p>
+            <input id="file-picker" type="file" accept=".browx,application/zip" />
+          </div>
+        </section>
+
+        <section id="panels">
+          <div id="panel-tabs" role="tablist"></div>
+          <div id="panel-body"></div>
+        </section>
+      </div>
 
       <aside id="steps-pane">
         <div id="steps-head">
