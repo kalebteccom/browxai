@@ -14,13 +14,22 @@ import type { ReplayEvent } from "../../schema.js";
 
 const EMPTY: readonly ReplayEvent[] = [];
 
-export interface EventIndex {
-  readonly events: readonly ReplayEvent[];
+/** What a panel reads the log through. Narrow on purpose: one type at a time,
+ *  optionally one window of it. Nothing here hands out the whole log, so the
+ *  types a panel declares are the types it can actually see. */
+export interface EventSource {
   /** Largest `t` in the log. What an unclosed span or a still-open socket runs
    *  to, since neither has an end event to read one from. */
   readonly duration: number;
-  has(type: string): boolean;
-  byType(type: string): readonly ReplayEvent[];
+  events(type: string, range?: EventRange): readonly ReplayEvent[];
+}
+
+export interface EventRange {
+  from?: number;
+  to?: number;
+}
+
+export interface EventIndex extends EventSource {
   count(type: string): number;
 }
 
@@ -77,12 +86,19 @@ export function indexEvents(events: readonly ReplayEvent[]): EventIndex {
   // rather than left to break every binary search downstream.
   for (const bucket of buckets.values()) sortByTime(bucket);
   return {
-    events,
     duration,
-    has: (type) => (buckets.get(type)?.length ?? 0) > 0,
-    byType: (type) => buckets.get(type) ?? EMPTY,
+    events: (type, range) => sliceRange(buckets.get(type) ?? EMPTY, range),
     count: (type) => buckets.get(type)?.length ?? 0,
   };
+}
+
+/** `{from, to}` is inclusive at both ends, which is what a panel asking "what
+ *  happened during this span" means by it. */
+function sliceRange(bucket: readonly ReplayEvent[], range?: EventRange): readonly ReplayEvent[] {
+  if (!range || (range.from === undefined && range.to === undefined)) return bucket;
+  const start = range.from === undefined ? 0 : fromIndex(bucket, range.from, timeOf);
+  const end = range.to === undefined ? bucket.length : upToIndex(bucket, range.to, timeOf);
+  return start >= end ? EMPTY : bucket.slice(start, end);
 }
 
 function sortByTime(bucket: ReplayEvent[]): void {

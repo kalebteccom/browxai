@@ -24,7 +24,7 @@ import {
   strField,
   timeOf,
   upToIndex,
-  type EventIndex,
+  type EventSource,
 } from "./event-index.js";
 import type { PanelApi, PanelDef } from "./panel-host.js";
 import { badge, el, emptyState, formatMs, headRow, row } from "./panel-ui.js";
@@ -70,36 +70,60 @@ function stepOf(event: ReplayEvent, kind: "action" | "assert"): CoverageStep {
   return step;
 }
 
-function allSteps(index: EventIndex): CoverageStep[] {
+function allSteps(index: EventSource): CoverageStep[] {
   const steps = [
-    ...index.byType("action/result").map((e) => stepOf(e, "action")),
-    ...index.byType("assert/result").map((e) => stepOf(e, "assert")),
+    ...index.events("action/result").map((e) => stepOf(e, "action")),
+    ...index.events("assert/result").map((e) => stepOf(e, "assert")),
   ];
   steps.sort((a, b) => a.t - b.t);
   return steps;
 }
 
-/** Steps whose result landed inside the span. `before` is not consulted on
- *  purpose: a tool that was already running when the span opened was not run
- *  *for* that acceptance criterion. */
+/**
+ * Steps whose result landed inside the span. `before` is not consulted on
+ * purpose: a tool that was already running when the span opened was not run
+ * *for* that acceptance criterion.
+ *
+ * Spans under one label arrive in `from` order and `consumed` clips each range
+ * to what the previous one left, so a step is counted once even when an `end`
+ * phase with no `start` produced a zero-width span that touches its neighbour.
+ */
 function stepsIn(steps: readonly CoverageStep[], spans: readonly Span[]): CoverageStep[] {
   const picked: CoverageStep[] = [];
+  let consumed = 0;
   for (const span of spans) {
-    const start = fromIndex(steps, span.from, (s) => s.t);
+    const start = Math.max(
+      consumed,
+      fromIndex(steps, span.from, (s) => s.t),
+    );
     const end = upToIndex(steps, span.to, (s) => s.t);
     for (let i = start; i < end; i++) picked.push(steps[i]!);
+    consumed = Math.max(consumed, end);
   }
   return picked;
+}
+
+/** Span bounds without spreading the array into an argument list: a log can
+ *  carry more spans than a call frame has room for. */
+function bounds(spans: readonly Span[]): { from: number; to: number } {
+  let from = Number.POSITIVE_INFINITY;
+  let to = 0;
+  for (const span of spans) {
+    if (span.from < from) from = span.from;
+    if (span.to > to) to = span.to;
+  }
+  return { from: Number.isFinite(from) ? from : 0, to };
 }
 
 function groupOf(label: string, spans: Span[], steps: readonly CoverageStep[]): CoverageGroup {
   const inside = stepsIn(steps, spans);
   const note = spans.find((s) => s.note !== undefined)?.note;
+  const range = bounds(spans);
   return {
     label,
     spans,
-    from: Math.min(...spans.map((s) => s.from)),
-    to: Math.max(...spans.map((s) => s.to)),
+    from: range.from,
+    to: range.to,
     unclosed: spans.some((s) => s.open),
     ...(note === undefined ? {} : { note }),
     steps: inside,
@@ -108,8 +132,8 @@ function groupOf(label: string, spans: Span[], steps: readonly CoverageStep[]): 
 }
 
 /** Group every span by label. Runs once, at mount. */
-export function buildCoverage(index: EventIndex): CoverageGroup[] {
-  const spans = buildSpans(index.byType("annotate/span"), index.duration);
+export function buildCoverage(index: EventSource): CoverageGroup[] {
+  const spans = buildSpans(index.events("annotate/span"), index.duration);
   const steps = allSteps(index);
   const byLabel = new Map<string, Span[]>();
   for (const span of spans) {
@@ -221,9 +245,12 @@ export function coveragePanel(): PanelDef {
     id: "coverage",
     title: "Coverage",
     eventTypes: [...COVERAGE_EVENT_TYPES],
+    // The badge counts spans. Summing the three declared types would count the
+    // step results too, and read as neither a label count nor a row count.
+    countType: "annotate/span",
     mount(container: HTMLElement, api: PanelApi) {
-      const groups = buildCoverage(api.index);
-      const duration = api.index.duration;
+      const groups = buildCoverage(api);
+      const duration = api.duration;
       const table = el("div", "panel-table");
       container.replaceChildren(table);
       api.onSeek((t) => render(table, groups, duration, t));

@@ -9,7 +9,7 @@
 // harder signal it is.
 
 import type { ReplayEvent } from "../../schema.js";
-import { rawPayload, strField, timeOf, upToIndex, type EventIndex } from "./event-index.js";
+import { rawPayload, strField, timeOf, upToIndex, type EventSource } from "./event-index.js";
 import type { PanelApi, PanelDef } from "./panel-host.js";
 import { cell, el, emptyState, formatMs, headRow, row } from "./panel-ui.js";
 
@@ -34,6 +34,7 @@ export const LEVEL_SEVERITY: Record<ConsoleLevel, number> = {
 };
 
 const LEVEL_BY_CONSOLE_TYPE: Record<string, ConsoleLevel> = {
+  log: "log",
   error: "error",
   assert: "error",
   warning: "warn",
@@ -85,10 +86,10 @@ function errorRow(event: ReplayEvent): ConsoleRow {
 }
 
 /** Both types on one clock, ordered. Runs once, at mount. */
-export function buildConsoleRows(index: EventIndex): ConsoleRow[] {
+export function buildConsoleRows(index: EventSource): ConsoleRow[] {
   const rows = [
-    ...index.byType("console/message").map(messageRow),
-    ...index.byType("page/error").map(errorRow),
+    ...index.events("console/message").map(messageRow),
+    ...index.events("page/error").map(errorRow),
   ];
   rows.sort((a, b) => a.t - b.t);
   return rows;
@@ -180,7 +181,7 @@ export function consolePanel(): PanelDef {
     title: "Console",
     eventTypes: [...CONSOLE_EVENT_TYPES],
     mount(container: HTMLElement, api: PanelApi) {
-      const rows = buildConsoleRows(api.index);
+      const rows = buildConsoleRows(api);
       const select = filterSelect();
       const toolbar = el("div", "panel-toolbar");
       const label = el("label", "control", "Level ");

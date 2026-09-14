@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import type { ReplayEvent } from "./schema.js";
 import { redactedMarker } from "./redact.js";
 import { indexEvents, fromIndex, upToIndex, windowUpTo } from "./player/panels/event-index.js";
+import { mountPanels, type PanelDef, type PanelHost } from "./player/panels/panel-host.js";
 import { displayText, formatBytes } from "./player/panels/panel-ui.js";
 import {
   buildNetworkRows,
@@ -67,15 +68,13 @@ describe("event index", () => {
   it("buckets by type once, including a type this build has never heard of", () => {
     const index = indexEvents(sampleEvents());
     expect(index.count("net/request")).toBe(2);
-    expect(index.has("telemetry/flamechart")).toBe(true);
-    expect(index.count("telemetry/flamechart")).toBe(1);
+    expect(index.events("telemetry/flamechart")).toHaveLength(1);
     expect(index.duration).toBe(130);
   });
 
   it("reports a type the log does not carry as absent rather than throwing", () => {
     const index = indexEvents(sampleEvents());
-    expect(index.has("ws/nonesuch")).toBe(false);
-    expect(index.byType("ws/nonesuch")).toEqual([]);
+    expect(index.events("ws/nonesuch")).toEqual([]);
     expect(index.count("ws/nonesuch")).toBe(0);
   });
 
@@ -84,7 +83,15 @@ describe("event index", () => {
       ev(90, "console/message", { type: "log", text: "late" }),
       ev(10, "console/message", { type: "log", text: "early" }),
     ]);
-    expect(index.byType("console/message").map((e) => e.t)).toEqual([10, 90]);
+    expect(index.events("console/message").map((e) => e.t)).toEqual([10, 90]);
+  });
+
+  it("windows one type to a time range, inclusive at both ends", () => {
+    const index = indexEvents(sampleEvents());
+    expect(index.events("net/request", { from: 20 }).map((e) => e.t)).toEqual([90]);
+    expect(index.events("net/request", { to: 10 }).map((e) => e.t)).toEqual([10]);
+    expect(index.events("net/request", { from: 10, to: 90 }).map((e) => e.t)).toEqual([10, 90]);
+    expect(index.events("net/request", { from: 200, to: 300 })).toEqual([]);
   });
 
   it("clamps a negative or non-numeric t instead of corrupting the search", () => {
@@ -265,6 +272,108 @@ describe("websocket panel", () => {
     expect(displayText(frame?.payload)).toBe("[redacted: body-rule]");
   });
 
+  it("does not let an early frame's inferred connection steal the real socket", () => {
+    // 1ms of skew between the WS ring's clock and the CDP tap that stamps the
+    // open is all it takes: the frame at 99 has no open to attach to, and the
+    // connection it infers must not then outrank the real one for every frame
+    // after it.
+    const conns = buildWsConnections(
+      indexEvents([
+        ev(99, "ws/frame", { url: "wss://a.test/s", dir: "recv", kind: "ws", payload: "early" }),
+        ev(100, "ws/open", { requestId: "w1", url: "wss://a.test/s" }),
+        ev(150, "ws/frame", { url: "wss://a.test/s", dir: "recv", kind: "ws", payload: "late" }),
+        ev(160, "ws/frame", { url: "wss://a.test/s", dir: "sent", kind: "ws", payload: "reply" }),
+      ]),
+    );
+    expect(conns.map((c) => c.requestId)).toEqual(["", "w1"]);
+    expect(conns[0]?.frames.map((f) => f.payload)).toEqual(["early"]);
+    expect(conns[1]?.frames.map((f) => f.payload)).toEqual(["late", "reply"]);
+    const view = resolveWs(conns, 200).rows[1]!;
+    expect({ sent: view.sent, received: view.received }).toEqual({ sent: 1, received: 1 });
+  });
+
+  it("gives a frame after a close to a live connection, never to the closed one", () => {
+    const conns = buildWsConnections(
+      indexEvents([
+        ev(0, "ws/open", { requestId: "w1", url: "wss://a.test/s" }),
+        ev(10, "ws/frame", { url: "wss://a.test/s", dir: "recv", kind: "ws", payload: "first" }),
+        ev(20, "ws/close", { requestId: "w1", code: 1000 }),
+        ev(30, "ws/open", { requestId: "w2", url: "wss://a.test/s" }),
+        ev(40, "ws/frame", { url: "wss://a.test/s", dir: "recv", kind: "ws", payload: "second" }),
+      ]),
+    );
+    expect(conns.map((c) => c.requestId)).toEqual(["w1", "w2"]);
+    expect(conns[0]?.frames.map((f) => f.payload)).toEqual(["first"]);
+    expect(conns[1]?.frames.map((f) => f.payload)).toEqual(["second"]);
+  });
+
+  it("gives frames on two live sockets to the newer one, because a frame has no id", () => {
+    // The honest limit of correlating on url: `ws/frame` carries no requestId,
+    // so two sockets open on one url cannot be told apart. The newer one wins,
+    // and the older reads as open with no traffic — which is at least true of
+    // what the log can prove.
+    const conns = buildWsConnections(
+      indexEvents([
+        ev(0, "ws/open", { requestId: "w1", url: "wss://a.test/s" }),
+        ev(5, "ws/open", { requestId: "w2", url: "wss://a.test/s" }),
+        ev(10, "ws/frame", { url: "wss://a.test/s", dir: "sent", kind: "ws", payload: "x" }),
+      ]),
+    );
+    expect(conns).toHaveLength(2);
+    expect(conns[0]?.frames).toHaveLength(0);
+    expect(conns[1]?.frames).toHaveLength(1);
+  });
+
+  it("keeps a close whose open never arrived, with its code and reason", () => {
+    const conns = buildWsConnections(
+      indexEvents([
+        ev(40, "ws/close", {
+          requestId: "gone",
+          url: "wss://a.test/s",
+          code: 1006,
+          reason: "abnormal",
+        }),
+      ]),
+    );
+    expect(conns).toHaveLength(1);
+    expect(conns[0]).toMatchObject({ requestId: "gone", inferred: true, closeT: 40 });
+    const view = resolveWs(conns, 50).rows[0]!;
+    expect(view.state).toBe("closed");
+    expect(closeText(view)).toBe("closed: 1006 abnormal");
+  });
+
+  it("counts directions at a playhead from a prefix built once, not by walking", () => {
+    const events: ReplayEvent[] = [ev(0, "ws/open", { requestId: "w", url: "u" })];
+    for (let i = 1; i <= 400; i++) {
+      events.push(
+        ev(i, "ws/frame", {
+          url: "u",
+          dir: i % 4 === 0 ? "sent" : "recv",
+          kind: "ws",
+          payload: "f",
+        }),
+      );
+    }
+    const conns = buildWsConnections(indexEvents(events));
+    expect(conns[0]?.sentPrefix).toHaveLength(401);
+    const mid = resolveWs(conns, 200).rows[0]!;
+    expect({ sent: mid.sent, received: mid.received }).toEqual({ sent: 50, received: 150 });
+    const end = resolveWs(conns, 400).rows[0]!;
+    expect({ sent: end.sent, received: end.received }).toEqual({ sent: 100, received: 300 });
+  });
+
+  it("tells a url that was removed from one that was never there", () => {
+    const conns = buildWsConnections(
+      indexEvents([
+        ev(0, "ws/open", { requestId: "r", url: redactedMarker("secret") }),
+        ev(5, "ws/open", { requestId: "n" }),
+      ]),
+    );
+    expect(displayText(conns[0]?.url)).toBe("[redacted: secret]");
+    expect(conns[0]?.urlKey).toBe("");
+    expect(displayText(conns[1]?.url)).toBe("—");
+  });
+
   it("renders an empty state for a log with no socket traffic", () => {
     expect(buildWsConnections(indexEvents([ev(0, "telemetry/flamechart", {})]))).toEqual([]);
     expect(WS_EMPTY).toMatch(/No WebSocket/);
@@ -377,6 +486,39 @@ describe("coverage view", () => {
     expect(groups[0]?.steps).toHaveLength(1);
   });
 
+  it("counts a step once when an orphan end phase leaves a zero-width span", () => {
+    // `end` with no `start` is a real shape: capture began mid-span. It folds
+    // to a zero-width span that touches its neighbour, and the step at that
+    // millisecond must not be counted by both.
+    const groups = buildCoverage(
+      indexEvents([
+        ev(10, "action/result", { tool: "click", ok: true }),
+        ev(10, "annotate/span", { label: "AC", phase: "end" }),
+        ev(10, "annotate/span", { label: "AC", phase: "start" }),
+        ev(20, "action/result", { tool: "fill", ok: true }),
+        ev(30, "annotate/span", { label: "AC", phase: "end" }),
+      ]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.steps.map((s) => s.tool)).toEqual(["click", "fill"]);
+  });
+
+  it("takes the bounds of a label with more spans than a call frame has room for", () => {
+    // Span counts this size are why the bounds are folded rather than spread
+    // into `Math.min(...)`: argument-list spreading has a ceiling (a RangeError
+    // around 124k on this V8), and a long session annotating in a loop reaches
+    // it. The panel host's mount guard is the backstop; this pins the bounds.
+    const events: ReplayEvent[] = [];
+    for (let i = 0; i < 200_000; i++) {
+      events.push(
+        ev(i * 2, "annotate/span", { label: "AC", phase: i % 2 === 0 ? "start" : "end" }),
+      );
+    }
+    const groups = buildCoverage(indexEvents(events));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ from: 0, to: 399_998 });
+  });
+
   it("renders an empty state when nothing was annotated", () => {
     expect(
       buildCoverage(indexEvents([ev(0, "action/result", { tool: "click", ok: true })])),
@@ -410,5 +552,192 @@ describe("forward compatibility — a log this build does not understand", () =>
     expect(displayText({ frames: [1, 2] })).toBe('{"frames":[1,2]}');
     expect(displayText(undefined)).toBe("—");
     expect(formatBytes(undefined)).toBe("—");
+  });
+
+  it("still names a redaction whose reason is missing or not a string", () => {
+    expect(displayText({ redacted: true })).toBe("[redacted]");
+    expect(displayText({ redacted: true, reason: { kind: "future" } })).toBe("[redacted]");
+    expect(displayText({ redacted: true, reason: "" })).toBe("[redacted]");
+    expect(formatBytes({ redacted: true })).toBe("[redacted]");
+  });
+});
+
+/** Enough of a document for the host to build its tab bar and its sections. The
+ *  panels under test here render nothing: what is being asserted is the host's
+ *  containment, not anyone's markup. */
+interface FakeNode {
+  tagName: string;
+  className: string;
+  textContent: string;
+  hidden: boolean;
+  dataset: Record<string, string>;
+  attrs: Record<string, string>;
+  children: FakeNode[];
+  append: (...nodes: FakeNode[]) => void;
+  replaceChildren: (...nodes: FakeNode[]) => void;
+  setAttribute: (name: string, value: string) => void;
+  addEventListener: () => void;
+}
+
+function fakeNode(tagName: string): FakeNode {
+  const node: FakeNode = {
+    tagName,
+    className: "",
+    textContent: "",
+    hidden: false,
+    dataset: {},
+    attrs: {},
+    children: [],
+    append: (...nodes) => node.children.push(...nodes),
+    replaceChildren: (...nodes) => {
+      node.children = [...nodes];
+    },
+    setAttribute: (name, value) => {
+      node.attrs[name] = value;
+    },
+    addEventListener: () => undefined,
+  };
+  return node;
+}
+
+function withFakeDocument<T>(run: (make: (tag: string) => FakeNode) => T): T {
+  const host = globalThis as { document?: unknown };
+  const had = "document" in host;
+  const previous = host.document;
+  host.document = { createElement: (tag: string) => fakeNode(tag) };
+  try {
+    return run(fakeNode);
+  } finally {
+    if (had) host.document = previous;
+    else delete host.document;
+  }
+}
+
+function mountFake(
+  panels: readonly PanelDef[],
+  events = sampleEvents(),
+): { body: FakeNode; tabs: FakeNode; host: PanelHost } {
+  const tabs = fakeNode("div");
+  const body = fakeNode("div");
+  const host = mountPanels({
+    tabs: tabs as unknown as HTMLElement,
+    body: body as unknown as HTMLElement,
+    index: indexEvents(events),
+    panels,
+    seekTo: () => undefined,
+  });
+  host.seek(100);
+  return { body, tabs, host };
+}
+
+describe("panel host", () => {
+  it("contains a panel that throws at mount instead of failing the whole open", () => {
+    withFakeDocument(() => {
+      let healthyMounted = false;
+      const boom: PanelDef = {
+        id: "boom",
+        title: "Boom",
+        eventTypes: ["net/request"],
+        mount() {
+          throw new Error("panel exploded");
+        },
+      };
+      const healthy: PanelDef = {
+        id: "healthy",
+        title: "Healthy",
+        eventTypes: ["console/message"],
+        mount() {
+          healthyMounted = true;
+        },
+      };
+      const { body } = mountFake([boom, healthy]);
+      expect(body.children.map((c) => c.dataset.panelId)).toEqual(["boom", "healthy"]);
+      expect(body.children[0]?.dataset.failed).toBe("open");
+      expect(healthyMounted).toBe(true);
+    });
+  });
+
+  it("contains a panel that throws on a seek, and keeps seeking the others", () => {
+    withFakeDocument(() => {
+      let healthySeeks = 0;
+      const boom: PanelDef = {
+        id: "boom",
+        title: "Boom",
+        eventTypes: ["net/request"],
+        mount(_container, api) {
+          api.onSeek(() => {
+            throw new Error("render exploded");
+          });
+        },
+      };
+      const healthy: PanelDef = {
+        id: "healthy",
+        title: "Healthy",
+        eventTypes: ["console/message"],
+        mount(_container, api) {
+          api.onSeek(() => {
+            healthySeeks++;
+          });
+        },
+      };
+      const { body, host } = mountFake([boom, healthy]);
+      expect(body.children[0]?.dataset.failed).toBe("render");
+      // A hidden panel is not seeked; selecting it catches it up, and the
+      // failure next door does not follow it.
+      host.select("healthy");
+      expect(healthySeeks).toBe(1);
+      host.seek(200);
+      expect(healthySeeks).toBe(2);
+      expect(body.children[1]?.dataset.failed).toBeUndefined();
+    });
+  });
+
+  it("hands a panel only the event types it declared", () => {
+    withFakeDocument(() => {
+      let seen: Record<string, number> = {};
+      const nosy: PanelDef = {
+        id: "nosy",
+        title: "Nosy",
+        eventTypes: ["console/message"],
+        mount(_container, api) {
+          seen = {
+            declared: api.events("console/message").length,
+            undeclared: api.events("net/response").length,
+            windowed: api.events("console/message", { from: 60 }).length,
+          };
+        },
+      };
+      mountFake([nosy]);
+      expect(seen).toEqual({ declared: 3, undeclared: 0, windowed: 2 });
+    });
+  });
+
+  it("counts the tab badge on the declared type a panel says to count", () => {
+    withFakeDocument(() => {
+      const tabs = fakeNode("div");
+      const body = fakeNode("div");
+      mountPanels({
+        tabs: tabs as unknown as HTMLElement,
+        body: body as unknown as HTMLElement,
+        index: indexEvents(sampleEvents()),
+        panels: [
+          {
+            id: "a",
+            title: "A",
+            eventTypes: ["net/request", "net/response"],
+            mount: () => undefined,
+          },
+          {
+            id: "b",
+            title: "B",
+            eventTypes: ["net/request", "net/response"],
+            countType: "net/request",
+            mount: () => undefined,
+          },
+        ],
+        seekTo: () => undefined,
+      });
+      expect(tabs.children.map((t) => t.dataset.count)).toEqual(["3", "2"]);
+    });
   });
 });

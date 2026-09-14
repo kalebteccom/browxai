@@ -208,6 +208,13 @@ function collectSpans(open: Map<string, Span>, closed: Span[], event: ReplayEven
   closed.push(span);
 }
 
+/** A span still open when the log ends runs to the end of it. Both readings of
+ *  the log — the timeline's one pass and the coverage panel's annotation-only
+ *  pass — close their open spans through here. */
+function closeOpenSpans(open: Map<string, Span>, duration: number): void {
+  for (const span of open.values()) span.to = duration;
+}
+
 /**
  * Spans folded out of the `annotate/span` events alone. `buildTimeline` folds
  * them inline in its one pass over the whole log; the coverage panel, which
@@ -218,7 +225,7 @@ export function buildSpans(events: readonly ReplayEvent[], duration: number): Sp
   const open = new Map<string, Span>();
   const spans: Span[] = [];
   for (const event of events) collectSpans(open, spans, event);
-  for (const span of open.values()) span.to = duration;
+  closeOpenSpans(open, duration);
   return spans;
 }
 
@@ -279,7 +286,7 @@ export function buildTimeline(
     }
   });
 
-  for (const span of openSpans.values()) span.to = duration;
+  closeOpenSpans(openSpans, duration);
   times.sort((a, b) => a - b);
 
   return {

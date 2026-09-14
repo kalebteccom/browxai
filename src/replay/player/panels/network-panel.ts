@@ -18,7 +18,7 @@ import {
   strField,
   timeOf,
   windowUpTo,
-  type EventIndex,
+  type EventSource,
 } from "./event-index.js";
 import type { PanelApi, PanelDef } from "./panel-host.js";
 import {
@@ -106,10 +106,10 @@ function requestRow(event: ReplayEvent): NetRow {
  * Correlate the three network event types into one row per request. Runs once,
  * at mount.
  */
-export function buildNetworkRows(index: EventIndex): NetRow[] {
+export function buildNetworkRows(index: EventSource): NetRow[] {
   const rows: NetRow[] = [];
   const byId = new Map<string, NetRow>();
-  for (const event of index.byType("net/request")) {
+  for (const event of index.events("net/request")) {
     const built = requestRow(event);
     rows.push(built);
     byId.set(built.requestId, built);
@@ -127,7 +127,7 @@ export function buildNetworkRows(index: EventIndex): NetRow[] {
     byId.set(id, made);
     return made;
   };
-  for (const event of index.byType("net/response")) {
+  for (const event of index.events("net/response")) {
     const id = strField(event, "requestId");
     const response = objField(event, "response");
     const target = byId.get(id) ?? orphan(id, timeOf(event), response.url, strField(event, "type"));
@@ -136,7 +136,7 @@ export function buildNetworkRows(index: EventIndex): NetRow[] {
     if (target.resourceType === "") target.resourceType = strField(event, "type");
     target.size = sizeOf(rawPayload(event), asObject(response.headers));
   }
-  for (const event of index.byType("net/failed")) {
+  for (const event of index.events("net/failed")) {
     const id = strField(event, "requestId");
     const target = byId.get(id) ?? orphan(id, timeOf(event), undefined, strField(event, "type"));
     target.endT = timeOf(event);
@@ -220,7 +220,7 @@ export function networkPanel(): PanelDef {
     title: "Network",
     eventTypes: [...NETWORK_EVENT_TYPES],
     mount(container: HTMLElement, api: PanelApi) {
-      const rows = buildNetworkRows(api.index);
+      const rows = buildNetworkRows(api);
       const table = el("div", "panel-table");
       container.replaceChildren(table);
       api.onSeek((t) => render(table, rows, t));

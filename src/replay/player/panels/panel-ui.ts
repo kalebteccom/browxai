@@ -21,7 +21,11 @@ const MAX_CELL_CHARS = 180;
 export const EM_DASH = "—";
 
 export function displayText(value: unknown, maxChars = MAX_CELL_CHARS): string {
-  if (isRedacted(value)) return `[redacted: ${value.reason}]`;
+  if (isRedacted(value)) {
+    // `reason` is typed, and this is a value off the wire, so it is also checked.
+    const reason: unknown = value.reason;
+    return typeof reason === "string" && reason !== "" ? `[redacted: ${reason}]` : "[redacted]";
+  }
   if (value === undefined || value === null) return EM_DASH;
   const text = typeof value === "string" ? value : safeJson(value);
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
