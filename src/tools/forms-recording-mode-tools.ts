@@ -8,39 +8,11 @@ import type {
 } from "./host.js";
 import type { CaptureTier } from "../replay/schema.js";
 import type { ReplayStartOptions } from "../replay/session.js";
-import { hasCapability } from "../util/capabilities.js";
 
 const REPLAY_TIERS: readonly CaptureTier[] = ["actions", "replay", "reexecutable"];
-
-/** Structured refusal shape when the caller passes `replay: {...}` on a server
- *  without the `replay` capability. Mirrors `gateCheck` so classifyOutcome
- *  buckets it as `denied` in the metrics store. */
-function capabilityRefusal(
-  tool: string,
-  requiredCapability: string,
-): { content: [{ type: "text"; text: string }] } {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(
-          {
-            ok: false,
-            error:
-              `${tool}: the "${requiredCapability}" capability is off; ` +
-              `replay artifact capture cannot start`,
-            requiredCapability,
-            hint:
-              `Add "${requiredCapability}" to BROWX_CAPABILITIES and restart the server. ` +
-              `Replay artifacts carry real page content and are as sensitive as the session was.`,
-          },
-          null,
-          2,
-        ),
-      },
-    ],
-  };
-}
+/** The compound-capability arm engaged only when the caller opts in with the
+ *  `replay` argument. Passed to `gateCheck`; no direct `caps.enabled` read. */
+const REPLAY_EXTRA = ["replay"] as const;
 
 /**
  * Recording-mode tools: `start_recording` / `end_recording` / `record_annotate`.
@@ -53,7 +25,7 @@ function capabilityRefusal(
 export function registerFormsRecordingModeTools(
   host: RegisterHost & GateHost & SessionHost & ServerServicesHost & ConfigHost,
 ): void {
-  const { z, register, gateCheck, entryFor, caps, workspace } = host;
+  const { z, register, gateCheck, entryFor, workspace } = host;
 
   const replayInputSchema = z
     .object({
@@ -116,13 +88,16 @@ export function registerFormsRecordingModeTools(
       },
     },
     async ({ flowName, replay, session }) => {
-      const g = gateCheck("start_recording");
+      // Compound gate: the tool's own `human` capability, and — only when the
+      // caller opts in via the `replay` argument — the off-by-default `replay`
+      // capability. Both refusals ride the same `gateCheck` shape so the
+      // metrics classifier buckets them identically as `capability-denied`.
+      const g = gateCheck("start_recording", replay ? REPLAY_EXTRA : undefined);
       if (g) return g;
       const entry = await entryFor(session);
       const r = entry.recorder.start(flowName);
       let replayInfo: unknown;
       if (replay) {
-        if (!hasCapability(caps, "replay")) return capabilityRefusal("start_recording", "replay");
         const opts = normalizeReplayOptions(replay);
         replayInfo = await entry.replay.start(opts, workspace);
       }

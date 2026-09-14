@@ -196,19 +196,20 @@ describe("attachDomCapture — the emitted stream", () => {
     expect(handle.eventCount).toBe(0);
   });
 
-  it("routes registered secrets through applyMaskDeep and nothing else", async () => {
+  it("emits the rrweb payload verbatim — masking runs downstream, not here", async () => {
+    // The prior version of this test wired a mock `secrets.applyMaskDeep` into
+    // `attachDomCapture` and asserted it was called. That was the exact drift
+    // that leaked page text past the bounded-depth cap: dom-capture was the
+    // ONE event path calling `applyMaskDeep` directly instead of going through
+    // `redactEvent`, and the bounded cap silently stopped masking below ~3 DOM
+    // levels. The fix routes the DOM envelope through `Redactor.mask` in
+    // `session.ts` alongside every other source, so this file emits the raw
+    // rrweb payload and the chokepoint runs once, deep, downstream.
     const f = fakeContext();
-    const seen: string[] = [];
     const out: Array<{ payload: unknown }> = [];
     await attachDomCapture(f.context, {
       clockOrigin: 0,
       onEvent: (e) => out.push(e),
-      secrets: {
-        applyMaskDeep<T>(value: T): T {
-          seen.push("called");
-          return JSON.parse(JSON.stringify(value).replaceAll("hunter2", "<PASSWORD>")) as T;
-        },
-      },
     });
 
     f.bindings.get("__browx_rrweb_emit")!(
@@ -216,9 +217,10 @@ describe("attachDomCapture — the emitted stream", () => {
       JSON.stringify({ type: 3, timestamp: 0, data: { text: "hunter2" } }),
     );
 
-    expect(seen).toEqual(["called"]);
-    expect(JSON.stringify(out[0]!.payload)).not.toContain("hunter2");
-    expect(JSON.stringify(out[0]!.payload)).toContain("<PASSWORD>");
+    expect(out).toHaveLength(1);
+    // Payload rides through unchanged: dom-capture no longer masks. The value
+    // is stripped by `redactEvent` before the log append in `session.ts`.
+    expect(JSON.stringify(out[0]!.payload)).toContain("hunter2");
   });
 
   it("stops emitting after detach", async () => {

@@ -23,27 +23,22 @@ import {
   type CaptureTier,
   type ReplayManifest,
 } from "./schema.js";
-import { Redactor } from "./redact.js";
+import { Redactor, redactEvent } from "./redact.js";
 import {
   actionCallEvent,
   annotateSpanEvent,
   consoleMessageEvent,
   createClock,
-  netFailedEvent,
-  netRequestEvent,
-  netResponseEvent,
   pageErrorEvent,
   pageLifecycleEvent,
   resultEvent,
-  wsCloseEvent,
-  wsFrameEvent,
-  wsOpenEvent,
   type AnnotateSource,
   type EventClock,
   type SourceContext,
   type ToolOutcome,
 } from "./sources.js";
 import { attachDomCapture, type DomCaptureHandle } from "./dom-capture.js";
+import { attachReplayNetwork } from "./session-network.js";
 
 /** What the tool surface accepts on `start_recording({ replay })`. */
 export interface ReplayStartOptions {
@@ -145,7 +140,13 @@ export class ReplaySession {
       maxEvents: opts.eventCap,
     });
 
-    this.replayLog = rlog;
+    // Publish orchestrator state ONLY after `attachSources` completes without
+    // throwing. Assigning `this.replayLog` up front means an attach failure
+    // (a torn-down context, a Network.enable refusal on a CDP session that
+    // just closed) leaves the session in a permanent "active" state: `active()`
+    // returns true, `start()` refuses "already active", `end()` finds no
+    // subscriptions to detach cleanly. Local-first + assign-on-success gives
+    // us a clean abort on failure with no leaked fd.
     this.clock = clock;
     this.redactor = redactor;
     this.tier = tier;
@@ -153,8 +154,18 @@ export class ReplaySession {
     this.jsonlPath = rlog.path;
     this.ctx = { clock, redact: redactor };
     this.engine = this.entry.session.engine;
-
-    await this.attachSources(tier, opts.maskSelectors ?? []);
+    // attachSources reads this.replayLog through the subscribe helpers; we
+    // assign it here so the helpers see the live handle, but if attach throws
+    // we roll back below.
+    this.replayLog = rlog;
+    try {
+      await this.attachSources(tier, opts.maskSelectors ?? []);
+    } catch (err) {
+      // Best-effort rollback: detach whatever partially attached, close the
+      // log, unlink the JSONL, and reset state so the next `start()` succeeds.
+      await this.abort();
+      throw err;
+    }
 
     return { ok: true, tier, sessionId: this.entry.id, clockOrigin, path: artifactRel };
   }
@@ -181,37 +192,100 @@ export class ReplaySession {
     this.replayLog.append(ev);
   }
 
+  /**
+   * Teardown path for `close_session` on an ACTIVE recording. Detaches every
+   * subscription, closes the log handle, and unlinks the intermediate JSONL —
+   * so an abandoned session leaves no plaintext trace and no leaked fd. NOT
+   * the same as `end()`: the artifact writer never runs, no `.browx` is
+   * emitted, no `lastArtifact()` link is stored. Idempotent: safe to call on a
+   * closed or never-started session (returns immediately).
+   *
+   * A JSONL file that stayed under the flush threshold flushes here so the
+   * file descriptor closes cleanly even on a session that produced no
+   * events — the alternative was a 0-byte file with a leaked fd on shutdown.
+   */
+  async abort(): Promise<void> {
+    if (!this.replayLog) return;
+    this.closed = true;
+    for (const sub of this.subscriptions) {
+      try {
+        await sub.detach();
+      } catch {
+        /* best-effort — a torn-down page's off() may throw */
+      }
+    }
+    this.subscriptions = [];
+    if (this.domHandle) {
+      await this.domHandle.detach().catch(() => undefined);
+      this.domHandle = undefined;
+    }
+    const jsonlPath = this.jsonlPath;
+    try {
+      await this.replayLog.close();
+    } catch {
+      /* the write side may have already errored */
+    }
+    if (jsonlPath) await unlink(jsonlPath).catch(() => undefined);
+    this.reset();
+  }
+
   async end(workspace: Workspace): Promise<ReplayEndResult> {
     if (!this.replayLog || !this.ctx) throw new Error("replay: no active recording");
     this.closed = true;
+    // Detach subscriptions and the DOM stream FIRST so no new events land on
+    // the log while we're closing it. In-flight body fetches
+    // (`Network.getResponseBody`) may still be pending — the responseReceived
+    // handler queued them but hasn't heard back yet — so awaiting them here
+    // stops their `rlog.append` from silently no-oping into a closed log.
     for (const sub of this.subscriptions) await sub.detach();
     this.subscriptions = [];
     if (this.domHandle) await this.domHandle.detach();
     this.domHandle = undefined;
+    if (this.pendingBodyFetches.size > 0) {
+      await Promise.allSettled([...this.pendingBodyFetches]);
+      this.pendingBodyFetches.clear();
+    }
     const stats = await this.replayLog.close();
-    const events = await readFile(this.jsonlPath);
-    const written = await writeArtifact({
-      workspaceRoot: workspace.root,
-      path: this.artifactPath,
-      manifest: this.buildManifest(stats),
-      events,
-      assets: this.assets,
-    });
-    await unlink(this.jsonlPath).catch(() => undefined);
-    const result: ReplayEndResult = {
-      ok: true,
-      path: this.artifactPath,
-      absolutePath: written.path,
-      bytes: written.bytes,
-      events: stats.events,
-      counts: stats.counts,
-      entries: written.entries,
-    };
-    if (stats.truncated) result.truncated = stats.truncated;
-    this.lastRelativePath = this.artifactPath;
-    this.lastAbsolutePath = written.path;
-    this.reset();
-    return result;
+    const jsonlPath = this.jsonlPath;
+    const artifactPath = this.artifactPath;
+    // From here down we're closing state. A throw from readFile or
+    // writeArtifact would otherwise wedge the session forever: `active()` would
+    // return false while `start()` would still refuse (replayLog set); the
+    // plaintext JSONL would sit on disk. `reset()` runs in `finally` so a
+    // failed `end()` returns the session to an idle-ready state and the next
+    // `start()` succeeds. On success it also unlinks the intermediate JSONL.
+    try {
+      const events = await readFile(jsonlPath);
+      const written = await writeArtifact({
+        workspaceRoot: workspace.root,
+        path: artifactPath,
+        manifest: this.buildManifest(stats),
+        events,
+        assets: this.assets,
+      });
+      await unlink(jsonlPath).catch(() => undefined);
+      const result: ReplayEndResult = {
+        ok: true,
+        path: artifactPath,
+        absolutePath: written.path,
+        bytes: written.bytes,
+        events: stats.events,
+        counts: stats.counts,
+        entries: written.entries,
+      };
+      if (stats.truncated) result.truncated = stats.truncated;
+      this.lastRelativePath = artifactPath;
+      this.lastAbsolutePath = written.path;
+      return result;
+    } catch (err) {
+      // The artifact never landed on disk; the plaintext JSONL is still there.
+      // Unlink it so a failed `end()` matches the abort-path guarantee of no
+      // plaintext trace, then rethrow so the caller sees the failure.
+      await unlink(jsonlPath).catch(() => undefined);
+      throw err;
+    } finally {
+      this.reset();
+    }
   }
 
   /** Path pair of the last-written artifact for this session (if any).
@@ -324,18 +398,21 @@ export class ReplaySession {
   private async attachDom(ctx: BrowserContext, maskSelectors: readonly string[]): Promise<void> {
     const rlog = this.replayLog;
     const src = this.ctx;
-    if (!rlog || !src) return;
+    const redactor = this.redactor;
+    if (!rlog || !src || !redactor) return;
     try {
       this.domHandle = await attachDomCapture(ctx, {
         clockOrigin: src.clock.origin,
         maskSelectors: [...maskSelectors],
-        secrets: this.entry.secrets,
         onEvent: (ev) => {
-          // The DOM stream envelope was already assembled by dom-capture with
-          // the schema fields; forward as-is. `applyMaskDeep` on payload has
-          // already run inside dom-capture — do not double-mask (the alias
-          // would land twice for no gain).
-          rlog.append(ev);
+          // The DOM stream is the one payload shape that legitimately nests
+          // deeper than `applyMaskDeep`'s bounded-depth cap: `{childNodes:
+          // [{childNodes:[...]}]}` reaches ~2 JS levels per DOM level, so
+          // masking through the bounded call left everything below ~3 DOM
+          // levels in the clear. Routing through `redactEvent` (which now
+          // calls the full-depth variant) is the ONE chokepoint every other
+          // source adapter already uses.
+          rlog.append(redactEvent(ev, redactor));
         },
       });
     } catch (err) {
@@ -345,132 +422,21 @@ export class ReplaySession {
     }
   }
 
+  /** In-flight `Network.getResponseBody` promises the `end()` path awaits so a
+   *  body fetch still in progress cannot resolve into a closed log (an unawaited
+   *  `.then(rlog.append)` would silently drop it). Populated by the network
+   *  tap helper; cleared on `end()` after `Promise.allSettled`. */
+  private pendingBodyFetches: Set<Promise<void>> = new Set();
+
   private async attachNetwork(cdp: CDPSession): Promise<void> {
     const src = this.ctx;
     const rlog = this.replayLog;
     if (!src || !rlog) return;
-    const tier = this.tier;
-    try {
-      await cdp.send("Network.enable");
-    } catch (err) {
-      log.warn("replay.session: Network.enable failed; network stream will be empty", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      return;
-    }
-    // Playwright's CDP payload types decline to admit the `Extras` index
-    // signature the schema source types carry. The wire shape is what
-    // schema.ts is a structural superset of, so we cast at the CDP boundary
-    // and let the source adapter (which is loose on purpose) forward it.
-    type Req = import("./sources.js").CdpRequestWillBeSent;
-    type Res = import("./sources.js").CdpResponseReceived;
-    type Fail = import("./sources.js").CdpLoadingFailed;
-    const onRequest = (payload: unknown): void => {
-      rlog.append(netRequestEvent(src, payload as Req));
-    };
-    const onResponse = (payload: unknown): void => {
-      const e = payload as Res;
-      if (tier !== "reexecutable") {
-        rlog.append(netResponseEvent(src, e));
-        return;
-      }
-      // Body fetch is best-effort — a body already discarded by the renderer
-      // returns an error the source adapter's `body?` optional papers over.
-      void fetchBody(cdp, e.requestId)
-        .catch(() => undefined)
-        .then((body) => {
-          const opts = body === undefined ? {} : { body };
-          rlog.append(netResponseEvent(src, e, opts));
-        });
-    };
-    const onFailed = (payload: unknown): void => {
-      rlog.append(netFailedEvent(src, payload as Fail));
-    };
-    cdp.on("Network.requestWillBeSent", onRequest);
-    cdp.on("Network.responseReceived", onResponse);
-    cdp.on("Network.loadingFailed", onFailed);
-    const wsDetach = this.attachWs(cdp);
-    this.subscriptions.push({
-      detach: (): void => {
-        cdp.off("Network.requestWillBeSent", onRequest);
-        cdp.off("Network.responseReceived", onResponse);
-        cdp.off("Network.loadingFailed", onFailed);
-        wsDetach();
-      },
-    });
+    const tap = await attachReplayNetwork(cdp, src, rlog, this.tier);
+    if (!tap) return;
+    this.pendingBodyFetches = tap.pendingBodyFetches;
+    this.subscriptions.push({ detach: tap.detach });
   }
-
-  /** Mirror the network-ws.ts CDP tap onto the replay log. WsBuffer's own
-   *  listeners keep running for `ws_read` / ActionResult; adding a parallel set
-   *  here is one CDP event per frame, no cross-module coupling. */
-  private attachWs(cdp: CDPSession): () => void {
-    const src = this.ctx;
-    const rlog = this.replayLog;
-    if (!src || !rlog) return () => undefined;
-    const urls = new Map<string, string>();
-    const onCreated = (payload: unknown): void => {
-      const e = payload as { requestId: string; url: string };
-      urls.set(e.requestId, e.url);
-      rlog.append(wsOpenEvent(src, { requestId: e.requestId, url: e.url }));
-    };
-    const onFrame =
-      (dir: "sent" | "recv") =>
-      (payload: unknown): void => {
-        const e = payload as {
-          requestId: string;
-          response: { opcode: number; payloadData: string };
-        };
-        rlog.append(
-          wsFrameEvent(src, {
-            url: urls.get(e.requestId) ?? "",
-            dir,
-            kind: "ws",
-            opcode: e.response.opcode,
-            payload: e.response.payloadData ?? "",
-          }),
-        );
-      };
-    const onSse = (payload: unknown): void => {
-      const e = payload as { requestId: string; eventName?: string; data: string };
-      rlog.append(
-        wsFrameEvent(src, {
-          url: urls.get(e.requestId) ?? "",
-          dir: "recv",
-          kind: "sse",
-          ...(e.eventName ? { event: e.eventName } : {}),
-          payload: e.data ?? "",
-        }),
-      );
-    };
-    const onClosed = (payload: unknown): void => {
-      const e = payload as { requestId: string };
-      urls.delete(e.requestId);
-      rlog.append(wsCloseEvent(src, { requestId: e.requestId }));
-    };
-    const sent = onFrame("sent");
-    const recv = onFrame("recv");
-    cdp.on("Network.webSocketCreated", onCreated);
-    cdp.on("Network.webSocketFrameSent", sent);
-    cdp.on("Network.webSocketFrameReceived", recv);
-    cdp.on("Network.eventSourceMessageReceived", onSse);
-    cdp.on("Network.webSocketClosed", onClosed);
-    return () => {
-      cdp.off("Network.webSocketCreated", onCreated);
-      cdp.off("Network.webSocketFrameSent", sent);
-      cdp.off("Network.webSocketFrameReceived", recv);
-      cdp.off("Network.eventSourceMessageReceived", onSse);
-      cdp.off("Network.webSocketClosed", onClosed);
-    };
-  }
-}
-
-async function fetchBody(cdp: CDPSession, requestId: string): Promise<string | undefined> {
-  const r = (await cdp.send("Network.getResponseBody", { requestId })) as {
-    body: string;
-    base64Encoded?: boolean;
-  };
-  if (!r) return undefined;
-  return r.base64Encoded ? Buffer.from(r.body, "base64").toString("utf8") : r.body;
 }
 
 /** Workspace-relative path for a resolved absolute artifact path. Used by

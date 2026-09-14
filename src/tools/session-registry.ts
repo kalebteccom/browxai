@@ -471,6 +471,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       } catch {
         /* best-effort */
       }
+      // Replay session teardown BEFORE the CDP/page handle goes away, so the
+      // subscription off() calls the abort path issues still land on a live
+      // context. Never runs the artifact writer — an abandoned recording
+      // becomes a no-trace unlink of the intermediate JSONL, so a
+      // `close_session` on an active recording never leaves plaintext page
+      // data on disk. `abort()` is a no-op when nothing is recording.
+      await e.replay.abort().catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
       // Capture page reference BEFORE close — `page.video()` resolves the
       // Video handle, but the actual .webm is only flushed by the underlying

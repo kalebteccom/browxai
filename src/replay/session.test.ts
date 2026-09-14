@@ -124,6 +124,37 @@ describe("ReplaySession", () => {
     expect(stringified.includes("<PASSWORD>")).toBe(true);
   });
 
+  it("masks registered secrets deeper than the bounded applyMaskDeep cap", async () => {
+    // rrweb's DOM stream serialises as `{childNodes:[{childNodes:[...]}]}` —
+    // roughly two JS levels per DOM level. The bounded `applyMaskDeep` cap (8
+    // levels) stops masking at ~three DOM levels down, so a token buried in a
+    // routine six-level page landed on disk in cleartext. This regression pins
+    // the fix: registered secrets are stripped at ARBITRARY nesting depth via
+    // the full-depth mask that `Redactor.mask` now calls.
+    const secrets = new SecretRegistry();
+    const SECRET = "deep-secret-value-hunter2";
+    secrets.register({ name: "PASSWORD", value: SECRET });
+    const s = new ReplaySession(stubEntry({ secrets }));
+    await s.start({ tier: "actions" }, ws.workspace);
+
+    // Build a nested tree 20 JS levels deep — well past the bounded cap and
+    // well past any real DOM depth.
+    interface Node {
+      childNodes: Node[];
+      text?: string;
+    }
+    const leaf: Node = { childNodes: [], text: `token:${SECRET}` };
+    let node: Node = leaf;
+    for (let i = 0; i < 20; i++) node = { childNodes: [node] };
+
+    s.noteCall("navigate", { url: "https://a.test/", tree: node });
+    const end = await s.end(ws.workspace);
+    const art = await readArtifact(ws.workspace.root, end.path);
+    const stringified = JSON.stringify(art.events);
+    expect(stringified.includes(SECRET)).toBe(false);
+    expect(stringified.includes("<PASSWORD>")).toBe(true);
+  });
+
   it("masks registered secrets in WS frame payloads via the ONE chokepoint", async () => {
     // The RFC calls this out specifically: a stream that echoes an auth blob
     // the client sent is the same disclosure as the POST that sent it, so
@@ -195,15 +226,12 @@ describe("ReplaySession", () => {
   });
 
   it("backpressure does not stop capture and is reported in counts", async () => {
-    // Force `pendingBytes` to overflow the pending budget by asking for a tiny
-    // budget: the ReplayLog then increments BACKPRESSURE_DROP_KEY instead of
-    // tripping the size/event cap.
+    // Prove the pipeline for backpressure the RFC's schema names as load-bearing:
+    // 1500 tiny appends with default caps stay well under maxPendingBytes, so
+    // no drop fires — the artifact ships un-truncated. The ReplayLog unit
+    // tests exercise the pending-window cap directly (an artifact-level test
+    // would need a stalled disk, which vitest cannot simulate hermetically).
     const s = new ReplaySession(stubEntry());
-    // maxPendingBytes is not surfaced on ReplayStartOptions on purpose (an
-    // operator ceiling, not an agent one), so we drive the log directly through
-    // its options by starting with tiny event/size caps that don't apply and
-    // driving via the public API. Instead, prove the counts pipeline: 1500
-    // actions with default caps yields no truncation and correct counts.
     await s.start({ tier: "actions" }, ws.workspace);
     for (let i = 0; i < 1500; i++) s.noteCall("navigate", { url: `https://a.test/${i}` });
     const end = await s.end(ws.workspace);

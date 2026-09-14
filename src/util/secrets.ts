@@ -198,6 +198,45 @@ export class SecretRegistry {
     return obj;
   }
 
+  /**
+   * Full-depth counterpart of `applyMaskDeep`. Same string-leaf semantics, but
+   * the depth cap is dropped — a shallow bound was a stack-overflow defence
+   * against a malformed input at the time the mask was added, and it becomes a
+   * disclosure hazard on payloads that legitimately nest deep. The rrweb DOM
+   * stream is exactly that: `{childNodes:[{childNodes:[...]}]}` reaches ~2 JS
+   * levels per DOM level, so a six-level page (routine) sits past the cap.
+   *
+   * Stack-safety without a depth cap rests on two facts: masking only rewrites
+   * primitive string leaves, so it cannot loop through numbers or booleans; and
+   * the WeakSet cycle-guard breaks the one shape that would recurse forever —
+   * an object that references itself. A DOM serialisation cannot cycle, and
+   * every source adapter allocates fresh objects before this runs, but the
+   * guard is cheap and pins the invariant against a future caller that hands us
+   * a cyclic input.
+   *
+   * ONLY the replay layer's `Redactor.mask` reaches this variant today — every
+   * other consumer keeps `applyMaskDeep`'s prior bounded behaviour intact.
+   */
+  applyMaskDeepFull<T>(obj: T): T {
+    if (this.byName.size === 0) return obj;
+    return this.maskValueFull(obj, new WeakSet()) as T;
+  }
+
+  private maskValueFull(obj: unknown, seen: WeakSet<object>): unknown {
+    if (typeof obj === "string") return this.applyMaskInText(obj);
+    if (obj === null || typeof obj !== "object") return obj;
+    if (seen.has(obj)) return obj;
+    seen.add(obj);
+    if (Array.isArray(obj)) {
+      return (obj as unknown[]).map((v) => this.maskValueFull(v, seen));
+    }
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      out[k] = this.maskValueFull(v, seen);
+    }
+    return out;
+  }
+
   /** Best-effort detection: does `text` contain any registered real-value?
    *  Used by the screenshot tool's text-content sweep to decide whether to
    *  emit the "screenshot may reveal registered secret values" warning. */

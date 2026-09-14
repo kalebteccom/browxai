@@ -124,7 +124,13 @@ export class ReplayLog {
 
   append(event: ReplayEvent): boolean {
     if (this.closed) return false;
-    if (this.truncation) {
+    // The two caps are irreversible — once tripped, we never take more. But
+    // backpressure is reversible: the disk may catch up, and the RFC pins that
+    // distinction as load-bearing ("a log can carry dropped events and still
+    // run to the end of the session"). So a size/event trip gates future
+    // appends here; a backpressure trip records the reason without gating
+    // subsequent successful writes.
+    if (this.truncation && this.truncation.reason !== "backpressure") {
       this.truncation.droppedEvents++;
       return false;
     }
@@ -136,6 +142,16 @@ export class ReplayLog {
     // path, so a stalled disk drops events instead of growing the buffer.
     if (this.pendingBytes + this.inFlightBytes + size > this.maxPendingBytes) {
       this.bump(BACKPRESSURE_DROP_KEY);
+      // Record the first backpressure drop as the truncation reason so a
+      // short log surfaces it on the manifest (`schema.ts` names the three-way
+      // reason as load-bearing). Subsequent backpressure drops increment the
+      // counter; a later size/event trip supersedes because those two are
+      // permanent.
+      if (!this.truncation) {
+        this.truncation = { at: event.t, reason: "backpressure", droppedEvents: 1 };
+      } else if (this.truncation.reason === "backpressure") {
+        this.truncation.droppedEvents++;
+      }
       return false;
     }
     this.pending.push(line);

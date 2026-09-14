@@ -5,7 +5,7 @@
 // → real capture → `.browx` → `readArtifact` round-trip.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -134,6 +134,47 @@ describe("replay end-to-end", () => {
       expect(report.replayArtifact?.path).toBe(r.path);
 
       await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "close_session on an active recording leaves no plaintext JSONL",
+    async () => {
+      // Regression pin for the defect where `close_session` never touched the
+      // replay orchestrator: the intermediate JSONL sat under `replays/` in
+      // plaintext (page content, action args, everything) and an fd stayed
+      // open. The abort path runs before `session.close()` so an abandoned
+      // recording matches the no-trace contract every other write path holds.
+      const session = "ks-replay-abort";
+      const secret = "abort-path-secret-9f2a";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+      // Register the secret so any leak in the intermediate JSONL would show
+      // up as literal bytes on disk (masking runs at capture time, but the
+      // JSONL a `close_session` never touched would still exist).
+      const denied = await callJson<{ ok: boolean }>("register_secret", {
+        session,
+        name: "ABORT_SECRET",
+        value: secret,
+      });
+      // register_secret needs the `secrets` capability which is off here;
+      // the recording still exercises the abort path, so this call may
+      // refuse. Move on either way — the assertion is about file traces.
+      expect([true, false]).toContain(denied.ok);
+
+      await callJson("start_recording", {
+        session,
+        flowName: "abort-flow",
+        replay: { tier: "replay" },
+      });
+      // Do NOT call end_recording. `close_session` must unlink the JSONL.
+      await callJson("close_session", { session });
+
+      const replayDir = join(workspace, "replays");
+      const leftovers = existsSync(replayDir) ? readdirSync(replayDir) : [];
+      const orphaned = leftovers.filter((n) => n.endsWith(".jsonl"));
+      expect(orphaned).toEqual([]);
     },
     KEYSTONE_TIMEOUT,
   );

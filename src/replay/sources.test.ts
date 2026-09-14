@@ -137,18 +137,20 @@ describe("network sources", () => {
 });
 
 describe("websocket sources", () => {
-  it("redacts the handshake headers on open", () => {
+  it("does not carry handshake headers on open", () => {
+    // Handshake headers (`Authorization` / `Cookie`) sit on CDP's
+    // `Network.webSocketWillSendHandshakeRequest`; the replay layer does NOT
+    // tap that event and the schema no longer has a slot for the request
+    // object. Capturing the handshake would broaden the archive's disclosure
+    // surface without a corresponding review use case — the WS panel keys
+    // off frames.
     const ev = wsOpenEvent(ctx(), {
       requestId: "ws-1",
       url: "wss://app.example.com/socket",
-      request: { headers: { cookie: "sid=1", origin: "https://app.example.com" } },
     });
     expect(ev.type).toBe("ws/open");
     expect(ev.payload.url).toBe("wss://app.example.com/socket");
-    expect(ev.payload.request?.headers).toEqual({
-      cookie: redactedMarker("header"),
-      origin: "https://app.example.com",
-    });
+    expect((ev.payload as Record<string, unknown>).request).toBeUndefined();
   });
 
   it("gives a frame payload the same body rule an HTTP body gets", () => {

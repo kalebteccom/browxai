@@ -58,10 +58,15 @@ export class Redactor {
     this.secrets = cfg.secrets ?? null;
   }
 
-  /** Registered-secret masking. Thin pass-through to `applyMaskDeep` so the
-   *  codebase keeps exactly one masking implementation. */
+  /** Registered-secret masking. Thin pass-through to `SecretRegistry`'s
+   *  full-depth variant so the codebase keeps exactly one masking
+   *  implementation. The bounded `applyMaskDeep` was a stack-overflow defence
+   *  from before rrweb existed here; on a DOM serialisation nesting past its
+   *  depth cap it leaves subtrees unmasked, which is a disclosure hazard
+   *  masquerading as a stack guard. Replay callers get the full-depth
+   *  variant (cycle-guarded WeakSet); other callers keep the bounded one. */
   mask<T>(value: T): T {
-    return this.secrets ? this.secrets.applyMaskDeep(value) : value;
+    return this.secrets ? this.secrets.applyMaskDeepFull(value) : value;
   }
 
   headers(

@@ -138,29 +138,56 @@ export function buildHost(deps: HostDeps): ToolHost {
     approvals,
   });
 
+  /** Structured refusal shape shared by `gateCheck`'s primary and compound
+   *  arms — the classifier keys on `requiredCapability` regardless of which
+   *  arm produced the shape. */
+  const gateRefusal = (
+    toolName: string,
+    requiredCapability: Capability | null,
+    active: Capability[],
+  ): ToolResponse => ({
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(
+          {
+            ok: false,
+            error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
+            requiredCapability,
+            activeCapabilities: active,
+            hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (or the `capabilities` config), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a patch that omits this capability silently overrides the env var — include every capability you want, not just this one; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  });
+
   /** Disabled-tool early-return shape. Used at the top of each handler:
    *    const g = gateCheck("foo"); if (g) return g;
-   *  Returns null when the tool is enabled (handler proceeds). */
-  const gateCheck = (toolName: string) => {
-    if (isToolEnabled(toolName, caps)) return null;
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify(
-            {
-              ok: false,
-              error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
-              requiredCapability: toolCapabilityMap().get(toolName) ?? null,
-              activeCapabilities: [...caps.enabled],
-              hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (or the `capabilities` config), then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer REPLACES the BROWX_CAPABILITIES env value entirely (arrays don't merge), so a patch that omits this capability silently overrides the env var — include every capability you want, not just this one; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
-            },
-            null,
-            2,
-          ),
-        },
-      ],
-    };
+   *  Returns null when the tool is enabled (handler proceeds).
+   *
+   *  `extra` is the compound-capability arm: a tool whose default gate is one
+   *  capability but whose optional feature branch (an argument the caller
+   *  opted into: writing to disk, opening a replay artifact writer, etc.)
+   *  requires a second. The caller passes the extras only when the arg is
+   *  set, so the check stays argument-conditional; the second capability's
+   *  refusal uses the same shape as the primary one, so downstream classifiers
+   *  (`noteDiagnostics.classifyOutcome`) bucket both as `capability-denied`
+   *  without a second code path. Centralised here so tool files never touch
+   *  `caps.enabled` themselves — one gate, one refusal shape, one audit
+   *  surface. */
+  const gateCheck = (toolName: string, extra?: readonly Capability[]) => {
+    if (!isToolEnabled(toolName, caps)) {
+      return gateRefusal(toolName, toolCapabilityMap().get(toolName) ?? null, [...caps.enabled]);
+    }
+    if (extra) {
+      for (const cap of extra) {
+        if (!caps.enabled.has(cap)) return gateRefusal(toolName, cap, [...caps.enabled]);
+      }
+    }
+    return null;
   };
 
   /** Engine-dimension early-return shape — the headline of the multi-engine

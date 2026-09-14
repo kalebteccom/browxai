@@ -67,8 +67,10 @@ describe("replay capability gate", () => {
         replay: { tier: "replay" },
       });
       expect(denied.ok).toBe(false);
+      // Compound refusal rides the same shape as the primary gate — the
+      // classifier keys on `requiredCapability`, not on error-string content.
       expect(denied.requiredCapability).toBe("replay");
-      expect(denied.error).toMatch(/replay/);
+      expect(denied.error).toMatch(/capability is not in the server's ACTIVE set/);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -154,30 +154,25 @@ export function netFailedEvent(
 
 // ---------- websockets: the session WS/SSE ring (src/page/network-ws.ts) ----------
 
+/** Handshake headers are deliberately NOT captured on `ws/open`. CDP's
+ *  `Network.webSocketWillSendHandshakeRequest` carries `Authorization` /
+ *  `Cookie` on the initial handshake, and the archive is already as sensitive
+ *  as the session was — capturing them would broaden the disclosure surface
+ *  without unlocking a review need the replay tools have. The panel that
+ *  renders WS traffic keys off frames, not the handshake. */
 export interface WsOpenSource extends Extras {
   requestId: string;
   url: string;
-  request?: { headers?: Record<string, string> } & Extras;
 }
 
-export type WsOpenPayload = Omit<WsOpenSource, "request"> & {
-  request?: Extras & { headers?: Record<string, MaybeRedacted<string>> };
-};
+export type WsOpenPayload = WsOpenSource;
 
 export function wsOpenEvent(
   ctx: SourceContext,
   raw: WsOpenSource,
   wallMs?: number,
 ): ReplayEvent<WsOpenPayload> {
-  const { request, ...rest } = raw;
-  if (!request) return event(ctx, "ws/open", { ...rest }, wallMs);
-  const { headers, ...req } = request;
-  return event(
-    ctx,
-    "ws/open",
-    { ...rest, request: { ...req, ...(headers ? { headers: ctx.redact.headers(headers) } : {}) } },
-    wallMs,
-  );
+  return event(ctx, "ws/open", { ...raw }, wallMs);
 }
 
 /** Structural superset of `WsFrame`. */

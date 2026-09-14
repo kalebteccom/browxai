@@ -58,16 +58,15 @@ const MASKABLE_INPUT_TYPES = [
   "password",
 ] as const;
 
-/** The registered-secrets chokepoint (`SecretRegistry` in src/util/secrets.ts).
- *  Structural on purpose: this module must not grow a second masking scheme,
- *  and must not drag the whole registry into the replay layer to say so. */
-export interface SecretMasker {
-  applyMaskDeep<T>(value: T): T;
-}
-
 export interface DomCaptureOptions {
   /** Unix ms. Every emitted `t` is relative to it (`ReplayManifest.clockOrigin`). */
   clockOrigin: number;
+  /** Every rrweb event, wrapped in the browxai envelope. The registered-secret
+   *  mask does NOT run here — the ONE chokepoint is `Redactor.mask` in
+   *  `src/replay/redact.ts`, and `session.ts` routes this callback's output
+   *  through `redactEvent` before appending to the log. Keeping the mask off
+   *  this file was the fix for the drift that leaked page text past the
+   *  bounded-depth cap. */
   onEvent: (event: ReplayEvent<unknown>) => void;
   /** Extra CSS selectors masked on top of `input[type=password]`. */
   maskSelectors?: string[];
@@ -77,7 +76,6 @@ export interface DomCaptureOptions {
   /** How many targets the session currently holds. `targetId` is written only
    *  when this is > 1. Defaults to the context's page count. */
   targetCount?: () => number;
-  secrets?: SecretMasker;
   now?: () => number;
 }
 
@@ -262,15 +260,17 @@ export async function attachDomCapture(
       });
       return;
     }
-    // Registered secrets go through the ONE masking chokepoint
-    // (`SecretRegistry.applyMaskDeep`). rrweb's own options cover the DOM
-    // side; nothing here reimplements either.
-    const safe = options.secrets ? options.secrets.applyMaskDeep(payload) : payload;
+    // Masking runs downstream through `Redactor.mask` (the ONE chokepoint).
+    // rrweb's own options cover the DOM side (`input[type=password]` + any
+    // extra `maskSelectors`); the registered-secret pass runs on the assembled
+    // envelope in `session.ts`, so a value that rrweb ignores (a token
+    // rendered as page text, a header echoed into a data attribute) is still
+    // stripped before the event reaches disk.
     const targetId = page ? targetIdFor(page) : undefined;
     count += 1;
     options.onEvent(
-      toReplayEvent(safe, {
-        t: eventTimestamp(safe, options.clockOrigin, now()),
+      toReplayEvent(payload, {
+        t: eventTimestamp(payload, options.clockOrigin, now()),
         targetId,
         multiTarget: targetCount() > 1,
       }),

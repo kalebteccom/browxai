@@ -226,10 +226,16 @@ describe("ReplayLog — backpressure", () => {
     const accepted = [0, 1, 2, 3, 4, 5].map((i) => log.record("net/request", { i }));
     const stats = await log.close();
 
+    const dropped = accepted.filter((a) => !a).length;
     expect(accepted).toContain(false);
-    expect(stats.counts[BACKPRESSURE_DROP_KEY]).toBe(accepted.filter((a) => !a).length);
-    // A backpressure drop is not a cap breach — the artifact is not truncated.
-    expect(stats.truncated).toBeUndefined();
+    expect(stats.counts[BACKPRESSURE_DROP_KEY]).toBe(dropped);
+    // A backpressure drop IS a truncation cause — the RFC pins the three-way
+    // `size-cap` / `event-cap` / `backpressure` reason as load-bearing so the
+    // player can render "why is the log short?" instead of surfacing silence.
+    // Distinct from the two caps: backpressure does not stop capture, so the
+    // event count reflects the accepted appends alongside the dropped ones.
+    expect(stats.truncated?.reason).toBe("backpressure");
+    expect(stats.truncated?.droppedEvents).toBe(dropped);
     expect(stats.events).toBe(accepted.filter(Boolean).length);
     expect(lines(stats.path)).toHaveLength(stats.events);
   });

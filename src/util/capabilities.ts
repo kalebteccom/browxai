@@ -391,19 +391,6 @@ export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
   return caps.enabled.has(cap);
 }
 
-/**
- * Compound-capability check for a tool whose default gate is one capability but
- * whose optional feature branch requires a second. Only pattern: an arg opts in
- * to posture-broadening behaviour (write to disk / write a replay artifact /
- * ...) that is orthogonal to the tool's own gate. Returns true iff the extra
- * capability is on. Callers form the structured refusal (with the tool's own
- * hint copy) when this returns false; the check is centralised so tool files
- * do not read `caps.enabled` directly.
- */
-export function hasCapability(caps: CapabilityConfig, cap: Capability): boolean {
-  return caps.enabled.has(cap);
-}
-
 /**  confirm-required policy. Each name corresponds to a runtime hook (see
  *  src/policy/confirm.ts). Default: `navigate_off_allowlist,byob_action` when
  *  `BROWX_ALLOWED_ORIGINS` is set / `BROWX_ATTACH_CDP` is set respectively. */
