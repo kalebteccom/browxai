@@ -3195,7 +3195,7 @@ The composition loop:
 2. Understand: the host agent passes the PNG to its own multimodal-vision call (Claude / GPT-4V / Gemini Pro Vision / etc) with a prompt like "Identify the bounding box of the 'Delete' button on this Figma canvas". The agent returns viewport-space coordinates.
 3. Act: `gesture_chain({steps:[{kind:"down", x, y}, {kind:"up", x, y}]})` or `mouse_*` / `click` to drive the next step.
 
-Worked example, "click the Delete button on the currently-selected Figma node":
+Worked example, "click the Delete button on the currently-selected Figma node". Both calls need the `canvas` capability active on the client (`createBrowxai({capabilities:["canvas", …]})`) AND on the server (`BROWX_CAPABILITIES`) — the two gate independently:
 
 ```
 // 1. Capture the canvas as a PNG.

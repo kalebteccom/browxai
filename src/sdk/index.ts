@@ -181,7 +181,7 @@ export type {
   UploadFileResult,
   UploadFileResultData,
 } from "./tool-types.js";
-export { NOT_EXPOSED_ERROR } from "./client.js";
+export { NOT_EXPOSED_ERROR, UNKNOWN_TOOL_ERROR } from "./client.js";
 export { resolveEndpointPath } from "./transport-socket.js";
 export type { BrowxaiClientWithPlugins, PluginSchema } from "./plugin-types.js";
 

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-14
 **Source:** agent driving browxai through the TypeScript SDK (`createBrowxai`) rather than the MCP wire.
-**Status:** open defect. Triage verdict not yet assigned.
+**Status:** FIXED on branch `fix/sdk-calltool-reach`. See "Durable lessons captured" below.
 
 ## Symptom
 
@@ -70,4 +70,32 @@ named". Curation goes unmentioned there.
 
 ## Durable lessons captured
 
-Pending. This report has no CHANGELOG entry yet.
+Both fix-shape items landed. `callTool` gates on capability alone, resolving it from the same
+`TOOL_CAPABILITY` rows the server's `gateCheck` reads (`src/sdk/client.ts`, `src/sdk/registry.ts`);
+`SDK_TOOLS` keeps only its stated job, the curated set of tools carrying a typed method. The error
+split into two branches with two tags: `BROWXAI_SDK_NOT_EXPOSED` for a capability that is not active,
+`BROWXAI_SDK_UNKNOWN_TOOL` for a name no tool registers. CHANGELOG `## Unreleased` → Fixed.
+
+What the regression gates now hold:
+
+- Every off-by-default capability refuses, per capability, over every tool it gates — driven off the
+  live `TOOL_CAPABILITY` map, so a tool added under one of them is covered the day it lands
+  (`test/sdk/capability-gate.test.ts`).
+- An unknown name is refused on its own branch BEFORE any capability is resolved, so a typo can never
+  reach the permissive `human` default. That ordering was the one place where getting this wrong
+  would have been a security regression.
+- `SDK_TOOLS` ≡ the typed methods on a built client (`test/sdk/typed-surface.test.ts`). The drift this
+  catches is real and was live: `frames_list` had a wrapper and no entry, so `client.frames_list()`
+  threw on every call under the old ceiling.
+
+Two things this report got right that were worth keeping: the capability table was accurate, and the
+"What is not a defect" section correctly retracted an earlier wrong claim about `eval_js`.
+
+## Still open, separate defect
+
+`createBrowxai({ capabilities })` configures the CLIENT gate only. The in-process transport builds its
+server from `BROWX_CAPABILITIES` / the workspace config, so a capability named on the client and
+nowhere else passes the SDK gate and then meets the server's `gateCheck` refusal. The effective set is
+the intersection, which is why this is a usability defect and not a posture one — the client can never
+widen past the server. `README.md` and the canvas worked example now say both ends must name the
+capability; making one call configure both is not done.

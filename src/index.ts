@@ -17,7 +17,12 @@ export type { BrowserSession, SessionOptions, SessionMode } from "./session/type
 // `browxai` gives consumers a programmatic driver over the same
 // tool registry the MCP path exposes, with identical capability gating and
 // identical egress hygiene.
-export { createBrowxai, NOT_EXPOSED_ERROR, resolveEndpointPath } from "./sdk/index.js";
+export {
+  createBrowxai,
+  NOT_EXPOSED_ERROR,
+  UNKNOWN_TOOL_ERROR,
+  resolveEndpointPath,
+} from "./sdk/index.js";
 export type {
   BrowxaiArgs,
   BrowxaiClient,

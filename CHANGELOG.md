@@ -51,6 +51,39 @@ surface" covers.
   event types and fields it does not recognise, and must never fail to open a
   log because of them. A panel that throws is contained to its own tab, and the
   rest of the player keeps working.
+
+### Fixed
+
+- **`client.callTool(name, args)` now reaches every registered tool, not 45 of
+  them.** The SDK seeded its callable set by walking `SDK_TOOLS`, the curated
+  list of tools that get a typed method, so 144 of the 199 registered tools had
+  no SDK path at all — including 118 on the four always-on capabilities, where
+  no posture argument for withholding them exists. `canvas_capture`,
+  `gesture_chain`, `sample`, `tab_visibility`, `double_click` and
+  `start_recording` are examples; so was `client.frames_list()`, a typed method
+  whose name was missing from `SDK_TOOLS` and which therefore threw on every
+  call. The documented canvas/vision loop in `docs/tool-reference.md` used two
+  of them and could not run.
+
+  **This widens what the SDK can reach. It does not change what any capability
+  permits.** `callTool` now gates on capability alone, reading the same
+  `TOOL_CAPABILITY` rows the server's `gateCheck` consults, so the SDK's reach
+  equals the MCP server's with identical gating on both paths. Every
+  off-by-default capability still refuses when it is not named — asserted
+  per capability, over every tool each one gates, in
+  `test/sdk/capability-gate.test.ts`. `SDK_TOOLS` keeps its stated job: the
+  curated set of tools carrying a typed method on `BrowxaiClient`.
+
+- **The SDK's refusal no longer names a capability that is already active.** One
+  error branch served two different failures, so an unreachable-but-permitted
+  tool was reported as a capability the caller had already passed. The branches
+  are now separate. A tool whose capability is not active keeps
+  `BROWXAI_SDK_NOT_EXPOSED` (a stable tag adopters match on) and names the
+  capability to opt in. A name no tool registers gets its own
+  `BROWXAI_SDK_UNKNOWN_TOOL`, exported alongside it: no capability can make a
+  typo callable, and an unknown name is refused before any capability is
+  resolved so it can never land on the permissive `human` default.
+
 ## v0.10.1 — 2026-09-14 — Security: deep secret masking
 
 ### Security

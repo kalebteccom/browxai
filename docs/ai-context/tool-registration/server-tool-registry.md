@@ -7,7 +7,7 @@ How `register()` works in `src/server.ts`, what shape a new tool takes, and what
 `src/server.ts` composes the registry. The server starts, walks the tool list, and for each tool:
 
 1. Resolves its capability requirement against the active `BROWX_CAPABILITIES` set.
-2. If gated out, leaves the tool off the MCP surface entirely. Calling it via a raw client returns `BROWXAI_SDK_NOT_EXPOSED` before any wire dispatch.
+2. If gated out, every call to it returns the structured `gateCheck` refusal naming the required capability. On the SDK path the client's own gate fires first, with `BROWXAI_SDK_NOT_EXPOSED`, before any wire dispatch — and a name no tool registers gets `BROWXAI_SDK_UNKNOWN_TOOL`.
 3. If gated in, registers the handler with its Zod input schema, output schema, and ActionResult contract.
 
 ## ActionResult shape

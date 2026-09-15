@@ -4,9 +4,11 @@
 // the MCP server already owns — the source of truth for input shape is the
 // `inputSchema` of each registered MCP tool, and the source of truth for
 // output shape is the documented per-tool reference (see
-// `docs/tool-reference.md`). The SDK's job is to (a) restrict the visible
-// surface to stable + capability-permitted tools and (b) preserve the egress
-// hygiene the MCP path enforces — NOT to re-author every per-tool schema.
+// `docs/tool-reference.md`). The SDK's job is to (a) give the stable tools a
+// typed signature and gate every call on the active capability set, and (b)
+// preserve the egress hygiene the MCP path enforces — NOT to re-author every
+// per-tool schema. The typed surface below is curated; `callTool` reaches every
+// registered tool whose capability is active.
 
 import type { Capability } from "../util/capabilities.js";
 import type {
@@ -236,13 +238,18 @@ export interface BrowxaiClient {
   list_sessions(args?: ListSessionsArgs): Promise<ListSessionsResult>;
 
   /**
-   * Typed escape hatch for adopters that want to call a tool by name (for
-   * example, capability-gated tools opted in via `capabilities`). The
-   * registry walker still applies — calling a tool whose capability is not
-   * in `opts.capabilities` rejects with a clear `BROWXAI_SDK_NOT_EXPOSED`
-   * error. This is the layer that closes the `(client as any).eval_js(...)`
-   * escape hole: even unrestricted runtime indexing must round-trip through
-   * `callTool`, where the gate fires.
+   * Call any registered tool by name. Reaches the SAME surface the MCP server
+   * registers — the typed methods above are a curated ergonomic subset, not a
+   * ceiling. Two refusals, both before anything hits the wire:
+   *
+   *   - the tool's capability is not in `opts.capabilities` →
+   *     `BROWXAI_SDK_NOT_EXPOSED`, naming the capability and how to opt in.
+   *   - the name is not a registered tool → `BROWXAI_SDK_UNKNOWN_TOOL`. A
+   *     separate tag: no capability can make a typo callable.
+   *
+   * This is also the layer that closes the `(client as any).eval_js(...)`
+   * escape hole: every typed method routes through `callTool`, so unrestricted
+   * runtime indexing still lands on the gate.
    */
   callTool(name: string, args?: BrowxaiArgs): Promise<BrowxaiResult>;
 
@@ -260,7 +267,9 @@ export interface BrowxaiClient {
    */
   readonly plugins: Record<string, Record<string, (args?: BrowxaiArgs) => Promise<BrowxaiResult>>>;
 
-  /** Names of every MCP tool currently exposed on this client. */
+  /** Every tool `callTool` will admit, snapshotted at construction: the
+   *  registered surface filtered by the active capability set. Plugin tools
+   *  are absent — the SDK resolves those at the server on dispatch. */
   readonly exposedTools: ReadonlyArray<string>;
 
   /** Capability set currently in effect on this client. */
