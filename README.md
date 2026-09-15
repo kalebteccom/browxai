@@ -4,12 +4,14 @@
 
 <h1 align="center">browxai</h1>
 
-<p align="center"><strong>A browser, built for agents.</strong><br/>
+<p align="center"><strong>Browser control, built for agents.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK.**
+**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it.**
 
-browxai is a browser-control server designed for agents, not for human programmers. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results instead of raw DOM dumps. It works with any model, drives five browser engines, and keeps the dangerous powers off until you turn them on.
+browxai is a browser-control server designed for agents. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
+
+It drives five engines behind one tool surface: Chromium, Firefox and WebKit as browsers it launches for you, real Safari.app over `safaridriver`, and real Chrome on an Android handset attached over adb. Android is attach-only, so the browser has to already be running on the device; browxai never spawns one there. There is no native-app automation and no iOS. CI runs the cross-engine suite on Chromium, Firefox and WebKit on every commit; Android needs a USB device and Safari needs macOS, so those two are exercised by hand.
 
 ## What your agent can do with it
 
