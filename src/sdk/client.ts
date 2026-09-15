@@ -1,15 +1,79 @@
-// BrowxaiClient implementation. The exposed-method walker, the capability
-// gate filter at the SDK boundary, and the typed `callTool` escape hatch
-// all live here.
+// BrowxaiClient implementation. The capability gate at the SDK boundary, the
+// typed method wrappers, and the `callTool` caller all live here.
 
 import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
-import { ALWAYS_EXPOSED, SDK_TOOLS, capabilityFor } from "./registry.js";
+import { capabilityFor, isRegisteredTool, registeredTools } from "./registry.js";
 import type { SdkTransport } from "./transport.js";
 import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
 
-/** Error message tag used by the SDK boundary's runtime gate. Tested by the
- *  capability-enforcement spec. Stable string — adopters can match on it. */
+/** Error message tag: the tool exists, its capability is not active on this
+ *  client. Tested by the capability-enforcement spec. Stable string — adopters
+ *  can match on it. */
 export const NOT_EXPOSED_ERROR = "BROWXAI_SDK_NOT_EXPOSED";
+
+/** Error message tag: the name is not a tool any browxai build registers. Its
+ *  own tag because the remedy differs — naming a capability cannot fix a typo,
+ *  and one shared branch used to advise exactly that. Stable string. */
+export const UNKNOWN_TOOL_ERROR = "BROWXAI_SDK_UNKNOWN_TOOL";
+
+/** Plugin tools are `<namespace>.<tool>` and register in the SERVER's process,
+ *  which for the socket / stdio-child transports is NOT this one — so this
+ *  process cannot answer whether one exists. No core tool name contains a dot,
+ *  so a dotted name can never reach a core tool. */
+const isPluginToolName = (name: string): boolean => name.includes(".");
+
+/** Some tools dispatch another tool BY NAME server-side (`batch`,
+ *  `flake_check`, the `act_and_*` family, `cross_session_sample`). The inner
+ *  name has to clear the same gate, or a client that refuses `eval_js` would
+ *  wave it through wrapped in a `batch`. Rather than track WHICH tools nest —
+ *  a list that drifts out of date — collect every `tool:` string in the args.
+ *  Over-collecting fails CLOSED (one extra name gets gated), the safe
+ *  direction; a string that names no registered tool is left to the server.
+ *  cap: 6 levels deep, which clears the deepest real nesting (a `batch` call
+ *  carrying an `act_and_*` action) with room to spare. */
+function innerToolNames(args: BrowxaiArgs | undefined): string[] {
+  const found: string[] = [];
+  const walk = (value: unknown, depth: number): void => {
+    if (depth > 6 || value === null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, depth + 1);
+      return;
+    }
+    for (const [key, inner] of Object.entries(value)) {
+      if (key === "tool" && typeof inner === "string") found.push(inner);
+      else walk(inner, depth + 1);
+    }
+  };
+  walk(args, 0);
+  return found;
+}
+
+function notExposedMessage(
+  name: string,
+  cap: Capability | "human",
+  capabilities: ReadonlySet<Capability>,
+  via?: string,
+): string {
+  return (
+    `${NOT_EXPOSED_ERROR}: tool "${name}"${via === undefined ? "" : ` (dispatched by "${via}")`} ` +
+    `requires the "${cap}" capability, which is not ` +
+    `active on this SDK client. Active capabilities: [${[...capabilities].join(", ")}]. ` +
+    `Pass it in \`createBrowxai({ capabilities: ["${cap}"] })\` to opt in — and enable it on ` +
+    `the server too (BROWX_CAPABILITIES), which gates the same tool independently. ` +
+    `Posture-broadening capabilities (eval / network-body / secrets / file-io / canvas / ` +
+    `extensions / stealth / captcha / credentials / clipboard / device-emulation / ` +
+    `diagnostics / byob-attach / replay) are OFF-by-default by design — same posture as the ` +
+    `MCP server's capability gates.`
+  );
+}
+
+function unknownToolMessage(name: string): string {
+  return (
+    `${UNKNOWN_TOOL_ERROR}: "${name}" is not a tool this browxai build registers, so no ` +
+    `capability can make it callable — check the spelling against docs/tool-reference.md. ` +
+    `Nothing was dispatched.`
+  );
+}
 
 export interface BuildClientOptions {
   readonly transport: SdkTransport;
@@ -18,30 +82,26 @@ export interface BuildClientOptions {
 }
 
 /**
- * Build a BrowxaiClient over a ready transport. Method-name → MCP-tool-name
- * is 1:1 (the registry walker emits a wrapper per stable tool); a thin
- * `callTool(name, args)` escape hatch exists for typed-but-unwrapped tools
- * (notably the capability-gated ones).
+ * Build a BrowxaiClient over a ready transport. Method-name → MCP-tool-name is
+ * 1:1 for the curated typed surface (`SDK_TOOLS`); `callTool(name, args)`
+ * reaches EVERY registered tool whose capability is active, so the SDK's reach
+ * equals the MCP server's with identical gating on both paths.
  */
 export function buildClient(opts: BuildClientOptions): BrowxaiClient {
   const { transport, capabilities, session } = opts;
 
-  // The set of tool names this SDK instance will expose. The walker runs
-  // ONCE at construction; runtime `callTool` re-checks against the same set
-  // so even `(client as any).fooBar` indexing cannot bypass the gate.
-  const exposed = new Set<string>();
-  for (const name of SDK_TOOLS) {
-    if (ALWAYS_EXPOSED.has(name)) {
-      exposed.add(name);
-      continue;
-    }
+  // THE GATE. A tool is callable when its capability is active; `human` is
+  // implicit (always on), matching the server. Curation of the typed surface
+  // plays no part — `SDK_TOOLS` decides what gets a signature, never what can
+  // be called.
+  const admits = (name: string): boolean => {
     const cap = capabilityFor(name);
-    // `human` capability is implicit — it's always on. Otherwise the cap
-    // must be in the SDK's opted-in set for the tool to be exposed.
-    if (cap === "human" || capabilities.has(cap)) {
-      exposed.add(name);
-    }
-  }
+    return cap === "human" || capabilities.has(cap);
+  };
+
+  // Snapshot of the callable surface, for `exposedTools` introspection only.
+  // The gate itself re-runs per call inside `callTool` — it never reads this.
+  const exposed = registeredTools().filter(admits).sort();
 
   let closed = false;
 
@@ -55,28 +115,33 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     return transport.dispatch(toolName, merged);
   };
 
-  /** Runtime gate — the immutable barrier for capability-gated tools. */
+  /** Runtime gate — the immutable barrier for capability-gated tools. Every
+   *  typed method routes through here, so no path reaches `dispatch` without
+   *  it: `(client as any).fooBar` indexing cannot bypass the gate. An unknown
+   *  name is refused on its own branch BEFORE any capability is resolved, so a
+   *  typo can never land on the permissive `human` default. Inner tool names
+   *  carried in the args are gated too — see {@link innerToolNames}. */
   const callTool = async (name: string, args?: BrowxaiArgs): Promise<BrowxaiResult> => {
-    if (!exposed.has(name)) {
-      const cap = capabilityFor(name);
-      const error = new Error(
-        `${NOT_EXPOSED_ERROR}: tool "${name}" is not exposed on this SDK client. ` +
-          `Required capability: "${cap}". Active capabilities: [${[...capabilities].join(", ")}]. ` +
-          `Pass it in \`createBrowxai({ capabilities: ["${cap}"] })\` to opt in. ` +
-          `Posture-broadening capabilities (eval / network-body / secrets / file-io / extensions / stealth / captcha / credentials / clipboard / byob-attach) are OFF-by-default by design — same posture as the MCP server's capability gates.`,
-      );
-      throw error;
+    if (!isRegisteredTool(name)) {
+      if (!isPluginToolName(name)) throw new Error(unknownToolMessage(name));
+      // A plugin tool this process cannot see. Defer: the server's own gate
+      // answers on dispatch, and refuses an unknown name there.
+      return dispatch(name, args);
+    }
+    if (!admits(name)) throw new Error(notExposedMessage(name, capabilityFor(name), capabilities));
+    for (const inner of innerToolNames(args)) {
+      if (isRegisteredTool(inner) && !admits(inner)) {
+        throw new Error(notExposedMessage(inner, capabilityFor(inner), capabilities, name));
+      }
     }
     return dispatch(name, args);
   };
 
-  // Per-tool wrappers — typed methods listed in BrowxaiClient. Each forwards
-  // through `dispatch` for exposed tools, or refuses early via the same
-  // walker check used by `callTool`. We emit ALL the typed methods (every
-  // SDK_TOOLS name) regardless of exposure: when a capability is off, the
-  // method exists at the type level but throws BROWXAI_SDK_NOT_EXPOSED at
-  // call time. This makes `client.eval_js?.(...)` a tractable refactor when
-  // the operator later opts the capability in.
+  // Per-tool wrappers — the typed methods declared on BrowxaiClient, one per
+  // `SDK_TOOLS` entry. Each forwards through `callTool`, so it is gated exactly
+  // like a by-name call. We emit ALL of them regardless of the capability set:
+  // when a capability is off, the method exists at the type level but throws
+  // BROWXAI_SDK_NOT_EXPOSED at call time.
   //
   // The runtime wrapper is intentionally `(args?: BrowxaiArgs) => …` — the
   // dispatch path is shape-agnostic. The per-tool TypeScript signatures
@@ -185,7 +250,7 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
     list_sessions: guarded<M<"list_sessions">>("list_sessions"),
     // escape hatch + introspection
     callTool,
-    exposedTools: [...exposed].sort(),
+    exposedTools: exposed,
     capabilities,
     session,
     // namespaced plugin caller (proxy-based; see comment above).
