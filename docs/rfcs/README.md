@@ -13,6 +13,7 @@ Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md`
 | [0005](0005-attached-target-pool.md)        | Attached-target pool (per-session target identity, leases, heartbeat)                             | Landed. Target identity, refcounted connection, lease table, ceiling, reclamation, dispatch-as-heartbeat, real-Chromium keystone, public docs.         |
 | [0006](0006-flow-files-as-connectors.md)    | Flow files as connectors (typed inputs/outputs, assertions, compile to MCP)                       | Draft. Prerequisite 1 (recording read tools into the trace) has landed; the format additions and compile targets are unbuilt.                          |
 | [0007](0007-session-replay.md)              | Session replay: append-only capture log, offline player, retroactive devtools                     | Draft — design only, nothing built. Tier (b) re-execution estimated separately.                                                                        |
+| [0008](0008-native-app-control.md)          | Native app control (iOS simulator and Android emulator as engines, one `.browx` archive)          | Draft — design only, nothing built. Closes D8 in the decision matrix with the product input that had blocked it.                                       |
 
 ## Reference corrections
 
