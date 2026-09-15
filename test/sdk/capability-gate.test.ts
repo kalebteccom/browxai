@@ -318,6 +318,18 @@ describe("SDK callTool — an unknown tool name is its own refusal", () => {
     expect(calls.length).toBe(0);
   });
 
+  it("a dotted name defers to the server; the same name undotted does not", async () => {
+    // Plugin tools are `<namespace>.<tool>` and register in the SERVER's
+    // process, so this one cannot answer whether they exist. No core tool name
+    // contains a dot, so the deferral can never reach one.
+    const { transport, calls } = mockTransport();
+    const client = buildClient({ transport, capabilities: new Set(DEFAULTS) });
+    await client.callTool("figma.eval_js", {});
+    expect(calls.map((c) => c.name)).toEqual(["figma.eval_js"]);
+    await expect(client.callTool("eval_js", {})).rejects.toThrow(NOT_EXPOSED_ERROR);
+    expect(calls.length).toBe(1);
+  });
+
   it("does NOT fall through to the permissive `human` default", async () => {
     const { transport, calls } = mockTransport();
     // Empty capability set: if an unknown name resolved to `human`, it would be
@@ -325,5 +337,47 @@ describe("SDK callTool — an unknown tool name is its own refusal", () => {
     const client = buildClient({ transport, capabilities: new Set([]) });
     await expect(client.callTool("definitely_not_a_tool", {})).rejects.toThrow(UNKNOWN_TOOL_ERROR);
     expect(calls.length).toBe(0);
+  });
+});
+
+describe("SDK capability gate — a nested tool name is gated too", () => {
+  // `batch` / `flake_check` / `act_and_*` / `cross_session_sample` dispatch an
+  // inner tool BY NAME server-side. Without this the gate would refuse
+  // `eval_js` head-on and admit the same call wrapped in a `batch`.
+  const NESTED: ReadonlyArray<[string, Record<string, unknown>]> = [
+    ["batch", { calls: [{ tool: "eval_js", args: { expr: "1" } }] }],
+    ["flake_check", { calls: [{ tool: "network_body", args: {} }], runs: 2 }],
+    ["act_and_sample", { action: { tool: "eval_js", args: {} } }],
+    ["act_and_diff", { action: { tool: "upload_file", args: {} } }],
+    ["act_and_wait_for_network", { action: { tool: "network_body", args: {} } }],
+    ["cross_session_sample", { action: { tool: "register_secret", args: {} } }],
+    // A batch carrying an act_and_* — the deepest real nesting.
+    ["batch", { calls: [{ tool: "act_and_sample", args: { action: { tool: "eval_js" } } }] }],
+  ];
+
+  it.each(NESTED)(
+    "%s carrying a gated inner tool is refused, nothing dispatches",
+    async (outer, args) => {
+      const { transport, calls } = mockTransport();
+      const client = buildClient({ transport, capabilities: new Set(DEFAULTS) });
+      await expect(client.callTool(outer, args)).rejects.toThrow(
+        new RegExp(`${NOT_EXPOSED_ERROR}.*\\(dispatched by "${outer}"\\)`),
+      );
+      expect(calls.length).toBe(0);
+    },
+  );
+
+  it("the same call goes through once the inner tool's capability is named", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({ transport, capabilities: new Set([...DEFAULTS, "eval"]) });
+    await client.callTool("batch", { calls: [{ tool: "eval_js", args: { expr: "1" } }] });
+    expect(calls.map((c) => c.name)).toEqual(["batch"]);
+  });
+
+  it("an inner name that is not a registered tool is left to the server", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({ transport, capabilities: new Set(DEFAULTS) });
+    await client.callTool("batch", { calls: [{ tool: "not_a_tool", args: {} }] });
+    expect(calls.length).toBe(1);
   });
 });

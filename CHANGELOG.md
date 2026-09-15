@@ -74,6 +74,18 @@ surface" covers.
   `test/sdk/capability-gate.test.ts`. `SDK_TOOLS` keeps its stated job: the
   curated set of tools carrying a typed method on `BrowxaiClient`.
 
+- **The SDK gate now covers a tool name nested in the arguments.** `batch`,
+  `flake_check`, the `act_and_*` family and `cross_session_sample` dispatch an
+  inner tool by name server-side, and the client-side gate only ever looked at
+  the outer name. Widening `callTool`'s reach put those six within reach and
+  would have made `batch({calls:[{tool:"eval_js"}]})` a way around a client that
+  refuses `eval_js` head-on. The gate now resolves every `tool:` string in the
+  args and holds each to the same capability check. Collected structurally
+  rather than from a list of which tools nest, so a seventh cannot drift past
+  it; a name that matches no registered tool is left for the server to reject.
+  The server re-gated the inner tool throughout — this closes the client-side
+  half.
+
 - **The SDK's refusal no longer names a capability that is already active.** One
   error branch served two different failures, so an unreachable-but-permitted
   tool was reported as a capability the caller had already passed. The branches

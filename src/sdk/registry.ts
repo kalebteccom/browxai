@@ -89,9 +89,11 @@ export function registeredTools(): ReadonlyArray<string> {
   return [...collectToolMetadata().keys()];
 }
 
-/** True when `tool` is a name the server registers. The `TOOL_CAPABILITY` arm
- *  additionally catches plugin tools that registered into THIS process after the
- *  metadata table was collected (the in-process transport). */
+/** True when `tool` is a name the server registers. Two arms because the
+ *  metadata table is cached at its first collection: `TOOL_CAPABILITY` also sees
+ *  a core tool declared after that. Plugin tools are in NEITHER — they register
+ *  into the plugin runtime's own map (`src/tools/plugin-runtime.ts`), which is
+ *  why `callTool` defers a dotted name to the server instead of asking here. */
 export function isRegisteredTool(tool: string): boolean {
   return collectToolMetadata().has(tool) || tool in TOOL_CAPABILITY;
 }

@@ -22,13 +22,41 @@ export const UNKNOWN_TOOL_ERROR = "BROWXAI_SDK_UNKNOWN_TOOL";
  *  so a dotted name can never reach a core tool. */
 const isPluginToolName = (name: string): boolean => name.includes(".");
 
+/** Some tools dispatch another tool BY NAME server-side (`batch`,
+ *  `flake_check`, the `act_and_*` family, `cross_session_sample`). The inner
+ *  name has to clear the same gate, or a client that refuses `eval_js` would
+ *  wave it through wrapped in a `batch`. Rather than track WHICH tools nest —
+ *  a list that drifts out of date — collect every `tool:` string in the args.
+ *  Over-collecting fails CLOSED (one extra name gets gated), the safe
+ *  direction; a string that names no registered tool is left to the server.
+ *  cap: 6 levels deep, which clears the deepest real nesting (a `batch` call
+ *  carrying an `act_and_*` action) with room to spare. */
+function innerToolNames(args: BrowxaiArgs | undefined): string[] {
+  const found: string[] = [];
+  const walk = (value: unknown, depth: number): void => {
+    if (depth > 6 || value === null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, depth + 1);
+      return;
+    }
+    for (const [key, inner] of Object.entries(value)) {
+      if (key === "tool" && typeof inner === "string") found.push(inner);
+      else walk(inner, depth + 1);
+    }
+  };
+  walk(args, 0);
+  return found;
+}
+
 function notExposedMessage(
   name: string,
   cap: Capability | "human",
   capabilities: ReadonlySet<Capability>,
+  via?: string,
 ): string {
   return (
-    `${NOT_EXPOSED_ERROR}: tool "${name}" requires the "${cap}" capability, which is not ` +
+    `${NOT_EXPOSED_ERROR}: tool "${name}"${via === undefined ? "" : ` (dispatched by "${via}")`} ` +
+    `requires the "${cap}" capability, which is not ` +
     `active on this SDK client. Active capabilities: [${[...capabilities].join(", ")}]. ` +
     `Pass it in \`createBrowxai({ capabilities: ["${cap}"] })\` to opt in — and enable it on ` +
     `the server too (BROWX_CAPABILITIES), which gates the same tool independently. ` +
@@ -91,7 +119,8 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
    *  typed method routes through here, so no path reaches `dispatch` without
    *  it: `(client as any).fooBar` indexing cannot bypass the gate. An unknown
    *  name is refused on its own branch BEFORE any capability is resolved, so a
-   *  typo can never land on the permissive `human` default. */
+   *  typo can never land on the permissive `human` default. Inner tool names
+   *  carried in the args are gated too — see {@link innerToolNames}. */
   const callTool = async (name: string, args?: BrowxaiArgs): Promise<BrowxaiResult> => {
     if (!isRegisteredTool(name)) {
       if (!isPluginToolName(name)) throw new Error(unknownToolMessage(name));
@@ -100,6 +129,11 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
       return dispatch(name, args);
     }
     if (!admits(name)) throw new Error(notExposedMessage(name, capabilityFor(name), capabilities));
+    for (const inner of innerToolNames(args)) {
+      if (isRegisteredTool(inner) && !admits(inner)) {
+        throw new Error(notExposedMessage(inner, capabilityFor(inner), capabilities, name));
+      }
+    }
     return dispatch(name, args);
   };
 

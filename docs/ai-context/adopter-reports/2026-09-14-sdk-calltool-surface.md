@@ -87,6 +87,11 @@ What the regression gates now hold:
 - `SDK_TOOLS` ≡ the typed methods on a built client (`test/sdk/typed-surface.test.ts`). The drift this
   catches is real and was live: `frames_list` had a wrapper and no entry, so `client.frames_list()`
   threw on every call under the old ceiling.
+- A tool name nested in the ARGS is gated like a top-level one. Widening the reach brought `batch`,
+  `flake_check`, the `act_and_*` family and `cross_session_sample` into play, and each dispatches an
+  inner tool by name — so `batch({calls:[{tool:"eval_js"}]})` would have walked around a client that
+  refuses `eval_js` head-on. Found by a gate audit of the diff, not by the change's own tests, which
+  is the lesson worth keeping: widening a gate's reach can widen what the tools BEHIND it can reach.
 
 Two things this report got right that were worth keeping: the capability table was accurate, and the
 "What is not a defect" section correctly retracted an earlier wrong claim about `eval_js`.
