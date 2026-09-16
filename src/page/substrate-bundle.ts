@@ -36,6 +36,18 @@ import { snapshotSubstrateFor } from "./snapshot-substrate-select.js";
 import { networkSubstrateFor } from "./network-substrate-select.js";
 import { requirePage } from "../engine/index.js";
 
+/** One element adapter for a session. Named once because two bundle entries want
+ *  it — the `element` port itself and the capture adapter's caption — and minting
+ *  it twice would be two objects over the same session for no reason. */
+function playwrightElements(e: SessionEntry): PlaywrightElementSubstrate {
+  return new PlaywrightElementSubstrate(
+    () => requirePage(e.session),
+    e.frames,
+    e.refs,
+    e.session.engine,
+  );
+}
+
 /** The Playwright `SubstrateBundle` — the four Playwright engines register this.
  *  `actions`/`capture` use the per-server host `deps` the composition root threads
  *  in (closed over here, not a module-global); `storage`/`script`/`emulation` wrap
@@ -45,10 +57,14 @@ export function playwrightSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     actions: (e: SessionEntry): ActionSubstrate =>
       new PlaywrightActionSubstrate(() => deps.ctxFor(e), e.session.engine),
     capture: (e: SessionEntry): CaptureSubstrate =>
-      new PlaywrightCaptureSubstrate(() => requirePage(e.session), e.refs, {
-        describeTarget: deps.describeTarget,
-        save: deps.save,
-      }),
+      new PlaywrightCaptureSubstrate(
+        () => requirePage(e.session),
+        e.refs,
+        // The caption's measurements go through the element port, so the capture
+        // adapter no longer hands a live `Locator` up to a `src/tools` closure.
+        playwrightElements(e),
+        { describeTarget: deps.describeTarget, save: deps.save },
+      ),
     storage: (e: SessionEntry): StorageSubstrate =>
       new PlaywrightStorageSubstrate(
         () => requirePage(e.session).context(),
@@ -79,12 +95,6 @@ export function playwrightSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     // dependencies rather than per-call arguments, the same way the capture
     // substrate already takes `e.refs` — one substrate instance belongs to one
     // session, so the port's four signatures stay free of them.
-    element: (e: SessionEntry): ElementSubstrate =>
-      new PlaywrightElementSubstrate(
-        () => requirePage(e.session),
-        e.frames,
-        e.refs,
-        e.session.engine,
-      ),
+    element: (e: SessionEntry): ElementSubstrate => playwrightElements(e),
   };
 }

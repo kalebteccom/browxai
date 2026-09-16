@@ -216,7 +216,10 @@ describe("PlaywrightElementSubstrate — bounds and count", () => {
     expect(await elements.bounds(res.el)).toEqual({ kind: "bounds", rect: null });
   });
 
-  it("drops a zero-sized box to null, as `locatorBoundingBox` always did", async () => {
+  it("reports a zero-sized box rather than flattening it to null", async () => {
+    // Each caller's own zero-size policy stays at the caller: `find` drops it,
+    // `targetPoint` refuses to aim at it, `describeTarget` prints `0×0`. Folding
+    // the decision into the port would pick one of the three for all of them.
     const refs = new RefRegistry();
     const ref = testIdRef(refs);
     const elements = elementsOver(
@@ -225,7 +228,10 @@ describe("PlaywrightElementSubstrate — bounds and count", () => {
     );
     const res = await elements.resolve({ kind: "ref", ref });
     if (res.kind !== "element") throw new Error("resolve refused");
-    expect(await elements.bounds(res.el)).toEqual({ kind: "bounds", rect: null });
+    expect(await elements.bounds(res.el)).toEqual({
+      kind: "bounds",
+      rect: { x: 0, y: 0, width: 0, height: 9 },
+    });
   });
 
   it("surfaces a boundingBox throw as a refusal rather than swallowing it", async () => {

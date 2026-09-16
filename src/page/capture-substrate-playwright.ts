@@ -12,6 +12,7 @@
 
 import type { Locator, Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
+import type { ElementSubstrate } from "./element-substrate-types.js";
 import type { ScreenshotSaveResult } from "./screenshot-save.js";
 import type {
   CaptureResult,
@@ -40,9 +41,10 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
   constructor(
     private readonly page: () => Page,
     private readonly refs: RefRegistry,
+    private readonly elements: ElementSubstrate,
     private readonly deps: {
       describeTarget: (
-        loc: Locator,
+        elements: ElementSubstrate,
         refs: RefRegistry,
         target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
       ) => Promise<string>;
@@ -72,7 +74,13 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
       const locOpts: { type: "png" | "jpeg"; quality?: number } = { type: fmt };
       if (fmt === "jpeg") locOpts.quality = req.quality ?? 80;
       const buf = await loc.screenshot(locOpts);
-      const caption = req.describe ? await this.deps.describeTarget(loc, this.refs, target) : "";
+      // The caption is measured through the element port, not off the `Locator`
+      // this adapter just used for the bytes. The two resolve the same recipe —
+      // `locatorForTarget` and the port both go through `locatorFor` — so the
+      // caption describes the element that was captured.
+      const caption = req.describe
+        ? await this.deps.describeTarget(this.elements, this.refs, target)
+        : "";
       return { buf, caption };
     }
     const opts: { type: "png" | "jpeg"; quality?: number; scale?: "css" | "device" } = {

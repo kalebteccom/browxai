@@ -13,7 +13,6 @@
 // the if-chains drove, so each engine's observable session is byte-identical —
 // only the dispatch MECHANISM changes.
 
-import type { Locator } from "playwright-core";
 import type { EngineKind, EngineCapabilities } from "./types.js";
 import { invariant } from "../util/invariant.js";
 import { EngineNotYetSupportedError } from "./select.js";
@@ -71,9 +70,12 @@ export interface SubstrateDeps {
   /** Build the `ActionContext` for an action dispatch — the verbatim `ctxFor`
    *  closure from host-build (it closes over the server's config/originPolicy/caps). */
   ctxFor: (e: SessionEntry) => ActionContext;
-  /** The structured one-liner alongside an element screenshot. */
+  /** The structured one-liner alongside an element screenshot. It took a
+   *  Playwright `Locator`, which put a vendor type in the contract every engine's
+   *  `makeSubstrates` has to satisfy — an engine with no `Locator` could not have
+   *  supplied one. It takes the element port instead. (RFC 0009 P2.) */
   describeTarget: (
-    loc: Locator,
+    elements: ElementSubstrate,
     refs: RefRegistry,
     target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
   ) => Promise<string>;

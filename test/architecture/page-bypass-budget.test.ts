@@ -288,11 +288,16 @@ describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => 
   });
 
   // The import-graph half of the same ratchet. `no-tools-or-replay-to-playwright-core`
-  // forbids a Playwright TYPE in src/tools + src/replay; five modules are exempted
+  // forbids a Playwright TYPE in src/tools + src/replay; three modules are exempted
   // by name, each with the RFC 0009 phase that empties it. The rule is `error`, so
-  // a sixth module fails the build — but the exception list itself is config, and
-  // a sixth ENTRY would not. This pins it.
-  it("keeps the Playwright-type exception list at or under five modules", () => {
+  // a fourth module fails the build — but the exception list itself is config, and
+  // a fourth ENTRY would not. This pins it.
+  //
+  // It was five. P2 emptied `src/tools/target-resolve.ts` and
+  // `src/tools/host-build.ts`, which named `Locator` only in `describeTarget`'s
+  // signature; the caption measures through `ElementSubstrate` now. The three that
+  // remain are all `src/replay`, and they leave with `EventSubstrate` in P4.
+  it("keeps the Playwright-type exception list at or under three modules", () => {
     const rule = (
       depcruiseConfig as {
         forbidden: Array<{
@@ -311,7 +316,7 @@ describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => 
       "the exception list only shrinks. Each entry is one module RFC 0009 has not reached " +
         "yet; a phase that empties one deletes it in the same commit, and adding one is an " +
         "RFC amendment with a written reason.",
-    ).toHaveLength(5);
+    ).toHaveLength(3);
   });
 
   it("names a reason for every module allowed to hold a Page", () => {

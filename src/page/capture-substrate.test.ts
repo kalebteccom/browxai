@@ -113,7 +113,9 @@ describe("PlaywrightCaptureSubstrate", () => {
       describeTarget: async () => "",
       save: () => ({}) as never,
     };
-    return new PlaywrightCaptureSubstrate(page, {} as RefRegistry, deps);
+    // The element port is never reached on this path: the refusal fires before
+    // any target resolution, which is the property the case asserts.
+    return new PlaywrightCaptureSubstrate(page, {} as RefRegistry, {} as never, deps);
   }
 
   it("refuses fullPage+target before invoking the resolver (no preempting throw)", async () => {

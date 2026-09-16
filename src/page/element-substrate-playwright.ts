@@ -195,7 +195,12 @@ export class PlaywrightElementSubstrate implements ElementSubstrate {
       const box = await located.loc.boundingBox(
         opts.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {},
       );
-      if (!box || box.width <= 0 || box.height <= 0) return { kind: "bounds", rect: null };
+      // A zero-sized box is REPORTED, not flattened to null. The three callers
+      // disagree about what one means — `find` treats it as no box, `targetPoint`
+      // as an unusable gesture target, `describeTarget` prints `0×0` — and each of
+      // those was its own line at its own call site. Deciding here would silently
+      // pick one of them for all three.
+      if (!box) return { kind: "bounds", rect: null };
       return { kind: "bounds", rect: { x: box.x, y: box.y, width: box.width, height: box.height } };
     } catch (e) {
       return refusal("probe-failed", messageOf(e), { ref: refOf(el.query) });

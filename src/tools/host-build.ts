@@ -87,9 +87,12 @@ export interface HostDeps {
   pluginRecords: () => ReadonlyArray<PluginRecord>;
   /** The server start options. */
   startOptions: StartOptions;
-  /** Structured one-liner alongside an element screenshot. */
+  /** Structured one-liner alongside an element screenshot. Measures through the
+   *  element port — the `import("playwright-core").Locator` this used to name was
+   *  the one Playwright type left in `src/tools`, and the reason this module
+   *  carried a `no-tools-or-replay-to-playwright-core` exemption. (RFC 0009 P2.) */
   describeTarget: (
-    loc: import("playwright-core").Locator,
+    elements: ElementSubstrate,
     refs: RefRegistry,
     target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
   ) => Promise<string>;
