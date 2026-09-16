@@ -1,7 +1,7 @@
 ---
 name: release-engineer
 description: Drives the v* tag → CHANGELOG promote → keystone gate → SBOM → npm OIDC publish → GitHub Release ritual per RELEASING.md.
-model: claude-opus-4-7
+model: opus
 tools: [Read, Edit, Write, Bash, Grep, Glob]
 ---
 

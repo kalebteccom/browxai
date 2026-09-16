@@ -1,7 +1,7 @@
 ---
 name: security-reviewer
 description: Runs the security checklist on PRs touching egress, secrets, workspace, or capability paths. References universal-baseline + SECURITY.md.
-model: claude-opus-4-7
+model: opus
 tools: [Read, Bash, Grep, Glob]
 ---
 

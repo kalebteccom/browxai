@@ -16,7 +16,52 @@
 
 import { describe, it, expect } from "vitest";
 import { capabilitiesFor, ENGINE_KINDS } from "../../src/engine/index.js";
-import type { EngineCapabilities } from "../../src/engine/index.js";
+import type {
+  EngineCapabilities,
+  EngineKind,
+  SafariSessionHandle,
+} from "../../src/engine/index.js";
+import type { BrowserSession } from "../../src/session/types.js";
+import type { BrowserContext, CDPSession, Page } from "playwright-core";
+import {
+  finalizeManagedSession,
+  finalizeIncognitoSession,
+} from "../../src/session/launch-options.js";
+import { finalizeAttachedSession } from "../../src/session/byob-attach.js";
+import { buildSafariSession } from "../../src/session/safari-session.js";
+import type { AcquiredTarget } from "../../src/session/attach-pool.js";
+
+/** The handles a session finalizer needs, none of which this test drives. The
+ *  assertion below reads the SHAPE of the returned session object — which members
+ *  it carries — and never calls through them, so stubs are the honest input: a
+ *  real Page would prove nothing extra and would need a browser. */
+function stubHandles(): { context: BrowserContext; page: Page; cdp: CDPSession } {
+  return {
+    context: {} as BrowserContext,
+    page: {} as Page,
+    cdp: {} as CDPSession,
+  };
+}
+
+function stubTarget(): AcquiredTarget {
+  return { targetId: "T1", page: {} as Page, created: false };
+}
+
+/** One buildable session per engine, through the engine's OWN session
+ *  constructor — the function its `makeAdapter` actually returns from. Asserted
+ *  exhaustive over `ENGINE_KINDS` below, so a sixth engine fails this file on the
+ *  day it registers rather than sliding in unchecked. */
+const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
+  chromium: () => finalizeManagedSession("chromium", {}, "/tmp/p", stubHandles()),
+  firefox: () => finalizeManagedSession("firefox", {}, "/tmp/p", stubHandles()),
+  webkit: () => Promise.resolve(finalizeIncognitoSession("webkit", stubHandles())),
+  // android is attach-only — its byob lane is the only session it ever builds.
+  android: () =>
+    Promise.resolve(
+      finalizeAttachedSession("android", "S1", stubTarget(), {} as CDPSession, async () => {}),
+    ),
+  safari: () => Promise.resolve(buildSafariSession({} as SafariSessionHandle)),
+};
 
 describe("L5 — every adapter honors its declared port contract", () => {
   it.each(ENGINE_KINDS)(
@@ -69,5 +114,41 @@ describe("L5 — every adapter honors its declared port contract", () => {
       const hasPlaywrightPage = engine !== "safari";
       expect(hasPagePort(caps)).toBe(hasPlaywrightPage);
     });
+
+    // RFC 0009's acceptance criterion, and the one that closes the gap the
+    // declaration-only check above leaves open. That check compares the
+    // declaration to a hardcoded engine name; it says nothing about the session
+    // object the engine actually builds. Safari declared no `"page"` AND carried a
+    // `page()` that threw `safari-no-playwright-page` — declaration and reality
+    // disagreed, the whole suite stayed green, and `requirePage`'s structured
+    // engine-naming refusal was unreachable code on the one engine it exists for.
+    //
+    // Data-driven over the engine registry: the builder map is asserted exhaustive
+    // over `ENGINE_KINDS`, so a sixth engine is covered the day it lands.
+    it("every engine has a session builder — the map is exhaustive over the registry", () => {
+      expect(
+        [...ENGINE_KINDS].sort(),
+        "a newly registered engine must add its session builder to SESSION_BUILDERS " +
+          "so the declaration≡handle assertion below covers it",
+      ).toEqual(Object.keys(SESSION_BUILDERS).sort());
+    });
+
+    it.each(ENGINE_KINDS)(
+      "[%s] the session it builds carries the page handle iff it declares it",
+      async (engine) => {
+        const session = await SESSION_BUILDERS[engine]();
+        const declares = capabilitiesFor(engine)!.subInterfaces.has("page");
+        const supplies = typeof session.page === "function";
+        expect(
+          supplies,
+          declares
+            ? `engine "${engine}" declares the "page" sub-interface but its session omits ` +
+                "the handle — every requirePage() on it would refuse a tool that should work"
+            : `engine "${engine}" declares no "page" sub-interface but its session supplies ` +
+                "the handle — a second, disagreeing oracle for page-availability. Delete the " +
+                "member; requirePage() then refuses with the message that names the engine.",
+        ).toBe(declares);
+      },
+    );
   });
 });

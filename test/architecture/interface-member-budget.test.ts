@@ -28,6 +28,7 @@ const SUB_PORTS = [
   "StorageHost",
   "ScriptHost",
   "EmulationHost",
+  "TargetHost",
   "EgressHost",
   "EnvelopeHost",
   "ConfigHost",

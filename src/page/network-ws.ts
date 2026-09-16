@@ -12,36 +12,16 @@
 
 import type { CDPSession } from "playwright-core";
 import type { SecretRegistry } from "../util/secrets.js";
-import { maskedText, maskedUrl } from "./network-mask.js";
 
-export interface WsFrame {
-  /** WS/SSE endpoint URL (best-effort — empty if the create event was missed). */
-  url: string;
-  dir: "sent" | "recv";
-  kind: "ws" | "sse";
-  /** WS opcode (1=text, 2=binary, 8=close, 9=ping, 10=pong). Absent for SSE. */
-  opcode?: number;
-  /** SSE event name when present (`eventName` from CDP). */
-  event?: string;
-  /** Payload, truncated to `maxPayload` chars. */
-  payload: string;
-  truncated?: boolean;
-  ts: number;
-}
-
-/** Egress sanitizer for a WS/SSE frame: redact the endpoint url, any url
- *  substrings inside the payload (a stream payload can echo a credentialled
- *  URL too), and any registered-secret real-values that landed in the
- *  payload (chat / multiplayer / live-dashboard broadcasts routinely echo
- *  the auth blob the client sent). Returns a copy — the ring keeps raw
- *  frames for url filtering. */
-export function sanitizeFrame(f: WsFrame, secrets: SecretRegistry | null): WsFrame {
-  return {
-    ...f,
-    url: maskedUrl(f.url, secrets),
-    payload: maskedText(f.payload, secrets),
-  };
-}
+// `WsFrame` (the frame shape) and `sanitizeFrame` (the egress sanitiser) are
+// engine-blind domain, shared with the off-Chromium Playwright WS ring, so they
+// live on the domain leaf `network-types.ts` alongside the HTTP shapes. Kept
+// re-exported here because this module is the home of the WS concern and the
+// `./network.js` barrel + `network-playwright.ts` both import them by this path.
+export type { WsFrame } from "./network-types.js";
+export { sanitizeFrame } from "./network-types.js";
+import type { WsFrame } from "./network-types.js";
+import { sanitizeFrame } from "./network-types.js";
 
 export class WsBuffer {
   private urls = new Map<string, string>(); // requestId → endpoint url

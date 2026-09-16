@@ -10,7 +10,14 @@ import {
 } from "../session/notification.js";
 import { SUPPORTED_DEVICE_APIS } from "../session/device-emu.js";
 import { SESSION_ARG } from "./schemas.js";
-import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import type {
+  RegisterHost,
+  GateHost,
+  SessionHost,
+  ServerServicesHost,
+  TargetHost,
+} from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Permission-state read + notification policy + device-request read tools:
@@ -20,9 +27,9 @@ import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./
  * closures (register / gate / entry).
  */
 export function registerSessionNotificationDeviceTools(
-  host: RegisterHost & GateHost & SessionHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
-  const { z, register, gateCheck, entryFor } = host;
+  const { z, register, gateCheck, entryFor, targetFor } = host;
 
   register(
     "permission_state",
@@ -57,8 +64,8 @@ export function registerSessionNotificationDeviceTools(
           (SUPPORTED_PERMISSIONS as readonly string[]).includes(p),
         );
         const states = await readPermissionStates(
-          e.session.page().context(),
-          e.session.page(),
+          requirePage(e.session).context(),
+          requirePage(e.session),
           supported,
           origin,
         );
@@ -66,18 +73,19 @@ export function registerSessionNotificationDeviceTools(
         for (const p of permissions) {
           if (!(p in out)) out[p] = "unknown";
         }
+        // The current target's origin, read through the target port so the
+        // fallback works on any engine. A target with no parseable URL (or none
+        // at all) reports null, as it did before the port existed.
+        const targetOrigin =
+          origin ??
+          (await targetFor(e)
+            .url()
+            .then((u) => new URL(u).origin)
+            .catch(() => null));
         const body = {
           ok: true,
           session: e.id,
-          origin:
-            origin ??
-            (() => {
-              try {
-                return new URL(e.session.page().url()).origin;
-              } catch {
-                return null;
-              }
-            })(),
+          origin: targetOrigin,
           states: out,
           tokensEstimate: estimateTokens(JSON.stringify(out)),
         };
@@ -126,9 +134,10 @@ export function registerSessionNotificationDeviceTools(
         const resolved = e.notification.set(next);
         // Push the new sync-decision hint to every live page so the
         // constructor's throw timing tracks the policy without a reload.
-        await propagateNotificationSyncDecision(e.session.page().context(), e.notification).catch(
-          () => undefined,
-        );
+        await propagateNotificationSyncDecision(
+          requirePage(e.session).context(),
+          e.notification,
+        ).catch(() => undefined);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         const body = { ok: true, session: e.id, policy: resolved, tokensEstimate };
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };

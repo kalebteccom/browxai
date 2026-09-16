@@ -8,6 +8,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Gesture action tools: drag / double_click. Both take the coords-capable
@@ -87,7 +88,7 @@ export function registerActionGestureTools(
       const e = await host.entryFor(session);
       try {
         const r = await withDeadline(
-          drag(e.session.page(), e.refs, {
+          drag(requirePage(e.session), e.refs, {
             from: toActionTarget(from),
             to: to ? toActionTarget(to) : { coords: { x: 0, y: 0 } },
             steps,
@@ -130,7 +131,7 @@ export function registerActionGestureTools(
       const e = await host.entryFor(session);
       try {
         const r = await withDeadline(
-          doubleClick(e.session.page(), e.refs, toActionTarget(target) as never),
+          doubleClick(requirePage(e.session), e.refs, toActionTarget(target) as never),
           host.cfgActionTimeout(),
           "double_click",
         );

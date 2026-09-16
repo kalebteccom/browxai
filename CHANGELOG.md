@@ -8,51 +8,241 @@ surface" covers.
 
 ## Unreleased
 
-### Added
+### Changed
 
-- **Session replay: an append-only capture log and an offline player (RFC 0007,
-  phases 1-3).** `start_recording({ replay: { tier } })` writes a
-  `session-replay.browx` archive, and `end_recording()` returns its path and
-  size on disk. The archive opens in a single self-contained HTML player that
-  runs from `file://` with no server and no account, which is what makes it
-  usable as a CI artifact attached to a pull request.
+- **The capability ports no longer name a Playwright type, and the substrate
+  selectors no longer name an engine** (RFC 0009 P1). Six of the seven ports
+  declared the interface and its adapters in one module, so the port imported
+  `playwright-core` — which meant "a port names no vendor type" could not be
+  stated as a rule, only as a wish. Each is now split the way `StorageSubstrate`
+  already was: `<name>-substrate-types.ts` holds the port, the adapters sit in
+  `<name>-substrate-playwright.ts` / `-safari.ts` / `-cdp.ts`, and
+  `<name>-substrate.ts` is a re-export barrel, so every existing import path is
+  unchanged. The bodies moved verbatim; only the home changed. Two
+  dependency-cruiser rules now hold the line, both at `error`:
+  `ports-name-no-vendor-type`, which is REACHABILITY-scoped so a port that reaches
+  `playwright-core` through two hops of its own helpers fails the same as a direct
+  import, and `no-tools-or-replay-to-playwright-core`, whose five surviving modules
+  are named `pathNot` exceptions carrying the RFC 0009 phase that empties each one.
 
-  Everything lands in one append-only, schema-versioned log on one clock: the
-  DOM stream (rrweb, carried verbatim as the payload of a browxai event so the
-  recorder stays swappable), CDP network and WebSocket traffic, SSE frames,
-  console output, page errors, and the agent's own tool calls and assertions.
-  Nothing is summarised into panel shape at capture time, so a panel written
-  later still has data to render. The player ships a timeline with action and
-  assertion markers, a step list synced to the DOM replay, jump-to-failure,
-  and network, WebSocket, console and coverage panels.
+  `snapshotSubstrateFor` and `networkSubstrateFor` keyed their first branch on
+  `session.engine === "safari"`, which was a second spelling of
+  `caps.subInterfaces.has("page")` — a fact already declared once. Both now read
+  the declaration through `engineDeclares(engine, sub)`, the single reader of
+  `EngineCapabilities.subInterfaces`, and both files left
+  `ENGINE_SELECT_ALLOWLIST` in the same commit. A synthetic engine registered at
+  runtime, named nowhere in either file, routes correctly on the declaration
+  alone; that is what the new test asserts.
 
-  The coverage panel groups `record_annotate({ label })` spans by label, which
-  is how a reviewer answers whether the agent exercised the paths they care
-  about. It shows every label whatever the playhead reads, and marks a span the
-  recording never closed as unclosed.
+- **`list_sessions`, `permission_state`, the session-evidence report, the
+  snapshot header and the recorder's URL stamp read the target through a port.**
+  A session that backs no Playwright `Page` used to report `url: null` from
+  `list_sessions`, `""` from the recorder, and reached a `page()` that throws
+  everywhere else. They now go through `TargetSubstrate` — `url()` and `title()`,
+  with a Playwright adapter that is the verbatim body of the calls it replaced
+  and a Safari adapter over WebDriver Classic — so those surfaces report the real
+  URL on every engine. `url()` is async because the second implementation is a
+  round trip; nothing on the action hot path changed, since `ActionResult` and
+  the secrets scope read their URL inside the Playwright action adapter, below
+  the seam.
 
-  Three capture tiers: `actions` (no DOM stream), `replay` (the default), and
-  `reexecutable` (adds bodies and content-addressed assets). Size and event
-  caps stop capture and record the reason in `manifest.truncated`; disk
-  backpressure records its own reason without stopping capture, because a
-  recording that ran to the end having dropped events is a different thing from
-  one that stopped early, and a silently short replay is worse than a refused
-  one.
+- **Eight capability ports now name no Playwright type through ANY depth of
+  import, and the rule that says so measures it.** `ports-name-no-vendor-type`
+  matched only DIRECT edges, so it stated far less than its own comment: six of
+  the eight ports satisfied it while reaching `playwright-core` one or two hops
+  away — `action-substrate-types` → `actionresult.ts`, `snapshot-substrate-types`
+  → `a11y.ts`, `capture-substrate-types` → `screenshot-save.ts` →
+  `session/storage.ts`, and so on. Worst of them, the action port took its entire
+  argument vocabulary from `import type * as actions from "./actions.js"`, and
+  `actions.ts` IS its own Playwright adapter body: the port was defined by one of
+  its implementations, which is the dependency direction inverted in the module
+  the rule shipped to protect.
 
-  Capture reaches page content, network bodies and storage, so it sits behind
-  an off-by-default `replay` capability in the same posture class as
-  `network-body` and `diagnostics`. Registered secrets are masked at capture
-  time before anything reaches disk, across every tier including WebSocket
-  frames, through the same `SecretRegistry` chokepoint every other egress sink
-  uses. The archive records **that** a value was removed and never the value.
-  An artifact carrying real session data is as sensitive as the session was.
+  The rule is now `to: { reachable: true }`, and the reach is gone rather than
+  excepted. Eleven plain-data leaves were split out so the vocabulary each port
+  names sits ABOVE both adapters: `actions-types.ts` (the twelve verb argument
+  shapes, `ActionTarget`, `ClickDispatch`), `a11y-types.ts`, `compose-types.ts`,
+  `session/emulation-types.ts`, `session/storage-types.ts`,
+  `session/cache-storage-types.ts`, `session/dialog-policy.ts` +
+  `session/dialog-attach.ts`, and `action-context.ts`, which takes the
+  `Page`-carrying `ActionContext` out of the `ActionResult` vocabulary. The
+  `RefRegistry` frame binding moved to `ref-frames.ts`, a Playwright-side table
+  keyed on the registry instance, so the ref vocabulary every port passes across
+  the seam no longer holds a `Frame`; the four policy states' install guards
+  became an identity-only `InstallGuard`, so they no longer name a
+  `BrowserContext` they never dereference. Every body moved verbatim and every
+  original module re-exports, so no import path changed.
 
-  Forward compatibility is the rule the format rests on: a player must ignore
-  event types and fields it does not recognise, and must never fail to open a
-  log because of them. A panel that throws is contained to its own tab, and the
-  rest of the player keeps working.
+  The rule's selector widened to `^src/.+-substrate-types\.ts$` — a port under a
+  subdirectory, or with a digit in its name, is now matched — and
+  `test/architecture/port-module-naming.test.ts` closes the remaining gap by
+  parsing the tree for every exported `interface *Substrate` and asserting each is
+  declared in a file the rule's own `from.path` matches. The pattern is read out
+  of the config, so the test and the rule cannot drift.
+
+- **An engine's declared sub-interfaces are now enforced against what its tools
+  do.** `EngineCapabilities.subInterfaces` had zero production readers before this
+  phase — every reference outside the type and the declaration tables was in a
+  test — and RFC 0009 P1 promotes it to load-bearing control flow. A declaration
+  nothing checks rots, so the reader and the enforcer land together:
+  `test/architecture/sub-interface-conformance.test.ts` drives one synthetic
+  engine per sub-interface, each declaring all ten except its own, through the
+  real server and asserts every consuming tool returns the engine-refusal envelope
+  instead of a result. Its substrates answer PLAUSIBLY on purpose — a throwing
+  fixture would make a missing gate look like a present one.
+
+  It found fourteen. All are fixed: the network reads, the storage family
+  (cookies, web-storage, IndexedDB, Cache API), `eval_js`, the three live-emulation
+  setters and `screenshot` now call `subInterfaceGate(tool, sub, e)` before they
+  dispatch. Only `safari` is affected today, since it is the only shipped engine
+  omitting anything (`network` and `emulation`); the rest closes the hole before
+  RFC 0008's native engines arrive and start omitting `script` and `capture`. The
+  four universal sub-interfaces (`lifecycle` / `navigation` / `snapshot` /
+  `input`) are asserted the other way — every engine must declare them — because a
+  refusal path no engine could ever take is untested code on the hottest path.
+
+- **The extension-context rebuild selects substrates through the engine's
+  bundle.** `extensions-rebuild.ts` called `networkSubstrateFor(sess)` and
+  `snapshotSubstrateFor(sess)` directly, which worked only because extensions are
+  chromium-only and chromium's bundle delegates to exactly those two — it made the
+  rebuild a second place that knows how an engine picks its adapters. Both now go
+  through `engineEntry(sess.engine).makeSubstrates(...)`, sharing the
+  snapshot/network-only dependency set with the session registry. A new
+  dependency-cruiser rule, `only-the-engine-bundle-selects-a-substrate`, keeps it
+  that way: the two standalone selectors are the Playwright bundle's internals and
+  only the bundles may import them.
+
+### Deprecated
+
+- **`BrowserSession.page()` is now optional and deprecated.** It promised a
+  `Page` that the safari engine cannot supply and honoured the promise by
+  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
+  as the L5 violation. Optional is a phase, not a design: it makes the compiler
+  enumerate every caller (141 errors, the number that sizes the rest of RFC
+  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
+  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
+  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+  it and is not the migration path. Every existing caller now routes through
+  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
+  `requireCdp`: it returns the handle on an engine that has one and throws a
+  structured, engine-naming error on one that does not, instead of letting
+  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
+  engine — no adapter, no public shape and no tool response moved.
 
 ### Fixed
+
+- **`export_session_report` and the network tools no longer answer "no traffic"
+  for an engine that cannot watch traffic.** Real Safari has no protocol-level
+  network tap, and `SafariNoopNetworkSubstrate` answered `network_read` with
+  `{summary:{total:0,byType:{},failed:0}, requests:[]}` — a well-formed,
+  plausible, and completely wrong result. `capabilities.ts` already said "the
+  network tools must REFUSE on Safari, not skip"; nothing enforced it. It is the
+  same defect class as `verify_*` publishing an engine incapability as a failed
+  assertion, and it is worse here, because the QA-evidence bundle carries the
+  number to a human who cannot tell it apart from a real zero. `network_read`,
+  `ws_read` and `network_body` now refuse on the `network` declaration, and
+  `export_session_report` carries a `networkUnavailable` explanation in place of
+  the summary. The empty rings stay, because a substrate that threw would be the
+  L5 violation again — they are just never reached.
+
+- **Safari's session no longer defines `page()`, and `requirePage`'s refusal
+  actually fires.** `buildSafariSession` kept a `page` member that threw
+  `safari-no-playwright-page`, so `requirePage`'s `if (!session.page)` guard was
+  FALSE on the one engine it exists for and the helper delegated straight into the
+  old throw: the engine-naming message it was written to produce was dead code on
+  every shipped engine. Deleting the member makes the guard fire, and the
+  replacement error is strictly better — it names the engine, states that the
+  engine declares no `page` sub-interface, and points at the capability
+  substrates. `replay/session.ts` catches it exactly as before to fall back to an
+  action-only archive. `test/architecture/port-conformance.test.ts` gains the
+  assertion RFC 0009 asked for and this would have failed: data-driven over the
+  engine registry, every engine's session carries the `page` handle if and only if
+  it declares the sub-interface, with the builder map asserted exhaustive so a
+  sixth engine is covered the day it lands.
+
+- **The `ocp-engine-contract` synthetic engine is now genuinely Page-free.** It
+  declared no `"page"` sub-interface while implementing `page()` over a fake — the
+  same disagreement, in the test that exists to prove the open-closed claim. The
+  fake is gone. What kept it alive was `find` acquiring its handle with
+  `s.safari ? null : requirePage(s)`, a probe for one specific rival engine's
+  handle that a sixth engine would silently fail; it reads `engineDeclares(s.engine,
+  "page")` now. The contract's snapshot assertion also stopped being a tautology:
+  it checked that the header contained `"synthetic"`, which is the engine tag and
+  the a11y root's name, so it passed with `TargetSubstrate.title()` returning an
+  empty string. It asserts a sentinel only the port can emit.
+
+- **The Playwright-`Page` bypass budget counts handle USES, not the text
+  `requirePage(`.** Hoisting one `const page = requirePage(sess)` to the top of
+  `extensions-rebuild.ts` would have dropped the old count by 16 with nothing
+  architectural changed. Both checks in
+  `test/architecture/page-bypass-budget.test.ts` are AST walks now: the budget
+  counts each reference to a bound handle (so hoisting moves it by zero), and the
+  "only door" check looks for the SHAPE of a `page` member access rather than a
+  receiver literally spelled `session` or `sess` — `const s = e.session; s.page!()`,
+  `e.session["page"]!()` and `const { page } = e.session` all walked past the
+  regex it replaces. The budget is re-pinned at 106 uses; it is not comparable to
+  the 102 call-sites it replaces, and it only goes down.
+
+- **Every substrate adapter method typed `Promise<T>` is now `async`, so a gone
+  target rejects instead of throwing past the caller's `.catch()`.** The adapters
+  are built over an injected accessor — `new PlaywrightTargetSubstrate(() =>
+  requirePage(e.session), …)` — and on an attached (BYOB) session that accessor is
+  `boundPage`, which throws `attach-target-gone` once the user closes the tab. A
+  method declared `url(): Promise<string> { return Promise.resolve(this.page().url()); }`
+  evaluates the argument before the promise exists, so the throw propagated
+  synchronously through every guard written to catch it. Managed and incognito
+  sessions never throw there, which is why the suite stayed green.
+
+  Two surfaces were losing to it. `list_sessions` guards its per-session URL read
+  with `.catch(() => null)`; the guard never ran, the `Promise.all` rejected, and
+  one dead tab took out the listing for every healthy session in the registry —
+  it now reports `url: null` for the dead one and full rows for the rest.
+  `point_probe` reads the URL inside its own `catch` block to stamp the triage
+  envelope, so the second throw escaped the handler and the agent got a transport
+  rejection instead of `{ok:false, point, url, error}` — the envelope is back.
+
+  Of the 91 Promise-returning methods across the 18 adapter implementations, 69
+  were not `async`; all 69 now are. That includes the adapters holding a stored
+  handle, not only the accessor-injected ones — the hazard is the declaration
+  shape, and any body can grow a synchronous throw later.
+  `test/architecture/substrate-adapter-async.test.ts` is the gate: it scans every
+  `src/page/*-substrate-{playwright,safari,cdp}.ts` file, so an adapter added
+  later is covered the day it lands, and it drives each thunk-injected adapter
+  with an accessor that is already throwing.
+
+- **`solve_captcha` returns its structured envelope when the site-key cannot be
+  read from a selector.** The selector-derived read needs a Playwright `Page` and
+  called `requirePage` outside the handler's `try`, so on an engine that backs
+  none the agent got a raw `engine "safari" backs no Playwright Page…` rejection
+  instead of `{ok:false, provider, error, hint}`. The refusal is now structured
+  and names the way through (pass `siteKey` explicitly), and it lands before
+  `submitToProvider`, so no provider credit is spent on a solve the caller cannot
+  finish. A solve with an explicit `siteKey` still proceeds on such an engine:
+  `solve_captcha` never injects the token on any engine — it returns it, and the
+  agent wires it back in — and Safari can do that through `eval_js` (WebDriver
+  `execute/sync`) or `fill`. The pre-port refusal on that path came from
+  `session.page()` throwing, under a "Call open_session + navigate first" hint
+  that was unactionable where both of those already succeed.
+
+- **`verify_*` on an engine with no Playwright `Page` now refuses instead of
+  reporting a failed assertion.** The five page-bound verifies (`verify_visible`,
+  `verify_text`, `verify_value`, `verify_count`, `verify_attribute`) called
+  `session.page()` inside the same `try` whose `catch` renders the caught message
+  as `failure:{source:"browxai", expected:"… to complete", actual:<message>}`. On
+  the safari engine that accessor throws, so a check that had never run was
+  published as `ok:false` with a structured assertion failure — indistinguishable,
+  to an agent or to the human signing off a QA recording, from a real product
+  defect. The engine gate did not cover it: that gate keys on `deep:true`, and the
+  `verify_*` family declares `capability:"read"`.
+
+  Each handler now consults `subInterfaceGate(tool, "page", e)` before touching
+  the accessor, and holds the resolved page outside the `try`. The refusal reuses
+  `engineGate`'s envelope — `{ok:false, error, engine, hint}`, no `failure` key at
+  all — so "this engine cannot run the check" is separable by shape from "the
+  thing you asked about is false". The new `assertEngineSubInterface` reads the
+  engine's declared `caps.subInterfaces`, not a thrown probe, so it stays correct
+  when the `page()` accessor itself moves. Refusal and unchanged-Chromium
+  behaviour are both under test.
 
 - **`client.callTool(name, args)` now reaches every registered tool, not 45 of
   them.** The SDK seeded its callable set by walking `SDK_TOOLS`, the curated
@@ -96,7 +286,51 @@ surface" covers.
   typo callable, and an unknown name is refused before any capability is
   resolved so it can never land on the permissive `human` default.
 
-## v0.10.1 — 2026-09-14 — Security: deep secret masking
+## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
+
+### Added
+
+- **Session replay: an append-only capture log and an offline player (RFC 0007,
+  phases 1-3).** `start_recording({ replay: { tier } })` writes a
+  `session-replay.browx` archive, and `end_recording()` returns its path and
+  size on disk. The archive opens in a single self-contained HTML player that
+  runs from `file://` with no server and no account, which is what makes it
+  usable as a CI artifact attached to a pull request.
+
+  Everything lands in one append-only, schema-versioned log on one clock: the
+  DOM stream (rrweb, carried verbatim as the payload of a browxai event so the
+  recorder stays swappable), CDP network and WebSocket traffic, SSE frames,
+  console output, page errors, and the agent's own tool calls and assertions.
+  Nothing is summarised into panel shape at capture time, so a panel written
+  later still has data to render. The player ships a timeline with action and
+  assertion markers, a step list synced to the DOM replay, jump-to-failure,
+  and network, WebSocket, console and coverage panels.
+
+  The coverage panel groups `record_annotate({ label })` spans by label, which
+  is how a reviewer answers whether the agent exercised the paths they care
+  about. It shows every label whatever the playhead reads, and marks a span the
+  recording never closed as unclosed.
+
+  Three capture tiers: `actions` (no DOM stream), `replay` (the default), and
+  `reexecutable` (adds bodies and content-addressed assets). Size and event
+  caps stop capture and record the reason in `manifest.truncated`; disk
+  backpressure records its own reason without stopping capture, because a
+  recording that ran to the end having dropped events is a different thing from
+  one that stopped early, and a silently short replay is worse than a refused
+  one.
+
+  Capture reaches page content, network bodies and storage, so it sits behind
+  an off-by-default `replay` capability in the same posture class as
+  `network-body` and `diagnostics`. Registered secrets are masked at capture
+  time before anything reaches disk, across every tier including WebSocket
+  frames, through the same `SecretRegistry` chokepoint every other egress sink
+  uses. The archive records **that** a value was removed and never the value.
+  An artifact carrying real session data is as sensitive as the session was.
+
+  Forward compatibility is the rule the format rests on: a player must ignore
+  event types and fields it does not recognise, and must never fail to open a
+  log because of them. A panel that throws is contained to its own tab, and the
+  rest of the player keeps working.
 
 ### Security
 

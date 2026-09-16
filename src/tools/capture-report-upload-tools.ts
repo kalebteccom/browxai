@@ -6,6 +6,7 @@ import { dropFiles, type DropFileInput } from "../page/drop-files.js";
 import { readCapturedBytes } from "../page/downloads.js";
 import { REF_OR_SELECTOR, SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Capture + report — file ingress & download egress. `upload_file` / `drop_files`
@@ -80,7 +81,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
           };
         }
         const r = await withDeadline(
-          uploadFile(e.session.page(), e.refs, workspace.root, {
+          uploadFile(requirePage(e.session), e.refs, workspace.root, {
             target,
             name: args.name,
             mimeType: args.mimeType,
@@ -162,7 +163,7 @@ export function registerCaptureReportUploadTools(host: ToolHost): void {
       try {
         const target = asTarget(args, "drop_files", e.refs);
         const r = await withDeadline(
-          dropFiles(e.session.page(), e.refs, workspace.root, {
+          dropFiles(requirePage(e.session), e.refs, workspace.root, {
             target,
             files: args.files as DropFileInput[],
           }),

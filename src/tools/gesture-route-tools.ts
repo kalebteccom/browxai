@@ -1,5 +1,6 @@
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Request route-mocking tools: route / route_queue / unroute. Per-session canned
@@ -48,7 +49,7 @@ export function registerGestureRouteTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.routes.add(e.session.page(), {
+        const r = await e.routes.add(requirePage(e.session), {
           urlPattern,
           method,
           status,
@@ -102,7 +103,11 @@ export function registerGestureRouteTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.routes.addQueue(e.session.page(), { urlPattern, method, responses });
+        const r = await e.routes.addQueue(requirePage(e.session), {
+          urlPattern,
+          method,
+          responses,
+        });
         return {
           content: [
             {
@@ -145,7 +150,7 @@ export function registerGestureRouteTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const removed = await e.routes.remove(e.session.page(), { urlPattern, method });
+        const removed = await e.routes.remove(requirePage(e.session), { urlPattern, method });
         return {
           content: [
             {

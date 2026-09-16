@@ -11,6 +11,7 @@ import type {
   ConfigHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Plan / execute tools: separate intent capture (`plan`) from dispatch
@@ -98,7 +99,7 @@ export function registerFormsPlanTools(
       try {
         outcome = await withDeadline(
           planAction(
-            e.session.page(),
+            requirePage(e.session),
             e.snapshotSubstrate,
             e.refs,
             {

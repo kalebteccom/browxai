@@ -23,6 +23,7 @@ import type {
   ConfigHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Dialog / permission / file-system-picker policy tools: set_dialog_policy /
@@ -148,7 +149,7 @@ export function registerSessionDialogPermissionTools(
         // very next page-side check (the wrapper script reads policy live; CDP
         // baseline must also be refreshed so `navigator.permissions.query`
         // / native code paths see the new state).
-        await applyPermissionCdpBaseline(e.session.page().context(), e.permission).catch(
+        await applyPermissionCdpBaseline(requirePage(e.session).context(), e.permission).catch(
           () => undefined,
         );
         const warnings: string[] = [];

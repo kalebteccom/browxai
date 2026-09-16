@@ -3,6 +3,7 @@ import { screenshotMarks, type MarkCandidate } from "../page/set-of-marks.js";
 import { sampleMetric, ELEMENT_METRICS } from "../page/sample.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Capture + report — region capture & marks composition. `screenshot_region`
@@ -47,7 +48,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       const e = await entryFor(session);
       try {
         const buf = await withDeadline(
-          e.session.page().screenshot({ clip: box, type: "png" }),
+          requirePage(e.session).screenshot({ clip: box, type: "png" }),
           cfgActionTimeout(),
           "screenshot_region",
         );
@@ -109,7 +110,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       try {
         const result = await withDeadline(
           screenshotMarks(
-            e.session.page(),
+            requirePage(e.session),
             e.snapshotSubstrate,
             e.refs,
             {
@@ -256,7 +257,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       const ig = gateCheck(innerTool);
       if (ig) return ig;
       const sampleEntry = await entryFor(args.sampleSession);
-      const samplePromise = sampleMetric(sampleEntry.session.page(), sampleEntry.refs, {
+      const samplePromise = sampleMetric(requirePage(sampleEntry.session), sampleEntry.refs, {
         metric: args.metric,
         durationMs: args.durationMs,
         everyFrame: args.everyFrame,

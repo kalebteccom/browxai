@@ -117,7 +117,27 @@ export interface BrowserSession {
    *  managed (persistent) launches only — incognito and attached sessions have
    *  no profile of their own. */
   readonly profileDir?: string;
-  page(): Page;
+  /** The Playwright `Page` backing this session. OPTIONAL, and deprecated the
+   *  moment it became so.
+   *
+   *  It is optional for exactly one phase, as a compile-error enumeration device
+   *  (RFC 0009 P1): the member promised a `Page` that Safari cannot supply and
+   *  implemented the promise by throwing `safari-no-playwright-page`, which was the
+   *  present-but-unconditionally-throwing port method RFC 0004 named as the L5
+   *  violation. That throw is gone: Safari's session now OMITS the member, and
+   *  `test/architecture/port-conformance.test.ts` holds every engine's declaration
+   *  and its session shape in agreement. Making it optional makes the compiler list every caller that
+   *  assumed a `Page`, which is what sizes the remaining phases.
+   *
+   *  Nothing is designed around the optional form and NO NEW CODE MAY CALL IT.
+   *  Page-availability is already declared once, as
+   *  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+   *  that fact and the two can disagree. Read the declaration. RFC 0009 P5 deletes
+   *  this member for `playwright?(): PlaywrightSessionHandle`, the engine-named
+   *  escape hatch that mirrors `safari?()`.
+   *
+   *  @deprecated Reach the session through a capability substrate. */
+  page?(): Page;
   /** The CDP target this session is leased to. Present on the attached (BYOB)
    *  engines, absent where there is no CDP target (Safari). */
   targetId?(): string;
@@ -129,7 +149,7 @@ export interface BrowserSession {
   cdp?(): CDPSession;
   /** The Safari-native handle — present ONLY on the `safari` engine, the first
    *  engine with no Playwright `Page`. On a Safari session,
-   *  `page()` THROWS (`safari-no-playwright-page`); consumers that can run on
+   *  the `page` member is ABSENT; consumers that can run on
    *  Safari (snapshot/find/navigate/screenshot/cookies via this handle's
    *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the
    *  capability gate refuses the rest up front. Absent on every other engine. */

@@ -125,6 +125,44 @@ function boundPage(sessionId: string, target: AcquiredTarget): () => Page {
   };
 }
 
+/** Build the not-owned (BYOB) `BrowserSession` both attach lanes return. The
+ *  android lane and the chromium lane leased their target differently — adb
+ *  forward versus a loopback CDP endpoint — but the session object they hand back
+ *  is the same shape, so it is built once here rather than twice with a
+ *  copy-pasted `page:` / `cdp:` / `close:` triple.
+ *
+ *  `page` is PRESENT on both: chromium and android both back a real Playwright
+ *  `Page`, which is what `capabilitiesFor(engine).subInterfaces.has("page")`
+ *  declares for each of them. The test that holds the two in agreement builds a
+ *  session through this function (test/architecture/port-conformance.test.ts). */
+export function finalizeAttachedSession(
+  engine: "chromium" | "android",
+  sessionId: string,
+  target: AcquiredTarget,
+  cdp: CDPSession,
+  release: () => Promise<void>,
+): BrowserSession {
+  let closed = false;
+  return {
+    mode: "byob",
+    ownsBrowser: false,
+    engine,
+    page: boundPage(sessionId, target),
+    targetId: () => target.targetId,
+    // chromium and Chrome-on-Android both speak full CDP; the eager session is
+    // always present.
+    cdp: () => cdp,
+    close: async () => {
+      if (closed) return;
+      closed = true;
+      log.info("session.byob: detaching (browser stays open — not-owned)");
+      await cdp.detach().catch(() => undefined);
+      await releaseTarget(attachLeases, sessionId, target.page);
+      await release();
+    },
+  };
+}
+
 /** Android BYOB — discover real Chrome-on-Android over adb + CDP and attach.
  *  Distinct from the desktop URL-attach path: the endpoint is DISCOVERED
  *  (adb forward → /json/version → wsUrl), not configured. The forwarded socket is
@@ -166,25 +204,9 @@ export async function openAndroidByobSession(opts: SessionOptions = {}): Promise
   });
   await ensureViewport(cdp);
 
-  let closed = false;
-  return {
-    mode: "byob",
-    ownsBrowser: false,
-    engine: "android",
-    page: boundPage(sessionId, target),
-    targetId: () => target.targetId,
-    // Android Chrome speaks full CDP — the eager session is always present.
-    cdp: () => cdp,
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      log.info("session.byob: detaching Chrome-on-Android (device stays open — not-owned)");
-      await cdp.detach().catch(() => undefined);
-      await releaseTarget(attachLeases, sessionId, target.page);
-      await handles.removeForward();
-      // Do NOT call browser.close() — not-owned (it's the user's phone Chrome).
-    },
-  };
+  // Do NOT close the browser on teardown — not-owned (it's the user's phone
+  // Chrome); the adb forward is what this lane releases.
+  return finalizeAttachedSession("android", sessionId, target, cdp, () => handles.removeForward());
 }
 
 /** Assert the BYOB attach endpoint is present + loopback, returning it as a
@@ -241,22 +263,5 @@ export async function attachByobChromium(
 
   await ensureViewport(cdp);
 
-  let closed = false;
-  return {
-    mode: "byob",
-    ownsBrowser: false,
-    engine: "chromium",
-    page: boundPage(sessionId, target),
-    targetId: () => target.targetId,
-    // chromium always mints a CDP session; `cdp` is non-undefined here.
-    cdp: () => cdp,
-    close: async () => {
-      if (closed) return;
-      closed = true;
-      log.info("session.byob: detaching (browser stays open — not-owned)");
-      await cdp.detach().catch(() => undefined);
-      await releaseTarget(attachLeases, sessionId, target.page);
-      await connection.release();
-    },
-  };
+  return finalizeAttachedSession("chromium", sessionId, target, cdp, () => connection.release());
 }
