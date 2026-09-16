@@ -116,13 +116,19 @@ const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
 
 // Files whose single responsibility IS engine selection — engine literals are the
 // point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
-// are FILES (anchored with `\.ts$`); adapters/ is a DIRECTORY (prefix). The two
-// substrate selectors already key on `session.engine === "safari"` by design.
+// are FILES (anchored with `\.ts$`); adapters/ is a DIRECTORY (prefix).
+//
+// RATCHET (RFC 0009 P1): `src/page/snapshot-substrate-select.ts` and
+// `src/page/network-substrate-select.ts` left this list. Both branched on
+// `session.engine === "safari"`, which was a second spelling of
+// `caps.subInterfaces.has("page")` — the fact RFC 0004 D5 already declares. They
+// now read the declaration through `engineDeclares`, so the literal is gone and
+// the exemption with it. An entry comes off this list in the phase that removes
+// its last literal; putting one back is an RFC amendment with a written reason,
+// never an inline disable (the §7 meta-rule).
 const ENGINE_SELECT_ALLOWLIST = [
   /src\/engine\/(registry|select|capabilities)\.ts$/,
   /src\/engine\/adapters\//,
-  /src\/page\/snapshot-substrate-select\.ts$/,
-  /src\/page\/network-substrate-select\.ts$/,
   // launch-options.ts is the engine-launch layer (called only by the
   // adapters/<engine>.engine.ts modules): the `engine !== "chromium"` branch
   // chooses the Chromium-only `--disable-web-security` flag form vs the Firefox
@@ -193,6 +199,12 @@ const GATE_OWNER_ALLOWLIST = [
   /src\/tools\/host(-build)?\.ts$/,
   /src\/util\/capabilities\.ts$/,
   /src\/engine\/tool-gate\.ts$/,
+  // sub-interface.ts is the ONE reader of `EngineCapabilities.subInterfaces`
+  // (RFC 0009 P1). Centralising that read is the same move this rule enforces:
+  // the declaration is consulted in one place and everything else calls
+  // `engineDeclares(...)`. tool-gate.ts, already on this list, is now one of its
+  // callers rather than a second reader.
+  /src\/engine\/sub-interface\.ts$/,
 ];
 
 const noInlinedCapabilityChecks = {
@@ -858,6 +870,12 @@ export default tseslint.config(
       "src/tools/read-observe-verify-tools.ts",
       "src/tools/read-observe-capture-tools.ts",
       "src/tools/read-observe-buffer-tools.ts",
+      // `network_read` / `ws_read` / `network_body` split out of
+      // read-observe-buffer-tools.ts (above) when the sub-interface gate pushed that
+      // file past the size ceiling. The one inline read here is the same
+      // egress-masking `caps.enabled.has("secrets")` that moved with it, not a new
+      // violation; it rides its origin file's allowlist entry.
+      "src/tools/read-observe-network-tools.ts",
       "src/tools/secrets-captcha-tools.ts",
       // The P3 split extracted the persistent-session extension context rebuild
       // out of extensions-batch-tools.ts (already allowlisted) into
@@ -932,6 +950,36 @@ export default tseslint.config(
       complexity: "off",
       "browxai-local/complexity-registration-aware": "off",
       "max-params": "off",
+    },
+  },
+  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp}.ts`) —
+  // `async` is part of the port contract here, so `require-await` is inverted.
+  //
+  // Every adapter is built over an INJECTED accessor:
+  // `new PlaywrightTargetSubstrate(() => requirePage(e.session), …)`. On an
+  // attached (BYOB) session that accessor throws `attach-target-gone` the moment
+  // the user closes the tab. A method typed `Promise<T>` but declared WITHOUT
+  // `async` lets that throw escape SYNCHRONOUSLY, before a promise exists, past
+  // every caller's `.catch()` — `list_sessions` lost its whole registry listing
+  // to one dead tab that way, and `point_probe` lost its structured failure
+  // envelope. So an adapter method whose body never awaits (a refusal constant,
+  // a one-line delegate to a synchronous read) still MUST be `async`: the
+  // keyword is what turns the throw into a rejection the caller can guard.
+  //
+  // `require-await` would push exactly those bodies back to the broken spelling.
+  // It is off for the adapter files only, and
+  // `test/architecture/substrate-adapter-async.test.ts` enforces the opposite
+  // rule — EVERY Promise-returning adapter method is `async` — so the surface is
+  // gated, not ungoverned. The §7 reviewable-config escape valve, never an
+  // inline disable.
+  {
+    files: [
+      "src/page/*-substrate-playwright.ts",
+      "src/page/*-substrate-safari.ts",
+      "src/page/*-substrate-cdp.ts",
+    ],
+    rules: {
+      "@typescript-eslint/require-await": "off",
     },
   },
   // src/server.ts + src/tools/* — MCP tool-handler registration. The MCP SDK's

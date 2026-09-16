@@ -27,7 +27,14 @@ export {
   SAFARI_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
-export { assertEngineSupports, DEEP_TOOLS, type EngineRefusal } from "./tool-gate.js";
+export { requirePage, type PageCapable } from "./session-page.js";
+export { engineDeclares } from "./sub-interface.js";
+export {
+  assertEngineSubInterface,
+  assertEngineSupports,
+  DEEP_TOOLS,
+  type EngineRefusal,
+} from "./tool-gate.js";
 export { PlaywrightChromiumAdapter } from "./adapters/playwright-chromium.js";
 export type { PersistentLaunchSpec, EphemeralLaunchSpec } from "./adapters/playwright-chromium.js";
 export {

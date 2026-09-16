@@ -8,6 +8,7 @@ import {
   type DiagnosticsRecord,
 } from "../util/diagnostics.js";
 import type { ToolResponse } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /** The createServer locals the post-dispatch observation closures close over.
  *  A narrow slice of `HostDeps` — only the two stores the noters read: the
@@ -127,7 +128,7 @@ export function buildObservation(deps: ObservationDeps): Observation {
     // wedged — stamp the response as before.
     let aliveByProbe = false;
     try {
-      const page = entry.session.page();
+      const page = requirePage(entry.session);
       await withDeadline(
         page.evaluate(() => 1),
         1_000,

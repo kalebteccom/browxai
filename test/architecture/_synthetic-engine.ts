@@ -23,10 +23,11 @@ import type { ComposedSnapshot, ComposeOptions } from "../../src/page/compose.js
 import type { SnapshotSubstrate } from "../../src/page/snapshot-substrate.js";
 import type { NetworkSubstrate } from "../../src/page/network-substrate.js";
 import type { ActionSubstrate } from "../../src/page/action-substrate.js";
-import type { CaptureSubstrate } from "../../src/page/capture-substrate.js";
+import type { CaptureResult, CaptureSubstrate } from "../../src/page/capture-substrate.js";
 import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
-import type { EmulationSubstrate } from "../../src/page/emulation-substrate.js";
+import type { EmulationResult, EmulationSubstrate } from "../../src/page/emulation-substrate.js";
+import type { TargetSubstrate } from "../../src/page/target-substrate.js";
 import type { ActionResult, DispatchedAction } from "../../src/page/actionresult.js";
 
 /** A present-but-throwing substrate for the four ports the core contract never
@@ -200,20 +201,138 @@ class InMemoryNetworkSubstrate implements NetworkSubstrate {
   }
 }
 
+/** The one string in this file that exists only to be observed. Exported so the
+ *  contract asserts on the same literal the substrate emits, and so a grep proves
+ *  it has exactly two homes: here, and the assertion. */
+export const SYNTHETIC_TITLE = "in-memory-target-title-b7f2";
+
+/** The synthetic engine's in-memory TargetSubstrate. The core contract drives it
+ *  through `list_sessions` (the `url` column) and the snapshot header, which is
+ *  what lets the synthetic session answer both WITHOUT a Playwright Page: before
+ *  RFC 0009 P1 those two reads went to `page().url()` / `page().title()` and were
+ *  the reason the synthetic engine had to carry a `fakePage()` at all. */
+class InMemoryTargetSubstrate implements TargetSubstrate {
+  readonly engine = "synthetic";
+  url(): Promise<string> {
+    return Promise.resolve("about:blank");
+  }
+  /** A SENTINEL, not the engine tag. The title used to be `"synthetic"`, which
+   *  also happens to be the engine name and the a11y root's name, so the
+   *  contract's `expect(snapText).toContain("synthetic")` passed whatever this
+   *  method returned — including `""`. The assertion measured nothing. This
+   *  string appears nowhere else in src or test, so the snapshot header can only
+   *  carry it if it came through `TargetSubstrate.title()`. */
+  title(): Promise<string> {
+    return Promise.resolve(SYNTHETIC_TITLE);
+  }
+}
+
+/** The four ports the core OCP contract never drives, answered PLAUSIBLY instead
+ *  of throwing. `answerAll` turns them on.
+ *
+ *  The sub-interface conformance suite needs this. It asks "does a tool refuse
+ *  when the engine declares no <sub>?", and a throwing substrate would answer
+ *  that question for the wrong reason: the tool would fail either way, so a
+ *  MISSING gate would look like a present one. With the substrate returning a
+ *  well-formed value, an ungated tool returns that value and the assertion
+ *  catches the drift. Deliberately the opposite fixture to `unsupported()`. */
+class InMemoryStorageSubstrate {
+  readonly engine = "synthetic";
+  private readonly origin = "http://synthetic.invalid";
+  cookiesList = () => Promise.resolve([]);
+  cookiesSet = (c: { name: string }) => Promise.resolve({ ok: true, name: c.name });
+  webStorageGet = () => Promise.resolve({ value: null, origin: this.origin });
+  webStorageList = () => Promise.resolve({ entries: [], origin: this.origin });
+  webStorageSet = () => Promise.resolve({ ok: true as const, origin: this.origin });
+  webStorageDelete = () => Promise.resolve({ ok: true as const, origin: this.origin });
+  webStorageClear = () => Promise.resolve({ ok: true as const, origin: this.origin });
+  idbListDatabases = () => Promise.resolve({ databases: [], origin: this.origin, supported: true });
+  idbListStores = (a: { dbName: string }) =>
+    Promise.resolve({ stores: [], dbName: a.dbName, version: 1, origin: this.origin });
+  idbGet = (a: { dbName: string; storeName: string; key: unknown }) =>
+    Promise.resolve({ found: false as const, ...a, origin: this.origin });
+  idbPut = (a: { dbName: string; storeName: string; key: unknown }) =>
+    Promise.resolve({ ok: true as const, ...a, origin: this.origin });
+  idbDelete = (a: { dbName: string; storeName: string; key: unknown }) =>
+    Promise.resolve({ ok: true as const, ...a, origin: this.origin });
+  idbClear = (a: { dbName: string; storeName: string }) =>
+    Promise.resolve({ ok: true as const, ...a, origin: this.origin });
+  cachesListStorages = () => Promise.resolve({ names: [], origin: this.origin });
+  cachesList = (a: { cacheName: string }) =>
+    Promise.resolve({ entries: [], origin: this.origin, cacheName: a.cacheName });
+  cachesGet = (a: { cacheName: string; url: string }) =>
+    Promise.resolve({ found: false as const, ...a, origin: this.origin });
+  cachesPut = (a: { cacheName: string; url: string }) =>
+    Promise.resolve({ ok: true as const, ...a, origin: this.origin });
+  cachesDelete = (a: { cacheName: string; url: string }) =>
+    Promise.resolve({ ok: true as const, existed: false, ...a, origin: this.origin });
+  cachesClear = (a: { cacheName: string }) =>
+    Promise.resolve({ ok: true as const, cleared: 0, ...a, origin: this.origin });
+  cachesDeleteStorage = (a: { cacheName: string }) =>
+    Promise.resolve({ ok: true as const, existed: false, ...a, origin: this.origin });
+}
+
+class InMemoryScriptSubstrate implements ScriptSubstrate {
+  readonly engine = "synthetic";
+  evaluate(): Promise<unknown> {
+    return Promise.resolve("synthetic-eval-result");
+  }
+}
+
+class InMemoryEmulationSubstrate implements EmulationSubstrate {
+  readonly engine = "synthetic";
+  setGeolocation(): Promise<EmulationResult> {
+    return Promise.resolve({ kind: "applied" });
+  }
+  setColorScheme(): Promise<EmulationResult> {
+    return Promise.resolve({ kind: "applied" });
+  }
+  setReducedMotion(): Promise<EmulationResult> {
+    return Promise.resolve({ kind: "applied" });
+  }
+}
+
+/** A 1×1 transparent PNG — a plausible screenshot, so an ungated capture tool
+ *  returns an image rather than an error. */
+const TINY_PNG =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+class InMemoryCaptureSubstrate implements CaptureSubstrate {
+  readonly engine = "synthetic";
+  screenshot(): Promise<CaptureResult> {
+    return Promise.resolve({ kind: "image", data: TINY_PNG, mimeType: "image/png" });
+  }
+}
+
+/** How the four non-core ports answer. `throwing` (the default) is the OCP
+ *  contract's fixture — it proves navigate/snapshot/find/click never reach them.
+ *  `answering` is the conformance suite's — it proves a tool that should have
+ *  refused did not. */
+export type NonCorePorts = "throwing" | "answering";
+
 /** The synthetic engine's `SubstrateBundle` — the in-memory answers the core
- *  contract drives (actions / snapshot / network) plus the present-but-throwing
- *  ports it never reaches (storage / script / emulation / capture). Takes the
- *  per-server `SubstrateDeps` to honour the standardized `makeSubstrates(deps)`
- *  contract, but ignores them: the in-memory substrates need no host config. */
-export function inMemorySubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
+ *  contract drives (actions / snapshot / network / target) plus the four ports it
+ *  never reaches (storage / script / emulation / capture), which are
+ *  present-but-throwing by default. Takes the per-server `SubstrateDeps` to
+ *  honour the standardized `makeSubstrates(deps)` contract, but ignores them: the
+ *  in-memory substrates need no host config. */
+export function inMemorySubstrateBundle(
+  _deps: SubstrateDeps,
+  nonCore: NonCorePorts = "throwing",
+): SubstrateBundle {
+  const answering = nonCore === "answering";
   return {
     actions: (_e: SessionEntry): ActionSubstrate => new InMemoryActionSubstrate(),
     snapshot: (_e: SessionEntry): SnapshotSubstrate => new InMemorySnapshotSubstrate(),
     network: (_e: SessionEntry): NetworkSubstrate => new InMemoryNetworkSubstrate(),
-    capture: (_e: SessionEntry): CaptureSubstrate => unsupported<CaptureSubstrate>("capture"),
-    storage: (_e: SessionEntry): StorageSubstrate => unsupported<StorageSubstrate>("storage"),
-    script: (_e: SessionEntry): ScriptSubstrate => unsupported<ScriptSubstrate>("script"),
+    target: (_e: SessionEntry): TargetSubstrate => new InMemoryTargetSubstrate(),
+    capture: (_e: SessionEntry): CaptureSubstrate =>
+      answering ? new InMemoryCaptureSubstrate() : unsupported<CaptureSubstrate>("capture"),
+    storage: (_e: SessionEntry): StorageSubstrate =>
+      answering ? new InMemoryStorageSubstrate() : unsupported<StorageSubstrate>("storage"),
+    script: (_e: SessionEntry): ScriptSubstrate =>
+      answering ? new InMemoryScriptSubstrate() : unsupported<ScriptSubstrate>("script"),
     emulation: (_e: SessionEntry): EmulationSubstrate =>
-      unsupported<EmulationSubstrate>("emulation"),
+      answering ? new InMemoryEmulationSubstrate() : unsupported<EmulationSubstrate>("emulation"),
   };
 }

@@ -1,4 +1,4 @@
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { assetExport } from "../page/asset-export.js";
@@ -94,7 +94,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           assetExport(
             {
               cdp: requireCdp(e.session),
-              page: e.session.page(),
+              page: requirePage(e.session),
               buffer: e.network,
               workspaceRoot: workspace.root,
               sessionId: e.id,
@@ -201,7 +201,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           };
         }
         const r = await withDeadline(
-          pdfSave(e.session.page(), workspace.root, e.id, {
+          pdfSave(requirePage(e.session), workspace.root, e.id, {
             path: args.path,
             format: args.format,
             scale: args.scale,
@@ -273,7 +273,7 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          pageArchive(e.session.page(), workspace.root, e.id, {
+          pageArchive(requirePage(e.session), workspace.root, e.id, {
             path: args.path,
             format: args.format,
             maxSizeMb: args.maxSizeMb,

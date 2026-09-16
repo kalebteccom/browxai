@@ -5,6 +5,7 @@ import { domExport } from "../page/dom-export.js";
 import { detectOverflow } from "../page/overflow-detect.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Capture + report — element-level export & layout diagnosis. `element_export`
@@ -63,7 +64,7 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          elementExportFromRef(e.session.page(), e.refs, workspace.root, e.id, {
+          elementExportFromRef(requirePage(e.session), e.refs, workspace.root, e.id, {
             ref: args.ref,
             format: args.format,
             intoDir: args.intoDir,
@@ -139,7 +140,7 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          domExport(e.session.page(), workspace.root, e.id, {
+          domExport(requirePage(e.session), workspace.root, e.id, {
             format: args.format,
             includeShadow: args.includeShadow,
             path: args.path,
@@ -218,7 +219,7 @@ export function registerCaptureReportElementExportTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          detectOverflow(e.session.page(), {
+          detectOverflow(requirePage(e.session), {
             scope: args.scope,
             types: args.types,
             limit: args.limit,

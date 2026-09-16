@@ -4,6 +4,7 @@ import { runShortcut } from "../page/shortcut.js";
 import { ACTION_OPTS, REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import { actionTool, type ActionToolHost } from "./action-tool.js";
 import type { ConfigHost, ServerServicesHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Core action verbs: navigate / click / fill / press / shortcut. Split out of
@@ -174,7 +175,7 @@ export function registerActionCoreTools(
       try {
         const result = await withDeadline(
           runShortcut(
-            e.session.page(),
+            requirePage(e.session),
             e.refs,
             { keys: args.keys, target },
             {

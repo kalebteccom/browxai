@@ -18,6 +18,7 @@ import type {
   ConfigHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Chrome-extension management tools: extensions_install / extensions_list /
@@ -321,7 +322,7 @@ export function registerExtensionsTools(
         // Resolve the Chrome-runtime id by inspecting the context's
         // service-worker / background-page URLs. Best-effort — surfaces the
         // discovered ids so the caller can decide.
-        const runtimeIds = discoverExtensionRuntimeIds(e.session.page().context());
+        const runtimeIds = discoverExtensionRuntimeIds(requirePage(e.session).context());
         // We can't reliably map our path-hash id to the runtime id without
         // parsing the manifest's `key` field — when there's exactly one loaded
         // extension AND one runtime id we assume the mapping.
@@ -354,8 +355,7 @@ export function registerExtensionsTools(
         // page. The extension serves `chrome-extension://<id>/` from its
         // manifest's `action.default_popup` / `browser_action.default_popup`.
         const url = `chrome-extension://${runtimeId}/`;
-        await e.session
-          .page()
+        await requirePage(e.session)
           .goto(url, { waitUntil: "domcontentloaded" })
           .catch(() => undefined);
         return extensionEnvelope(e, {

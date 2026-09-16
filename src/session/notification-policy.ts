@@ -62,8 +62,7 @@
 //                   `notification.close()` immediately will observe a no-op
 //                   stub. Documented in the docs/tool-reference.md entry.
 
-import type { BrowserContext } from "playwright-core";
-import { PolicyRecordBuffer } from "./policy-buffer.js";
+import { InstallGuard, PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type NotificationPolicyMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -111,7 +110,7 @@ export class NotificationPolicyState {
    *  timestamp as `timestamp`, so the buffer reads it via an explicit extractor. */
   private readonly records: PolicyRecordBuffer<NotificationRecord>;
   /** Contexts we've already installed the init-script + binding on. */
-  private wired = new WeakSet<BrowserContext>();
+  private readonly wired = new InstallGuard();
 
   constructor(initial: NotificationPolicy = { mode: "allow" }, cap = 200) {
     this.policy = normalise(initial);
@@ -144,12 +143,12 @@ export class NotificationPolicyState {
   }
 
   /** Has this context already been wired? Idempotent install guard. */
-  hasContext(c: BrowserContext): boolean {
+  hasContext(c: object): boolean {
     return this.wired.has(c);
   }
   /** Mark a context as wired. */
-  markContext(c: BrowserContext): void {
-    this.wired.add(c);
+  markContext(c: object): void {
+    this.wired.mark(c);
   }
 }
 

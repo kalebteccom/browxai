@@ -46,24 +46,12 @@ function cacheOriginGuard(page: Page, tool: string): void {
   }
 }
 
-/** Result envelope for a cache-entry body — text-like content lands as a
- *  string, anything binary-ish as base64 + the byte count. */
-export type CacheEntryBody =
-  | {
-      kind: "text";
-      text: string;
-      contentType: string | null;
-      status: number;
-      headers: Record<string, string>;
-    }
-  | {
-      kind: "binary";
-      contentBase64: string;
-      byteLength: number;
-      contentType: string | null;
-      status: number;
-      headers: Record<string, string>;
-    };
+// The plain-data Cache API vocabulary lives in `cache-storage-types.ts` so the
+// StorageSubstrate port can name it without reaching playwright-core through
+// this module's helpers. Re-exported here so every existing importer is
+// unchanged.
+export type { CacheEntryBody } from "./cache-storage-types.js";
+import type { CacheEntryBody } from "./cache-storage-types.js";
 
 // ---- reads -----------------------------------------------------------------
 

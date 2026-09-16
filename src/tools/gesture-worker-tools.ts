@@ -8,6 +8,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Worker-visibility tools: workers_list / worker_message_send /
@@ -54,7 +55,11 @@ export function registerGestureWorkerTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const list = await e.workers.list(e.session.page(), requireCdp(e.session), type ?? "all");
+        const list = await e.workers.list(
+          requirePage(e.session),
+          requireCdp(e.session),
+          type ?? "all",
+        );
         const body = { ok: true, workers: list, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -91,7 +96,7 @@ export function registerGestureWorkerTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.workers.sendMessage(e.session.page(), requireCdp(e.session), {
+        const r = await e.workers.sendMessage(requirePage(e.session), requireCdp(e.session), {
           workerId,
           message,
         });
@@ -131,7 +136,7 @@ export function registerGestureWorkerTools(
       const e = await entryFor(session);
       try {
         const messages = await e.workers.readMessages(
-          e.session.page(),
+          requirePage(e.session),
           workerId !== undefined ? { workerId } : {},
         );
         const body = { ok: true, messages, tokensEstimate: 0 };

@@ -17,7 +17,9 @@ import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import type { StorageSubstrate } from "../page/storage-substrate.js";
 import type { ScriptSubstrate } from "../page/script-substrate.js";
 import type { EmulationSubstrate } from "../page/emulation-substrate.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
 import type { EgressSanitiser } from "../util/egress-sanitiser.js";
+import type { EngineSubInterface } from "../engine/index.js";
 
 /** The MCP content shape every registered handler returns — the same `{ content }`
  *  envelope an over-the-wire MCP call produces. Shared with `createServer` so the
@@ -150,6 +152,17 @@ export interface GateHost {
    *  when the engine supports the tool. */
   engineGate: (toolName: string, e: SessionEntry) => ToolResponse | null;
 
+  /** Sub-interface-dimension early return: refusal content when the session's
+   *  engine declares no `sub` sub-interface, else null. For a tool whose
+   *  implementation needs a sub-interface but which is not `deep:true` (so
+   *  `engineGate` does not cover it). The refusal shares `engineGate`'s envelope,
+   *  so "this engine cannot" stays one shape however it was reached. */
+  subInterfaceGate: (
+    toolName: string,
+    sub: EngineSubInterface,
+    e: SessionEntry,
+  ) => ToolResponse | null;
+
   /** Confirm-hook rejection content for a denied decision. */
   denyContent: (toolName: string, decision: { reason: string }) => ToolResponse;
 }
@@ -218,6 +231,14 @@ export interface ScriptHost {
 export interface EmulationHost {
   /** The live-emulation capability port for a session (engine-selected). */
   emulationFor: (e: SessionEntry) => EmulationSubstrate;
+}
+
+/** The target-identity capability port (RFC 0009 P1). */
+export interface TargetHost {
+  /** The target-identity capability port for a session (engine-selected). A
+   *  handler that needs the current URL or title reads it from here; reaching
+   *  `e.session.page().url()` is the Playwright bypass RFC 0009 closes. */
+  targetFor: (e: SessionEntry) => TargetSubstrate;
 }
 
 /** The egress-masking chokepoint (RFC 0004 P3 / D4). A family that returns
@@ -317,6 +338,7 @@ export interface ToolHost
     StorageHost,
     ScriptHost,
     EmulationHost,
+    TargetHost,
     EgressHost,
     EnvelopeHost,
     ConfigHost,

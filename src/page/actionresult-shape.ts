@@ -3,7 +3,7 @@
 // the size budget; every function is behavior-identical to its prior inline form
 // (no page contact, deterministic over already-captured inputs).
 
-import { walk, type A11yNode } from "./a11y.js";
+import { walk, type A11yNode } from "./a11y-types.js";
 import { findByRef, serialise } from "./snapshot.js";
 import { truncateToBudget } from "../util/tokens.js";
 

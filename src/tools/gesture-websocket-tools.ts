@@ -1,6 +1,7 @@
 import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Interactive WebSocket primitives: ws_send / ws_intercept / ws_unintercept — the
@@ -41,7 +42,7 @@ export function registerGestureWebsocketTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.wsInteractive.send(e.session.page(), { wsId, message });
+        const r = await e.wsInteractive.send(requirePage(e.session), { wsId, message });
         const body = { ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -88,7 +89,10 @@ export function registerGestureWebsocketTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.wsInteractive.addInterceptor(e.session.page(), { pattern, response });
+        const r = await e.wsInteractive.addInterceptor(requirePage(e.session), {
+          pattern,
+          response,
+        });
         const body = { ok: true, ...r, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -124,7 +128,7 @@ export function registerGestureWebsocketTools(
       const e = await entryFor(session);
       try {
         const r = await e.wsInteractive.removeInterceptor(
-          e.session.page(),
+          requirePage(e.session),
           pattern !== undefined ? { pattern } : {},
         );
         const body = { ok: true, ...r, tokensEstimate: 0 };

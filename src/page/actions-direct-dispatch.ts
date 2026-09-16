@@ -26,12 +26,15 @@ import type { CDPSession, Locator, Page } from "playwright-core";
 import type { ActionResult, DispatchedAction, ElementProbe, HitPoint } from "./actionresult.js";
 import { cssSelectorForTarget, targetDescriptor, type ActionTarget } from "./locator.js";
 import type { RefRegistry } from "./refs.js";
+import { refFrameOf } from "./ref-frames.js";
 import { probe, captureHit } from "./actions-probe.js";
 
 /** How `click` reaches the element. `actionability` (the default) is Playwright's
  *  locator path with the automatic `force: true` recovery; `direct` skips the
  *  locator engine's pre-dispatch path entirely. */
-export type ClickDispatch = "actionability" | "direct";
+// `ClickDispatch` is argument vocabulary the port declares, so it lives on
+// `actions-types.ts`; re-exported here, the home of the direct-dispatch path.
+export type { ClickDispatch } from "./actions-types.js";
 
 export type MouseButton = "left" | "right" | "middle";
 
@@ -113,7 +116,7 @@ export function directDispatchUnsupported(target: ActionTarget, engine: string):
  *  `getBoundingClientRect()` is frame-relative while CDP dispatches in main-frame
  *  viewport coordinates, so aiming there would click the wrong place. */
 function directSelector(refs: RefRegistry, target: ActionTarget): DirectSelector | null {
-  if (target.ref && refs.frameOf(target.ref)) return null;
+  if (target.ref && refFrameOf(refs, target.ref)) return null;
   const selector = cssSelectorForTarget(refs, target);
   if (!selector) return null;
   if (!target.contextRef) return { selector };

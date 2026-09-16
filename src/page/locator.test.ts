@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { Page } from "playwright-core";
 import { locatorFor, resolveTarget, resolveTargetChecked } from "./locator.js";
 import { RefRegistry } from "./refs.js";
+import { bindRefFrame } from "./ref-frames.js";
 
 // Minimal Page mock. Each getByRole / locator call records its arguments and
 // returns a chainable sentinel that supports `first()`, `locator()`, and
@@ -149,7 +150,7 @@ describe("locatorFor — frame-scoped refs", () => {
       frameId: "f1",
     });
 
-    refs.bindFrame(ref, framePage as any);
+    bindRefFrame(refs, ref, framePage as any);
     locatorFor(page, refs, { ref });
     expect(pageCalls).toEqual([]);
     expect(frameCalls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
@@ -179,7 +180,7 @@ describe("locatorFor — frame-scoped refs", () => {
       frameId: "f2",
     });
 
-    refs.bindFrame(ctx, framePage as any);
+    bindRefFrame(refs, ctx, framePage as any);
     locatorFor(page, refs, { selector: '[data-testid="x"]', contextRef: ctx });
     expect(pageCalls).toEqual([]);
     // First call: the contextRef itself was resolved on the frame (cssPath via locator).

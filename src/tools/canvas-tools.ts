@@ -10,6 +10,7 @@ import {
 } from "../page/canvas.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Canvas-app automation primitives.
@@ -83,7 +84,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          canvasCapture(e.session.page(), {
+          canvasCapture(requirePage(e.session), {
             ref: args.ref,
             selector: args.selector,
             format: args.format,
@@ -227,7 +228,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          runGestureChain(e.session.page(), { steps: args.steps }),
+          runGestureChain(requirePage(e.session), { steps: args.steps }),
           cfgActionTimeout(),
           "gesture_chain",
         );
@@ -296,7 +297,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          canvasWorldToScreen(e.session.page(), {
+          canvasWorldToScreen(requirePage(e.session), {
             worldX: args.worldX,
             worldY: args.worldY,
             ...(args.ref ? { ref: args.ref } : {}),
@@ -366,7 +367,7 @@ export function registerCanvasTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       try {
         const r = await withDeadline(
-          canvasScreenToWorld(e.session.page(), {
+          canvasScreenToWorld(requirePage(e.session), {
             screenX: args.screenX,
             screenY: args.screenY,
             ...(args.ref ? { ref: args.ref } : {}),

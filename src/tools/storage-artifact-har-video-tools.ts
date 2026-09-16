@@ -13,6 +13,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Per-session artifact KV + HAR record/replay + video recording tools:
@@ -211,7 +212,7 @@ export function registerStorageArtifactHarVideoTools(
         const c = await confirmByobAction("start_har", confirmCtxFor(e));
         if (!c.ok) return denyContent("start_har", c);
         const r = await withDeadline(
-          startHar(e.session.page().context(), e.har, workspace.root, e.id, {
+          startHar(requirePage(e.session).context(), e.har, workspace.root, e.id, {
             path,
             mode,
             content,
@@ -251,7 +252,7 @@ export function registerStorageArtifactHarVideoTools(
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          stopHar(e.session.page().context(), e.har),
+          stopHar(requirePage(e.session).context(), e.har),
           cfgActionTimeout(),
           "stop_har",
         );

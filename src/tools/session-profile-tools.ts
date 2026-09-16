@@ -8,6 +8,7 @@ import type {
   EnvelopeHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Managed-profile inventory: `profile_status`. Workspace introspection only —
@@ -34,7 +35,7 @@ function liveProbes(entries: readonly SessionEntry[]): LiveProfileProbe[] {
       sessionId: entry.id,
       profileDir,
       cookieDomains: async () => {
-        const cookies = await entry.session.page().context().cookies();
+        const cookies = await requirePage(entry.session).context().cookies();
         return cookies.map((c) => c.domain);
       },
     });

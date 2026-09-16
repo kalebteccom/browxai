@@ -7,8 +7,7 @@
 
 import type { SecretRegistry } from "../util/secrets.js";
 import { patternisePath } from "../util/url-sanitizer.js";
-import { maskedUrl } from "./network-mask.js";
-import type { WsFrame } from "./network-ws.js";
+import { maskedText, maskedUrl } from "./network-mask.js";
 
 export interface NetworkEntry {
   method: string;
@@ -207,4 +206,33 @@ export function extractTopLevelKeys(parsed: unknown): string[] | null {
       .map((k) => `[].${k}`);
   }
   return null;
+}
+
+export interface WsFrame {
+  /** WS/SSE endpoint URL (best-effort — empty if the create event was missed). */
+  url: string;
+  dir: "sent" | "recv";
+  kind: "ws" | "sse";
+  /** WS opcode (1=text, 2=binary, 8=close, 9=ping, 10=pong). Absent for SSE. */
+  opcode?: number;
+  /** SSE event name when present (`eventName` from CDP). */
+  event?: string;
+  /** Payload, truncated to `maxPayload` chars. */
+  payload: string;
+  truncated?: boolean;
+  ts: number;
+}
+
+/** Egress sanitizer for a WS/SSE frame: redact the endpoint url, any url
+ *  substrings inside the payload (a stream payload can echo a credentialled
+ *  URL too), and any registered-secret real-values that landed in the
+ *  payload (chat / multiplayer / live-dashboard broadcasts routinely echo
+ *  the auth blob the client sent). Returns a copy — the ring keeps raw
+ *  frames for url filtering. */
+export function sanitizeFrame(f: WsFrame, secrets: SecretRegistry | null): WsFrame {
+  return {
+    ...f,
+    url: maskedUrl(f.url, secrets),
+    payload: maskedText(f.payload, secrets),
+  };
 }

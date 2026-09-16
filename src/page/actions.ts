@@ -8,35 +8,50 @@ import {
   type ActionContext,
   type DispatchedAction,
   type ActionResult,
-  type ActionWindowOptions,
 } from "./actionresult.js";
-import {
-  locatorFor,
-  resolveTargetChecked,
-  refOrSelector,
-  targetDescriptor,
-  type ActionTarget,
-} from "./locator.js";
+import { locatorFor, resolveTargetChecked, refOrSelector, targetDescriptor } from "./locator.js";
 import { preProbe, probe, captureHit, captureFocusedRef } from "./actions-probe.js";
 import { materialiseValue, maskProbe, failedFill, failedPress } from "./actions-secrets.js";
-import { directClick, type ClickDispatch } from "./actions-direct-dispatch.js";
+import { directClick } from "./actions-direct-dispatch.js";
 import { invariant } from "../util/invariant.js";
+// The eleven verb argument shapes live on the vendor-free leaf
+// `actions-types.ts`, above both this Playwright adapter and the Safari one, so
+// the ActionSubstrate port can name them without reaching playwright-core
+// through this module. Re-exported so existing importers are unchanged.
+export type {
+  ActionTarget,
+  ClickDispatch,
+  ClickArgs,
+  FillArgs,
+  NavigateArgs,
+  PressArgs,
+  HoverArgs,
+  SelectArgs,
+  WaitForArgs,
+  SetViewportArgs,
+  ChooseOptionArgs,
+  GoBackArgs,
+  GoForwardArgs,
+} from "./actions-types.js";
+import type {
+  ClickArgs,
+  FillArgs,
+  NavigateArgs,
+  PressArgs,
+  HoverArgs,
+  SelectArgs,
+  WaitForArgs,
+  SetViewportArgs,
+  ChooseOptionArgs,
+  GoBackArgs,
+  GoForwardArgs,
+} from "./actions-types.js";
 
 // aligned with the anti-wedge default (5s). Inner Playwright ops use
 // the per-call `deadlineMs` when provided so a raised `timeoutMs` is honoured
 // by the inner op too (not just the outer race in runInActionWindow).
 const DEFAULT_TIMEOUT_MS = 5_000;
 
-export interface ClickArgs extends ActionWindowOptions {
-  target: ActionTarget;
-  button?: "left" | "right" | "middle";
-  force?: boolean;
-  /** Unset / `"actionability"` is the default path below, byte-identical to a
-   *  call that never names it. `"direct"` skips the locator engine's
-   *  pre-dispatch work — the action substrate refuses it on an engine with no
-   *  CDP handle before this function is reached. */
-  dispatch?: ClickDispatch;
-}
 export async function click(ctx: ActionContext, args: ClickArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "click", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
@@ -129,10 +144,6 @@ export async function click(ctx: ActionContext, args: ClickArgs): Promise<Action
   });
 }
 
-export interface FillArgs extends ActionWindowOptions {
-  target: ActionTarget;
-  value: string;
-}
 export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionResult> {
   // Secrets materialisation: a `<NAME>`-shaped `value` is swapped for the
   // registered real string AT dispatch. The descriptor records the alias
@@ -161,9 +172,6 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   });
 }
 
-export interface NavigateArgs extends ActionWindowOptions {
-  url: string;
-}
 export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "navigate", url: args.url };
   return runInActionWindow(ctx, descriptor, args, async () => {
@@ -174,10 +182,6 @@ export async function navigate(ctx: ActionContext, args: NavigateArgs): Promise<
   });
 }
 
-export interface PressArgs extends ActionWindowOptions {
-  target?: ActionTarget;
-  key: string;
-}
 export async function press(ctx: ActionContext, args: PressArgs): Promise<ActionResult> {
   // Secrets materialisation on `key` — mirrors `fill`. The realistic case is
   // a one-shot OTP/passphrase that the agent needs to "press" into a focused
@@ -205,9 +209,6 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   });
 }
 
-export interface HoverArgs extends ActionWindowOptions {
-  target: ActionTarget;
-}
 export async function hover(ctx: ActionContext, args: HoverArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = { type: "hover", ...targetDescriptor(args.target) };
   const { resolved, warning } = await resolveTargetChecked(ctx.page, ctx.refs, args.target);
@@ -227,10 +228,6 @@ export async function hover(ctx: ActionContext, args: HoverArgs): Promise<Action
   });
 }
 
-export interface SelectArgs extends ActionWindowOptions {
-  target: ActionTarget;
-  values: string[];
-}
 export async function select(ctx: ActionContext, args: SelectArgs): Promise<ActionResult> {
   const descriptor: DispatchedAction = {
     type: "select",
@@ -245,16 +242,6 @@ export async function select(ctx: ActionContext, args: SelectArgs): Promise<Acti
   });
 }
 
-export interface WaitForArgs extends ActionWindowOptions {
-  /** Element-visibility wait (mutually exclusive with `text`). */
-  target?: ActionTarget;
-  /** SPA-readiness wait — poll until this visible text appears anywhere
-   *  in the page. The non-target gating mode real apps need after a reload /
-   *  nav. NO arbitrary-JS predicate mode by design — that stays `eval_js`'s
-   *  domain (the single `eval`-gated loophole). */
-  text?: string;
-  timeoutMs?: number;
-}
 export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<ActionResult> {
   const timeout = args.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   if (args.text !== undefined) {
@@ -283,10 +270,6 @@ export async function waitFor(ctx: ActionContext, args: WaitForArgs): Promise<Ac
   });
 }
 
-export interface SetViewportArgs extends ActionWindowOptions {
-  width: number;
-  height: number;
-}
 /** mid-session viewport resize. `page.setViewportSize` re-lays-out and
  *  often triggers responsive re-render / lazy-load — wrapped in the action
  *  window so `structure` / `network` / `snapshotDelta` show what changed.
@@ -304,12 +287,6 @@ export async function setViewport(
     await ctx.page.setViewportSize({ width: args.width, height: args.height });
     return { stillAttached: true };
   });
-}
-
-export interface ChooseOptionArgs extends ActionWindowOptions {
-  target: ActionTarget;
-  option: string;
-  exact?: boolean;
 }
 
 /**
@@ -381,7 +358,6 @@ async function resolveOption(page: Page, text: string, exact: boolean): Promise<
   return attempts[0]!();
 }
 
-export type GoBackArgs = ActionWindowOptions;
 export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise<ActionResult> {
   return runInActionWindow(ctx, { type: "goBack" }, args, async () => {
     await ctx.page.goBack({
@@ -391,7 +367,6 @@ export async function goBack(ctx: ActionContext, args: GoBackArgs = {}): Promise
   });
 }
 
-export type GoForwardArgs = ActionWindowOptions;
 export async function goForward(
   ctx: ActionContext,
   args: GoForwardArgs = {},

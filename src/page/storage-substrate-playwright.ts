@@ -82,7 +82,7 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
     return { ok: r.ok, name: req.name };
   }
 
-  webStorageGet(
+  async webStorageGet(
     kind: WebStorageKind,
     args: { key: string },
     tool: string,
@@ -90,14 +90,14 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
     return webStorageGet(this.page(), kind, args, tool);
   }
 
-  webStorageList(
+  async webStorageList(
     kind: WebStorageKind,
     tool: string,
   ): Promise<{ entries: WebStorageEntry[]; origin: string }> {
     return webStorageList(this.page(), kind, tool);
   }
 
-  webStorageSet(
+  async webStorageSet(
     kind: WebStorageKind,
     args: { key: string; value: string },
     tool: string,
@@ -105,7 +105,7 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
     return webStorageSet(this.page(), kind, args, tool);
   }
 
-  webStorageDelete(
+  async webStorageDelete(
     kind: WebStorageKind,
     args: { key: string },
     tool: string,
@@ -113,59 +113,65 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
     return webStorageDelete(this.page(), kind, args, tool);
   }
 
-  webStorageClear(kind: WebStorageKind, tool: string): Promise<{ ok: true; origin: string }> {
+  async webStorageClear(kind: WebStorageKind, tool: string): Promise<{ ok: true; origin: string }> {
     return webStorageClear(this.page(), kind, tool);
   }
 
-  idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
+  async idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
     return idbListDatabases(this.page(), tool);
   }
 
-  idbListStores(args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
+  async idbListStores(args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
     return idbListStores(this.page(), args, tool);
   }
 
-  idbGet(
+  async idbGet(
     args: { dbName: string; storeName: string; key: unknown },
     tool: string,
   ): Promise<IdbGetResult> {
     return idbGet(this.page(), args, tool);
   }
 
-  idbPut(
+  async idbPut(
     args: { dbName: string; storeName: string; key: unknown; value: unknown },
     tool: string,
   ): Promise<IdbWriteResult> {
     return idbPut(this.page(), args, tool);
   }
 
-  idbDelete(
+  async idbDelete(
     args: { dbName: string; storeName: string; key: unknown },
     tool: string,
   ): Promise<IdbWriteResult> {
     return idbDelete(this.page(), args, tool);
   }
 
-  idbClear(args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult> {
+  async idbClear(
+    args: { dbName: string; storeName: string },
+    tool: string,
+  ): Promise<IdbClearResult> {
     return idbClear(this.page(), args, tool);
   }
 
-  cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
+  async cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
     return cachesListStorages(this.page(), tool);
   }
 
-  cachesList(
+  async cachesList(
     args: { cacheName: string; urlPattern?: string },
     tool: string,
   ): Promise<CachesListResult> {
     return cachesList(this.page(), args, tool);
   }
 
-  cachesGet(args: { cacheName: string; url: string }, tool: string): Promise<CachesGetResult> {
+  async cachesGet(
+    args: { cacheName: string; url: string },
+    tool: string,
+  ): Promise<CachesGetResult> {
     return cachesGet(this.page(), args, tool);
   }
 
-  cachesPut(
+  async cachesPut(
     args: {
       cacheName: string;
       url: string;
@@ -181,18 +187,18 @@ export class PlaywrightStorageSubstrate implements StorageSubstrate {
     return cachesPut(this.page(), args, tool);
   }
 
-  cachesDelete(
+  async cachesDelete(
     args: { cacheName: string; url: string },
     tool: string,
   ): Promise<CachesDeleteResult> {
     return cachesDelete(this.page(), args, tool);
   }
 
-  cachesClear(args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
+  async cachesClear(args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
     return cachesClear(this.page(), args, tool);
   }
 
-  cachesDeleteStorage(
+  async cachesDeleteStorage(
     args: { cacheName: string },
     tool: string,
   ): Promise<CachesDeleteStorageResult> {

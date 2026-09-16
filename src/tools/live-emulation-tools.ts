@@ -1,4 +1,4 @@
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import {
   applyLocaleCdp,
   applyLocaleNavigator,
@@ -27,7 +27,7 @@ import { SESSION_ARG } from "./schemas.js";
  * Registered through the shared `ToolHost` seam.
  */
 export function registerLiveEmulationTools(host: ToolHost): void {
-  const { z, register, gateCheck, engineGate, entryFor, emulationFor } = host;
+  const { z, register, gateCheck, subInterfaceGate, engineGate, entryFor, emulationFor } = host;
 
   // ---------- Per-primitive device emulation ----------
   //
@@ -138,7 +138,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const eg = engineGate("set_locale", e);
       if (eg) return eg;
       try {
-        const localePage = e.session.page();
+        const localePage = requirePage(e.session);
         if (locale === null || locale === undefined) {
           await clearLocaleCdp(requireCdp(e.session));
           await applyLocaleNavigator(localePage.context(), localePage, "");
@@ -219,6 +219,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_geolocation");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_geolocation", "emulation", e);
+      if (sg) return sg;
       try {
         const isClear = latitude === null || latitude === undefined;
         if (isClear) {
@@ -272,6 +274,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_color_scheme");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_color_scheme", "emulation", e);
+      if (sg) return sg;
       try {
         const r = await emulationFor(e).setColorScheme(scheme);
         if (r.kind === "refusal") return emulationRefusal("set_color_scheme", r);
@@ -299,6 +303,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_reduced_motion");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_reduced_motion", "emulation", e);
+      if (sg) return sg;
       try {
         const motion: ReducedMotion = on ? "reduce" : "no-preference";
         const r = await emulationFor(e).setReducedMotion(motion);
@@ -380,13 +386,18 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       try {
         if (!permissions || permissions.length === 0) {
           const hadOrigin = origin !== undefined;
-          await clearPermissions(e.session.page().context(), e.deviceEmulation, origin);
+          await clearPermissions(requirePage(e.session).context(), e.deviceEmulation, origin);
           const note = hadOrigin
             ? "Per-origin permission revocation isn't supported by Playwright; cleared ALL grants for the session context."
             : "Cleared ALL permission grants for the session context.";
           return emulationResult(e, { permissions: [], origin: origin ?? null }, { note });
         }
-        await applyPermissions(e.session.page().context(), e.deviceEmulation, permissions, origin);
+        await applyPermissions(
+          requirePage(e.session).context(),
+          e.deviceEmulation,
+          permissions,
+          origin,
+        );
         return emulationResult(e, { permissions, origin: origin ?? null });
       } catch (err) {
         return emulationError("grant_permissions", err);
@@ -421,8 +432,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       const result = await setTabVisibility(
-        e.session.page(),
-        e.session.page().context(),
+        requirePage(e.session),
+        requirePage(e.session).context(),
         state,
         holdMs,
       );

@@ -33,6 +33,7 @@ import { registerReadObserveExtractTools } from "./tools/read-observe-extract-to
 import { registerReadObserveVerifyTools } from "./tools/read-observe-verify-tools.js";
 import { registerReadObserveCaptureTools } from "./tools/read-observe-capture-tools.js";
 import { registerReadObserveBufferTools } from "./tools/read-observe-buffer-tools.js";
+import { registerReadObserveNetworkTools } from "./tools/read-observe-network-tools.js";
 import { registerGestureNetworkTools } from "./tools/gesture-network-tools.js";
 import { registerDeepPerfTools } from "./tools/deep-perf-tools.js";
 import { registerDeepCoverageTools } from "./tools/deep-coverage-tools.js";
@@ -258,6 +259,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   registerReadObserveVerifyTools(host);
   registerReadObserveCaptureTools(host);
   registerReadObserveBufferTools(host);
+  registerReadObserveNetworkTools(host);
   registerActionTools(host);
   registerGestureNetworkTools(host);
   registerDeepPerfTools(host);

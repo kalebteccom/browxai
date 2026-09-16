@@ -849,3 +849,49 @@ describe("headless-CI keystone — known headless gap (await_human / __browx ban
 // needs the off-by-default `file-io` capability (for fs_picker_respond),
 // so it spins up its own server with the right env, same pattern as the
 // page-archive keystone.
+
+// The Chromium half of the verify-refusal fix. `test/architecture/
+// verify-engine-refusal.test.ts` proves the no-`page`-sub-interface path returns
+// a refusal; only a real browser proves the supported path is untouched — that
+// the `subInterfaceGate` added ahead of `session.page()` does not fire on
+// chromium, and that a genuine miss still lands as `failure.source:"app"` with
+// no engine-refusal fields on it.
+describe("headless-CI keystone — verify_* on chromium is unchanged by the engine gate", () => {
+  it(
+    "passes on a real element and reports a genuine miss as an assertion failure",
+    async () => {
+      const session = "ks-verify-engine";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      type Body = {
+        ok: boolean;
+        engine?: string;
+        hint?: string;
+        failure?: { source?: string; kind?: string; actual?: string };
+      };
+      const pass = await callJson<Body>("verify_count", { session, selector: "body", n: 1 });
+      expect(pass.ok, "verify_count on a real chromium page still passes").toBe(true);
+      expect(pass.engine, "the sub-interface gate must not fire on chromium").toBeUndefined();
+
+      // A genuine miss: the element is absent, so the assertion failed for real.
+      // It must still carry a `failure` block, and must NOT be dressed as a
+      // refusal (no `engine` / `hint`) — the two are separable in both directions.
+      for (const [tool, args] of [
+        ["verify_visible", { selector: "#definitely-not-here" }],
+        ["verify_text", { selector: "body", text: "__no_such_text__", exact: true }],
+        ["verify_count", { selector: "#definitely-not-here", n: 3 }],
+      ] as const) {
+        const miss = await callJson<Body>(tool, { session, ...args });
+        expect(miss.ok, `${tool} must fail on a genuine miss`).toBe(false);
+        expect(miss.failure, `${tool} must still emit a structured failure`).toBeDefined();
+        expect(miss.engine, `${tool} miss must not be shaped as an engine refusal`).toBeUndefined();
+        expect(miss.hint, `${tool} miss must not be shaped as an engine refusal`).toBeUndefined();
+        expect(JSON.stringify(miss)).not.toContain("sub-interface");
+      }
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});

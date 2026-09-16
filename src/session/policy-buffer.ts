@@ -49,3 +49,30 @@ export class PolicyRecordBuffer<TRecord> {
     return this.buffer.some((r) => this.tsOf(r) >= since && pred(r));
   }
 }
+
+/** The idempotent-install guard the five page-policy classes each hand-rolled
+ *  as a `WeakSet<BrowserContext>` / `WeakSet<Page>` field. BYOB reconnect and
+ *  context rebuild both re-run the attach path, so the wiring has to be a no-op
+ *  the second time; the guard answers "already wired?".
+ *
+ *  The target is `object`, not a Playwright type, because the guard tracks
+ *  IDENTITY ONLY — it never dereferences what it is handed, so naming
+ *  `BrowserContext` bought nothing and made the policy modules, which the
+ *  `ActionResult` vocabulary reads its record shapes from, reach
+ *  playwright-core. A Safari or native adapter passes its own context object
+ *  and the guard works unchanged. (RFC 0009 P1.)
+ *
+ *  `WeakSet` so a discarded context/page is collectable. */
+export class InstallGuard {
+  private readonly wired = new WeakSet<object>();
+
+  /** Has this target already been wired? */
+  has(target: object): boolean {
+    return this.wired.has(target);
+  }
+
+  /** Mark a target as wired. */
+  mark(target: object): void {
+    this.wired.add(target);
+  }
+}
