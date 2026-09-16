@@ -230,11 +230,29 @@ for a user's running Firefox. The Firefox attach model is a glass-box BiDi
 **launch** of the real profile (`--remote-debugging-port`, profile-lock-bound),
 not a CDP-attach; `BROWX_ATTACH_BIDI` is the reserved name.
 
+## Where a substrate lives (the port/adapter file split)
+
+Every capability substrate is four kinds of module, and the naming is uniform
+(RFC 0009 P1):
+
+| File                             | Holds                                                             |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `<name>-substrate-types.ts`      | the PORT. Zero vendor imports — `pnpm depcruise` enforces it.     |
+| `<name>-substrate-playwright.ts` | the Playwright adapter (`-cdp.ts` where a CDP variant exists too) |
+| `<name>-substrate-safari.ts`     | the safaridriver adapter                                          |
+| `<name>-substrate.ts`            | a barrel re-exporting all of the above                            |
+
+Consumers import the barrel, so the path a handler writes never changes when an
+adapter is added. A NEW adapter is a new `<name>-substrate-<engine>.ts` plus one
+line in the barrel and one line in that engine's `SubstrateBundle` — no edit to
+the port, and no edit to any consumer. Putting an implementation back in the port
+file fails `ports-name-no-vendor-type` the moment it names a vendor type.
+
 ## The snapshot/a11y substrate (RFC D4: hybrid behind one interface)
 
 The read core (`snapshot` / `find` / `extract` / `text_search` / `set-of-marks` /
 `plan`) and the action-window pre/post `snapshotDelta` mint refs from **one**
-`SnapshotSubstrate` interface (`src/page/snapshot-substrate.ts`), not a raw
+`SnapshotSubstrate` port (`src/page/snapshot-substrate-types.ts`), not a raw
 `CDPSession`. This is what un-gates `navigate` / `click` / `fill` / `snapshot` /
 `find` on the CDP-absent engines. The seam is dependency direction made concrete:
 tools → `SnapshotSubstrate` → implementation → CDP / Playwright. The engine handle
@@ -296,7 +314,7 @@ element probe build on every engine.
 
 The network tools (`network_read` / `ws_read` / `network_body`), `asset_export`'s
 ring iteration, and the action-window / watch network slice read from **one**
-`NetworkSubstrate` interface (`src/page/network-substrate.ts`), not a raw
+`NetworkSubstrate` port (`src/page/network-substrate-types.ts`), not a raw
 `CDPSession`. This is what un-gates the network slice on the CDP-absent engines.
 Same doctrine as the snapshot substrate: tools → `NetworkSubstrate` →
 implementation → CDP / Playwright events; the engine handle is captured at
