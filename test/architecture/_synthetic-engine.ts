@@ -27,6 +27,7 @@ import type { CaptureSubstrate } from "../../src/page/capture-substrate.js";
 import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
 import type { EmulationSubstrate } from "../../src/page/emulation-substrate.js";
+import type { TargetSubstrate } from "../../src/page/target-substrate.js";
 import type { ActionResult, DispatchedAction } from "../../src/page/actionresult.js";
 
 /** A present-but-throwing substrate for the four ports the core contract never
@@ -200,6 +201,21 @@ class InMemoryNetworkSubstrate implements NetworkSubstrate {
   }
 }
 
+/** The synthetic engine's in-memory TargetSubstrate. The core contract drives it
+ *  through `list_sessions` (the `url` column) and the snapshot header, which is
+ *  what lets the synthetic session answer both WITHOUT a Playwright Page: before
+ *  RFC 0009 P1 those two reads went to `page().url()` / `page().title()` and were
+ *  the reason the synthetic engine had to carry a `fakePage()` at all. */
+class InMemoryTargetSubstrate implements TargetSubstrate {
+  readonly engine = "synthetic";
+  url(): Promise<string> {
+    return Promise.resolve("about:blank");
+  }
+  title(): Promise<string> {
+    return Promise.resolve("synthetic");
+  }
+}
+
 /** The synthetic engine's `SubstrateBundle` — the in-memory answers the core
  *  contract drives (actions / snapshot / network) plus the present-but-throwing
  *  ports it never reaches (storage / script / emulation / capture). Takes the
@@ -210,6 +226,7 @@ export function inMemorySubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
     actions: (_e: SessionEntry): ActionSubstrate => new InMemoryActionSubstrate(),
     snapshot: (_e: SessionEntry): SnapshotSubstrate => new InMemorySnapshotSubstrate(),
     network: (_e: SessionEntry): NetworkSubstrate => new InMemoryNetworkSubstrate(),
+    target: (_e: SessionEntry): TargetSubstrate => new InMemoryTargetSubstrate(),
     capture: (_e: SessionEntry): CaptureSubstrate => unsupported<CaptureSubstrate>("capture"),
     storage: (_e: SessionEntry): StorageSubstrate => unsupported<StorageSubstrate>("storage"),
     script: (_e: SessionEntry): ScriptSubstrate => unsupported<ScriptSubstrate>("script"),

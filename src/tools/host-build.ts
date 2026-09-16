@@ -27,6 +27,7 @@ import { type CaptureSubstrate } from "../page/capture-substrate.js";
 import { type StorageSubstrate } from "../page/storage-substrate.js";
 import { type ScriptSubstrate } from "../page/script-substrate.js";
 import { type EmulationSubstrate } from "../page/emulation-substrate.js";
+import { type TargetSubstrate } from "../page/target-substrate.js";
 import { engineEntry, type SubstrateBundle, type SubstrateDeps } from "../engine/registry.js";
 import { EgressSanitiser } from "../util/egress-sanitiser.js";
 import { screenshotSave } from "../page/screenshot-save.js";
@@ -350,6 +351,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   const storageFor = (e: SessionEntry): StorageSubstrate => substratesFor(e).storage(e);
   const scriptFor = (e: SessionEntry): ScriptSubstrate => substratesFor(e).script(e);
   const emulationFor = (e: SessionEntry): EmulationSubstrate => substratesFor(e).emulation(e);
+  const targetFor = (e: SessionEntry): TargetSubstrate => substratesFor(e).target(e);
 
   // The egress-masking chokepoint (RFC 0004 P3 / D4). The `secrets`-capability
   // decision is made ONCE here: a `secrets`-off server hands every sink a
@@ -527,6 +529,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     storageFor,
     scriptFor,
     emulationFor,
+    targetFor,
     egressFor,
     caps,
     config,

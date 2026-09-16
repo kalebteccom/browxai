@@ -30,6 +30,7 @@ import { PlaywrightScriptSubstrate, type ScriptSubstrate } from "./script-substr
 import { PlaywrightEmulationSubstrate, type EmulationSubstrate } from "./emulation-substrate.js";
 import { type SnapshotSubstrate } from "./snapshot-substrate.js";
 import { type NetworkSubstrate } from "./network-substrate.js";
+import { PlaywrightTargetSubstrate, type TargetSubstrate } from "./target-substrate.js";
 import { snapshotSubstrateFor } from "./snapshot-substrate-select.js";
 import { networkSubstrateFor } from "./network-substrate-select.js";
 import { requirePage } from "../engine/index.js";
@@ -69,5 +70,7 @@ export function playwrightSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     // the session-registry used inline, now owned by the engine's bundle.
     snapshot: (e: SessionEntry): SnapshotSubstrate => snapshotSubstrateFor(e.session),
     network: (e: SessionEntry): NetworkSubstrate => networkSubstrateFor(e.session),
+    target: (e: SessionEntry): TargetSubstrate =>
+      new PlaywrightTargetSubstrate(() => requirePage(e.session), e.session.engine),
   };
 }

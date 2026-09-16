@@ -17,6 +17,7 @@ import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import type { StorageSubstrate } from "../page/storage-substrate.js";
 import type { ScriptSubstrate } from "../page/script-substrate.js";
 import type { EmulationSubstrate } from "../page/emulation-substrate.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
 import type { EgressSanitiser } from "../util/egress-sanitiser.js";
 import type { EngineSubInterface } from "../engine/index.js";
 
@@ -232,6 +233,14 @@ export interface EmulationHost {
   emulationFor: (e: SessionEntry) => EmulationSubstrate;
 }
 
+/** The target-identity capability port (RFC 0009 P1). */
+export interface TargetHost {
+  /** The target-identity capability port for a session (engine-selected). A
+   *  handler that needs the current URL or title reads it from here; reaching
+   *  `e.session.page().url()` is the Playwright bypass RFC 0009 closes. */
+  targetFor: (e: SessionEntry) => TargetSubstrate;
+}
+
 /** The egress-masking chokepoint (RFC 0004 P3 / D4). A family that returns
  *  page-derived text/JSON masks it through the injected `EgressSanitiser` instead
  *  of hand-calling `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(x) : x`.
@@ -329,6 +338,7 @@ export interface ToolHost
     StorageHost,
     ScriptHost,
     EmulationHost,
+    TargetHost,
     EgressHost,
     EnvelopeHost,
     ConfigHost,
