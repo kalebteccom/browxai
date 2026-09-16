@@ -7,23 +7,12 @@ import type { Locator, Page } from "playwright-core";
 import type { RefLocatorInputs, RefRegistry } from "./refs.js";
 import { refFrameOf } from "./ref-frames.js";
 
-/**
- * Action target shape. Exactly one of `ref` / `selector` / `coords` is
- * required. `contextRef` optionally scopes a `selector` to the subtree of a
- * prior ref — lets callers say "the [data-testid=...] *inside this row*"
- * without baking positional `:nth` chains into the selector. `coords` is the
- * escape hatch for visually-located targets (canvas, custom-painted UIs,
- * dismiss-empty-space) that ref/selector resolution genuinely can't address.
- */
-export type ActionTarget =
-  | { ref: string; selector?: undefined; contextRef?: undefined; coords?: undefined }
-  | { selector: string; ref?: undefined; contextRef?: string; coords?: undefined }
-  | {
-      coords: { x: number; y: number };
-      ref?: undefined;
-      selector?: undefined;
-      contextRef?: undefined;
-    };
+// `ActionTarget` (the ref / selector / coords descriptor) is engine-blind
+// argument vocabulary and lives on `actions-types.ts` with the rest of it;
+// re-exported here because this module is the resolution home and every caller
+// imports it by this path. `ResolvedTarget` stays — it carries a `Locator`.
+export type { ActionTarget } from "./actions-types.js";
+import type { ActionTarget } from "./actions-types.js";
 
 export type ResolvedTarget =
   { kind: "locator"; loc: Locator } | { kind: "coords"; x: number; y: number };

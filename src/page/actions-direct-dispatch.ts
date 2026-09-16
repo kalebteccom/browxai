@@ -32,7 +32,9 @@ import { probe, captureHit } from "./actions-probe.js";
 /** How `click` reaches the element. `actionability` (the default) is Playwright's
  *  locator path with the automatic `force: true` recovery; `direct` skips the
  *  locator engine's pre-dispatch path entirely. */
-export type ClickDispatch = "actionability" | "direct";
+// `ClickDispatch` is argument vocabulary the port declares, so it lives on
+// `actions-types.ts`; re-exported here, the home of the direct-dispatch path.
+export type { ClickDispatch } from "./actions-types.js";
 
 export type MouseButton = "left" | "right" | "middle";
 

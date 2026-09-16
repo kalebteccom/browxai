@@ -14,10 +14,9 @@ import {
   type ActionContext,
   type DispatchedAction,
   type ActionResult,
-  type ActionWindowOptions,
   type ElementProbe,
 } from "./actionresult.js";
-import { locatorFor, refOrSelector, type ActionTarget } from "./locator.js";
+import { locatorFor, refOrSelector } from "./locator.js";
 import { probe } from "./actions-probe.js";
 
 // aligned with the anti-wedge default (5s); mirrors actions.ts so a raised
@@ -110,24 +109,11 @@ export async function elementScrollGeometry(loc: Locator): Promise<ScrollGeometr
 
 // ---------- scroll verb ----------
 
-export type ScrollEdge = "top" | "bottom" | "left" | "right";
-export interface ScrollArgs extends ActionWindowOptions {
-  /** What to scroll. Omitted → the page/window. A ref/selector/named element
-   *  is either scrolled *into view* (default) or scrolled *within* (when it's
-   *  a scroll container and `to`/`by` is given). A coords target does a wheel
-   *  scroll at that point (canvas / map panning). */
-  target?: ActionTarget;
-  /** Scroll to an edge of the page (or the targeted container). */
-  to?: ScrollEdge;
-  /** Wheel-style delta in CSS px. Positive y = down, positive x = right. */
-  by?: { x?: number; y?: number };
-  /** When `target` is an element: scroll it into view. Defaults to true when a
-   *  target is given and neither `to` nor `by` is set. */
-  intoView?: boolean;
-}
-
-export type ScrollMode =
-  { kind: "into-view" } | { kind: "container" } | { kind: "wheel-at" } | { kind: "window" };
+// `ScrollEdge` / `ScrollArgs` / `ScrollMode` are engine-blind argument
+// vocabulary and live on `actions-types.ts` with the other eleven verbs;
+// re-exported here so existing importers are unchanged.
+export type { ScrollEdge, ScrollArgs, ScrollMode } from "./actions-types.js";
+import type { ScrollArgs, ScrollEdge, ScrollMode } from "./actions-types.js";
 
 /**
  * Resolve which of the four scroll behaviours a `ScrollArgs` selects, or throw

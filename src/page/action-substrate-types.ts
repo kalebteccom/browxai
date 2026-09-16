@@ -12,8 +12,16 @@
 // `action-substrate-safari.ts`), the storage-substrate shape. Re-exported through
 // `./action-substrate.js` so callers import unchanged. (RFC 0009 P1.)
 
-import type { ActionResult } from "./actionresult.js";
-import type * as actions from "./actions.js";
+// Both imports are vendor-free leaves, and that is the whole point of the
+// split. This module used to take its argument vocabulary from `./actions.js`,
+// which IS the Playwright adapter body (it imports `Page` / `Locator` and calls
+// `page.mouse.click`) — a port defined by one of its own implementations. The
+// shapes now live above both adapters, in `actions-types.ts`, and the result
+// envelope in `actionresult-types.ts`; the Playwright barrel (`actionresult.ts`,
+// `actions.ts`) is below the seam and this module no longer reaches it.
+// (RFC 0009 P1.)
+import type { ActionResult } from "./actionresult-types.js";
+import type * as actions from "./actions-types.js";
 
 /** The action capability port. One instance wraps one session's engine handle;
  *  the methods carry no engine type, so the handlers above this seam are
