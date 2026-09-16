@@ -46,7 +46,12 @@ class InMemoryBrowserSession implements BrowserSession {
   // can read `.capabilities`; deep:false ⇒ no CDP escape hatch.
   readonly capabilities: EngineCapabilities = {
     engine: SYNTH,
-    subInterfaces: new Set(["lifecycle", "navigation", "snapshot", "input"]),
+    // Plus `element` (RFC 0009 P2): the synthetic engine resolves and reads
+    // elements through `InMemoryElementSubstrate`, entirely from the ref registry.
+    // That is the phase's acceptance criterion — the verify family must run on an
+    // engine with no Playwright `Page`, which it could not while the gate asked
+    // about one.
+    subInterfaces: new Set(["lifecycle", "navigation", "snapshot", "input", "element"]),
     deep: false, // no CDP — proves the gate refuses deep tools without a per-engine edit
   };
   // No `page`, no `cdp`, no `safari`. Every read the contract drives goes through
@@ -112,8 +117,47 @@ describe("L1 — a new engine adapter plugs in with zero core edits", () => {
     // `"synthetic"` here proved nothing: that is the engine tag and the a11y
     // root's name, so the assertion held with the port returning an empty string.
     expect(snapText).toContain(SYNTHETIC_TITLE);
-    await server.handlers.find({ query: "button" });
+    const found = JSON.parse(
+      (await server.handlers.find({ query: "button" })).content[0]!.text as string,
+    ) as { candidates: Array<{ ref: string }> };
     await server.handlers.click({ ref: "r1" });
+
+    // RFC 0009 P2's row of the enforcement table: the Page-free engine drives the
+    // verify family. Before the element port these three reached
+    // `locatorFor(page, …)`, so they could only ever have run against a fake Page.
+    const ref = found.candidates[0]?.ref;
+    expect(ref, "find produced no candidate for the verify family to assert on").toBeTruthy();
+    const verified = JSON.parse(
+      (await server.handlers.verify_visible({ ref })).content[0]!.text as string,
+    );
+    expect(verified.ok, "verify_visible must run Page-free through ElementSubstrate").toBe(true);
+    const texted = JSON.parse(
+      (await server.handlers.verify_text({ ref, text: "Submit", exact: true })).content[0]!
+        .text as string,
+    );
+    expect(texted.ok, "verify_text reads the element's text through the port").toBe(true);
+    // `verify_count` is the one of RFC 0009's three P2 tools that does NOT run
+    // here yet, and the reason is not the element port. Its handler passes
+    // `requireCdp(e.session)` as an eager argument, so a `deep:false` engine
+    // fails before the selector count is reached — even though the selector path
+    // goes straight to `ElementSubstrate.count` and the CDP handle is used only by
+    // the `text:` branch, which walks the a11y tree.
+    //
+    // Making that argument lazy would turn a `source:"browxai"` failure into a
+    // real count on firefox and webkit, which is a live behaviour change on a
+    // shipped Playwright engine, so it is not this refactor's to make. Pinned so
+    // the gap is a documented fact and whoever makes the handle lazy is told to
+    // flip this assertion in the same commit.
+    const counted = JSON.parse(
+      (await server.handlers.verify_count({ selector: "button", n: 1 })).content[0]!.text as string,
+    ) as { ok: boolean; failure?: { source: string; actual: string } };
+    expect(counted.ok).toBe(false);
+    expect(counted.failure?.source).toBe("browxai");
+    expect(
+      counted.failure?.actual,
+      "verify_count now fails for a reason OTHER than the eager requireCdp — if the " +
+        "handle was made lazy, this tool runs Page-free and this case should assert ok:true",
+    ).toMatch(/CDP/i);
 
     // deep:false ⇒ a CDP-hard tool structured-refuses, no per-engine gate edit.
     const refusal = JSON.parse(

@@ -94,6 +94,14 @@ WebKit declare the nine cross-browser sub-interfaces and drop `deep`; Android
 declares everything. Behavior on Chromium is byte-identical to a single-engine
 build. Nothing on Chromium is newly gated.
 
+Two more have landed since, and the live list is `ALL_SUB_INTERFACES` in
+`src/engine/capabilities.ts` — read it rather than the count above. `page` (RFC
+0004 D5) says the engine backs a real Playwright `Page`; `element` (RFC 0009 P2)
+says it has an `ElementSubstrate` that can resolve a ref or selector to one
+element and read its state, which is what the `verify_*` family gates on. The two
+coincide only while Playwright is the one engine with an element implementation:
+RFC 0008's native engines will declare `element` and no `page`. Safari omits both.
+
 ## `cdp()` is optional: a capability, not a mandatory member
 
 `BrowserSession.cdp()` is `cdp?()`, optional. It is present and fully functional
