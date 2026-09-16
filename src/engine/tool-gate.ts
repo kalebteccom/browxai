@@ -29,9 +29,7 @@
 //                       hint pointing at context-creation UA + the BiDi lane.
 
 import type { EngineKind, EngineSubInterface } from "./types.js";
-import { capabilitiesFor } from "./capabilities.js";
-import { engineCapabilities } from "./capability-registry.js";
-import { engineDeclares } from "./sub-interface.js";
+import { engineDeclaration, engineDeclares } from "./sub-interface.js";
 
 const DEEP_TOOLS_SET = new Set<string>();
 
@@ -189,8 +187,12 @@ export function assertEngineSubInterface(
 ): EngineRefusal | null {
   if (engineDeclares(engine, sub)) return null;
   // Unknown engine (no declaration yet) is not a refusal — the launch path
-  // rejects it, and refusing here would mis-attribute that to the tool.
-  if (!(engineCapabilities(engine) ?? capabilitiesFor(engine))) return null;
+  // rejects it, and refusing here would mis-attribute that to the tool. Read
+  // through `engineDeclaration`, the same lookup `engineDeclares` just used; the
+  // `engineCapabilities(engine) ?? capabilitiesFor(engine)` this line used to
+  // spell out was a second copy of it in the module next door to the one
+  // documented as "the ONE reader".
+  if (!engineDeclaration(engine)) return null;
   return {
     error: `tool "${tool}" cannot run on the "${engine}" engine: no "${sub}" sub-interface`,
     hint:
@@ -210,12 +212,13 @@ export function assertEngineSupports(tool: string, engine: EngineKind): EngineRe
   ensureDeepToolsLoaded();
   assertEngineGateBootstrapped();
   if (!DEEP_TOOLS.has(tool)) return null;
-  // Prefer the EngineRegistry's capability record (RFC 0004 P1) — it is the source
-  // of truth post-D1 and is what gates an engine registered ONLY at runtime (e.g.
-  // the synthetic contract-test engine, whose `deep:false` is declared at
-  // registration, not in the central `capabilitiesFor` table). Fall back to the
-  // central declaration for any engine queried before its registration runs.
-  const caps = engineCapabilities(engine) ?? capabilitiesFor(engine);
+  // `engineDeclaration` prefers the EngineRegistry's capability record (RFC 0004
+  // P1) — the source of truth post-D1, and the only one that covers an engine
+  // registered ONLY at runtime (e.g. the synthetic contract-test engine, whose
+  // `deep:false` is declared at registration, not in the central table) — and
+  // falls back to the central declaration for an engine queried before its
+  // registration runs.
+  const caps = engineDeclaration(engine);
   // An engine with the deep escape hatch (chromium) runs everything; an engine
   // whose declaration hasn't landed yet is left to the launch path to reject.
   if (!caps || caps.deep) return null;

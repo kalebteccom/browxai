@@ -9,9 +9,12 @@
 //   - PlaywrightSnapshotSubstrate (firefox / webkit) →
 //     `snapshot-substrate-playwright.ts`: the page-side ARIA/DOM walker over
 //     `frame.evaluate` (main world), minting the SAME content-hashed ref shape.
-//   - SafariClassicSnapshotSubstrate (safari) → `snapshot-substrate-safari.ts`:
-//     the same walker over the WebDriver Classic `execute/sync` endpoint.
-// Everything is re-exported here so callers import the whole snapshot-substrate
+// The third implementation, SafariClassicSnapshotSubstrate (the same walker over
+// the WebDriver Classic `execute/sync` endpoint), lives in
+// `snapshot-substrate-safari.ts` and is NOT re-exported here: its only consumer is
+// the Safari substrate bundle, which imports it directly, and re-exporting it
+// would pull the WebDriver client into every importer of this barrel.
+// Everything else is re-exported so callers import the whole snapshot-substrate
 // surface from `./snapshot-substrate.js` unchanged. (RFC 0009 P1.)
 
 export { CdpSnapshotSubstrate } from "./snapshot-substrate-cdp.js";

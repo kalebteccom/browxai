@@ -18,13 +18,20 @@
 // without booting the engine adapters. An engine with neither is undeclared, and
 // an undeclared engine declares nothing.
 
-import type { EngineKind, EngineSubInterface } from "./types.js";
+import type { EngineCapabilities, EngineKind, EngineSubInterface } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
 import { engineCapabilities } from "./capability-registry.js";
+
+/** The engine's capability declaration, registry first. The ONE lookup — callers
+ *  that need to tell "declares nothing" from "declares, but not this" read it
+ *  through here rather than restating the `??` themselves, which is what the gate
+ *  did one line after calling `engineDeclares`. */
+export function engineDeclaration(engine: EngineKind): EngineCapabilities | undefined {
+  return engineCapabilities(engine) ?? capabilitiesFor(engine);
+}
 
 /** Whether `engine` declares the `sub` sub-interface. False for an engine with no
  *  capability declaration at all — undeclared is not a claim of support. */
 export function engineDeclares(engine: EngineKind, sub: EngineSubInterface): boolean {
-  const caps = engineCapabilities(engine) ?? capabilitiesFor(engine);
-  return caps?.subInterfaces.has(sub) ?? false;
+  return engineDeclaration(engine)?.subInterfaces.has(sub) ?? false;
 }

@@ -19,15 +19,24 @@
 // `./target-substrate.js`. (RFC 0009 P1.)
 //
 // SCOPE NOTE. RFC 0009's mapping table also assigns `alive()` and `rootFrameId()`
-// to this port. Neither ships here: at P1 every `isClosed()` call site is in the
-// attached-target pool (`src/session/attach-*.ts`), which RFC 0009 itself leaves
-// behind the Playwright handle, and every `mainFrame()` call site is inside a
-// Playwright substrate adapter or the frame registry. A port member with no
-// caller above the seam is the speculative generality
-// architecture-principles.md §4a forbids, and `rootFrameId()` would return the
-// same `MAIN_FRAME_ID` constant on both engines, so it would carry no
-// engine-varying content either. They land with their callers, in the phase that
-// moves `frames_list` and the replay subscription.
+// to this port. Neither ships here.
+//
+// `isClosed()` is only called from the attached-target pool
+// (`src/session/attach-*.ts`), which RFC 0009 leaves behind the Playwright handle
+// for the whole migration, so `alive()` would have no caller above the seam — the
+// speculative generality architecture-principles.md §4a forbids.
+//
+// `mainFrame()` is the more interesting one, and the reason is NOT that every
+// call site is already below the seam: `replay/session.ts` and `challenge.ts`
+// both call it and both sit above. The reason is that neither call site wants an
+// IDENTIFIER. Both compare Playwright `Frame` OBJECT IDENTITY —
+// `if (frame !== page.mainFrame()) return` — to filter a subscription down to the
+// main frame, and an opaque string id cannot answer `!==` against a `Frame` the
+// event handed them. Those two are event-subscription filters, so they move with
+// `EventSubstrate` (P4), where the port hands the handler a `TargetEvent` already
+// tagged with its frame and the comparison stops existing. `rootFrameId()` lands
+// with the frame tools, and would today return the same `MAIN_FRAME_ID` constant
+// on both engines, carrying no engine-varying content.
 
 /** The structural identity of the session's current target. One instance wraps
  *  one session's engine handle; the methods carry no engine type, so the handlers
