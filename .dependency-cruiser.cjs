@@ -104,6 +104,22 @@ module.exports = {
       to: { path: "node_modules/playwright-core|^playwright-core$", reachable: true },
     },
     {
+      name: "only-the-engine-bundle-selects-a-substrate",
+      comment:
+        "Substrate selection belongs to the engine. `EngineEntry.makeSubstrates` returns the " +
+        "SubstrateBundle and is the one place an engine picks its adapters; the two standalone " +
+        "selectors (`snapshot-substrate-select.ts` / `network-substrate-select.ts`) are the " +
+        "Playwright bundle's INTERNALS, so only the bundles may import them. A tool module " +
+        "calling `networkSubstrateFor(sess)` is a second place that knows how an engine chooses, " +
+        "and it happens to work only while the engine in question is chromium — an engine whose " +
+        "bundle did anything else would silently get the wrong substrate. " +
+        "`src/tools/extensions-rebuild.ts` did exactly this on the post-relaunch rebuild path " +
+        "and now goes through `engineEntry(sess.engine).makeSubstrates(...)`. (RFC 0009; L1.)",
+      severity: "error",
+      from: { pathNot: "^src/page/substrate-bundle(-safari)?\\.ts$" },
+      to: { path: "^src/page/[a-z-]+-substrate-select\\.ts$" },
+    },
+    {
       name: "no-tools-or-replay-to-playwright-core",
       comment:
         "A tool handler and the replay orchestrator are engine-agnostic: they reach the " +

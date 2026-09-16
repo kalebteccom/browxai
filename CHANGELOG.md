@@ -107,7 +107,10 @@ surface" covers.
   chromium-only and chromium's bundle delegates to exactly those two — it made the
   rebuild a second place that knows how an engine picks its adapters. Both now go
   through `engineEntry(sess.engine).makeSubstrates(...)`, sharing the
-  snapshot/network-only dependency set with the session registry.
+  snapshot/network-only dependency set with the session registry. A new
+  dependency-cruiser rule, `only-the-engine-bundle-selects-a-substrate`, keeps it
+  that way: the two standalone selectors are the Playwright bundle's internals and
+  only the bundles may import them.
 
 ### Deprecated
 
