@@ -41,6 +41,38 @@ async function readSiteKeyFromSelector(
   }
 }
 
+/** Either the Playwright `Page` the selector-derived site-key read needs, or the
+ *  structured refusal to return instead. */
+type SiteKeyPage = { page: CaptchaPage } | { refusal: ReturnType<typeof captchaJsonResult> };
+
+/** Acquire the `Page` the site-key read walks, or refuse structurally.
+ *
+ *  `requirePage` throws on an engine that backs no Playwright Page and on an
+ *  attached session whose tab is gone. Left bare, that throw leaves the handler
+ *  as a raw rejection instead of the `{ok:false, error, hint}` envelope every
+ *  other solve_captcha failure returns. It also has to land HERE, before
+ *  `submitToProvider` — a refusal after the POST would have already spent a
+ *  provider credit on a solve the caller cannot complete. */
+function pageForSiteKeyRead(
+  session: Parameters<typeof requirePage>[0],
+  provider: string,
+): SiteKeyPage {
+  try {
+    return { page: requirePage(session) };
+  } catch (err) {
+    return {
+      refusal: captchaJsonResult({
+        ok: false,
+        provider,
+        error: `solve_captcha: cannot read a site-key from a selector on this session — ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        hint: "Pass `siteKey` explicitly (the widget's `data-sitekey` value). Deriving it from a selector needs a Playwright page; the solve itself does not.",
+      }),
+    };
+  }
+}
+
 /**
  * Secrets / captcha / credentials tools — the off-by-default egress-sensitive
  * seams: `register_secret` (the per-session secrets registry that backs egress
@@ -218,7 +250,9 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // needed (imageBase64 is the payload).
       let resolvedSiteKey = siteKey;
       if (!resolvedSiteKey && selector && type !== "image") {
-        resolvedSiteKey = await readSiteKeyFromSelector(requirePage(e.session), selector);
+        const read = pageForSiteKeyRead(e.session, cfg.config.provider);
+        if ("refusal" in read) return read.refusal;
+        resolvedSiteKey = await readSiteKeyFromSelector(read.page, selector);
         if (!resolvedSiteKey) {
           return captchaJsonResult({
             ok: false,
