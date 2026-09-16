@@ -44,7 +44,7 @@ function stubHandles(): { context: BrowserContext; page: Page; cdp: CDPSession }
 }
 
 function stubTarget(): AcquiredTarget {
-  return { targetId: "T1", page: {} as Page, created: false } as AcquiredTarget;
+  return { targetId: "T1", page: {} as Page, created: false };
 }
 
 /** One buildable session per engine, through the engine's OWN session
