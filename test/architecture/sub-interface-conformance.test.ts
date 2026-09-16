@@ -267,6 +267,22 @@ describe("L5 — declared sub-interfaces match what the tools do", () => {
     }
   }
 
+  it("export_session_report names the absence instead of reporting a zeroed summary", async () => {
+    // The evidence bundle is not a tool that can refuse — it reports everything
+    // it can — so the gate would be the wrong shape. It substitutes a named
+    // absence for the one field it cannot honestly fill. A `summary.total: 0` here
+    // is the worst possible value: a human signing the report off cannot tell it
+    // from a session that genuinely made no requests.
+    const server = servers.get("network")!;
+    const res = await server.handlers.export_session_report({});
+    const body = JSON.parse((res.content[0] as { text: string }).text) as {
+      network?: unknown;
+      networkUnavailable?: string;
+    };
+    expect(body.network, "a no-network engine must not report a network summary").toBeUndefined();
+    expect(body.networkUnavailable).toMatch(/declares no "network" sub-interface/);
+  });
+
   it.each(ENGINE_KINDS)("[%s] every omitted sub-interface has a refusing gate", (engine) => {
     const caps = capabilitiesFor(engine)!;
     const omitted = ALL_SUBS.filter((s) => !caps.subInterfaces.has(s));
