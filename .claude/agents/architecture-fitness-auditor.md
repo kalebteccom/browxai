@@ -1,7 +1,7 @@
 ---
 name: architecture-fitness-auditor
 description: PR-time backup to the architecture fitness lane — runs the fitness suite, dependency-cruiser, and the size/complexity/duplication budgets against the diff, and reports drift against the ten laws in architecture-principles.md §4a.
-model: claude-sonnet-4-7
+model: sonnet
 tools: [Read, Bash, Grep, Glob]
 ---
 

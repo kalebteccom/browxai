@@ -1,7 +1,7 @@
 ---
 name: tracker-id-auditor
 description: PR-time backup to the ESLint custom rule — regex-scans diffs for tracker IDs (W-X#, R[Oo]und-N, TICKET-N, JIRA-N, ask #N) in source and comments.
-model: claude-sonnet-4-7
+model: sonnet
 tools: [Read, Bash, Grep, Glob]
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: capability-gate-auditor
 description: Verifies every posture-broadening surface is off-by-default + has a docs/threat-model.md row + has a keystone test asserting the gate blocks when capability unset.
-model: claude-sonnet-4-7
+model: sonnet
 tools: [Read, Bash, Grep, Glob]
 ---
 
