@@ -26,11 +26,21 @@ import { createServer } from "../../src/server.js";
 // activated body below is meant to be the ONLY new line a 6th engine needs.
 const SYNTH = "synthetic" as EngineKind;
 
-/** A minimal Playwright-`Page`-shaped fake the in-memory engine returns. The core
- *  snapshot/find path reads `url()` / `title()` (the snapshot header) and probes
- *  `locator(...)` (find's disambiguation/bbox/actionability — all best-effort,
- *  try/caught). The locator stub rejects every probe so find falls back to the
- *  bare hint + null bbox, exactly as the no-Playwright-Page path does. */
+/** A minimal Playwright-`Page`-shaped fake the in-memory engine returns. It is
+ *  the measure of how much of the core still reaches a `Page` behind the ports,
+ *  so it SHRINKS phase by phase and must never grow.
+ *
+ *  RFC 0009 P1 took `url()` and `title()` off it: the snapshot header and
+ *  `list_sessions` read those through `TargetSubstrate` now, and the synthetic
+ *  engine answers them from `InMemoryTargetSubstrate` with no Page involved. A
+ *  regression that puts a `page().url()` back on either path fails here with a
+ *  `TypeError` naming the method, not with a wrong value.
+ *
+ *  What is left is `locator(...)` — find's disambiguation / bbox / actionability
+ *  probes, all best-effort and try/caught. The stub rejects every probe, so find
+ *  falls back to the bare hint + null bbox exactly as a no-Playwright-Page engine
+ *  does. RFC 0009 P2 (`ElementSubstrate`) is what removes it, and P5 removes the
+ *  fake and the `page()` member with it. */
 function fakePage(): Page {
   const refuse = () => Promise.reject(new Error("synthetic engine: no real locator"));
   const locator = () => ({
@@ -42,11 +52,7 @@ function fakePage(): Page {
       return this;
     },
   });
-  return {
-    url: () => "about:blank",
-    title: () => Promise.resolve("synthetic"),
-    locator,
-  } as unknown as Page;
+  return { locator } as unknown as Page;
 }
 
 class InMemoryBrowserSession implements BrowserSession {
@@ -103,10 +109,14 @@ describe("L1 — a new engine adapter plugs in with zero core edits", () => {
     // The engine tag is reported correctly through the real surface that carries it
     // (`list_sessions` reports `engine` per row — open_session's envelope omits it).
     const listed = JSON.parse((await server.handlers.list_sessions({})).content[0]!.text as string);
-    const row = (listed.sessions as Array<{ id: string; engine: string }>).find(
+    const row = (listed.sessions as Array<{ id: string; engine: string; url: string | null }>).find(
       (r) => r.id === "synth-a",
     );
     expect(row?.engine).toBe(SYNTH); // the tag is reported correctly
+    // RFC 0009 P1: the url column comes from the engine's TargetSubstrate. The
+    // fake Page carries no `url()` at all, so a value here can only have come
+    // through the port.
+    expect(row?.url).toBe("about:blank");
 
     // Core tools must be engine-agnostic — they reach the substrates, never a raw
     // page() branch. If any handler leaked `engine === "chromium"`, the synthetic
@@ -114,6 +124,12 @@ describe("L1 — a new engine adapter plugs in with zero core edits", () => {
     await server.handlers.navigate({ url: "about:blank" });
     const snap = await server.handlers.snapshot({});
     expect(snap.content[0]).toBeTruthy();
+    // The snapshot header's url/title likewise come from the TargetSubstrate.
+    // Before P1 they were `page().url()` / `page().title()`, which is why the
+    // fake Page had to carry them.
+    const snapText = (snap.content[0] as { text: string }).text;
+    expect(snapText).toContain("about:blank");
+    expect(snapText).toContain("synthetic");
     await server.handlers.find({ query: "button" });
     await server.handlers.click({ ref: "r1" });
 
