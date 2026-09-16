@@ -31,6 +31,7 @@
 import type { EngineKind, EngineSubInterface } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
 import { engineCapabilities } from "./capability-registry.js";
+import { engineDeclares } from "./sub-interface.js";
 
 const DEEP_TOOLS_SET = new Set<string>();
 
@@ -186,8 +187,10 @@ export function assertEngineSubInterface(
   engine: EngineKind,
   sub: EngineSubInterface,
 ): EngineRefusal | null {
-  const caps = engineCapabilities(engine) ?? capabilitiesFor(engine);
-  if (!caps || caps.subInterfaces.has(sub)) return null;
+  if (engineDeclares(engine, sub)) return null;
+  // Unknown engine (no declaration yet) is not a refusal — the launch path
+  // rejects it, and refusing here would mis-attribute that to the tool.
+  if (!(engineCapabilities(engine) ?? capabilitiesFor(engine))) return null;
   return {
     error: `tool "${tool}" cannot run on the "${engine}" engine: no "${sub}" sub-interface`,
     hint:

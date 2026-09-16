@@ -116,13 +116,19 @@ const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
 
 // Files whose single responsibility IS engine selection — engine literals are the
 // point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
-// are FILES (anchored with `\.ts$`); adapters/ is a DIRECTORY (prefix). The two
-// substrate selectors already key on `session.engine === "safari"` by design.
+// are FILES (anchored with `\.ts$`); adapters/ is a DIRECTORY (prefix).
+//
+// RATCHET (RFC 0009 P1): `src/page/snapshot-substrate-select.ts` and
+// `src/page/network-substrate-select.ts` left this list. Both branched on
+// `session.engine === "safari"`, which was a second spelling of
+// `caps.subInterfaces.has("page")` — the fact RFC 0004 D5 already declares. They
+// now read the declaration through `engineDeclares`, so the literal is gone and
+// the exemption with it. An entry comes off this list in the phase that removes
+// its last literal; putting one back is an RFC amendment with a written reason,
+// never an inline disable (the §7 meta-rule).
 const ENGINE_SELECT_ALLOWLIST = [
   /src\/engine\/(registry|select|capabilities)\.ts$/,
   /src\/engine\/adapters\//,
-  /src\/page\/snapshot-substrate-select\.ts$/,
-  /src\/page\/network-substrate-select\.ts$/,
   // launch-options.ts is the engine-launch layer (called only by the
   // adapters/<engine>.engine.ts modules): the `engine !== "chromium"` branch
   // chooses the Chromium-only `--disable-web-security` flag form vs the Firefox
@@ -193,6 +199,12 @@ const GATE_OWNER_ALLOWLIST = [
   /src\/tools\/host(-build)?\.ts$/,
   /src\/util\/capabilities\.ts$/,
   /src\/engine\/tool-gate\.ts$/,
+  // sub-interface.ts is the ONE reader of `EngineCapabilities.subInterfaces`
+  // (RFC 0009 P1). Centralising that read is the same move this rule enforces:
+  // the declaration is consulted in one place and everything else calls
+  // `engineDeclares(...)`. tool-gate.ts, already on this list, is now one of its
+  // callers rather than a second reader.
+  /src\/engine\/sub-interface\.ts$/,
 ];
 
 const noInlinedCapabilityChecks = {
