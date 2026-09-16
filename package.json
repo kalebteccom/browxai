@@ -1,7 +1,7 @@
 {
   "name": "browxai",
   "version": "0.10.1",
-  "description": "MCP-native, model-agnostic, agentic-first, multi-engine browser-control server.",
+  "description": "MCP-native, model-agnostic, agentic-first browser control for agents, across five engines including real Safari and Chrome on an Android device.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",
   "type": "module",

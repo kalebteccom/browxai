@@ -4,12 +4,14 @@
 
 <h1 align="center">browxai</h1>
 
-<p align="center"><strong>A browser, built for agents.</strong><br/>
+<p align="center"><strong>Browser control, built for agents.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK.**
+**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it.**
 
-browxai is a browser-control server designed for agents, not for human programmers. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results instead of raw DOM dumps. It works with any model, drives five browser engines, and keeps the dangerous powers off until you turn them on.
+browxai is a browser-control server designed for agents. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
+
+It drives five engines behind one tool surface: Chromium, Firefox and WebKit as browsers it launches for you, real Safari.app over `safaridriver`, and real Chrome on an Android handset attached over adb. Android is attach-only, so the browser has to already be running on the device; browxai never spawns one there. There is no native-app automation and no iOS. CI runs the cross-engine suite on Chromium, Firefox and WebKit on every commit; Android needs a USB device and Safari needs macOS, so those two are exercised by hand.
 
 ## What your agent can do with it
 
@@ -83,9 +85,9 @@ Three transports:
 - **Stdio child** (`transport: "stdio-child"`). Spawns the `browxai` bin as a subprocess and speaks MCP-over-stdio. `close()` ends the child.
 - **Socket-attached** (`endpoint: "unix:///tmp/foo.sock"`). Connects to a long-running `browxai serve --socket /tmp/foo.sock` process. Multiple clients can attach to ONE server (e.g. a parent agent plus a child script sharing one Chromium). `close()` ends only the local connection.
 
-The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })` — and in the server's own capability set (`BROWX_CAPABILITIES`), which gates the same tool independently. Calling a non-exposed tool, even via `client.callTool("eval_js", …)`, fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire; a name no tool registers fails with `BROWXAI_SDK_UNKNOWN_TOOL`.
+The same safety gates apply as on the MCP path. Tools that broaden the security posture (`eval_js`, `network_body`, `register_secret`, `upload_file`, …) are **off by default** and only appear once their capability is named in `createBrowxai({ capabilities })`, and in the server's own capability set (`BROWX_CAPABILITIES`), which gates the same tool independently. Calling a non-exposed tool, even via `client.callTool("eval_js", …)`, fails with a `BROWXAI_SDK_NOT_EXPOSED` error before anything hits the wire; a name no tool registers fails with `BROWXAI_SDK_UNKNOWN_TOOL`.
 
-`client.callTool(name, args)` reaches **every** registered tool whose capability is active — the same surface the MCP server exposes. The typed methods on the client are a curated ergonomic subset for the tools most agent loops use; they are not a smaller allow-list.
+`client.callTool(name, args)` reaches **every** registered tool whose capability is active, the same surface the MCP server exposes. The typed methods on the client are a curated ergonomic subset for the tools most agent loops use; they are not a smaller allow-list.
 
 ## Harness setup
 
