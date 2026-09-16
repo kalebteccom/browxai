@@ -78,17 +78,30 @@ module.exports = {
     {
       name: "ports-name-no-vendor-type",
       comment:
-        "A capability port declares an interface over plain data. It must not import " +
+        "A capability port declares an interface over plain data. It must not REACH " +
         "playwright-core: a port that names a vendor type is not a port, and no engine " +
         "without Playwright could implement it. The Playwright implementation lives in the " +
         "sibling *-substrate-playwright.ts module, which is free to import whatever it " +
-        "drives. Matches both port spellings — the leaf `<name>-substrate-types.ts` and the " +
-        "`<name>-substrate.ts` barrel that re-exports it. Lands at `error` because RFC 0009 " +
-        "P1 split all seven ports in the same phase, so the last violation and the promotion " +
-        "ship together (the §3.1 ratchet). (RFC 0009; L1, L5.)",
+        "drives. (RFC 0009; L1, L5.)\n" +
+        "REACHABLE, not direct. A direct-edge rule states something much weaker than its " +
+        "own comment and six of the eight ports satisfied it while reaching playwright-core " +
+        "in one or two hops — `action-substrate-types` → `actionresult.ts`, " +
+        "`snapshot-substrate-types` → `a11y.ts`, and so on. Worse, the action port took its " +
+        "whole argument vocabulary from `actions.ts`, which IS its own Playwright adapter. " +
+        "`to.reachable` is what makes the rule mean what it says; RFC 0009 P1 split the " +
+        "plain-data leaves out of all six so the last violation and the promotion to `error` " +
+        "ship together (the §3.1 ratchet).\n" +
+        "SELECTOR. `^src/.+-substrate-types\\.ts$` — anywhere under src (a port in a " +
+        "subdirectory is still a port), any name including digits. The `*-substrate.ts` " +
+        "BARRELS are deliberately out: a barrel re-exports the Playwright adapter class at " +
+        "runtime, so it reaches playwright-core by construction and always will. It passed " +
+        "the direct-edge version of this rule only vacuously. A port that dodges the " +
+        "selector by living somewhere else is caught by the companion fitness test " +
+        "(test/architecture/port-module-naming.test.ts), which asserts every `*Substrate` " +
+        "port interface in the tree is declared in a file this pattern matches.",
       severity: "error",
-      from: { path: "^src/page/[a-z-]+-substrate(-types)?\\.ts$" },
-      to: { path: "node_modules/playwright-core|^playwright-core$" },
+      from: { path: "^src/.+-substrate-types\\.ts$" },
+      to: { path: "node_modules/playwright-core|^playwright-core$", reachable: true },
     },
     {
       name: "no-tools-or-replay-to-playwright-core",
