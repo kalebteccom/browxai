@@ -8,15 +8,18 @@ import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 
 /** `eval_js` is a read, so an active recording keeps the expression — an
  *  exported script that drops it would silently lose the value the flow was
- *  run for. Called only after the evaluate succeeded. */
-function recordEval(e: SessionEntry, expr: string): void {
-  const s = e.session;
-  e.recorder.recordRead({ type: "eval_js", expr }, s.safari ? "" : requirePage(s).url());
+ *  run for. Called only after the evaluate succeeded. The URL stamp comes from
+ *  the target port, so a no-Page engine records the URL it really evaluated
+ *  against instead of the "" its absent `page()` forced. */
+async function recordEval(e: SessionEntry, target: TargetSubstrate, expr: string): Promise<void> {
+  const url = await target.url().catch(() => "");
+  e.recorder.recordRead({ type: "eval_js", expr }, url);
 }
 
 /**
@@ -39,6 +42,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
     actionTimeout,
     egressFor,
     caps,
+    targetFor,
   } = host;
 
   register(
@@ -327,13 +331,10 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         const maskedProbe = egressFor(e).maskDeep(result);
         return { content: [{ type: "text" as const, text: JSON.stringify(maskedProbe, null, 2) }] };
       } catch (err) {
-        // structured failure — coordinate + page URL for triage.
-        let url = "";
-        try {
-          url = requirePage(e.session).url();
-        } catch {
-          /* page gone */
-        }
+        // structured failure — coordinate + target URL for triage.
+        const url = await targetFor(e)
+          .url()
+          .catch(() => "");
         return {
           content: [
             {
@@ -458,7 +459,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       try {
         if (returnType === "void") {
           await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js").catch(() => undefined);
-          recordEval(e, expr);
+          await recordEval(e, targetFor(e), expr);
           return {
             content: [
               {
@@ -473,7 +474,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
           };
         }
         const value = await withDeadline(scriptFor(e).evaluate(expr), td.ms, "eval_js");
-        recordEval(e, expr);
+        await recordEval(e, targetFor(e), expr);
         return {
           content: [
             {

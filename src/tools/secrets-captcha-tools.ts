@@ -49,7 +49,7 @@ async function readSiteKeyFromSelector(
  * `ToolHost` seam.
  */
 export function registerSecretsCaptchaTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, caps, credentialsResolved } = host;
+  const { z, register, gateCheck, entryFor, caps, credentialsResolved, targetFor } = host;
 
   // ---------- secrets registry (capability `secrets`) ----------
 
@@ -201,9 +201,11 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
         });
       }
       const e = await entryFor(session);
+      // The scope the provider is told to solve against. Read through the target
+      // port, so an engine with no Playwright Page answers from its own client.
       let pageUrl: string;
       try {
-        pageUrl = requirePage(e.session).url();
+        pageUrl = await targetFor(e).url();
       } catch {
         return captchaJsonResult({
           ok: false,

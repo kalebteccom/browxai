@@ -129,7 +129,8 @@ async function resolveShadowScope(
  * shared `ToolHost` seam.
  */
 export function registerReadObserveExtractTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, engineGate, cfgActionTimeout, config } = host;
+  const { z, register, gateCheck, entryFor, engineGate, cfgActionTimeout, config, targetFor } =
+    host;
 
   register(
     "shadow_trees",
@@ -283,7 +284,9 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
         if (result.ok) {
           e.recorder.recordRead(
             { type: "extract", schema: args.schema, scope: args.scope ?? args.ref },
-            requirePage(s).url(),
+            await targetFor(e)
+              .url()
+              .catch(() => ""),
           );
         }
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };

@@ -3,13 +3,20 @@ import { parsePermissionPolicyArg, type PermissionPolicy } from "../session/perm
 import { parseNotificationPolicyArg, type NotificationPolicy } from "../session/notification.js";
 import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
 import {
   validateEngine,
   IMPLEMENTED_ENGINES,
-  type EngineKind,
   requirePage,
+  type EngineKind,
 } from "../engine/index.js";
-import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from "./host.js";
+import type {
+  RegisterHost,
+  SessionHost,
+  ServerServicesHost,
+  TargetHost,
+  ToolResponse,
+} from "./host.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
  *  session-lifecycle handlers return. */
@@ -86,12 +93,12 @@ function buildOpenSessionResultFields(
   return { ...harField, ...replayField, ...videoField };
 }
 
-/** The URL a freshly-opened session landed on. safari has no Playwright Page, so
- *  its URL comes from the WebDriver Classic client instead. */
-async function openedUrlFor(e: SessionEntry): Promise<string> {
-  const safariOpened = e.session.safari?.();
-  if (!safariOpened) return requirePage(e.session).url();
-  return safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "");
+/** The URL a freshly-opened session landed on. Read through the target port, so
+ *  the engine that has no Playwright Page answers from its own client without a
+ *  branch here. Best-effort: a session that cannot answer reports "", which is
+ *  what the WebDriver leg returned before the port existed. */
+function openedUrlFor(target: TargetSubstrate): Promise<string> {
+  return target.url().catch(() => "");
 }
 
 /** Validate the optional per-session `engine`. Returns the validated EngineKind
@@ -125,9 +132,9 @@ function resolveOpenSessionEngine(
  * order. The host owns the closures (register / registry).
  */
 export function registerSessionLifecycleTools(
-  host: RegisterHost & SessionHost & ServerServicesHost,
+  host: RegisterHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
-  const { z, register, registry } = host;
+  const { z, register, registry, targetFor } = host;
 
   register(
     "open_session",
@@ -352,7 +359,7 @@ export function registerSessionLifecycleTools(
           session: e.id,
           mode: e.mode,
           engine: e.session.engine,
-          url: await openedUrlFor(e),
+          url: await openedUrlFor(targetFor(e)),
           openedAt: new Date(e.openedAt).toISOString(),
           ...buildOpenSessionResultFields(e, hars),
         });
@@ -449,26 +456,29 @@ export function registerSessionLifecycleTools(
       inputSchema: {},
     },
     async () => {
-      const rows = registry.list().map((e) => ({
-        id: e.id,
-        mode: e.mode,
-        engine: e.session.engine,
-        url: (() => {
-          try {
-            return requirePage(e.session).url();
-          } catch {
-            return null;
-          }
-        })(),
-        pages: (() => {
-          try {
-            return requirePage(e.session).context().pages().length;
-          } catch {
-            return null;
-          }
-        })(),
-        openedAt: new Date(e.openedAt).toISOString(),
-      }));
+      const rows = await Promise.all(
+        registry.list().map(async (e) => ({
+          id: e.id,
+          mode: e.mode,
+          engine: e.session.engine,
+          // Read through the target port: an engine with no Playwright Page
+          // reports its real URL instead of the `null` the old `page()` throw
+          // produced. Still best-effort — a target mid-teardown reports null.
+          url: await targetFor(e)
+            .url()
+            .catch(() => null),
+          // Multi-tab has no non-Playwright analogue; RFC 0009 leaves the
+          // target pool behind the Playwright handle, so this one stays.
+          pages: (() => {
+            try {
+              return requirePage(e.session).context().pages().length;
+            } catch {
+              return null;
+            }
+          })(),
+          openedAt: new Date(e.openedAt).toISOString(),
+        })),
+      );
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ sessions: rows }, null, 2) }],
       };

@@ -7,6 +7,7 @@ import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
 import { requirePage } from "../engine/index.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
@@ -25,28 +26,19 @@ function resolveSnapshotFrame(s: Session, e: SessionEntry, frame: string): Frame
   return resolveFrameById(requirePage(s), e.frames, frame);
 }
 
-/** Read the header url/title. Safari has no Playwright Page — read via the
- *  WebDriver Classic client; the main frame reads the page; a child frame reads
- *  the frame target. */
+/** Read the header url/title. The main frame reads the session's target through
+ *  the target port — the engine that has no Playwright Page answers from its own
+ *  client, so the `if (s.safari)` branch this function used to open with is gone.
+ *  A child frame reads the frame target, which is Playwright-only by
+ *  construction (an engine with no Page has no child frames to resolve). */
 async function readSnapshotHeader(
-  s: Session,
+  target: TargetSubstrate,
   isMainFrame: boolean,
   targetFrame: FrameTarget,
 ): Promise<{ url: string; title: string }> {
-  const safari = s.safari?.();
-  if (safari) {
-    const url = await safari.webDriver.currentUrl(safari.sessionId).catch(() => "");
-    const title = await safari.webDriver
-      .executeScript(safari.sessionId, "return document.title")
-      .then((t) => (typeof t === "string" ? t : ""))
-      .catch(() => "");
-    return { url, title };
-  }
   if (isMainFrame) {
-    const url = requirePage(s).url();
-    const title = await requirePage(s)
-      .title()
-      .catch(() => "");
+    const url = await target.url().catch(() => "");
+    const title = await target.title().catch(() => "");
     return { url, title };
   }
   return { url: targetFrame!.url(), title: targetFrame!.name() || "" };
@@ -84,7 +76,8 @@ function scopeAndSerialise(
  * the closures (gate, ctx, ports), this module owns the registrations.
  */
 export function registerReadObserveDomTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config } = host;
+  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config, targetFor } =
+    host;
 
   register(
     "snapshot",
@@ -166,7 +159,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
         });
       }
       const { tree, stats, warnings } = composed;
-      const { url, title } = await readSnapshotHeader(s, isMainFrame, targetFrame);
+      const { url, title } = await readSnapshotHeader(targetFor(e), isMainFrame, targetFrame);
       const masksSecrets = caps.enabled.has("secrets");
       const scoped = scopeAndSerialise(tree, { scope, maxNodes, omit }, (raw) =>
         masksSecrets ? e.secrets.applyMaskInText(raw) : raw,
@@ -289,7 +282,12 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const top = result.candidates[0];
       e.recorder.recordRead(
         { type: "find", query },
-        s.safari ? "" : requirePage(s).url(),
+        // The URL the query ran against, read through the target port. Before the
+        // port a no-Page engine recorded "" here, because the only URL source was
+        // a `page()` that throws.
+        await targetFor(e)
+          .url()
+          .catch(() => ""),
         top ? { selectorHint: top.selectorHint, stability: top.stability } : undefined,
       );
       // egress masking. `find()` returns candidate `name` / `testId` /

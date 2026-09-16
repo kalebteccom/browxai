@@ -10,7 +10,13 @@ import {
 } from "../session/notification.js";
 import { SUPPORTED_DEVICE_APIS } from "../session/device-emu.js";
 import { SESSION_ARG } from "./schemas.js";
-import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import type {
+  RegisterHost,
+  GateHost,
+  SessionHost,
+  ServerServicesHost,
+  TargetHost,
+} from "./host.js";
 import { requirePage } from "../engine/index.js";
 
 /**
@@ -21,9 +27,9 @@ import { requirePage } from "../engine/index.js";
  * closures (register / gate / entry).
  */
 export function registerSessionNotificationDeviceTools(
-  host: RegisterHost & GateHost & SessionHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
-  const { z, register, gateCheck, entryFor } = host;
+  const { z, register, gateCheck, entryFor, targetFor } = host;
 
   register(
     "permission_state",
@@ -67,18 +73,19 @@ export function registerSessionNotificationDeviceTools(
         for (const p of permissions) {
           if (!(p in out)) out[p] = "unknown";
         }
+        // The current target's origin, read through the target port so the
+        // fallback works on any engine. A target with no parseable URL (or none
+        // at all) reports null, as it did before the port existed.
+        const targetOrigin =
+          origin ??
+          (await targetFor(e)
+            .url()
+            .then((u) => new URL(u).origin)
+            .catch(() => null));
         const body = {
           ok: true,
           session: e.id,
-          origin:
-            origin ??
-            (() => {
-              try {
-                return new URL(requirePage(e.session).url()).origin;
-              } catch {
-                return null;
-              }
-            })(),
+          origin: targetOrigin,
           states: out,
           tokensEstimate: estimateTokens(JSON.stringify(out)),
         };
