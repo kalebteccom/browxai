@@ -1,7 +1,7 @@
 ---
 name: docs-impact-auditor
 description: Confirms docs are updated on any behavior-change diff — tool-reference, threat-model, CHANGELOG, AGENTS.md if rules changed.
-model: claude-sonnet-4-7
+model: sonnet
 tools: [Read, Bash, Grep, Glob]
 ---
 

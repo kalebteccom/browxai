@@ -1,7 +1,7 @@
 ---
 name: keystone-writer
 description: Writes regression-gate keystone tests against real Chromium for page-side function changes — specifically catches the dom_export / element_export trap class.
-model: claude-opus-4-7
+model: opus
 tools: [Read, Edit, Write, Bash, Grep, Glob]
 ---
 
