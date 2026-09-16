@@ -102,15 +102,25 @@ A native engine **does not fit the current `BrowserSession` port without changin
 
 ## 1. The capability-port boundary
 
+> **Superseded in part by [RFC 0009](0009-page-free-session-port.md), 2026-09-16.** Items 2 and 3
+> below described a tactical patch: make `page()` optional and have one selector key on handle
+> presence. Measurement for 0009 found the leak is 115 call sites across 35 of the roughly 40
+> modules in `src/tools`, so an optional member would have left the bypass intact and the compile
+> errors would have landed in tool handlers with no port to move them onto. 0009 does the work
+> properly: three new ports, four widenings, `page()` deleted over five phases. Items 1, 4 and 5
+> stand as written, and so does the touch and gesture paragraph at the end of this section, which
+> 0009 adopts into its own P3. **Read 0009 first.** This RFC's P1 is now a dependency on 0009
+> P1 through P3, not a phase of its own.
+
 `registerEngine` works as-is. The `EngineEntry` record (`src/engine/registry.ts:101-135`) asks for a kind, a capability row, a launch function, a substrate bundle and a post-wire step. A native adapter supplies all five, and `src/engine/adapters/safari.engine.ts` is the 58-line template.
 
 Five type changes, each one line or close to it.
 
 1. **`EngineKind` gains `"ios-app"` and `"android-app"`** (`src/engine/types.ts:25`, plus `ENGINE_KINDS` at `:27-33` and the mirror list in `eslint.config.js`). The existing `android` kind keeps its meaning: real Chrome on a real phone over adb and CDP. Two names that both say "android" is a documentation cost, and renaming a shipped engine kind is a breaking config change, so the new kind takes the qualifier.
 
-2. **`BrowserSession.page()` becomes optional** (`src/session/types.ts:120`): `page?(): Page`. The `page` sub-interface at `src/engine/types.ts:61-67` is already the declared discriminator; this makes the type agree with it. Safari stops throwing from a method it declares, and every call site that reads `session.page()` gets a compile error pointing at a real decision. That error set is the true cost of this RFC's first phase and it should be measured before P1 is sized as medium.
+2. ~~**`BrowserSession.page()` becomes optional**~~ **(superseded by 0009: `page()` is removed, not made optional.)** The original text follows for the record. `BrowserSession.page()` becomes optional (`src/session/types.ts:120`): `page?(): Page`. The `page` sub-interface at `src/engine/types.ts:61-67` is already the declared discriminator; this makes the type agree with it. Safari stops throwing from a method it declares, and every call site that reads `session.page()` gets a compile error pointing at a real decision. That error set is the true cost of this RFC's first phase and it should be measured before P1 is sized as medium.
 
-3. **`SubstrateCapableSession.page` becomes optional** (`src/page/snapshot-substrate-select.ts:27-32`), and the selector keys on handle presence instead of the engine literal at `:44`. The engine-owned `makeSubstrates` path (`src/page/substrate-bundle-safari.ts`) already bypasses this file for Safari; native follows the same route and the legacy selector stops accumulating literals.
+3. ~~**`SubstrateCapableSession.page` becomes optional**~~ **(superseded by 0009: the selector keys on the declared `subInterfaces`, and the port splits from its adapter.)** The original text follows for the record. `SubstrateCapableSession.page` becomes optional (`src/page/snapshot-substrate-select.ts:27-32`), and the selector keys on handle presence instead of the engine literal at `:44`. The engine-owned `makeSubstrates` path (`src/page/substrate-bundle-safari.ts`) already bypasses this file for Safari; native follows the same route and the legacy selector stops accumulating literals.
 
 4. **A native session handle, mirroring `safari?()`**: `native?(): NativeSessionHandle` on `BrowserSession` (`src/session/types.ts:136`). The handle carries a driver client, a device id, an app id, and the platform. Its substrate bundle reads it, exactly as the Safari bundle reads `e.session.safari!()`.
 
@@ -231,14 +241,18 @@ The mechanics follow the shipped pattern with no new machinery: a row in `Capabi
 
 ## 9. Phases
 
-| Phase | Scope                                                                                                            | Rough size                      |
-| ----- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| P1    | Port widening: optional `page()`, the native handle, the gesture and touch substrate, the deep-flag retirement   | medium, with an unmeasured tail |
-| P2    | Android emulator engine: adapter, hierarchy walker into the snapshot substrate, action substrate, selector model | large                           |
-| P3    | Capture: native event types, segmented video, the manifest device row, secret masking on hierarchy dumps         | medium                          |
-| P4    | iOS simulator engine over XCUITest                                                                               | large                           |
-| P5    | Player: a native stage drawing hierarchy keyframes, video segments and touch overlays                            | medium                          |
-| P6    | CI lanes, build caching, the capability and threat-model docs pass                                               | medium                          |
+P1 no longer exists as work this RFC owns. The port change it described grew past a
+tactical patch once measured, so it moved to RFC 0009 and this RFC waits on it. The
+tail that was unmeasured there is measured there: 115 sites, five phases.
+
+| Phase | Scope                                                                                                                                                                      | Rough size                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| P1    | **Delegated to [RFC 0009](0009-page-free-session-port.md) P1 through P3.** What stays here: the two new `EngineKind`s, the `native?()` handle, and the secret-scope rename | small, once 0009 P3 lands |
+| P2    | Android emulator engine: adapter, hierarchy walker into the snapshot substrate, action substrate, selector model                                                           | large                     |
+| P3    | Capture: native event types, segmented video, the manifest device row, secret masking on hierarchy dumps                                                                   | medium                    |
+| P4    | iOS simulator engine over XCUITest                                                                                                                                         | large                     |
+| P5    | Player: a native stage drawing hierarchy keyframes, video segments and touch overlays                                                                                      | medium                    |
+| P6    | CI lanes, build caching, the capability and threat-model docs pass                                                                                                         | medium                    |
 
 P1's tail is the compile-error set from making `page()` optional. Every call site that reads it becomes a decision, and the count is unknown until someone flips the type. Measure it before committing P1 to a sprint.
 
