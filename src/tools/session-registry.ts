@@ -19,6 +19,7 @@ import {
   type SessionEntry,
   type SessionMode,
 } from "../session/registry.js";
+import { snapshotNetworkOnlyDeps } from "../session/substrate-deps.js";
 import { newExtensionRegistry } from "../session/extensions.js";
 import { WedgeTracker } from "../session/wedge.js";
 import { SessionMetrics } from "../session/metrics.js";
@@ -107,28 +108,10 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
   // The substrate deps the registry needs to resolve a session's snapshot/network
   // substrates. The registry only ever reads the bundle's `snapshot`/`network`
   // selectors (the action/capture selectors — the only ones that consult
-  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`, which
-  // owns those host locals). snapshot/network read only `e.session`, so the action/
-  // capture deps here are deliberately unreachable on this path; making them throw
-  // documents that the registry must never drive an action/capture substrate.
-  const registrySubstrateDeps: SubstrateDeps = {
-    ctxFor: () => {
-      throw new Error(
-        "session-registry: ctxFor must not be reached — the registry resolves only the " +
-          "snapshot/network substrates (action/capture are host-build's concern).",
-      );
-    },
-    describeTarget: () => {
-      throw new Error(
-        "session-registry: describeTarget must not be reached (capture is host-build's concern).",
-      );
-    },
-    save: () => {
-      throw new Error(
-        "session-registry: save must not be reached (capture is host-build's concern).",
-      );
-    },
-  };
+  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`,
+  // which owns those host locals), so the four it must never drive throw. Shared
+  // with the extension-context rebuild, the other snapshot/network-only caller.
+  const registrySubstrateDeps: SubstrateDeps = snapshotNetworkOnlyDeps("session-registry");
   return new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;

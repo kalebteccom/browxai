@@ -21,8 +21,8 @@ import { attachNotificationPolicy } from "../session/notification.js";
 import { attachFsPickerPolicy, type FsPickerFile } from "../session/fs-picker.js";
 import { attachDeviceEmulation } from "../session/device-emu.js";
 import { RefRegistry } from "../page/refs.js";
-import { snapshotSubstrateFor } from "../page/snapshot-substrate-select.js";
-import { networkSubstrateFor } from "../page/network-substrate-select.js";
+import { engineEntry } from "../engine/registry.js";
+import { snapshotNetworkOnlyDeps } from "../session/substrate-deps.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { ConsoleBuffer } from "../page/console.js";
@@ -95,10 +95,18 @@ export async function rebuildPersistentForExtensions(
   // since they referenced the now-closed CDP session.
   const consoleBuf = new ConsoleBuffer();
   consoleBuf.attach(requirePage(sess));
-  // Re-select the network substrate on the rebuilt context (extensions are
-  // chromium-only, so this stays the CDP substrate — but routing through the
-  // selector keeps the rebuild engine-agnostic and the entry's substrate live).
-  const networkSub = networkSubstrateFor(sess);
+  // Re-select the substrates on the rebuilt context through the ENGINE's own
+  // bundle, the same factory the session registry uses at first wiring. Reaching
+  // past it into the two standalone selectors worked, because extensions are
+  // chromium-only and chromium's bundle delegates to exactly those — but it made
+  // this module a second place that knows how an engine picks its adapters, and
+  // an engine whose bundle did anything else would silently get the wrong
+  // substrate after a rebuild. Selection is the engine's, once (RFC 0009).
+  const substrates = engineEntry(sess.engine).makeSubstrates(
+    snapshotNetworkOnlyDeps("extensions-rebuild"),
+  );
+  const substrateSeed = { session: sess } as SessionEntry;
+  const networkSub = substrates.network(substrateSeed);
   await networkSub.attach();
   const networkBuf = networkSub.http;
   const wsBuf = networkSub.ws;
@@ -230,9 +238,9 @@ export async function rebuildPersistentForExtensions(
   e.bridge = br;
   e.refs = new RefRegistry();
   // The rebuild minted a fresh CDP session on the new context; re-derive the
-  // snapshot substrate so it captures the live handle (extensions are
-  // chromium-only, so this stays the CDP substrate).
-  e.snapshotSubstrate = snapshotSubstrateFor(sess);
+  // snapshot substrate through the same engine-owned bundle so it captures the
+  // live handle.
+  e.snapshotSubstrate = substrates.snapshot(substrateSeed);
   // Interactive-WS state is page-side; the rebuild destroyed the wrapper
   // and any active interceptors with it. Discard the server-side mirror
   // so it doesn't claim live interceptors that no longer exist, then
