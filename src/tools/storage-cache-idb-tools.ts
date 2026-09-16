@@ -32,6 +32,7 @@ export function registerStorageCacheIdbTools(
     z,
     register,
     gateCheck,
+    subInterfaceGate,
     entryFor,
     okText,
     errText,
@@ -56,6 +57,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_list_storages", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).cachesListStorages("caches_list_storages"),
           cfgActionTimeout(),
@@ -88,6 +91,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_list", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).cachesList({ cacheName, urlPattern }, "caches_list"),
           cfgActionTimeout(),
@@ -117,6 +122,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_get", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).cachesGet({ cacheName, url }, "caches_get"),
           cfgActionTimeout(),
@@ -160,6 +167,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_put", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("caches_put", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_put", c);
         const r = await withDeadline(
@@ -191,6 +200,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_delete", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("caches_delete", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_delete", c);
         const r = await withDeadline(
@@ -221,6 +232,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_clear", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("caches_clear", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_clear", c);
         const r = await withDeadline(
@@ -251,6 +264,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("caches_delete_storage", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("caches_delete_storage", confirmCtxFor(e));
         if (!c.ok) return denyContent("caches_delete_storage", c);
         const r = await withDeadline(
@@ -280,6 +295,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_list_databases", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).idbListDatabases("idb_list_databases"),
           cfgActionTimeout(),
@@ -308,6 +325,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_list_stores", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).idbListStores({ dbName }, "idb_list_stores"),
           cfgActionTimeout(),
@@ -340,6 +359,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_get", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).idbGet({ dbName, storeName, key }, "idb_get"),
           cfgActionTimeout(),
@@ -375,6 +396,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_put", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("idb_put", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_put", c);
         // Defensive: if `value` reaches the handler as a JSON-shaped string
@@ -433,6 +456,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_delete", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("idb_delete", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_delete", c);
         const r = await withDeadline(
@@ -464,6 +489,8 @@ export function registerStorageCacheIdbTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("idb_clear", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("idb_clear", confirmCtxFor(e));
         if (!c.ok) return denyContent("idb_clear", c);
         const r = await withDeadline(

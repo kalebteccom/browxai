@@ -23,17 +23,23 @@ async function recordEval(e: SessionEntry, target: TargetSubstrate, expr: string
 }
 
 /**
- * Read / observe — buffer reads + element diagnostics. The session ring-buffer
- * reads (console_read / network_read / ws_read / network_body), the DOM-metric
- * sampler + window watcher, element inspection / locator generation / point
- * probing, and the gated `eval_js` escape hatch. Registered through the shared
- * `ToolHost` seam.
+ * Read / observe — the console ring read + element diagnostics. `console_read`,
+ * the DOM-metric sampler + window watcher, element inspection / locator
+ * generation / point probing, and the gated `eval_js` escape hatch. Registered
+ * through the shared `ToolHost` seam.
+ *
+ * The network/WS ring reads (`network_read` / `ws_read` / `network_body`) moved
+ * to `read-observe-network-tools.ts`. They share a reason to change this module
+ * does not: all three need the engine to declare the `network` sub-interface, and
+ * all three gate on it. Splitting them out also took this file off the 450-line
+ * ceiling it was sitting exactly on.
  */
 export function registerReadObserveBufferTools(host: ToolHost): void {
   const {
     z,
     register,
     gateCheck,
+    subInterfaceGate,
     entryFor,
     asTarget,
     scriptFor,
@@ -59,24 +65,6 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const e = await entryFor(session);
       const rows = e.console.recent(limit ?? 50);
       return { content: [{ type: "text", text: JSON.stringify(rows, null, 2) }] };
-    },
-  );
-
-  register(
-    "network_read",
-    {
-      capability: "read",
-      batchable: true,
-      description:
-        "Session-wide ring buffer of recent network requests (500 most recent; oldest evicted on overflow). For per-action attribution use `ActionResult.network` from any action tool — that's the primary surface. This is the 'what happened across the session' view; useful when an XHR isn't tied to a specific action you just ran. Noise types (Image/Font/Stylesheet/Media/beacons) folded into `summary.byType.other`.",
-      inputSchema: { limit: z.number().int().positive().max(500).optional(), ...SESSION_ARG },
-    },
-    async ({ limit, session }) => {
-      const g = gateCheck("network_read");
-      if (g) return g;
-      const e = await entryFor(session);
-      const result = e.network.recent(limit ?? 50);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     },
   );
 
@@ -357,70 +345,6 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
   );
 
   register(
-    "network_body",
-    {
-      capability: "network-body",
-      batchable: true,
-      description:
-        "fetch a full response body by `requestId` (from `network_read` / `ActionResult.network.requests[].requestId`). **Gated behind the off-by-default `network-body` capability** — full bodies can carry PII / auth tokens; 's `responseShape` (keys only) is the safe default. Bounded (256 KB, `truncated:true` past that). Best-effort: the renderer discards bodies fast — fetch right after the request, not retained across navigations. Pairs with for realtime payload assertions.",
-      inputSchema: {
-        requestId: z
-          .string()
-          .describe(
-            "CDP request id from network_read / ActionResult.network.requests[].requestId.",
-          ),
-        ...SESSION_ARG,
-      },
-    },
-    async ({ requestId, session }) => {
-      const g = gateCheck("network_body");
-      if (g) return g;
-      const e = await entryFor(session);
-      // secrets masking: a full response body routinely echoes auth tokens
-      // and session blobs. Pass the per-session registry so any registered
-      // real-value gets substituted with its alias on egress. Base64 bodies
-      // pass through unchanged (the literal scan would never match an
-      // encoded form; documented in tool-reference.md as a known limitation).
-      // Engine-agnostic via the network substrate: chromium fetches
-      // on demand (CDP Network.getResponseBody); firefox/webkit return the body
-      // captured at response time into the substrate's bounded recent-window cache.
-      const r = await e.networkSubstrate.fetchBody(
-        requestId,
-        caps.enabled.has("secrets") ? e.secrets : null,
-      );
-      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }] };
-    },
-  );
-
-  register(
-    "ws_read",
-    {
-      capability: "read",
-      batchable: true,
-      description:
-        "session-wide ring of recent WebSocket / Server-Sent-Events frames (HTTP is `network_read`; this is the realtime channel). Each frame: `{ url, dir: sent|recv, kind: ws|sse, opcode?, event?, payload, truncated?, ts }`. Payloads are truncated. Use to verify realtime correctness — chat/multiplayer/collaborative/live-dashboard broadcasts. Per-action frames also land in `ActionResult.network.wsFrames`; this is the across-session view.",
-      inputSchema: {
-        limit: z
-          .number()
-          .int()
-          .positive()
-          .max(500)
-          .optional()
-          .describe("Most-recent N frames (default 50)."),
-        urlPattern: z.string().optional().describe("Substring filter on the frame's endpoint URL."),
-        ...SESSION_ARG,
-      },
-    },
-    async ({ limit, urlPattern, session }) => {
-      const g = gateCheck("ws_read");
-      if (g) return g;
-      const e = await entryFor(session);
-      const result = e.ws.recent(limit ?? 50, urlPattern);
-      return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-    },
-  );
-
-  register(
     "eval_js",
     {
       capability: "eval",
@@ -445,6 +369,8 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const g = gateCheck("eval_js");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("eval_js", "script", e);
+      if (sg) return sg;
       // page.evaluate has NO Playwright timeout — a never-resolving expr
       // would wedge forever. Race it against the anti-wedge deadline.
       const td = actionTimeout({ timeoutMs });

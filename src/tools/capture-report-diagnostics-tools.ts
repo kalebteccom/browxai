@@ -13,6 +13,7 @@ import {
   lowerTraceToSpec,
   parseCheck as parsePlaywrightSpec,
 } from "../page/export-playwright-script.js";
+import { engineDeclares } from "../engine/index.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 
@@ -66,7 +67,15 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       const g = gateCheck("export_session_report");
       if (g) return g;
       const e = await entryFor(session);
-      const net = e.network.recent(50);
+      // The network summary is a CLAIM about what the session observed, and this
+      // bundle is the QA-evidence surface a human signs off on. An engine that
+      // declares no `network` sub-interface has no protocol-level tap, so its ring
+      // is permanently empty and `summary.total: 0` would read as "no traffic
+      // occurred" when the truth is "nothing was watching". Declaration-keyed
+      // (RFC 0004 D5): the field is replaced by a named absence, never a plausible
+      // zero. Same defect class the `verify_*` family had. (RFC 0009.)
+      const observesNetwork = engineDeclares(e.session.engine, "network");
+      const net = observesNetwork ? e.network.recent(50) : null;
       // Link the most-recent completed .browx replay when the session ran one.
       // Absent when no recording ever engaged the writer (the artifact is the
       // sensitive companion of this evidence bundle — the description repeats
@@ -85,7 +94,15 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
           .filter((m) => m.type === "error")
           .map((m) => m.text)
           .slice(-25),
-        network: net.summary,
+        ...(net
+          ? { network: net.summary }
+          : {
+              networkUnavailable:
+                `the "${e.session.engine}" engine declares no "network" sub-interface — it ` +
+                "cannot observe protocol-level traffic, so this report carries no network " +
+                "summary. Absence of the field means the check was not performed; it does " +
+                "NOT mean no requests were made.",
+            }),
         regions: e.regions.list().map((r) => r.name),
         liveSessions: registry.list().map((s) => ({ id: s.id, mode: s.mode })),
         ...(lastReplay ? { replayArtifact: lastReplay } : {}),

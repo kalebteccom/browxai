@@ -42,6 +42,7 @@ export function registerStorageStateCookiesTools(
     z,
     register,
     gateCheck,
+    subInterfaceGate,
     entryFor,
     okText,
     errText,
@@ -194,6 +195,8 @@ export function registerStorageStateCookiesTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("cookies_list", "storage", e);
+        if (sg) return sg;
         const r = await withDeadline(
           storageFor(e).cookiesList({ urls }),
           cfgActionTimeout(),
@@ -238,6 +241,8 @@ export function registerStorageStateCookiesTools(
       if (g) return g;
       try {
         const e = await entryFor(session);
+        const sg = subInterfaceGate("cookies_set", "storage", e);
+        if (sg) return sg;
         const c = await confirmByobAction("cookies_set", confirmCtxFor(e));
         if (!c.ok) return denyContent("cookies_set", c);
         const r = await withDeadline(

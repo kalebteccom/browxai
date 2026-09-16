@@ -42,6 +42,7 @@ export function registerStorageWebAuthTools(
     z,
     register,
     gateCheck,
+    subInterfaceGate,
     entryFor,
     okText,
     errText,
@@ -79,6 +80,8 @@ export function registerStorageWebAuthTools(
         if (g) return g;
         try {
           const e = await entryFor(session);
+          const sg = subInterfaceGate(`${prefix}_get`, "storage", e);
+          if (sg) return sg;
           const r = await withDeadline(
             storageFor(e).webStorageGet(kind, { key }, `${prefix}_get`),
             cfgActionTimeout(),
@@ -103,6 +106,8 @@ export function registerStorageWebAuthTools(
         if (g) return g;
         try {
           const e = await entryFor(session);
+          const sg = subInterfaceGate(`${prefix}_list`, "storage", e);
+          if (sg) return sg;
           const r = await withDeadline(
             storageFor(e).webStorageList(kind, `${prefix}_list`),
             cfgActionTimeout(),
@@ -135,6 +140,8 @@ export function registerStorageWebAuthTools(
         if (g) return g;
         try {
           const e = await entryFor(session);
+          const sg = subInterfaceGate(`${prefix}_set`, "storage", e);
+          if (sg) return sg;
           const c = await confirmByobAction(`${prefix}_set`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_set`, c);
           const r = await withDeadline(
@@ -161,6 +168,8 @@ export function registerStorageWebAuthTools(
         if (g) return g;
         try {
           const e = await entryFor(session);
+          const sg = subInterfaceGate(`${prefix}_delete`, "storage", e);
+          if (sg) return sg;
           const c = await confirmByobAction(`${prefix}_delete`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_delete`, c);
           const r = await withDeadline(
@@ -187,6 +196,8 @@ export function registerStorageWebAuthTools(
         if (g) return g;
         try {
           const e = await entryFor(session);
+          const sg = subInterfaceGate(`${prefix}_clear`, "storage", e);
+          if (sg) return sg;
           const c = await confirmByobAction(`${prefix}_clear`, confirmCtxFor(e));
           if (!c.ok) return denyContent(`${prefix}_clear`, c);
           const r = await withDeadline(

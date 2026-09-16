@@ -651,6 +651,8 @@ All six are read-only (capability `read`). Coords targets are rejected: verify i
 
 **A third outcome: refusal.** The five page-bound verifies need a Playwright `Page`. On an engine that declares no `page` sub-interface (`safari`), they return the engine-refusal envelope — `{ok: false, error, engine, hint, tokensEstimate}` with **no `failure` key** — instead of an assertion result. Key on the presence of `failure` to tell the two apart: a refusal means the check never ran and says nothing about the page, so it must never be recorded as a defect. `verify_predicate` evaluates a caller-supplied data bag and runs on every engine.
 
+**The refusal envelope is the engine-wide contract, not a `verify_*` special case.** Every tool whose implementation needs a capability the session's engine does not declare returns the same `{ok: false, error, engine, hint, tokensEstimate}` shape, with no result-shaped keys at all. Today that covers the network reads (`network_read` / `ws_read` / `network_body`) and the live-emulation setters (`set_geolocation` / `set_color_scheme` / `set_reduced_motion`) on `safari`, which declares neither `network` nor `emulation`; the storage, script and capture families carry the same gate for engines that omit those. `export_session_report` follows the rule too — on an engine with no network observation it omits the `network` summary and carries `networkUnavailable` instead of a zeroed one. **An empty result and a refusal are different answers**: key on `engine` being present to tell "this engine cannot" from "nothing happened".
+
 **Example (canonical for the family; the others differ only in the asserted property):**
 
 ```jsonc

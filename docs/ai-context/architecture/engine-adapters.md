@@ -594,8 +594,12 @@ which carries console and nav events plus script. The capability declaration is 
   / heap / cpu / clock / SW-interception / shadow_trees / touch / pdf / live
   locale-timezone-UA). Refuses with `engine: "safari"`, no per-tool edit.
 - **gated (no substrate at all):** `network_read` / `ws_read` / `network_body`. Safari
-  has no protocol-level network tap (the `SafariNoopNetworkSubstrate` reports empty +
-  a structured `network_body` refusal).
+  has no protocol-level network tap, so it declares no `network` sub-interface and all
+  three return the engine-refusal envelope through `subInterfaceGate(tool, "network", e)`.
+  They used to answer from `SafariNoopNetworkSubstrate`'s permanently-empty rings — a
+  well-formed `{summary:{total:0,…}, requests:[]}` that reads as "no traffic occurred"
+  for a question the engine cannot answer. `export_session_report` likewise replaces
+  the network summary with a named absence rather than a plausible zero.
 
 Non-BYOB: every Safari session is an isolated automation window (no real-profile
 cookies/storage/history). `incognito` and `byob`/attach both structured-refuse

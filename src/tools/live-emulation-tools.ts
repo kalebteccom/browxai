@@ -27,7 +27,7 @@ import { SESSION_ARG } from "./schemas.js";
  * Registered through the shared `ToolHost` seam.
  */
 export function registerLiveEmulationTools(host: ToolHost): void {
-  const { z, register, gateCheck, engineGate, entryFor, emulationFor } = host;
+  const { z, register, gateCheck, subInterfaceGate, engineGate, entryFor, emulationFor } = host;
 
   // ---------- Per-primitive device emulation ----------
   //
@@ -219,6 +219,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_geolocation");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_geolocation", "emulation", e);
+      if (sg) return sg;
       try {
         const isClear = latitude === null || latitude === undefined;
         if (isClear) {
@@ -272,6 +274,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_color_scheme");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_color_scheme", "emulation", e);
+      if (sg) return sg;
       try {
         const r = await emulationFor(e).setColorScheme(scheme);
         if (r.kind === "refusal") return emulationRefusal("set_color_scheme", r);
@@ -299,6 +303,8 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       const g = gateCheck("set_reduced_motion");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("set_reduced_motion", "emulation", e);
+      if (sg) return sg;
       try {
         const motion: ReducedMotion = on ? "reduce" : "no-preference";
         const r = await emulationFor(e).setReducedMotion(motion);
