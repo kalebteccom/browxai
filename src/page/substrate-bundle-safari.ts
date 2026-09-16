@@ -16,6 +16,7 @@ import { SafariEmulationSubstrate, type EmulationSubstrate } from "./emulation-s
 import { type SnapshotSubstrate } from "./snapshot-substrate.js";
 import { SafariClassicSnapshotSubstrate } from "./snapshot-substrate-safari.js";
 import { SafariNoopNetworkSubstrate, type NetworkSubstrate } from "./network-substrate.js";
+import { SafariTargetSubstrate, type TargetSubstrate } from "./target-substrate.js";
 
 /** The Safari `SubstrateBundle` — the safari engine registers this. `safari!()` is
  *  the Safari-native WebDriver-Classic + BiDi handle, present on every safari
@@ -46,5 +47,9 @@ export function safariSubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
     // Safari has no protocol-level network at all (no CDP tap, no BiDi network
     // domain) — the empty no-op substrate; the network tools are capability-gated.
     network: (): NetworkSubstrate => new SafariNoopNetworkSubstrate(),
+    // The URL + title reads the handlers used to carry inline as
+    // `if (session.safari) { webDriver.currentUrl(...) }` branches
+    // (session-lifecycle-tools.ts, read-observe-dom-tools.ts).
+    target: (e: SessionEntry): TargetSubstrate => new SafariTargetSubstrate(e.session.safari!()),
   };
 }

@@ -22,8 +22,8 @@ export default defineConfig({
     starlight({
       title: "browxai",
       description:
-        "A browser built for agents. MCP-native, model-agnostic, agentic-first browser control on Playwright and CDP.",
-      tagline: "A browser, built for agents.",
+        "Browser control built for agents. MCP-native, model-agnostic, agentic-first control across Chromium, Firefox, WebKit, real Safari, and Chrome on an Android device.",
+      tagline: "Browser control, built for agents.",
       // Fail the build on broken internal links or heading anchors, so dead
       // links can never ship. This is the build-time "error boundary" for a
       // static docs site.
@@ -43,13 +43,19 @@ export default defineConfig({
         { tag: "meta", attrs: { property: "og:image:height", content: "630" } },
         {
           tag: "meta",
-          attrs: { property: "og:image:alt", content: "browxai - a browser, built for agents" },
+          attrs: {
+            property: "og:image:alt",
+            content: "browxai - browser control, built for agents",
+          },
         },
         { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
         { tag: "meta", attrs: { name: "twitter:image", content: "https://browxai.com/og.png" } },
         {
           tag: "meta",
-          attrs: { name: "twitter:image:alt", content: "browxai - a browser, built for agents" },
+          attrs: {
+            name: "twitter:image:alt",
+            content: "browxai - browser control, built for agents",
+          },
         },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
         {
@@ -72,7 +78,7 @@ export default defineConfig({
             "@type": "SoftwareApplication",
             name: "browxai",
             description:
-              "MCP-native, model-agnostic, agentic-first browser-control server on Playwright and CDP.",
+              "MCP-native, model-agnostic, agentic-first browser-control server across five engines, over CDP, WebDriver BiDi and safaridriver.",
             applicationCategory: "DeveloperApplication",
             operatingSystem: "Node.js (>=20)",
             url: "https://browxai.com",

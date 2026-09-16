@@ -39,6 +39,7 @@ import { reapplyAll as reapplyEmulation } from "./emulation.js";
 import { attachDownloadCapture } from "../page/downloads.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
+import { requirePage } from "../engine/index.js";
 
 /** Attach the full Playwright post-creation bookkeeping to a freshly-built
  *  SessionEntry, using the per-server `deps` (caps / configStore / workspace) the
@@ -48,12 +49,12 @@ import { applyStealth } from "../helper/stealth.js";
 export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps): Promise<void> {
   const { caps, configStore, workspace } = deps;
   const sess = entry.session;
-  const ctx = sess.page().context();
+  const ctx = requirePage(sess).context();
   const br = entry.bridge;
 
   // console — attach to the current + future pages. (Safari's console arrives
   // over BiDi in its own post-wire; every Playwright engine attaches here.)
-  entry.console.attach(sess.page());
+  entry.console.attach(requirePage(sess));
 
   // browser bridge — the page-side __browx signalling channel.
   await br.attach(ctx);
@@ -148,8 +149,8 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
     // navigation.
     (async () => {
       try {
-        const newCdp = await sess.page().context().newCDPSession(newPage);
-        await reapplyEmulation(sess.page().context(), newPage, newCdp, entry.deviceEmulation);
+        const newCdp = await requirePage(sess).context().newCDPSession(newPage);
+        await reapplyEmulation(requirePage(sess).context(), newPage, newCdp, entry.deviceEmulation);
       } catch {
         /* best-effort */
       }
@@ -160,12 +161,12 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // on `action`) so a page that constructs `new WebSocket(...)` during initial
   // document parse hits the wrapped constructor.
   if (caps.enabled.has("action")) {
-    await entry.wsInteractive.install(sess.page()).catch(() => undefined);
+    await entry.wsInteractive.install(requirePage(sess)).catch(() => undefined);
   }
 
   // workers — same eager-install posture (capability-gated on `read`): the
   // page-side Worker-constructor wrapper must be live before any document parse.
   if (caps.enabled.has("read")) {
-    await entry.workers.installPageWrapper(sess.page()).catch(() => undefined);
+    await entry.workers.installPageWrapper(requirePage(sess)).catch(() => undefined);
   }
 }

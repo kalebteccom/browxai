@@ -75,16 +75,16 @@ export type {
   ElementProbe,
   HitPoint,
   ActionResult,
-  ActionContext,
   ActionWindowOptions,
 } from "./actionresult-types.js";
+export type { ActionContext } from "./action-context.js";
 import type {
-  ActionContext,
   ActionResult,
   ActionWindowOptions,
   DispatchedAction,
   ElementProbe,
 } from "./actionresult-types.js";
+import type { ActionContext } from "./action-context.js";
 
 /**
  * Run an action inside the action-window machinery.

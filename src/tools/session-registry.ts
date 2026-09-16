@@ -1,6 +1,6 @@
 import { openManagedSession } from "../session/managed.js";
 import { openByobSession } from "../session/byob.js";
-import { requireCdp, type EngineKind } from "../engine/index.js";
+import { requireCdp, type EngineKind, requirePage } from "../engine/index.js";
 import {
   engineEntry,
   byobAttachNeedsEndpoint,
@@ -19,6 +19,7 @@ import {
   type SessionEntry,
   type SessionMode,
 } from "../session/registry.js";
+import { snapshotNetworkOnlyDeps } from "../session/substrate-deps.js";
 import { newExtensionRegistry } from "../session/extensions.js";
 import { WedgeTracker } from "../session/wedge.js";
 import { SessionMetrics } from "../session/metrics.js";
@@ -107,28 +108,10 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
   // The substrate deps the registry needs to resolve a session's snapshot/network
   // substrates. The registry only ever reads the bundle's `snapshot`/`network`
   // selectors (the action/capture selectors — the only ones that consult
-  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`, which
-  // owns those host locals). snapshot/network read only `e.session`, so the action/
-  // capture deps here are deliberately unreachable on this path; making them throw
-  // documents that the registry must never drive an action/capture substrate.
-  const registrySubstrateDeps: SubstrateDeps = {
-    ctxFor: () => {
-      throw new Error(
-        "session-registry: ctxFor must not be reached — the registry resolves only the " +
-          "snapshot/network substrates (action/capture are host-build's concern).",
-      );
-    },
-    describeTarget: () => {
-      throw new Error(
-        "session-registry: describeTarget must not be reached (capture is host-build's concern).",
-      );
-    },
-    save: () => {
-      throw new Error(
-        "session-registry: save must not be reached (capture is host-build's concern).",
-      );
-    },
-  };
+  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`,
+  // which owns those host locals), so the four it must never drive throw. Shared
+  // with the extension-context rebuild, the other snapshot/network-only caller.
+  const registrySubstrateDeps: SubstrateDeps = snapshotNetworkOnlyDeps("session-registry");
   return new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
@@ -321,7 +304,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // session mode (incl. attached: the consumer's Chrome receives the
       // route handler scoped to its context; warning emitted up-stream).
       if (creationReplayHars && creationReplayHars.length && hasPlaywrightPage) {
-        await applyHarReplay(sess.page().context(), creationReplayHars);
+        await applyHarReplay(requirePage(sess).context(), creationReplayHars);
       }
       // per-session console buffer. The page/BiDi attach is the engine's job —
       // it runs in `postWire` (Playwright: `console.attach(page)`; Safari: the
@@ -485,7 +468,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // (called inside finalizeVideoOnClose) blocks until the page is closed
       // AND the recording is fully written, so the order is: grab page →
       // close context → saveAs to deterministic target path.
-      const videoPage = e.video.active ? e.session.page() : undefined;
+      const videoPage = e.video.active ? requirePage(e.session) : undefined;
       await e.session.close().catch(() => undefined);
       if (videoPage) {
         await finalizeVideoOnClose(videoPage, e.video).catch(() => undefined);

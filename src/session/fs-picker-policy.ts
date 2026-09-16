@@ -42,9 +42,8 @@
 // as `dialog_policy` / `permission_policy`; `raisedSince(ts)` drives the
 // `ok:false` flip.
 
-import type { BrowserContext } from "playwright-core";
 import { resolve, sep } from "node:path";
-import { PolicyRecordBuffer } from "./policy-buffer.js";
+import { InstallGuard, PolicyRecordBuffer } from "./policy-buffer.js";
 
 export type FsPickerMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -130,7 +129,7 @@ export class FsPickerPolicyState {
   /** Contexts we've already installed the init-script + binding on.
    *  Idempotent install guard — BYOB reconnect / context rebuild MUST not
    *  double-wire. */
-  private wired = new WeakSet<BrowserContext>();
+  private readonly wired = new InstallGuard();
 
   constructor(initial: FsPickerPolicy = { mode: "raise" }, cap = 200) {
     this.policy = normalise(initial);
@@ -187,12 +186,12 @@ export class FsPickerPolicyState {
   }
 
   /** Has this context already been wired? Idempotent install guard. */
-  hasContext(c: BrowserContext): boolean {
+  hasContext(c: object): boolean {
     return this.wired.has(c);
   }
   /** Mark a context as wired. */
-  markContext(c: BrowserContext): void {
-    this.wired.add(c);
+  markContext(c: object): void {
+    this.wired.mark(c);
   }
 }
 

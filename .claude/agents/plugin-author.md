@@ -1,7 +1,7 @@
 ---
 name: plugin-author
 description: Scaffolds a workspace plugin under packages/plugins/<name>/ per the v0.7 plugin contract — manifest, schema, register(api), README, tests, CHANGELOG.
-model: claude-opus-4-7
+model: opus
 tools: [Read, Edit, Write, Bash, Grep, Glob]
 ---
 

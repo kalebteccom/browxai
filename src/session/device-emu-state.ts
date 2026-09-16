@@ -7,8 +7,7 @@
 // `device-emu-attach.ts`. This file is a leaf — it imports neither sibling, so
 // the barrel can re-export all three without a cycle.
 
-import type { BrowserContext } from "playwright-core";
-import { PolicyRecordBuffer } from "./policy-buffer.js";
+import { InstallGuard, PolicyRecordBuffer } from "./policy-buffer.js";
 
 /** The three Web platform APIs browxai's device-emulation governs. */
 export const SUPPORTED_DEVICE_APIS = ["bluetooth", "usb", "hid"] as const;
@@ -104,7 +103,7 @@ export class DeviceEmulationState {
   /** Contexts we've already installed the init-script + binding on.
    *  Idempotent install guard — BYOB reconnect / context rebuild MUST not
    *  double-wire. */
-  private wired = new WeakSet<BrowserContext>();
+  private readonly wired = new InstallGuard();
   /** True iff `device-emulation` capability was on at the time of attach.
    *  The page-side wrapper installs regardless (so a runtime capability
    *  toggle that adds the cap takes effect — though the canonical
@@ -158,12 +157,12 @@ export class DeviceEmulationState {
   }
 
   /** Has this context already been wired? Idempotent install guard. */
-  hasContext(c: BrowserContext): boolean {
+  hasContext(c: object): boolean {
     return this.wired.has(c);
   }
   /** Mark a context as wired. */
-  markContext(c: BrowserContext): void {
-    this.wired.add(c);
+  markContext(c: object): void {
+    this.wired.mark(c);
   }
 }
 

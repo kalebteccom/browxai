@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { buildSafariSession, NO_PLAYWRIGHT_PAGE } from "./safari-session.js";
+import { buildSafariSession } from "./safari-session.js";
+import { requirePage } from "../engine/index.js";
 import { openIncognitoSession } from "./incognito.js";
 import { openByobSession } from "./byob.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 
-// The no-Playwright-Page session seam: buildSafariSession wraps a
-// Safari adapter handle as a BrowserSession whose page() throws; and the
-// non-managed factories refuse safari (it is managed/isolated-only). All without
+// The no-Playwright-Page session seam: buildSafariSession wraps a Safari adapter
+// handle as a BrowserSession that OMITS the `page` member; and the non-managed
+// factories refuse safari (it is managed/isolated-only). All without
 // safaridriver.
 
 function fakeHandle(): { handle: SafariSessionHandle; closed: () => boolean } {
@@ -31,10 +32,26 @@ describe("buildSafariSession", () => {
     expect(sess.engine).toBe("safari");
   });
 
-  it("page() throws the structured no-Playwright-Page error", () => {
+  it("omits the page member entirely — the engine backs none", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);
-    expect(() => sess.page()).toThrow(NO_PLAYWRIGHT_PAGE);
+    // Absent, not present-and-throwing. A present member is the L5 violation RFC
+    // 0004 named, and it made `requirePage`'s `!session.page` guard false on the
+    // one engine it exists for, so the structured refusal below was dead code.
+    expect(sess.page).toBeUndefined();
+    expect("page" in sess).toBe(false);
+  });
+
+  it("requirePage refuses with the engine-naming message, not a Safari throw", () => {
+    const { handle } = fakeHandle();
+    const sess = buildSafariSession(handle);
+    // The replacement message is strictly better than the one it replaced: it
+    // names the engine, says the engine declares no `page` sub-interface, and
+    // points at the capability substrates. `replay/session.ts` catches it to fall
+    // back to an action-only archive, the same as before.
+    expect(() => requirePage(sess)).toThrow(/engine "safari" backs no Playwright Page/);
+    expect(() => requirePage(sess)).toThrow(/declares no `page` sub-interface/);
+    expect(() => requirePage(sess)).toThrow(/capability substrate/);
   });
 
   it("safari() exposes the native handle and cdp is absent", () => {

@@ -39,6 +39,7 @@ import {
 } from "./sources.js";
 import { attachDomCapture, type DomCaptureHandle } from "./dom-capture.js";
 import { attachReplayNetwork } from "./session-network.js";
+import { requirePage } from "../engine/index.js";
 
 /** What the tool surface accepts on `start_recording({ replay })`. */
 export interface ReplayStartOptions {
@@ -329,7 +330,7 @@ export class ReplaySession {
   private async attachSources(tier: CaptureTier, maskSelectors: readonly string[]): Promise<void> {
     let page: Page;
     try {
-      page = this.entry.session.page();
+      page = requirePage(this.entry.session);
     } catch {
       // Engines without a Playwright page (Safari) do not carry a DOM stream,
       // network tap, or console binding this orchestrator can subscribe to.

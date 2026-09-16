@@ -7,6 +7,8 @@ import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import type { TargetSubstrate } from "../page/target-substrate.js";
+import { engineDeclares, requirePage } from "../engine/index.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 type Session = SessionEntry["session"];
@@ -20,33 +22,23 @@ function jsonErrorContent(payload: Record<string, unknown>): ToolResponse {
 /** Resolve a child-frame target by stable id (minting ids first so the lookup
  *  succeeds), or null when the frame is no longer attached. */
 function resolveSnapshotFrame(s: Session, e: SessionEntry, frame: string): FrameTarget {
-  listFrames(s.page(), e.frames);
-  return resolveFrameById(s.page(), e.frames, frame);
+  listFrames(requirePage(s), e.frames);
+  return resolveFrameById(requirePage(s), e.frames, frame);
 }
 
-/** Read the header url/title. Safari has no Playwright Page — read via the
- *  WebDriver Classic client; the main frame reads the page; a child frame reads
- *  the frame target. */
+/** Read the header url/title. The main frame reads the session's target through
+ *  the target port — the engine that has no Playwright Page answers from its own
+ *  client, so the `if (s.safari)` branch this function used to open with is gone.
+ *  A child frame reads the frame target, which is Playwright-only by
+ *  construction (an engine with no Page has no child frames to resolve). */
 async function readSnapshotHeader(
-  s: Session,
+  target: TargetSubstrate,
   isMainFrame: boolean,
   targetFrame: FrameTarget,
 ): Promise<{ url: string; title: string }> {
-  const safari = s.safari?.();
-  if (safari) {
-    const url = await safari.webDriver.currentUrl(safari.sessionId).catch(() => "");
-    const title = await safari.webDriver
-      .executeScript(safari.sessionId, "return document.title")
-      .then((t) => (typeof t === "string" ? t : ""))
-      .catch(() => "");
-    return { url, title };
-  }
   if (isMainFrame) {
-    const url = s.page().url();
-    const title = await s
-      .page()
-      .title()
-      .catch(() => "");
+    const url = await target.url().catch(() => "");
+    const title = await target.title().catch(() => "");
     return { url, title };
   }
   return { url: targetFrame!.url(), title: targetFrame!.name() || "" };
@@ -84,7 +76,8 @@ function scopeAndSerialise(
  * the closures (gate, ctx, ports), this module owns the registrations.
  */
 export function registerReadObserveDomTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config } = host;
+  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config, targetFor } =
+    host;
 
   register(
     "snapshot",
@@ -166,7 +159,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
         });
       }
       const { tree, stats, warnings } = composed;
-      const { url, title } = await readSnapshotHeader(s, isMainFrame, targetFrame);
+      const { url, title } = await readSnapshotHeader(targetFor(e), isMainFrame, targetFrame);
       const masksSecrets = caps.enabled.has("secrets");
       const scoped = scopeAndSerialise(tree, { scope, maxNodes, omit }, (raw) =>
         masksSecrets ? e.secrets.applyMaskInText(raw) : raw,
@@ -251,8 +244,14 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       try {
         result = await withDeadline(
           find(
-            // safari has no Playwright Page — find ranks from the substrate tree.
-            s.safari ? null : s.page(),
+            // An engine that declares no `"page"` sub-interface has no Playwright
+            // Page, and find ranks from the substrate tree alone. Keyed on the
+            // DECLARATION (RFC 0004 D5), not on the presence of a rival engine's
+            // handle: `s.safari ? …` said "is this the one no-Page engine I know
+            // about", which a sixth engine would silently fail. `find` degrades
+            // here rather than refusing, so it reads the declaration directly
+            // instead of going through `subInterfaceGate`.
+            engineDeclares(s.engine, "page") ? requirePage(s) : null,
             e.snapshotSubstrate,
             e.refs,
             {
@@ -289,7 +288,12 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const top = result.candidates[0];
       e.recorder.recordRead(
         { type: "find", query },
-        s.safari ? "" : s.page().url(),
+        // The URL the query ran against, read through the target port. Before the
+        // port a no-Page engine recorded "" here, because the only URL source was
+        // a `page()` that throws.
+        await targetFor(e)
+          .url()
+          .catch(() => ""),
         top ? { selectorHint: top.selectorHint, stability: top.stability } : undefined,
       );
       // egress masking. `find()` returns candidate `name` / `testId` /
@@ -322,7 +326,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const g = gateCheck("frames_list");
       if (g) return g;
       const e = await entryFor(session);
-      const frames = listFrames(e.session.page(), e.frames);
+      const frames = listFrames(requirePage(e.session), e.frames);
       const body = { ok: true as const, frames, tokensEstimate: 0 };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
       return { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] };

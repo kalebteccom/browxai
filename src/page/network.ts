@@ -32,8 +32,9 @@ export { NetworkTap, NetworkBuffer, fetchResponseBody } from "./network-cdp.js";
 // WebSocket / Server-Sent-Events frame capture lives in `network-ws.ts` (the
 // `WsFrame` shape + `sanitizeFrame` egress sanitiser are shared with the
 // off-Chromium WS ring); re-exported here so callers use the one barrel.
-export type { WsFrame } from "./network-ws.js";
-export { sanitizeFrame, WsBuffer } from "./network-ws.js";
+export type { WsFrame } from "./network-types.js";
+export { sanitizeFrame } from "./network-types.js";
+export { WsBuffer } from "./network-ws.js";
 
 // ===========================================================================
 // Off-Chromium (Playwright-events) network/WebSocket capture lives in a sibling

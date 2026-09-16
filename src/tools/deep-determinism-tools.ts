@@ -1,4 +1,4 @@
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { matchesResponse } from "../page/await_network.js";
@@ -77,7 +77,11 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
           state,
           mode: appliedMode,
           appliedAtIso,
-        } = await e.clock.apply(requireCdp(e.session), e.session.page(), { mode, atIso, byMs });
+        } = await e.clock.apply(requireCdp(e.session), requirePage(e.session), {
+          mode,
+          atIso,
+          byMs,
+        });
         const body: Record<string, unknown> = {
           ok: true,
           applied: {
@@ -132,9 +136,13 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const { state } = await e.seededRandom.apply(e.session.page().context(), e.session.page(), {
-          seed,
-        });
+        const { state } = await e.seededRandom.apply(
+          requirePage(e.session).context(),
+          requirePage(e.session),
+          {
+            seed,
+          },
+        );
         const body: Record<string, unknown> = { ok: true, applied: state };
         if (e.mode === "attached") {
           body.warning =
@@ -221,8 +229,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
         }
       };
       // arm the waiter BEFORE dispatching the action so a fast response can't slip past.
-      const waitP = e.session
-        .page()
+      const waitP = requirePage(e.session)
         .waitForResponse(
           (r) =>
             matchesResponse(
@@ -295,7 +302,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       while (Date.now() - start < budget) {
         polls++;
         try {
-          value = await withDeadline(s.page().evaluate(expr), perPoll, "poll_eval");
+          value = await withDeadline(requirePage(s).evaluate(expr), perPoll, "poll_eval");
         } catch (err) {
           return determinismJson({
             ok: false,

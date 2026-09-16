@@ -33,7 +33,7 @@ engine land as an adapter rather than a rewrite.
 ```
 EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari"   // engines the RFC commits to
 //   safari: REAL Safari.app over safaridriver — the FIRST non-Playwright engine
-//   (no Playwright Page, no CDP). page() THROWS; a curated subset works via the
+//   (no Playwright Page, no CDP). The `page` member is ABSENT; a curated subset works via the
 //   Safari-native handle. See the "Safari" section below.
 
 BrowserEngine (port)                              // capability-segregated
@@ -230,11 +230,29 @@ for a user's running Firefox. The Firefox attach model is a glass-box BiDi
 **launch** of the real profile (`--remote-debugging-port`, profile-lock-bound),
 not a CDP-attach; `BROWX_ATTACH_BIDI` is the reserved name.
 
+## Where a substrate lives (the port/adapter file split)
+
+Every capability substrate is four kinds of module, and the naming is uniform
+(RFC 0009 P1):
+
+| File                             | Holds                                                             |
+| -------------------------------- | ----------------------------------------------------------------- |
+| `<name>-substrate-types.ts`      | the PORT. Zero vendor imports — `pnpm depcruise` enforces it.     |
+| `<name>-substrate-playwright.ts` | the Playwright adapter (`-cdp.ts` where a CDP variant exists too) |
+| `<name>-substrate-safari.ts`     | the safaridriver adapter                                          |
+| `<name>-substrate.ts`            | a barrel re-exporting all of the above                            |
+
+Consumers import the barrel, so the path a handler writes never changes when an
+adapter is added. A NEW adapter is a new `<name>-substrate-<engine>.ts` plus one
+line in the barrel and one line in that engine's `SubstrateBundle` — no edit to
+the port, and no edit to any consumer. Putting an implementation back in the port
+file fails `ports-name-no-vendor-type` the moment it names a vendor type.
+
 ## The snapshot/a11y substrate (RFC D4: hybrid behind one interface)
 
 The read core (`snapshot` / `find` / `extract` / `text_search` / `set-of-marks` /
 `plan`) and the action-window pre/post `snapshotDelta` mint refs from **one**
-`SnapshotSubstrate` interface (`src/page/snapshot-substrate.ts`), not a raw
+`SnapshotSubstrate` port (`src/page/snapshot-substrate-types.ts`), not a raw
 `CDPSession`. This is what un-gates `navigate` / `click` / `fill` / `snapshot` /
 `find` on the CDP-absent engines. The seam is dependency direction made concrete:
 tools → `SnapshotSubstrate` → implementation → CDP / Playwright. The engine handle
@@ -296,7 +314,7 @@ element probe build on every engine.
 
 The network tools (`network_read` / `ws_read` / `network_body`), `asset_export`'s
 ring iteration, and the action-window / watch network slice read from **one**
-`NetworkSubstrate` interface (`src/page/network-substrate.ts`), not a raw
+`NetworkSubstrate` port (`src/page/network-substrate-types.ts`), not a raw
 `CDPSession`. This is what un-gates the network slice on the CDP-absent engines.
 Same doctrine as the snapshot substrate: tools → `NetworkSubstrate` →
 implementation → CDP / Playwright events; the engine handle is captured at
@@ -553,8 +571,9 @@ real connected device (skips cleanly otherwise). The attach-only `n/a` for
 ### Safari: the curated subset (first non-Playwright engine)
 
 Safari is the odd one out and gets a prose row rather than a table column: it has
-**no Playwright Page and no CDP**, so `session.page()` THROWS (`safari-no-playwright-page`)
-and the cross-browser Playwright surface the table assumes does not exist. Real
+**no Playwright Page and no CDP**, so the session OMITS the `page` member
+(`requirePage(session)` refuses, naming the engine) and the cross-browser
+Playwright surface the table assumes does not exist. Real
 Safari.app is driven over `safaridriver` (WebDriver Classic, the workhorse) plus
 the experimental BiDi socket, gated behind `safari:experimentalWebSocketUrl`,
 which carries console and nav events plus script. The capability declaration is a
@@ -575,8 +594,12 @@ which carries console and nav events plus script. The capability declaration is 
   / heap / cpu / clock / SW-interception / shadow_trees / touch / pdf / live
   locale-timezone-UA). Refuses with `engine: "safari"`, no per-tool edit.
 - **gated (no substrate at all):** `network_read` / `ws_read` / `network_body`. Safari
-  has no protocol-level network tap (the `SafariNoopNetworkSubstrate` reports empty +
-  a structured `network_body` refusal).
+  has no protocol-level network tap, so it declares no `network` sub-interface and all
+  three return the engine-refusal envelope through `subInterfaceGate(tool, "network", e)`.
+  They used to answer from `SafariNoopNetworkSubstrate`'s permanently-empty rings — a
+  well-formed `{summary:{total:0,…}, requests:[]}` that reads as "no traffic occurred"
+  for a question the engine cannot answer. `export_session_report` likewise replaces
+  the network summary with a named absence rather than a plausible zero.
 
 Non-BYOB: every Safari session is an isolated automation window (no real-profile
 cookies/storage/history). `incognito` and `byob`/attach both structured-refuse

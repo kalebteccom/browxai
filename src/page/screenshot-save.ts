@@ -18,7 +18,11 @@
 
 import { resolve as resolvePath, dirname } from "node:path";
 import { statSync, mkdirSync, writeFileSync } from "node:fs";
-import { resolveWorkspacePath } from "../session/storage.js";
+// `resolveWorkspacePath` comes from its own module, not through the
+// `session/storage.ts` re-export: this module is reached from the
+// CaptureSubstrate port, and the storage barrel drags a Playwright
+// `BrowserContext`/`Page` import behind it. Same function, one hop shorter.
+import { resolveWorkspacePath } from "../util/workspace.js";
 
 /** Image format the bytes were encoded as. Matches the existing tool surface
  *  (`png` / `jpeg`); kept narrow so the result is self-describing without

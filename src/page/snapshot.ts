@@ -2,7 +2,7 @@
 // everywhere browxai emits a tree (snapshot(), find() context, ActionResult.snapshotDelta) —
 // that's the coherence constraint.
 
-import { walk, type A11yNode } from "./a11y.js";
+import { walk, type A11yNode } from "./a11y-types.js";
 
 export interface SerialiseOptions {
   /** Indent string per depth level. Default `"  "`. */

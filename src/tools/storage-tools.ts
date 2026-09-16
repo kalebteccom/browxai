@@ -1,7 +1,8 @@
 import type { ToolHost } from "./host.js";
 import { registerStorageStateCookiesTools } from "./storage-state-cookies-tools.js";
 import { registerStorageWebAuthTools } from "./storage-web-auth-tools.js";
-import { registerStorageCacheIdbTools } from "./storage-cache-idb-tools.js";
+import { registerStorageCachesTools } from "./storage-caches-tools.js";
+import { registerStorageIdbTools } from "./storage-idb-tools.js";
 import { registerStorageArtifactHarVideoTools } from "./storage-artifact-har-video-tools.js";
 
 /**
@@ -11,7 +12,7 @@ import { registerStorageArtifactHarVideoTools } from "./storage-artifact-har-vid
  * slots, and the session artifact KV / HAR record / video record tools.
  *
  * RFC 0004 P3 / D3 (SRP): the registrations were split by cohesive family into
- * four sibling modules (state+cookies / web-storage+auth / cache+idb /
+ * five sibling modules (state+cookies / web-storage+auth / caches / idb /
  * artifact+har+video). This module stays the single entry point `server.ts` +
  * `tool-metadata.ts` call, and invokes each family in the EXACT prior source order
  * so the registered-name set + the derived maps stay byte-identical (the
@@ -22,6 +23,7 @@ import { registerStorageArtifactHarVideoTools } from "./storage-artifact-har-vid
 export function registerStorageTools(host: ToolHost): void {
   registerStorageStateCookiesTools(host);
   registerStorageWebAuthTools(host);
-  registerStorageCacheIdbTools(host);
+  registerStorageCachesTools(host);
+  registerStorageIdbTools(host);
   registerStorageArtifactHarVideoTools(host);
 }

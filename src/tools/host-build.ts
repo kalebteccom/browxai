@@ -1,6 +1,14 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { assertEngineSupports, requireCdp } from "../engine/index.js";
+import {
+  assertEngineSubInterface,
+  assertEngineSupports,
+  requireCdp,
+  type EngineKind,
+  type EngineRefusal,
+  type EngineSubInterface,
+  requirePage,
+} from "../engine/index.js";
 import {
   DEFAULT_SESSION_ID,
   type SessionEntry,
@@ -19,6 +27,7 @@ import { type CaptureSubstrate } from "../page/capture-substrate.js";
 import { type StorageSubstrate } from "../page/storage-substrate.js";
 import { type ScriptSubstrate } from "../page/script-substrate.js";
 import { type EmulationSubstrate } from "../page/emulation-substrate.js";
+import { type TargetSubstrate } from "../page/target-substrate.js";
 import { engineEntry, type SubstrateBundle, type SubstrateDeps } from "../engine/registry.js";
 import { EgressSanitiser } from "../util/egress-sanitiser.js";
 import { screenshotSave } from "../page/screenshot-save.js";
@@ -201,15 +210,10 @@ export function buildHost(deps: HostDeps): ToolHost {
    *
    *    const eg = engineGate("perf_start", e); if (eg) return eg;
    */
-  const engineGate = (toolName: string, e: SessionEntry) => {
-    const refusal = assertEngineSupports(toolName, e.session.engine);
-    if (!refusal) return null;
-    const body = {
-      ok: false,
-      error: refusal.error,
-      engine: e.session.engine,
-      hint: refusal.hint,
-    };
+  /** The one engine-refusal envelope, shared by both engine-dimension gates so a
+   *  caller classifies "this engine cannot" by shape, never by message text. */
+  const engineRefusalText = (engine: EngineKind, refusal: EngineRefusal) => {
+    const body = { ok: false, error: refusal.error, engine, hint: refusal.hint };
     return {
       content: [
         {
@@ -222,6 +226,24 @@ export function buildHost(deps: HostDeps): ToolHost {
         },
       ],
     };
+  };
+
+  const engineGate = (toolName: string, e: SessionEntry) => {
+    const refusal = assertEngineSupports(toolName, e.session.engine);
+    return refusal ? engineRefusalText(e.session.engine, refusal) : null;
+  };
+
+  /** Sub-interface-dimension early return. `engineGate` covers the `deep:true`
+   *  tools; this covers a tool whose implementation needs a sub-interface the
+   *  engine never declared (RFC 0004 D5) — e.g. the `verify_*` family's
+   *  Playwright-`Page` path on safari. Reads the DECLARATION, so it stays correct
+   *  when the accessor it guards is renamed or removed.
+   *
+   *    const sg = subInterfaceGate("verify_visible", "page", e); if (sg) return sg;
+   */
+  const subInterfaceGate = (toolName: string, sub: EngineSubInterface, e: SessionEntry) => {
+    const refusal = assertEngineSubInterface(toolName, e.session.engine, sub);
+    return refusal ? engineRefusalText(e.session.engine, refusal) : null;
   };
 
   /** Confirm-hook early-return helper. Returns the rejection content if denied, else null. */
@@ -268,7 +290,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   };
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
-    page: e.session.page(),
+    page: requirePage(e.session),
     // Threaded by presence, not by engine name: an engine that declares the
     // `deep` escape hatch exposes `cdp()`, and the CDP-only action paths refuse
     // when it is absent.
@@ -281,7 +303,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     snapshot: e.snapshotSubstrate,
     refs: e.refs,
     console: e.console,
-    pages: () => e.session.page().context().pages(),
+    pages: () => requirePage(e.session).context().pages(),
     testAttributes: config.testAttributes,
     originPolicy,
     recorder: e.recorder,
@@ -329,6 +351,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   const storageFor = (e: SessionEntry): StorageSubstrate => substratesFor(e).storage(e);
   const scriptFor = (e: SessionEntry): ScriptSubstrate => substratesFor(e).script(e);
   const emulationFor = (e: SessionEntry): EmulationSubstrate => substratesFor(e).emulation(e);
+  const targetFor = (e: SessionEntry): TargetSubstrate => substratesFor(e).target(e);
 
   // The egress-masking chokepoint (RFC 0004 P3 / D4). The `secrets`-capability
   // decision is made ONCE here: a `secrets`-off server hands every sink a
@@ -489,6 +512,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     entryFor,
     gateCheck,
     engineGate,
+    subInterfaceGate,
     confirmCtxFor,
     ctxFor,
     workspace,
@@ -505,6 +529,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     storageFor,
     scriptFor,
     emulationFor,
+    targetFor,
     egressFor,
     caps,
     config,

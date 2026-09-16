@@ -47,6 +47,7 @@ import { registerReadObserveExtractTools } from "./read-observe-extract-tools.js
 import { registerReadObserveVerifyTools } from "./read-observe-verify-tools.js";
 import { registerReadObserveCaptureTools } from "./read-observe-capture-tools.js";
 import { registerReadObserveBufferTools } from "./read-observe-buffer-tools.js";
+import { registerReadObserveNetworkTools } from "./read-observe-network-tools.js";
 import { registerGestureNetworkTools } from "./gesture-network-tools.js";
 import { registerDeepPerfTools } from "./deep-perf-tools.js";
 import { registerDeepCoverageTools } from "./deep-coverage-tools.js";
@@ -141,6 +142,7 @@ export function collectToolMetadata(): ReadonlyMap<string, ToolRegistration> {
   registerReadObserveVerifyTools(host);
   registerReadObserveCaptureTools(host);
   registerReadObserveBufferTools(host);
+  registerReadObserveNetworkTools(host);
   registerActionTools(host);
   registerGestureNetworkTools(host);
   registerDeepPerfTools(host);

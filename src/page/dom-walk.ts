@@ -15,6 +15,7 @@
 
 import type { CDPSession, Frame } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
+import { bindRefFrame } from "./ref-frames.js";
 import type { A11yNode } from "./a11y.js";
 
 export interface DomWalkEntry {
@@ -341,7 +342,7 @@ export function mergeDomWalkIntoTree(
       source: wasNew ? "dom" : "both",
       ...(frameId ? { frameId } : {}),
     });
-    if (frame) refs.bindFrame(ref, frame);
+    if (frame) bindRefFrame(refs, ref, frame);
     const node: A11yNode = {
       ref,
       role: e.role,
