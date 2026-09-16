@@ -47,7 +47,6 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
     cfgActionTimeout,
     actionTimeout,
     egressFor,
-    caps,
     targetFor,
   } = host;
 

@@ -206,7 +206,7 @@ export async function openAndroidByobSession(opts: SessionOptions = {}): Promise
 
   // Do NOT close the browser on teardown — not-owned (it's the user's phone
   // Chrome); the adb forward is what this lane releases.
-  return finalizeAttachedSession("android", sessionId, target, cdp, handles.removeForward);
+  return finalizeAttachedSession("android", sessionId, target, cdp, () => handles.removeForward());
 }
 
 /** Assert the BYOB attach endpoint is present + loopback, returning it as a
@@ -263,5 +263,5 @@ export async function attachByobChromium(
 
   await ensureViewport(cdp);
 
-  return finalizeAttachedSession("chromium", sessionId, target, cdp, connection.release);
+  return finalizeAttachedSession("chromium", sessionId, target, cdp, () => connection.release());
 }

@@ -19,9 +19,11 @@ surface" covers.
   `<name>-substrate-playwright.ts` / `-safari.ts` / `-cdp.ts`, and
   `<name>-substrate.ts` is a re-export barrel, so every existing import path is
   unchanged. The bodies moved verbatim; only the home changed. Two
-  dependency-cruiser rules now hold the line: `ports-name-no-vendor-type` at
-  `error` with zero violations, and `no-tools-or-replay-to-playwright-core` at
-  `warn` with five, each named in the rule comment with the phase that removes it.
+  dependency-cruiser rules now hold the line, both at `error`:
+  `ports-name-no-vendor-type`, which is REACHABILITY-scoped so a port that reaches
+  `playwright-core` through two hops of its own helpers fails the same as a direct
+  import, and `no-tools-or-replay-to-playwright-core`, whose five surviving modules
+  are named `pathNot` exceptions carrying the RFC 0009 phase that empties each one.
 
   `snapshotSubstrateFor` and `networkSubstrateFor` keyed their first branch on
   `session.engine === "safari"`, which was a second spelling of
@@ -44,6 +46,69 @@ surface" covers.
   the secrets scope read their URL inside the Playwright action adapter, below
   the seam.
 
+- **Eight capability ports now name no Playwright type through ANY depth of
+  import, and the rule that says so measures it.** `ports-name-no-vendor-type`
+  matched only DIRECT edges, so it stated far less than its own comment: six of
+  the eight ports satisfied it while reaching `playwright-core` one or two hops
+  away — `action-substrate-types` → `actionresult.ts`, `snapshot-substrate-types`
+  → `a11y.ts`, `capture-substrate-types` → `screenshot-save.ts` →
+  `session/storage.ts`, and so on. Worst of them, the action port took its entire
+  argument vocabulary from `import type * as actions from "./actions.js"`, and
+  `actions.ts` IS its own Playwright adapter body: the port was defined by one of
+  its implementations, which is the dependency direction inverted in the module
+  the rule shipped to protect.
+
+  The rule is now `to: { reachable: true }`, and the reach is gone rather than
+  excepted. Eleven plain-data leaves were split out so the vocabulary each port
+  names sits ABOVE both adapters: `actions-types.ts` (the twelve verb argument
+  shapes, `ActionTarget`, `ClickDispatch`), `a11y-types.ts`, `compose-types.ts`,
+  `session/emulation-types.ts`, `session/storage-types.ts`,
+  `session/cache-storage-types.ts`, `session/dialog-policy.ts` +
+  `session/dialog-attach.ts`, and `action-context.ts`, which takes the
+  `Page`-carrying `ActionContext` out of the `ActionResult` vocabulary. The
+  `RefRegistry` frame binding moved to `ref-frames.ts`, a Playwright-side table
+  keyed on the registry instance, so the ref vocabulary every port passes across
+  the seam no longer holds a `Frame`; the four policy states' install guards
+  became an identity-only `InstallGuard`, so they no longer name a
+  `BrowserContext` they never dereference. Every body moved verbatim and every
+  original module re-exports, so no import path changed.
+
+  The rule's selector widened to `^src/.+-substrate-types\.ts$` — a port under a
+  subdirectory, or with a digit in its name, is now matched — and
+  `test/architecture/port-module-naming.test.ts` closes the remaining gap by
+  parsing the tree for every exported `interface *Substrate` and asserting each is
+  declared in a file the rule's own `from.path` matches. The pattern is read out
+  of the config, so the test and the rule cannot drift.
+
+- **An engine's declared sub-interfaces are now enforced against what its tools
+  do.** `EngineCapabilities.subInterfaces` had zero production readers before this
+  phase — every reference outside the type and the declaration tables was in a
+  test — and RFC 0009 P1 promotes it to load-bearing control flow. A declaration
+  nothing checks rots, so the reader and the enforcer land together:
+  `test/architecture/sub-interface-conformance.test.ts` drives one synthetic
+  engine per sub-interface, each declaring all ten except its own, through the
+  real server and asserts every consuming tool returns the engine-refusal envelope
+  instead of a result. Its substrates answer PLAUSIBLY on purpose — a throwing
+  fixture would make a missing gate look like a present one.
+
+  It found fourteen. All are fixed: the network reads, the storage family
+  (cookies, web-storage, IndexedDB, Cache API), `eval_js`, the three live-emulation
+  setters and `screenshot` now call `subInterfaceGate(tool, sub, e)` before they
+  dispatch. Only `safari` is affected today, since it is the only shipped engine
+  omitting anything (`network` and `emulation`); the rest closes the hole before
+  RFC 0008's native engines arrive and start omitting `script` and `capture`. The
+  four universal sub-interfaces (`lifecycle` / `navigation` / `snapshot` /
+  `input`) are asserted the other way — every engine must declare them — because a
+  refusal path no engine could ever take is untested code on the hottest path.
+
+- **The extension-context rebuild selects substrates through the engine's
+  bundle.** `extensions-rebuild.ts` called `networkSubstrateFor(sess)` and
+  `snapshotSubstrateFor(sess)` directly, which worked only because extensions are
+  chromium-only and chromium's bundle delegates to exactly those two — it made the
+  rebuild a second place that knows how an engine picks its adapters. Both now go
+  through `engineEntry(sess.engine).makeSubstrates(...)`, sharing the
+  snapshot/network-only dependency set with the session registry.
+
 ### Deprecated
 
 - **`BrowserSession.page()` is now optional and deprecated.** It promised a
@@ -62,6 +127,58 @@ surface" covers.
   engine — no adapter, no public shape and no tool response moved.
 
 ### Fixed
+
+- **`export_session_report` and the network tools no longer answer "no traffic"
+  for an engine that cannot watch traffic.** Real Safari has no protocol-level
+  network tap, and `SafariNoopNetworkSubstrate` answered `network_read` with
+  `{summary:{total:0,byType:{},failed:0}, requests:[]}` — a well-formed,
+  plausible, and completely wrong result. `capabilities.ts` already said "the
+  network tools must REFUSE on Safari, not skip"; nothing enforced it. It is the
+  same defect class as `verify_*` publishing an engine incapability as a failed
+  assertion, and it is worse here, because the QA-evidence bundle carries the
+  number to a human who cannot tell it apart from a real zero. `network_read`,
+  `ws_read` and `network_body` now refuse on the `network` declaration, and
+  `export_session_report` carries a `networkUnavailable` explanation in place of
+  the summary. The empty rings stay, because a substrate that threw would be the
+  L5 violation again — they are just never reached.
+
+- **Safari's session no longer defines `page()`, and `requirePage`'s refusal
+  actually fires.** `buildSafariSession` kept a `page` member that threw
+  `safari-no-playwright-page`, so `requirePage`'s `if (!session.page)` guard was
+  FALSE on the one engine it exists for and the helper delegated straight into the
+  old throw: the engine-naming message it was written to produce was dead code on
+  every shipped engine. Deleting the member makes the guard fire, and the
+  replacement error is strictly better — it names the engine, states that the
+  engine declares no `page` sub-interface, and points at the capability
+  substrates. `replay/session.ts` catches it exactly as before to fall back to an
+  action-only archive. `test/architecture/port-conformance.test.ts` gains the
+  assertion RFC 0009 asked for and this would have failed: data-driven over the
+  engine registry, every engine's session carries the `page` handle if and only if
+  it declares the sub-interface, with the builder map asserted exhaustive so a
+  sixth engine is covered the day it lands.
+
+- **The `ocp-engine-contract` synthetic engine is now genuinely Page-free.** It
+  declared no `"page"` sub-interface while implementing `page()` over a fake — the
+  same disagreement, in the test that exists to prove the open-closed claim. The
+  fake is gone. What kept it alive was `find` acquiring its handle with
+  `s.safari ? null : requirePage(s)`, a probe for one specific rival engine's
+  handle that a sixth engine would silently fail; it reads `engineDeclares(s.engine,
+  "page")` now. The contract's snapshot assertion also stopped being a tautology:
+  it checked that the header contained `"synthetic"`, which is the engine tag and
+  the a11y root's name, so it passed with `TargetSubstrate.title()` returning an
+  empty string. It asserts a sentinel only the port can emit.
+
+- **The Playwright-`Page` bypass budget counts handle USES, not the text
+  `requirePage(`.** Hoisting one `const page = requirePage(sess)` to the top of
+  `extensions-rebuild.ts` would have dropped the old count by 16 with nothing
+  architectural changed. Both checks in
+  `test/architecture/page-bypass-budget.test.ts` are AST walks now: the budget
+  counts each reference to a bound handle (so hoisting moves it by zero), and the
+  "only door" check looks for the SHAPE of a `page` member access rather than a
+  receiver literally spelled `session` or `sess` — `const s = e.session; s.page!()`,
+  `e.session["page"]!()` and `const { page } = e.session` all walked past the
+  regex it replaces. The budget is re-pinned at 106 uses; it is not comparable to
+  the 102 call-sites it replaces, and it only goes down.
 
 - **Every substrate adapter method typed `Promise<T>` is now `async`, so a gone
   target rejects instead of throwing past the caller's `.catch()`.** The adapters

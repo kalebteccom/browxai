@@ -329,9 +329,7 @@ export function inMemorySubstrateBundle(
     capture: (_e: SessionEntry): CaptureSubstrate =>
       answering ? new InMemoryCaptureSubstrate() : unsupported<CaptureSubstrate>("capture"),
     storage: (_e: SessionEntry): StorageSubstrate =>
-      answering
-        ? (new InMemoryStorageSubstrate() as unknown as StorageSubstrate)
-        : unsupported<StorageSubstrate>("storage"),
+      answering ? new InMemoryStorageSubstrate() : unsupported<StorageSubstrate>("storage"),
     script: (_e: SessionEntry): ScriptSubstrate =>
       answering ? new InMemoryScriptSubstrate() : unsupported<ScriptSubstrate>("script"),
     emulation: (_e: SessionEntry): EmulationSubstrate =>
