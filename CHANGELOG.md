@@ -63,6 +63,47 @@ surface" covers.
 
 ### Fixed
 
+- **Every substrate adapter method typed `Promise<T>` is now `async`, so a gone
+  target rejects instead of throwing past the caller's `.catch()`.** The adapters
+  are built over an injected accessor — `new PlaywrightTargetSubstrate(() =>
+  requirePage(e.session), …)` — and on an attached (BYOB) session that accessor is
+  `boundPage`, which throws `attach-target-gone` once the user closes the tab. A
+  method declared `url(): Promise<string> { return Promise.resolve(this.page().url()); }`
+  evaluates the argument before the promise exists, so the throw propagated
+  synchronously through every guard written to catch it. Managed and incognito
+  sessions never throw there, which is why the suite stayed green.
+
+  Two surfaces were losing to it. `list_sessions` guards its per-session URL read
+  with `.catch(() => null)`; the guard never ran, the `Promise.all` rejected, and
+  one dead tab took out the listing for every healthy session in the registry —
+  it now reports `url: null` for the dead one and full rows for the rest.
+  `point_probe` reads the URL inside its own `catch` block to stamp the triage
+  envelope, so the second throw escaped the handler and the agent got a transport
+  rejection instead of `{ok:false, point, url, error}` — the envelope is back.
+
+  Of the 91 Promise-returning methods across the 18 adapter implementations, 69
+  were not `async`; all 69 now are. That includes the adapters holding a stored
+  handle, not only the accessor-injected ones — the hazard is the declaration
+  shape, and any body can grow a synchronous throw later.
+  `test/architecture/substrate-adapter-async.test.ts` is the gate: it scans every
+  `src/page/*-substrate-{playwright,safari,cdp}.ts` file, so an adapter added
+  later is covered the day it lands, and it drives each thunk-injected adapter
+  with an accessor that is already throwing.
+
+- **`solve_captcha` returns its structured envelope when the site-key cannot be
+  read from a selector.** The selector-derived read needs a Playwright `Page` and
+  called `requirePage` outside the handler's `try`, so on an engine that backs
+  none the agent got a raw `engine "safari" backs no Playwright Page…` rejection
+  instead of `{ok:false, provider, error, hint}`. The refusal is now structured
+  and names the way through (pass `siteKey` explicitly), and it lands before
+  `submitToProvider`, so no provider credit is spent on a solve the caller cannot
+  finish. A solve with an explicit `siteKey` still proceeds on such an engine:
+  `solve_captcha` never injects the token on any engine — it returns it, and the
+  agent wires it back in — and Safari can do that through `eval_js` (WebDriver
+  `execute/sync`) or `fill`. The pre-port refusal on that path came from
+  `session.page()` throwing, under a "Call open_session + navigate first" hint
+  that was unactionable where both of those already succeed.
+
 - **`verify_*` on an engine with no Playwright `Page` now refuses instead of
   reporting a failed assertion.** The five page-bound verifies (`verify_visible`,
   `verify_text`, `verify_value`, `verify_count`, `verify_attribute`) called
