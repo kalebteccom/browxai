@@ -80,7 +80,7 @@ const HANDLE_OWNERS: ReadonlyArray<{ re: RegExp; why: string }> = [
  *
  *  LOWER THIS, NEVER RAISE IT. A phase that moves N uses lands with the budget at
  *  `previous - N` in the same commit. */
-const BUDGET = 106;
+const BUDGET = 101;
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

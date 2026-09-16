@@ -59,9 +59,11 @@ describe("engine port — capability declaration", () => {
     expect(caps).toBe(CHROMIUM_CAPABILITIES);
     expect(caps?.engine).toBe("chromium");
     expect(caps?.deep).toBe(true);
-    // all ten sub-interfaces — the nine cross-browser ones plus `page` (RFC 0004
-    // D5: chromium backs a real Playwright Page). Nothing newly gated on chromium.
-    expect(caps?.subInterfaces.size).toBe(10);
+    // all eleven sub-interfaces — the nine cross-browser ones plus `page` (RFC
+    // 0004 D5: chromium backs a real Playwright Page) and `element` (RFC 0009 P2:
+    // it resolves elements through PlaywrightElementSubstrate). Nothing newly
+    // gated on chromium.
+    expect(caps?.subInterfaces.size).toBe(11);
     for (const sub of [
       "lifecycle",
       "navigation",
@@ -72,6 +74,7 @@ describe("engine port — capability declaration", () => {
       "script",
       "emulation",
       "capture",
+      "element",
       "page",
     ] as const) {
       expect(caps?.subInterfaces.has(sub)).toBe(true);
@@ -85,9 +88,10 @@ describe("engine port — capability declaration", () => {
     // the headline of the capability gate: firefox has no raw-CDP escape hatch.
     expect(caps?.deep).toBe(false);
     // it still serves the nine cross-browser sub-interfaces + `page` (D5: firefox
-    // backs a real Playwright Page).
-    expect(caps?.subInterfaces.size).toBe(10);
+    // backs a real Playwright Page) + `element` (RFC 0009 P2).
+    expect(caps?.subInterfaces.size).toBe(11);
     expect(caps?.subInterfaces.has("page")).toBe(true);
+    expect(caps?.subInterfaces.has("element")).toBe(true);
   });
 
   it("webkit declares the cross-browser sub-interfaces but NO deep (CDP) hatch", () => {
@@ -98,9 +102,11 @@ describe("engine port — capability declaration", () => {
     // capability-based engine gate auto-refuses the CDP-deep tools on it.
     expect(caps?.deep).toBe(false);
     // it still serves the nine cross-browser sub-interfaces (the walker substrate
-    // + Playwright's cross-browser surface) + `page` (D5: webkit backs a real Page).
-    expect(caps?.subInterfaces.size).toBe(10);
+    // + Playwright's cross-browser surface) + `page` (D5: webkit backs a real Page)
+    // + `element` (RFC 0009 P2).
+    expect(caps?.subInterfaces.size).toBe(11);
     expect(caps?.subInterfaces.has("page")).toBe(true);
+    expect(caps?.subInterfaces.has("element")).toBe(true);
   });
 
   it("android declares EVERYTHING incl. deep:true — the standout (it IS Chromium)", () => {
@@ -111,10 +117,11 @@ describe("engine port — capability declaration", () => {
     // firefox/webkit it exposes the deep escape hatch — every tool works, and the
     // existing CDP substrates serve it verbatim (no new substrate).
     expect(caps?.deep).toBe(true);
-    // ten sub-interfaces — the nine cross-browser ones + `page` (D5: android IS
-    // Chromium, so it backs a real Playwright Page).
-    expect(caps?.subInterfaces.size).toBe(10);
+    // eleven sub-interfaces — the nine cross-browser ones + `page` (D5: android IS
+    // Chromium, so it backs a real Playwright Page) + `element` (RFC 0009 P2).
+    expect(caps?.subInterfaces.size).toBe(11);
     expect(caps?.subInterfaces.has("page")).toBe(true);
+    expect(caps?.subInterfaces.has("element")).toBe(true);
   });
 });
 

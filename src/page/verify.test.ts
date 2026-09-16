@@ -8,13 +8,18 @@ import {
   verifyAttribute,
   verifyPredicate,
 } from "./verify.js";
+import { PlaywrightElementSubstrate } from "./element-substrate.js";
 import { evaluatePredicate, type Predicate } from "../util/predicates.js";
 import { evaluateExpect, type BatchExpect } from "../util/batch.js";
 
-// Mocking strategy: each verify_* helper hits a single Locator. We hand the
-// helper a Page whose locator/getByRole returns a mock Locator with the
-// behaviour the test wants (count / isVisible / innerText / getAttribute /
-// evaluate). Refs are registered through RefRegistry as the real helpers do.
+// Mocking strategy: each verify_* helper hits a single element through
+// `ElementSubstrate`. The mock stays at the Playwright boundary — a Page whose
+// locator/getByRole returns a mock Locator with the behaviour the test wants
+// (count / isVisible / innerText / getAttribute / evaluate) — and the helpers are
+// driven through the REAL `PlaywrightElementSubstrate` over it. So these cases
+// cover the adapter's translation as well as the verify logic, which is what they
+// have to: the port moved every read, and a test that mocked the port instead
+// would be asserting the new code against itself.
 
 interface MockLocatorBehaviour {
   count?: number;
@@ -57,6 +62,13 @@ function mockPage(locatorMap: Record<string, MockLocatorBehaviour>): Page {
   } as unknown as Page;
 }
 
+/** The real Playwright element adapter over the mock page. `frames` is never
+ *  touched: no case here passes a frame scope, and the adapter resolves one only
+ *  when asked for a scope that is not the main frame. */
+function elementsOver(page: Page, refs: RefRegistry): PlaywrightElementSubstrate {
+  return new PlaywrightElementSubstrate(() => page, {} as never, refs);
+}
+
 function refForButton(refs: RefRegistry, name = "Save"): string {
   return refs.forKey(`k-${name}`, { role: "button", name, source: "a11y" });
 }
@@ -66,7 +78,7 @@ describe("verifyVisible", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs);
     const page = mockPage({ "role:button[name=Save]": { count: 1, isVisible: true } });
-    const r = await verifyVisible(page, refs, { ref });
+    const r = await verifyVisible(elementsOver(page, refs), { ref });
     expect(r.ok).toBe(true);
   });
 
@@ -80,7 +92,7 @@ describe("verifyVisible", () => {
         notVisibleReason: "hidden (display:none)",
       },
     });
-    const r = await verifyVisible(page, refs, { ref });
+    const r = await verifyVisible(elementsOver(page, refs), { ref });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.failure?.source).toBe("app");
@@ -93,7 +105,7 @@ describe("verifyVisible", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs);
     const page = mockPage({ "role:button[name=Save]": { count: 0 } });
-    const r = await verifyVisible(page, refs, { ref });
+    const r = await verifyVisible(elementsOver(page, refs), { ref });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.failure?.source).toBe("app");
@@ -104,7 +116,7 @@ describe("verifyVisible", () => {
   it("fails source:'browxai' when ref is no longer in the registry", async () => {
     const refs = new RefRegistry();
     const page = mockPage({});
-    const r = await verifyVisible(page, refs, { ref: "e999" });
+    const r = await verifyVisible(elementsOver(page, refs), { ref: "e999" });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.failure?.source).toBe("browxai");
@@ -115,7 +127,7 @@ describe("verifyVisible", () => {
   it("fails source:'browxai' on coords target — verify family is structural", async () => {
     const refs = new RefRegistry();
     const page = mockPage({});
-    const r = await verifyVisible(page, refs, { coords: { x: 0, y: 0 } });
+    const r = await verifyVisible(elementsOver(page, refs), { coords: { x: 0, y: 0 } });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failure?.source).toBe("browxai");
   });
@@ -128,7 +140,7 @@ describe("verifyText", () => {
     const page = mockPage({
       "role:button[name=Banner]": { count: 1, innerText: "  Saved successfully  " },
     });
-    const r = await verifyText(page, refs, { ref }, "saved", false);
+    const r = await verifyText(elementsOver(page, refs), { ref }, "saved", false);
     expect(r.ok).toBe(true);
   });
 
@@ -136,15 +148,15 @@ describe("verifyText", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Banner");
     const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: "  Saved  " } });
-    expect((await verifyText(page, refs, { ref }, "Saved", true)).ok).toBe(true);
-    expect((await verifyText(page, refs, { ref }, "saved", true)).ok).toBe(false);
+    expect((await verifyText(elementsOver(page, refs), { ref }, "Saved", true)).ok).toBe(true);
+    expect((await verifyText(elementsOver(page, refs), { ref }, "saved", true)).ok).toBe(false);
   });
 
   it("fails source:'app' with the actual snippet when text doesn't match", async () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Banner");
     const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: "Error: bad" } });
-    const r = await verifyText(page, refs, { ref }, "Saved", false);
+    const r = await verifyText(elementsOver(page, refs), { ref }, "Saved", false);
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.failure?.source).toBe("app");
@@ -160,7 +172,7 @@ describe("verifyValue", () => {
     const page = mockPage({
       "role:button[name=Email]": { count: 1, evaluatedValue: "you@example.com" },
     });
-    const r = await verifyValue(page, refs, { ref }, "you@example.com");
+    const r = await verifyValue(elementsOver(page, refs), { ref }, "you@example.com");
     expect(r.ok).toBe(true);
   });
 
@@ -168,7 +180,7 @@ describe("verifyValue", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Email");
     const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue: "wrong" } });
-    const r = await verifyValue(page, refs, { ref }, "you@example.com");
+    const r = await verifyValue(elementsOver(page, refs), { ref }, "you@example.com");
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.failure?.source).toBe("app");
@@ -180,7 +192,7 @@ describe("verifyValue", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Email");
     const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue: null } });
-    const r = await verifyValue(page, refs, { ref }, "anything");
+    const r = await verifyValue(elementsOver(page, refs), { ref }, "anything");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failure?.actual).toContain("no `value`");
   });
@@ -193,7 +205,7 @@ describe("verifyAttribute", () => {
     const page = mockPage({
       "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "true" } },
     });
-    const r = await verifyAttribute(page, refs, { ref }, "aria-pressed", "true");
+    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "aria-pressed", "true");
     expect(r.ok).toBe(true);
   });
 
@@ -203,7 +215,7 @@ describe("verifyAttribute", () => {
     const page = mockPage({
       "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "false" } },
     });
-    const r = await verifyAttribute(page, refs, { ref }, "aria-pressed", "true");
+    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "aria-pressed", "true");
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failure?.actual).toBe("false");
   });
@@ -214,7 +226,7 @@ describe("verifyAttribute", () => {
     const page = mockPage({
       "role:button[name=Toggle]": { count: 1, attributes: { "data-state": "open" } },
     });
-    const r = await verifyAttribute(page, refs, { ref }, "data-state", undefined);
+    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "data-state", undefined);
     expect(r.ok).toBe(true);
   });
 
@@ -222,7 +234,7 @@ describe("verifyAttribute", () => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
     const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes: {} } });
-    const r = await verifyAttribute(page, refs, { ref }, "data-state", undefined);
+    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "data-state", undefined);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.failure?.actual).toBeNull();
   });

@@ -38,18 +38,16 @@ import { createServer } from "../../src/server.js";
 import { registerEngine } from "../../src/engine/registry.js";
 import { inMemorySubstrateBundle } from "./_synthetic-engine.js";
 
-const ALL_SUBS: readonly EngineSubInterface[] = [
-  "lifecycle",
-  "navigation",
-  "snapshot",
-  "input",
-  "network",
-  "storage",
-  "script",
-  "emulation",
-  "capture",
-  "page",
-];
+/** Every sub-interface there is, DERIVED from chromium's declaration rather than
+ *  restated. Chromium declares all of them — `port-conformance.test.ts` holds it
+ *  to that — so its row is the exhaustive list, and a new sub-interface is covered
+ *  by this whole file the moment it is added to `ALL_SUB_INTERFACES`.
+ *
+ *  It was a hand-written array of ten. `element` (RFC 0009 P2) landed in
+ *  `capabilities.ts`, safari omitted it, and every assertion below kept passing
+ *  while never looking at it — a conformance suite silently blind to the newest
+ *  declaration is the exact drift this file exists to catch. */
+const ALL_SUBS: readonly EngineSubInterface[] = [...capabilitiesFor("chromium")!.subInterfaces];
 
 /** The four sub-interfaces every engine MUST declare. They are not optional
  *  capabilities, they are what makes something an engine at all: it opens and
@@ -104,12 +102,16 @@ const CONSUMERS: Record<
     why: "screenshot dispatches to the capture substrate",
     tools: [{ name: "screenshot", args: {} }],
   },
-  page: {
-    why: "the element verifies resolve through a Playwright Locator off the session's Page",
+  element: {
+    why: "the verify_* family resolves a ref or selector to one element and reads its state through the element substrate",
     tools: [
       { name: "verify_visible", args: { selector: "#absent" } },
       { name: "verify_count", args: { selector: "#absent", n: 1 } },
     ],
+  },
+  page: {
+    why: "the frame tree is a Playwright `Page` structure — an engine with no Page has no child frames to enumerate",
+    tools: [{ name: "frames_list", args: {} }],
   },
   snapshot: {
     why: "MANDATORY — the read core is universal; every engine answers snapshot/find or it is not an engine",

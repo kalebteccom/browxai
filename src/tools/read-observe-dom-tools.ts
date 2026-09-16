@@ -76,8 +76,18 @@ function scopeAndSerialise(
  * the closures (gate, ctx, ports), this module owns the registrations.
  */
 export function registerReadObserveDomTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, cfgActionTimeout, egressFor, caps, config, targetFor } =
-    host;
+  const {
+    z,
+    register,
+    gateCheck,
+    entryFor,
+    cfgActionTimeout,
+    egressFor,
+    caps,
+    config,
+    targetFor,
+    subInterfaceGate,
+  } = host;
 
   register(
     "snapshot",
@@ -326,6 +336,13 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const g = gateCheck("frames_list");
       if (g) return g;
       const e = await entryFor(session);
+      // A frame tree is a Playwright `Page` structure: `listFrames` walks
+      // `page.mainFrame().childFrames()`, which an engine with no Page has no
+      // analogue for. Without this gate `requirePage` threw its refusal as a raw
+      // `Error` straight out of the handler — an unstructured crash where every
+      // other engine-can't case returns `{ok:false, error, engine, hint}`.
+      const sg = subInterfaceGate("frames_list", "page", e);
+      if (sg) return sg;
       const frames = listFrames(requirePage(e.session), e.frames);
       const body = { ok: true as const, frames, tokensEstimate: 0 };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
