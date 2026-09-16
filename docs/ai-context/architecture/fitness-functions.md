@@ -61,7 +61,18 @@ runs in `pnpm test:keystone`.
 | `no-page-handler-to-engine-adapter-or-transport`        | `page/*` does not import a concrete engine adapter or transport. | L4       |
 | `no-sdk-to-handler-internals`                           | `sdk/*` does not import handler internals.                       | L4       |
 | `core-imports-inward-only` / `only-the-bin-imports-cli` | The core depends inward; only the bin imports `cli/*`.           | L4/DIP   |
+| `ports-name-no-vendor-type`                             | A capability port module does not import `playwright-core`.      | L1/L5    |
+| `no-tools-or-replay-to-playwright-core` (`warn`)        | `tools/*` / `replay/*` do not name a Playwright type.            | L1       |
 | `no-circular`                                           | No import cycles.                                                | L4       |
+
+`ports-name-no-vendor-type` is the rule RFC 0009 P1 was written to make
+expressible: it can only hold once every port lives in a module separate from its
+adapter, which is why P1 split all seven (`<name>-substrate-types.ts` for the port,
+`<name>-substrate-playwright.ts` / `-safari.ts` / `-cdp.ts` for the
+implementations, `<name>-substrate.ts` as the re-export barrel). It ships at
+`error` with zero violations. `no-tools-or-replay-to-playwright-core` ships at
+`warn` with five, each named in the rule's own comment together with the RFC 0009
+phase that removes it; it promotes to `error` in that phase.
 
 ## How to use this map
 

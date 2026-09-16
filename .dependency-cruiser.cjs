@@ -76,6 +76,41 @@ module.exports = {
       to: { path: "^src/cli/" },
     },
     {
+      name: "ports-name-no-vendor-type",
+      comment:
+        "A capability port declares an interface over plain data. It must not import " +
+        "playwright-core: a port that names a vendor type is not a port, and no engine " +
+        "without Playwright could implement it. The Playwright implementation lives in the " +
+        "sibling *-substrate-playwright.ts module, which is free to import whatever it " +
+        "drives. Matches both port spellings — the leaf `<name>-substrate-types.ts` and the " +
+        "`<name>-substrate.ts` barrel that re-exports it. Lands at `error` because RFC 0009 " +
+        "P1 split all seven ports in the same phase, so the last violation and the promotion " +
+        "ship together (the §3.1 ratchet). (RFC 0009; L1, L5.)",
+      severity: "error",
+      from: { path: "^src/page/[a-z-]+-substrate(-types)?\\.ts$" },
+      to: { path: "node_modules/playwright-core|^playwright-core$" },
+    },
+    {
+      name: "no-tools-or-replay-to-playwright-core",
+      comment:
+        "A tool handler and the replay orchestrator are engine-agnostic: they reach the " +
+        "capability substrates, never a Playwright type. This is a FLOOR, not the whole " +
+        "guard — src/tools imports the `Page` type zero times and still holds ~130 " +
+        "`requirePage(...)` handles obtained by inference, which no import-graph rule can " +
+        "see. The `requirePage` chokepoint (src/engine/session-page.ts) is what makes those " +
+        "countable; this rule stops the type itself coming back. (RFC 0009; L1.)\n" +
+        "WARN, not error: five modules violate it today, and every one belongs to a later " +
+        "phase of RFC 0009, not P1. `Locator` in tools/target-resolve.ts + tools/host-build.ts " +
+        "goes with ElementSubstrate (P2). `Page` / `BrowserContext` / `ConsoleMessage` / " +
+        "`Frame` in replay/session.ts + replay/dom-capture.ts and `CDPSession` in " +
+        "replay/session-network.ts go with EventSubstrate (P4) and the residue (P5). It " +
+        "promotes to error in the phase that removes the last of the five — the §3.1 ratchet. " +
+        "RFC 0009 asserts this rule passes today; it does not, and the five above are why.",
+      severity: "warn",
+      from: { path: "^src/(tools|replay)/" },
+      to: { path: "node_modules/playwright-core|^playwright-core$" },
+    },
+    {
       name: "no-circular",
       comment:
         "No RUNTIME import cycles — they defeat levelization and make load order load-bearing. " +
