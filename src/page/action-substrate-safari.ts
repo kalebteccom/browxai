@@ -28,45 +28,45 @@ export class SafariActionSubstrate implements ActionSubstrate {
     private readonly handle: SafariSessionHandle,
     private readonly refs: RefRegistry,
   ) {}
-  navigate(args: actions.NavigateArgs): Promise<ActionResult> {
+  async navigate(args: actions.NavigateArgs): Promise<ActionResult> {
     return safariNavigate(this.handle, args.url);
   }
-  click(args: actions.ClickArgs): Promise<ActionResult> {
+  async click(args: actions.ClickArgs): Promise<ActionResult> {
     if (args.dispatch === "direct") {
-      return Promise.resolve(directDispatchUnsupported(args.target, this.engine));
+      return directDispatchUnsupported(args.target, this.engine);
     }
     return safariClick(this.handle, this.refs, args.target);
   }
-  fill(args: actions.FillArgs): Promise<ActionResult> {
+  async fill(args: actions.FillArgs): Promise<ActionResult> {
     return safariFill(this.handle, this.refs, args.target, args.value);
   }
-  press(args: actions.PressArgs): Promise<ActionResult> {
+  async press(args: actions.PressArgs): Promise<ActionResult> {
     return args.target
       ? safariPress(this.handle, this.refs, args.target, args.key)
-      : Promise.resolve(safariUnsupportedAction("press"));
+      : safariUnsupportedAction("press");
   }
-  hover(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("hover"));
+  async hover(): Promise<ActionResult> {
+    return safariUnsupportedAction("hover");
   }
-  select(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("select"));
+  async select(): Promise<ActionResult> {
+    return safariUnsupportedAction("select");
   }
-  scroll(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("scroll"));
+  async scroll(): Promise<ActionResult> {
+    return safariUnsupportedAction("scroll");
   }
-  goBack(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("goBack"));
+  async goBack(): Promise<ActionResult> {
+    return safariUnsupportedAction("goBack");
   }
-  goForward(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("goForward"));
+  async goForward(): Promise<ActionResult> {
+    return safariUnsupportedAction("goForward");
   }
-  chooseOption(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("chooseOption"));
+  async chooseOption(): Promise<ActionResult> {
+    return safariUnsupportedAction("chooseOption");
   }
-  setViewport(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("setViewport"));
+  async setViewport(): Promise<ActionResult> {
+    return safariUnsupportedAction("setViewport");
   }
-  waitFor(): Promise<ActionResult> {
-    return Promise.resolve(safariUnsupportedAction("waitFor"));
+  async waitFor(): Promise<ActionResult> {
+    return safariUnsupportedAction("waitFor");
   }
 }

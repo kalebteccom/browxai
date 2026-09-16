@@ -20,7 +20,7 @@ export class SafariTargetSubstrate implements TargetSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
 
-  url(): Promise<string> {
+  async url(): Promise<string> {
     return this.handle.webDriver.currentUrl(this.handle.sessionId);
   }
 

@@ -20,7 +20,7 @@ export class PlaywrightScriptSubstrate implements ScriptSubstrate {
   ) {
     this.engine = engine;
   }
-  evaluate(expr: string): Promise<unknown> {
+  async evaluate(expr: string): Promise<unknown> {
     return this.page().evaluate(expr);
   }
 }

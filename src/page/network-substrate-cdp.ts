@@ -57,7 +57,7 @@ export class CdpNetworkSubstrate implements NetworkSubstrate {
     return new NetworkTap(this.cdp, this.secrets);
   }
 
-  fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
+  async fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
     return fetchResponseBody(this.cdp, requestId, undefined, secrets);
   }
 }

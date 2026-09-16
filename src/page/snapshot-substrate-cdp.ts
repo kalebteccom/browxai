@@ -24,7 +24,7 @@ export class CdpSnapshotSubstrate implements SnapshotSubstrate {
   readonly engine = "chromium";
   constructor(private readonly cdp: CDPSession) {}
 
-  compose(
+  async compose(
     refs: RefRegistry,
     testAttributes: string[],
     opts: ComposeOptions = {},
@@ -32,7 +32,7 @@ export class CdpSnapshotSubstrate implements SnapshotSubstrate {
     return composeSnapshot(this.cdp, refs, testAttributes, opts);
   }
 
-  a11yTree(refs: RefRegistry, testAttributes: string[]): Promise<A11yNode | null> {
+  async a11yTree(refs: RefRegistry, testAttributes: string[]): Promise<A11yNode | null> {
     return getA11yTree(this.cdp, refs, testAttributes);
   }
 }

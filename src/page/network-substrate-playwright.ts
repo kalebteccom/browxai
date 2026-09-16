@@ -79,7 +79,7 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
     return new PlaywrightNetworkTap(this.context, this.secrets);
   }
 
-  fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
+  async fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
     return this.http.fetchBody(requestId, secrets);
   }
 }

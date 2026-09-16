@@ -15,7 +15,7 @@ import type { ScriptSubstrate } from "./script-substrate-types.js";
 export class SafariScriptSubstrate implements ScriptSubstrate {
   readonly engine = "safari";
   constructor(private readonly handle: SafariSessionHandle) {}
-  evaluate(expr: string): Promise<unknown> {
+  async evaluate(expr: string): Promise<unknown> {
     return this.handle.webDriver.executeScript(this.handle.sessionId, `return (${expr});`);
   }
 }

@@ -22,44 +22,44 @@ export class PlaywrightActionSubstrate implements ActionSubstrate {
   ) {
     this.engine = engine;
   }
-  navigate(args: actions.NavigateArgs): Promise<ActionResult> {
+  async navigate(args: actions.NavigateArgs): Promise<ActionResult> {
     return actions.navigate(this.ctx(), args);
   }
-  click(args: actions.ClickArgs): Promise<ActionResult> {
+  async click(args: actions.ClickArgs): Promise<ActionResult> {
     const ctx = this.ctx();
     if (args.dispatch === "direct" && !ctx.cdp) {
-      return Promise.resolve(directDispatchUnsupported(args.target, this.engine));
+      return directDispatchUnsupported(args.target, this.engine);
     }
     return actions.click(ctx, args);
   }
-  fill(args: actions.FillArgs): Promise<ActionResult> {
+  async fill(args: actions.FillArgs): Promise<ActionResult> {
     return actions.fill(this.ctx(), args);
   }
-  press(args: actions.PressArgs): Promise<ActionResult> {
+  async press(args: actions.PressArgs): Promise<ActionResult> {
     return actions.press(this.ctx(), args);
   }
-  hover(args: actions.HoverArgs): Promise<ActionResult> {
+  async hover(args: actions.HoverArgs): Promise<ActionResult> {
     return actions.hover(this.ctx(), args);
   }
-  select(args: actions.SelectArgs): Promise<ActionResult> {
+  async select(args: actions.SelectArgs): Promise<ActionResult> {
     return actions.select(this.ctx(), args);
   }
-  scroll(args: actions.ScrollArgs): Promise<ActionResult> {
+  async scroll(args: actions.ScrollArgs): Promise<ActionResult> {
     return actions.scroll(this.ctx(), args);
   }
-  goBack(args: actions.GoBackArgs): Promise<ActionResult> {
+  async goBack(args: actions.GoBackArgs): Promise<ActionResult> {
     return actions.goBack(this.ctx(), args);
   }
-  goForward(args: actions.GoForwardArgs): Promise<ActionResult> {
+  async goForward(args: actions.GoForwardArgs): Promise<ActionResult> {
     return actions.goForward(this.ctx(), args);
   }
-  chooseOption(args: actions.ChooseOptionArgs): Promise<ActionResult> {
+  async chooseOption(args: actions.ChooseOptionArgs): Promise<ActionResult> {
     return actions.chooseOption(this.ctx(), args);
   }
-  setViewport(args: actions.SetViewportArgs): Promise<ActionResult> {
+  async setViewport(args: actions.SetViewportArgs): Promise<ActionResult> {
     return actions.setViewport(this.ctx(), args);
   }
-  waitFor(args: actions.WaitForArgs): Promise<ActionResult> {
+  async waitFor(args: actions.WaitForArgs): Promise<ActionResult> {
     return actions.waitFor(this.ctx(), args);
   }
 }

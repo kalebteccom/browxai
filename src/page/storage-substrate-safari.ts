@@ -190,55 +190,61 @@ export class SafariStorageSubstrate implements StorageSubstrate {
     )) as { ok: true; origin: string };
   }
 
-  idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
+  async idbListDatabases(tool: string): Promise<IdbDatabasesResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  idbListStores(_args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
+  async idbListStores(_args: { dbName: string }, tool: string): Promise<IdbStoresResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  idbGet(
+  async idbGet(
     _args: { dbName: string; storeName: string; key: unknown },
     tool: string,
   ): Promise<IdbGetResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  idbPut(
+  async idbPut(
     _args: { dbName: string; storeName: string; key: unknown; value: unknown },
     tool: string,
   ): Promise<IdbWriteResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  idbDelete(
+  async idbDelete(
     _args: { dbName: string; storeName: string; key: unknown },
     tool: string,
   ): Promise<IdbWriteResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  idbClear(_args: { dbName: string; storeName: string }, tool: string): Promise<IdbClearResult> {
+  async idbClear(
+    _args: { dbName: string; storeName: string },
+    tool: string,
+  ): Promise<IdbClearResult> {
     return Promise.reject(this.idbRefuse(tool));
   }
 
-  cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
+  async cachesListStorages(tool: string): Promise<CachesListStoragesResult> {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesList(
+  async cachesList(
     _args: { cacheName: string; urlPattern?: string },
     tool: string,
   ): Promise<CachesListResult> {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesGet(_args: { cacheName: string; url: string }, tool: string): Promise<CachesGetResult> {
+  async cachesGet(
+    _args: { cacheName: string; url: string },
+    tool: string,
+  ): Promise<CachesGetResult> {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesPut(
+  async cachesPut(
     _args: {
       cacheName: string;
       url: string;
@@ -254,18 +260,18 @@ export class SafariStorageSubstrate implements StorageSubstrate {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesDelete(
+  async cachesDelete(
     _args: { cacheName: string; url: string },
     tool: string,
   ): Promise<CachesDeleteResult> {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesClear(_args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
+  async cachesClear(_args: { cacheName: string }, tool: string): Promise<CachesClearResult> {
     return Promise.reject(this.cachesRefuse(tool));
   }
 
-  cachesDeleteStorage(
+  async cachesDeleteStorage(
     _args: { cacheName: string },
     tool: string,
   ): Promise<CachesDeleteStorageResult> {

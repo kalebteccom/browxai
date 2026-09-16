@@ -21,16 +21,16 @@ export class SafariEmulationSubstrate implements EmulationSubstrate {
   readonly engine = "safari";
   constructor(_handle: SafariSessionHandle) {}
 
-  setGeolocation(): Promise<EmulationResult> {
-    return Promise.resolve(this.refuse("set_geolocation"));
+  async setGeolocation(): Promise<EmulationResult> {
+    return this.refuse("set_geolocation");
   }
 
-  setColorScheme(): Promise<EmulationResult> {
-    return Promise.resolve(this.refuse("set_color_scheme"));
+  async setColorScheme(): Promise<EmulationResult> {
+    return this.refuse("set_color_scheme");
   }
 
-  setReducedMotion(): Promise<EmulationResult> {
-    return Promise.resolve(this.refuse("set_reduced_motion"));
+  async setReducedMotion(): Promise<EmulationResult> {
+    return this.refuse("set_reduced_motion");
   }
 
   private refuse(tool: string): EmulationRefusal {

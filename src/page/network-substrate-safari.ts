@@ -44,8 +44,8 @@ export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
     since: () => [],
   };
 
-  attach(): Promise<void> {
-    return Promise.resolve();
+  async attach(): Promise<void> {
+    // Nothing to attach to — Safari has no protocol-level network domain.
   }
 
   setSecrets(): void {
@@ -64,12 +64,12 @@ export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
     };
   }
 
-  fetchBody(): Promise<FetchBodyResult> {
-    return Promise.resolve({
+  async fetchBody(): Promise<FetchBodyResult> {
+    return {
       ok: false,
       error:
         "network_body is not available on the safari engine — Safari exposes no protocol-level " +
         "network observation. Use a chromium/firefox/webkit session for network bodies.",
-    });
+    };
   }
 }

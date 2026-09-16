@@ -946,6 +946,36 @@ export default tseslint.config(
       "max-params": "off",
     },
   },
+  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp}.ts`) —
+  // `async` is part of the port contract here, so `require-await` is inverted.
+  //
+  // Every adapter is built over an INJECTED accessor:
+  // `new PlaywrightTargetSubstrate(() => requirePage(e.session), …)`. On an
+  // attached (BYOB) session that accessor throws `attach-target-gone` the moment
+  // the user closes the tab. A method typed `Promise<T>` but declared WITHOUT
+  // `async` lets that throw escape SYNCHRONOUSLY, before a promise exists, past
+  // every caller's `.catch()` — `list_sessions` lost its whole registry listing
+  // to one dead tab that way, and `point_probe` lost its structured failure
+  // envelope. So an adapter method whose body never awaits (a refusal constant,
+  // a one-line delegate to a synchronous read) still MUST be `async`: the
+  // keyword is what turns the throw into a rejection the caller can guard.
+  //
+  // `require-await` would push exactly those bodies back to the broken spelling.
+  // It is off for the adapter files only, and
+  // `test/architecture/substrate-adapter-async.test.ts` enforces the opposite
+  // rule — EVERY Promise-returning adapter method is `async` — so the surface is
+  // gated, not ungoverned. The §7 reviewable-config escape valve, never an
+  // inline disable.
+  {
+    files: [
+      "src/page/*-substrate-playwright.ts",
+      "src/page/*-substrate-safari.ts",
+      "src/page/*-substrate-cdp.ts",
+    ],
+    rules: {
+      "@typescript-eslint/require-await": "off",
+    },
+  },
   // src/server.ts + src/tools/* — MCP tool-handler registration. The MCP SDK's
   // `s.tool(name, schema, handler)` signature requires the handler to
   // return `Promise<ToolResponse>`, so handlers must be declared `async`
