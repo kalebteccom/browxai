@@ -8,6 +8,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Live network/CPU emulation tools: network_emulate / cpu_emulate — CDP-deep
@@ -74,7 +75,7 @@ export function registerGestureEmulationTools(
       try {
         const { state, reset } = await e.emulation.applyNetwork(
           requireCdp(e.session),
-          e.session.page(),
+          requirePage(e.session),
           {
             offline,
             latencyMs,
@@ -133,7 +134,7 @@ export function registerGestureEmulationTools(
       try {
         const { state, reset } = await e.emulation.applyCpu(
           requireCdp(e.session),
-          e.session.page(),
+          requirePage(e.session),
           {
             throttleRate,
           },

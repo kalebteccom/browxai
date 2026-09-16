@@ -1,4 +1,4 @@
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG } from "./schemas.js";
@@ -15,7 +15,7 @@ import type {
 import type { CaptureResult } from "../page/capture-substrate.js";
 import type { SecretRegistry } from "../util/secrets.js";
 
-type CapturePage = ReturnType<Awaited<ReturnType<SessionHost["entryFor"]>>["session"]["page"]>;
+type CapturePage = ReturnType<typeof requirePage>;
 type CaptureCdp = ReturnType<typeof requireCdp>;
 type OnTrigger = "navigation" | "console-error" | "network-mutation" | "dialog";
 
@@ -336,7 +336,7 @@ export function registerReadObserveCaptureTools(
       if (g) return g;
       try {
         const e = await entryFor(args.session);
-        const page = e.session.page();
+        const page = requirePage(e.session);
         const fmt: "png" | "jpeg" = args.format ?? "png";
         const { defaultScheduleDir, runSchedule } = await import("../page/screenshot-schedule.js");
         const intoDir = args.intoDir ?? defaultScheduleDir(e.id);
@@ -428,7 +428,7 @@ export function registerReadObserveCaptureTools(
       if (g) return g;
       try {
         const e = await entryFor(args.session);
-        const page = e.session.page();
+        const page = requirePage(e.session);
         const cdp = requireCdp(e.session);
         const fmt: "png" | "jpeg" = args.format ?? "png";
         const { defaultOnDir, runScreenshotOn } = await import("../page/screenshot-on.js");

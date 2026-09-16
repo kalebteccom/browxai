@@ -11,6 +11,7 @@ import {
 import { SUPPORTED_DEVICE_APIS } from "../session/device-emu.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Permission-state read + notification policy + device-request read tools:
@@ -57,8 +58,8 @@ export function registerSessionNotificationDeviceTools(
           (SUPPORTED_PERMISSIONS as readonly string[]).includes(p),
         );
         const states = await readPermissionStates(
-          e.session.page().context(),
-          e.session.page(),
+          requirePage(e.session).context(),
+          requirePage(e.session),
           supported,
           origin,
         );
@@ -73,7 +74,7 @@ export function registerSessionNotificationDeviceTools(
             origin ??
             (() => {
               try {
-                return new URL(e.session.page().url()).origin;
+                return new URL(requirePage(e.session).url()).origin;
               } catch {
                 return null;
               }
@@ -126,9 +127,10 @@ export function registerSessionNotificationDeviceTools(
         const resolved = e.notification.set(next);
         // Push the new sync-decision hint to every live page so the
         // constructor's throw timing tracks the policy without a reload.
-        await propagateNotificationSyncDecision(e.session.page().context(), e.notification).catch(
-          () => undefined,
-        );
+        await propagateNotificationSyncDecision(
+          requirePage(e.session).context(),
+          e.notification,
+        ).catch(() => undefined);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         const body = { ok: true, session: e.id, policy: resolved, tokensEstimate };
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };

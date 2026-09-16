@@ -8,8 +8,9 @@ import { applyCredentialToRegistry, type ProviderCredentialInternal } from "../u
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
+import { requirePage } from "../engine/index.js";
 
-type CaptchaPage = ReturnType<Awaited<ReturnType<ToolHost["entryFor"]>>["session"]["page"]>;
+type CaptchaPage = ReturnType<typeof requirePage>;
 
 /** Stamp a captcha result body with its token estimate and wrap it as a tool
  *  text response — the shared shape every solve_captcha envelope uses. */
@@ -202,7 +203,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const e = await entryFor(session);
       let pageUrl: string;
       try {
-        pageUrl = e.session.page().url();
+        pageUrl = requirePage(e.session).url();
       } catch {
         return captchaJsonResult({
           ok: false,
@@ -215,7 +216,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // needed (imageBase64 is the payload).
       let resolvedSiteKey = siteKey;
       if (!resolvedSiteKey && selector && type !== "image") {
-        resolvedSiteKey = await readSiteKeyFromSelector(e.session.page(), selector);
+        resolvedSiteKey = await readSiteKeyFromSelector(requirePage(e.session), selector);
         if (!resolvedSiteKey) {
           return captchaJsonResult({
             ok: false,

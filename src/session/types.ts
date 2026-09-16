@@ -117,7 +117,25 @@ export interface BrowserSession {
    *  managed (persistent) launches only — incognito and attached sessions have
    *  no profile of their own. */
   readonly profileDir?: string;
-  page(): Page;
+  /** The Playwright `Page` backing this session. OPTIONAL, and deprecated the
+   *  moment it became so.
+   *
+   *  It is optional for exactly one phase, as a compile-error enumeration device
+   *  (RFC 0009 P1): the member promised a `Page` that Safari cannot supply and
+   *  implemented the promise by throwing `safari-no-playwright-page`, which is the
+   *  present-but-unconditionally-throwing port method RFC 0004 named as the L5
+   *  violation. Making it optional makes the compiler list every caller that
+   *  assumed a `Page`, which is what sizes the remaining phases.
+   *
+   *  Nothing is designed around the optional form and NO NEW CODE MAY CALL IT.
+   *  Page-availability is already declared once, as
+   *  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+   *  that fact and the two can disagree. Read the declaration. RFC 0009 P5 deletes
+   *  this member for `playwright?(): PlaywrightSessionHandle`, the engine-named
+   *  escape hatch that mirrors `safari?()`.
+   *
+   *  @deprecated Reach the session through a capability substrate. */
+  page?(): Page;
   /** The CDP target this session is leased to. Present on the attached (BYOB)
    *  engines, absent where there is no CDP target (Safari). */
   targetId?(): string;

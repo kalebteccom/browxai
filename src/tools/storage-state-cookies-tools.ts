@@ -20,6 +20,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Storage-state + cookies tools: dump_storage_state / inject_storage_state and the
@@ -74,7 +75,7 @@ export function registerStorageStateCookiesTools(
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          dumpStorageState(e.session.page().context(), workspace.root, { path }),
+          dumpStorageState(requirePage(e.session).context(), workspace.root, { path }),
           cfgActionTimeout(),
           "dump_storage_state",
         );
@@ -126,7 +127,9 @@ export function registerStorageStateCookiesTools(
             ? readStorageStateFile(workspace.root, state, "inject_storage_state")
             : state;
         const r = await withDeadline(
-          injectStorageState(e.session.page().context(), e.session.page(), blob, { mode }),
+          injectStorageState(requirePage(e.session).context(), requirePage(e.session), blob, {
+            mode,
+          }),
           cfgActionTimeout(),
           "inject_storage_state",
         );
@@ -161,7 +164,7 @@ export function registerStorageStateCookiesTools(
       try {
         const e = await entryFor(session);
         const r = await withDeadline(
-          cookiesGet(e.session.page().context(), { name, url }),
+          cookiesGet(requirePage(e.session).context(), { name, url }),
           cfgActionTimeout(),
           "cookies_get",
         );
@@ -284,7 +287,7 @@ export function registerStorageStateCookiesTools(
         const c = await confirmByobAction("cookies_delete", confirmCtxFor(e));
         if (!c.ok) return denyContent("cookies_delete", c);
         const r = await withDeadline(
-          cookiesDelete(e.session.page().context(), { name, url, domain, path }),
+          cookiesDelete(requirePage(e.session).context(), { name, url, domain, path }),
           cfgActionTimeout(),
           "cookies_delete",
         );
@@ -311,7 +314,7 @@ export function registerStorageStateCookiesTools(
         const c = await confirmByobAction("cookies_clear", confirmCtxFor(e));
         if (!c.ok) return denyContent("cookies_clear", c);
         const r = await withDeadline(
-          cookiesClear(e.session.page().context()),
+          cookiesClear(requirePage(e.session).context()),
           cfgActionTimeout(),
           "cookies_clear",
         );

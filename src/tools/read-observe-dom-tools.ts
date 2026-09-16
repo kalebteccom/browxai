@@ -7,6 +7,7 @@ import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 type Session = SessionEntry["session"];
@@ -20,8 +21,8 @@ function jsonErrorContent(payload: Record<string, unknown>): ToolResponse {
 /** Resolve a child-frame target by stable id (minting ids first so the lookup
  *  succeeds), or null when the frame is no longer attached. */
 function resolveSnapshotFrame(s: Session, e: SessionEntry, frame: string): FrameTarget {
-  listFrames(s.page(), e.frames);
-  return resolveFrameById(s.page(), e.frames, frame);
+  listFrames(requirePage(s), e.frames);
+  return resolveFrameById(requirePage(s), e.frames, frame);
 }
 
 /** Read the header url/title. Safari has no Playwright Page — read via the
@@ -42,9 +43,8 @@ async function readSnapshotHeader(
     return { url, title };
   }
   if (isMainFrame) {
-    const url = s.page().url();
-    const title = await s
-      .page()
+    const url = requirePage(s).url();
+    const title = await requirePage(s)
       .title()
       .catch(() => "");
     return { url, title };
@@ -252,7 +252,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
         result = await withDeadline(
           find(
             // safari has no Playwright Page — find ranks from the substrate tree.
-            s.safari ? null : s.page(),
+            s.safari ? null : requirePage(s),
             e.snapshotSubstrate,
             e.refs,
             {
@@ -289,7 +289,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const top = result.candidates[0];
       e.recorder.recordRead(
         { type: "find", query },
-        s.safari ? "" : s.page().url(),
+        s.safari ? "" : requirePage(s).url(),
         top ? { selectorHint: top.selectorHint, stability: top.stability } : undefined,
       );
       // egress masking. `find()` returns candidate `name` / `testId` /
@@ -322,7 +322,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       const g = gateCheck("frames_list");
       if (g) return g;
       const e = await entryFor(session);
-      const frames = listFrames(e.session.page(), e.frames);
+      const frames = listFrames(requirePage(e.session), e.frames);
       const body = { ok: true as const, frames, tokensEstimate: 0 };
       body.tokensEstimate = estimateTokens(JSON.stringify(body));
       return { content: [{ type: "text", text: JSON.stringify(body, null, 2) }] };

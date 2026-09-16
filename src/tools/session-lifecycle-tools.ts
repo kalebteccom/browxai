@@ -3,7 +3,12 @@ import { parsePermissionPolicyArg, type PermissionPolicy } from "../session/perm
 import { parseNotificationPolicyArg, type NotificationPolicy } from "../session/notification.js";
 import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
-import { validateEngine, IMPLEMENTED_ENGINES, type EngineKind } from "../engine/index.js";
+import {
+  validateEngine,
+  IMPLEMENTED_ENGINES,
+  type EngineKind,
+  requirePage,
+} from "../engine/index.js";
 import type { RegisterHost, SessionHost, ServerServicesHost, ToolResponse } from "./host.js";
 
 /** Wrap a JSON-serialisable body as a tool text response — the shared shape the
@@ -85,7 +90,7 @@ function buildOpenSessionResultFields(
  *  its URL comes from the WebDriver Classic client instead. */
 async function openedUrlFor(e: SessionEntry): Promise<string> {
   const safariOpened = e.session.safari?.();
-  if (!safariOpened) return e.session.page().url();
+  if (!safariOpened) return requirePage(e.session).url();
   return safariOpened.webDriver.currentUrl(safariOpened.sessionId).catch(() => "");
 }
 
@@ -450,14 +455,14 @@ export function registerSessionLifecycleTools(
         engine: e.session.engine,
         url: (() => {
           try {
-            return e.session.page().url();
+            return requirePage(e.session).url();
           } catch {
             return null;
           }
         })(),
         pages: (() => {
           try {
-            return e.session.page().context().pages().length;
+            return requirePage(e.session).context().pages().length;
           } catch {
             return null;
           }

@@ -1,4 +1,4 @@
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import { findByRef } from "../page/snapshot.js";
 import { fetchPiercedDocument, collectShadowTrees, runOpenShadowWalk } from "../page/shadow.js";
 import { extract } from "../page/extract.js";
@@ -267,7 +267,7 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
       const s = e.session;
       try {
         const result = await withDeadline(
-          extract(s.page(), e.snapshotSubstrate, e.refs, {
+          extract(requirePage(s), e.snapshotSubstrate, e.refs, {
             schema: args.schema,
             ref: args.ref,
             scope: args.scope,
@@ -283,7 +283,7 @@ export function registerReadObserveExtractTools(host: ToolHost): void {
         if (result.ok) {
           e.recorder.recordRead(
             { type: "extract", schema: args.schema, scope: args.scope ?? args.ref },
-            s.page().url(),
+            requirePage(s).url(),
           );
         }
         return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };

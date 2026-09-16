@@ -34,7 +34,7 @@ describe("buildSafariSession", () => {
   it("page() throws the structured no-Playwright-Page error", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);
-    expect(() => sess.page()).toThrow(NO_PLAYWRIGHT_PAGE);
+    expect(() => sess.page!()).toThrow(NO_PLAYWRIGHT_PAGE);
   });
 
   it("safari() exposes the native handle and cdp is absent", () => {

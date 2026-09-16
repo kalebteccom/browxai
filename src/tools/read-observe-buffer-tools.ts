@@ -7,6 +7,7 @@ import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { REF_OR_SELECTOR, SESSION_ARG, TIMEOUT_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 
@@ -15,7 +16,7 @@ type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
  *  run for. Called only after the evaluate succeeded. */
 function recordEval(e: SessionEntry, expr: string): void {
   const s = e.session;
-  e.recorder.recordRead({ type: "eval_js", expr }, s.safari ? "" : s.page().url());
+  e.recorder.recordRead({ type: "eval_js", expr }, s.safari ? "" : requirePage(s).url());
 }
 
 /**
@@ -130,7 +131,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         };
       }
       try {
-        const result = await sampleMetric(e.session.page(), e.refs, {
+        const result = await sampleMetric(requirePage(e.session), e.refs, {
           target,
           metric: args.metric,
           durationMs: args.durationMs,
@@ -231,7 +232,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         };
       }
       const { locatorFor } = await import("../page/locator.js");
-      const loc = locatorFor(e.session.page(), e.refs, target);
+      const loc = locatorFor(requirePage(e.session), e.refs, target);
       let result;
       try {
         result = await withDeadline(
@@ -315,7 +316,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
       const e = await entryFor(session);
       try {
         const result = await withDeadline(
-          pointProbe(e.session.page(), coords, { crop }),
+          pointProbe(requirePage(e.session), coords, { crop }),
           cfgActionTimeout(),
           "point_probe",
         );
@@ -329,7 +330,7 @@ export function registerReadObserveBufferTools(host: ToolHost): void {
         // structured failure — coordinate + page URL for triage.
         let url = "";
         try {
-          url = e.session.page().url();
+          url = requirePage(e.session).url();
         } catch {
           /* page gone */
         }

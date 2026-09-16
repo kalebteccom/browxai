@@ -27,6 +27,7 @@ export {
   SAFARI_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
+export { requirePage, type PageCapable } from "./session-page.js";
 export {
   assertEngineSubInterface,
   assertEngineSupports,

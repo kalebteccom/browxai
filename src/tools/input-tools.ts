@@ -5,6 +5,7 @@ import { snapshotProfile, restoreProfile } from "../session/profile-snapshot.js"
 import { requireCdp } from "../engine/session-cdp.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Low-level input primitives: the raw mouse pipeline (mouse_down / mouse_move /
@@ -44,7 +45,7 @@ export function registerInputTools(host: ToolHost): void {
         const e = await entryFor(session);
         try {
           const r = await withDeadline(
-            mouseAction(e.session.page(), act.slice(6) as "down" | "move" | "up", coords),
+            mouseAction(requirePage(e.session), act.slice(6) as "down" | "move" | "up", coords),
             cfgActionTimeout(),
             act,
           );

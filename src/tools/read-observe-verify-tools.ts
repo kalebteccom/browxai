@@ -1,5 +1,5 @@
 import type { z as ZodNamespace } from "zod";
-import { requireCdp } from "../engine/index.js";
+import { requireCdp, requirePage } from "../engine/index.js";
 import {
   verifyVisible,
   verifyText,
@@ -111,7 +111,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
-      const page = e.session.page();
+      const page = requirePage(e.session);
       try {
         const res = await withDeadline(
           verifyVisible(page, e.refs, target),
@@ -175,7 +175,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
-      const page = e.session.page();
+      const page = requirePage(e.session);
       try {
         const res = await withDeadline(
           verifyText(page, e.refs, target, args.text, args.exact === true),
@@ -235,7 +235,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
-      const page = e.session.page();
+      const page = requirePage(e.session);
       try {
         const res = await withDeadline(
           verifyValue(page, e.refs, target, args.value),
@@ -286,7 +286,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const e = await entryFor(args.session);
       const sg = subInterfaceGate("verify_count", "page", e);
       if (sg) return sg;
-      const page = e.session.page();
+      const page = requirePage(e.session);
       try {
         const res = await withDeadline(
           verifyCount(page, requireCdp(e.session), e.refs, {
@@ -357,7 +357,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
-      const page = e.session.page();
+      const page = requirePage(e.session);
       try {
         const res = await withDeadline(
           verifyAttribute(page, e.refs, target, args.attr, args.value),

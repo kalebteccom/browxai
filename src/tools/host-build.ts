@@ -7,6 +7,7 @@ import {
   type EngineKind,
   type EngineRefusal,
   type EngineSubInterface,
+  requirePage,
 } from "../engine/index.js";
 import {
   DEFAULT_SESSION_ID,
@@ -288,7 +289,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   };
 
   const ctxFor = (e: SessionEntry): ActionContext => ({
-    page: e.session.page(),
+    page: requirePage(e.session),
     // Threaded by presence, not by engine name: an engine that declares the
     // `deep` escape hatch exposes `cdp()`, and the CDP-only action paths refuse
     // when it is absent.
@@ -301,7 +302,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     snapshot: e.snapshotSubstrate,
     refs: e.refs,
     console: e.console,
-    pages: () => e.session.page().context().pages(),
+    pages: () => requirePage(e.session).context().pages(),
     testAttributes: config.testAttributes,
     originPolicy,
     recorder: e.recorder,

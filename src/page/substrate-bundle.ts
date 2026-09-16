@@ -32,6 +32,7 @@ import { type SnapshotSubstrate } from "./snapshot-substrate.js";
 import { type NetworkSubstrate } from "./network-substrate.js";
 import { snapshotSubstrateFor } from "./snapshot-substrate-select.js";
 import { networkSubstrateFor } from "./network-substrate-select.js";
+import { requirePage } from "../engine/index.js";
 
 /** The Playwright `SubstrateBundle` — the four Playwright engines register this.
  *  `actions`/`capture` use the per-server host `deps` the composition root threads
@@ -42,22 +43,22 @@ export function playwrightSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     actions: (e: SessionEntry): ActionSubstrate =>
       new PlaywrightActionSubstrate(() => deps.ctxFor(e), e.session.engine),
     capture: (e: SessionEntry): CaptureSubstrate =>
-      new PlaywrightCaptureSubstrate(() => e.session.page(), e.refs, {
+      new PlaywrightCaptureSubstrate(() => requirePage(e.session), e.refs, {
         describeTarget: deps.describeTarget,
         save: deps.save,
       }),
     storage: (e: SessionEntry): StorageSubstrate =>
       new PlaywrightStorageSubstrate(
-        () => e.session.page().context(),
-        () => e.session.page(),
+        () => requirePage(e.session).context(),
+        () => requirePage(e.session),
         e.session.engine,
       ),
     script: (e: SessionEntry): ScriptSubstrate =>
-      new PlaywrightScriptSubstrate(() => e.session.page(), e.session.engine),
+      new PlaywrightScriptSubstrate(() => requirePage(e.session), e.session.engine),
     emulation: (e: SessionEntry): EmulationSubstrate =>
       new PlaywrightEmulationSubstrate(
-        () => e.session.page().context(),
-        () => e.session.page(),
+        () => requirePage(e.session).context(),
+        () => requirePage(e.session),
         e.session.engine,
       ),
     // Snapshot / network select by CDP presence — delegated to the existing

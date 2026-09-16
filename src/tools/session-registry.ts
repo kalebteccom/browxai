@@ -1,6 +1,6 @@
 import { openManagedSession } from "../session/managed.js";
 import { openByobSession } from "../session/byob.js";
-import { requireCdp, type EngineKind } from "../engine/index.js";
+import { requireCdp, type EngineKind, requirePage } from "../engine/index.js";
 import {
   engineEntry,
   byobAttachNeedsEndpoint,
@@ -321,7 +321,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // session mode (incl. attached: the consumer's Chrome receives the
       // route handler scoped to its context; warning emitted up-stream).
       if (creationReplayHars && creationReplayHars.length && hasPlaywrightPage) {
-        await applyHarReplay(sess.page().context(), creationReplayHars);
+        await applyHarReplay(requirePage(sess).context(), creationReplayHars);
       }
       // per-session console buffer. The page/BiDi attach is the engine's job —
       // it runs in `postWire` (Playwright: `console.attach(page)`; Safari: the
@@ -485,7 +485,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // (called inside finalizeVideoOnClose) blocks until the page is closed
       // AND the recording is fully written, so the order is: grab page →
       // close context → saveAs to deterministic target path.
-      const videoPage = e.video.active ? e.session.page() : undefined;
+      const videoPage = e.video.active ? requirePage(e.session) : undefined;
       await e.session.close().catch(() => undefined);
       if (videoPage) {
         await finalizeVideoOnClose(videoPage, e.video).catch(() => undefined);

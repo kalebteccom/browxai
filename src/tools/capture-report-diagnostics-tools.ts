@@ -15,6 +15,7 @@ import {
 } from "../page/export-playwright-script.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /** Stamp the body with its token estimate and wrap it as a tool text response —
  *  the shared shape every `export_playwright_script` failure/early return uses. */
@@ -76,7 +77,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
         ok: true,
         session: e.id,
         mode: e.mode,
-        url: e.session.page().url(),
+        url: requirePage(e.session).url(),
         openedAt: new Date(e.openedAt).toISOString(),
         generatedAt: new Date().toISOString(),
         ...(note ? { note } : {}),

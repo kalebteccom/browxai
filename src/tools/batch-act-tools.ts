@@ -11,6 +11,7 @@ import type {
   ServerServicesHost,
   ToolResponse,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /** A structured `{ok:false, error}` envelope as a tool text response. */
 function batchJsonError(error: string): ToolResponse {
@@ -110,7 +111,7 @@ export function registerBatchActTools(
       // Start the sampler, then dispatch the inner action concurrently so the
       // trace spans the transition. Sampler self-bounds via durationMs; the
       // inner action self-bounds via the anti-wedge deadline. Both await.
-      const samplePromise = sampleMetric(e.session.page(), e.refs, {
+      const samplePromise = sampleMetric(requirePage(e.session), e.refs, {
         target: sampleTarget,
         metric: args.metric,
         durationMs: args.durationMs,
@@ -208,10 +209,10 @@ export function registerBatchActTools(
         }
       };
       try {
-        const before = await captureDomMap(e.session.page(), args.scope);
+        const before = await captureDomMap(requirePage(e.session), args.scope);
         const innerArgs = { ...(args.action.args ?? {}), session: args.session };
         const actionResp = await toolHandlers[innerTool]!(innerArgs);
-        const after = await captureDomMap(e.session.page(), args.scope);
+        const after = await captureDomMap(requirePage(e.session), args.scope);
         const diff = diffDomMaps(before, after);
         // Egress sink — `diff.changed[].classDelta` / `styleDelta` / `attrDelta`
         // surface raw attribute / inline-style values (e.g. `aria-label="hunter2"`

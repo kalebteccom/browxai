@@ -18,6 +18,7 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
+import { requirePage } from "../engine/index.js";
 
 /**
  * Web-storage + named-auth-state tools: the localStorage / sessionStorage CRUD
@@ -226,7 +227,7 @@ export function registerStorageWebAuthTools(
         const c = await confirmByobAction("auth_save", confirmCtxFor(e));
         if (!c.ok) return denyContent("auth_save", c);
         const r = await withDeadline(
-          authSave(e.session.page().context(), workspace.root, name),
+          authSave(requirePage(e.session).context(), workspace.root, name),
           cfgActionTimeout(),
           "auth_save",
         );
@@ -257,7 +258,7 @@ export function registerStorageWebAuthTools(
         if (!c.ok) return denyContent("auth_load", c);
         const blob = authLoad(workspace.root, name);
         const r = await withDeadline(
-          injectStorageState(e.session.page().context(), e.session.page(), blob, {
+          injectStorageState(requirePage(e.session).context(), requirePage(e.session), blob, {
             mode: "replace",
           }),
           cfgActionTimeout(),
