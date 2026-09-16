@@ -19,9 +19,10 @@
 import type { EngineCapabilities, EngineKind, EngineSubInterface } from "./types.js";
 
 // The full Playwright-backed sub-interface set — every cross-browser
-// sub-interface PLUS `page` (RFC 0004 D5: chromium / firefox / webkit / android
-// all back a real Playwright `Page`). Safari declares its own subset below and
-// omits `page` (no-Playwright-Page), which is what its post-wire keys off.
+// sub-interface PLUS `element` (RFC 0009 P2: they all resolve elements through
+// `PlaywrightElementSubstrate`) and `page` (RFC 0004 D5: they all back a real
+// Playwright `Page`). Safari declares its own subset below and omits both, which
+// is what its post-wire and the verify-family gate key off.
 const ALL_SUB_INTERFACES: readonly EngineSubInterface[] = [
   "lifecycle",
   "navigation",
@@ -32,6 +33,7 @@ const ALL_SUB_INTERFACES: readonly EngineSubInterface[] = [
   "script",
   "emulation",
   "capture",
+  "element",
   "page",
 ];
 
@@ -100,8 +102,12 @@ export const ANDROID_CAPABILITIES: EngineCapabilities = {
  *  substrate), so the network tools must REFUSE on Safari, not skip. EMULATION is
  *  omitted too — only `browsingContext.setViewport` works; the rest of the emulation
  *  surface (geolocation/locale/timezone/UA/network-conditions/CPU/clock) is absent,
- *  so it gates uniformly. `deep: false` (no CDP) gates the ~26 CDP-deep tools via the
- *  existing caps.deep gate with no per-engine edit. */
+ *  so it gates uniformly. ELEMENT is omitted (RFC 0009 P2): safaridriver resolves
+ *  elements over WebDriver Classic element ids and no ElementSubstrate drives them
+ *  yet, so the verify family refuses here — the same refusal it already produced
+ *  when that gate read `page`, which safari also omits. `deep: false` (no CDP)
+ *  gates the ~26 CDP-deep tools via the existing caps.deep gate with no per-engine
+ *  edit. */
 export const SAFARI_CAPABILITIES: EngineCapabilities = {
   engine: "safari",
   subInterfaces: new Set<EngineSubInterface>([

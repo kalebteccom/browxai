@@ -18,6 +18,7 @@ import type { StorageSubstrate } from "../page/storage-substrate.js";
 import type { ScriptSubstrate } from "../page/script-substrate.js";
 import type { EmulationSubstrate } from "../page/emulation-substrate.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
+import type { ElementSubstrate } from "../page/element-substrate.js";
 import type { EgressSanitiser } from "../util/egress-sanitiser.js";
 import type { EngineSubInterface } from "../engine/index.js";
 
@@ -241,6 +242,15 @@ export interface TargetHost {
   targetFor: (e: SessionEntry) => TargetSubstrate;
 }
 
+/** The element-resolution capability port (RFC 0009 P2). */
+export interface ElementHost {
+  /** The element capability port for a session (engine-selected). A handler that
+   *  needs to resolve a ref or selector to an element, measure its box or read its
+   *  state reads it from here; reaching `locatorFor(e.session.page(), …)` is the
+   *  Playwright bypass RFC 0009 closes. */
+  elementFor: (e: SessionEntry) => ElementSubstrate;
+}
+
 /** The egress-masking chokepoint (RFC 0004 P3 / D4). A family that returns
  *  page-derived text/JSON masks it through the injected `EgressSanitiser` instead
  *  of hand-calling `caps.enabled.has("secrets") ? e.secrets.applyMaskDeep(x) : x`.
@@ -339,6 +349,7 @@ export interface ToolHost
     ScriptHost,
     EmulationHost,
     TargetHost,
+    ElementHost,
     EgressHost,
     EnvelopeHost,
     ConfigHost,

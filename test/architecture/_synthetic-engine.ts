@@ -28,6 +28,16 @@ import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
 import type { EmulationResult, EmulationSubstrate } from "../../src/page/emulation-substrate.js";
 import type { TargetSubstrate } from "../../src/page/target-substrate.js";
+import type {
+  ElementBoundsResult,
+  ElementCountResult,
+  ElementProbeRequest,
+  ElementProbeResult,
+  ElementQuery,
+  ElementResolution,
+  ElementSubstrate,
+  ElementToken,
+} from "../../src/page/element-substrate.js";
 import type { ActionResult, DispatchedAction } from "../../src/page/actionresult.js";
 
 /** A present-but-throwing substrate for the four ports the core contract never
@@ -227,6 +237,57 @@ class InMemoryTargetSubstrate implements TargetSubstrate {
   }
 }
 
+/** The synthetic engine's in-memory ElementSubstrate. Answers entirely from the
+ *  ref registry — no DOM, no Page, no Locator — which is the point: RFC 0009's
+ *  P2 row has the synthetic engine drive `verify_visible` / `verify_text` /
+ *  `verify_count`, and before the element port those three reached
+ *  `locatorFor(page, …)` and could only have run against `fakePage()`.
+ *
+ *  A `ref` query resolves iff the registry holds it, and its text is the node's
+ *  accessible name. A `selector` / `expression` query has nothing to resolve
+ *  against in memory, so it answers as a single visible element with no text —
+ *  plausible, which is what the sub-interface conformance fixture needs: a
+ *  throwing substrate would make an UNGATED tool fail for the wrong reason and a
+ *  missing gate would look like a present one. */
+class InMemoryElementSubstrate implements ElementSubstrate {
+  readonly engine = "synthetic";
+  constructor(private readonly refs: RefRegistry) {}
+
+  async resolve(query: ElementQuery): Promise<ElementResolution> {
+    if (query.kind === "ref" && !this.refs.has(query.ref)) {
+      return {
+        kind: "refusal",
+        reason: "no-such-element",
+        error: `ref "${query.ref}" is not in the session's registry`,
+        hint: "call snapshot() or find() again",
+        ref: query.ref,
+      };
+    }
+    return { kind: "element", el: { __brand: "element", query } };
+  }
+
+  async bounds(): Promise<ElementBoundsResult> {
+    return { kind: "bounds", rect: { x: 0, y: 0, width: 10, height: 10 } };
+  }
+
+  async probe(el: ElementToken, want: ElementProbeRequest): Promise<ElementProbeResult> {
+    const name = el.query.kind === "ref" ? (this.refs.locatorOf(el.query.ref)?.name ?? "") : "";
+    return {
+      kind: "reading",
+      ...(want.matches ? { matches: 1 } : {}),
+      ...(want.visible ? { visible: true } : {}),
+      ...(want.enabled ? { enabled: true } : {}),
+      ...(want.text ? { text: name } : {}),
+      ...(want.value ? { value: null } : {}),
+      ...(want.attribute !== undefined ? { attribute: null } : {}),
+    };
+  }
+
+  async count(): Promise<ElementCountResult> {
+    return { kind: "count", n: 1 };
+  }
+}
+
 /** The four ports the core OCP contract never drives, answered PLAUSIBLY instead
  *  of throwing. `answerAll` turns them on.
  *
@@ -326,6 +387,11 @@ export function inMemorySubstrateBundle(
     snapshot: (_e: SessionEntry): SnapshotSubstrate => new InMemorySnapshotSubstrate(),
     network: (_e: SessionEntry): NetworkSubstrate => new InMemoryNetworkSubstrate(),
     target: (_e: SessionEntry): TargetSubstrate => new InMemoryTargetSubstrate(),
+    // Always answering, in BOTH modes: the core OCP contract drives the verify
+    // family through this port (RFC 0009's P2 enforcement row), so unlike
+    // storage/script/emulation/capture it is not one of the ports the contract
+    // proves it never reaches.
+    element: (e: SessionEntry): ElementSubstrate => new InMemoryElementSubstrate(e.refs),
     capture: (_e: SessionEntry): CaptureSubstrate =>
       answering ? new InMemoryCaptureSubstrate() : unsupported<CaptureSubstrate>("capture"),
     storage: (_e: SessionEntry): StorageSubstrate =>

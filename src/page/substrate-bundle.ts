@@ -31,6 +31,7 @@ import { PlaywrightEmulationSubstrate, type EmulationSubstrate } from "./emulati
 import { type SnapshotSubstrate } from "./snapshot-substrate.js";
 import { type NetworkSubstrate } from "./network-substrate.js";
 import { PlaywrightTargetSubstrate, type TargetSubstrate } from "./target-substrate.js";
+import { PlaywrightElementSubstrate, type ElementSubstrate } from "./element-substrate.js";
 import { snapshotSubstrateFor } from "./snapshot-substrate-select.js";
 import { networkSubstrateFor } from "./network-substrate-select.js";
 import { requirePage } from "../engine/index.js";
@@ -72,5 +73,18 @@ export function playwrightSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     network: (e: SessionEntry): NetworkSubstrate => networkSubstrateFor(e.session),
     target: (e: SessionEntry): TargetSubstrate =>
       new PlaywrightTargetSubstrate(() => requirePage(e.session), e.session.engine),
+    // The frame registry and the ref registry are the session's own: a query
+    // scoped to `frame: f3` resolves against THIS session's frame ids, and a
+    // `ref` query reads THIS session's locator recipes. Both are constructor
+    // dependencies rather than per-call arguments, the same way the capture
+    // substrate already takes `e.refs` — one substrate instance belongs to one
+    // session, so the port's four signatures stay free of them.
+    element: (e: SessionEntry): ElementSubstrate =>
+      new PlaywrightElementSubstrate(
+        () => requirePage(e.session),
+        e.frames,
+        e.refs,
+        e.session.engine,
+      ),
   };
 }

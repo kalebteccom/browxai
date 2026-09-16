@@ -40,6 +40,7 @@ import { PlaywrightStorageSubstrate } from "../../src/page/storage-substrate.js"
 import { PlaywrightScriptSubstrate } from "../../src/page/script-substrate.js";
 import { PlaywrightEmulationSubstrate } from "../../src/page/emulation-substrate.js";
 import { PlaywrightTargetSubstrate } from "../../src/page/target-substrate.js";
+import { PlaywrightElementSubstrate } from "../../src/page/element-substrate.js";
 
 const PAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../src/page");
 
@@ -165,6 +166,14 @@ const DRIVEN: ReadonlyArray<{ cls: string; make: () => object }> = [
     make: () => new PlaywrightEmulationSubstrate(gone, gone),
   },
   { cls: "PlaywrightTargetSubstrate", make: () => new PlaywrightTargetSubstrate(gone) },
+  {
+    // The element adapter evaluates its page accessor FIRST in every member,
+    // before it validates the query — so a dead target rejects rather than being
+    // reported as a malformed query, and the four refusal paths never mask a gone
+    // session.
+    cls: "PlaywrightElementSubstrate",
+    make: () => new PlaywrightElementSubstrate(gone, {} as never, {} as never),
+  },
 ];
 
 /** The classes `substrate-bundle.ts` instantiates with a zero-parameter arrow

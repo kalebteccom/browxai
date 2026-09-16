@@ -28,6 +28,7 @@ import type { EmulationSubstrate } from "../page/emulation-substrate.js";
 import type { SnapshotSubstrate } from "../page/snapshot-substrate.js";
 import type { NetworkSubstrate } from "../page/network-substrate.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
+import type { ElementSubstrate } from "../page/element-substrate.js";
 import type { ActionContext } from "../page/actionresult.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ScreenshotSaveResult } from "../page/screenshot-save.js";
@@ -53,6 +54,7 @@ export interface SubstrateBundle {
   snapshot: (e: SessionEntry) => SnapshotSubstrate;
   network: (e: SessionEntry) => NetworkSubstrate;
   target: (e: SessionEntry) => TargetSubstrate;
+  element: (e: SessionEntry) => ElementSubstrate;
 }
 
 /** The per-server host config the `makeSubstrates` factory needs — the exact

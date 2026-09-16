@@ -58,6 +58,23 @@ export type EngineSubInterface =
   | "script"
   | "emulation"
   | "capture"
+  // Element resolution, measurement and reading (RFC 0009 P2). Present iff the
+  // engine has an `ElementSubstrate` that can turn a ref or a selector into a
+  // live element and read its state — which is what the `verify_*` family, the
+  // gesture geometry and `find`'s candidate probes all need.
+  //
+  // Distinct from `page`, and the distinction is the point: `page` says "there is
+  // a Playwright `Page` behind this session", `element` says "this engine can
+  // resolve an element". They coincide today only because Playwright is the one
+  // engine with an element implementation. RFC 0008's native engines will declare
+  // `element` and NOT `page`, and `verify_visible` must run on them — which it
+  // cannot if the gate keeps asking about a Playwright object.
+  //
+  // ABSENT on safari: safaridriver resolves elements over WebDriver Classic
+  // element ids, and no implementation drives them yet
+  // (`element-substrate-safari.ts` refuses on all four members). So safari refuses
+  // the verify family exactly as it did when the gate read `page`.
+  | "element"
   // The Playwright-`Page` capability (RFC 0004 D5). Present iff the engine backs
   // a session with a real Playwright `Page` (chromium / firefox / webkit /
   // android); ABSENT on safari (no-Playwright-Page). Declaring page-availability
