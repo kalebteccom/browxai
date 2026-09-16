@@ -17,6 +17,7 @@ import { type SnapshotSubstrate } from "./snapshot-substrate.js";
 import { SafariClassicSnapshotSubstrate } from "./snapshot-substrate-safari.js";
 import { SafariNoopNetworkSubstrate, type NetworkSubstrate } from "./network-substrate.js";
 import { SafariTargetSubstrate, type TargetSubstrate } from "./target-substrate.js";
+import { SafariElementSubstrate, type ElementSubstrate } from "./element-substrate.js";
 
 /** The Safari `SubstrateBundle` — the safari engine registers this. `safari!()` is
  *  the Safari-native WebDriver-Classic + BiDi handle, present on every safari
@@ -51,5 +52,11 @@ export function safariSubstrateBundle(_deps: SubstrateDeps): SubstrateBundle {
     // `if (session.safari) { webDriver.currentUrl(...) }` branches
     // (session-lifecycle-tools.ts, read-observe-dom-tools.ts).
     target: (e: SessionEntry): TargetSubstrate => new SafariTargetSubstrate(e.session.safari!()),
+    // Safari declares no `element` sub-interface, so the gate refuses the verify
+    // family upstream and this is never reached on the shipped path. It REFUSES
+    // rather than answering anyway: the no-op network substrate beside it answers
+    // "0 requests" for a question safari cannot answer, and that plausible empty
+    // is indistinguishable from a true negative in a QA-evidence report.
+    element: (): ElementSubstrate => new SafariElementSubstrate(),
   };
 }

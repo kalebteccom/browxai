@@ -4,6 +4,7 @@ import type {
   SessionHost,
   ActionHost,
   ConfigHost,
+  ElementHost,
   ServerServicesHost,
 } from "./host.js";
 import { registerActionCoreTools } from "./action-core-tools.js";
@@ -30,7 +31,13 @@ import { registerActionHistoryTools } from "./action-history-tools.js";
  * nothing outside gating, session resolution, action dispatch, and config.
  */
 export function registerActionTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & ConfigHost & ServerServicesHost,
+  host: RegisterHost &
+    GateHost &
+    SessionHost &
+    ActionHost &
+    ConfigHost &
+    ElementHost &
+    ServerServicesHost,
 ): void {
   registerActionCoreTools(host);
   registerActionGestureTools(host);

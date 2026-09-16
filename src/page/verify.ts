@@ -32,8 +32,9 @@
 // `./verify-types.js` and the element-bound verifies in `./verify-element.js`,
 // both re-exported below.
 
-import type { Page, CDPSession } from "playwright-core";
+import type { CDPSession } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
+import type { ElementSubstrate } from "./element-substrate-types.js";
 import { composeSnapshot } from "./compose.js";
 import { findByRef } from "./snapshot.js";
 import { searchTreeForText } from "./text_search.js";
@@ -50,7 +51,7 @@ import type { VerifyResult } from "./verify-types.js";
 /** Verify that exactly `n` elements match the given selector (or visible-text
  *  search). One of `selector` or `text` is required. `source:"app"` on miss. */
 export async function verifyCount(
-  page: Page,
+  elements: ElementSubstrate,
   cdp: CDPSession,
   refs: RefRegistry,
   opts: { selector?: string; text?: string; n: number; testAttributes: string[] },
@@ -82,7 +83,14 @@ export async function verifyCount(
   try {
     let actualCount: number;
     if (opts.selector) {
-      actualCount = await page.locator(opts.selector).count();
+      // An `expression` query, not a `selector` one. `verify_count` counted with
+      // `page.locator(sel)` verbatim — the engine's own query language, with no
+      // `parseSelectorHint` pass and no `.first()` narrowing. The narrowing is
+      // what makes every other count in this family top out at one, so the
+      // distinction is the whole reason `verify_count` can report six.
+      const counted = await elements.count({ kind: "expression", expression: opts.selector });
+      if (counted.kind === "refusal") throw new Error(counted.error);
+      actualCount = counted.n;
     } else {
       // Visible-text path: walk the composed a11y tree, count nodes whose
       // trimmed name matches `text` case-insensitively (text_search-style).
@@ -154,6 +162,7 @@ export function verifyPredicate(predicate: Predicate, data: unknown): VerifyResu
 // `verify.ts` stays the single import surface for verify-family work.
 export {
   resolveOrFail,
+  refusalFailure,
   type FailureSource,
   type VerifyFailure,
   type VerifyResult,

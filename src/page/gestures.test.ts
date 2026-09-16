@@ -10,6 +10,8 @@ import {
   gestureSwipe,
   type DragPreflight,
 } from "./gestures.js";
+import { PlaywrightElementSubstrate } from "./element-substrate.js";
+import type { ElementSubstrate } from "./element-substrate-types.js";
 
 function fakeMouse() {
   const log: string[] = [];
@@ -51,15 +53,21 @@ function pageWithProbe(m: ReturnType<typeof fakeMouse>, cursors: string[]) {
 }
 const refs = {} as never;
 
+/** The real Playwright element adapter over the fake page, so these cases cover
+ *  the port's `resolve` + `bounds` translation rather than a stub of it. */
+function elementsOver(page: ReturnType<typeof pageWithBox>): ElementSubstrate {
+  return new PlaywrightElementSubstrate(() => page, {} as never, refs);
+}
+
 describe("targetPoint", () => {
   it("returns coords verbatim for a coords target", async () => {
-    const p = await targetPoint(pageWithBox(fakeMouse()), refs, {
+    const p = await targetPoint(elementsOver(pageWithBox(fakeMouse())), {
       coords: { x: 7, y: 9 },
     });
     expect(p).toEqual({ x: 7, y: 9 });
   });
   it("returns the box centre for a ref/selector target", async () => {
-    const p = await targetPoint(pageWithBox(fakeMouse()), refs, { selector: "#x" });
+    const p = await targetPoint(elementsOver(pageWithBox(fakeMouse())), { selector: "#x" });
     expect(p).toEqual({ x: 50, y: 30 });
   });
 });

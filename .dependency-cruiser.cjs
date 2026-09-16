@@ -124,7 +124,7 @@ module.exports = {
       comment:
         "A tool handler and the replay orchestrator are engine-agnostic: they reach the " +
         "capability substrates, never a Playwright type. This is a FLOOR, not the whole " +
-        "guard — src/tools imports the `Page` type zero times and still holds ~106 " +
+        "guard — src/tools imports the `Page` type zero times and still holds ~96 " +
         "`requirePage(...)` handle USES obtained by inference, which no import-graph rule " +
         "can see. The `requirePage` chokepoint (src/engine/session-page.ts) is what makes " +
         "those countable (test/architecture/page-bypass-budget.test.ts); this rule stops the " +
@@ -137,16 +137,15 @@ module.exports = {
         "so a module not on it fails the build on its first Playwright import. The entries " +
         "come off as the phases land, and adding one is an RFC amendment with a written " +
         "reason — never an inline disable (the §7 meta-rule). The list's length is pinned " +
-        "in page-bypass-budget.test.ts so growth is a test failure as well as a diff.",
+        "in page-bypass-budget.test.ts so growth is a test failure as well as a diff.\n" +
+        "P2 EMPTIED TWO. `src/tools/target-resolve.ts` and `src/tools/host-build.ts` both named " +
+        "`Locator` in the `describeTarget` signature they thread into `SubstrateDeps`; " +
+        "`describeTarget` measures through `ElementSubstrate` now and neither module reaches " +
+        "playwright-core in any form. `src/tools` is back to zero Playwright types.",
       severity: "error",
       from: {
         path: "^src/(tools|replay)/",
         pathNot: [
-          // P2 (`ElementSubstrate`): both name `Locator` in the `describeTarget`
-          // signature they thread to the capture substrate. The type goes when the
-          // element seam replaces the live Locator with an opaque token.
-          "^src/tools/target-resolve\\.ts$",
-          "^src/tools/host-build\\.ts$",
           // P4 (`EventSubstrate`) + P5 (the residue): the replay orchestrator
           // subscribes to `page.on(...)` / `context.on(...)` directly and taps CDP
           // for the network stream. `Page` / `BrowserContext` / `ConsoleMessage` /

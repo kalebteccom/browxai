@@ -28,6 +28,7 @@ import { type StorageSubstrate } from "../page/storage-substrate.js";
 import { type ScriptSubstrate } from "../page/script-substrate.js";
 import { type EmulationSubstrate } from "../page/emulation-substrate.js";
 import { type TargetSubstrate } from "../page/target-substrate.js";
+import { type ElementSubstrate } from "../page/element-substrate.js";
 import { engineEntry, type SubstrateBundle, type SubstrateDeps } from "../engine/registry.js";
 import { EgressSanitiser } from "../util/egress-sanitiser.js";
 import { screenshotSave } from "../page/screenshot-save.js";
@@ -86,9 +87,12 @@ export interface HostDeps {
   pluginRecords: () => ReadonlyArray<PluginRecord>;
   /** The server start options. */
   startOptions: StartOptions;
-  /** Structured one-liner alongside an element screenshot. */
+  /** Structured one-liner alongside an element screenshot. Measures through the
+   *  element port — the `import("playwright-core").Locator` this used to name was
+   *  the one Playwright type left in `src/tools`, and the reason this module
+   *  carried a `no-tools-or-replay-to-playwright-core` exemption. (RFC 0009 P2.) */
   describeTarget: (
-    loc: import("playwright-core").Locator,
+    elements: ElementSubstrate,
     refs: RefRegistry,
     target: { ref: string } | { selector: string } | { coords: { x: number; y: number } },
   ) => Promise<string>;
@@ -352,6 +356,7 @@ export function buildHost(deps: HostDeps): ToolHost {
   const scriptFor = (e: SessionEntry): ScriptSubstrate => substratesFor(e).script(e);
   const emulationFor = (e: SessionEntry): EmulationSubstrate => substratesFor(e).emulation(e);
   const targetFor = (e: SessionEntry): TargetSubstrate => substratesFor(e).target(e);
+  const elementFor = (e: SessionEntry): ElementSubstrate => substratesFor(e).element(e);
 
   // The egress-masking chokepoint (RFC 0004 P3 / D4). The `secrets`-capability
   // decision is made ONCE here: a `secrets`-off server hands every sink a
@@ -530,6 +535,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     scriptFor,
     emulationFor,
     targetFor,
+    elementFor,
     egressFor,
     caps,
     config,

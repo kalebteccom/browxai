@@ -24,8 +24,9 @@
 // inspect the returned descriptor's `evidence` block before calling `execute`.
 
 import { randomUUID } from "node:crypto";
-import type { CDPSession, Page } from "playwright-core";
+import type { CDPSession } from "playwright-core";
 import { find, type FindCandidate } from "./find.js";
+import type { ElementSubstrate } from "./element-substrate-types.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import type { RefRegistry } from "./refs.js";
 import type { ActionContext, ActionResult } from "./actionresult.js";
@@ -230,7 +231,7 @@ export function estimateDescriptorTokens(d: ActionDescriptor): number {
  * sometimes that's exactly what the caller wants to confirm.
  */
 export async function plan(
-  page: Page,
+  elements: ElementSubstrate,
   substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: PlanOptions,
@@ -244,7 +245,7 @@ export async function plan(
   const ttlMs = clampTtl(opts.ttlMs);
 
   const result = await find(
-    page,
+    elements,
     substrate,
     refs,
     {

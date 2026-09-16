@@ -10,6 +10,52 @@ surface" covers.
 
 ### Changed
 
+- **The `verify_*` family, `find`'s candidate probes, gesture geometry and the
+  screenshot caption resolve elements through a port instead of a Playwright
+  `Locator`** (RFC 0009 P2). `locatorFor(page, refs, target)` was the resolution
+  chokepoint for all four, and every caller chained `.count()` / `.isVisible()` /
+  `.boundingBox()` / `.innerText()` / `.evaluate()` on the live `Locator` it
+  returned, so the whole cluster was Playwright-only by construction. They now go
+  through `ElementSubstrate` — `resolve` / `bounds` / `probe` / `count` — with a
+  Playwright adapter whose bodies are the verbatim calls they replace, including
+  each call's own error handling, and a Safari adapter that refuses all four.
+
+  **Nothing is cached.** `ElementToken` is the query plus its scope, plain data
+  that round-trips through JSON; `bounds` and `probe` re-run the recipe. That
+  keeps `[ref=eN]` what it already was — a content hash plus a stored locator
+  recipe, re-run at action time, holding nothing — rather than the handle an
+  earlier RFC draft proposed and then withdrew.
+
+  **Web ambiguity behaviour is unchanged.** An ambiguous ref still resolves to the
+  first match and is never refused. `find`'s p95 on the thin-a11y fixture measured
+  11.05–12.68 ms before and 9.97–13.88 ms after, across 120 iterations per run:
+  no measurable change, because the added `resolve` per probe builds a locator
+  synchronously and makes no round trip.
+
+- **The verify family is gated on element resolution, not on holding a Playwright
+  `Page`.** `verify_visible` / `verify_text` / `verify_value` / `verify_count` /
+  `verify_attribute` ask `subInterfaceGate(tool, "element", e)` instead of
+  `"page"`. The two questions coincide only while Playwright is the one engine
+  that can resolve an element; a native engine declares `element` and no `page`,
+  and the verify family has to run on it. Safari omits both, so its refusal is
+  unchanged apart from naming the capability the tool actually needs.
+
+- **`verify_*` reports WebDriver's two distinct reference failures as two facts,
+  not two hand-written strings.** A reference the registry never held is
+  `no-such-element` and still renders as `source:"browxai"` / "ref no longer in
+  the snapshot"; a reference that resolves to zero nodes is `stale-element` and
+  still renders as `source:"app"` / "missing (locator matched 0 nodes)". The
+  agent-facing output is byte-identical; the distinction is now classified at the
+  port, so a second engine reports the same two without restating either string.
+
+### Fixed
+
+- **`frames_list` refuses instead of crashing on an engine with no Playwright
+  `Page`.** It called `requirePage(e.session)` outside any try, so on a Safari
+  session the chokepoint's refusal escaped the handler as a raw `Error` — the one
+  engine-can't case in the read family that did not return the structured
+  `{ok:false, error, engine, hint}` envelope every other one does.
+
 - **The capability ports no longer name a Playwright type, and the substrate
   selectors no longer name an engine** (RFC 0009 P1). Six of the seven ports
   declared the interface and its adapters in one module, so the port imported
@@ -22,8 +68,10 @@ surface" covers.
   dependency-cruiser rules now hold the line, both at `error`:
   `ports-name-no-vendor-type`, which is REACHABILITY-scoped so a port that reaches
   `playwright-core` through two hops of its own helpers fails the same as a direct
-  import, and `no-tools-or-replay-to-playwright-core`, whose five surviving modules
-  are named `pathNot` exceptions carrying the RFC 0009 phase that empties each one.
+  import, and `no-tools-or-replay-to-playwright-core`, whose surviving modules are
+  named `pathNot` exceptions carrying the RFC 0009 phase that empties each one —
+  five after P1, three after P2 emptied both `src/tools` entries, and all three
+  that remain are in `src/replay`.
 
   `snapshotSubstrateFor` and `networkSubstrateFor` keyed their first branch on
   `session.engine === "safari"`, which was a second spelling of

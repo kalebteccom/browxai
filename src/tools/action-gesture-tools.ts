@@ -6,6 +6,7 @@ import type {
   GateHost,
   SessionHost,
   ActionHost,
+  ElementHost,
   ServerServicesHost,
 } from "./host.js";
 import { requirePage } from "../engine/index.js";
@@ -18,7 +19,7 @@ import { requirePage } from "../engine/index.js";
  * cohesive family (RFC 0004 P3 / D3 SRP); registered in the same source order.
  */
 export function registerActionGestureTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & ActionHost & ElementHost & ServerServicesHost,
 ): void {
   const { z } = host;
 
@@ -88,7 +89,7 @@ export function registerActionGestureTools(
       const e = await host.entryFor(session);
       try {
         const r = await withDeadline(
-          drag(requirePage(e.session), e.refs, {
+          drag(requirePage(e.session), host.elementFor(e), {
             from: toActionTarget(from),
             to: to ? toActionTarget(to) : { coords: { x: 0, y: 0 } },
             steps,
@@ -131,7 +132,7 @@ export function registerActionGestureTools(
       const e = await host.entryFor(session);
       try {
         const r = await withDeadline(
-          doubleClick(requirePage(e.session), e.refs, toActionTarget(target) as never),
+          doubleClick(requirePage(e.session), host.elementFor(e), toActionTarget(target) as never),
           host.cfgActionTimeout(),
           "double_click",
         );
