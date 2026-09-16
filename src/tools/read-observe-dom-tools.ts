@@ -87,6 +87,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
     config,
     targetFor,
     subInterfaceGate,
+    elementFor,
   } = host;
 
   register(
@@ -254,14 +255,19 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       try {
         result = await withDeadline(
           find(
-            // An engine that declares no `"page"` sub-interface has no Playwright
-            // Page, and find ranks from the substrate tree alone. Keyed on the
-            // DECLARATION (RFC 0004 D5), not on the presence of a rival engine's
-            // handle: `s.safari ? …` said "is this the one no-Page engine I know
-            // about", which a sixth engine would silently fail. `find` degrades
-            // here rather than refusing, so it reads the declaration directly
-            // instead of going through `subInterfaceGate`.
-            engineDeclares(s.engine, "page") ? requirePage(s) : null,
+            // An engine that declares no `"element"` sub-interface cannot resolve
+            // a candidate hint against the live DOM, and find ranks from the
+            // substrate tree alone. Keyed on the DECLARATION (RFC 0004 D5), not on
+            // the presence of a rival engine's handle: `s.safari ? …` said "is this
+            // the one no-Page engine I know about", which a sixth engine would
+            // silently fail. `find` degrades here rather than refusing, so it reads
+            // the declaration directly instead of going through `subInterfaceGate`.
+            //
+            // It asked about `page` until RFC 0009 P2, which was the same question
+            // only while Playwright was the sole engine that could resolve an
+            // element. A native engine declares `element` and no `page`, and it
+            // should get the enriched candidates, not the degraded ones.
+            engineDeclares(s.engine, "element") ? elementFor(e) : null,
             e.snapshotSubstrate,
             e.refs,
             {

@@ -4,8 +4,9 @@
 // drag, double-click, and raw mouse down/move/up.
 
 import type { CDPSession, Page } from "playwright-core";
-import type { RefRegistry } from "./refs.js";
-import { locatorFor, type ActionTarget } from "./locator.js";
+import type { ActionTarget } from "./locator.js";
+import { elementQueryFor } from "./element-query.js";
+import type { ElementSubstrate } from "./element-substrate-types.js";
 import { pointProbe, type PointProbeResult } from "./point_probe.js";
 
 export interface Point {
@@ -13,11 +14,28 @@ export interface Point {
   y: number;
 }
 
-/** Resolve an action target to a viewport point — the element's box centre
- *  for ref/selector, or the literal coords. */
-export async function targetPoint(page: Page, refs: RefRegistry, t: ActionTarget): Promise<Point> {
+/** Resolve an action target to a viewport point — the element's box centre for
+ *  ref/selector, or the literal coords.
+ *
+ *  Geometry is the one thing every engine can answer about an element, so it goes
+ *  through the port: `bounds` re-runs the token's recipe rather than measuring a
+ *  `Locator` held from a previous call, which is RFC 0008 §3's "re-resolve before
+ *  dispatch" applied to the coordinates a gesture is about to aim at.
+ *
+ *  A refusal RE-THROWS its own message. `boundingBox()` auto-waits and throws its
+ *  own timeout text on a target that never appears, and that text is what the
+ *  gesture tools have always surfaced; converting it into "no rendered box" would
+ *  be a different answer to a different question. */
+export async function targetPoint(elements: ElementSubstrate, t: ActionTarget): Promise<Point> {
   if (t.coords) return { x: t.coords.x, y: t.coords.y };
-  const box = await locatorFor(page, refs, t).boundingBox();
+  const query = elementQueryFor(t);
+  const resolved = query ? await elements.resolve(query) : null;
+  if (!resolved || resolved.kind === "refusal") {
+    throw new Error(resolved?.error ?? "gesture target names no element");
+  }
+  const measured = await elements.bounds(resolved.el);
+  if (measured.kind === "refusal") throw new Error(measured.error);
+  const box = measured.rect;
   if (!box || box.width <= 0 || box.height <= 0) {
     throw new Error("drag/gesture target has no rendered box");
   }
@@ -51,17 +69,17 @@ const RESIZE_CURSOR = /resize/i;
  *  handle, before committing. Element targets resolve to the box centre. */
 export async function drag(
   page: Page,
-  refs: RefRegistry,
+  elements: ElementSubstrate,
   args: { from: ActionTarget; to: ActionTarget; steps?: number; preflight?: boolean },
 ): Promise<DragResult | DragPreflight> {
-  const from = await targetPoint(page, refs, args.from);
+  const from = await targetPoint(elements, args.from);
   if (args.preflight) {
     const hit = await pointProbe(page, from);
     const resizeRisk = hit.stack.some((el) => RESIZE_CURSOR.test(el.cursor || ""));
     return { ok: true, preflight: { point: from, hit, resizeRisk } };
   }
   const steps = Math.min(Math.max(args.steps ?? 12, 1), 100);
-  const to = await targetPoint(page, refs, args.to);
+  const to = await targetPoint(elements, args.to);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps });
@@ -76,10 +94,10 @@ export interface DoubleClickResult {
 
 export async function doubleClick(
   page: Page,
-  refs: RefRegistry,
+  elements: ElementSubstrate,
   target: ActionTarget,
 ): Promise<DoubleClickResult> {
-  const point = await targetPoint(page, refs, target);
+  const point = await targetPoint(elements, target);
   await page.mouse.dblclick(point.x, point.y);
   return { ok: true, point };
 }

@@ -2,12 +2,13 @@
 // with structured evidence. First-consumer : selectorHint follows a
 // fixed preference order with a stability flag; bbox is the visible-rect.
 
-import type { CDPSession, Frame, Page } from "playwright-core";
+import type { CDPSession, Frame } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshotForFrame } from "./compose.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
-import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
+import type { ElementScope, ElementSubstrate, ElementToken } from "./element-substrate-types.js";
+import { visibleRect, type VisibleRect } from "./bbox.js";
 import { findByRef } from "./snapshot.js";
 import { effectiveAriaRole } from "./aria-role.js";
 import type { FeedbackMemory } from "./learning.js";
@@ -212,14 +213,19 @@ function scoreCandidates(
 async function probeCandidate(
   node: A11yNode,
   score: number,
-  ctx: { locatorRoot: Page | Frame | null; cdp?: CDPSession; frame?: Frame },
+  ctx: {
+    elements: ElementSubstrate | null;
+    scope: ElementScope | undefined;
+    cdp?: CDPSession;
+    frame?: Frame;
+  },
 ): Promise<FindCandidate> {
-  const { locatorRoot, cdp, frame } = ctx;
+  const { elements, scope, cdp, frame } = ctx;
   const built = buildSelectorHint(node);
-  // needs a locator root to check the hint against the live DOM; on safari there
+  // needs an element port to check the hint against the live DOM; on safari there
   // is none, so use the bare hint as-is.
-  const { hint, tier, stability } = locatorRoot
-    ? await resolveHint(locatorRoot, built, node.cssPath)
+  const { hint, tier, stability } = elements
+    ? await resolveHint(elements, scope, built, node.cssPath)
     : built;
   // Frame-scoped finds skip the CDP visible-rect path (its backendDOMNodeIds are
   // rooted at the top target and don't resolve into OOPIFs); the portable
@@ -231,13 +237,12 @@ async function probeCandidate(
   // attached/BYOB: the CDP rect path can spuriously null out a rendered DOM-walk
   // node → fall back to Playwright's locator box before a bad signal classifies a
   // visible element off-screen (which `visibleOnly` would then drop entirely).
-  if (bbox === null && locatorRoot)
-    bbox = await locatorBoundingBox(locatorRoot, hint, { timeoutMs: PROBE_TIMEOUT_MS });
+  if (bbox === null && elements) bbox = await hintBoundingBox(elements, scope, hint);
   // No locator root (safari) → actionability can't be locator-probed, but the
   // DOM-walk PAGE_SCRIPT already filtered to VISIBLE interactive elements, so the
   // node is known-visible. Report `true` rather than fabricate a signal we can't
   // measure. bbox stays null (no protocol rect on safari).
-  const actionable = locatorRoot ? await probeActionable(locatorRoot, hint, bbox) : true;
+  const actionable = elements ? await probeActionable(elements, scope, hint, bbox) : true;
   return {
     ref: node.ref,
     role: node.role,
@@ -255,11 +260,12 @@ async function probeCandidate(
 }
 
 export async function find(
-  // `null` on the safari engine — it has no Playwright Page, so the locator-based
-  // enrichment (disambiguation / bbox / actionability) is skipped and candidates
-  // are ranked from the substrate tree alone. Every other engine
-  // passes a real Page.
-  page: Page | null,
+  // `null` on an engine that declares no `element` sub-interface — the
+  // disambiguation / bbox / actionability enrichment is skipped and candidates are
+  // ranked from the substrate tree alone. It was `Page | null`; the probes name no
+  // Playwright type now, so a native engine with a real ElementSubstrate gets the
+  // enrichment instead of the degraded path. (RFC 0009 P2.)
+  elements: ElementSubstrate | null,
   substrate: SnapshotSubstrate,
   refs: RefRegistry,
   opts: FindOptions,
@@ -288,9 +294,12 @@ export async function find(
   if (!tree) {
     return { candidates: [], warnings: pierceWarnings(composed.warnings, opts.pierce) };
   }
-  // The locator-resolution root: page for main-frame finds, frame for
-  // frame-scoped finds. Probes use this root so they exercise the correct DOM tree.
-  const locatorRoot: Page | Frame | null = opts.frame ?? page;
+  // The scope the probes resolve in: the session's main target, or the child
+  // frame a frame-scoped find named. `opts.frame` (the live `Frame`) stays for
+  // `composeSnapshotForFrame` above, which is the snapshot port's business; the
+  // probes carry the frame's stable id instead, so they name no Playwright object.
+  const scope: ElementScope | undefined =
+    opts.frame && opts.frameId ? { frameId: opts.frameId } : undefined;
   const q = opts.query.toLowerCase();
   const qTokens = q.split(/\s+/).filter(Boolean);
   const max = opts.maxCandidates ?? 5;
@@ -322,7 +331,7 @@ export async function find(
   // probe call so a no-match hint fails fast instead of waiting on auto-wait.
   const candidates: FindCandidate[] = await Promise.all(
     top.map(({ node, score }) =>
-      probeCandidate(node, score, { locatorRoot, cdp, frame: opts.frame }),
+      probeCandidate(node, score, { elements, scope, cdp, frame: opts.frame }),
     ),
   );
 
@@ -427,13 +436,45 @@ export function noVisibleCandidateWarning(
 
 type BuiltHint = ReturnType<typeof buildSelectorHint>;
 
-/** `-1` when the selector is one Playwright's engine rejects outright. */
-async function countMatches(root: Page | Frame, selector: string): Promise<number> {
-  try {
-    return await root.locator(selector).count();
-  } catch {
-    return -1;
-  }
+/** `-1` when the selector is one the engine's query language rejects outright.
+ *  An `expression` query, because the string being measured is the one `find` is
+ *  about to hand back as `selectorHint`: it has to be counted exactly as the
+ *  engine will read it, with no `parseSelectorHint` interpretation and no
+ *  `.first()` narrowing, or the disambiguation would measure a different thing
+ *  from the one the agent gets. */
+async function countMatches(
+  elements: ElementSubstrate,
+  scope: ElementScope | undefined,
+  selector: string,
+): Promise<number> {
+  const counted = await elements.count({ kind: "expression", expression: selector }, scope);
+  return counted.kind === "count" ? counted.n : -1;
+}
+
+/** Resolve a hint to a token for the per-candidate probes. `null` when the engine
+ *  will not address it, which both probes below read as "no signal". */
+async function tokenFor(
+  elements: ElementSubstrate,
+  scope: ElementScope | undefined,
+  hint: string,
+): Promise<ElementToken | null> {
+  const resolved = await elements.resolve({ kind: "expression", expression: hint }, scope);
+  return resolved.kind === "element" ? resolved.el : null;
+}
+
+/** The portable box fallback, verbatim in effect: `.first()`, capped at the probe
+ *  timeout, any failure and any zero-sized box reading as no box. */
+async function hintBoundingBox(
+  elements: ElementSubstrate,
+  scope: ElementScope | undefined,
+  hint: string,
+): Promise<VisibleRect | null> {
+  const el = await tokenFor(elements, scope, hint);
+  if (!el) return null;
+  const measured = await elements.bounds(el, { timeoutMs: PROBE_TIMEOUT_MS });
+  if (measured.kind === "refusal" || !measured.rect) return null;
+  const r = measured.rect;
+  return r.width <= 0 || r.height <= 0 ? null : r;
 }
 
 /**
@@ -451,17 +492,18 @@ async function countMatches(root: Page | Frame, selector: string): Promise<numbe
  *   a flow-file doesn't re-introduce the hidden-duplicate `boundingBox` hang.
  */
 async function resolveHint(
-  root: Page | Frame,
+  elements: ElementSubstrate,
+  scope: ElementScope | undefined,
   built: BuiltHint,
   cssPath: string | undefined,
 ): Promise<BuiltHint> {
-  const count = await countMatches(root, built.hint);
+  const count = await countMatches(elements, scope, built.hint);
   if (count === 1) return built;
   if (count <= 0) {
     return cssPath ? { hint: cssPath, tier: 5, stability: "low" } : built;
   }
   const visibleHint = `${built.hint}:visible`;
-  const visibleCount = await countMatches(root, visibleHint);
+  const visibleCount = await countMatches(elements, scope, visibleHint);
   if (visibleCount === 1) return { ...built, hint: visibleHint };
   if (visibleCount > 1) return { ...built, hint: `:nth-match(${visibleHint}, 1)` };
   return { ...built, hint: `:nth-match(${built.hint}, 1)` };
@@ -473,20 +515,29 @@ async function resolveHint(
  * (don't manufacture false-negatives).
  */
 async function probeActionable(
-  root: Page | Frame,
+  elements: ElementSubstrate,
+  scope: ElementScope | undefined,
   hint: string,
   bbox: VisibleRect | null,
 ): Promise<FindCandidate["actionable"]> {
   if (bbox === null) return "off-screen";
   try {
-    const loc = root.locator(hint).first();
-    // isEnabled auto-waits to the action-timeout default (30 s) when the
-    // locator doesn't resolve; cap it. isVisible is documented as
-    // non-waiting (the option is deprecated/ignored) so it costs ~0.
-    const [isEnabled, isVisible] = await Promise.all([
-      loc.isEnabled({ timeout: PROBE_TIMEOUT_MS }).catch(() => true),
-      loc.isVisible().catch(() => true),
-    ]);
+    const el = await tokenFor(elements, scope, hint);
+    if (!el) return true;
+    // One call, two reads, still one parallel pair inside the adapter. isEnabled
+    // auto-waits to the action-timeout default (30 s) when the hint doesn't
+    // resolve; cap it. isVisible is documented as non-waiting (the option is
+    // deprecated/ignored) so it costs ~0. Each read that FAILED comes back absent
+    // and defaults to `true` here — don't manufacture a false negative — which is
+    // why the port reports per-read failures instead of refusing the pair.
+    const read = await elements.probe(el, {
+      enabled: true,
+      visible: true,
+      timeoutMs: PROBE_TIMEOUT_MS,
+    });
+    if (read.kind === "refusal") return true;
+    const isEnabled = read.enabled ?? true;
+    const isVisible = read.visible ?? true;
     if (!isEnabled) return "disabled";
     if (!isVisible) return "off-screen";
     // "covered" — requires `elementFromPoint` at the bbox center and an

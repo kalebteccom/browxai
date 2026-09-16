@@ -7,11 +7,11 @@ import type {
   GateHost,
   SessionHost,
   ActionHost,
+  ElementHost,
   EgressHost,
   ConfigHost,
   ServerServicesHost,
 } from "./host.js";
-import { requirePage } from "../engine/index.js";
 
 /**
  * Plan / execute tools: separate intent capture (`plan`) from dispatch
@@ -23,6 +23,7 @@ export function registerFormsPlanTools(
     GateHost &
     SessionHost &
     ActionHost &
+    ElementHost &
     EgressHost &
     ConfigHost &
     ServerServicesHost,
@@ -41,6 +42,7 @@ export function registerFormsPlanTools(
     config,
     caps,
     cfgActionTimeout,
+    elementFor,
   } = host;
 
   // ---------- plan / execute (separate intent capture from dispatch) ----------
@@ -99,7 +101,7 @@ export function registerFormsPlanTools(
       try {
         outcome = await withDeadline(
           planAction(
-            requirePage(e.session),
+            elementFor(e),
             e.snapshotSubstrate,
             e.refs,
             {

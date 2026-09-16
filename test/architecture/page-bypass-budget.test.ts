@@ -78,9 +78,22 @@ const HANDLE_OWNERS: ReadonlyArray<{ re: RegExp; why: string }> = [
  *  screenshot), `EventSubstrate` (replay, console, dialog), and the
  *  `extensions_*` context rebuild, which is one file and a sixth of the total.
  *
+ *  P2 (`ElementSubstrate`) took it from 106 to 99: five in
+ *  `read-observe-verify-tools.ts` (the whole `verify_*` family), one in
+ *  `read-observe-dom-tools.ts` (`find`'s probe root) and one in
+ *  `forms-plan-tools.ts` (`plan`, which held a `Page` only to hand it to `find`).
+ *
+ *  SEVEN, NOT THE RFC'S ~39. Those are two different measures and the RFC's table
+ *  says so: its 39 counts `locator` / `getByRole` / `getByTestId` / `getByText`
+ *  METHOD USES across non-test src, and 23 of those moved here. This budget counts
+ *  `requirePage` handle uses, and most of the element cluster sits in `src/page`
+ *  modules that take a `Page` as a parameter and never call `requirePage` at all —
+ *  `gestures.ts` still needs one for `page.mouse`, which is P3's ActionSubstrate
+ *  widening, not this phase's.
+ *
  *  LOWER THIS, NEVER RAISE IT. A phase that moves N uses lands with the budget at
  *  `previous - N` in the same commit. */
-const BUDGET = 101;
+const BUDGET = 99;
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
