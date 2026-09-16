@@ -35,6 +35,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 import ts from "typescript";
+import depcruiseConfig from "../../.dependency-cruiser.cjs";
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "../../src");
 
@@ -284,6 +285,33 @@ describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => 
       true,
     );
     expect(sessionPageDoors(dodges)).toHaveLength(4);
+  });
+
+  // The import-graph half of the same ratchet. `no-tools-or-replay-to-playwright-core`
+  // forbids a Playwright TYPE in src/tools + src/replay; five modules are exempted
+  // by name, each with the RFC 0009 phase that empties it. The rule is `error`, so
+  // a sixth module fails the build — but the exception list itself is config, and
+  // a sixth ENTRY would not. This pins it.
+  it("keeps the Playwright-type exception list at or under five modules", () => {
+    const rule = (
+      depcruiseConfig as {
+        forbidden: Array<{
+          name: string;
+          severity: string;
+          from: { pathNot?: string[] };
+        }>;
+      }
+    ).forbidden.find((r) => r.name === "no-tools-or-replay-to-playwright-core");
+    expect(rule, "no-tools-or-replay-to-playwright-core is gone").toBeDefined();
+    expect(rule!.severity, "a warn rule pins nothing — pnpm depcruise exits 0 on warnings").toBe(
+      "error",
+    );
+    expect(
+      rule!.from.pathNot ?? [],
+      "the exception list only shrinks. Each entry is one module RFC 0009 has not reached " +
+        "yet; a phase that empties one deletes it in the same commit, and adding one is an " +
+        "RFC amendment with a written reason.",
+    ).toHaveLength(5);
   });
 
   it("names a reason for every module allowed to hold a Page", () => {

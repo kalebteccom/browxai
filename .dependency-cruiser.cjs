@@ -108,19 +108,38 @@ module.exports = {
       comment:
         "A tool handler and the replay orchestrator are engine-agnostic: they reach the " +
         "capability substrates, never a Playwright type. This is a FLOOR, not the whole " +
-        "guard — src/tools imports the `Page` type zero times and still holds ~130 " +
-        "`requirePage(...)` handles obtained by inference, which no import-graph rule can " +
-        "see. The `requirePage` chokepoint (src/engine/session-page.ts) is what makes those " +
-        "countable; this rule stops the type itself coming back. (RFC 0009; L1.)\n" +
-        "WARN, not error: five modules violate it today, and every one belongs to a later " +
-        "phase of RFC 0009, not P1. `Locator` in tools/target-resolve.ts + tools/host-build.ts " +
-        "goes with ElementSubstrate (P2). `Page` / `BrowserContext` / `ConsoleMessage` / " +
-        "`Frame` in replay/session.ts + replay/dom-capture.ts and `CDPSession` in " +
-        "replay/session-network.ts go with EventSubstrate (P4) and the residue (P5). It " +
-        "promotes to error in the phase that removes the last of the five — the §3.1 ratchet. " +
-        "RFC 0009 asserts this rule passes today; it does not, and the five above are why.",
-      severity: "warn",
-      from: { path: "^src/(tools|replay)/" },
+        "guard — src/tools imports the `Page` type zero times and still holds ~106 " +
+        "`requirePage(...)` handle USES obtained by inference, which no import-graph rule " +
+        "can see. The `requirePage` chokepoint (src/engine/session-page.ts) is what makes " +
+        "those countable (test/architecture/page-bypass-budget.test.ts); this rule stops the " +
+        "type itself coming back. (RFC 0009; L1.)\n" +
+        "ERROR with five NAMED exceptions, not `warn`. It shipped at `warn`, which pinned " +
+        "nothing: `pnpm depcruise` exits 0 on warnings and the quality workflow runs it " +
+        "bare, so a sixth module could join the five in silence, and the stance at the head " +
+        "of this file says every layering rule here ships `error`. Each surviving module is " +
+        "named below with the phase of RFC 0009 that empties it; `pathNot` is an ALLOWLIST, " +
+        "so a module not on it fails the build on its first Playwright import. The entries " +
+        "come off as the phases land, and adding one is an RFC amendment with a written " +
+        "reason — never an inline disable (the §7 meta-rule). The list's length is pinned " +
+        "in page-bypass-budget.test.ts so growth is a test failure as well as a diff.",
+      severity: "error",
+      from: {
+        path: "^src/(tools|replay)/",
+        pathNot: [
+          // P2 (`ElementSubstrate`): both name `Locator` in the `describeTarget`
+          // signature they thread to the capture substrate. The type goes when the
+          // element seam replaces the live Locator with an opaque token.
+          "^src/tools/target-resolve\\.ts$",
+          "^src/tools/host-build\\.ts$",
+          // P4 (`EventSubstrate`) + P5 (the residue): the replay orchestrator
+          // subscribes to `page.on(...)` / `context.on(...)` directly and taps CDP
+          // for the network stream. `Page` / `BrowserContext` / `ConsoleMessage` /
+          // `Frame` / `CDPSession` all leave with the subscription seam.
+          "^src/replay/session\\.ts$",
+          "^src/replay/dom-capture\\.ts$",
+          "^src/replay/session-network\\.ts$",
+        ],
+      },
       to: { path: "node_modules/playwright-core|^playwright-core$" },
     },
     {
