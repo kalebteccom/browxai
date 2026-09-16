@@ -195,9 +195,24 @@ or fewer probes. It is not a cached handle.
 #### Amendment, 2026-09-16: "never a guess" is a behaviour change, and P2 does not make it
 
 `resolve`'s doc comment says zero or many matches is a refusal. On web that is **not** what
-ships. `src/page/locator.ts:74` resolves through `.first()`, and `:94` warns _"the primary
-locator is ambiguous (N matches) on .first()"_ and proceeds. Turning that warning into a
-refusal changes what a shipped tool does to a page, and a refactor is the wrong vehicle.
+ships. `src/page/locator.ts:74` resolves through `.first()`.
+
+**Correction, found while building P2.** An earlier draft of this amendment said `:94` warns
+_"the primary locator is ambiguous (N matches) on .first()"_ and proceeds. It does not. Every
+tier of `locatorFromInputs` narrows through `.first()` (`:172`, `:179`, `:185`, `:191`, `:194`),
+so `primary.count()` is 0 or 1 and the `count > 1` branch holding both warnings is unreachable.
+Confirmed against real Chromium: `bare.count()` 3, `first.count()` 1.
+
+What ships is a **silent** first-match pick. An agent acting on an ambiguous ref gets no signal
+at all. That is worse than the warn-and-proceed this document claimed, and it is the same
+mistap that got `mobile-mcp` rejected in the owner's trial.
+
+`src/page/locator.test.ts` passes both of its ambiguity cases because the `countingPage` mock
+returns a `first()` whose `count()` still reads the per-selector table. Playwright has no such
+shape, so the mock asserts a behaviour the product does not have.
+
+Turning ambiguity into a refusal, and deciding what to do with the dead branch and its mock,
+changes what a shipped tool does to a page. A refactor is the wrong vehicle.
 
 So the port expresses both outcomes and P2 preserves today's web behaviour exactly: ambiguity
 resolves to the first match and carries the warning. A native engine, which has no legacy to
