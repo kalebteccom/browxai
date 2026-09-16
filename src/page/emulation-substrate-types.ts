@@ -21,7 +21,7 @@
 // `emulation-substrate-safari.ts`. Re-exported through `./emulation-substrate.js`
 // so callers import unchanged. (RFC 0009 P1.)
 
-import type { ColorScheme, GeolocationCoords, ReducedMotion } from "../session/emulation.js";
+import type { ColorScheme, GeolocationCoords, ReducedMotion } from "../session/emulation-types.js";
 
 /** The live mutation succeeded; the handler folds the engine state into its
  *  `deviceEmulation` bag and renders the standard `applied` envelope. */

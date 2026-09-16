@@ -43,38 +43,12 @@ import {
 import type { BrowserContext, Page } from "playwright-core";
 import { assertSafeName, isSafeName, resolveWorkspacePath } from "../util/workspace.js";
 
-/** Playwright's `storageState()` return shape (re-stated locally so callers
- *  don't need to depend on playwright-core directly). */
-export interface StorageStateBlob {
-  cookies: Array<{
-    name: string;
-    value: string;
-    domain: string;
-    path: string;
-    expires: number;
-    httpOnly: boolean;
-    secure: boolean;
-    sameSite: "Strict" | "Lax" | "None";
-  }>;
-  origins: Array<{
-    origin: string;
-    localStorage: Array<{ name: string; value: string }>;
-  }>;
-}
-
-/** Cookie shape Playwright accepts in `addCookies`. */
-export interface CookieInput {
-  name: string;
-  value: string;
-  /** Either `url` OR (`domain` + `path`) is required. */
-  url?: string;
-  domain?: string;
-  path?: string;
-  expires?: number;
-  httpOnly?: boolean;
-  secure?: boolean;
-  sameSite?: "Strict" | "Lax" | "None";
-}
+// The plain-data storage vocabulary lives in `storage-types.ts` so the
+// StorageSubstrate port can name it without reaching playwright-core through
+// this module's helpers. Re-exported here so every existing importer is
+// unchanged.
+export type { StorageStateBlob, CookieInput, WebStorageKind } from "./storage-types.js";
+import type { StorageStateBlob, CookieInput, WebStorageKind } from "./storage-types.js";
 
 // ---- workspace path / name validators -------------------------------------
 // Moved to src/util/workspace.ts (the no-trace chokepoint now lives beside the
@@ -271,9 +245,6 @@ export async function cookiesClear(context: BrowserContext): Promise<{ ok: true 
 }
 
 // ---- layer 2: web-storage (local + session) -------------------------------
-
-/** Storage kind — exact same JS surface, different storage object. */
-export type WebStorageKind = "localStorage" | "sessionStorage";
 
 /** localStorage/sessionStorage are origin-scoped and tied to the current
  *  page; we must drive them via `page.evaluate`. The page MUST be navigated

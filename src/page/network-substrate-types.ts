@@ -23,7 +23,7 @@ import type {
   MutationEntry,
   SessionNetworkRing,
   SessionWsRing,
-} from "./network.js";
+} from "./network-types.js";
 
 /** The per-action network tap — opened before an action dispatches, closed after
  *  the settle window. `close()` returns the same `{summary, requests, mutations}`

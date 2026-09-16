@@ -4,8 +4,8 @@
 // push that file over the size budget. Re-exported through
 // `./storage-substrate.js` so callers import unchanged.
 
-import type { CookieInput, StorageStateBlob, WebStorageKind } from "../session/storage.js";
-import type { CacheEntryBody } from "../session/cache-storage.js";
+import type { CookieInput, StorageStateBlob, WebStorageKind } from "../session/storage-types.js";
+import type { CacheEntryBody } from "../session/cache-storage-types.js";
 
 /** A cookie as returned by a `cookiesList`. The Playwright path returns the full
  *  Playwright cookie object; the Safari path returns the WebDriver cookie shape.
