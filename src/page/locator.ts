@@ -3,7 +3,7 @@
 // path: they're stable across snapshots and built from role+name(+testId), which
 // gives Playwright auto-waiting + strict-match for free.
 
-import type { Locator, Page } from "playwright-core";
+import type { Frame, Locator, Page } from "playwright-core";
 import type { RefLocatorInputs, RefRegistry } from "./refs.js";
 import { refFrameOf } from "./ref-frames.js";
 
@@ -118,7 +118,11 @@ export function cssSelectorForTarget(refs: RefRegistry, target: ActionTarget): s
   return inputs.cssPath ?? null;
 }
 
-export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget): Locator {
+/** `Page | Frame`: both expose the locator-builder surface this resolves through,
+ *  and the element substrate resolves a frame-scoped query against the `Frame`
+ *  directly rather than re-deriving it from a ref binding. Every pre-existing
+ *  caller passes a `Page`, which satisfies the union unchanged. */
+export function locatorFor(page: Page | Frame, refs: RefRegistry, target: ActionTarget): Locator {
   if (target.coords) {
     throw new Error(
       "locatorFor: coords target has no Locator — use resolveTarget() and switch on kind",
