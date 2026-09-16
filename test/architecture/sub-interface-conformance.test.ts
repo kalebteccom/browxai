@@ -214,6 +214,27 @@ describe("L5 — declared sub-interfaces match what the tools do", () => {
     else process.env.BROWX_WORKSPACE = priorWorkspace;
   }, 30_000);
 
+  it("covers every sub-interface that exists, with no hand-written list to go stale", () => {
+    // The assertion that makes the derivation load-bearing. Replacing `ALL_SUBS`
+    // with a literal array is not a syntax error and does not fail anything else:
+    // the per-sub cases are GENERATED from it, so a missing entry removes its
+    // tests rather than failing them, and the suite goes quietly green with less
+    // coverage. Measured — restoring the pre-P2 ten-entry literal dropped this
+    // file from 28 cases to 26 and still passed.
+    //
+    // Chromium is the oracle because `port-conformance.test.ts` holds it to
+    // declaring everything; if that ever stops being true, this comparison is
+    // where it surfaces.
+    const chromium = [...capabilitiesFor("chromium")!.subInterfaces].sort();
+    expect(
+      [...ALL_SUBS].sort(),
+      "ALL_SUBS must be DERIVED from chromium's declaration, not restated. A literal " +
+        "list silently un-covers whatever it omits.",
+    ).toEqual(chromium);
+    // And it is not vacuously small: eleven today, and only ever more.
+    expect(ALL_SUBS.length).toBeGreaterThanOrEqual(11);
+  });
+
   it("names a consumer set and a reason for every sub-interface", () => {
     for (const sub of ALL_SUBS) {
       expect(CONSUMERS[sub], `${sub} has no consumer entry`).toBeDefined();
