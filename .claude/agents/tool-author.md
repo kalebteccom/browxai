@@ -1,7 +1,7 @@
 ---
 name: tool-author
 description: Adds a new MCP tool to browxai end-to-end — gate definition, capability map, handler, registry composition, threat-model row, unit + keystone coverage, docs.
-model: claude-opus-4-7
+model: opus
 tools: [Read, Edit, Write, Bash, Grep, Glob]
 ---
 
