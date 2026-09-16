@@ -8,6 +8,59 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **The capability ports no longer name a Playwright type, and the substrate
+  selectors no longer name an engine** (RFC 0009 P1). Six of the seven ports
+  declared the interface and its adapters in one module, so the port imported
+  `playwright-core` — which meant "a port names no vendor type" could not be
+  stated as a rule, only as a wish. Each is now split the way `StorageSubstrate`
+  already was: `<name>-substrate-types.ts` holds the port, the adapters sit in
+  `<name>-substrate-playwright.ts` / `-safari.ts` / `-cdp.ts`, and
+  `<name>-substrate.ts` is a re-export barrel, so every existing import path is
+  unchanged. The bodies moved verbatim; only the home changed. Two
+  dependency-cruiser rules now hold the line: `ports-name-no-vendor-type` at
+  `error` with zero violations, and `no-tools-or-replay-to-playwright-core` at
+  `warn` with five, each named in the rule comment with the phase that removes it.
+
+  `snapshotSubstrateFor` and `networkSubstrateFor` keyed their first branch on
+  `session.engine === "safari"`, which was a second spelling of
+  `caps.subInterfaces.has("page")` — a fact already declared once. Both now read
+  the declaration through `engineDeclares(engine, sub)`, the single reader of
+  `EngineCapabilities.subInterfaces`, and both files left
+  `ENGINE_SELECT_ALLOWLIST` in the same commit. A synthetic engine registered at
+  runtime, named nowhere in either file, routes correctly on the declaration
+  alone; that is what the new test asserts.
+
+- **`list_sessions`, `permission_state`, the session-evidence report, the
+  snapshot header and the recorder's URL stamp read the target through a port.**
+  A session that backs no Playwright `Page` used to report `url: null` from
+  `list_sessions`, `""` from the recorder, and reached a `page()` that throws
+  everywhere else. They now go through `TargetSubstrate` — `url()` and `title()`,
+  with a Playwright adapter that is the verbatim body of the calls it replaced
+  and a Safari adapter over WebDriver Classic — so those surfaces report the real
+  URL on every engine. `url()` is async because the second implementation is a
+  round trip; nothing on the action hot path changed, since `ActionResult` and
+  the secrets scope read their URL inside the Playwright action adapter, below
+  the seam.
+
+### Deprecated
+
+- **`BrowserSession.page()` is now optional and deprecated.** It promised a
+  `Page` that the safari engine cannot supply and honoured the promise by
+  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
+  as the L5 violation. Optional is a phase, not a design: it makes the compiler
+  enumerate every caller (141 errors, the number that sizes the rest of RFC
+  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
+  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
+  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+  it and is not the migration path. Every existing caller now routes through
+  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
+  `requireCdp`: it returns the handle on an engine that has one and throws a
+  structured, engine-naming error on one that does not, instead of letting
+  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
+  engine — no adapter, no public shape and no tool response moved.
+
 ### Fixed
 
 - **`verify_*` on an engine with no Playwright `Page` now refuses instead of
