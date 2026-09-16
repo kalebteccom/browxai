@@ -10,6 +10,26 @@ surface" covers.
 
 ### Fixed
 
+- **`verify_*` on an engine with no Playwright `Page` now refuses instead of
+  reporting a failed assertion.** The five page-bound verifies (`verify_visible`,
+  `verify_text`, `verify_value`, `verify_count`, `verify_attribute`) called
+  `session.page()` inside the same `try` whose `catch` renders the caught message
+  as `failure:{source:"browxai", expected:"… to complete", actual:<message>}`. On
+  the safari engine that accessor throws, so a check that had never run was
+  published as `ok:false` with a structured assertion failure — indistinguishable,
+  to an agent or to the human signing off a QA recording, from a real product
+  defect. The engine gate did not cover it: that gate keys on `deep:true`, and the
+  `verify_*` family declares `capability:"read"`.
+
+  Each handler now consults `subInterfaceGate(tool, "page", e)` before touching
+  the accessor, and holds the resolved page outside the `try`. The refusal reuses
+  `engineGate`'s envelope — `{ok:false, error, engine, hint}`, no `failure` key at
+  all — so "this engine cannot run the check" is separable by shape from "the
+  thing you asked about is false". The new `assertEngineSubInterface` reads the
+  engine's declared `caps.subInterfaces`, not a thrown probe, so it stays correct
+  when the `page()` accessor itself moves. Refusal and unchanged-Chromium
+  behaviour are both under test.
+
 - **`client.callTool(name, args)` now reaches every registered tool, not 45 of
   them.** The SDK seeded its callable set by walking `SDK_TOOLS`, the curated
   list of tools that get a typed method, so 144 of the 199 registered tools had

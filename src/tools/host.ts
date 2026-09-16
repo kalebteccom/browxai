@@ -18,6 +18,7 @@ import type { StorageSubstrate } from "../page/storage-substrate.js";
 import type { ScriptSubstrate } from "../page/script-substrate.js";
 import type { EmulationSubstrate } from "../page/emulation-substrate.js";
 import type { EgressSanitiser } from "../util/egress-sanitiser.js";
+import type { EngineSubInterface } from "../engine/index.js";
 
 /** The MCP content shape every registered handler returns — the same `{ content }`
  *  envelope an over-the-wire MCP call produces. Shared with `createServer` so the
@@ -149,6 +150,17 @@ export interface GateHost {
   /** Engine-dimension early return: unsupported-engine refusal content, or null
    *  when the engine supports the tool. */
   engineGate: (toolName: string, e: SessionEntry) => ToolResponse | null;
+
+  /** Sub-interface-dimension early return: refusal content when the session's
+   *  engine declares no `sub` sub-interface, else null. For a tool whose
+   *  implementation needs a sub-interface but which is not `deep:true` (so
+   *  `engineGate` does not cover it). The refusal shares `engineGate`'s envelope,
+   *  so "this engine cannot" stays one shape however it was reached. */
+  subInterfaceGate: (
+    toolName: string,
+    sub: EngineSubInterface,
+    e: SessionEntry,
+  ) => ToolResponse | null;
 
   /** Confirm-hook rejection content for a denied decision. */
   denyContent: (toolName: string, decision: { reason: string }) => ToolResponse;

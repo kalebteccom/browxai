@@ -28,7 +28,7 @@
 //                       `Network.setUserAgentOverride` → gated on Firefox, with a
 //                       hint pointing at context-creation UA + the BiDi lane.
 
-import type { EngineKind } from "./types.js";
+import type { EngineKind, EngineSubInterface } from "./types.js";
 import { capabilitiesFor } from "./capabilities.js";
 import { engineCapabilities } from "./capability-registry.js";
 
@@ -167,6 +167,38 @@ export interface EngineRefusal {
  *  Null is the fast path on chromium (the only engine with `deep`) and on every
  *  cross-browser tool regardless of engine — a single Set lookup + a capability
  *  read, no allocation on the supported path. */
+/** Returns a structured refusal when `engine` declares no `sub` sub-interface,
+ *  else null. Second dimension of the same gate as `assertEngineSupports`: that
+ *  one answers "does this engine have the raw-CDP escape hatch", this one answers
+ *  "does this engine implement this sub-interface at all".
+ *
+ *  The DECLARATION is the oracle (RFC 0004 D5). The alternative — call the
+ *  accessor and catch what it throws — is a second, weaker oracle for the same
+ *  fact, and a caught throw carries no marker saying the check never ran, so a
+ *  handler renders it as whatever its own catch arm renders. The `verify_*`
+ *  family rendered it as a failed assertion, which is indistinguishable from a
+ *  real product defect on the QA-evidence surface.
+ *
+ *  Unknown engine (no declaration yet) returns null, matching
+ *  `assertEngineSupports`: the launch path rejects it. */
+export function assertEngineSubInterface(
+  tool: string,
+  engine: EngineKind,
+  sub: EngineSubInterface,
+): EngineRefusal | null {
+  const caps = engineCapabilities(engine) ?? capabilitiesFor(engine);
+  if (!caps || caps.subInterfaces.has(sub)) return null;
+  return {
+    error: `tool "${tool}" cannot run on the "${engine}" engine: no "${sub}" sub-interface`,
+    hint:
+      `The "${engine}" engine declares no "${sub}" sub-interface, so this tool has nothing to ` +
+      `run against and the check was NOT performed. This is a refusal, not a result — it says ` +
+      `nothing about whether the condition you asked about holds. Re-run on an engine that ` +
+      `declares "${sub}" (chromium, the default), or check the per-engine capability matrix in ` +
+      `docs/ai-context/architecture/engine-adapters.md.`,
+  };
+}
+
 export function assertEngineSupports(tool: string, engine: EngineKind): EngineRefusal | null {
   // D1 fail-safe FIRST: a `DEEP_TOOLS.has` on an empty unbootstrapped set returns
   // false for every tool, so the early `return null` below would un-gate the

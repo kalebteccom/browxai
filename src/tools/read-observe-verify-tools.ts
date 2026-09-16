@@ -21,9 +21,28 @@ import type { ToolHost } from "./host.js";
  * `wait_for`: each asserts a page condition NOW and returns `ok:false` with a
  * structured `failure` on a miss. Read-only; registered through the shared
  * `ToolHost` seam.
+ *
+ * Every element-bound verify goes through `subInterfaceGate(tool, "page", e)`
+ * BEFORE it touches `session.page()`, and holds the resolved page outside the
+ * try. An engine with no Playwright `Page` (safari) would otherwise have the
+ * accessor's throw caught by the assertion arm and published as
+ * `failure:{source:"browxai", actual:"safari-no-playwright-page…"}` — a check
+ * that never ran, rendered into the QA-evidence surface as a failed assertion a
+ * human signs off on. The refusal envelope carries no `failure` key at all, so
+ * "this engine cannot" is separable from "the thing you asked about is false".
  */
 export function registerReadObserveVerifyTools(host: ToolHost): void {
-  const { z, register, gateCheck, entryFor, asTarget, cfgActionTimeout, caps, config } = host;
+  const {
+    z,
+    register,
+    gateCheck,
+    subInterfaceGate,
+    entryFor,
+    asTarget,
+    cfgActionTimeout,
+    caps,
+    config,
+  } = host;
 
   // ---------- verify-family — assertive read primitives ----------
 
@@ -75,6 +94,8 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const g = gateCheck("verify_visible");
       if (g) return g;
       const e = await entryFor(args.session);
+      const sg = subInterfaceGate("verify_visible", "page", e);
+      if (sg) return sg;
       const target = asTarget(args, "verify_visible", e.refs);
       if ("coords" in target) {
         return verifyResultText(
@@ -90,9 +111,10 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
+      const page = e.session.page();
       try {
         const res = await withDeadline(
-          verifyVisible(e.session.page(), e.refs, target),
+          verifyVisible(page, e.refs, target),
           cfgActionTimeout(),
           "verify_visible",
         );
@@ -136,6 +158,8 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const g = gateCheck("verify_text");
       if (g) return g;
       const e = await entryFor(args.session);
+      const sg = subInterfaceGate("verify_text", "page", e);
+      if (sg) return sg;
       const target = asTarget(args, "verify_text", e.refs);
       if ("coords" in target) {
         return verifyResultText(
@@ -151,9 +175,10 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
+      const page = e.session.page();
       try {
         const res = await withDeadline(
-          verifyText(e.session.page(), e.refs, target, args.text, args.exact === true),
+          verifyText(page, e.refs, target, args.text, args.exact === true),
           cfgActionTimeout(),
           "verify_text",
         );
@@ -193,6 +218,8 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const g = gateCheck("verify_value");
       if (g) return g;
       const e = await entryFor(args.session);
+      const sg = subInterfaceGate("verify_value", "page", e);
+      if (sg) return sg;
       const target = asTarget(args, "verify_value", e.refs);
       if ("coords" in target) {
         return verifyResultText(
@@ -208,9 +235,10 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
+      const page = e.session.page();
       try {
         const res = await withDeadline(
-          verifyValue(e.session.page(), e.refs, target, args.value),
+          verifyValue(page, e.refs, target, args.value),
           cfgActionTimeout(),
           "verify_value",
         );
@@ -256,9 +284,12 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const g = gateCheck("verify_count");
       if (g) return g;
       const e = await entryFor(args.session);
+      const sg = subInterfaceGate("verify_count", "page", e);
+      if (sg) return sg;
+      const page = e.session.page();
       try {
         const res = await withDeadline(
-          verifyCount(e.session.page(), requireCdp(e.session), e.refs, {
+          verifyCount(page, requireCdp(e.session), e.refs, {
             selector: args.selector,
             text: args.text,
             n: args.n,
@@ -309,6 +340,8 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
       const g = gateCheck("verify_attribute");
       if (g) return g;
       const e = await entryFor(args.session);
+      const sg = subInterfaceGate("verify_attribute", "page", e);
+      if (sg) return sg;
       const target = asTarget(args, "verify_attribute", e.refs);
       if ("coords" in target) {
         return verifyResultText(
@@ -324,9 +357,10 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           e,
         );
       }
+      const page = e.session.page();
       try {
         const res = await withDeadline(
-          verifyAttribute(e.session.page(), e.refs, target, args.attr, args.value),
+          verifyAttribute(page, e.refs, target, args.attr, args.value),
           cfgActionTimeout(),
           "verify_attribute",
         );

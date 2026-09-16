@@ -1,6 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { assertEngineSupports, requireCdp } from "../engine/index.js";
+import {
+  assertEngineSubInterface,
+  assertEngineSupports,
+  requireCdp,
+  type EngineKind,
+  type EngineRefusal,
+  type EngineSubInterface,
+} from "../engine/index.js";
 import {
   DEFAULT_SESSION_ID,
   type SessionEntry,
@@ -201,15 +208,10 @@ export function buildHost(deps: HostDeps): ToolHost {
    *
    *    const eg = engineGate("perf_start", e); if (eg) return eg;
    */
-  const engineGate = (toolName: string, e: SessionEntry) => {
-    const refusal = assertEngineSupports(toolName, e.session.engine);
-    if (!refusal) return null;
-    const body = {
-      ok: false,
-      error: refusal.error,
-      engine: e.session.engine,
-      hint: refusal.hint,
-    };
+  /** The one engine-refusal envelope, shared by both engine-dimension gates so a
+   *  caller classifies "this engine cannot" by shape, never by message text. */
+  const engineRefusalText = (engine: EngineKind, refusal: EngineRefusal) => {
+    const body = { ok: false, error: refusal.error, engine, hint: refusal.hint };
     return {
       content: [
         {
@@ -222,6 +224,24 @@ export function buildHost(deps: HostDeps): ToolHost {
         },
       ],
     };
+  };
+
+  const engineGate = (toolName: string, e: SessionEntry) => {
+    const refusal = assertEngineSupports(toolName, e.session.engine);
+    return refusal ? engineRefusalText(e.session.engine, refusal) : null;
+  };
+
+  /** Sub-interface-dimension early return. `engineGate` covers the `deep:true`
+   *  tools; this covers a tool whose implementation needs a sub-interface the
+   *  engine never declared (RFC 0004 D5) — e.g. the `verify_*` family's
+   *  Playwright-`Page` path on safari. Reads the DECLARATION, so it stays correct
+   *  when the accessor it guards is renamed or removed.
+   *
+   *    const sg = subInterfaceGate("verify_visible", "page", e); if (sg) return sg;
+   */
+  const subInterfaceGate = (toolName: string, sub: EngineSubInterface, e: SessionEntry) => {
+    const refusal = assertEngineSubInterface(toolName, e.session.engine, sub);
+    return refusal ? engineRefusalText(e.session.engine, refusal) : null;
   };
 
   /** Confirm-hook early-return helper. Returns the rejection content if denied, else null. */
@@ -489,6 +509,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     entryFor,
     gateCheck,
     engineGate,
+    subInterfaceGate,
     confirmCtxFor,
     ctxFor,
     workspace,

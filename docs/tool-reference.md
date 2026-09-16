@@ -649,6 +649,8 @@ Failure shape carries the standard `{source}` classifier from `failure.ts`:
 
 All six are read-only (capability `read`). Coords targets are rejected: verify is structural, and the rare canvas / dismiss-empty-space case stays on `click` + `screenshot`.
 
+**A third outcome: refusal.** The five page-bound verifies need a Playwright `Page`. On an engine that declares no `page` sub-interface (`safari`), they return the engine-refusal envelope — `{ok: false, error, engine, hint, tokensEstimate}` with **no `failure` key** — instead of an assertion result. Key on the presence of `failure` to tell the two apart: a refusal means the check never ran and says nothing about the page, so it must never be recorded as a defect. `verify_predicate` evaluates a caller-supplied data bag and runs on every engine.
+
 **Example (canonical for the family; the others differ only in the asserted property):**
 
 ```jsonc
