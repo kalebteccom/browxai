@@ -15,9 +15,9 @@
 // Re-exported through `./snapshot-substrate.js` so callers import unchanged.
 // (RFC 0009 P1.)
 
-import type { A11yNode } from "./a11y.js";
+import type { A11yNode } from "./a11y-types.js";
 import type { RefRegistry } from "./refs.js";
-import type { ComposedSnapshot, ComposeOptions } from "./compose.js";
+import type { ComposedSnapshot, ComposeOptions } from "./compose-types.js";
 
 /** The a11y+DOM tree source the snapshot/find tools mint refs from. One
  *  instance wraps one session's engine handle; the methods carry no engine

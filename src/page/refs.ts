@@ -7,7 +7,6 @@
 // the next `snapshot()`.
 
 import { createHash } from "node:crypto";
-import type { Frame } from "playwright-core";
 
 export interface KeyInputs {
   role: string;
@@ -72,12 +71,6 @@ export class RefRegistry {
    *  snapshots (see elementKey()) so the name effectively pins an element
    *  identity for the whole session. */
   private refByName = new Map<string, string>();
-  /** Frame handle owning each child-frame ref. Main-frame refs
-   *  omit the entry — the page-level locator resolution handles them
-   *  unchanged. When a child-frame ref is acted on, `locatorFor` uses
-   *  this Frame handle (instead of `page.locator(...)`) so the action
-   *  lands inside the right OOPIF / same-origin iframe. */
-  private frameByRef = new Map<string, Frame>();
   private counter = 0;
 
   /** Resolve (or mint) the ref for a node's stable key. */
@@ -135,18 +128,10 @@ export class RefRegistry {
   }
 
   // --- frame binding ---
-  /** Bind a Playwright Frame handle to a ref. Call when minting a ref in a
-   *  child-frame snapshot/find so action-time `locatorFor` can route through
-   *  the frame instead of the page. Main-frame refs don't need to call this;
-   *  absence of a binding means "resolve through the page". */
-  bindFrame(ref: string, frame: Frame): void {
-    if (!this.keyByRef.has(ref)) return;
-    this.frameByRef.set(ref, frame);
-  }
-  /** Resolve a ref to its bound Frame, or undefined for main-frame refs. */
-  frameOf(ref: string): Frame | undefined {
-    return this.frameByRef.get(ref);
-  }
+  // The ref → Playwright `Frame` binding is NOT a registry field: it would make
+  // this module — the engine-blind ref vocabulary the substrate ports name —
+  // reach playwright-core. It lives in `ref-frames.ts` (`bindRefFrame` /
+  // `refFrameOf`), a side table keyed on the registry instance. (RFC 0009 P1.)
 
   // --- named refs ---
   /** Bind a mnemonic name to a ref. Overwrites any prior binding for that name. */

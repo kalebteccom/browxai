@@ -5,6 +5,7 @@
 
 import type { Locator, Page } from "playwright-core";
 import type { RefLocatorInputs, RefRegistry } from "./refs.js";
+import { refFrameOf } from "./ref-frames.js";
 
 /**
  * Action target shape. Exactly one of `ref` / `selector` / `coords` is
@@ -146,7 +147,7 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
     // crosses the OOPIF / same-origin iframe boundary transparently. Main-
     // frame refs (no binding) resolve against the page — byte-identical to
     // pre-v0.5.0 behaviour.
-    const frame = refs.frameOf(target.ref);
+    const frame = refFrameOf(refs, target.ref);
     return locatorFromInputs(frame ?? page, inputs);
   }
   if (target.selector) {
@@ -157,7 +158,7 @@ export function locatorFor(page: Page, refs: RefRegistry, target: ActionTarget):
           `unknown contextRef "${target.contextRef}"; call snapshot() or find() first to populate refs`,
         );
       }
-      const ctxFrame = refs.frameOf(target.contextRef);
+      const ctxFrame = refFrameOf(refs, target.contextRef);
       const ctxLoc = locatorFromInputs(ctxFrame ?? page, ctxInputs);
       return parseSelectorHint(ctxLoc, target.selector);
     }

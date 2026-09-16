@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RefRegistry, elementKey } from "./refs.js";
+import { bindRefFrame, refFrameOf } from "./ref-frames.js";
 
 describe("elementKey", () => {
   it("differs on role, name, path, or testId", () => {
@@ -149,26 +150,45 @@ describe("frameId in elementKey", () => {
   });
 });
 
-describe("frame binding on RefRegistry", () => {
+// The binding moved off RefRegistry into `ref-frames.ts` so the registry — the
+// vocabulary every substrate port names — stops reaching playwright-core. The
+// behaviour is unchanged, so the assertions are too. (RFC 0009 P1.)
+describe("frame binding (ref-frames side table)", () => {
   const fakeFrame = (tag: string) => ({ __tag: tag }) as any;
 
-  it("binds a Frame handle to a ref and returns it via frameOf()", () => {
+  it("binds a Frame handle to a ref and returns it via refFrameOf()", () => {
     const r = new RefRegistry();
     const ref = r.forKey("k1");
     const f = fakeFrame("f-a");
-    r.bindFrame(ref, f);
-    expect(r.frameOf(ref)).toBe(f);
+    bindRefFrame(r, ref, f);
+    expect(refFrameOf(r, ref)).toBe(f);
   });
 
-  it("frameOf() returns undefined for refs with no binding (main-frame default)", () => {
+  it("refFrameOf() returns undefined for refs with no binding (main-frame default)", () => {
     const r = new RefRegistry();
     const ref = r.forKey("k1");
-    expect(r.frameOf(ref)).toBeUndefined();
+    expect(refFrameOf(r, ref)).toBeUndefined();
   });
 
-  it("bindFrame on an unknown ref is a silent no-op (defensive)", () => {
+  it("bindRefFrame on an unknown ref is a silent no-op (defensive)", () => {
     const r = new RefRegistry();
-    r.bindFrame("e999", fakeFrame("ghost"));
-    expect(r.frameOf("e999")).toBeUndefined();
+    bindRefFrame(r, "e999", fakeFrame("ghost"));
+    expect(refFrameOf(r, "e999")).toBeUndefined();
+  });
+
+  it("two registries keep independent bindings (the table is per-registry)", () => {
+    const a = new RefRegistry();
+    const b = new RefRegistry();
+    const refA = a.forKey("k1");
+    const refB = b.forKey("k1");
+    expect(refA).toBe(refB);
+    bindRefFrame(a, refA, fakeFrame("f-a"));
+    expect(refFrameOf(b, refB)).toBeUndefined();
+  });
+
+  it("RefRegistry names no Playwright type — the frame binding is not a member", () => {
+    const r = new RefRegistry() as unknown as Record<string, unknown>;
+    expect(typeof r.bindFrame).toBe("undefined");
+    expect(typeof r.frameOf).toBe("undefined");
   });
 });
