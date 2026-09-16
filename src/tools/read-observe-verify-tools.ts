@@ -23,12 +23,12 @@ import type { ToolHost } from "./host.js";
  * `ToolHost` seam.
  *
  * Every element-bound verify goes through `subInterfaceGate(tool, "page", e)`
- * BEFORE it touches `session.page()`, and holds the resolved page outside the
- * try. An engine with no Playwright `Page` (safari) would otherwise have the
- * accessor's throw caught by the assertion arm and published as
- * `failure:{source:"browxai", actual:"safari-no-playwright-page…"}` — a check
- * that never ran, rendered into the QA-evidence surface as a failed assertion a
- * human signs off on. The refusal envelope carries no `failure` key at all, so
+ * BEFORE it touches the page handle, and holds the resolved page outside the
+ * try. An engine with no Playwright `Page` (safari) would otherwise have
+ * `requirePage`'s refusal caught by the assertion arm and published as
+ * `failure:{source:"browxai", actual:"engine \"safari\" backs no Playwright Page…"}`
+ * — a check that never ran, rendered into the QA-evidence surface as a failed
+ * assertion a human signs off on. The refusal envelope carries no `failure` key at all, so
  * "this engine cannot" is separable from "the thing you asked about is false".
  */
 export function registerReadObserveVerifyTools(host: ToolHost): void {

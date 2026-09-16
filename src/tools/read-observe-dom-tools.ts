@@ -8,7 +8,7 @@ import { estimateTokens } from "../util/tokens.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
-import { requirePage } from "../engine/index.js";
+import { engineDeclares, requirePage } from "../engine/index.js";
 
 type SessionEntry = Awaited<ReturnType<ToolHost["entryFor"]>>;
 type Session = SessionEntry["session"];
@@ -244,8 +244,14 @@ export function registerReadObserveDomTools(host: ToolHost): void {
       try {
         result = await withDeadline(
           find(
-            // safari has no Playwright Page — find ranks from the substrate tree.
-            s.safari ? null : requirePage(s),
+            // An engine that declares no `"page"` sub-interface has no Playwright
+            // Page, and find ranks from the substrate tree alone. Keyed on the
+            // DECLARATION (RFC 0004 D5), not on the presence of a rival engine's
+            // handle: `s.safari ? …` said "is this the one no-Page engine I know
+            // about", which a sixth engine would silently fail. `find` degrades
+            // here rather than refusing, so it reads the declaration directly
+            // instead of going through `subInterfaceGate`.
+            engineDeclares(s.engine, "page") ? requirePage(s) : null,
             e.snapshotSubstrate,
             e.refs,
             {

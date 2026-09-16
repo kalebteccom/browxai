@@ -201,6 +201,11 @@ class InMemoryNetworkSubstrate implements NetworkSubstrate {
   }
 }
 
+/** The one string in this file that exists only to be observed. Exported so the
+ *  contract asserts on the same literal the substrate emits, and so a grep proves
+ *  it has exactly two homes: here, and the assertion. */
+export const SYNTHETIC_TITLE = "in-memory-target-title-b7f2";
+
 /** The synthetic engine's in-memory TargetSubstrate. The core contract drives it
  *  through `list_sessions` (the `url` column) and the snapshot header, which is
  *  what lets the synthetic session answer both WITHOUT a Playwright Page: before
@@ -211,8 +216,14 @@ class InMemoryTargetSubstrate implements TargetSubstrate {
   url(): Promise<string> {
     return Promise.resolve("about:blank");
   }
+  /** A SENTINEL, not the engine tag. The title used to be `"synthetic"`, which
+   *  also happens to be the engine name and the a11y root's name, so the
+   *  contract's `expect(snapText).toContain("synthetic")` passed whatever this
+   *  method returned — including `""`. The assertion measured nothing. This
+   *  string appears nowhere else in src or test, so the snapshot header can only
+   *  carry it if it came through `TargetSubstrate.title()`. */
   title(): Promise<string> {
-    return Promise.resolve("synthetic");
+    return Promise.resolve(SYNTHETIC_TITLE);
   }
 }
 

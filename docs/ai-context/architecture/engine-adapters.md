@@ -33,7 +33,7 @@ engine land as an adapter rather than a rewrite.
 ```
 EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari"   // engines the RFC commits to
 //   safari: REAL Safari.app over safaridriver — the FIRST non-Playwright engine
-//   (no Playwright Page, no CDP). page() THROWS; a curated subset works via the
+//   (no Playwright Page, no CDP). The `page` member is ABSENT; a curated subset works via the
 //   Safari-native handle. See the "Safari" section below.
 
 BrowserEngine (port)                              // capability-segregated
@@ -571,8 +571,9 @@ real connected device (skips cleanly otherwise). The attach-only `n/a` for
 ### Safari: the curated subset (first non-Playwright engine)
 
 Safari is the odd one out and gets a prose row rather than a table column: it has
-**no Playwright Page and no CDP**, so `session.page()` THROWS (`safari-no-playwright-page`)
-and the cross-browser Playwright surface the table assumes does not exist. Real
+**no Playwright Page and no CDP**, so the session OMITS the `page` member
+(`requirePage(session)` refuses, naming the engine) and the cross-browser
+Playwright surface the table assumes does not exist. Real
 Safari.app is driven over `safaridriver` (WebDriver Classic, the workhorse) plus
 the experimental BiDi socket, gated behind `safari:experimentalWebSocketUrl`,
 which carries console and nav events plus script. The capability declaration is a

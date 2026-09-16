@@ -8,6 +8,13 @@
 // ~140 sites the compiler listed route, mirroring `requireCdp` for the optional
 // `cdp()` member.
 //
+// The refusal below is REACHED, not decorative. Safari's session omits the member
+// (src/session/safari-session.ts), so `!session.page` is true there and this is
+// the error a Safari caller gets — the same shape `requireCdp` produces on the
+// same engine. It stayed dead for as long as Safari kept a present-but-throwing
+// `page()`, which is why port-conformance now asserts declaration ≡ handle over
+// every registered engine.
+//
 // It is deliberately ONE greppable, countable identifier rather than ~140
 // scattered `page!()` assertions. `page!()` would erase to `undefined()` on a
 // no-Page engine — an opaque `TypeError` instead of a refusal that names the
