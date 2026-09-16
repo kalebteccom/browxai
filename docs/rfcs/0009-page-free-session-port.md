@@ -174,6 +174,51 @@ Four members. `probe` is one call taking a discriminated request so a fifth verb
 
 0008 §3 requires that every native action re-resolve its ref to a live element before dispatch and never replay cached coordinates. `resolve` returning a fresh token per call is that contract, expressed once at the port.
 
+#### Amendment, 2026-09-16: the caching fallback is withdrawn
+
+An earlier draft of "Honest limits" offered a performance escape hatch: if `find`'s
+per-candidate probes measured badly, the Playwright implementation could return a token that
+**is** the `Locator`, cached in a per-call map. That is withdrawn. A cached handle is the
+thing 0008 §3 forbids two paragraphs above, and shipping the contract with its own exemption
+attached means the exemption is what gets used under deadline.
+
+The prior-art pass ([`references/0009-01-driver-port-prior-art.md`](references/0009-01-driver-port-prior-art.md))
+found the corrective already written by Callstack's `agent-device`, from the same two-platform
+trial that produced the native brief: _"A generation pin such as `@e12~s42` identifies the
+namespace that issued the ref; it does not make the element stable."_ browxai's `[ref=eN]` is
+today a content hash plus a stored locator recipe, re-run at action time, holding nothing. That
+is the stronger model and P2 keeps it.
+
+If the measurement is bad, the answer is a batched `probe`, a cap on disambiguation candidates,
+or fewer probes. It is not a cached handle.
+
+#### Amendment, 2026-09-16: "never a guess" is a behaviour change, and P2 does not make it
+
+`resolve`'s doc comment says zero or many matches is a refusal. On web that is **not** what
+ships. `src/page/locator.ts:74` resolves through `.first()`, and `:94` warns _"the primary
+locator is ambiguous (N matches) on .first()"_ and proceeds. Turning that warning into a
+refusal changes what a shipped tool does to a page, and a refactor is the wrong vehicle.
+
+So the port expresses both outcomes and P2 preserves today's web behaviour exactly: ambiguity
+resolves to the first match and carries the warning. A native engine, which has no legacy to
+preserve, refuses. That asymmetry is deliberate and it is the honest reading of "one port, two
+engines with different histories".
+
+Flipping web to refuse is worth doing, because acting on `.first()` when the testID is
+ambiguous is precisely the mistap the owner's trial rejected `mobile-mcp` for. It gets its own
+change, its own CHANGELOG entry and its own migration note. It does not get smuggled in here.
+
+Three cheap things the prior art names, which P2 should carry because they cost little and they
+are what actually makes a ref trustworthy:
+
+1. An identity check when a ref re-resolves. Appium compares the accessibility UUID and refuses
+   a multi-match restore.
+2. Distinct names for distinct failures. WebDriver separates `no such element` from
+   `stale element reference`; today both surface as one refusal, and an agent cannot tell "it
+   is gone" from "it moved".
+3. A generation counter on the snapshot, so a ref minted against an older snapshot is
+   identifiable as such.
+
 ## The widenings
 
 | Port                 | Added                                        | Second implementation                                                                                                                                                           |
@@ -309,7 +354,7 @@ The sequencing consequence is the useful part. 0008's P1 tail was unmeasured bec
 
 **The cost.** 115 call sites, 35 tool modules, six port-module splits, five phases. P5 alone is ~50 sites and it is the phase with the least product value, which is how bypasses survive. The mitigation is that the enforcers promote to `error` in P5, so the phase has a hard completion criterion rather than a judgement call.
 
-**What is most likely to break.** `ElementSubstrate` is the risk. `locatorFor` currently returns a live Playwright `Locator` and callers chain on it: `.first()`, `.count()`, `.isVisible()`, `.boundingBox()`, `.evaluate()`. Replacing the `Locator` with an opaque token means each chained probe becomes a port call, and `find`'s disambiguation runs probes per candidate. On a 40-candidate query that is 40 extra awaits where there were none. Performance is a design input here, not an afterthought (architecture-principles.md §3), so P2 measures the `find` p95 before and after on the capability-testbed, and the batched `probe(el, want)` signature exists specifically so one round trip answers several questions. If the measurement is bad, the fallback is that the Playwright implementation returns a token that _is_ the `Locator`, cached in a per-call map, which keeps the chaining cheap and the port honest.
+**What is most likely to break.** `ElementSubstrate` is the risk. `locatorFor` currently returns a live Playwright `Locator` and callers chain on it: `.first()`, `.count()`, `.isVisible()`, `.boundingBox()`, `.evaluate()`. Replacing the `Locator` with an opaque token means each chained probe becomes a port call, and `find`'s disambiguation runs probes per candidate. On a 40-candidate query that is 40 extra awaits where there were none. Performance is a design input here, not an afterthought (architecture-principles.md §3), so P2 measures the `find` p95 before and after on the capability-testbed, and the batched `probe(el, want)` signature exists specifically so one round trip answers several questions. If the measurement is bad, the answer is a batched `probe`, a candidate cap, or fewer probes. An earlier draft offered a cached-`Locator` fallback; it is withdrawn, for the reason recorded under `ElementSubstrate`.
 
 **The second risk is `url()` going async.** 30 call sites and two of them are on the action hot path (`actions-secrets.ts:29` scopes every secret materialisation by URL; `actionresult.ts` stamps every action envelope). A round trip per action on Safari would be a real regression. P1 measures it and the cache-on-`framenavigated` mitigation is designed only if the numbers demand it.
 
