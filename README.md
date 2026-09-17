@@ -4,20 +4,30 @@
 
 <h1 align="center">browxai</h1>
 
-<p align="center"><strong>Browser control, built for agents.</strong><br/>
+<p align="center"><strong>Browser control that reaches past the tab.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it.**
+**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it. Plus, when you switch them on, a handful of things outside the browser that a real task runs into.**
 
 browxai is a browser-control server designed for agents. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
 
 It drives five engines behind one tool surface: Chromium, Firefox and WebKit as browsers it launches for you, real Safari.app over `safaridriver`, and real Chrome on an Android handset attached over adb. Android is attach-only, so the browser has to already be running on the device; browxai never spawns one there. There is no native-app automation and no iOS. CI runs the cross-engine suite on Chromium, Firefox and WebKit on every commit; Android needs a USB device and Safari needs macOS, so those two are exercised by hand.
+
+A task rarely stays inside the tab, so browxai reaches a short way onto the host machine. Each reach sits behind its own capability, and none of them is in the default set (`read`, `navigation`, `action`, `human`):
+
+- **The real OS clipboard** (`clipboard`). A copy or cut writes through to `pbcopy` on macOS or `xclip` on Linux, at the moment of the command and never in the background. It is write-only: browxai never reads the OS clipboard back into a session, so a session cannot pick up what you or another session put there.
+- **Your password manager** (`credentials`). browxai shells out to 1Password, Bitwarden, LastPass or `oathtool` for a username and a TOTP code, with fixed argv and no shell interpolation. The password is never handed to the agent in cleartext; it is registered under an alias the runtime substitutes at dispatch.
+- **A workspace on disk** (`file-io`). File reads and writes are rooted at `$BROWX_WORKSPACE` and any path escaping that root is rejected. Scope is that one directory.
+- **A phone over USB.** Device discovery and port forwarding run `adb devices` and `adb forward`, and nothing else.
+
+That is the whole of it. There is no native-app automation, no iOS, and nothing that drives input or the screen outside the browser.
 
 ## What your agent can do with it
 
 - **Drive a live web app.** Have a coding agent `navigate` to a page, `find` a control by natural-language query, `fill` a form, `click`, and verify the outcome from a structured `ActionResult`, without burning tokens on a full DOM dump.
 - **Work inside an authenticated session.** Open a `persistent` or `attached` (bring-your-own-browser) session so the agent operates inside a real, logged-in profile and can automate multi-step flows that need the existing cookies.
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
+- **Log in without seeing the password.** With `credentials` on, the agent asks for an account by name, browxai fetches the username and TOTP code from your vault, and `fill` submits a password the agent only ever knows by alias.
 - **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](docs/tool-reference.md)).
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run.
 - **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium), say a parent agent plus a helper script.
@@ -27,7 +37,8 @@ It drives five engines behind one tool surface: Chromium, Firefox and WebKit as 
 - **Model-agnostic.** It works with any MCP client (Claude, Codex, …), so nothing here ties you to one model.
 - **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work everywhere, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason.
 - **Token-efficient.** `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
-- **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, network mocking, attaching to your real Chrome) is off until you opt in.
+- **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, password-manager lookups, workspace file IO, network mocking, attaching to your real Chrome) is off until you opt in.
+- **Reaches the host, on your say-so.** The OS clipboard, your password manager, a workspace directory and a USB-attached phone are all in scope, each behind a capability that starts off.
 - **Owns the full session lifecycle.** Managed profiles, BYOB attach, and sessions that can be authenticated, headed, or headless.
 
 ## Stability
