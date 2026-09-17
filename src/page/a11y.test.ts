@@ -105,14 +105,28 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
     expect(roles(tree!)).toEqual(["button", "link"]);
   });
 
-  it("returns null only when nothing at all survives", async () => {
-    // An `aria-hidden` subtree: the container AND its descendants are ignored,
-    // so nothing is exposed and null is the correct answer.
+  it("drops an aria-hidden subtree, whose descendants are ignored too", async () => {
+    // CDP marks every node under `aria-hidden` ignored, so splicing surfaces
+    // nothing. The root stays as the anchor `mergeDomWalkIntoTree` hangs
+    // DOM-walk entries off — a null tree would drop those too.
+    const nodes: FixtureNode[] = [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+      { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" }, childIds: ["3"] },
+      { nodeId: "3", parentId: "2", ignored: true, role: { value: "none" } },
+    ];
+    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
+    expect(tree!.role).toBe("RootWebArea");
+    expect(tree!.children).toEqual([]);
+  });
+
+  it("keeps an all-ignored document's root as the DOM-walk anchor", async () => {
     const nodes: FixtureNode[] = [
       { nodeId: "1", ignored: true, role: { value: "none" }, childIds: ["2"] },
       { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" } },
     ];
-    expect(await getA11yTree(cdpServing(nodes), new RefRegistry())).toBeNull();
+    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
+    expect(tree).not.toBeNull();
+    expect(tree!.children).toEqual([]);
   });
 
   it("splices in document order at the ignored node's position", async () => {
@@ -126,6 +140,33 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
     ];
     const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
     expect(names(tree!)).toEqual(["A", "B", "C", "D"]);
+  });
+});
+
+describe("getA11yTree — layout-internal text boxes", () => {
+  it("drops InlineTextBox and keeps its StaticText parent", async () => {
+    const nodes: FixtureNode[] = [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+      {
+        nodeId: "2",
+        parentId: "1",
+        role: { value: "button" },
+        name: { value: "Go" },
+        childIds: ["3"],
+      },
+      {
+        nodeId: "3",
+        parentId: "2",
+        role: { value: "StaticText" },
+        name: { value: "Go" },
+        childIds: ["4"],
+      },
+      { nodeId: "4", parentId: "3", role: { value: "InlineTextBox" }, name: { value: "Go" } },
+    ];
+    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
+    const button = tree!.children[0]!;
+    expect(roles(button)).toEqual(["StaticText"]);
+    expect(button.children[0]!.children).toEqual([]);
   });
 });
 

@@ -13,7 +13,7 @@ import { elementKey, RefRegistry } from "./refs.js";
 export type { A11yNode, StructuralContext } from "./a11y-types.js";
 export { MAX_WALK_DEPTH, walk } from "./a11y-types.js";
 import type { A11yNode } from "./a11y-types.js";
-import { walk } from "./a11y-types.js";
+import { MAX_WALK_DEPTH, walk } from "./a11y-types.js";
 
 // Raw CDP shapes (subset we use).
 interface RawProp {
@@ -54,6 +54,21 @@ function applyAxProperties(node: A11yNode, properties: RawProp[]): void {
       node[p.name as (typeof TRISTATE_AX_PROPS)[number]] = v as boolean | "mixed";
     }
   }
+}
+
+/**
+ * Does this raw node contribute an entry of its own? Two reasons it doesn't —
+ * either way its children still splice into its parent (see `convert`).
+ *
+ * `ignored`: CDP says the node is not exposed to assistive tech.
+ *
+ * `InlineTextBox`: Blink's per-line layout box under a `StaticText`. It carries
+ * a fragment of text already on its parent, is never actionable, and on the
+ * repo's own fixture page accounts for 32 of 111 a11y nodes — a ref and a
+ * snapshot line each, for no signal the `StaticText` doesn't already give.
+ */
+function isDropped(raw: RawAXNode): boolean {
+  return raw.ignored === true || raw.role?.value === "InlineTextBox";
 }
 
 function stringifyAxValue(v: unknown): string | undefined {
@@ -103,8 +118,28 @@ export async function getA11yTree(
   // they show up as CDP properties; a future cycle can switch to a batch fetch
   // if the attribute coverage isn't enough.
 
-  const convert = (raw: RawAXNode, path: string): A11yNode | null => {
-    if (raw.ignored) return null;
+  // `ignored` marks a node CDP does not expose to assistive tech — that node
+  // only, not its subtree. Its children are routinely exposed and interactive:
+  // real Chromium marks `<html>` and `<body>` ignored (`uninteresting`) on
+  // essentially every page, and presentational wrappers (`role="presentation"`,
+  // layout tables, list scaffolding) sit above real controls. So an ignored
+  // node contributes no entry of its own and its converted children splice into
+  // its parent, in place, in document order. An `aria-hidden` container needs
+  // no special case: CDP marks its descendants ignored too, so nothing survives.
+  //
+  // Paths: an ignored node still contributes its `${role}[${i}]` segment even
+  // though it emits no node, so a path can name a node the output doesn't
+  // contain. That is the deliberate trade. The path feeds `elementKey`, and a
+  // ref's whole job is to survive re-snapshotting; a wrapper flipping between
+  // ignored and exposed (an `aria-hidden` toggle, a `display` change moving
+  // Chromium's `uninteresting` verdict) must not re-key everything beneath it.
+  // Dropping the segment would rotate every descendant ref on such a flip, and
+  // `[ref=eN]` is re-resolved at action time. Sibling indices count raw
+  // `childIds` positions for the same reason.
+  const seen = new Set<string>();
+
+  /** Materialise one raw node (no children) and mint its ref. */
+  const materialise = (raw: RawAXNode, path: string): A11yNode => {
     const role = raw.role?.value ?? "generic";
     const name = raw.name?.value;
     const node: A11yNode = {
@@ -123,19 +158,47 @@ export async function getA11yTree(
       testId: node.testId,
       source: "a11y",
     });
+    return node;
+  };
+
+  /** Convert a raw node's children into the flat list they contribute, ignored
+   *  nodes already spliced. */
+  const convertChildren = (raw: RawAXNode, path: string, depth: number): A11yNode[] => {
+    const out: A11yNode[] = [];
     let i = 0;
     for (const cid of raw.childIds ?? []) {
       const c = byId.get(cid);
       if (!c) continue;
-      const cv = convert(c, `${path}/${c.role?.value ?? "generic"}[${i}]`);
-      if (cv) node.children.push(cv);
+      out.push(...convert(c, `${path}/${c.role?.value ?? "generic"}[${i}]`, depth + 1));
       i++;
     }
-    return node;
+    return out;
   };
 
-  const tree = convert(root, root.role?.value ?? "root");
-  if (!tree) return null;
+  /** What this raw node contributes to its parent: itself, or — when ignored —
+   *  its surviving descendants. `seen` bounds the walk: `childIds` is a graph,
+   *  so a child naming an ancestor (or claimed by two parents) would otherwise
+   *  recurse without end. First visit in document order wins. `MAX_WALK_DEPTH`
+   *  is the same containment ceiling `walk()` applies downstream. */
+  const convert = (raw: RawAXNode, path: string, depth: number): A11yNode[] => {
+    if (seen.has(raw.nodeId)) return [];
+    seen.add(raw.nodeId);
+    // Materialise before recursing so refs mint in document pre-order.
+    const node = isDropped(raw) ? null : materialise(raw, path);
+    const children = depth >= MAX_WALK_DEPTH ? [] : convertChildren(raw, path, depth);
+    if (!node) return children;
+    node.children = children;
+    return [node];
+  };
+
+  // The root is materialised whether or not it is ignored: the tree needs
+  // exactly one root, and it is the anchor `mergeDomWalkIntoTree` hangs
+  // DOM-walk entries off. An ignored root serialises away anyway — the
+  // serialiser drops nameless `none` / `generic` nodes.
+  const rootPath = root.role?.value ?? "root";
+  seen.add(root.nodeId);
+  const tree = materialise(root, rootPath);
+  tree.children = convertChildren(root, rootPath, 0);
   await enrichTestIds(cdp, tree, testIdAttributes, refs);
   return tree;
 }
