@@ -22,7 +22,11 @@ import { elementKey } from "../../src/page/refs.js";
 import type { ComposedSnapshot, ComposeOptions } from "../../src/page/compose.js";
 import type { SnapshotSubstrate } from "../../src/page/snapshot-substrate.js";
 import type { NetworkSubstrate } from "../../src/page/network-substrate.js";
-import type { ActionSubstrate } from "../../src/page/action-substrate.js";
+import type {
+  ActionSubstrate,
+  GestureRequest,
+  GestureResult,
+} from "../../src/page/action-substrate.js";
 import type { CaptureResult, CaptureSubstrate } from "../../src/page/capture-substrate.js";
 import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
@@ -167,6 +171,52 @@ class InMemoryActionSubstrate implements ActionSubstrate {
   }
   waitFor(): Promise<ActionResult> {
     return Promise.resolve(inMemoryResult({ type: "wait_for" }, true));
+  }
+  /** RFC 0009 P3's row of the enforcement table. The synthetic engine declares
+   *  `deep:false` and holds no CDP session, and it ANSWERS the touch pipeline —
+   *  which is the whole point of retiring `deep: true` on the five touch/gesture
+   *  registrations. While the flag was there, `assertEngineSupports` refused
+   *  `gesture_swipe` on this engine before the substrate was consulted, so an
+   *  engine that can dispatch touch by some other means (a native one, RFC 0008)
+   *  could never have run it. Reports the same evidence body the CDP path does. */
+  gesture(req: GestureRequest): Promise<GestureResult> {
+    switch (req.kind) {
+      case "touch":
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            action: req.phase,
+            ...(req.coords ? { coords: req.coords } : {}),
+            identifier: req.identifier ?? 1,
+          },
+        });
+      case "swipe":
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            from: req.from,
+            to: req.to,
+            steps: req.steps ?? 16,
+            durationMs: req.durationMs ?? 200,
+          },
+        });
+      case "pinch": {
+        const startOffset = req.startOffset ?? 40;
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            coords: req.coords,
+            scale: req.scale,
+            steps: req.steps ?? 12,
+            startOffset,
+            endOffset: startOffset * req.scale,
+          },
+        });
+      }
+    }
   }
 }
 
