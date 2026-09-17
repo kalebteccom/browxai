@@ -10,6 +10,39 @@ surface" covers.
 
 ### Changed
 
+- **Snapshots now carry the accessibility tree they were always meant to, so
+  snapshot output changes on every page.** The CDP conversion dropped an
+  `ignored` node's entire subtree, and Chromium marks `<html>` and `<body>`
+  ignored (`ignoredReasons: [uninteresting]`) on essentially every page — so the
+  a11y tier emitted a bare root, `stats.a11yInteractive` was `0` everywhere, and
+  the DOM-walk fallback carried every snapshot on its own. On the repo's own
+  keystone fixture the a11y tier went from 1 node to 111.
+
+  **What changes for you.** Snapshots are longer and more deeply nested: roles
+  are real ARIA roles (`link`, not the bare tag `a`), `StaticText` leaves appear
+  under labelled controls, and many elements now show up twice — once from the
+  a11y tier and once, `[from-dom]`-marked, from the DOM walk, with different
+  refs. `stats.a11yInteractive` is no longer `0` on semantic pages, so the
+  low-content warning stops firing where it was firing spuriously. Use
+  `maxNodes` / `omit` / `scope` if a page's snapshot is now larger than you want.
+
+  **Refs.** Existing refs do not move. An ignored node still contributes its
+  path segment to `elementKey`, and sibling indices still count raw `childIds`
+  positions, so every ref that resolved before resolves to the same element —
+  a wrapper toggling `aria-hidden` re-keys nothing beneath it. The nodes that
+  were previously missing entirely get fresh refs.
+
+  `aria-hidden` subtrees stay out: CDP marks their descendants ignored too.
+  Blink's `InlineTextBox` layout leaves are dropped — they duplicate their
+  `StaticText` parent and were 32 of 111 nodes on the fixture page.
+
+- **The `snapshot` header's `stats` reports `tier`** — `a11y`, `dom-walk`,
+  `mixed` or `empty` — naming which tier supplied the interactive content.
+  `dom-walk` means the accessibility tier found nothing and the fallback
+  answered anyway. The low-content warning said as much in prose; a caller
+  could not branch on prose. Non-Chromium engines and child frames report
+  `dom-walk` by construction (no CDP accessibility tree there).
+
 - **The `verify_*` family, `find`'s candidate probes, gesture geometry and the
   screenshot caption resolve elements through a port instead of a Playwright
   `Locator`** (RFC 0009 P2). `locatorFor(page, refs, target)` was the resolution

@@ -243,6 +243,10 @@ Each interactive node gets a stable `[ref=eN]` you can pass back to action tools
 
 When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted, usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
 
+`stats.tier` names which tier supplied the interactive content: `a11y`, `dom-walk`, `mixed`, or `empty`. `dom-walk` is the degraded case — the accessibility tier found nothing and the DOM-walk fallback answered on its own. Non-Chromium engines and child-frame snapshots report `dom-walk` by construction: neither runs a CDP accessibility pass.
+
+Nodes CDP marks `ignored` (presentational wrappers, layout tables, and `<html>` / `<body>`, which Chromium marks ignored on essentially every page) contribute no line of their own, and their children take their place in document order. An `aria-hidden` container's descendants are themselves ignored, so nothing under it reaches the a11y tier — the DOM walk still reports it, `[from-dom]`-marked.
+
 **Inputs (all optional):**
 
 - `scope: <ref>` emits only the subtree rooted at this ref (from a prior snapshot/find). Drops "I asked for one section and got 500 nodes" cost. Falls back to full tree with a warning if the ref isn't found.
