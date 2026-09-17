@@ -110,10 +110,15 @@ describe("composeSnapshot —  back-compat", () => {
     const out = await composeSnapshot(cdp, refs, ["data-testid"]);
     expect(out.stats).not.toHaveProperty("closedShadowEntries");
     expect(out.warnings.some((w) => w.toLowerCase().includes("closed"))).toBe(false);
-    // CDP DOM.getDocument MUST NOT have been called when pierce wasn't
-    // requested — the cost is non-trivial on big pages.
-    const calls = (cdp.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-    expect(calls).not.toContain("DOM.getDocument");
+    // `DOM.getDocument` runs — the test-attribute sweep is one roundtrip
+    // (9-39 ms on the four heaviest pages measured) and replaces a
+    // `DOM.getAttributes` per node that failed on every call. What must NOT
+    // run unasked is the closed-shadow PIERCE, which is a second sweep.
+    const getDocumentCalls = (cdp.send as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === "DOM.getDocument",
+    );
+    expect(getDocumentCalls).toHaveLength(1);
+    expect(getDocumentCalls[0]![1]).toEqual({ depth: -1 });
   });
 
   it("passing `{}` is identical to omitting opts", async () => {

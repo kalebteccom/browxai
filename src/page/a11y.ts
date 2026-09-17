@@ -256,6 +256,13 @@ function firstTestAttr(
  * two working alternatives on four real pages, the sweep is also the cheap one
  * — 9-39 ms, against 327-1932 ms for
  * `DOM.pushNodesByBackendIdsToFrontend` plus a `DOM.getAttributes` per node.
+ *
+ * The sweep does not pierce. Shadow roots and iframe content documents are
+ * reached only when a caller opts into `pierce`, and that opt-in is what gates
+ * closed-shadow content from reaching the agent at all; a test attribute read
+ * out of a closed shadow root here would route around it. So an element inside
+ * a shadow root keeps no test id on the a11y tier — the DOM-walk tier under
+ * `includeShadow: "open"` is the path that reports one.
  */
 async function readTestAttributes(
   cdp: CDPSession,
@@ -264,7 +271,7 @@ async function readTestAttributes(
   const found = new Map<number, { testId: string; testIdAttr: string }>();
   let root: RawDomNode;
   try {
-    ({ root } = (await cdp.send("DOM.getDocument", { depth: -1, pierce: true })) as {
+    ({ root } = (await cdp.send("DOM.getDocument", { depth: -1 })) as {
       root: RawDomNode;
     });
   } catch {
