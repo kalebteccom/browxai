@@ -80,7 +80,7 @@ export default defineConfig({
             description:
               "MCP-native, model-agnostic browser-control server across five engines, over CDP, WebDriver BiDi and safaridriver, with off-by-default access to the OS clipboard, password managers, and a workspace directory.",
             applicationCategory: "DeveloperApplication",
-            operatingSystem: "Node.js (>=20)",
+            operatingSystem: "Node.js (>=22)",
             url: "https://browxai.com",
             license: "https://opensource.org/licenses/MIT",
             offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
