@@ -242,8 +242,70 @@ function sessionPageDoors(sf: ts.SourceFile): string[] {
   return hits;
 }
 
+/** Playwright `Page` methods RFC 0009 assigned to a capability port, with the
+ *  port that owns each. A call to one of these from `src/tools` or `src/replay`
+ *  is a bypass whatever handle it came from — including a `Page` received as a
+ *  function parameter, which `requirePage` counting cannot see.
+ *
+ *  It exists because of what P3 found. The RFC's cluster table budgets 8 sites
+ *  for `emulateMedia` / `setViewportSize` and schedules an `EmulationSubstrate`
+ *  widening for them. At the RFC's own baseline commit those 8 are two calls in
+ *  `src/session/emulation.ts`, one in `src/page/actions.ts`, and five mentions in
+ *  comments and tool-description strings. All three real calls are adapter bodies
+ *  BELOW an existing port — `EmulationSubstrate.setColorScheme` /
+ *  `setReducedMotion` took them in P1, and `ActionSubstrate.setViewport` has had
+ *  the third since before this RFC. The cluster was already closed and the
+ *  widening had no caller, so P3 did not add `setMedia`: a port member no tool
+ *  calls is the speculative generality the doctrine forbids.
+ *
+ *  A count of zero proves nothing on its own; this is what keeps it at zero. */
+const PORTED_PAGE_METHODS: ReadonlyArray<{ method: string; port: string }> = [
+  { method: "emulateMedia", port: "EmulationSubstrate.setColorScheme / setReducedMotion" },
+  { method: "setViewportSize", port: "ActionSubstrate.setViewport" },
+];
+
+/** Call sites of `x.<method>(…)` in a file, whatever `x` is. */
+function methodCalls(sf: ts.SourceFile, method: string): number {
+  let hits = 0;
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === method
+    ) {
+      hits++;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hits;
+}
+
 describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => {
   const files = sourceFiles(SRC).map((f) => ({ path: rel(f), ast: parse(f) }));
+
+  it.each(PORTED_PAGE_METHODS.map((m) => [m.method, m.port] as const))(
+    "[%s] is called only below the seam — its port (%s) owns it",
+    (method, port) => {
+      const above = files
+        .filter((f) => /^src\/(tools|replay)\//.test(f.path))
+        .map((f) => ({ path: f.path, n: methodCalls(f.ast, method) }))
+        .filter((f) => f.n > 0);
+      expect(
+        above.map((f) => `${f.path} (${f.n})`),
+        `\`${method}\` is a Playwright Page method that ${port} owns. A call from ` +
+          "src/tools or src/replay skips the port, and no engine without a Playwright " +
+          "Page could serve it.",
+      ).toEqual([]);
+    },
+  );
+
+  it("names a port for every method it guards", () => {
+    // The table is the unit of coverage, so a row that loses its `port` would
+    // still generate a case and assert nothing legible.
+    expect(PORTED_PAGE_METHODS.length).toBeGreaterThanOrEqual(2);
+    for (const m of PORTED_PAGE_METHODS) expect(m.port.length).toBeGreaterThan(10);
+  });
 
   it("holds the Page-handle use count at or under the phase budget", () => {
     const counted = files
