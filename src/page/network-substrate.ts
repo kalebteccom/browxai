@@ -22,3 +22,16 @@ export type {
   FetchBodyResult,
   NetworkSubstrate,
 } from "./network-substrate-types.js";
+// The route / unroute widening (RFC 0009 P3).
+export { ROUTE_ENGINE_REFUSAL, routeInterceptionUnsupported } from "./route-types.js";
+export type {
+  RouteResponse,
+  RouteSpec,
+  RouteQueueSpec,
+  RouteSelector,
+  RouteInstalled,
+  RouteRemoved,
+  RouteRefusal,
+  RouteResult,
+  UnrouteResult,
+} from "./route-types.js";

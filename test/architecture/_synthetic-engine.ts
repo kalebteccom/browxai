@@ -21,7 +21,12 @@ import type { RefRegistry } from "../../src/page/refs.js";
 import { elementKey } from "../../src/page/refs.js";
 import type { ComposedSnapshot, ComposeOptions } from "../../src/page/compose.js";
 import type { SnapshotSubstrate } from "../../src/page/snapshot-substrate.js";
-import type { NetworkSubstrate } from "../../src/page/network-substrate.js";
+import {
+  routeInterceptionUnsupported,
+  type NetworkSubstrate,
+  type RouteResult,
+  type UnrouteResult,
+} from "../../src/page/network-substrate.js";
 import type {
   ActionSubstrate,
   GestureRequest,
@@ -263,6 +268,17 @@ class InMemoryNetworkSubstrate implements NetworkSubstrate {
       ok: false,
       error: "network_body is not available on the synthetic engine (no protocol-level network).",
     });
+  }
+  /** A refusal, NOT an empty install. This is the one network member where the
+   *  "answering" fixture must still say no: `{ok:true, active:[]}` for a route
+   *  that was never installed would tell an agent it had stubbed a backend it had
+   *  not, and it would make the sub-interface conformance suite pass on a missing
+   *  gate. */
+  route(): Promise<RouteResult> {
+    return Promise.resolve(routeInterceptionUnsupported("route", this.engine));
+  }
+  unroute(): Promise<UnrouteResult> {
+    return Promise.resolve(routeInterceptionUnsupported("unroute", this.engine));
   }
 }
 

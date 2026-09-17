@@ -103,9 +103,14 @@ const HANDLE_OWNERS: ReadonlyArray<{ re: RegExp; why: string }> = [
  *  `get_video` never touch a `Page`, because Playwright's recorder is a
  *  context-creation primitive with no mid-session start or stop.
  *
+ *  P3's network widening took it from 97 to 94: the three in
+ *  `gesture-route-tools.ts`, one per `route` / `route_queue` / `unroute`. That
+ *  matches the RFC's count for this cluster exactly, because every `page.route` /
+ *  `page.unroute` above the seam was one of those three calls.
+ *
  *  LOWER THIS, NEVER RAISE IT. A phase that moves N uses lands with the budget at
  *  `previous - N` in the same commit. */
-const BUDGET = 97;
+const BUDGET = 94;
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {

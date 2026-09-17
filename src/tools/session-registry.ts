@@ -30,7 +30,6 @@ import { FsPickerPolicyState } from "../session/fs-picker.js";
 import { DeviceEmulationState as WebDeviceEmulationState } from "../session/device-emu.js";
 import { RefRegistry } from "../page/refs.js";
 import { FrameRegistry } from "../page/frames.js";
-import { RouteRegistry } from "../page/routes.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { EmulationRegistry } from "../page/emulation.js";
@@ -397,7 +396,6 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         recorder: new Recorder(),
         feedback: new FeedbackMemory(),
         clipboard: new ClipboardBuffer(),
-        routes: new RouteRegistry(),
         // The page-side WS-interactive + workers wrappers install EAGERLY — but
         // that install is a Playwright-Page concern, so it has moved into the
         // engine's `postWire` (capability-gated on `action` / `read`). Here we

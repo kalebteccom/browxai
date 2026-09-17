@@ -30,6 +30,11 @@ import type {
   FetchBodyResult,
   NetworkSubstrate,
 } from "./network-substrate-types.js";
+import {
+  routeInterceptionUnsupported,
+  type RouteResult,
+  type UnrouteResult,
+} from "./route-types.js";
 
 /** Safari substrate — a NO-OP. Wiring-time engine-blindness only: the rings
  *  construct and stay empty, the per-action tap reports zero traffic, and
@@ -77,5 +82,20 @@ export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
         "network_body is not available on the safari engine — Safari exposes no protocol-level " +
         "network observation. Use a chromium/firefox/webkit session for network bodies.",
     };
+  }
+
+  /** A REFUSAL, not an empty ring. Interception is the one network member where
+   *  a zero-valued answer would be actively dangerous: "installed, 0 active" for
+   *  a route that was never installed means the agent proceeds to assert against
+   *  a backend it believes it stubbed. Safari declares no `network`
+   *  sub-interface, so the gate refuses these three upstream and this is the
+   *  layer beneath it — the same standing arrangement the module header
+   *  describes for the rings. */
+  async route(): Promise<RouteResult> {
+    return routeInterceptionUnsupported("route", this.engine);
+  }
+
+  async unroute(): Promise<UnrouteResult> {
+    return routeInterceptionUnsupported("unroute", this.engine);
   }
 }
