@@ -4,6 +4,7 @@ import {
   scoreNode,
   noVisibleCandidateWarning,
   rankByVisibility,
+  isCandidateRole,
   type FindCandidate,
 } from "./find.js";
 import type { A11yNode } from "./a11y.js";
@@ -446,5 +447,52 @@ describe("rankByVisibility — demotion resolves bare tags too", () => {
     const cands = [cand("topNav", 90, true, "nav"), cand("wrapper", 80, true, "div")];
     const { ranked } = rankByVisibility(cands, false);
     expect(ranked.map((c) => c.ref)).toEqual(["topNav", "wrapper"]);
+  });
+});
+
+describe("isCandidateRole — text and layout leaves are never a target", () => {
+  it("rejects every Blink text leaf", () => {
+    for (const role of ["StaticText", "InlineTextBox", "LineBreak", "ListMarker"]) {
+      expect(isCandidateRole({ role }), role).toBe(false);
+    }
+  });
+
+  it("rejects layout-table and inline-typography wrappers", () => {
+    for (const role of [
+      "LayoutTable",
+      "LayoutTableRow",
+      "LayoutTableCell",
+      "Abbr",
+      "EmphasizedText",
+      "StrongText",
+      "superscript",
+      "subscript",
+    ]) {
+      expect(isCandidateRole({ role }), role).toBe(false);
+    }
+  });
+
+  it("rejects the document root — its name is the page title, and there is nothing to click", () => {
+    expect(isCandidateRole({ role: "RootWebArea" })).toBe(false);
+    expect(isCandidateRole({ role: "WebArea" })).toBe(false);
+  });
+
+  it("scores a StaticText named 'button' above a real button, which is why it is filtered", () => {
+    const qTokens = ["the", "search", "button"];
+    const text = scoreNode(n("StaticText", "button"), "the search button", qTokens);
+    const real = scoreNode(n("button", "Search (Command+K)"), "the search button", qTokens);
+    expect(text).toBeGreaterThan(real);
+    expect(isCandidateRole({ role: "StaticText" })).toBe(false);
+    expect(isCandidateRole({ role: "button" })).toBe(true);
+  });
+
+  it("keeps a presentational role the page author addressed by test attribute", () => {
+    expect(isCandidateRole({ role: "StaticText", testId: "price-total" })).toBe(true);
+  });
+
+  it("keeps every role an agent can act on", () => {
+    for (const role of ["button", "link", "textbox", "cell", "heading", "a", "td", "generic"]) {
+      expect(isCandidateRole({ role }), role).toBe(true);
+    }
   });
 });
