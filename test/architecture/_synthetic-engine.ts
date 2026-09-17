@@ -27,7 +27,12 @@ import type {
   GestureRequest,
   GestureResult,
 } from "../../src/page/action-substrate.js";
-import type { CaptureResult, CaptureSubstrate } from "../../src/page/capture-substrate.js";
+import type {
+  CaptureResult,
+  CaptureSubstrate,
+  PdfResult,
+  VideoSave,
+} from "../../src/page/capture-substrate.js";
 import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
 import type { EmulationResult, EmulationSubstrate } from "../../src/page/emulation-substrate.js";
@@ -412,6 +417,22 @@ class InMemoryCaptureSubstrate implements CaptureSubstrate {
   readonly engine = "synthetic";
   screenshot(): Promise<CaptureResult> {
     return Promise.resolve({ kind: "image", data: TINY_PNG, mimeType: "image/png" });
+  }
+  /** Refuses: there is no in-memory renderer to print. A refusal is the plausible
+   *  answer here — the conformance fixture needs a well-formed one, and an engine
+   *  with no print surface is what most engines are. */
+  pdf(): Promise<PdfResult> {
+    return Promise.resolve({
+      kind: "refusal",
+      error: "pdf_save is not supported on the synthetic engine (no renderer to print).",
+      hint: "Open a chromium session to print the page to PDF.",
+    });
+  }
+  /** Nothing recorded, nothing to flush. The teardown path skips the flush on
+   *  null, which is what it did for a session with no recorder before the port
+   *  carried this. */
+  prepareVideoSave(): Promise<VideoSave | null> {
+    return Promise.resolve(null);
   }
 }
 

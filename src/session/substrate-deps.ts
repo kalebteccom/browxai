@@ -1,35 +1,41 @@
-// The `SubstrateDeps` set for callers that resolve ONLY a session's snapshot and
-// network substrates.
+// The `SubstrateDeps` set for callers that hold none of the server's host config.
 //
 // `EngineEntry.makeSubstrates(deps)` is one factory for all eight selectors, and
-// four of them (actions / capture / storage / script / emulation) close over host
-// locals the session layer has no business holding — `ctxFor` carries the
-// server's origin policy and capability gate, `save` writes under its workspace
-// root. The snapshot and network selectors read `e.session` and nothing else.
+// three host closures feed them: `ctxFor` carries the server's origin policy and
+// capability gate, `describeTarget` and `save` belong to the screenshot path and
+// `save` writes under the server's workspace root. The session layer has no
+// business holding any of them.
 //
-// So a snapshot/network-only caller passes THIS: the two it needs are resolvable,
-// and the four it must never drive throw a message naming the module that owns
-// them. Shared by the session registry (first wiring) and the extension-context
-// rebuild (re-wiring after a relaunch), which is what keeps both on the
-// engine-owned bundle instead of reaching past it into `snapshotSubstrateFor` /
-// `networkSubstrateFor` directly. (RFC 0009 — the engine owns substrate
-// selection.)
+// So a host-free caller passes THIS. The selectors it needs are resolvable, and
+// each host closure throws a message naming the module that owns it — LAZILY,
+// when the closure is called rather than when the bundle is built. That is what
+// makes the set usable for a whole port minus the members that reach host config:
+// the session registry's teardown resolves the CAPTURE port to take
+// `prepareVideoSave`, which needs no host closure, while `screenshot` on the same
+// object still refuses.
+//
+// Shared by the session registry (first wiring, plus the teardown video flush)
+// and the extension-context rebuild (re-wiring after a relaunch), which is what
+// keeps both on the engine-owned bundle instead of reaching past it into
+// `snapshotSubstrateFor` / `networkSubstrateFor` directly. (RFC 0009 — the engine
+// owns substrate selection.)
 
 import type { SubstrateDeps } from "../engine/registry.js";
 
 /** Build the throwing-deps set. A function, not a shared constant: each caller
  *  names itself in the refusal, so a stack-free error still says which module
- *  drove a substrate it had no deps for. */
-export function snapshotNetworkOnlyDeps(caller: string): SubstrateDeps {
-  const refuse = (selector: string, owner: string): never => {
+ *  drove a substrate member it had no deps for. */
+export function hostFreeSubstrateDeps(caller: string): SubstrateDeps {
+  const refuse = (closure: string, owner: string): never => {
     throw new Error(
-      `${caller}: ${selector} must not be reached — this caller resolves only the ` +
-        `snapshot/network substrates (${owner}).`,
+      `${caller}: ${closure} must not be reached — this caller holds none of the ` +
+        `server's host config (${owner}).`,
     );
   };
   return {
-    ctxFor: () => refuse("ctxFor", "action/capture are host-build's concern"),
-    describeTarget: () => refuse("describeTarget", "capture is host-build's concern"),
-    save: () => refuse("save", "capture is host-build's concern"),
+    ctxFor: () => refuse("ctxFor", "the action dispatch context is host-build's concern"),
+    describeTarget: () =>
+      refuse("describeTarget", "the screenshot caption is host-build's concern"),
+    save: () => refuse("save", "the screenshot disk write is host-build's concern"),
   };
 }

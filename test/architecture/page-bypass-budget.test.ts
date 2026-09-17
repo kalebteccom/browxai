@@ -91,9 +91,21 @@ const HANDLE_OWNERS: ReadonlyArray<{ re: RegExp; why: string }> = [
  *  `gestures.ts` still needs one for `page.mouse`, which is P3's ActionSubstrate
  *  widening, not this phase's.
  *
+ *  P3's capture widening took it from 99 to 97: one in
+ *  `capture-report-export-tools.ts` (`pdf_save`, which held a `Page` only to hand
+ *  it to `pdfSave`) and one in `session-registry.ts`'s teardown, which now takes
+ *  the video flush from `CaptureSubstrate.prepareVideoSave`.
+ *
+ *  TWO, NOT THE RFC'S 16 + 11. Those count `page.pdf` / `page.video` METHOD uses
+ *  across non-test src, and nearly all of them are inside `pdf.ts` and `video.ts`
+ *  — the Playwright adapter bodies, which are below the seam and stay. The whole
+ *  of the `video` cluster above the seam is the teardown save: `stop_video` and
+ *  `get_video` never touch a `Page`, because Playwright's recorder is a
+ *  context-creation primitive with no mid-session start or stop.
+ *
  *  LOWER THIS, NEVER RAISE IT. A phase that moves N uses lands with the budget at
  *  `previous - N` in the same commit. */
-const BUDGET = 99;
+const BUDGET = 97;
 
 function sourceFiles(dir: string, acc: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
