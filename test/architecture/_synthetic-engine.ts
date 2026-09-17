@@ -99,7 +99,13 @@ class InMemorySnapshotSubstrate implements SnapshotSubstrate {
   ): Promise<ComposedSnapshot> {
     return Promise.resolve({
       tree: buildTree(refs),
-      stats: { a11yInteractive: 1, domWalkEntries: 1, domWalkNew: 1, domWalkCombined: 0 },
+      stats: {
+        tier: "mixed",
+        a11yInteractive: 1,
+        domWalkEntries: 1,
+        domWalkNew: 1,
+        domWalkCombined: 0,
+      },
       warnings: [],
     });
   }

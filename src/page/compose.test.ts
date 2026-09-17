@@ -124,6 +124,38 @@ describe("composeSnapshot —  back-compat", () => {
   });
 });
 
+describe("composeSnapshot — stats.tier names the tier that carried the snapshot", () => {
+  it("reports `a11y` when the accessibility tree supplied the content", async () => {
+    // The fixture's DOM walk returns [], so only the a11y tier contributes.
+    const out = await composeSnapshot(happyPathCdp(), new RefRegistry(), ["data-testid"]);
+    expect(out.stats.tier).toBe("a11y");
+  });
+
+  it("reports `dom-walk` when the a11y tier found nothing interactive", async () => {
+    // Root only, no interactive descendants — the silent-degradation case.
+    const cdp = fakeCdp(async (method) => {
+      switch (method) {
+        case "Accessibility.enable":
+          return {};
+        case "Accessibility.getFullAXTree":
+          return { nodes: [{ nodeId: "1", role: { value: "RootWebArea" } }] };
+        case "Runtime.evaluate":
+          return {
+            result: {
+              value: [{ role: "button", name: "Only DOM", structuralPath: "body/button[0]" }],
+            },
+          };
+        default:
+          throw new Error(`unexpected CDP method ${method}`);
+      }
+    });
+    const out = await composeSnapshot(cdp, new RefRegistry(), ["data-testid"]);
+    expect(out.stats.a11yInteractive).toBe(0);
+    expect(out.stats.domWalkNew).toBe(1);
+    expect(out.stats.tier).toBe("dom-walk");
+  });
+});
+
 describe("composeSnapshot —  pierce: 'closed'", () => {
   it("merges closed-shadow candidates and surfaces the inspect-only warning", async () => {
     const cdp = happyPathCdp({ closedAvailable: true });

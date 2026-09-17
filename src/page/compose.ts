@@ -52,8 +52,8 @@ const INTERACTIVE_ROLES = new Set([
 // `compose-types.ts` so the SnapshotSubstrate port can name them without
 // reaching playwright-core through this module. Re-exported here so every
 // existing importer is unchanged.
-export type { ComposedSnapshot, ComposeOptions } from "./compose-types.js";
-import type { ComposedSnapshot, ComposeOptions } from "./compose-types.js";
+export type { ComposedSnapshot, ComposeOptions, SnapshotTier } from "./compose-types.js";
+import type { ComposedSnapshot, ComposeOptions, SnapshotTier } from "./compose-types.js";
 
 export async function composeSnapshot(
   cdp: CDPSession,
@@ -117,6 +117,7 @@ export async function composeSnapshot(
   return {
     tree: a11y,
     stats: {
+      tier: resolveTier(a11yInteractive, merge.added),
       a11yInteractive,
       domWalkEntries: allEntries.length,
       domWalkNew: merge.added,
@@ -183,6 +184,9 @@ export async function composeSnapshotForFrame(
   return {
     tree: root,
     stats: {
+      // Child frames never run the CDP a11y pass (OOPIF compatibility), so the
+      // DOM walk is the only tier here by construction.
+      tier: merge.added > 0 ? "dom-walk" : "empty",
       a11yInteractive: 0,
       domWalkEntries: entries.length,
       domWalkNew: merge.added,
@@ -190,6 +194,17 @@ export async function composeSnapshotForFrame(
     },
     warnings,
   };
+}
+
+/**
+ * Name the tier that carried the snapshot. `domWalkNew` counts nodes only the
+ * DOM walk found, so `dom-walk` means the a11y tier went dark and the fallback
+ * answered anyway — the low-content warning says the same thing in prose, but a
+ * caller cannot branch on prose.
+ */
+function resolveTier(a11yInteractive: number, domWalkNew: number): SnapshotTier {
+  if (a11yInteractive > 0) return domWalkNew > 0 ? "mixed" : "a11y";
+  return domWalkNew > 0 ? "dom-walk" : "empty";
 }
 
 function markSource(root: A11yNode, source: "a11y"): void {
