@@ -197,10 +197,12 @@ export async function composeSnapshotForFrame(
 }
 
 /**
- * Name the tier that carried the snapshot. `domWalkNew` counts nodes only the
- * DOM walk found, so `dom-walk` means the a11y tier went dark and the fallback
- * answered anyway — the low-content warning says the same thing in prose, but a
- * caller cannot branch on prose.
+ * Name the tier that carried the snapshot. `domWalkNew` counts the nodes only
+ * the DOM walk found IN THIS SNAPSHOT, so `dom-walk` means the a11y tier went
+ * dark and the fallback answered anyway — the low-content warning says the same
+ * thing in prose, but a caller cannot branch on prose. The field exists to make
+ * silent degradation visible, so it has to read the same on the tenth snapshot
+ * of a page as on the first.
  */
 function resolveTier(a11yInteractive: number, domWalkNew: number): SnapshotTier {
   if (a11yInteractive > 0) return domWalkNew > 0 ? "mixed" : "a11y";

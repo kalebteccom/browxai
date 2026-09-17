@@ -87,7 +87,11 @@ export interface A11yNode {
   testIdAttr?: string;
   /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
    *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
-   *  discovered by both paths. #7 / #8 plumbing. */
+   *  discovered by both paths in the same snapshot. "both" is currently
+   *  unreachable — the two tiers key refs on different vocabularies, so they
+   *  never land on the same ref (see `mergeDomWalkIntoTree`). It used to appear
+   *  on every DOM-walk node from the second snapshot on, which meant only that
+   *  the ref registry had seen the key before. */
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;

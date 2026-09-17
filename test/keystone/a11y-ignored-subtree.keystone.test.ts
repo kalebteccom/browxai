@@ -56,6 +56,11 @@ function statsOf(snapshot: string): { a11yInteractive: number; tier: string } {
   return JSON.parse(line.slice("stats: ".length)) as { a11yInteractive: number; tier: string };
 }
 
+/** Every `[ref=…]` line, provenance markers included. */
+function bodyOf(snapshot: string): string[] {
+  return snapshot.split("\n").filter((l) => l.includes("[ref="));
+}
+
 async function openOn(session: string): Promise<void> {
   const opened = await callJson<{ ok: boolean }>("open_session", { session, mode: "incognito" });
   expect(opened.ok).toBe(true);
@@ -184,6 +189,28 @@ describe("a11y keystone — ignored wrappers do not eat their subtree", () => {
       const second = a11yLines(await callText("snapshot", { session }));
       expect(first.some((l) => l.includes('button "Presentational Child"'))).toBe(true);
       expect(second).toEqual(first);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "reports the same tier and the same body on the second snapshot",
+    async () => {
+      // `domWalkNew` counted keys new to the REGISTRY, which is per-session, so
+      // the second snapshot of an unchanged page reported `domWalkNew: 0` and a
+      // tier of "empty" — while the DOM walk was carrying it — and flipped
+      // every `[from-dom]` marker to `[from-both]`. The whole point of the tier
+      // field is to make degradation visible, so it cannot depend on how many
+      // snapshots the session has taken.
+      const session = "ks-a11y-ignored-second-snapshot";
+      await openOn(session);
+      const first = await callText("snapshot", { session });
+      const second = await callText("snapshot", { session });
+      expect(statsOf(first).tier).toBe("mixed");
+      expect(statsOf(second)).toEqual(statsOf(first));
+      // The body too: same page, same lines, same provenance markers.
+      expect(first).toContain("[from-dom]");
+      expect(bodyOf(second)).toEqual(bodyOf(first));
     },
     KEYSTONE_TIMEOUT,
   );
