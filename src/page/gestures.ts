@@ -8,11 +8,14 @@ import type { ActionTarget } from "./locator.js";
 import { elementQueryFor } from "./element-query.js";
 import type { ElementSubstrate } from "./element-substrate-types.js";
 import { pointProbe, type PointProbeResult } from "./point_probe.js";
+import type { PinchReport, Point, SwipeReport, TouchPhase, TouchReport } from "./gesture-types.js";
 
-export interface Point {
-  x: number;
-  y: number;
-}
+// The gesture argument/result vocabulary moved ABOVE this module, into the
+// vendor-free `gesture-types.ts`, so `ActionSubstrate` can name it without
+// reaching playwright-core. This file is the Playwright/CDP adapter body below
+// that seam; it re-exports the names its existing importers already use, so
+// nothing downstream changes. (RFC 0009 P3.)
+export type { Point } from "./gesture-types.js";
 
 /** Resolve an action target to a viewport point — the element's box centre for
  *  ref/selector, or the literal coords.
@@ -166,7 +169,9 @@ export async function mouseAction(
 // behaviour is app-policy (touch-action, preventDefault choices) — an agent
 // that needs both pipelines should dispatch both explicitly.
 
-export type TouchAction = "start" | "move" | "end";
+/** The touch phase, under the name this module has always used. One spelling of
+ *  the fact — the port's `TouchPhase`. */
+export type TouchAction = TouchPhase;
 
 const TOUCH_CDP_TYPE: Record<TouchAction, "touchStart" | "touchMove" | "touchEnd"> = {
   start: "touchStart",
@@ -182,7 +187,7 @@ export async function touchAction(
   cdp: CDPSession,
   action: TouchAction,
   args: { coords?: Point; identifier?: number },
-): Promise<{ ok: boolean; action: TouchAction; coords?: Point; identifier: number }> {
+): Promise<TouchReport> {
   const identifier = args.identifier ?? 1;
   if (action !== "end" && !args.coords) {
     throw new Error(`touch_${action} requires coords`);
@@ -200,14 +205,8 @@ export async function touchAction(
   };
 }
 
-export interface GesturePinchResult {
-  ok: boolean;
-  coords: Point;
-  scale: number;
-  steps: number;
-  startOffset: number;
-  endOffset: number;
-}
+/** The pinch evidence body, declared once in the port's vocabulary. */
+export type GesturePinchResult = PinchReport;
 
 /** Two-finger pinch in/out, centred on `coords`. Two touch points start at
  *  `coords ± startOffset` (a fixed 40 CSS px each side — wider than any
@@ -265,13 +264,8 @@ export async function gesturePinch(
   return { ok: true, coords: args.coords, scale, steps, startOffset, endOffset };
 }
 
-export interface GestureSwipeResult {
-  ok: boolean;
-  from: Point;
-  to: Point;
-  steps: number;
-  durationMs: number;
-}
+/** The swipe evidence body, declared once in the port's vocabulary. */
+export type GestureSwipeResult = SwipeReport;
 
 /** Single-finger swipe from `from` to `to`. Distinct from `drag` — drag uses
  *  the mouse pipeline; swipe uses the touch pipeline. `durationMs` controls

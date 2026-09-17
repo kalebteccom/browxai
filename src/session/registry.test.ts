@@ -44,8 +44,6 @@ function fakeEntry(id: string): SessionEntry {
 
     clipboard: {} as any,
 
-    routes: {} as any,
-
     wsInteractive: {} as any,
 
     workers: { dispose: () => undefined } as any,

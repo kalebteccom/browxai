@@ -1,4 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   PlaywrightCaptureSubstrate,
   SafariCaptureSubstrate,
@@ -13,6 +16,10 @@ import type { RefRegistry } from "./refs.js";
 // per-engine keystones); these cover the Safari adapter's full-document PNG path +
 // the in-adapter gating that replaced the per-handler `if (safariShotHandle)`
 // branch.
+
+/** A real temp dir, because `pdfSave` resolves and `mkdirSync`s under it. */
+const WS = mkdtempSync(join(tmpdir(), "browxai-capture-port-"));
+afterAll(() => rmSync(WS, { recursive: true, force: true }));
 
 function safariHandle(): { handle: SafariSessionHandle; shots: string[] } {
   const shots: string[] = [];
@@ -137,5 +144,165 @@ describe("PlaywrightCaptureSubstrate", () => {
     expect(r.kind).toBe("refusal");
     if (r.kind !== "refusal") throw new Error("expected refusal");
     expect(r.error).toMatch(/fullPage:true` is mutually exclusive/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The pdf + video widening (RFC 0009 P3). `pdf_save` held a `requirePage` to
+// hand a `Page` to `pdfSave`, and the teardown path held one to hand a `Page` to
+// `finalizeVideoOnClose`; both are the port's now.
+
+/** A `Page` stand-in that records the two calls these members make. */
+function recordingPage(opts: { video?: { saveAs: (p: string) => Promise<void> } | null } = {}): {
+  page: () => Page;
+  pdfCalls: Array<Record<string, unknown>>;
+  videoLookups: number;
+} {
+  const pdfCalls: Array<Record<string, unknown>> = [];
+  const state = { videoLookups: 0 };
+  const page = {
+    url: () => "about:blank",
+    pdf: async (args: Record<string, unknown>) => {
+      pdfCalls.push(args);
+    },
+    video: () => {
+      state.videoLookups += 1;
+      return opts.video === undefined ? { saveAs: async () => {} } : opts.video;
+    },
+  } as unknown as Page;
+  return {
+    page: () => page,
+    pdfCalls,
+    get videoLookups() {
+      return state.videoLookups;
+    },
+  };
+}
+
+function captureOver(page: () => Page): CaptureSubstrate {
+  return new PlaywrightCaptureSubstrate(page, {} as RefRegistry, {} as never, {
+    describeTarget: async () => "",
+    save: () => ({}) as never,
+  });
+}
+
+describe("PlaywrightCaptureSubstrate.pdf", () => {
+  it("writes through the existing pdfSave and returns its envelope verbatim", async () => {
+    const rec = recordingPage();
+    const r = await captureOver(rec.page).pdf({
+      workspaceRoot: WS,
+      sessionId: "s1",
+      path: "out/report.pdf",
+      format: "Letter",
+      scale: 1.5,
+      printBackground: true,
+    });
+    expect(r.kind).toBe("saved");
+    if (r.kind !== "saved") throw new Error("expected saved");
+    expect(r.result.format).toBe("Letter");
+    expect(r.result.scale).toBe(1.5);
+    expect(r.result.printBackground).toBe(true);
+    expect(r.result.path).toContain("report.pdf");
+    // The adapter passes the RESOLVED absolute path to Playwright, which is what
+    // keeps the write workspace-rooted by construction.
+    expect(rec.pdfCalls).toHaveLength(1);
+    expect(String(rec.pdfCalls[0]!.path)).toContain(WS);
+  });
+
+  it("still THROWS on a workspace escape, so the handler's catch renders it", async () => {
+    // `pdf_save`'s handler renders a throw as `{ok:false, error}`. Converting the
+    // escape into a structured `PdfRefused` here would change that envelope, so
+    // the adapter deliberately lets `resolveWorkspacePath` throw through.
+    const rec = recordingPage();
+    await expect(
+      captureOver(rec.page).pdf({
+        workspaceRoot: WS,
+        sessionId: "s1",
+        path: "../../etc/escape.pdf",
+      }),
+    ).rejects.toThrow(/workspace/i);
+    expect(rec.pdfCalls).toHaveLength(0);
+  });
+
+  it("rejects rather than throwing synchronously when the page accessor is dead", async () => {
+    const sub = captureOver(() => {
+      throw new Error("attach-target-gone");
+    });
+    let promise: unknown;
+    expect(() => {
+      promise = sub.pdf({ workspaceRoot: WS, sessionId: "s1" });
+    }).not.toThrow();
+    await expect(promise).rejects.toThrow("attach-target-gone");
+  });
+});
+
+describe("PlaywrightCaptureSubstrate.prepareVideoSave", () => {
+  const recording = (targetPath?: string) => ({
+    active: true,
+    finalized: false,
+    pendingFinalize: false,
+    ...(targetPath ? { targetPath } : {}),
+  });
+
+  it("takes the handle before teardown and resolves the Video only in the flush", async () => {
+    // The ordering the teardown path has always had: `page.video()` must run
+    // AFTER `context.close()` has flushed the .webm. Splitting the member into
+    // "resolve the page now, return a thunk" is what preserves it.
+    const rec = recordingPage();
+    const state = recording("/tmp/out.webm");
+    const flush = await captureOver(rec.page).prepareVideoSave(state);
+    expect(flush, "an active recording must yield a flush").toBeTruthy();
+    expect(rec.videoLookups, "page.video() must not run before teardown").toBe(0);
+    await flush!();
+    expect(rec.videoLookups).toBe(1);
+    expect(state.finalized).toBe(true);
+  });
+
+  it("answers null when nothing is recording, and when no target path was reserved", async () => {
+    const rec = recordingPage();
+    expect(await captureOver(rec.page).prepareVideoSave(recording())).toBeNull();
+    expect(
+      await captureOver(rec.page).prepareVideoSave({
+        active: false,
+        finalized: false,
+        pendingFinalize: false,
+        targetPath: "/tmp/out.webm",
+      }),
+    ).toBeNull();
+  });
+
+  it("leaves `finalized` false when the recorder reports no video", async () => {
+    const rec = recordingPage({ video: null });
+    const state = recording("/tmp/out.webm");
+    const flush = await captureOver(rec.page).prepareVideoSave(state);
+    await flush!();
+    expect(state.finalized).toBe(false);
+  });
+
+  it("reaches the page accessor FIRST, so a dead target rejects", async () => {
+    // Inspecting the state first would answer `null` on a gone session — "nothing
+    // to save" for a question that was never asked. The `substrate-adapter-async`
+    // drive depends on this ordering too: it calls every member with a placeholder
+    // argument and requires a rejection.
+    const sub = captureOver(() => {
+      throw new Error("attach-target-gone");
+    });
+    await expect(sub.prepareVideoSave(recording())).rejects.toThrow("attach-target-gone");
+  });
+});
+
+describe("SafariCaptureSubstrate — pdf and video", () => {
+  it("refuses pdf with a structured error naming the alternative", async () => {
+    const { handle } = safariHandle();
+    const r = await new SafariCaptureSubstrate(handle).pdf();
+    expect(r.kind).toBe("refusal");
+    if (r.kind !== "refusal") throw new Error("expected refusal");
+    expect(r.error).toMatch(/not supported on the safari engine/);
+    expect(r.hint).toMatch(/chromium/);
+  });
+
+  it("has no video to flush", async () => {
+    const { handle } = safariHandle();
+    expect(await new SafariCaptureSubstrate(handle).prepareVideoSave()).toBeNull();
   });
 });

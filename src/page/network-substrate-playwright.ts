@@ -36,11 +36,19 @@ import {
   PlaywrightWsBuffer,
   PlaywrightNetworkTap,
 } from "./network-playwright.js";
+import { RouteRegistry, installRoute, removeRoute } from "./routes.js";
 import type {
   ActionNetworkTap,
   FetchBodyResult,
   NetworkSubstrate,
 } from "./network-substrate-types.js";
+import type {
+  RouteQueueSpec,
+  RouteResult,
+  RouteSelector,
+  RouteSpec,
+  UnrouteResult,
+} from "./route-types.js";
 
 /** Firefox / WebKit substrate — the Playwright context-event network path. No
  *  CDP. The session-wide rings are `PlaywrightNetworkBuffer` / `PlaywrightWsBuffer`
@@ -53,6 +61,11 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
   readonly http: PlaywrightNetworkBuffer;
   readonly ws: PlaywrightWsBuffer;
   private secrets: SecretRegistry | null = null;
+  /** The session's live interceptions — owned here for the reason the CDP
+   *  sibling owns its own: a route is a handler installed on this substrate's
+   *  engine handle. */
+  private readonly routes = new RouteRegistry();
+  private readonly page: Page;
 
   constructor(
     private readonly context: BrowserContext,
@@ -60,6 +73,7 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
     engine = "firefox",
   ) {
     this.engine = engine;
+    this.page = page;
     this.http = new PlaywrightNetworkBuffer(context);
     this.ws = new PlaywrightWsBuffer(page);
   }
@@ -81,5 +95,16 @@ export class PlaywrightNetworkSubstrate implements NetworkSubstrate {
 
   async fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult> {
     return this.http.fetchBody(requestId, secrets);
+  }
+
+  /** `page.route` — the verbatim body the `route` / `route_queue` handlers ran,
+   *  and the same one the CDP sibling delegates to. Interception is Playwright's
+   *  cross-engine primitive, so firefox and webkit have always had it. */
+  async route(spec: RouteSpec | RouteQueueSpec): Promise<RouteResult> {
+    return installRoute(this.routes, this.page, spec);
+  }
+
+  async unroute(sel: RouteSelector): Promise<UnrouteResult> {
+    return removeRoute(this.routes, this.page, sel);
   }
 }

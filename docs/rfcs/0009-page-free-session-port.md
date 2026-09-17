@@ -243,6 +243,47 @@ are what actually makes a ref trustworthy:
 | `EmulationSubstrate` | `setMedia(args)`                             | Safari declares no `emulation` sub-interface, so the gate refuses upstream.                                                                                                     |
 | `NetworkSubstrate`   | `route(req)`, `unroute(req)`                 | `SafariNoopNetworkSubstrate` already models the refusal.                                                                                                                        |
 
+#### Amendment, 2026-09-17: three of the four widenings are not what this table says
+
+Found while building P3. Each correction is now held by a machine, named below.
+
+**`EmulationSubstrate` needs no widening and P3 does not add one.** The cluster
+table budgets 8 `emulateMedia` / `setViewportSize` sites. At `7f1298c`, the RFC's own
+baseline, those 8 are two calls in `src/session/emulation.ts`, one in
+`src/page/actions.ts`, and five mentions in comments and tool-description strings.
+All three real calls are adapter bodies **below an existing port**:
+`EmulationSubstrate.setColorScheme` / `setReducedMotion` took the first two in P1,
+and `ActionSubstrate.setViewport` has had the third since before this RFC. Nothing
+above the seam calls either method, and no tool exposes
+`emulateMedia({media})` — so `setMedia` would be a port member with no caller,
+which is the speculative generality the doctrine forbids. `page-bypass-budget.test.ts`
+now asserts neither method is called from `src/tools` or `src/replay`, so a future
+call fails the build with a file and a count.
+
+**`CaptureSubstrate`'s video widening is one member, not `startVideo` + `stopVideo`.**
+Playwright's `recordVideo` is a context-creation primitive with no mid-session
+start or stop; `stop_video` records intent and `get_video` reads the file off
+disk, and neither touches a `Page`. The **only** Page-touching video operation in
+the server is the teardown save, `page.video().saveAs(targetPath)`. It is
+two-phase by nature — the handle has to be taken while the session is live, the
+bytes exist only after `context.close()` — so the member is
+`prepareVideoSave(state): Promise<VideoSave | null>`: take the handle, get back
+the flush. RFC 0008 §5's segmented native writer has the same two phases.
+`CaptureSubstrate` therefore reaches three members, not four.
+
+**`ActionSubstrate`'s gesture widening is one member, not three verbs, and the
+port stays at thirteen.** The open question below is answered by the prior art's
+item E and by the repo's own precedent, without splitting the port. Detail in
+§"Open questions".
+
+**`pdf_save` keeps `deep: true`.** The table says Firefox's refusal "moves into
+the adapter". It does not, in P3: the Playwright capture adapter has no CDP
+handle to key on, `page.pdf()` is Headless-Chromium-only for reasons unrelated to
+CDP presence, and the Firefox-specific hint in `TOOL_REASON` is measured text
+worth keeping. The `pdf` bypass moved onto the port; the gate that refuses it
+upstream did not move. Retiring that flag is a live behaviour change on two
+shipped engines and it needs its own change.
+
 `CaptureSubstrate` reaches four members, `ActionSubstrate` fifteen. Fifteen is past the twelve-member ceiling `interface-member-budget.test.ts` applies to the `ToolHost` sub-ports. `ActionSubstrate` is not in that test's `SUB_PORTS` list today. P3 either adds it and splits the port along the action/gesture line, or extends the ceiling with a written rationale. The decision belongs in P3 against the real shape, and §"Open questions" carries it.
 
 `StorageSubstrate` is already at 22 members and this RFC does not fix it. Noting it so the next reader does not assume it was missed.
@@ -381,7 +422,14 @@ The sequencing consequence is the useful part. 0008's P1 tail was unmeasured bec
 
 ## Open questions
 
-- Does `ActionSubstrate` at fifteen members split along the action/gesture line, or does the member ceiling take a documented exception? The shape is clearer once P3 has written the three gesture methods.
+- ~~Does `ActionSubstrate` at fifteen members split along the action/gesture line, or does the member ceiling take a documented exception?~~ **Answered in P3: neither. One member, `gesture(req)`, over a closed three-kind request union, and the port lands at thirteen.**
+
+  The prior-art pass's item E is right that the member-count argument favours BiDi's shape: its `input` module is three commands and W3C Actions expresses swipe, pinch and multi-touch as one sequence. The repo already has that shape — `ElementSubstrate.probe(el, want)` (P2) is one call taking a discriminated request "so a fifth verb does not add a fifth member". `gesture` is the same move.
+
+  What P3 did **not** adopt is W3C Actions' literal sequence structure, and the reason is measured. That structure carries a per-source input-state table that `releaseActions` unwinds: a `pointerDown` leaves the pointer down, and every later event re-sends every still-active pointer. browxai has never had that table. `touchAction` dispatches one `touchPoints` entry per call, so finger #2 is absent from every event after the `touch_start` that placed it, and `docs/tool-reference.md` documents the resulting fan-out as the agent's job. Adopting `performActions` faithfully means building the state table and changing what five shipped tools put on the wire — a behaviour change P3 forbids itself.
+
+  The second reason is the consumer. On a native engine a swipe is a primitive (`mobile: dragFromToForDuration`, `XCUIElement.swipeUp`), not three touch dispatches. A port naming only `touch` would force every native adapter to synthesise swipe from touch events, which inverts what the platform exposes. Naming `swipe` and `pinch` as request kinds gives each native adapter one exhaustive switch over three primitives.
+
 - Should `EventSubstrate.subscribe` take an event-kind filter? The replay orchestrator wants everything; `console_read` wants one kind. A filter argument avoids a fan-out that the handler then discards, and it adds a parameter to the only method on the port.
 - Does `TargetSubstrate` absorb the frame tools (`frames_list`, `resolveFrameById`), or do frames get their own port? Native has windows and webviews, which are frame-like without being frames.
 - Where does the extension-context rebuild live? `EngineEntry.postWire` is the natural home by responsibility, and the rebuild is a 16-call, `chromium`-only path that no other engine will ever want. A `postWire` that only one engine implements is close to the speculative generality the doctrine forbids.

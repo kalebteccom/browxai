@@ -23,7 +23,6 @@ import type { BrowxBridge } from "../helper/bridge.js";
 import type { Recorder } from "../page/recording.js";
 import type { FeedbackMemory } from "../page/learning.js";
 import type { ClipboardBuffer } from "../page/clipboard.js";
-import type { RouteRegistry } from "../page/routes.js";
 import type { RegionRegistry } from "../page/regions.js";
 import type { EmulationRegistry } from "../page/emulation.js";
 import type { ClockRegistry } from "../page/clock.js";
@@ -123,8 +122,10 @@ export interface SessionNetworkRole {
    *  the initial document are seen; otherwise the wrapper installs on first
    *  `workers_list` / `worker_message_send` / `sw_intercept_fetch` call. */
   workers: WorkersRegistry;
-  /** per-session network route interceptions (capability `action`). */
-  routes: RouteRegistry;
+  // `routes: RouteRegistry` used to sit here. A route is a handler installed on
+  // an engine handle, so the registry belongs to the engine's NetworkSubstrate
+  // and lives there now; the three `route_*` handlers reached it by passing
+  // `requirePage(e.session)`, which is the bypass RFC 0009 P3 closed.
 }
 
 /** Feature role — the cross-cutting per-session services a handler reaches for
