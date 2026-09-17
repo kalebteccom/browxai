@@ -119,7 +119,10 @@ describe("a11y keystone — ignored wrappers do not eat their subtree", () => {
       const session = "ks-a11y-ignored-hidden";
       await openOn(session);
       const snap = await callText("snapshot", { session });
-      expect(a11yLines(snap).join("\n")).not.toContain("Aria Hidden Child");
+      const fromA11y = a11yLines(snap).join("\n");
+      // The presentational sibling is the control: splicing runs on this page.
+      expect(fromA11y).toContain('button "Presentational Child"');
+      expect(fromA11y).not.toContain("Aria Hidden Child");
     },
     KEYSTONE_TIMEOUT,
   );
@@ -151,6 +154,7 @@ describe("a11y keystone — ignored wrappers do not eat their subtree", () => {
       await openOn(session);
       const first = a11yLines(await callText("snapshot", { session }));
       const second = a11yLines(await callText("snapshot", { session }));
+      expect(first.some((l) => l.includes('button "Presentational Child"'))).toBe(true);
       expect(second).toEqual(first);
     },
     KEYSTONE_TIMEOUT,

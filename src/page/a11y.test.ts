@@ -81,7 +81,6 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
 
   it("contributes no entry for the ignored node itself", async () => {
     const tree = await getA11yTree(cdpServing(CHROMIUM_SHAPED), new RefRegistry());
-    // "none" is the role CDP reports for an ignored wrapper; it must not appear.
     const allRoles: string[] = [];
     const stack = [tree!];
     while (stack.length) {
@@ -89,6 +88,9 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
       allRoles.push(n.role);
       stack.push(...n.children);
     }
+    // The children are through…
+    expect(allRoles.filter((r) => r === "button")).toHaveLength(2);
+    // …and "none", the role CDP reports for an ignored wrapper, is not.
     expect(allRoles).not.toContain("none");
   });
 
@@ -110,13 +112,15 @@ describe("getA11yTree — ignored nodes splice, they do not prune", () => {
     // nothing. The root stays as the anchor `mergeDomWalkIntoTree` hangs
     // DOM-walk entries off — a null tree would drop those too.
     const nodes: FixtureNode[] = [
-      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "4"] },
       { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" }, childIds: ["3"] },
       { nodeId: "3", parentId: "2", ignored: true, role: { value: "none" } },
+      // Exposed sibling: the hidden subtree goes, the rest of the page stays.
+      { nodeId: "4", parentId: "1", role: { value: "button" }, name: { value: "Visible" } },
     ];
     const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
     expect(tree!.role).toBe("RootWebArea");
-    expect(tree!.children).toEqual([]);
+    expect(names(tree!)).toEqual(["Visible"]);
   });
 
   it("keeps an all-ignored document's root as the DOM-walk anchor", async () => {
