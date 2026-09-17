@@ -148,6 +148,34 @@ describe("a11y keystone — ignored wrappers do not eat their subtree", () => {
   );
 
   it(
+    "attaches the page's test attributes to the a11y tier",
+    async () => {
+      // The per-node `DOM.getAttributes` sweep passed a `BackendNodeId` where
+      // the command wants a `DOM.NodeId`, and no `DOM.getDocument` had ever run
+      // in the session, so every call failed with `Could not find node` and the
+      // a11y tier contributed zero tier-1 `[data-testid=…]` hints. Dormant
+      // while the tier emitted one bare root; load-bearing now that it emits a
+      // tree.
+      const session = "ks-a11y-ignored-testid";
+      await openOn(session);
+      const snap = await callText("snapshot", { session });
+      const line = a11yLines(snap).find((l) => l.includes('button "Presentational Child"'));
+      expect(line, "presentational button present in the a11y tier").toBeTruthy();
+      expect(line).toContain('[data-testid="presentational-btn"]');
+
+      // And the hint find() hands back is the tier-1 one.
+      const found = await callJson<{
+        candidates: Array<{ role: string; selectorTier: number; stability: string }>;
+      }>("find", { session, query: "the presentational child button" });
+      const cand = found.candidates.find((c) => c.role === "button");
+      expect(cand, "a button candidate").toBeTruthy();
+      expect(cand!.selectorTier).toBe(1);
+      expect(cand!.stability).toBe("high");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "keeps the ref stable across re-snapshots",
     async () => {
       const session = "ks-a11y-ignored-stable";

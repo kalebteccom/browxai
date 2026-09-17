@@ -124,12 +124,17 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
 
       // The bare-tag candidates are the DOM walk's — the a11y tier resolves the
       // same elements to `link` / `navigation`, so pick by role, not position.
+      // Position would be arbitrary between the two: both tiers now report the
+      // same `data-testid`, because the a11y tier attaches test attributes at
+      // all (its `DOM.getAttributes` sweep used to fail on every node).
       const link = found.candidates.find((c) => c.testId === "past" && c.role === "a");
-      const navBar = found.candidates[navAt] as Candidate;
+      const navBar = found.candidates.find(
+        (c) => c.testId === "top-navigation-bar" && c.role === "nav",
+      );
 
       // DOM-walk-sourced: the bare tag, never the resolved ARIA role.
       expect(link, "a bare-tag `a` candidate for past").toBeTruthy();
-      expect(navBar.role).toBe("nav");
+      expect(navBar, "a bare-tag `nav` candidate for the navigation bar").toBeTruthy();
 
       // Container demotion on a bare `nav` is pinned deterministically in the
       // `rankByVisibility` unit tests. It is not asserted here: the phrase
