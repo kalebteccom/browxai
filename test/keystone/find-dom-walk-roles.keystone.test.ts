@@ -1,9 +1,13 @@
 // find() tag-vs-ARIA-role keystone — real headless Chromium against the
-// table-shaped `/thin-a11y-page` fixture, whose CDP a11y tree reports zero
-// interactive descendants (snapshot `stats.a11yInteractive` is 0). Every
-// candidate therefore comes from the DOM-walk fallback, which writes
-// `getAttribute("role") || tagName` into `role`: the links arrive as role "a"
-// and the top bar as role "nav".
+// table-shaped `/thin-a11y-page` fixture. The DOM-walk fallback writes
+// `getAttribute("role") || tagName` into `role`, so its candidates arrive as
+// role "a" for the links and "nav" for the top bar.
+//
+// The fixture's a11y tree used to be empty here, which is where the page's name
+// comes from: the conversion dropped every subtree under an `ignored` node, and
+// Chromium marks `<html>` / `<body>` ignored on every page. Since that fix the
+// a11y tier reports these links too (as role `link`), so both tiers emit a
+// candidate for the same element. The DOM-walk half is what this keystone pins.
 //
 // `find`'s interactive bonus and container demotion key off ARIA role names, so
 // neither fired for any DOM-walk candidate until the resolution moved to the
@@ -81,7 +85,7 @@ afterAll(async () => {
 
 describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
   it(
-    "the a11y tree is thin, so the fixture exercises the fallback path",
+    "the DOM-walk fallback contributes its own bare-tag entries",
     async () => {
       await openOn("ks-find-tag-roles-thin");
       const snap = (
@@ -89,8 +93,11 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
           text: string;
         }
       ).text;
-      expect(snap).toContain('"a11yInteractive":0');
-      expect(snap).toContain('a "past"');
+      // Both tiers report this fixture: the a11y tier as role `link`, the DOM
+      // walk as the bare tag `a`, marked [from-dom].
+      expect(snap).toMatch(/a "past".*\[from-dom\]/);
+      expect(snap).toContain('link "past"');
+      expect(snap).toContain('"tier":"mixed"');
     },
     KEYSTONE_TIMEOUT,
   );
@@ -115,11 +122,13 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
       expect(linkAt).toBe(0);
       expect(navAt).toBeGreaterThan(linkAt);
 
-      const link = found.candidates[linkAt] as Candidate;
+      // The bare-tag candidates are the DOM walk's — the a11y tier resolves the
+      // same elements to `link` / `navigation`, so pick by role, not position.
+      const link = found.candidates.find((c) => c.testId === "past" && c.role === "a");
       const navBar = found.candidates[navAt] as Candidate;
 
-      // Both are DOM-walk-sourced: the bare tag, never the resolved ARIA role.
-      expect(link.role).toBe("a");
+      // DOM-walk-sourced: the bare tag, never the resolved ARIA role.
+      expect(link, "a bare-tag `a` candidate for past").toBeTruthy();
       expect(navBar.role).toBe("nav");
 
       // Container demotion on a bare `nav` is pinned deterministically in the
@@ -130,7 +139,7 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
       // That the +2 interactive bonus fires on a bare-tag `<a>` is pinned as a
       // delta in the `scoreNode` unit tests; an absolute here would only re-bake
       // the whole scoring formula into a browser test.
-      expect(link.score).toBeGreaterThan(0);
+      expect(link!.score).toBeGreaterThan(0);
     },
     KEYSTONE_TIMEOUT,
   );
