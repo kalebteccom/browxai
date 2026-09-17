@@ -130,12 +130,28 @@ export async function getA11yTree(
   // Paths: an ignored node still contributes its `${role}[${i}]` segment even
   // though it emits no node, so a path can name a node the output doesn't
   // contain. That is the deliberate trade. The path feeds `elementKey`, and a
-  // ref's whole job is to survive re-snapshotting; a wrapper flipping between
-  // ignored and exposed (an `aria-hidden` toggle, a `display` change moving
-  // Chromium's `uninteresting` verdict) must not re-key everything beneath it.
-  // Dropping the segment would rotate every descendant ref on such a flip, and
-  // `[ref=eN]` is re-resolved at action time. Sibling indices count raw
-  // `childIds` positions for the same reason.
+  // ref's whole job is to survive re-snapshotting.
+  //
+  // What the segment buys, measured against real Chromium: a wrapper that flips
+  // between ignored and exposed WITH ITS AX ROLE VALUE UNCHANGED keeps every
+  // descendant ref. Giving a bare `<div>` an `aria-label` moves Chromium's
+  // `uninteresting` verdict off it — the node goes ignored → exposed and stays
+  // `generic` — and the button beneath it holds its `eN`. Sibling indices count
+  // raw `childIds` positions for the same reason: an ignored sibling keeps its
+  // slot rather than shifting everything after it.
+  //
+  // What it does not buy, same measurement:
+  //   - A wrapper whose AX ROLE VALUE changes re-keys its descendants, because
+  //     the role is part of the segment. `generic` → `group` rotated the button
+  //     underneath it.
+  //   - `role="presentation"` re-keys them too, and for a different reason:
+  //     Chromium drops the node from the tree entirely rather than marking it
+  //     ignored, so there is no segment left to keep and the path shortens.
+  //   - `aria-hidden` is not a ref-stability case at all. Chromium marks the
+  //     container AND its descendants ignored, so the button is not in the tree
+  //     to hold a ref.
+  // `[ref=eN]` is re-resolved at action time, so a rotated ref is a stale
+  // handle, not a wrong click.
   const seen = new Set<string>();
 
   /** Materialise one raw node (no children) and mint its ref. */

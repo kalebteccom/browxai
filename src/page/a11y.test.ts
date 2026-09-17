@@ -190,9 +190,10 @@ describe("getA11yTree — path and ref stability", () => {
   });
 
   it("a wrapper flipping to ignored does not move its descendants' refs", async () => {
-    // One registry, two snapshots — the second with `aria-hidden` toggled onto
-    // the wrapper. This is the cross-snapshot coherence constraint refs exist
-    // for: the button is the same element, so it keeps its eN.
+    // One registry, two snapshots — the second with the wrapper marked ignored
+    // and its AX role value unchanged. This is the cross-snapshot coherence
+    // constraint refs exist for, and the exact shape Chromium produces when its
+    // `uninteresting` verdict moves on an otherwise-unchanged wrapper.
     const exposed: FixtureNode[] = [
       { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
       { nodeId: "2", parentId: "1", role: { value: "none" }, childIds: ["3"] },
@@ -211,6 +212,28 @@ describe("getA11yTree — path and ref stability", () => {
       return null;
     };
     expect(findButton(after!)!.ref).toBe(findButton(before!)!.ref);
+  });
+
+  it("a wrapper whose ROLE changes re-keys its descendants — the limit of the guarantee", async () => {
+    // The role value is part of the path segment, so a wrapper that changes
+    // role rotates every ref beneath it. Verified against real Chromium:
+    // `generic` → `group` on a plain `<div>` moved the button from e3 to e6,
+    // and `role="presentation"` moved it again because Chromium drops the node
+    // from the tree entirely instead of marking it ignored. The CHANGELOG and
+    // the comment in `a11y.ts` claim ref stability only for the flip that keeps
+    // the role.
+    const asGeneric: FixtureNode[] = [
+      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+      { nodeId: "2", parentId: "1", role: { value: "generic" }, childIds: ["3"] },
+      { nodeId: "3", parentId: "2", role: { value: "button" }, name: { value: "Save" } },
+    ];
+    const asGroup = asGeneric.map((n) =>
+      n.nodeId === "2" ? { ...n, role: { value: "group" } } : n,
+    );
+    const refs = new RefRegistry();
+    const before = await getA11yTree(cdpServing(asGeneric), refs);
+    const after = await getA11yTree(cdpServing(asGroup), refs);
+    expect(before!.children[0]!.children[0]!.ref).not.toBe(after!.children[0]!.children[0]!.ref);
   });
 
   it("an ignored sibling does not shift its later siblings' path indices", async () => {

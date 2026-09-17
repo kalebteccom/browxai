@@ -237,7 +237,7 @@ Persistence model: each call records the resolved value on the session's `device
 
 ### `snapshot`
 
-Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot, which is what makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`.
+Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot, which is what makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths in the same snapshot are `[from-both]`. In practice `[from-both]` does not appear today: the two tiers key refs on different vocabularies (the a11y tier on the ARIA role and accessibility-tree path, the DOM walk on the bare tag and DOM path), so an element both tiers see is reported twice, with different refs. Prefer the a11y-tier entry when you have one — its ref resolves through role + name or a test attribute rather than a positional CSS path.
 
 Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient: generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[<test-attr>=…]`) are inlined. Test-attribute hints emit the **actual attribute name** that matched (e.g. `[data-type="feature-panel-language-input"]`) so you can transcribe the selector directly.
 
@@ -246,6 +246,8 @@ When the a11y tree has fewer than 5 interactive descendants under root, a warnin
 `stats.tier` names which tier supplied the interactive content: `a11y`, `dom-walk`, `mixed`, or `empty`. `dom-walk` is the degraded case — the accessibility tier found nothing and the DOM-walk fallback answered on its own. Non-Chromium engines and child-frame snapshots report `dom-walk` by construction: neither runs a CDP accessibility pass.
 
 Nodes CDP marks `ignored` (presentational wrappers, layout tables, and `<html>` / `<body>`, which Chromium marks ignored on essentially every page) contribute no line of their own, and their children take their place in document order. An `aria-hidden` container's descendants are themselves ignored, so nothing under it reaches the a11y tier — the DOM walk still reports it, `[from-dom]`-marked.
+
+Chromium's text and layout leaves get no line either: `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable` / `LayoutTableRow` / `LayoutTableCell`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby` / `RubyAnnotation`, `superscript` and `subscript`. Each carries text its enclosing control, heading, cell or paragraph already names, so emitting both printed the page twice — two thirds of the serialised body across six real pages. Use `text_search` or `extract` to read page text; one of these nodes bearing a configured test attribute is still emitted, and `find` will still rank it.
 
 **Inputs (all optional):**
 
@@ -283,6 +285,7 @@ Find candidate elements by natural-language description.
 - **Attached/BYOB bbox reliability:** the CDP visible-rect path can spuriously null out a _rendered_ DOM-walk node on an attached Chrome (no live backend node, cross-frame quirks), which would wrongly classify it `off-screen` (and make `visibleOnly:true` drop a correct hit). `find` now falls back to Playwright's own locator bounding box before classifying. A node that is genuinely on the page keeps a real `bbox` / `actionable:true`. So `visibleOnly` is dependable in attached mode, not just managed/incognito.
 - `confidenceFloor`: emit a `warnings: ["no candidate scored confidently above N (top score: …)"]` block when no top candidate exceeds this score. Default `0` (off). Pass e.g. `0.5` (or any chosen integer) to get a "fall through to snapshot" signal instead of grinding through low-quality results.
 - `contextRef`: limit ranking to descendants of this ref. Lets you say "the X _under_ Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
+- **Not candidates:** the text and layout leaves `snapshot` suppresses (`StaticText`, `LineBreak`, `ListMarker`, `LayoutTable*`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby*`, `superscript`, `subscript`) and the document root (`RootWebArea` / `WebArea`). None is addressable — `role=StaticText[name="button"]` is not a locator the engine resolves — and ranking one costs a slot the real control then does not get, because the list is cut to `maxCandidates` before the candidates are probed. A node carrying a configured test attribute is ranked whatever its role.
 
 **Output:** JSON
 
