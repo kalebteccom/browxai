@@ -26,8 +26,9 @@ interface FixtureNode {
 }
 
 /** A CDP session that serves `nodes` from `Accessibility.getFullAXTree` and
- *  nothing else. `DOM.getAttributes` returns empty so testId enrichment is a
- *  no-op and the refs under test come purely from role/name/path. */
+ *  nothing else. `DOM.getDocument` returns a document with no elements, so the
+ *  test-attribute sweep attaches nothing and the refs under test come purely
+ *  from role/name/path. */
 function cdpServing(nodes: FixtureNode[]): CDPSession {
   return {
     send: vi.fn(async (method: string) => {
@@ -36,8 +37,8 @@ function cdpServing(nodes: FixtureNode[]): CDPSession {
           return {};
         case "Accessibility.getFullAXTree":
           return { nodes };
-        case "DOM.getAttributes":
-          return { attributes: [] };
+        case "DOM.getDocument":
+          return { root: { backendNodeId: 1, children: [] } };
         default:
           throw new Error(`unexpected CDP method ${method}`);
       }
@@ -277,5 +278,99 @@ describe("getA11yTree — malformed graphs terminate", () => {
     const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
     expect(tree!.children[0]!.children.map((c) => c.role)).toEqual(["button"]);
     expect(tree!.children[1]!.children).toEqual([]);
+  });
+});
+
+describe("getA11yTree — the test-attribute sweep", () => {
+  /** `Accessibility.getFullAXTree` reports a BACKEND node id; the sweep keys on
+   *  the same id, which is what the per-node `DOM.getAttributes` loop got wrong
+   *  (it passed a `BackendNodeId` where a `DOM.NodeId` was wanted, and no
+   *  `DOM.getDocument` had ever run, so every call failed). */
+  function cdpWithDom(nodes: FixtureNode[], root: unknown): CDPSession {
+    return {
+      send: vi.fn(async (method: string) => {
+        switch (method) {
+          case "Accessibility.enable":
+            return {};
+          case "Accessibility.getFullAXTree":
+            return { nodes };
+          case "DOM.getDocument":
+            return { root };
+          default:
+            throw new Error(`unexpected CDP method ${method}`);
+        }
+      }),
+    } as unknown as CDPSession;
+  }
+
+  const axNodes: FixtureNode[] = [
+    { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2"] },
+    {
+      nodeId: "2",
+      parentId: "1",
+      role: { value: "button" },
+      name: { value: "Save" },
+      backendDOMNodeId: 40,
+    },
+  ];
+
+  it("attaches the attribute value, keyed by backend node id", async () => {
+    const refs = new RefRegistry();
+    const tree = await getA11yTree(
+      cdpWithDom(axNodes, {
+        backendNodeId: 1,
+        children: [{ backendNodeId: 40, attributes: ["id", "save", "data-testid", "save-btn"] }],
+      }),
+      refs,
+      ["data-testid"],
+    );
+    const button = tree!.children[0]!;
+    expect(button.testId).toBe("save-btn");
+    expect(button.testIdAttr).toBe("data-testid");
+    // And the registry can rebuild a tier-1 locator from it.
+    expect(refs.locatorOf(button.ref)?.testId).toBe("save-btn");
+  });
+
+  it("honours the caller's attribute preference order, not the DOM's", async () => {
+    const tree = await getA11yTree(
+      cdpWithDom(axNodes, {
+        backendNodeId: 1,
+        children: [{ backendNodeId: 40, attributes: ["data-cy", "cy-val", "data-test", "t-val"] }],
+      }),
+      new RefRegistry(),
+      ["data-test", "data-cy"],
+    );
+    expect(tree!.children[0]!.testIdAttr).toBe("data-test");
+  });
+
+  it("reaches an element nested anywhere under the document", async () => {
+    const tree = await getA11yTree(
+      cdpWithDom(axNodes, {
+        backendNodeId: 1,
+        children: [
+          {
+            backendNodeId: 2,
+            children: [
+              { backendNodeId: 3, children: [{ backendNodeId: 40, attributes: ["data-qa", "q"] }] },
+            ],
+          },
+        ],
+      }),
+      new RefRegistry(),
+      ["data-qa"],
+    );
+    expect(tree!.children[0]!.testId).toBe("q");
+  });
+
+  it("survives a DOM agent that refuses", async () => {
+    const cdp = {
+      send: vi.fn(async (method: string) => {
+        if (method === "Accessibility.enable") return {};
+        if (method === "Accessibility.getFullAXTree") return { nodes: axNodes };
+        throw new Error("DOM agent not enabled");
+      }),
+    } as unknown as CDPSession;
+    const tree = await getA11yTree(cdp, new RefRegistry(), ["data-testid"]);
+    expect(tree!.children[0]!.testId).toBeUndefined();
   });
 });
