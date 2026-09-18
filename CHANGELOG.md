@@ -63,8 +63,8 @@ surface" covers.
 
   **Size.** Measured on the same six pages (react.dev/learn, MDN's Using Fetch,
   Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
-  Hacker News front page): 59,559 → 49,881 estimated tokens for the serialised
-  body, −16%. 1,263 of the 1,274 DOM-walk entries merged.
+  Hacker News front page): 59,559 → 49,904 estimated tokens for the serialised
+  body, −16%. 1,268 of the 1,274 DOM-walk entries merged.
 
   **Cost.** No additional CDP round trip: the `DOM.getDocument` sweep is the one
   that already ran, and a path is resolved by descending the tree it returned
