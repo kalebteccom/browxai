@@ -614,7 +614,7 @@ const FIND_STATICTEXT_PAGE = `<!doctype html>
     <ul><li>button</li><li>button</li><li>search button</li></ul>
     <p><code>button</code></p>
   </main>
-  <output id="find-log">unclicked</output>
+  <output id="find-log" data-testid="find-log">unclicked</output>
 </body></html>`;
 
 const OVERFLOW_PAGE = `<!doctype html>

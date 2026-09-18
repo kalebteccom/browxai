@@ -118,6 +118,10 @@ describe("find keystone — text leaves are not candidates", () => {
         ref: found.candidates[0]!.ref,
       });
       expect(clicked.ok).toBe(true);
+      // The log element carries a test attribute, so the DOM-walk tier reports
+      // it by name. Bare page text no longer reaches a snapshot: the `status`
+      // node the a11y tier emits for `<output>` has no accessible name of its
+      // own, and its `StaticText` child gets no line.
       expect(await callText("snapshot", { session })).toContain("search-clicked");
     },
     KEYSTONE_TIMEOUT,
