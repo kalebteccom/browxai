@@ -169,12 +169,15 @@ export async function getA11yTree(
     };
     applyAxProperties(node, raw.properties ?? []);
     // testId attaches later, in enrichTestIds.
-    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), {
-      role,
-      name,
-      testId: node.testId,
-      source: "a11y",
-    });
+    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }));
+    // Augment, never overwrite. `forKey(key, locator)` replaces the ref's whole
+    // locator record, and this runs on every pre/post-action delta tree as well
+    // as on `snapshot` — so it used to wipe the `cssPath` the tier merge had
+    // attached, and a ref whose role+name locator matched two nodes lost the
+    // one input that tells them apart. The key hashes role, name, path and
+    // testId, so a ref's role and name cannot change under it; there is nothing
+    // here that an existing record could be stale about.
+    refs.augmentLocator(node.ref, { role, name, testId: node.testId, source: "a11y" });
     return node;
   };
 
