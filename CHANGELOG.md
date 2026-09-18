@@ -10,6 +10,79 @@ surface" covers.
 
 ### Changed
 
+- **An element both snapshot tiers see is now one line with one ref, marked
+  `[from-both]`.** The two tiers keyed their refs on different vocabularies —
+  the accessibility tier on the ARIA role plus the accessibility path, the DOM
+  walk on the bare tag plus the DOM path — so the same `<a>` was `link` at one
+  key and `a` at another, no entry could ever match, and every DOM-walk entry was
+  appended unconditionally. Hacker News reported its 228 anchors twice; across
+  six real pages `stats.domWalkCombined` was `0` and `[from-both]` never
+  appeared. An agent counting buttons got double, and one that clicked the
+  DOM-walk ref then re-snapshotted saw the accessibility ref unchanged and could
+  not tell whether its click had landed somewhere else.
+
+  **The identity is the CDP backend node id**, which the accessibility tier
+  carries on every node. The DOM walk has none — it runs as an injected function
+  and sees DOM nodes, not CDP ids — so the join reads it out of the
+  `DOM.getDocument` sweep that already runs for test attributes, by walking the
+  entry's own `:nth-child` path down the swept document. No extra round trip.
+
+  **Nothing is merged on resemblance.** The path picks one child per level and
+  the tag at that index has to match, so it pins the whole ancestor chain; the
+  element's `id` and test attribute are checked on top of it. Two buttons with
+  the same role, the same accessible name and the same `data-testid` stay two
+  refs. Every uncertainty refuses and keeps the duplicate: a path that resolves
+  to nothing, an element that disagrees about its own `id` or test attribute, a
+  backend node id two accessibility nodes claim, and any path that is not a
+  `tag:nth-child(n)` chain — which is every shadow-root path, since the walk's
+  path for a shadow-rooted element stops at the shadow boundary. A closed-shadow
+  entry carries no path at all and never merges.
+
+  An entry whose accessibility node the serialiser emits no line for (a nameless
+  `generic`, a `StaticText`) is also left alone: folding it in would take the
+  element out of the snapshot rather than deduplicate it. That is 3 entries of
+  1,271 across the six pages.
+
+  **What changes for you.** Where you saw two lines for one element you now see
+  one, on the accessibility tier's line, with the accessibility tier's ARIA role
+  (`link`, not the bare tag `a`), its accessible name and its ref. That line
+  gains the DOM walk's findings: the tag, the positional CSS path, the `href` /
+  `input type` discriminators, and the test attribute on roles the accessibility
+  tier's own sweep does not cover. `stats.domWalkCombined` is non-zero and means
+  what it says; `stats.domWalkNew` counts only elements the accessibility tier
+  does not have, so `stats.tier` reads `a11y` rather than `mixed` on a page where
+  the DOM walk contributed nothing new.
+
+  **Refs.** No ref moves. The surviving ref is the accessibility tier's, minted
+  from the same key as before; the DOM-walk key for the same element is simply
+  never minted, so ref numbering for everything else is unchanged within a
+  session. A ref a caller already holds from an earlier snapshot still resolves —
+  the registry keeps it — it just stops appearing in the output. What you lose is
+  the second, `[from-dom]` handle on an element the accessibility tier also
+  reports; address it by its accessibility ref instead.
+
+  **Size.** Measured on the same six pages (react.dev/learn, MDN's Using Fetch,
+  Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
+  Hacker News front page): 59,559 → 49,881 estimated tokens for the serialised
+  body, −16%. 1,263 of the 1,274 DOM-walk entries merged.
+
+  **Cost.** No additional CDP round trip: the `DOM.getDocument` sweep is the one
+  that already ran, and a path is resolved by descending the tree it returned
+  rather than from a table of every element in the document. Interleaved over 101
+  pairs on the same captured page, the merge went 0.89 ms → 2.09 ms on
+  Wikipedia's GDP list and 0.35 ms → 0.56 ms on Hacker News, against whole
+  composes of ~236 ms and ~36 ms.
+
+- **A ref keeps the locator inputs the other tier contributed.** `getA11yTree`
+  re-minted each ref's locator record wholesale, and it runs on every pre- and
+  post-action delta tree as well as on `snapshot` — so the first action of a
+  session wiped the positional CSS path the tier merge had just attached, and
+  `find`'s tier-5 fallback and the ambiguity re-resolution lost the one input
+  that tells two same-role, same-name elements apart. The record is merged now.
+  A ref's key hashes its role, name, path and test attribute, so its role and
+  name cannot change under it and there is nothing an existing record could be
+  stale about.
+
 - **Snapshots now carry the accessibility tree they were always meant to, so
   snapshot output changes on every page.** The CDP conversion dropped an
   `ignored` node's entire subtree, and Chromium marks `<html>` and `<body>`
@@ -19,9 +92,10 @@ surface" covers.
   keystone fixture the a11y tier went from 1 node to 111.
 
   **What changes for you.** Snapshots are longer and more deeply nested: roles
-  are real ARIA roles (`link`, not the bare tag `a`), structure that was missing
-  entirely is present, and many elements now show up twice — once from the a11y
-  tier and once, `[from-dom]`-marked, from the DOM walk, with different refs.
+  are real ARIA roles (`link`, not the bare tag `a`) and structure that was
+  missing entirely is present. (This also surfaced the duplication the
+  backend-node-id join above fixes: an element both tiers saw appeared twice,
+  once `[from-dom]`-marked, with two unrelated refs.)
   `stats.a11yInteractive` is no longer `0` on semantic pages, so the low-content
   warning stops firing where it was firing spuriously. Use `maxNodes` / `omit` /
   `scope` if a page's snapshot is larger than you want.
@@ -108,12 +182,9 @@ surface" covers.
   `empty` while the DOM walk was carrying the whole thing — and flipped every
   `[from-dom]` marker to `[from-both]`. Both counts now describe the snapshot in
   hand: `domWalkNew` counts entries the a11y tier did not already put in this
-  tree, `domWalkCombined` counts entries it did. `domWalkCombined` is `0` on
-  every page measured and `[from-both]` no longer appears, because the two tiers
-  key refs on different vocabularies (ARIA role + accessibility path against
-  bare tag + DOM path) and so never land on the same ref. That is also why an
-  element found by both tiers appears twice with different refs; deduplicating
-  needs a shared identity between the tiers and is not in this change.
+  tree, `domWalkCombined` counts entries it did. Both were honest but dormant
+  while the two tiers keyed refs on different vocabularies and so never landed
+  on the same ref; the backend-node-id join above is what made them reachable.
 
 - **The `snapshot` header's `stats` reports `tier`** — `a11y`, `dom-walk`,
   `mixed` or `empty` — naming which tier supplied the interactive content.
