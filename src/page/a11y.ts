@@ -287,9 +287,7 @@ async function readTestAttributes(
   const found = new Map<number, { testId: string; testIdAttr: string }>();
   let root: RawDomNode;
   try {
-    ({ root } = (await cdp.send("DOM.getDocument", { depth: -1 })) as {
-      root: RawDomNode;
-    });
+    root = (await cdp.send("DOM.getDocument", { depth: -1 })).root;
   } catch {
     // No DOM agent (detached target, mid-navigation) — no test ids this pass.
     return found;
@@ -303,13 +301,19 @@ async function readTestAttributes(
       const hit = firstTestAttr(n.attributes, attrs);
       if (hit) found.set(n.backendNodeId, hit);
     }
-    for (const c of n.children ?? []) stack.push(c);
-    for (const c of n.shadowRoots ?? []) stack.push(c);
-    for (const c of n.pseudoElements ?? []) stack.push(c);
-    if (n.contentDocument) stack.push(n.contentDocument);
-    if (n.templateContent) stack.push(n.templateContent);
+    pushDomChildren(n, stack);
   }
   return found;
+}
+
+/** A `DOM.Node`'s children hang off five different fields. Missing any one of
+ *  them silently loses a whole subtree's test attributes. */
+function pushDomChildren(n: RawDomNode, stack: RawDomNode[]): void {
+  for (const c of n.children ?? []) stack.push(c);
+  for (const c of n.shadowRoots ?? []) stack.push(c);
+  for (const c of n.pseudoElements ?? []) stack.push(c);
+  if (n.contentDocument) stack.push(n.contentDocument);
+  if (n.templateContent) stack.push(n.templateContent);
 }
 
 /**
