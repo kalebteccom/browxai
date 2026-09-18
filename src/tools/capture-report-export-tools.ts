@@ -2,7 +2,7 @@ import { requireCdp, requirePage } from "../engine/index.js";
 import { withDeadline } from "../util/deadline.js";
 import { estimateTokens } from "../util/tokens.js";
 import { assetExport } from "../page/asset-export.js";
-import { pdfSave, assertPdfSupported } from "../page/pdf.js";
+import { assertPdfSupported } from "../page/pdf.js";
 import { pageArchive } from "../page/archive.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
@@ -14,7 +14,8 @@ import type { ToolHost } from "./host.js";
  * construction; registered through the shared `ToolHost` seam.
  */
 export function registerCaptureReportExportTools(host: ToolHost): void {
-  const { z, register, gateCheck, engineGate, entryFor, cfgActionTimeout, workspace } = host;
+  const { z, register, gateCheck, engineGate, entryFor, captureFor, cfgActionTimeout, workspace } =
+    host;
 
   // `asset_export` — filter the session's network ring and persist matching
   // responses to a workspace-rooted dir. Mirrors `download_get`'s file-io
@@ -200,8 +201,15 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
             ],
           };
         }
+        // Through the capture port. This handler held a `requirePage` purely to
+        // hand the `Page` to `pdfSave` while `captureFor(e)` sat unused beside it
+        // — RFC 0009's `pdf` bypass cluster. The engine gate above still runs
+        // first (`pdf_save` keeps `deep: true`), so what changes for a Playwright
+        // engine is which module calls `page.pdf()`, and nothing else.
         const r = await withDeadline(
-          pdfSave(requirePage(e.session), workspace.root, e.id, {
+          captureFor(e).pdf({
+            workspaceRoot: workspace.root,
+            sessionId: e.id,
             path: args.path,
             format: args.format,
             scale: args.scale,
@@ -210,7 +218,11 @@ export function registerCaptureReportExportTools(host: ToolHost): void {
           cfgActionTimeout(),
           "pdf_save",
         );
-        return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
+        const body =
+          r.kind === "saved"
+            ? r.result
+            : { ok: false, error: r.error, ...(r.hint ? { hint: r.hint } : {}) };
+        return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         return {
           content: [

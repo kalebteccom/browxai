@@ -22,4 +22,10 @@ export type {
   CaptureRefusal,
   CaptureResult,
   CaptureSubstrate,
+  // The pdf + video widening (RFC 0009 P3).
+  PdfRequest,
+  PdfSaved,
+  PdfRefused,
+  PdfResult,
+  VideoSave,
 } from "./capture-substrate-types.js";

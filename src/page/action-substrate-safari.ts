@@ -15,6 +15,11 @@ import type { RefRegistry } from "./refs.js";
 import type { SafariSessionHandle } from "../engine/index.js";
 import { directDispatchUnsupported } from "./actions-direct-dispatch.js";
 import {
+  touchDispatchUnsupported,
+  type GestureRequest,
+  type GestureResult,
+} from "./gesture-types.js";
+import {
   safariNavigate,
   safariClick,
   safariFill,
@@ -68,5 +73,14 @@ export class SafariActionSubstrate implements ActionSubstrate {
   }
   async waitFor(): Promise<ActionResult> {
     return safariUnsupportedAction("waitFor");
+  }
+
+  /** safaridriver's WebDriver Classic lane has `performActions`, but browxai's
+   *  Safari client drives the curated navigate / click / fill / press subset and
+   *  no pointer-source sequence. So the touch pipeline refuses here, with the
+   *  same envelope the engine gate rendered while these tools were `deep: true`
+   *  — Safari declares `deep:false`, so it was refused then too. */
+  async gesture(req: GestureRequest): Promise<GestureResult> {
+    return touchDispatchUnsupported(req, this.engine);
   }
 }

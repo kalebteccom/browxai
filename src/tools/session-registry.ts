@@ -19,7 +19,7 @@ import {
   type SessionEntry,
   type SessionMode,
 } from "../session/registry.js";
-import { snapshotNetworkOnlyDeps } from "../session/substrate-deps.js";
+import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { newExtensionRegistry } from "../session/extensions.js";
 import { WedgeTracker } from "../session/wedge.js";
 import { SessionMetrics } from "../session/metrics.js";
@@ -30,7 +30,6 @@ import { FsPickerPolicyState } from "../session/fs-picker.js";
 import { DeviceEmulationState as WebDeviceEmulationState } from "../session/device-emu.js";
 import { RefRegistry } from "../page/refs.js";
 import { FrameRegistry } from "../page/frames.js";
-import { RouteRegistry } from "../page/routes.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { EmulationRegistry } from "../page/emulation.js";
@@ -45,7 +44,8 @@ import { SecretRegistry } from "../util/secrets.js";
 import { ClipboardBuffer } from "../page/clipboard.js";
 import { ConsoleBuffer } from "../page/console.js";
 import { newHarRecorderState, applyHarReplay } from "../page/har.js";
-import { newVideoRecorderState, finalizeVideoOnClose } from "../page/video.js";
+import { newVideoRecorderState } from "../page/video.js";
+import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import { resolveCreationOptions } from "./session-creation-options.js";
 import { BrowxBridge } from "../helper/bridge.js";
 import { Recorder } from "../page/recording.js";
@@ -105,13 +105,23 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
   // scripts on THIS server's sessions. The closure-owned local makes that
   // impossible: every session this registry opens wires with exactly these deps.
   const serverPostWireDeps: PostWireDeps = { caps, configStore, workspace };
-  // The substrate deps the registry needs to resolve a session's snapshot/network
-  // substrates. The registry only ever reads the bundle's `snapshot`/`network`
-  // selectors (the action/capture selectors — the only ones that consult
-  // ctxFor/describeTarget/save — are resolved in host-build's `substratesFor`,
-  // which owns those host locals), so the four it must never drive throw. Shared
-  // with the extension-context rebuild, the other snapshot/network-only caller.
-  const registrySubstrateDeps: SubstrateDeps = snapshotNetworkOnlyDeps("session-registry");
+  // The substrate deps the registry resolves its substrates with. It holds none
+  // of the server's host config (`ctxFor` / `describeTarget` / `save` are
+  // host-build's), so each of those throws if reached — lazily, when called. The
+  // registry drives `snapshot` and `network` at session creation and the capture
+  // port's video flush at teardown; `screenshot` on that same capture object
+  // still refuses. Shared with the extension-context rebuild.
+  const registrySubstrateDeps: SubstrateDeps = hostFreeSubstrateDeps("session-registry");
+  /** The capture port for a session, from the engine's own bundle.
+   *
+   *  Teardown-only, and only for `prepareVideoSave`. Flushing a recording is the
+   *  one capture member that needs no host closure, and routing it through the
+   *  port is what takes the last Playwright-`Page` read out of the teardown path
+   *  — an engine with no `Page` answers `null` instead of throwing at
+   *  `requirePage`, and RFC 0008 §5's segmented native writer has somewhere to
+   *  land. (RFC 0009 P3.) */
+  const captureFor = (e: SessionEntry): CaptureSubstrate =>
+    engineEntry(e.session.engine).makeSubstrates(registrySubstrateDeps).capture(e);
   return new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
@@ -386,7 +396,6 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         recorder: new Recorder(),
         feedback: new FeedbackMemory(),
         clipboard: new ClipboardBuffer(),
-        routes: new RouteRegistry(),
         // The page-side WS-interactive + workers wrappers install EAGERLY — but
         // that install is a Playwright-Page concern, so it has moved into the
         // engine's `postWire` (capability-gated on `action` / `read`). Here we
@@ -462,17 +471,21 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // data on disk. `abort()` is a no-op when nothing is recording.
       await e.replay.abort().catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
-      // Capture page reference BEFORE close — `page.video()` resolves the
-      // Video handle, but the actual .webm is only flushed by the underlying
-      // context.close() that `e.session.close()` triggers. `video.saveAs()`
-      // (called inside finalizeVideoOnClose) blocks until the page is closed
-      // AND the recording is fully written, so the order is: grab page →
-      // close context → saveAs to deterministic target path.
-      const videoPage = e.video.active ? requirePage(e.session) : undefined;
+      // Take the video flush BEFORE close, run it after. The engine handle the
+      // flush needs has to be resolved while the session is live, but the bytes
+      // only exist once `e.session.close()` has closed the underlying context —
+      // `video.saveAs()` blocks until the page is closed AND the recording is
+      // fully written. So the order is: take the flush → close → flush to the
+      // deterministic target path.
+      //
+      // Through the capture port (RFC 0009 P3). This was `requirePage(e.session)`
+      // handed to `finalizeVideoOnClose`, the last Playwright-`Page` read in the
+      // teardown path and the whole of the RFC's `video` bypass cluster. An
+      // engine with no `Page` answers `null` and the teardown skips the flush,
+      // which is what it already did for a session with no recorder.
+      const flushVideo = e.video.active ? await captureFor(e).prepareVideoSave(e.video) : null;
       await e.session.close().catch(() => undefined);
-      if (videoPage) {
-        await finalizeVideoOnClose(videoPage, e.video).catch(() => undefined);
-      }
+      if (flushVideo) await flushVideo().catch(() => undefined);
       // Clear session-scoped artifacts on teardown. Best-effort: a stuck
       // rm won't block teardown. Sessions that never wrote an artifact
       // never create the dir, so this is a no-op for them.

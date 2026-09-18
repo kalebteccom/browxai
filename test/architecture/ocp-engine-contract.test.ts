@@ -159,6 +159,30 @@ describe("L1 — a new engine adapter plugs in with zero core edits", () => {
         "handle was made lazy, this tool runs Page-free and this case should assert ok:true",
     ).toMatch(/CDP/i);
 
+    // RFC 0009 P3's row of the enforcement table: the Page-free engine drives
+    // `scroll` and `gesture_swipe`. Scroll already ran here — it is an
+    // `ActionSubstrate` verb. `gesture_swipe` could not: it carried `deep: true`,
+    // so `assertEngineSupports` refused it on this `deep:false` engine BEFORE the
+    // substrate was asked, even though `InMemoryActionSubstrate` can dispatch it.
+    // That is the blocker RFC 0008 §1 names — on a native target touch is the
+    // primary input and CDP is absent — and the assertion below is what it looks
+    // like once the flag is gone and the refusal lives at
+    // `ActionSubstrate.gesture` instead.
+    const scrolled = JSON.parse(
+      (await server.handlers.scroll({ direction: "down" })).content[0]!.text as string,
+    ) as { ok: boolean };
+    expect(scrolled.ok, "scroll must run through ActionSubstrate on a Page-free engine").toBe(true);
+    const swiped = JSON.parse(
+      (await server.handlers.gesture_swipe({ from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, steps: 2 }))
+        .content[0]!.text as string,
+    ) as { ok: boolean; error?: string; steps?: number };
+    expect(
+      swiped.error,
+      "gesture_swipe must not be refused by the engine gate — the deep flag retired in P3",
+    ).toBeUndefined();
+    expect(swiped.ok).toBe(true);
+    expect(swiped.steps, "the swipe reports the substrate's own evidence body").toBe(2);
+
     // deep:false ⇒ a CDP-hard tool structured-refuses, no per-engine gate edit.
     const refusal = JSON.parse(
       (await server.handlers.perf_start({}).then((r) => r.content[0] as { text: string })).text,

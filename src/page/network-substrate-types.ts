@@ -18,6 +18,13 @@
 
 import type { SecretRegistry } from "../util/secrets.js";
 import type {
+  RouteQueueSpec,
+  RouteResult,
+  RouteSelector,
+  RouteSpec,
+  UnrouteResult,
+} from "./route-types.js";
+import type {
   NetworkEntry,
   NetworkSummary,
   MutationEntry,
@@ -76,4 +83,16 @@ export interface NetworkSubstrate {
    *  `network-body`). CDP fetches on demand; the Playwright path returns a body
    *  captured at response time. */
   fetchBody(requestId: string, secrets: SecretRegistry | null): Promise<FetchBodyResult>;
+  /** Install a request interception (`route`, or `route_queue` when the spec
+   *  carries `responses`) and report the session's route list after it.
+   *
+   *  The interception REGISTRY lives here, not on the session entry, because it
+   *  is the one piece of per-session state whose lifetime is the substrate's: a
+   *  route is a handler installed on an engine handle, and only the substrate
+   *  holds one. `e.routes` was a `RouteRegistry` on `SessionEntry` that three
+   *  handlers drove by passing it `requirePage(e.session)` — the whole of RFC
+   *  0009's `route` / `unroute` cluster. */
+  route(spec: RouteSpec | RouteQueueSpec): Promise<RouteResult>;
+  /** Remove one interception, or every one this session registered. */
+  unroute(sel: RouteSelector): Promise<UnrouteResult>;
 }

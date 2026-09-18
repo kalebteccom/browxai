@@ -22,6 +22,7 @@
 // (RFC 0009 P1.)
 import type { ActionResult } from "./actionresult-types.js";
 import type * as actions from "./actions-types.js";
+import type { GestureRequest, GestureResult } from "./gesture-types.js";
 
 /** The action capability port. One instance wraps one session's engine handle;
  *  the methods carry no engine type, so the handlers above this seam are
@@ -40,4 +41,18 @@ export interface ActionSubstrate {
   chooseOption(args: actions.ChooseOptionArgs): Promise<ActionResult>;
   setViewport(args: actions.SetViewportArgs): Promise<ActionResult>;
   waitFor(args: actions.WaitForArgs): Promise<ActionResult>;
+  /** Touch and multi-touch, as ONE member taking a discriminated request
+   *  (`touch` / `swipe` / `pinch`). The reasoning — the member-count argument
+   *  from BiDi's three-command `input` module, why W3C Actions' literal sequence
+   *  structure is not adopted, and why a native engine needs swipe and pinch as
+   *  their own request kinds — is the header of `gesture-types.ts`.
+   *
+   *  This is the member that unblocks RFC 0008. Touch is the PRIMARY input on a
+   *  native target and CDP is absent there, so while `touch_*` / `gesture_swipe`
+   *  / `gesture_pinch` were `deep: true` the gate refused a native agent exactly
+   *  the tools it needs most. The refusal moves here: an engine that cannot
+   *  dispatch touch returns `GestureRefusal` carrying the same `{error, engine,
+   *  hint}` the engine gate rendered, and an engine that can just answers.
+   *  (RFC 0009 P3.) */
+  gesture(req: GestureRequest): Promise<GestureResult>;
 }

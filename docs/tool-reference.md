@@ -2164,6 +2164,8 @@ gesture_pinch({ coords: { x: 512, y: 400 }, scale: 2, steps: 20 })   // pinch-ou
 // → { "ok": true, "coords": {…}, "scale": 2, "steps": 20, "startOffset": 40, "endOffset": 80 }
 ```
 
+**Per-engine posture.** All five run on `chromium` and `android`. On `firefox`, `webkit` and `safari` they return a structured refusal — `{ ok:false, error, engine, hint, tokensEstimate }` — because the touch pipeline dispatches through CDP `Input.dispatchTouchEvent` and those engines expose no equivalent. The refusal comes from the action substrate, so an engine that can dispatch touch by other means answers instead of being refused on a CDP question; the `error` line is unchanged from earlier versions.
+
 **Multi-touch fan-out by hand**: for gestures the canned compounds don't cover (e.g. three-finger rotate), dispatch a sequence of `touch_start` / `touch_move` / `touch_end` calls with distinct `identifier` values per finger. The CDP touch pipeline maintains active touchpoint state across dispatches as long as the identifiers stay consistent. Note that Chromium fires a separate DOM `touchstart` / `touchend` for each finger added or lifted (rather than one event with multiple `changedTouches`), even when you batch multiple points into one CDP dispatch.
 
 ### Network route mocking: `route` / `route_queue` / `unroute`

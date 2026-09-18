@@ -37,55 +37,21 @@ import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
+import type { VideoRecorderState, VideoRefusal, VideoStartConfig } from "./video-types.js";
+
+// The recorder STATE and its config/refusal shapes are plain data and live above
+// this module, in `video-types.ts`, so `CaptureSubstrate.prepareVideoSave` can
+// name them without reaching playwright-core. Re-exported here because this is
+// where every existing importer looks for them. (RFC 0009 P3.)
+export type { VideoRecorderState, VideoStartConfig, VideoRefusal } from "./video-types.js";
 
 /** Maximum size (in bytes) at which a finalized video is returned inline as
  *  base64 (`format:"bytes"`) rather than only by path. Conservative cap —
  *  video bytes balloon fast; agents that hit it should rely on the path. */
 export const VIDEO_INLINE_CAP_BYTES = 1024 * 1024; // 1 MiB
 
-/** Per-session video recorder state. One per `SessionEntry`. */
-export interface VideoRecorderState {
-  /** True between session creation (with `recordVideo`) and `close_session`. */
-  active: boolean;
-  /** Workspace-absolute path the .webm will be written to on close. Reserved
-   *  at session creation; the user-facing deterministic name. */
-  targetPath?: string;
-  /** Staging directory passed to Playwright's `recordVideo.dir`. Playwright
-   *  auto-names a file inside this dir; we move/copy it to `targetPath` on
-   *  session close via `page.video().saveAs(targetPath)`. */
-  stagingDir?: string;
-  /** Recorded video size. */
-  size?: { width: number; height: number };
-  /** epoch ms the recorder was wired (context creation time). */
-  startedAt?: number;
-  /** True once the .webm has been saved to `targetPath` on disk (i.e.
-   *  `finalizeOnClose` has run). `get_video` checks this before reading. */
-  finalized: boolean;
-  /** True once `stop_video` has been called. The actual flush still happens
-   *  on `close_session` (Playwright constraint); this just records the
-   *  agent's intent so the result envelope can carry it. */
-  pendingFinalize: boolean;
-}
-
 export function newVideoRecorderState(): VideoRecorderState {
   return { active: false, finalized: false, pendingFinalize: false };
-}
-
-/** Configuration accepted by `open_session({recordVideo})`. */
-export interface VideoStartConfig {
-  /** Workspace-rooted path. Optional — defaults to
-   *  `<workspace>/videos/<session-id>-<ISO>.webm` when omitted. Path traversal
-   *  outside the workspace is rejected. */
-  path?: string;
-  /** Recorded video size. Maps to Playwright's `recordVideo.size`. */
-  size?: { width: number; height: number };
-}
-
-/** Structured refusal — matches the shape `assertPdfSupported` returns so the
- *  tool layer can wrap it uniformly. */
-export interface VideoRefusal {
-  error: string;
-  hint: string;
 }
 
 /** Refuse video on session modes Playwright's `recordVideo` doesn't support

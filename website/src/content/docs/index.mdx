@@ -1,6 +1,6 @@
 ---
-title: Browser control built for agents
-description: Browser control built for agents. MCP-native, model-agnostic, agentic-first control across five engines, from Chromium to real Safari to Chrome on an Android device, with a curated token-efficient surface.
+title: Browser control that reaches past the tab
+description: Browser control that reaches past the tab. MCP-native control across five engines, including real Safari and real Chrome on an Android device, with off-by-default access to the OS clipboard, password managers and a workspace directory.
 template: splash
 tableOfContents: false
 editUrl: false
@@ -9,12 +9,12 @@ lastUpdated: false
 
 <div class="browx-hero not-content">
   <div class="browx-hero-copy">
-    <p class="browx-kicker">MCP-native control across five engines</p>
+    <p class="browx-kicker">MCP-native, across five engines and onto the host</p>
     <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
     <div class="browx-lede">
-      Browser control, built for agents. One curated surface across Chromium,
-      Firefox, WebKit, real Safari, and Chrome on a plugged-in Android phone.
-      Results come back small enough to act on without drowning in tokens.
+      Browser control that reaches past the tab. Five engines, including real
+      Safari and real Chrome on a plugged-in phone, plus the OS clipboard, your
+      password manager and a workspace on disk. All gated off by default.
     </div>
     <div class="browx-cta">
       <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
@@ -110,6 +110,8 @@ lastUpdated: false
   <div class="browx-section-sub">
     browxai is not a wrapper over someone else's MCP server. It owns its own
     transport to every engine it drives, so it owns the whole session lifecycle.
+    Where a task leaves the browser, browxai follows it onto the host, under a
+    capability you switch on.
   </div>
 
   <div class="browx-grid">
@@ -123,13 +125,23 @@ lastUpdated: false
       </div>
     </div>
     <div class="browx-card">
+      <span class="browx-card-mark">// host</span>
+      <h3>Reaches past the tab</h3>
+      <div class="browx-card-text">
+        A web task leaves the browser. Switch a capability on and browxai writes
+        the real OS clipboard, or pulls a login and a TOTP code from 1Password,
+        Bitwarden, LastPass or <code>oathtool</code>. File IO is rooted at one
+        workspace directory. All three capabilities start off.
+      </div>
+    </div>
+    <div class="browx-card">
       <span class="browx-card-mark">// safety</span>
       <h3>Safe by default</h3>
       <div class="browx-card-text">
         Capability-gated tools, an origin allow and block list, confirmation
         hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
-        response bodies, the OS clipboard, and network mocking are all off until
-        you opt in.
+        response bodies, the OS clipboard, your password manager, and network
+        mocking are all off until you opt in.
       </div>
     </div>
     <div class="browx-card">

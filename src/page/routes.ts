@@ -11,26 +11,32 @@
 // (delay 400) — the exact "responses out of request order" failure class.
 
 import type { Page, Route } from "playwright-core";
+import type {
+  RouteInstalled,
+  RouteQueueSpec,
+  RouteResponse,
+  RouteSelector,
+  RouteSpec,
+  UnrouteResult,
+} from "./route-types.js";
+
+// The spec/result vocabulary is plain data and lives above this module, in
+// `route-types.ts`, so `NetworkSubstrate.route` can name it without reaching
+// playwright-core. Re-exported here because this is where every existing importer
+// looks for it. (RFC 0009 P3.)
+export type {
+  RouteResponse,
+  RouteSpec,
+  RouteQueueSpec,
+  RouteSelector,
+  RouteInstalled,
+  RouteRemoved,
+  RouteRefusal,
+  RouteResult,
+  UnrouteResult,
+} from "./route-types.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-export interface RouteResponse {
-  status?: number;
-  body?: string;
-  contentType?: string;
-  delayMs?: number;
-}
-
-export interface RouteSpec extends RouteResponse {
-  urlPattern: string;
-  method?: string;
-}
-
-export interface RouteQueueSpec {
-  urlPattern: string;
-  method?: string;
-  responses: RouteResponse[];
-}
 
 const MAX_DELAY_MS = 60_000;
 
@@ -110,4 +116,31 @@ export class RouteRegistry {
   list(): string[] {
     return [...this.routes.keys()];
   }
+}
+
+/** Install one interception and report the session's route list after it. The
+ *  two bodies the `route` / `route_queue` handlers ran inline, lifted here so
+ *  BOTH Playwright network substrates delegate to one copy instead of carrying
+ *  the same eight lines twice. (RFC 0009 P3.) */
+export async function installRoute(
+  routes: RouteRegistry,
+  page: Page,
+  spec: RouteSpec | RouteQueueSpec,
+): Promise<RouteInstalled> {
+  if ("responses" in spec) {
+    const r = await routes.addQueue(page, spec);
+    return { kind: "installed", key: r.key, queued: r.queued, active: routes.list() };
+  }
+  const r = await routes.add(page, spec);
+  return { kind: "installed", key: r.key, active: routes.list() };
+}
+
+/** Remove one interception (or all of this session's) and report what is left. */
+export async function removeRoute(
+  routes: RouteRegistry,
+  page: Page,
+  sel: RouteSelector,
+): Promise<UnrouteResult> {
+  const removed = await routes.remove(page, sel);
+  return { kind: "removed", removed, active: routes.list() };
 }

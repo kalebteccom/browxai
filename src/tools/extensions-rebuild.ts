@@ -22,7 +22,7 @@ import { attachFsPickerPolicy, type FsPickerFile } from "../session/fs-picker.js
 import { attachDeviceEmulation } from "../session/device-emu.js";
 import { RefRegistry } from "../page/refs.js";
 import { engineEntry } from "../engine/registry.js";
-import { snapshotNetworkOnlyDeps } from "../session/substrate-deps.js";
+import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { ConsoleBuffer } from "../page/console.js";
@@ -103,7 +103,7 @@ export async function rebuildPersistentForExtensions(
   // an engine whose bundle did anything else would silently get the wrong
   // substrate after a rebuild. Selection is the engine's, once (RFC 0009).
   const substrates = engineEntry(sess.engine).makeSubstrates(
-    snapshotNetworkOnlyDeps("extensions-rebuild"),
+    hostFreeSubstrateDeps("extensions-rebuild"),
   );
   const substrateSeed = { session: sess } as SessionEntry;
   const networkSub = substrates.network(substrateSeed);

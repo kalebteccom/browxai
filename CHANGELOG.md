@@ -122,6 +122,42 @@ surface" covers.
   could not branch on prose. Non-Chromium engines and child frames report
   `dom-walk` by construction (no CDP accessibility tree there).
 
+- **`touch_start` / `touch_move` / `touch_end` / `gesture_swipe` / `gesture_pinch`
+  are no longer gated on the engine's raw-CDP flag** (RFC 0009 P3). All five
+  declared `deep: true`, so the engine gate refused them from `caps.deep` alone —
+  before the action substrate was consulted. That question is the wrong one for
+  these tools: touch is the primary input on the `ios-app` / `android-app` engines
+  RFC 0008 adds, and neither has CDP, so the flag would have refused a native
+  agent exactly the five tools it needs most.
+
+  The flag retired and the question became "can this engine dispatch touch",
+  asked at the new `ActionSubstrate.gesture(req)`. **Nothing widened.** Firefox
+  and WebKit still refuse all five, because their ActionContext carries no CDP
+  accessor; Safari refuses in its own adapter. The `error` line is
+  character-identical to the one the gate produced, and the envelope is the same
+  `{ok, error, engine, hint, tokensEstimate}`. The `hint` is narrower: it names
+  CDP `Input.dispatchTouchEvent` and says why there is no page-JS fallback,
+  instead of listing eight unrelated CDP domains.
+
+  `mouse_wheel` keeps `deep: true` — no port covers a coordinate-space wheel and
+  no native target has one.
+
+- **`pdf_save` and the teardown video flush go through `CaptureSubstrate`**
+  (RFC 0009 P3). Both held a Playwright `Page` above the capability seam.
+  `pdf(req)` and `prepareVideoSave(state)` join `screenshot`; the Playwright
+  bodies are the verbatim calls they replace, including which of them throw.
+  `pdf_save`'s engine gate is unchanged, so no engine's answer moves.
+
+- **`route` / `route_queue` / `unroute` go through `NetworkSubstrate`**
+  (RFC 0009 P3). The interception registry moved off `SessionEntry` and into the
+  substrate, because a route is a handler installed on an engine handle and only
+  the substrate holds one. The three tools also gate on the `network`
+  sub-interface now: on an engine that declares none, they used to surface
+  `requirePage`'s raw throw as `{ok:false, error}` — indistinguishable from "the
+  route failed to install" for an interception that was never attempted. They
+  return the standard engine-refusal envelope instead. Chromium, Firefox and
+  WebKit are unaffected; all three declare `network`.
+
 - **The `verify_*` family, `find`'s candidate probes, gesture geometry and the
   screenshot caption resolve elements through a port instead of a Playwright
   `Locator`** (RFC 0009 P2). `locatorFor(page, refs, target)` was the resolution

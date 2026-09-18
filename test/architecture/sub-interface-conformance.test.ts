@@ -70,11 +70,18 @@ const CONSUMERS: Record<
   { why: string; tools: Array<{ name: string; args: Record<string, unknown> }> }
 > = {
   network: {
-    why: "all three serve the protocol-level network rings the engine's network substrate attaches",
+    why: "the three read tools serve the protocol-level rings the engine's network substrate attaches, and the three route tools install interceptions on it",
     tools: [
       { name: "network_read", args: {} },
       { name: "ws_read", args: {} },
       { name: "network_body", args: { requestId: "r1" } },
+      // The route family joined this list with RFC 0009 P3. It used to reach
+      // `requirePage(e.session)` and surface that throw as `{ok:false, error}` —
+      // a shape indistinguishable from "the route failed to install", on an
+      // engine where it was never attempted.
+      { name: "route", args: { urlPattern: "**/x" } },
+      { name: "route_queue", args: { urlPattern: "**/x", responses: [{ status: 200 }] } },
+      { name: "unroute", args: {} },
     ],
   },
   storage: {

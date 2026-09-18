@@ -22,8 +22,8 @@ export default defineConfig({
     starlight({
       title: "browxai",
       description:
-        "Browser control built for agents. MCP-native, model-agnostic, agentic-first control across Chromium, Firefox, WebKit, real Safari, and Chrome on an Android device.",
-      tagline: "Browser control, built for agents.",
+        "Browser control that reaches past the tab. MCP-native, model-agnostic control across Chromium, Firefox, WebKit, real Safari, and Chrome on an Android device, with off-by-default access to the OS clipboard, password managers, and a workspace directory.",
+      tagline: "Browser control that reaches past the tab.",
       // Fail the build on broken internal links or heading anchors, so dead
       // links can never ship. This is the build-time "error boundary" for a
       // static docs site.
@@ -45,7 +45,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             property: "og:image:alt",
-            content: "browxai - browser control, built for agents",
+            content: "browxai - browser control that reaches past the tab",
           },
         },
         { tag: "meta", attrs: { property: "og:site_name", content: "browxai" } },
@@ -54,7 +54,7 @@ export default defineConfig({
           tag: "meta",
           attrs: {
             name: "twitter:image:alt",
-            content: "browxai - browser control, built for agents",
+            content: "browxai - browser control that reaches past the tab",
           },
         },
         { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
@@ -78,9 +78,9 @@ export default defineConfig({
             "@type": "SoftwareApplication",
             name: "browxai",
             description:
-              "MCP-native, model-agnostic, agentic-first browser-control server across five engines, over CDP, WebDriver BiDi and safaridriver.",
+              "MCP-native, model-agnostic browser-control server across five engines, over CDP, WebDriver BiDi and safaridriver, with off-by-default access to the OS clipboard, password managers, and a workspace directory.",
             applicationCategory: "DeveloperApplication",
-            operatingSystem: "Node.js (>=20)",
+            operatingSystem: "Node.js (>=22)",
             url: "https://browxai.com",
             license: "https://opensource.org/licenses/MIT",
             offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },

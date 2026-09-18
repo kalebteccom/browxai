@@ -26,56 +26,25 @@ import { resolve as resolvePath } from "node:path";
 import { statSync } from "node:fs";
 import type { Page } from "playwright-core";
 import { resolveWorkspacePath } from "../session/storage.js";
+import type {
+  PdfFormat,
+  PdfRefusal,
+  PdfSaveArgs,
+  PdfSaveResult,
+  PdfSupportContext,
+} from "./pdf-types.js";
 
-/** Paper format presets Playwright's `page.pdf()` accepts. The full Playwright
- *  set; surface every one rather than re-curating — adopters that need
- *  jurisdiction-specific paper get it without a roundtrip back to us. */
-export type PdfFormat =
-  "Letter" | "Legal" | "Tabloid" | "Ledger" | "A0" | "A1" | "A2" | "A3" | "A4" | "A5" | "A6";
-
-export interface PdfSaveArgs {
-  /** Workspace-rooted file path. Default `pdfs/<sessionId>-<ts>.pdf`. Caller
-   *  supplies a path → it's resolved inside `$BROWX_WORKSPACE` (escape
-   *  rejected); caller omits it → see `defaultPdfPath`. */
-  path?: string;
-  /** Paper format. Default "A4". */
-  format?: PdfFormat;
-  /** Render scale. Default 1. Playwright clamps to `[0.1, 2.0]`; values
-   *  outside that range are rejected up-front for a clearer error. */
-  scale?: number;
-  /** Include CSS `background-color` / `background-image` in the rendered
-   *  output. Default `false` (matches browser-print's default; caller opts
-   *  in when the artefact needs styled backgrounds). */
-  printBackground?: boolean;
-}
-
-export interface PdfSaveResult {
-  ok: true;
-  /** Absolute, workspace-rooted path the bytes were written to. */
-  path: string;
-  /** Final on-disk size, in bytes. */
-  bytes: number;
-  /** Paper format actually used. */
-  format: PdfFormat;
-  /** Scale actually used. */
-  scale: number;
-  /** Whether CSS backgrounds were printed. */
-  printBackground: boolean;
-}
-
-/** Refusal context — what the tool layer hands `assertPdfSupported`. */
-export interface PdfSupportContext {
-  /** Session mode (`registry.ts` vocabulary: `persistent` / `incognito` /
-   *  `attached`). `attached` is BYOB. */
-  mode: "persistent" | "incognito" | "attached";
-}
-
-/** Structured refusal — matches the shape `extensionRefusal` returns so the
- *  tool layer can wrap it uniformly. */
-export interface PdfRefusal {
-  error: string;
-  hint: string;
-}
+// The argument/result vocabulary is plain data and lives above this module, in
+// `pdf-types.ts`, so `CaptureSubstrate.pdf` can name it without reaching
+// playwright-core. Re-exported here because this is where every existing importer
+// looks for it. (RFC 0009 P3.)
+export type {
+  PdfFormat,
+  PdfSaveArgs,
+  PdfSaveResult,
+  PdfSupportContext,
+  PdfRefusal,
+} from "./pdf-types.js";
 
 /** Refuse PDF generation on session modes Playwright `page.pdf()` doesn't
  *  support. BYOB (`attached`) is the only refusal today: printing on a

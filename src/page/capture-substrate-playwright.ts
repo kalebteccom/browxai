@@ -17,8 +17,14 @@ import type { ScreenshotSaveResult } from "./screenshot-save.js";
 import type {
   CaptureResult,
   CaptureSubstrate,
+  PdfRequest,
+  PdfResult,
   ScreenshotRequest,
+  VideoSave,
 } from "./capture-substrate-types.js";
+import type { VideoRecorderState } from "./video-types.js";
+import { pdfSave } from "./pdf.js";
+import { finalizeVideoOnClose } from "./video.js";
 
 /** Build the Locator for an element-scoped capture. Lazily imported so the
  *  page-layer locator core is pulled only when a target is actually present —
@@ -136,5 +142,33 @@ export class PlaywrightCaptureSubstrate implements CaptureSubstrate {
           })
           .catch(() => ""),
     };
+  }
+
+  /** `page.pdf()` through the existing `pdfSave` — path resolution, the scale
+   *  bounds check and the workspace-escape rejection all unchanged, including
+   *  which of them throw. The handler's `catch` renders a throw here exactly as
+   *  it did when it called `pdfSave` itself. */
+  async pdf(req: PdfRequest): Promise<PdfResult> {
+    const page = this.page();
+    const result = await pdfSave(page, req.workspaceRoot, req.sessionId, {
+      path: req.path,
+      format: req.format,
+      scale: req.scale,
+      printBackground: req.printBackground,
+    });
+    return { kind: "saved", result };
+  }
+
+  /** Split at the seam the teardown path already had: the `Page` is resolved
+   *  NOW, while the session is live, and `page.video()` plus `saveAs` run in the
+   *  returned thunk, after `context.close()` has flushed the .webm. Both halves
+   *  are the verbatim bodies of the two lines this replaced. */
+  async prepareVideoSave(state: VideoRecorderState): Promise<VideoSave | null> {
+    // The accessor runs FIRST, before the state is inspected — the same order the
+    // element adapter uses, so a dead BYOB target rejects instead of being
+    // reported as "nothing to save".
+    const page = this.page();
+    if (!state.active || !state.targetPath) return null;
+    return () => finalizeVideoOnClose(page, state);
   }
 }
