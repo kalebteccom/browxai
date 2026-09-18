@@ -150,10 +150,19 @@ export function registerSessionLifecycleTools(
             "Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent).",
           ),
         engine: z
-          .enum(["chromium", "firefox", "webkit", "android", "safari", "electron"])
+          .enum([
+            "chromium",
+            "firefox",
+            "webkit",
+            "android",
+            "safari",
+            "ios-app",
+            "android-app",
+            "electron",
+          ])
           .optional()
           .describe(
-            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach; `electron` is a running desktop Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port` — attach-only, and it REFUSES `navigate` because loading a URL destroys the app's UI. You rarely need to name `electron`: the desktop attach lane detects it from the CDP protocol and reports it on the session either way. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
+            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. `ios-app` and `android-app` are NATIVE engines, not browsers: both REQUIRE the off-by-default `native-device` capability and neither has `incognito`. `ios-app` drives an app on the iOS Simulator over XCUITest, taking its device and app from BROWX_IOS_DEVICE / BROWX_IOS_APP_ID / BROWX_IOS_APP_PATH and needing an operator-supplied WebDriverAgent at BROWX_IOS_WDA_URL; it has no attach. `android-app` drives an app on an Android emulator over adb and leases one device per session, picked by BROWX_ANDROID_APP_SERIAL when more than one is ready. `electron` is a running desktop Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port` — attach-only, and it REFUSES `navigate` because loading a URL replaces the application's own document. You rarely need to name `electron`: the desktop attach lane detects it from the CDP protocol and reports it on the session either way. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
           ),
         profile: z
           .string()

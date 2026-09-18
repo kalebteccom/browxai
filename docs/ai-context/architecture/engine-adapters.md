@@ -14,7 +14,8 @@ Firefox lane; D4/D5 for the substrates; D7 for WebKit; D3/D8 for Android) agains
 the file:line evidence in
 [`references/03-browxai-coupling-audit.md`](../../rfcs/references/03-browxai-coupling-audit.md).
 The `BrowserEngine` port is the inward-pointing contract; each engine
-(chromium, firefox, webkit, android, safari, electron) is an adapter behind it. Read both
+(chromium, firefox, webkit, android, safari, ios-app, android-app, electron) is an adapter
+behind it. Read both
 the RFC and the audit for the rulings and the coupling map; this doc is the
 standing contract for the code that lives behind the port.
 
@@ -31,7 +32,10 @@ engine land as an adapter rather than a rewrite.
 ## The port (`src/engine/`)
 
 ```
-EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "electron"
+EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari"
+           | "ios-app" | "android-app" | "electron"
+//   ios-app / android-app: NATIVE apps (RFC 0008) — no Playwright Page, no CDP, no DOM and no
+//   URL. Both omit `page`, declare `element`, and sit behind the `native-device` capability.
 //   safari: REAL Safari.app over safaridriver — the FIRST non-Playwright engine
 //   (no Playwright Page, no CDP). The `page` member is ABSENT; a curated subset works via the
 //   Safari-native handle. See the "Safari" section below.
@@ -73,6 +77,8 @@ layer and tools call, and that set is satisfied by the handles above.
 | `adapters/playwright-firefox.ts`      | `PlaywrightFirefoxAdapter`: Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                                                                                                                                                                                   |
 | `adapters/playwright-webkit.ts`       | `PlaywrightWebKitAdapter`: bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                                                                                                                                                                                     |
 | `adapters/android-cdp.ts`             | `AndroidCdpAdapter`: real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                                                                                                                                                                            |
+| `adapters/ios-app.engine.ts`          | The `ios-app` entry (RFC 0008): the iOS Simulator over `xcrun simctl` for lifecycle plus an operator-run WebDriverAgent for the XCUITest hierarchy and input. No Page, no CDP. Helpers under `adapters/ios/`.                                                                 |
+| `adapters/android-app.engine.ts`      | The `android-app` entry (RFC 0008): an Android emulator over adb's UiAutomator dump and input pipeline. No Page, no CDP. Helpers under `adapters/android-app/`.                                                                                                               |
 | `adapters/electron-detect.ts`         | `profileAttachedBrowser`: reads which app is on the far end of an attached CDP endpoint off `Browser.getVersion`, and carries the two behaviours that differ with it (`canCreateTargets`, the warning banner) so the session layer never re-derives them from an engine name. |
 | `adapters/adb.ts`                     | adb plumbing: device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.                                                                                                                                                           |
 | `adapters/safaridriver-hybrid.ts`     | `SafaridriverHybridAdapter`: REAL Safari over safaridriver, WebDriver Classic + experimental BiDi; first non-Playwright.                                                                                                                                                      |
@@ -152,7 +158,8 @@ explicit --engine flag   >   BROWX_ENGINE env   >   default chromium
   and `server.ts` applies its own `?? "chromium"` default, so it is
   **byte-identical** for anyone not setting the var. Default stays chromium.
 - The value is validated against `IMPLEMENTED_ENGINES` (the real list:
-  `chromium, firefox, webkit, android, safari, electron`). An unknown value (a typo, an
+  `chromium, firefox, webkit, android, safari, ios-app, android-app, electron`). An unknown
+  value (a typo, an
   unsupported browser) throws `UnknownEngineError`, a **structured** message
   listing the implemented engines (the fix is in the error), printed to stderr
   with `exit 2`. Never a stack trace, never a silent fallback to chromium. A bare

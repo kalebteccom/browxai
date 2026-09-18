@@ -41,7 +41,8 @@ export type NameRefResult = BrowxaiResult<NameRefResultData>;
 export type SessionMode = "persistent" | "incognito" | "attached";
 /** Browser engine a session runs on. Mirrors the host `EngineKind` (kept as a
  *  local literal so the SDK surface stays free of server-internal imports). */
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "electron";
+export type EngineKind =
+  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app" | "electron";
 export interface OpenSessionArgs {
   session: string;
   mode?: SessionMode;

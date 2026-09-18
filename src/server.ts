@@ -55,6 +55,7 @@ import { registerConfigApprovalTools } from "./tools/config-approval-tools.js";
 import { registerSecretsCaptchaTools } from "./tools/secrets-captcha-tools.js";
 import { registerInputTools } from "./tools/input-tools.js";
 import { registerExtensionsBatchTools } from "./tools/extensions-batch-tools.js";
+import { registerNativeDeviceTools } from "./tools/native-device-tools.js";
 import { wirePluginRuntime } from "./tools/plugin-runtime.js";
 import { buildSessionRegistry } from "./tools/session-registry.js";
 // RFC 0004 P2 / D1 (SECURITY-CRITICAL): importing the tool-metadata bootstrap is a
@@ -79,7 +80,7 @@ export interface StartOptions {
   attachCdp?: string;
   headless?: boolean;
   /** Browser engine for sessions this server launches. Defaults to
-   *  `"chromium"`. All six kinds are wired today (see src/engine/); a
+   *  `"chromium"`. All eight kinds are wired today (see src/engine/); a
    *  future-declared engine without an adapter is rejected at the launch path
    *  with a clear `engine-not-yet-supported` error.
    *
@@ -294,6 +295,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // shared ToolHost seam. It MUST run before the coreToolNames capture below
   // so its tools count as core (plugin runtime loads last).
   registerExtensionsBatchTools(host);
+  registerNativeDeviceTools(host);
 
   // Plugin runtime wiring — the LAST registration step, run after every core
   // `register*Tools(host)` call so the `coreToolNames` snapshot taken inside

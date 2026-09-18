@@ -5,6 +5,7 @@ import {
   engineEntry,
   byobAttachNeedsEndpoint,
   engineIsAttachOnly,
+  engineRequiresCapability,
   type SubstrateDeps,
   type PostWireDeps,
 } from "../engine/registry.js";
@@ -52,7 +53,7 @@ import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
+import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -129,6 +130,29 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // overrides the server default; omitted ⇒ the server engine (legacy). One
       // server can therefore drive sessions on different engines at once.
       const effectiveEngine: EngineKind = spec?.engine ?? serverEngine;
+      // The ENGINE-level capability gate (RFC 0008 §8). An engine whose session
+      // broadens posture on its own — a native engine installs and launches
+      // applications, drives an OS-level input pipeline and photographs the
+      // screen before any tool runs — declares the capability it needs at
+      // registration, and the refusal lands HERE, at session creation, because
+      // that is what makes it un-reachable-around: every native tool needs a
+      // native session first, so there is no second door.
+      //
+      // The engine→capability map is a row in the engine layer
+      // (`engineRequiresCapability`), consulted generically, so this stays free
+      // of the `engine === "<literal>"` branch the OCP contract forbids, and
+      // adding such an engine is still one `registerEngine(...)` call.
+      const engineCapability = engineRequiresCapability(effectiveEngine);
+      if (engineCapability && capabilityMissing(engineCapability, caps)) {
+        throw new Error(
+          `capability-required: session "${id}": the "${effectiveEngine}" engine needs the ` +
+            `\`${engineCapability}\` capability, which is OFF by default. It installs and ` +
+            "launches applications and drives an OS-level input pipeline on a device, so it is " +
+            `opt-in. Add it to BROWX_CAPABILITIES (e.g. BROWX_CAPABILITIES=read,navigation,` +
+            `action,human,${engineCapability}) and restart the server. See docs/threat-model.md ` +
+            "for what it grants.",
+        );
+      }
       // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);
       // an explicit per-session engine resolves its own default (android ⇒
       // attached). Non-android explicit engines match the legacy default too.
@@ -238,6 +262,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
           browserType: effectiveEngine,
+          sessionId: id,
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
@@ -261,6 +286,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
           browserType: effectiveEngine,
+          // Threaded on every branch, not just `attached`. It was attach-only
+          // because the attach lane is the only one that FILED A LEASE — and the
+          // native engine leases too, on a device serial rather than a CDP
+          // target (RFC 0008, Honest limits: one UiAutomator owner per device).
+          // Without it every native session claimed the lease under the same
+          // fallback id, so a second session on one device was allowed through
+          // and both sessions' dumps would have started failing.
+          sessionId: id,
         });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context

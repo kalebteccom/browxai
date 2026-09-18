@@ -39,7 +39,7 @@ describe("defaultModeForEngine — per-session default launch mode", () => {
     // attachCdp => attached, else persistent. For a launchable engine the helper
     // must match it exactly, so omitting `engine` (effectiveEngine ===
     // serverEngine) changes nothing. The attach-only set is the engine layer's
-    // fact, read here rather than restated, so a seventh engine that joins it is
+    // fact, read here rather than restated, so a ninth engine that joins it is
     // covered without editing this line.
     const attachOnly = new Set<string>(ENGINE_KINDS.filter((e) => engineIsAttachOnly(e)));
     const legacy = (engine: string, attachCdp: string | undefined): string =>

@@ -14,30 +14,38 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the six engines (safari and electron are declared)", () => {
+  it("commits to the eight engines (safari, both native, and electron)", () => {
     expect(ENGINE_KINDS).toEqual([
       "chromium",
       "firefox",
       "webkit",
       "android",
       "safari",
+      "ios-app",
+      "android-app",
       "electron",
     ]);
   });
 
-  it("wires all six engines including safari and electron (operator-reachable)", () => {
-    // safari is the first non-Playwright engine: driven over safaridriver,
-    // no Playwright Page (page() throws), reachable via `--engine safari` /
-    // BROWX_ENGINE=safari through the no-Playwright-Page session seam.
-    // electron is a running desktop Electron app attached over its
-    // --remote-debugging-port; attach-only, full CDP, and the desktop attach lane
-    // also resolves it from the protocol without the operator naming it.
+  it("wires all eight engines — safari, both native, and electron", () => {
+    // safari is the first non-Playwright engine: driven over safaridriver, no
+    // Playwright Page, reachable via `--engine safari` / BROWX_ENGINE=safari
+    // through the no-Playwright-Page session seam. `ios-app` and `android-app`
+    // (RFC 0008) are the NON-BROWSER engines, with no document at all: an app on
+    // the iOS Simulator over XCUITest and an app on an Android emulator over adb.
+    // Both are gated behind the off-by-default `native-device` capability at
+    // session creation. `electron` is a running desktop Electron app attached
+    // over its --remote-debugging-port; attach-only, full CDP, and the desktop
+    // attach lane also resolves it from the protocol without the operator naming
+    // it.
     expect(IMPLEMENTED_ENGINES).toEqual([
       "chromium",
       "firefox",
       "webkit",
       "android",
       "safari",
+      "ios-app",
+      "android-app",
       "electron",
     ]);
   });

@@ -41,13 +41,11 @@ async function callJson<T = Record<string, unknown>>(
   return JSON.parse(await callText(name, args)) as T;
 }
 
-/** Snapshot lines the a11y tier produced. DOM-walk entries carry `[from-dom]`
- *  and nodes both tiers found carry `[from-both]`; everything else came from
- *  the CDP accessibility tree. */
+/** Snapshot lines the a11y tier produced. Only `[from-dom]` marks a line the
+ *  a11y tier had no part in; `[from-both]` is an a11y-tier line the DOM walk
+ *  also reached, carrying the a11y tier's role, name and ref. */
 function a11yLines(snapshot: string): string[] {
-  return snapshot
-    .split("\n")
-    .filter((l) => l.includes("[ref=") && !l.includes("[from-dom]") && !l.includes("[from-both]"));
+  return snapshot.split("\n").filter((l) => l.includes("[ref=") && !l.includes("[from-dom]"));
 }
 
 function statsOf(snapshot: string): { a11yInteractive: number; tier: string } {

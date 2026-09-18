@@ -21,10 +21,14 @@ AFTER_M="${COMMAND#*-m \"}"
 if [ "$AFTER_M" = "$COMMAND" ]; then
   AFTER_M="${COMMAND#*-m \'}"
 fi
-# Step 2: strip trailing quote and anything after it
-MSG="${AFTER_M%\"*}"
+# Step 2: cut at the FIRST closing quote. `%%` (longest match from the end) is
+# what makes that the first quote rather than the last: with `%` a compound
+# command whose later parts contain quotes — `git commit -m "x" && grep -E "y"`
+# — captured everything up to the grep pattern, so a one-line message spanning
+# a multi-line shell command was rejected as a multi-line message.
+MSG="${AFTER_M%%\"*}"
 if [ "$MSG" = "$AFTER_M" ]; then
-  MSG="${AFTER_M%\'*}"
+  MSG="${AFTER_M%%\'*}"
 fi
 
 # Step 3: strip heredoc markers if present (cat <<'EOF' ... EOF)
@@ -34,10 +38,15 @@ if [ -z "$MSG" ]; then
   exit 0
 fi
 
-# Get the first line (subject) and count non-empty lines
+# Get the first line (subject) and count non-empty lines. Git trailers
+# (`Key: value`, RFC-822 shape) do not count: AGENTS.md asks every agent commit
+# to carry Co-Authored-By and Claude-Session, and a rule that forbids them makes
+# the repo's own attribution requirement impossible to satisfy. What this hook
+# exists to stop is a prose body, which a trailer is not.
 SUBJECT=$(echo "$MSG" | head -1)
 SUBJECT_LEN=${#SUBJECT}
-LINE_COUNT=$(echo "$MSG" | grep -c '.')
+BODY_LINES=$(echo "$MSG" | grep '.' | grep -cvE '^[A-Za-z][A-Za-z-]*: ')
+LINE_COUNT=$BODY_LINES
 
 ERRORS=""
 
@@ -49,11 +58,11 @@ if [ "$LINE_COUNT" -gt 1 ]; then
   if [ -n "$ERRORS" ]; then
     ERRORS="${ERRORS} "
   fi
-  ERRORS="${ERRORS}Message has ${LINE_COUNT} lines — keep it to a single subject line."
+  ERRORS="${ERRORS}Message has ${LINE_COUNT} body lines — keep it to a single subject line."
 fi
 
 if [ -n "$ERRORS" ]; then
-  REASON="BLOCKED: ${ERRORS} Write a concise, single-line commit message (max ${MAX_SUBJECT_LENGTH} chars). No body, no bullet points."
+  REASON="BLOCKED: ${ERRORS} Write a concise, single-line commit message (max ${MAX_SUBJECT_LENGTH} chars). No body, no bullet points. Git trailers (Co-Authored-By, Claude-Session) are allowed and do not count."
   jq -n --arg reason "$REASON" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",

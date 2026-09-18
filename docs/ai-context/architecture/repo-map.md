@@ -14,7 +14,7 @@ The per-family tool-registration layer and the composition seam between `server.
 
 ### `src/engine/`
 
-The engine seam. `types.ts` declares `EngineKind` (`"chromium" | "firefox" | "webkit" | "android" | "safari" | "electron"`) and the `EngineSubInterface` capability dimensions; `capabilities.ts` declares the per-engine `CAPABILITIES` consts; `registry.ts` is the `EngineRegistry`, the **one place an engine name appears as data**; `tool-gate.ts` is the engine-dimension gate; `adapters/` holds the real adapters + the thin `*.engine.ts` registration modules. **The seam the doctrine grows along.** A new engine is a new adapter file + a `CAPABILITIES` row + one `registerEngine(...)` registration, with no edit to `src/session/{managed,incognito,byob}.ts` or `host-build.ts` (RFC 0004 D1). The `no-engine-literal-branches` lint rule and the `ocp-engine-contract` keystone enforce it.
+The engine seam. `types.ts` declares `EngineKind` (`"chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app" | "electron"`) and the `EngineSubInterface` capability dimensions; `capabilities.ts` declares the per-engine `CAPABILITIES` consts; `registry.ts` is the `EngineRegistry`, the **one place an engine name appears as data**; `tool-gate.ts` is the engine-dimension gate; `adapters/` holds the real adapters + the thin `*.engine.ts` registration modules. **The seam the doctrine grows along.** A new engine is a new adapter file + a `CAPABILITIES` row + one `registerEngine(...)` registration, with no edit to `src/session/{managed,incognito,byob}.ts` or `host-build.ts` (RFC 0004 D1). The `no-engine-literal-branches` lint rule and the `ocp-engine-contract` keystone enforce it.
 
 ### `src/cli/` + `src/cli.ts`
 

@@ -22,6 +22,16 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
 // CDP, so its session is Safari-native and drives the engine entirely through the
 // no-Playwright-Page seam.
+// The native-app engines take an `-app` qualifier. `ios-app` drives the iOS
+// Simulator's XCUITest element hierarchy over `xcrun simctl` for lifecycle and an
+// XCUITest driver for reads and input; `android-app` drives an Android emulator
+// over adb's UiAutomator dump and input pipeline (RFC 0008). Neither has a
+// Playwright `Page`, CDP, a DOM, a URL or a document, which is why RFC 0009 had
+// to land first. Both are DISTINCT from `android`, which keeps its meaning — real
+// Chrome on a real phone over adb + CDP, `deep: true`, every tool works. Two
+// kinds that both say "android" is a documentation cost, and renaming a shipped
+// engine kind would be a breaking config change, so the NEW kinds take the
+// qualifier.
 //
 // `electron` is a desktop Electron application (VS Code, Slack, Discord, …)
 // attached over its `--remote-debugging-port`. Like `android` it IS Chromium —
@@ -30,12 +40,13 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // ways the tool gate has to know about, not just the launch shape:
 //   - `Target.createTarget` answers "Not supported" (measured, Electron 39.8.8),
 //     so the attach pool cannot mint a target and must refuse instead.
-//   - Navigating the renderer away from the app document is not recoverable, so
-//     `navigate` is a declared refusal (`refusedTools`).
+//   - Loading a URL into the app's own renderer is the Electron remote-content
+//     hazard, so `navigate` is a declared refusal (`refusedTools`).
 // Both facts are per-ENGINE capability declarations, and the gate that reads them
 // keys on `EngineKind`. A flag on a chromium session would have to be re-read by
 // every consumer as a second, undeclared oracle.
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "electron";
+export type EngineKind =
+  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app" | "electron";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -43,6 +54,8 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
+  "ios-app",
+  "android-app",
   "electron",
 ];
 
@@ -116,7 +129,9 @@ export interface EngineCapabilities {
    *  nor a missing sub-interface — it would RUN, and running it is the harm.
    *
    *  `navigate` on electron is the case that forced it: `page.goto()` loads the
-   *  renderer away from its app document and the application does not come back.
+   *  page INTO the application's own renderer process, which on many Electron apps
+   *  is privileged (a preload script exposes IPC to the main process) — and it
+   *  discards every scrap of the app's in-memory renderer state on the way.
    *  The mechanism is present (electron declares `navigation`; `go_back` /
    *  `go_forward` / `reload` all work on it), so omitting the sub-interface would
    *  refuse three working tools to gate one, and the sub-interface-conformance
