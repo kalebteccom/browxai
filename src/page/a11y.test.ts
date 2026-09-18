@@ -373,4 +373,25 @@ describe("getA11yTree — the test-attribute sweep", () => {
     const tree = await getA11yTree(cdp, new RefRegistry(), ["data-testid"]);
     expect(tree!.children[0]!.testId).toBeUndefined();
   });
+
+  it("keeps locator inputs another pass contributed", async () => {
+    // `getA11yTree` runs on every pre/post-action delta tree, not only on
+    // `snapshot`. Re-minting a ref's locator record wholesale wiped the
+    // `cssPath` the tier merge had attached, and the ambiguity check that
+    // re-resolves a shared-`data-testid` ref then had nothing to re-resolve to
+    // — so the second of two identical buttons started acting on the first.
+    const refs = new RefRegistry();
+    const cdp = cdpWithDom(axNodes, { backendNodeId: 1, children: [] });
+    const first = await getA11yTree(cdp, refs, ["data-testid"]);
+    const ref = first!.children[0]!.ref;
+    refs.augmentLocator(ref, { cssPath: "body:nth-child(2) > button:nth-child(2)", source: "dom" });
+
+    await getA11yTree(cdp, refs, ["data-testid"]);
+    const inputs = refs.locatorOf(ref)!;
+    expect(inputs.cssPath).toBe("body:nth-child(2) > button:nth-child(2)");
+    expect(inputs.source).toBe("both");
+    // The a11y tier's own inputs are unchanged by the augment.
+    expect(inputs.role).toBe("button");
+    expect(inputs.name).toBe("Save");
+  });
 });
