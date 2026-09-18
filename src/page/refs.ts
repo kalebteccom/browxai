@@ -60,6 +60,13 @@ export interface RefLocatorInputs {
    *  so subsequent actions land inside the correct frame. Same-origin and
    *  cross-origin frames work transparently through Playwright's frame API. */
   frameId?: string;
+  /** The structural path through a NATIVE view hierarchy, e.g.
+   *  `group/scrollable/group[2]/button`. The native counterpart of `cssPath` and
+   *  kept separate from it on purpose: `cssPath` is a CSS selector a browser can
+   *  execute, this is an index path a hierarchy walk re-derives. Populated only
+   *  by the native engines (RFC 0008), where it is the LAST-RESORT recipe — a
+   *  node carrying a testID re-resolves by testID and never by this path. */
+  nativePath?: string;
 }
 
 export class RefRegistry {
