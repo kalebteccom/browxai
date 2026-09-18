@@ -93,7 +93,7 @@ Every browser-touching tool accepts an optional **`session`** arg (default `"def
 
 Omitting `session` resolves to the lazily-created `"default"` session, byte-identical to pre-2.5 single-session behaviour, so existing callers need no changes.
 
-- `open_session({ session, mode?, engine?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`: eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors. `engine` (`chromium` | `firefox` | `webkit` | `android` | `safari`) picks the browser engine for THIS session, overriding the server default. One server can drive sessions on several engines at once (see "Session engine" below). `har` wires a HAR recorder at context creation (native Playwright `recordHar`, finalized on session close). `hars` is the symmetric REPLAY axis: a workspace-rooted list of .har files served via `routeFromHAR(notFound:"fallback")`. See the HAR record/replay section under "Advanced tools" for the full lifecycle.
+- `open_session({ session, mode?, engine?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`: eagerly create an id (else it's lazily created on first use, inheriting the server launch mode). Re-opening a live id errors. `engine` (`chromium` | `firefox` | `webkit` | `android` | `safari` | `ios-app` | `android-app`) picks the engine for THIS session, overriding the server default. `ios-app` and `android-app` are NOT browsers — they drive a native app on an iOS Simulator and on an Android emulator, and both need the off-by-default `native-device` capability (see "Native app control"). One server can drive sessions on several engines at once (see "Session engine" below). `har` wires a HAR recorder at context creation (native Playwright `recordHar`, finalized on session close). `hars` is the symmetric REPLAY axis: a workspace-rooted list of .har files served via `routeFromHAR(notFound:"fallback")`. See the HAR record/replay section under "Advanced tools" for the full lifecycle.
 - `close_session({ session })`: tear down (attached detaches only, never closes the user's Chrome; incognito discards its ephemeral context + browser). `"default"` may be closed; it re-creates lazily.
 - `close_sessions({ prefix?, all?, idleMs? })`: bulk teardown for multi-agent cleanup. `prefix` (id starts-with, e.g. one agent's `agentA-*`), `all:true`, and/or `idleMs` (no activity in the last N ms). Selectors AND together; at least one required (won't implicitly close nothing/everything). Returns `{ closed:[ids], count }`. The team-lead reap primitive when a sub-agent wedged/was-killed and stranded sessions. Activity is touched on every tool call against a session.
 - `list_sessions()`: `[{ id, mode, engine, url, pages, openedAt }]`.
@@ -124,12 +124,16 @@ The pool holds at most `BROWX_ATTACH_POOL_MAX` sessions per endpoint (default 8)
 
 **Session engine** (`open_session({ engine })`): pick the browser engine per session. Omit it to inherit the server default (`--engine` / `BROWX_ENGINE` / `createServer({ browserType })`, else `chromium`), byte-identical to before. A single server can hold sessions on different engines at the same time (`list_sessions` reports each session's `engine`), and the capability gate is per session: the CDP-deep tools run on a chromium session and structured-refuse on a firefox/webkit one in the **same** server. Need a Chromium-only tool while on Firefox? Open a second `engine:"chromium"` session instead of restarting the server. An unimplemented engine is refused with a structured `{ ok:false, code:"unknown-engine", implementedEngines }`, never a silent fallback. Engine × mode:
 
-| engine               | `persistent` / `incognito`                            | `attached`                                                                       | omitted-mode default                                |
-| -------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `chromium`           | ✅                                                    | ✅ with `BROWX_ATTACH_CDP` (else `byob-attach-endpoint-required`)                | `attached` if `BROWX_ATTACH_CDP`, else `persistent` |
-| `firefox` / `webkit` | ✅                                                    | refuses (`firefox`/`webkit-attach-not-supported`; no CDP/BiDi attach client yet) | same as chromium                                    |
-| `android`            | refuses (`android-launch-not-supported`, attach-only) | ✅ over adb discovery (no `BROWX_ATTACH_CDP`)                                    | `attached` (android is attach-only)                 |
-| `safari`             | `persistent` ✅, `incognito` refuses                  | refuses (`safari-attach-not-supported`)                                          | same as chromium                                    |
+| engine               | `persistent` / `incognito`                                                                                       | `attached`                                                                       | omitted-mode default                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `chromium`           | ✅                                                                                                               | ✅ with `BROWX_ATTACH_CDP` (else `byob-attach-endpoint-required`)                | `attached` if `BROWX_ATTACH_CDP`, else `persistent` |
+| `firefox` / `webkit` | ✅                                                                                                               | refuses (`firefox`/`webkit-attach-not-supported`; no CDP/BiDi attach client yet) | same as chromium                                    |
+| `android`            | refuses (`android-launch-not-supported`, attach-only)                                                            | ✅ over adb discovery (no `BROWX_ATTACH_CDP`)                                    | `attached` (android is attach-only)                 |
+| `safari`             | `persistent` ✅, `incognito` refuses                                                                             | refuses (`safari-attach-not-supported`)                                          | same as chromium                                    |
+| `ios-app`            | `persistent` ✅, `incognito` refuses                                                                             | refuses (`ios-app-attach-not-supported`)                                         | same as chromium                                    |
+| `android-app`        | `persistent` ✅ (leases a live device), `incognito` refuses (`native-incognito-not-supported` — use `app_reset`) | refuses; the device lease IS the attach                                          | `persistent`                                        |
+
+The two native engines are documented together under **Native app control** below.
 
 **MCP-server restart vs Chrome lifecycle (gotcha).** In `persistent` and `incognito` modes browxai spawns Chromium as a **child process of the MCP server**. When the MCP client (e.g. Claude Code) restarts the MCP server (for a config edit, a code reload, or simply because the user re-invoked the server), that Chrome child process dies with it, and any active page state is gone. The next browxai instance starts fresh; if a stored ref points at a now-dead page you'll see `about:blank` or a fresh document instead of the page you were on. **Recovery posture**: for adopters who need page state to survive MCP-server restarts, run Chrome separately (`google-chrome --remote-debugging-port=9222 --user-data-dir=$BROWX_WORKSPACE/byob-profile`) and connect browxai via `BROWX_ATTACH_CDP=http://127.0.0.1:9222`. The attached Chrome is **not-owned** and survives browxai restarts cleanly.
 
@@ -237,11 +241,19 @@ Persistence model: each call records the resolved value on the session's `device
 
 ### `snapshot`
 
-Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot, which is what makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both paths are `[from-both]`.
+Compact accessibility-tree snapshot of the current page, **augmented by a DOM-walk pass** that surfaces interactive elements and any element bearing one of the configured `BROWX_TEST_ATTRIBUTES` (default `data-testid,data-test,data-cy,data-qa`). The DOM walk runs every snapshot, which is what makes browxai work on heavy-SPA targets whose accessibility tree is sparse / non-semantic. Nodes only seen by the DOM walk are marked `[from-dom]`; nodes found by both tiers in the same snapshot are `[from-both]` and appear **once**, on the accessibility tier's line, with the accessibility tier's ARIA role, accessible name and ref. The two tiers are matched on the CDP backend node id, which is an exact identity — two elements that merely look alike (same role, same accessible name, same test attribute) are never folded together. An element the accessibility tier does not expose, or whose path the DOM sweep cannot resolve exactly (anything inside a shadow root), keeps its own `[from-dom]` line.
 
 Each interactive node gets a stable `[ref=eN]` you can pass back to action tools. Refs persist across snapshots within a session (a node that's still there keeps its `eN`). Token-efficient: generic / presentational nodes are pruned; states (`disabled`, `checked=…`, `focused`, `value=…`, `[<test-attr>=…]`) are inlined. Test-attribute hints emit the **actual attribute name** that matched (e.g. `[data-type="feature-panel-language-input"]`) so you can transcribe the selector directly.
 
 When the a11y tree has fewer than 5 interactive descendants under root, a warning is emitted, usually meaning the page is a heavy SPA and the DOM-walk source carried the load.
+
+`stats.tier` names which tier supplied the interactive content: `a11y`, `dom-walk`, `mixed`, or `empty`. `dom-walk` is the degraded case — the accessibility tier found nothing and the DOM-walk fallback answered on its own. `mixed` means the DOM walk contributed elements the accessibility tier does not have. Non-Chromium engines and child-frame snapshots report `dom-walk` by construction: neither runs a CDP accessibility pass.
+
+`stats.domWalkCombined` counts the DOM-walk entries the accessibility tier already had (the `[from-both]` nodes) and `stats.domWalkNew` the ones it did not (`[from-dom]`); the two sum to `stats.domWalkEntries`. Both describe the snapshot in hand, not the session's history.
+
+Nodes CDP marks `ignored` (presentational wrappers, layout tables, and `<html>` / `<body>`, which Chromium marks ignored on essentially every page) contribute no line of their own, and their children take their place in document order. An `aria-hidden` container's descendants are themselves ignored, so nothing under it reaches the a11y tier — the DOM walk still reports it, `[from-dom]`-marked.
+
+Chromium's text and layout leaves get no line either: `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable` / `LayoutTableRow` / `LayoutTableCell`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby` / `RubyAnnotation`, `superscript` and `subscript`. Each carries text its enclosing control, heading, cell or paragraph already names, so emitting both printed the page twice — two thirds of the serialised body across six real pages. Use `text_search` or `extract` to read page text; one of these nodes bearing a configured test attribute is still emitted, and `find` will still rank it.
 
 **Inputs (all optional):**
 
@@ -279,6 +291,7 @@ Find candidate elements by natural-language description.
 - **Attached/BYOB bbox reliability:** the CDP visible-rect path can spuriously null out a _rendered_ DOM-walk node on an attached Chrome (no live backend node, cross-frame quirks), which would wrongly classify it `off-screen` (and make `visibleOnly:true` drop a correct hit). `find` now falls back to Playwright's own locator bounding box before classifying. A node that is genuinely on the page keeps a real `bbox` / `actionable:true`. So `visibleOnly` is dependable in attached mode, not just managed/incognito.
 - `confidenceFloor`: emit a `warnings: ["no candidate scored confidently above N (top score: …)"]` block when no top candidate exceeds this score. Default `0` (off). Pass e.g. `0.5` (or any chosen integer) to get a "fall through to snapshot" signal instead of grinding through low-quality results.
 - `contextRef`: limit ranking to descendants of this ref. Lets you say "the X _under_ Y" without encoding the relationship in the natural-language query. Ignored (with a warning) if the ref isn't in the current snapshot.
+- **Not candidates:** the text and layout leaves `snapshot` suppresses (`StaticText`, `LineBreak`, `ListMarker`, `LayoutTable*`, `Abbr`, `EmphasizedText`, `StrongText`, `Ruby*`, `superscript`, `subscript`) and the document root (`RootWebArea` / `WebArea`). None is addressable — `role=StaticText[name="button"]` is not a locator the engine resolves — and ranking one costs a slot the real control then does not get, because the list is cut to `maxCandidates` before the candidates are probed. A node carrying a configured test attribute is ranked whatever its role.
 
 **Output:** JSON
 
@@ -2157,6 +2170,8 @@ gesture_pinch({ coords: { x: 512, y: 400 }, scale: 2, steps: 20 })   // pinch-ou
 // → { "ok": true, "coords": {…}, "scale": 2, "steps": 20, "startOffset": 40, "endOffset": 80 }
 ```
 
+**Per-engine posture.** All five run on `chromium` and `android`. On `firefox`, `webkit` and `safari` they return a structured refusal — `{ ok:false, error, engine, hint, tokensEstimate }` — because the touch pipeline dispatches through CDP `Input.dispatchTouchEvent` and those engines expose no equivalent. The refusal comes from the action substrate, so an engine that can dispatch touch by other means answers instead of being refused on a CDP question; the `error` line is unchanged from earlier versions.
+
 **Multi-touch fan-out by hand**: for gestures the canned compounds don't cover (e.g. three-finger rotate), dispatch a sequence of `touch_start` / `touch_move` / `touch_end` calls with distinct `identifier` values per finger. The CDP touch pipeline maintains active touchpoint state across dispatches as long as the identifiers stay consistent. Note that Chromium fires a separate DOM `touchstart` / `touchend` for each finger added or lifted (rather than one event with multiple `changedTouches`), even when you batch multiple points into one CDP dispatch.
 
 ### Network route mocking: `route` / `route_queue` / `unroute`
@@ -3405,3 +3420,124 @@ window.__browx = {
 ```
 
 The shadow-DOM banner UI and the `pick_element` overlay are not yet available.
+
+## Native app control (`ios-app`, `android-app`) _(gated)_
+
+**Requires the off-by-default `native-device` capability.** `open_session({ browserType: "ios-app" })` and `open_session({ browserType: "android-app" })` both refuse without it, so the gate sits at session creation and no native tool can be reached around it. See [`docs/threat-model.md`](threat-model.md) for what the capability grants.
+
+browxai drives two native engines. `ios-app` drives a native application on the **iOS Simulator** through its XCUITest accessibility hierarchy. `android-app` drives an app on an **Android emulator** over `adb` — UiAutomator for the view hierarchy, the OS input pipeline for taps, swipes and keys, `screencap` for frames. Neither is a browser: there is no `Page`, no DOM, no URL and no `Locator`. What each has instead is a view hierarchy that composes into the **same `A11yNode` tree** `snapshot` already returns, with the same `[ref=eN]` refs, so an agent skill written for web transfers and one CI verifier reads every kind of session.
+
+Both share the contract that matters: **the tier-1 selector is the accessibility identifier** (a React Native `testID` compiles to iOS's `accessibilityIdentifier` and Android's `resource-id`), a ref minted on a node that carries one is anchored on the identifier rather than the path, **every action re-resolves against a freshly read hierarchy before it dispatches**, and **an ambiguous match refuses** instead of picking the first — unlike the web engines, which keep a silent first-match pick for compatibility.
+
+**Real devices are out of scope by policy, not by mechanism.** Both engines' code paths reach a physical handset unchanged.
+
+**The platform toolchains are operator-supplied.** browxai never bundles Xcode, WebDriverAgent or the Android SDK, never installs any of them, and never creates an AVD or a simulator.
+
+### The `ios-app` engine (iOS Simulator)
+
+Real devices are out of scope for this engine specifically — they need code signing, a provisioning profile, a WebDriverAgent build and attached hardware.
+
+**Two operator-supplied pieces, neither bundled nor auto-installed.** Xcode supplies `xcrun simctl`, which does simulator and app lifecycle. [WebDriverAgent](https://github.com/appium/WebDriverAgent) (Apache-2.0) supplies the XCUITest hierarchy and the input pipeline; you build and run it, and point browxai at its port. With nothing listening, session creation refuses with `wda-unreachable` and names the fix. browxai takes **no** npm dependency for either and reaches nothing GPL.
+
+| variable             | meaning                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------- |
+| `BROWX_IOS_DEVICE`   | Simulator udid or exact device name. Omitted ⇒ a booted simulator, else the newest runtime. |
+| `BROWX_IOS_APP_ID`   | Bundle id of the app under test. **Required.**                                              |
+| `BROWX_IOS_APP_PATH` | Path to a `.app` to install before launching. Omitted ⇒ assumed already installed.          |
+| `BROWX_IOS_WDA_URL`  | Where WebDriverAgent listens. Default `http://127.0.0.1:8100`.                              |
+
+#### The selector model: accessibility identifier over position
+
+`accessibilityIdentifier` — what a React Native `testID` compiles to — is the tier-1 selector, and it changes how a ref is minted. When a node carries one, the structural path is **excluded** from the ref's key, so the ref survives a layout change that moves the node. When it does not, the path is included and the ref is snapshot-local: move the node and the old ref reports `stale-element` rather than resolving to whatever now occupies its rectangle. `find` emits `[accessibilityIdentifier="…"]` as its tier-1 hint; `~checkout-submit`, `[testID="…"]` and `[identifier="…"]` all resolve to the same query.
+
+**Every action re-resolves before it dispatches.** A ref is matched against a freshly read hierarchy immediately before each tap, and the tap point is computed from the element that match returned. No coordinate is cached between calls. Zero matches is a `stale-element` refusal; **more than one match is also a refusal**, naming the count — unlike the web engines, which resolve an ambiguous target to the first match.
+
+**What the hierarchy mapping loses.** `type` → `role` is a table: `Button` → `button` is exact, `Other` → `generic` is coarse, and the raw XCUITest type is preserved on the node's `tag`. iOS `StaticText` maps to `text`, deliberately **not** to browxai's presentational `StaticText` — on the web that role is furniture the serialiser drops, and on iOS it is usually the screen's content. `label` → `name` and `value` → `value` are exact; a placeholder rides on `value` only when the element has none.
+
+**Runs:** `snapshot`, `find`, `text_search`, `click` (tap), `fill`, `press`, `scroll`, `gesture_swipe`, `gesture_pinch`, `verify_*`, `screenshot`, `navigate` (deep links only — pass a full URL scheme), `name_ref`.
+
+**Refuses, each naming the missing primitive:** `touch_start` / `touch_move` / `touch_end` (XCUITest has taps, drags and pinches, no raw touch pipeline), `hover` (no pointer), `select` / `choose_option` (no `<select>`), `go_back` / `go_forward` (no history stack; iOS has no back key), `set_viewport` (screen size is the device type), `wait_for` (unmeasured dump cost), element-scoped and `jpeg` `screenshot` (cropping needs a PNG decoder browxai does not bundle), `pdf_save`, the whole network / storage / script / emulation families, and the CDP-deep tools (`deep: false`).
+
+**Lifecycle:** `app_list`, `app_install`, `app_launch`, `app_terminate` and `app_foreground` run here through the shared tool family below. `app_uninstall` and `app_reset` **refuse**, naming the engine: `simctl uninstall` would remove an app the operator may have installed by hand from a device the session leases rather than owns, and iOS has no per-app data clear at all — `simctl erase` wipes every app on the device. `device_list` reports simulators alongside adb devices; `device_boot` and `device_shutdown` are adb/AVD-scoped, because an `ios-app` session boots the simulator it resolves at session creation and never shuts one down. The session's own device and app still come from the environment above.
+
+**Not yet:** segmented video capture and the `native/*` replay event types (RFC 0008 P3), and `console_read` over the simulator syslog.
+
+### The `android-app` engine (Android emulator)
+
+`engine: "android-app"` drives an app on an Android emulator over `adb`. The Android SDK is operator-supplied: browxai never bundles it, never installs it and never creates an AVD.
+
+#### The selector model: testID over positional refs
+
+`testID` (Android: the view's `resource-id`) is **the only tier-1 selector**, and a ref minted on a node that carries one is **anchored on the testID, not the path** — `elementKey` is given an empty `path`, so the ref survives a layout change that moves the node. Without a testID the full index path applies and the ref is snapshot-local, which is the honest status of an unlabelled element. `snapshot` warns when an app is thin on testIDs, naming the count, so a degraded selector model becomes a fixable list for the app team.
+
+**Every action re-resolves before it dispatches.** A tap reads a fresh hierarchy, finds the element, and dispatches at the point that read just returned, in the same call. No coordinate is ever cached or replayed. **An ambiguous query refuses**: a ref or selector matching more than one element taps nothing and reports the count, because a reported tap on the wrong element is worse than a failed tap.
+
+Native selector vocabulary, accepted anywhere `selector` is:
+
+| form                       | tier   | matches                                       |
+| -------------------------- | ------ | --------------------------------------------- |
+| `~checkout-submit`         | testID | Appium's accessibility-id spelling            |
+| `testID=` / `id=`          | testID | the same tier, spelled out                    |
+| `label=Place order`        | label  | `accessibilityLabel` (Android `content-desc`) |
+| `text=Place order`         | text   | the rendered string                           |
+| `role=button[name="Save"]` | role   | role plus label                               |
+| a bare string              | any    | testID, then label, then text; reports which  |
+
+#### What works, and what refuses
+
+| tool                                                            | on `android-app`                                                                                                        |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `snapshot` / `find` / `text_search` / `find_feedback`           | yes, over the UiAutomator hierarchy, composed into `A11yNode`                                                           |
+| `click`                                                         | yes, a real OS tap at a freshly-resolved point                                                                          |
+| `fill`                                                          | yes: taps the field, then `input text`. **Registered secrets do NOT materialise** — a `<NAME>` alias is typed literally |
+| `press`                                                         | yes: `back` / `home` / `menu` / `appswitch` / `enter` / arrows / any `KEYCODE_*`; a single character is typed           |
+| `scroll`                                                        | yes with `to` (`top`/`bottom`/`left`/`right`) or `by`. Scroll-into-view is not a native primitive and refuses           |
+| `gesture_swipe`, `touch_start` / `touch_move` / `touch_end`     | yes, real platform primitives (`input swipe`, `input motionevent`). `touch_*` needs API 30+                             |
+| `gesture_pinch`                                                 | refuses (`native-pinch-needs-multitouch-driver`) — see below                                                            |
+| `verify_visible` / `_text` / `_value` / `_attribute` / `_count` | yes, through the element port, over the hierarchy                                                                       |
+| `screenshot`, `screenshot_region`                               | yes, PNG off `screencap`; element-scoped captures crop the frame to the bounds just read. `format:"jpeg"` refuses       |
+| `navigate`                                                      | **deep links only** — `navigate({url:"myapp://checkout/42"})` fires a VIEW intent. A native screen has no address bar   |
+| `go_back`                                                       | yes, the platform BACK key. `go_forward` has no Android analogue and refuses                                            |
+| `eval_js` / `poll_eval`                                         | refuses: no scriptable context in a release-configuration RN app                                                        |
+| `network_read` / `network_body` / `route` / `route_queue`       | refuses: no protocol-level tap without a system proxy or VPN profile, which is the operator's decision                  |
+| cookies / localStorage / IndexedDB / Cache API                  | refuses: web storage. An app's data lives in its sandbox — use `app_reset`                                              |
+| `frames_list`, the CDP-deep family, `pdf_save`                  | refuses: `deep:false`, no `Page`, no print surface                                                                      |
+
+**Why `gesture_pinch` refuses.** `adb shell input` has no two-finger primitive. Two concurrent `input swipe` calls produce two independent single-pointer streams, which an app sees as two unrelated drags and not a pinch; `sendevent` against `/dev/input` needs the touchscreen's device node and ABS ranges read per device and is root-only off an emulator. Real multi-touch needs a device-side UiAutomator2 instrumentation server, which browxai does not ship. A refusal that names this is worth more than a gesture that reports success and did something else.
+
+**No video yet.** Android's `screenrecord` stops at 180 seconds, so a QA session needs the segmented writer RFC 0008 §5 designs. That lands with the native capture path.
+
+### Device lifecycle
+
+These take **no session** — they are what you call before opening one.
+
+- `device_list()`: every device and emulator adb sees, plus the AVDs defined on this machine, plus every iOS simulator `simctl` knows about. Each Android device reports `{serial, state, model, release, sdk, emulator}`; a device that is `unauthorized` or `offline` is **listed with that state**, because the state is the actionable part. Each simulator reports `{id, name, state, runtime, platform}`. An absent toolchain on either side is an empty list for that platform, never a failed call. Returns `{ ok, devices, avds, simulators, ready, simulatorsBooted }`.
+- `device_boot({ avd, headless? })`: boot an **Android** emulator and wait until it is **usable** — `sys.boot_completed` plus a working package manager, not merely an adb connection (`adb wait-for-device` returns about a minute before the launcher exists). Headless by default; boots with `-no-snapshot-save`, so nothing this session installs or grants persists into the operator's AVD. 30-90 seconds on a cold boot. Returns `{ ok, device }`. There is no iOS counterpart: an `ios-app` session boots the simulator it resolves at session creation.
+- `device_shutdown({ serial })`: `emu kill` on an **Android** emulator. **Refuses on a physical device** — browxai does not power off the operator's phone. Closing a session does not shut a device down; a session leases a device, it does not own it. There is no iOS counterpart, for the same reason: an `ios-app` session never shuts down a simulator it may not have booted.
+
+### App lifecycle
+
+These take a session and drive the device it leased. They are ONE surface over both engines: each verb routes through the session handle's `NativeLifecycle`, which the adapter implements over `adb` or `simctl`. **A verb the platform has no primitive for refuses, naming the engine and what is missing** — it never answers a plausible empty.
+
+| tool                                             | `android-app`                                                 | `ios-app`                                                       |
+| ------------------------------------------------ | ------------------------------------------------------------- | --------------------------------------------------------------- |
+| `app_list({ includeSystem?, session? })`         | installed package ids, third-party only by default            | `simctl listapps`; `includeSystem` has nothing to select on     |
+| `app_install({ apkPath, reinstall?, session? })` | `adb install`, `reinstall` keeps existing data                | `simctl install` a `.app`; it already replaces in place         |
+| `app_uninstall({ appId, session? })`             | removes the app and its data                                  | **refuses** — the session leases the device, it does not own it |
+| `app_launch({ appId, session? })`                | resolves the declared launcher activity first, returns it     | `simctl launch`; no activity exists and none is invented        |
+| `app_terminate({ appId, session? })`             | `am force-stop`                                               | `simctl terminate`                                              |
+| `app_reset({ appId, session? })`                 | clears data **and** granted runtime permissions               | **refuses** — iOS has no per-app clear; `erase` wipes every app |
+| `app_foreground({ session? })`                   | `{appId, activity}` plus the `app://<package>/<activity>` url | `{appId}` plus the `app://<bundle-id>/` url                     |
+
+- `app_install` is **the broadest thing these engines do** — the bundle is arbitrary code that then runs on the device. On Android it reports adb's own failure reason (wrong ABI, insufficient storage, unsigned build) rather than a bare non-zero exit.
+- `app_launch` may return while the app is still on a splash screen. On `android-app`, follow with `snapshot`, which surfaces `native-hierarchy-not-idle` while an indeterminate spinner keeps the window busy.
+- `app_reset` is **destructive** where it works: logins, local databases and cached files are gone. It is the native answer to `incognito`, which a native app has no equivalent of.
+- `app_foreground` answers `null` during a window transition, which is a real state. It returns `{ ok, device, foreground, url, appUnderTest }` — `appUnderTest` is what the SESSION thinks it is driving, which can differ from what is frontmost when a permission dialog or a share sheet takes focus.
+
+### Limits worth knowing before you plan a run
+
+- **One UiAutomator owner per device.** A session leases a serial; a second session on the same serial gets a structured refusal naming the holder. Two UiAutomator clients on one device make every hierarchy dump fail for both, so this is a correctness gate. Set `BROWX_ANDROID_APP_SERIAL` to pick a device when several are attached — the engine refuses an ambiguous pick.
+- **`uiautomator dump` blocks on window idle and gives up at ~10s.** An app with a running animation or an indeterminate progress spinner — a React Native splash screen reproduces this exactly — never goes idle, and `snapshot` surfaces `native-hierarchy-not-idle`. Wait for the screen to settle and retry. This is a UiAutomator limitation, not a browxai timeout.
+- **A dump costs a few hundred milliseconds**, and every action pays for one. That is the price of never replaying a cached coordinate.
+- **Registered secrets do not materialise on either native engine.** Secret substitution lives in the Playwright action core, which a native session never reaches, so a `<NAME>` alias is typed literally. `fill` says so in its warnings.
+- **Real devices are out of scope by policy, not by mechanism.** An `adb devices` entry is an `adb devices` entry.

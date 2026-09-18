@@ -22,6 +22,81 @@
 // rejected), so the walk always terminates within `MAX_WALK_DEPTH` levels.
 export const MAX_WALK_DEPTH = 2000;
 
+/**
+ * Chromium AX roles that carry text or layout and are never something an agent
+ * acts on. Two families:
+ *
+ * Blink's text leaves — `StaticText`, `InlineTextBox`, `LineBreak`,
+ * `ListMarker`. The string one carries is already the accessible name of the
+ * control, heading, cell or paragraph that encloses it, so a line for each
+ * repeats the page a second time. Measured across six real pages
+ * (react.dev, MDN, Wikipedia, Bootstrap docs, a GitHub PR, Hacker News):
+ * 8,090 of 17,710 nodes and 66,640 of ~199,000 estimated snapshot tokens.
+ *
+ * Layout and typography wrappers — `LayoutTable*` is Blink's verdict that a
+ * `<table>` is page furniture rather than data; `Abbr`, `EmphasizedText`,
+ * `StrongText`, `Ruby*`, `superscript`, `subscript` wrap text an ancestor
+ * already names.
+ *
+ * Two consumers read this set. `find` will not rank one as a candidate:
+ * `role=StaticText[name="button"]` is not a locator Playwright's engine
+ * resolves, so probing one spends an auto-wait and comes back
+ * `actionable: "off-screen"` about something that was never actionable, and on
+ * Bootstrap's forms page five such nodes filled every candidate slot and pushed
+ * the real search button out of the result. The serialiser emits no line for
+ * one.
+ *
+ * The node stays in the tree either way — `text_search` matches against these
+ * names, and dropping the subtree is the defect this branch fixed. A node
+ * carrying a test attribute is exempt in both consumers: an explicit
+ * `data-testid` is the author saying this element is addressed by name.
+ */
+export const PRESENTATIONAL_ROLES: ReadonlySet<string> = new Set([
+  "StaticText",
+  "InlineTextBox",
+  "LineBreak",
+  "ListMarker",
+  "LayoutTable",
+  "LayoutTableRow",
+  "LayoutTableCell",
+  "Abbr",
+  "EmphasizedText",
+  "StrongText",
+  "Ruby",
+  "RubyAnnotation",
+  "superscript",
+  "subscript",
+]);
+
+/** True when the node is page furniture rather than content: a presentational
+ *  role and no test attribute claiming it. */
+export function isPresentational(node: Pick<A11yNode, "role" | "testId">): boolean {
+  return !node.testId && PRESENTATIONAL_ROLES.has(node.role);
+}
+
+/**
+ * Drop nodes that carry no agent signal:
+ * - role "generic" / "presentation" with no name and no testId
+ * - role "none"
+ * - Chromium's text and layout leaves (`PRESENTATIONAL_ROLES`): a `StaticText`
+ *   repeats the accessible name of the control, heading, cell or paragraph
+ *   above it, so emitting both prints the page twice. Across six real pages
+ *   these were 8,090 of 17,710 nodes and two thirds of the serialised body.
+ *   The node stays in the tree — `text_search` matches against it — it just
+ *   gets no line of its own.
+ *
+ * Two readers. The serialiser skips emitting a line for one (its children still
+ * come through). The tier merge refuses to fold a DOM-walk entry into one: a
+ * node that emits no line cannot carry the entry's evidence, and folding would
+ * delete from the snapshot an element the DOM walk had reported.
+ */
+export function isGenericNoise(n: Pick<A11yNode, "role" | "name" | "testId">): boolean {
+  if (n.testId) return false;
+  if (n.role === "none") return true;
+  if ((n.role === "generic" || n.role === "presentation") && !n.name) return true;
+  return isPresentational(n);
+}
+
 export interface A11yNode {
   ref: string;
   role: string;
@@ -33,9 +108,12 @@ export interface A11yNode {
   testId?: string;
   /** Attribute *name* that yielded `testId` — preserves which convention matched. */
   testIdAttr?: string;
-  /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
-   *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
-   *  discovered by both paths. #7 / #8 plumbing. */
+  /** Where this node came from. "a11y" for the CDP-a11y path, "dom" for the
+   *  DOM-walk fallback (see dom-walk.ts), "both" when both tiers saw the same
+   *  element in the same snapshot — matched on the backend node id, the one
+   *  identity the two vocabularies share. A "both" node is the a11y tier's
+   *  node, keeping its ref, carrying the tag / path / test attribute the walk
+   *  added. */
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;

@@ -553,8 +553,24 @@ Android-specific limit is launch-shape: managed and ephemeral launch refuse with
 | `pdf_save`: `page.pdf()` (Headless-Chromium-only)                     |  works   | **gated** (Firefox-specific hint) |         **gated**          |  works (CDP `Page.printToPDF`)   |
 | `set_locale` / `set_timezone`: live CDP `Emulation.*`                 |  works   |   **gated** (bake at creation)    |         **gated**          |       **works** (full CDP)       |
 | `set_user_agent`: live CDP UA override                                |  works   | **gated** (no live PW UA setter)  |         **gated**          |       **works** (full CDP)       |
-| touch / multi-touch / `mouse_wheel`: CDP `Input.dispatch*`            |  works   |             **gated**             |         **gated**          | **works** (full CDP, real touch) |
+| `mouse_wheel`: CDP `Input.dispatchMouseEvent` at a coordinate         |  works   |             **gated**             |         **gated**          |       **works** (full CDP)       |
+| touch / multi-touch: `ActionSubstrate.gesture` over CDP               |  works   |           **refused**\*           |       **refused**\*        | **works** (full CDP, real touch) |
 | device emulation (`emulate_bluetooth`/`usb`/`hid`): platform API      |  works   |  moot (API absent off-Chromium)   |            moot            |   moot (real device hardware)    |
+
+\* **refused, not gated, and the distinction is the whole of RFC 0009 P3.**
+`touch_start` / `touch_move` / `touch_end` / `gesture_swipe` / `gesture_pinch`
+declared `deep: true` until that phase, so `assertEngineSupports` refused them on
+Firefox and WebKit from the `caps.deep` flag alone — before the action substrate
+was consulted. The flag asks "does this engine have raw CDP", and touch is the
+PRIMARY input on the `ios-app` / `android-app` engines of RFC 0008, which have
+none: the gate would have refused a native agent the five tools it needs most.
+The flag retired and `ActionSubstrate.gesture` now answers "can this engine
+dispatch touch". Firefox and WebKit still refuse, with the same `error` line and
+the same `{ok, error, engine, hint, tokensEstimate}` envelope, because their
+ActionContext carries no CDP accessor;
+`test/architecture/gesture-engine-refusal.test.ts` holds both halves. `mouse_wheel`
+keeps the flag: no port covers a coordinate-space wheel and no native target has
+one.
 
 `perf_insights` / `heap_retainers` / `memory_diff` are pure file parsers over a
 Chromium-produced trace/heapsnapshot, so they are **not** engine-gated (the data

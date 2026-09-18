@@ -1,17 +1,64 @@
 import { SESSION_ARG } from "./schemas.js";
-import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
-import { requirePage } from "../engine/index.js";
+import type {
+  RegisterHost,
+  GateHost,
+  SessionHost,
+  ServerServicesHost,
+  ToolResponse,
+} from "./host.js";
+import type { RouteResult, UnrouteResult } from "../page/network-substrate.js";
 
 /**
  * Request route-mocking tools: route / route_queue / unroute. Per-session canned
  * responses for backend substitution + out-of-order arrival QA. Split out of
  * `gesture-network-tools` by cohesive family (RFC 0004 P3 / D3 SRP); registered
  * through the shared `ToolHost` seam in the same source order.
+ *
+ * All three go through `NetworkSubstrate` (RFC 0009 P3). They held a
+ * `requirePage(e.session)` each, passed to a `RouteRegistry` on the session
+ * entry; the registry moved INTO the substrate, because a route is a handler
+ * installed on an engine handle and only the substrate holds one. They are also
+ * gated on the `network` sub-interface now: interception is protocol-level
+ * network work, and on an engine that declares none the old path surfaced
+ * `requirePage`'s raw throw as `{ok:false, error}` — a shape indistinguishable
+ * from "the route failed".
  */
 export function registerGestureRouteTools(
   host: RegisterHost & GateHost & SessionHost & ServerServicesHost,
 ): void {
-  const { z, register, gateCheck, entryFor } = host;
+  const { z, register, gateCheck, subInterfaceGate, entryFor } = host;
+
+  /** The one renderer for both outcomes. Success is the pre-seam body verbatim —
+   *  `{ok:true, …, active}` — and a refusal is the shared engine-refusal envelope
+   *  (`{ok, error, engine, hint}`), so a caller classifies "this engine cannot" by
+   *  the same shape it does everywhere else. */
+  const routeText = (r: RouteResult | UnrouteResult): ToolResponse => {
+    const body =
+      r.kind === "refusal"
+        ? { ok: false, error: r.error, engine: r.engine, hint: r.hint }
+        : r.kind === "installed"
+          ? {
+              ok: true,
+              key: r.key,
+              ...(r.queued !== undefined ? { queued: r.queued } : {}),
+              active: r.active,
+            }
+          : { ok: true, removed: r.removed, active: r.active };
+    return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
+  };
+
+  const errText = (err: unknown): ToolResponse => ({
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(
+          { ok: false, error: err instanceof Error ? err.message : String(err) },
+          null,
+          2,
+        ),
+      },
+    ],
+  });
 
   const ROUTE_RESPONSE = {
     status: z.number().int().optional().describe("HTTP status (default 200)."),
@@ -48,36 +95,21 @@ export function registerGestureRouteTools(
       const g = gateCheck("route");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("route", "network", e);
+      if (sg) return sg;
       try {
-        const r = await e.routes.add(requirePage(e.session), {
-          urlPattern,
-          method,
-          status,
-          body,
-          contentType,
-          delayMs,
-        });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ok: true, ...r, active: e.routes.list() }, null, 2),
-            },
-          ],
-        };
+        return routeText(
+          await e.networkSubstrate.route({
+            urlPattern,
+            method,
+            status,
+            body,
+            contentType,
+            delayMs,
+          }),
+        );
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errText(err);
       }
     },
   );
@@ -102,33 +134,12 @@ export function registerGestureRouteTools(
       const g = gateCheck("route_queue");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("route_queue", "network", e);
+      if (sg) return sg;
       try {
-        const r = await e.routes.addQueue(requirePage(e.session), {
-          urlPattern,
-          method,
-          responses,
-        });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ok: true, ...r, active: e.routes.list() }, null, 2),
-            },
-          ],
-        };
+        return routeText(await e.networkSubstrate.route({ urlPattern, method, responses }));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errText(err);
       }
     },
   );
@@ -149,29 +160,12 @@ export function registerGestureRouteTools(
       const g = gateCheck("unroute");
       if (g) return g;
       const e = await entryFor(session);
+      const sg = subInterfaceGate("unroute", "network", e);
+      if (sg) return sg;
       try {
-        const removed = await e.routes.remove(requirePage(e.session), { urlPattern, method });
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify({ ok: true, removed, active: e.routes.list() }, null, 2),
-            },
-          ],
-        };
+        return routeText(await e.networkSubstrate.unroute({ urlPattern, method }));
       } catch (err) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: JSON.stringify(
-                { ok: false, error: err instanceof Error ? err.message : String(err) },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
+        return errText(err);
       }
     },
   );

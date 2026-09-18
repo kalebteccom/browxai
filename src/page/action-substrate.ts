@@ -15,3 +15,25 @@
 export { PlaywrightActionSubstrate } from "./action-substrate-playwright.js";
 export { SafariActionSubstrate } from "./action-substrate-safari.js";
 export type { ActionSubstrate } from "./action-substrate-types.js";
+// The gesture vocabulary the port's `gesture(req)` member names (RFC 0009 P3).
+// Re-exported here so a caller takes the whole action-substrate surface from one
+// module, the same way the capture barrel re-exports `ScreenshotRequest`.
+export {
+  gestureToolName,
+  touchDispatchUnsupported,
+  TOUCH_DISPATCH_ENGINE_REFUSAL,
+} from "./gesture-types.js";
+export type {
+  GestureRequest,
+  GestureResult,
+  GestureDispatched,
+  GestureRefusal,
+  TouchRequest,
+  SwipeRequest,
+  PinchRequest,
+  TouchReport,
+  SwipeReport,
+  PinchReport,
+  TouchPhase,
+  Point,
+} from "./gesture-types.js";

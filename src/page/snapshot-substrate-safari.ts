@@ -71,6 +71,9 @@ export class SafariClassicSnapshotSubstrate implements SnapshotSubstrate {
     return {
       tree: root,
       stats: {
+        // Safari has no accessibility-tree protocol, so the DOM walk is the
+        // only tier this substrate can offer.
+        tier: merge.added > 0 ? "dom-walk" : "empty",
         a11yInteractive: 0,
         domWalkEntries: entries.length,
         domWalkNew: merge.added,

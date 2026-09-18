@@ -40,7 +40,7 @@ beforeAll(async () => {
 });
 
 describe("L2/L5 — every deep tool is gated by engine capability, not engine name", () => {
-  // 31 deep tools (tool-gate.ts:38-88) × 5 engines. assertEngineSupports
+  // Every deep tool × 5 engines. assertEngineSupports
   // (tool-gate.ts:131) returns a structured refusal on a non-deep engine and null
   // on a deep one — keyed on the engine's declared `deep`, never its name.
   it.each(ENGINE_KINDS)("[%s] gates all deep tools by its declared `deep`", (engine) => {
@@ -76,7 +76,73 @@ describe("L2 — DEEP_TOOLS is derived from the registrations", () => {
     expect(onlyFlagged, "flagged deep but missing from DEEP_TOOLS").toEqual([]);
   });
 
-  it("the derived set equals the P0 snapshot size (behaviour preserved at 31)", () => {
-    expect(DEEP_TOOLS.size).toBe(31);
+  it("the derived set equals the current snapshot size (31 at P0, 26 after RFC 0009 P3)", () => {
+    // 31 → 26. RFC 0009 P3 retired the flag on the five touch/gesture
+    // registrations named in RETIRED_BY_SUBSTRATE below. Lowering this number is
+    // only ever legitimate alongside the assertions in the next block, which show
+    // the tools are still refused on the same engines for the same reason.
+    expect(DEEP_TOOLS.size).toBe(26);
+  });
+});
+
+/** The five registrations RFC 0009 P3 took `deep: true` off, and the tools they
+ *  are. Named here, not counted: the size assertion above would go green on any
+ *  five removals, and these are the five. */
+const RETIRED_BY_SUBSTRATE = [
+  "touch_start",
+  "touch_move",
+  "touch_end",
+  "gesture_swipe",
+  "gesture_pinch",
+] as const;
+
+describe("L2/L5 — the five touch tools left DEEP_TOOLS without widening any engine", () => {
+  // WHY THEY LEFT. `deep: true` asks "does this engine have raw CDP?", and the
+  // gate answers before the substrate is consulted. Touch is the PRIMARY input on
+  // the native engines of RFC 0008, and they have no CDP — so the flag refused a
+  // native agent exactly the tools it needs most, on a question that was never
+  // the right one. The right question is "can this engine dispatch touch?", and
+  // `ActionSubstrate.gesture` is where it is now asked.
+  //
+  // WHY THAT IS NOT A WIDENING, and where each half is proven:
+  //   - the Playwright adapter refuses when the session's ActionContext carries
+  //     no CDP accessor, which is exactly the set of engines `caps.deep:false`
+  //     described (firefox, webkit) — `src/page/action-substrate.test.ts`;
+  //   - the refusal's `error` line is character-identical to the one this gate
+  //     produced, and the envelope is the same `{ok, error, engine, hint,
+  //     tokensEstimate}` — same file, plus `gesture-engine-refusal.test.ts`
+  //     end-to-end through the real server;
+  //   - safari refuses in its own adapter — same file.
+  // This block holds the third leg: they are gone from the gate, and nothing put
+  // them back.
+
+  it.each(RETIRED_BY_SUBSTRATE)("[%s] is no longer gated by the `deep` flag", (tool) => {
+    expect(
+      DEEP_TOOLS.has(tool),
+      `${tool} is back in DEEP_TOOLS. The engine gate refuses it before ` +
+        "`ActionSubstrate.gesture` is reached, which is what stopped a no-CDP engine " +
+        "from ever dispatching touch. If it genuinely needs raw CDP again, that is an " +
+        "RFC 0009 amendment, not a flag.",
+    ).toBe(false);
+  });
+
+  it.each(ENGINE_KINDS)("[%s] the gate un-gates all five, deep or not", (engine) => {
+    // The gate now says nothing about these tools on ANY engine — including the
+    // non-deep ones, where it used to be the only thing refusing them. That is
+    // the load the substrate picked up.
+    for (const tool of RETIRED_BY_SUBSTRATE) {
+      expect(assertEngineSupports(tool, engine)).toBeNull();
+    }
+  });
+
+  it("names five, and the registrations still exist", async () => {
+    // The P2 trap: a list a test iterates can shrink without failing. Pin the
+    // length, and pin that every name is a live registration — a rename that left
+    // this list stale would otherwise assert nothing about anything.
+    expect(RETIRED_BY_SUBSTRATE).toHaveLength(5);
+    const names = new Set(await registeredToolNames());
+    for (const tool of RETIRED_BY_SUBSTRATE) {
+      expect(names.has(tool), `${tool} is not a registered tool`).toBe(true);
+    }
   });
 });

@@ -4,6 +4,7 @@
 
 import type { CDPSession, Frame } from "playwright-core";
 import { walk, type A11yNode, type StructuralContext } from "./a11y.js";
+import { isPresentational } from "./a11y-types.js";
 import type { RefRegistry } from "./refs.js";
 import { composeSnapshotForFrame } from "./compose.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
@@ -182,6 +183,23 @@ function pierceWarnings(composedWarnings: string[], pierce: unknown): string[] {
   return composedWarnings.filter((w) => !w.startsWith("low-content"));
 }
 
+/**
+ * The document root. Its accessible name is the page title, which matches the
+ * query on any page whose title repeats a word the agent used, and there is
+ * nothing to click: `role=RootWebArea[name=…]` probes back
+ * `actionable: "off-screen"` every time.
+ */
+const DOCUMENT_ROLES = new Set(["RootWebArea", "WebArea"]);
+
+/** Can this node be the thing the query named? Presentational text and layout
+ *  leaves and the document root cannot, and ranking one costs a candidate slot
+ *  that the real control then does not get — `const top = scored.slice(0, max)`
+ *  cuts before the probes run, so `rankByVisibility` cannot put back what the
+ *  slice removed. */
+export function isCandidateRole(node: Pick<A11yNode, "role" | "testId">): boolean {
+  return !isPresentational(node) && !DOCUMENT_ROLES.has(node.role);
+}
+
 /** Walk the (scoped) tree, scoring each node and applying any feedback bonus;
  *  returns the score-descending candidate list. */
 function scoreCandidates(
@@ -192,6 +210,7 @@ function scoreCandidates(
 ): Array<{ node: A11yNode; score: number }> {
   const scored: Array<{ node: A11yNode; score: number }> = [];
   for (const { node } of walk(walkRoot)) {
+    if (!isCandidateRole(node)) continue;
     let score = scoreNode(node, q, qTokens);
     if (score > 0 && opts.feedback) {
       score += opts.feedback.bonusFor(opts.query, {

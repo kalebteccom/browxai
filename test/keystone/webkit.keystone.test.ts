@@ -221,6 +221,44 @@ describeWk("webkit keystone — the third engine is real (adapter + seam)", () =
   );
 
   it(
+    "the five touch/gesture tools still refuse on WebKit after the deep flag retired",
+    async () => {
+      // The WebKit half of the RFC 0009 P3 proof. The flag retired so a native
+      // engine can dispatch touch without CDP; WebKit has neither, so its answer
+      // must be unchanged — same `error` line, same envelope, now emitted by
+      // `ActionSubstrate.gesture` instead of `assertEngineSupports`.
+      const session = "wk-touch";
+      await callJson("open_session", { session, mode: "incognito" });
+
+      const retired: Array<[string, Record<string, unknown>]> = [
+        ["touch_start", { coords: { x: 10, y: 10 } }],
+        ["touch_move", { coords: { x: 20, y: 20 } }],
+        ["touch_end", {}],
+        ["gesture_swipe", { from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, steps: 2 }],
+        ["gesture_pinch", { coords: { x: 50, y: 50 }, scale: 2, steps: 2 }],
+      ];
+      expect(retired, "all five registrations are covered").toHaveLength(5);
+
+      for (const [tool, args] of retired) {
+        const res = await callJson<{
+          ok: boolean;
+          engine?: string;
+          error?: string;
+          hint?: string;
+          requiredCapability?: unknown;
+        }>(tool, { session, ...args });
+        expect(res.ok, `${tool} must still refuse on webkit`).toBe(false);
+        expect(res.error).toBe(`tool "${tool}" is not supported on the "webkit" engine`);
+        expect(res.engine, `${tool} refusal carries engine`).toBe("webkit");
+        expect(res.requiredCapability, `${tool} is NOT a capability denial`).toBeUndefined();
+        expect(res.hint).toContain("Input.dispatchTouchEvent");
+        expect(res.hint).toContain("chromium");
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "snapshot substrate — snapshot/find/navigate/click/fill run on real WebKit via the walker",
     async () => {
       // The page-side snapshot/a11y walker behind the SnapshotSubstrate interface

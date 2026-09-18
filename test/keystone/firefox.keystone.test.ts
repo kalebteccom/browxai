@@ -225,6 +225,45 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
   );
 
   it(
+    "the five touch/gesture tools still refuse on Firefox after the deep flag retired",
+    async () => {
+      // RFC 0009 P3 took `deep: true` off these five so a native engine (no CDP,
+      // touch as its primary input) could reach them. On real Firefox the answer
+      // must not have moved: the refusal comes from `ActionSubstrate.gesture`
+      // now, keyed on the session's CDP accessor, and the `error` line is
+      // character-identical to the one the engine gate produced.
+      const session = "ff-touch";
+      await callJson("open_session", { session, mode: "incognito" });
+
+      const retired: Array<[string, Record<string, unknown>]> = [
+        ["touch_start", { coords: { x: 10, y: 10 } }],
+        ["touch_move", { coords: { x: 20, y: 20 } }],
+        ["touch_end", {}],
+        ["gesture_swipe", { from: { x: 0, y: 0 }, to: { x: 40, y: 0 }, steps: 2 }],
+        ["gesture_pinch", { coords: { x: 50, y: 50 }, scale: 2, steps: 2 }],
+      ];
+      expect(retired, "all five registrations are covered").toHaveLength(5);
+
+      for (const [tool, args] of retired) {
+        const res = await callJson<{
+          ok: boolean;
+          engine?: string;
+          error?: string;
+          hint?: string;
+          requiredCapability?: unknown;
+        }>(tool, { session, ...args });
+        expect(res.ok, `${tool} must still refuse on firefox`).toBe(false);
+        expect(res.error).toBe(`tool "${tool}" is not supported on the "firefox" engine`);
+        expect(res.engine, `${tool} refusal carries engine`).toBe("firefox");
+        expect(res.requiredCapability, `${tool} is NOT a capability denial`).toBeUndefined();
+        expect(res.hint).toContain("Input.dispatchTouchEvent");
+        expect(res.hint).toContain("chromium");
+      }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "the three D6-reclassified tools carry their specific hints on Firefox",
     async () => {
       const session = "ff-d6";

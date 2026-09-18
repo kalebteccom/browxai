@@ -137,3 +137,69 @@ describe("findByRef", () => {
     expect(findByRef(tree, "e999")).toBe(null);
   });
 });
+
+describe("serialise — Chromium's text and layout leaves", () => {
+  it("emits no line for a StaticText that repeats its parent's name", () => {
+    const tree: A11yNode = node("WebArea", "X", "e1", [
+      node("button", "Save", "e2", [node("StaticText", "Save", "e3")]),
+    ]);
+    const out = serialise(tree);
+    expect(out).toContain('button "Save" [ref=e2]');
+    expect(out).not.toContain("StaticText");
+    // The button's own name is Chromium's, computed from the DOM, so
+    // suppressing the text child never costs a control its label.
+    expect(out).toContain('"Save"');
+  });
+
+  it("emits no line for the layout and typography wrappers", () => {
+    const roles = [
+      "LineBreak",
+      "ListMarker",
+      "LayoutTable",
+      "LayoutTableRow",
+      "LayoutTableCell",
+      "Abbr",
+      "EmphasizedText",
+      "StrongText",
+      "superscript",
+      "subscript",
+    ];
+    const tree: A11yNode = node(
+      "WebArea",
+      "X",
+      "e1",
+      roles.map((r, i) => node(r, "text", `e${i + 2}`)),
+    );
+    const out = serialise(tree);
+    for (const r of roles) expect(out, r).not.toContain(r);
+  });
+
+  it("keeps a text leaf the page author addressed by test attribute", () => {
+    const tree: A11yNode = node("WebArea", "X", "e1", [
+      node("StaticText", "42", "e2", [], { testId: "price-total" }),
+    ]);
+    expect(serialise(tree)).toContain('StaticText "42" [ref=e2] [data-testid="price-total"]');
+  });
+
+  it("keeps a suppressed node's children at its own depth, not one deeper", () => {
+    // The suppressed node contributes no line, so it contributes no level:
+    // indenting its children at `depth + 1` anyway made a spliced control read
+    // as nested under whichever sibling emitted the line above it.
+    const tree: A11yNode = node("WebArea", "X", "e1", [
+      node("heading", "Section", "e2"),
+      node("generic", undefined, "e3", [node("button", "Go", "e4")]),
+    ]);
+    const lines = serialise(tree).split("\n");
+    expect(lines[1]).toBe('  heading "Section" [ref=e2]');
+    expect(lines[2]).toBe('  button "Go" [ref=e4]');
+  });
+
+  it("collapses a chain of suppressed wrappers to a single level", () => {
+    const tree: A11yNode = node("WebArea", "X", "e1", [
+      node("generic", undefined, "e2", [
+        node("none", undefined, "e3", [node("StaticText", "hi", "e4", [node("link", "Go", "e5")])]),
+      ]),
+    ]);
+    expect(serialise(tree).split("\n")[1]).toBe('  link "Go" [ref=e5]');
+  });
+});

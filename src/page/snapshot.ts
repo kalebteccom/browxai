@@ -2,7 +2,7 @@
 // everywhere browxai emits a tree (snapshot(), find() context, ActionResult.snapshotDelta) —
 // that's the coherence constraint.
 
-import { walk, type A11yNode } from "./a11y-types.js";
+import { walk, isGenericNoise, type A11yNode } from "./a11y-types.js";
 
 export interface SerialiseOptions {
   /** Indent string per depth level. Default `"  "`. */
@@ -57,8 +57,14 @@ export function serialise(root: A11yNode, opts: SerialiseOptions = {}): string {
       emitted++;
     }
     if (v.skipSubtree) continue;
+    // A node that emitted no line adds no level: its children belong to the
+    // nearest ancestor that did. Indenting them at `depth + 1` regardless put
+    // 26 nodes on Bootstrap's docs and 90 on Hacker News at an indent that is
+    // not their parent's plus one, so a spliced button read as nested under an
+    // unrelated sibling.
+    const childDepth = v.line === null ? depth : depth + 1;
     for (let i = node.children.length - 1; i >= 0; i--) {
-      stack.push({ node: node.children[i]!, depth: depth + 1 });
+      stack.push({ node: node.children[i]!, depth: childDepth });
     }
   }
   if (truncated)
@@ -177,20 +183,4 @@ export function fmtState(n: A11yNode): string {
 
 function truncate(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + "…";
-}
-
-/**
- * Drop generic / presentational nodes that carry no agent signal:
- * - role "generic" / "presentation" with no name and no testId
- * - role "none"
- * - "text" leaves with no name (i.e. empty)
- * These nodes still let their *children* through (caller walks the tree); we
- * just skip emitting a line for them.
- */
-function isGenericNoise(n: A11yNode): boolean {
-  if (n.testId) return false;
-  if (n.role === "none") return true;
-  if ((n.role === "generic" || n.role === "presentation") && !n.name) return true;
-  if (n.role === "StaticText" && !n.name) return true;
-  return false;
 }

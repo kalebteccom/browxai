@@ -24,58 +24,20 @@
 // implementation. This file never imports back from the `network-substrate.js`
 // barrel.
 
-import type { SessionNetworkRing, SessionWsRing } from "./network.js";
-import type {
-  ActionNetworkTap,
-  FetchBodyResult,
-  NetworkSubstrate,
-} from "./network-substrate-types.js";
+import { NoProtocolNetworkSubstrate } from "./network-substrate-none.js";
 
-/** Safari substrate — a NO-OP. Wiring-time engine-blindness only: the rings
- *  construct and stay empty, the per-action tap reports zero traffic, and
- *  `network_body` returns a structured "not available". The empty rings are NOT
- *  an answer and must never be surfaced — Safari declares no `network`
- *  sub-interface, and the tools refuse on that declaration before reading them.
- *  See the module header. */
-export class SafariNoopNetworkSubstrate implements NetworkSubstrate {
-  readonly engine = "safari";
-  readonly http: SessionNetworkRing = {
-    setSecrets: () => undefined,
-    iter: () => [],
-    recent: () => ({ summary: { total: 0, byType: {}, failed: 0 }, requests: [] }),
-  };
-  readonly ws: SessionWsRing = {
-    setSecrets: () => undefined,
-    recent: () => ({ total: 0, frames: [] }),
-    since: () => [],
-  };
-
-  async attach(): Promise<void> {
-    // Nothing to attach to — Safari has no protocol-level network domain.
-  }
-
-  setSecrets(): void {
-    // No egress sinks to wire — the rings + tap are permanently empty on Safari.
-  }
-
-  openActionTap(): ActionNetworkTap {
-    return {
-      open: () => Promise.resolve(),
-      close: () =>
-        Promise.resolve({
-          summary: { total: 0, byType: {}, failed: 0 },
-          requests: [],
-          mutations: [],
-        }),
-    };
-  }
-
-  async fetchBody(): Promise<FetchBodyResult> {
-    return {
-      ok: false,
-      error:
-        "network_body is not available on the safari engine — Safari exposes no protocol-level " +
-        "network observation. Use a chromium/firefox/webkit session for network bodies.",
-    };
+/** Safari substrate — a NO-OP, and `NoProtocolNetworkSubstrate` is the body.
+ *  Safari was the first engine with no protocol-level network domain and RFC
+ *  0008's native engines are the second, so the shape moved to a shared base
+ *  rather than being copied a second time. This subclass is the safari NAME (the
+ *  engine tag diagnostics read) plus the safari-specific reason `network_body`
+ *  renders. Behaviour is unchanged. */
+export class SafariNoopNetworkSubstrate extends NoProtocolNetworkSubstrate {
+  constructor() {
+    super(
+      "safari",
+      "Safari exposes no protocol-level network observation. Use a chromium/firefox/webkit " +
+        "session for network bodies.",
+    );
   }
 }

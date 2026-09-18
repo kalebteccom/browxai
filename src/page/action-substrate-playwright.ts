@@ -13,6 +13,12 @@ import type { ActionContext, ActionResult } from "./actionresult.js";
 import type { ActionSubstrate } from "./action-substrate-types.js";
 import * as actions from "./actions.js";
 import { directDispatchUnsupported } from "./actions-direct-dispatch.js";
+import { gesturePinch, gestureSwipe, touchAction } from "./gestures.js";
+import {
+  touchDispatchUnsupported,
+  type GestureRequest,
+  type GestureResult,
+} from "./gesture-types.js";
 
 export class PlaywrightActionSubstrate implements ActionSubstrate {
   readonly engine: string;
@@ -61,5 +67,30 @@ export class PlaywrightActionSubstrate implements ActionSubstrate {
   }
   async waitFor(args: actions.WaitForArgs): Promise<ActionResult> {
     return actions.waitFor(this.ctx(), args);
+  }
+
+  /** The touch pipeline, gated the same way `click({dispatch:"direct"})` already
+   *  is: on the ActionContext carrying a CDP accessor, never on an engine name.
+   *  Chromium and the Chrome-on-Android attach carry one and reach the verbatim
+   *  `gestures.*` bodies; firefox and webkit carry none and refuse here, which is
+   *  the refusal the engine gate used to render from the `deep: true` flag. */
+  async gesture(req: GestureRequest): Promise<GestureResult> {
+    const ctx = this.ctx();
+    if (!ctx.cdp) return touchDispatchUnsupported(req, this.engine);
+    const cdp = ctx.cdp();
+    switch (req.kind) {
+      case "touch":
+        return {
+          kind: "dispatched",
+          report: await touchAction(cdp, req.phase, {
+            coords: req.coords,
+            identifier: req.identifier,
+          }),
+        };
+      case "swipe":
+        return { kind: "dispatched", report: await gestureSwipe(cdp, req) };
+      case "pinch":
+        return { kind: "dispatched", report: await gesturePinch(cdp, req) };
+    }
   }
 }

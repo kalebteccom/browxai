@@ -1,10 +1,10 @@
 import { withDeadline } from "../util/deadline.js";
-import { estimateTokens } from "../util/tokens.js";
-import { mouseAction, touchAction } from "../page/gestures.js";
+import { mouseAction } from "../page/gestures.js";
 import { snapshotProfile, restoreProfile } from "../session/profile-snapshot.js";
-import { requireCdp } from "../engine/session-cdp.js";
 import { SESSION_ARG } from "./schemas.js";
+import { gestureErrorResponse, gestureResponse } from "./gesture-envelope.js";
 import type { ToolHost } from "./host.js";
+import type { TouchPhase } from "../page/action-substrate.js";
 import { requirePage } from "../engine/index.js";
 
 /**
@@ -16,7 +16,7 @@ import { requirePage } from "../engine/index.js";
  * the registrations.
  */
 export function registerInputTools(host: ToolHost): void {
-  const { z, register, gateCheck, engineGate, entryFor, cfgActionTimeout, registry, workspace } =
+  const { z, register, gateCheck, entryFor, actionsFor, cfgActionTimeout, registry, workspace } =
     host;
 
   // A *factory* — each call returns a fresh schema instance. Reusing one
@@ -70,6 +70,14 @@ export function registerInputTools(host: ToolHost): void {
 
   // ---------- Touch + multi-touch gestures ----------
   //
+  // NOT `deep: true`. These three carried the flag until RFC 0009 P3, which made
+  // the engine gate refuse them before the substrate was consulted — and touch is
+  // the PRIMARY input on the native targets of RFC 0008, where CDP is absent. So
+  // the flag retired and the refusal moved onto `ActionSubstrate.gesture`, which
+  // keys on the session's CDP accessor. Firefox, WebKit and Safari refuse exactly
+  // as before, with the same `error` line and the same envelope; an engine that
+  // can dispatch touch by other means now reaches it.
+  //
   // A separate dispatch pipeline from the `mouse_*` family. CDP
   // `Input.dispatchTouchEvent` is the touch sibling of `dispatchMouseEvent`;
   // mobile-default apps and canvas apps wire touch handlers that the mouse
@@ -84,10 +92,9 @@ export function registerInputTools(host: ToolHost): void {
     register(
       act,
       {
-        // touch_start / touch_move / touch_end — CDP touch pipeline; deep (no
-        // off-Chromium Playwright equivalent).
+        // touch_start / touch_move / touch_end — the touch pipeline, refused by
+        // the action substrate on an engine that cannot dispatch it.
         capability: "action",
-        deep: true,
         description:
           `Dispatch ${act.replace("_", " ")} via CDP Input.dispatchTouchEvent — a separate pipeline from \`mouse_*\` for mobile-default apps and canvas / map / drawing widgets that listen for \`touchstart\` / \`touchmove\` / \`touchend\`. ${requiresCoords ? "`coords` required (viewport CSS px)." : "`coords` optional — when omitted, dispatches an empty touchPoints[] (the 'all fingers up' form)."} ` +
           "`identifier` (default 1) maps to DOM `TouchEvent.changedTouches[].identifier` — use distinct ids per finger to fan out multi-touch. Touch does NOT synthesise mouse events — dispatch mouse_* explicitly if both pipelines are needed.",
@@ -115,40 +122,21 @@ export function registerInputTools(host: ToolHost): void {
         const g = gateCheck(act);
         if (g) return g;
         const e = await entryFor(session);
-        const eg = engineGate(act, e);
-        if (eg) return eg;
         try {
-          const r = await withDeadline(
-            touchAction(requireCdp(e.session), act.slice(6) as "start" | "move" | "end", {
-              coords,
-              identifier,
-            }),
-            cfgActionTimeout(),
-            act,
+          return gestureResponse(
+            await withDeadline(
+              actionsFor(e).gesture({
+                kind: "touch",
+                phase: act.slice(6) as TouchPhase,
+                coords,
+                identifier,
+              }),
+              cfgActionTimeout(),
+              act,
+            ),
           );
-          const json = JSON.stringify(r);
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify({ ...r, tokensEstimate: estimateTokens(json) }, null, 2),
-              },
-            ],
-          };
         } catch (err) {
-          const body = { ok: false, error: err instanceof Error ? err.message : String(err) };
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: JSON.stringify(
-                  { ...body, tokensEstimate: estimateTokens(JSON.stringify(body)) },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return gestureErrorResponse(err);
         }
       },
     );

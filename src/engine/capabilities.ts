@@ -122,12 +122,93 @@ export const SAFARI_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** ios-app (the iOS Simulator over XCUITest — the FIRST native-app engine, and the
+ *  first with no document at all). A curated SUBSET, and each omission is a thing
+ *  the platform genuinely does not have rather than a thing not written yet:
+ *
+ *  DECLARED. `lifecycle` (boot / install / launch / terminate over `simctl`),
+ *  `navigation` (deep links — `simctl openurl`; there is no address bar and no
+ *  history stack), `snapshot` (the XCUITest accessibility hierarchy, which is
+ *  richer than a DOM walk), `input` (tap, element-scoped set-value, key input,
+ *  scroll, and swipe and pinch as real XCUITest primitives), `capture`
+ *  (`simctl io screenshot`) and `element` — the native engines are what RFC 0009
+ *  P2 split `element` from `page` FOR, and the verify family runs here.
+ *
+ *  OMITTED. `page`: there is no Playwright `Page`, no document and no frame tree.
+ *  `network`: there is no protocol-level tap on a native app without a system
+ *  proxy or a VPN profile, and installing either is the operator's decision.
+ *  `storage`: cookies / localStorage / IndexedDB / the Cache API are
+ *  document-scoped web-platform stores. `script`: a release-configuration app has
+ *  no scriptable context, and reaching into a development bridge would be a
+ *  different trust posture. `emulation`: geolocation, appearance and reduced
+ *  motion are DEVICE settings that outlive the session, not per-session overrides.
+ *
+ *  `deep: false` — no CDP — gates the CDP-deep tools through the existing
+ *  `caps.deep` gate with no per-engine edit. */
+export const IOS_APP_CAPABILITIES: EngineCapabilities = {
+  engine: "ios-app",
+  subInterfaces: new Set<EngineSubInterface>([
+    "lifecycle",
+    "navigation",
+    "snapshot",
+    "input",
+    "capture",
+    "element",
+  ]),
+  deep: false,
+};
+
+/** Android-app (a React Native app on an emulator, over adb — RFC 0008 P2). The
+ *  first NON-BROWSER engine, and its subset is smaller than Safari's for reasons
+ *  that are facts about the platform rather than gaps in the adapter:
+ *
+ *  DECLARED. `lifecycle` / `navigation` / `snapshot` / `input` are the four every
+ *  engine must declare, and a native session honours all four: it opens and closes
+ *  a device lease, `navigate` opens a deep link, `snapshot` composes the
+ *  UiAutomator view hierarchy into `A11yNode`, and the whole input pipeline is
+ *  real OS input. `capture` is `adb exec-out screencap`. `element` is a testID
+ *  query against a freshly-dumped hierarchy, which is what lets the `verify_*`
+ *  family and the gesture geometry run — RFC 0009 P2 split `element` from `page`
+ *  precisely so a Page-free engine could declare it.
+ *
+ *  OMITTED, each because the platform has no such thing:
+ *  - `network` — there is no protocol-level tap on a native app without a system
+ *    proxy or a VPN profile, and installing either is the operator's decision,
+ *    which browxai never makes on their behalf (RFC 0008, Honest limits).
+ *  - `storage` — cookies, localStorage, IndexedDB and the Cache API are web
+ *    storage. An app's data lives in its private sandbox and is reached with
+ *    `app_reset`, not with a cookie jar.
+ *  - `script` — there is no scriptable context in a release-configuration React
+ *    Native app, and reaching into a dev bridge would be a different trust
+ *    posture. `eval_js` / `poll_eval` refuse.
+ *  - `emulation` — geolocation, colour scheme and reduced motion are device
+ *    SETTINGS here, not per-session overrides; changing them would outlive the
+ *    session and mutate the operator's device.
+ *  - `page` — no Playwright `Page`, the same as safari.
+ *
+ *  `deep: false`: no CDP anywhere near a native app, so the CDP-hard tools refuse
+ *  through the existing gate with no per-engine edit. */
+export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
+  engine: "android-app",
+  subInterfaces: new Set<EngineSubInterface>([
+    "lifecycle",
+    "navigation",
+    "snapshot",
+    "input",
+    "capture",
+    "element",
+  ]),
+  deep: false,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
   webkit: WEBKIT_CAPABILITIES,
   android: ANDROID_CAPABILITIES,
   safari: SAFARI_CAPABILITIES,
+  "ios-app": IOS_APP_CAPABILITIES,
+  "android-app": ANDROID_APP_CAPABILITIES,
 };
 
 /** The capability declaration for an engine. Chromium + Firefox + WebKit +

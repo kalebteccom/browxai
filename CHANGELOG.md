@@ -8,7 +8,318 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **Two native engines: `ios-app` and `android-app`. browxai drives native
+  mobile apps with the same tools, the same refs and the same evidence format it
+  uses for browsers** (RFC 0008). `ios-app` boots an iOS Simulator, launches an
+  app and reads its XCUITest accessibility hierarchy; `android-app` leases an
+  Android emulator and reads its UiAutomator view hierarchy over `adb`. Neither
+  is a browser: no Playwright `Page`, no DOM, no URL and no `Locator` — which is
+  why RFC 0009 had to land first — and neither needed an edit to any session
+  factory, to `session-registry.ts` or to `host-build.ts`. Each is one new
+  adapter and one `registerEngine(...)` call.
+
+  **The point is that nothing new was invented.** Both hierarchies compose into
+  the `A11yNode` tree `snapshot` and `find` already return, with the same
+  `[ref=eN]` refs, so `find`'s ranking never learns the difference and one CI
+  verifier reads a native session and a web session the same way. `click` is a
+  tap, `fill` types into the field, `press` reaches the hardware keys, `scroll`
+  and `gesture_swipe` are platform primitives, `screenshot` is `simctl io
+  screenshot` / `screencap`, and the `verify_*` family runs through
+  `ElementSubstrate` — which is what RFC 0009 P2 split `element` from `page` for.
+  `gesture_pinch` is a real XCUITest primitive on iOS; on Android it refuses,
+  because `adb shell input` has no two-finger primitive and every way to fake one
+  reports a pinch the app never received.
+
+  **The accessibility identifier is the tier-1 selector, not a position.** A node
+  carrying one — iOS's `accessibilityIdentifier`, Android's `resource-id`, both
+  of which a React Native `testID` compiles to — is keyed WITHOUT its structural
+  path, so its ref survives a layout change that moves it. A node without one is
+  keyed on its path and its ref is snapshot-local: move it and the old ref reports
+  `stale-element` rather than resolving to whatever now occupies its rectangle.
+  On Android, `snapshot` warns when an app is thin on testIDs, naming the count,
+  so a degraded selector model becomes a fixable list for the app team. **Every
+  action re-resolves before it dispatches**: a fresh hierarchy read, in the same
+  call, never a replayed coordinate. **An ambiguous query refuses**, taps nothing
+  and reports the count.
+
+  **Ten new tools for device and app lifecycle**, which browxai had no analogue
+  for: `device_list` / `device_boot` / `device_shutdown`, and `app_list` /
+  `app_install` / `app_uninstall` / `app_launch` / `app_terminate` /
+  `app_reset` / `app_foreground`. **One surface over both engines**: each `app_*`
+  verb routes through a `NativeLifecycle` seam on the session handle, which the
+  adapter implements over `adb` or `simctl`. A verb the platform has no primitive
+  for REFUSES, naming the engine and what is missing — `app_uninstall` and
+  `app_reset` do that on `ios-app`, because `simctl uninstall` would remove an app
+  from a device the session leases rather than owns and iOS has no per-app data
+  clear at all (`simctl erase` wipes every app). A structural refusal is the point:
+  `app_reset` answering `ok:true` having cleared nothing is the plausible-empty the
+  sub-interface gate exists to catch, one layer down. `device_list` reports iOS
+  simulators alongside adb devices; `device_boot` and `device_shutdown` stay
+  adb/AVD-scoped, because an `ios-app` session boots the simulator it resolves at
+  session creation and never shuts one down. The iOS session's own device and app
+  still come from `BROWX_IOS_DEVICE` / `BROWX_IOS_APP_ID` / `BROWX_IOS_APP_PATH`.
+
+  **Behind the new off-by-default `native-device` capability**, gated at SESSION
+  CREATION for both engines — every native tool needs a native session first, so
+  one check closes the surface, and nothing is booted, installed or launched
+  before the gate runs. Installing and launching applications and driving an
+  OS-level input pipeline is the same posture class as `replay` and
+  `network-body`. See `docs/threat-model.md`.
+
+  **No new dependency, and nothing GPL.** Xcode supplies `xcrun simctl`,
+  WebDriverAgent (Apache-2.0) supplies the XCUITest hierarchy over HTTP, and the
+  Android SDK supplies `adb` and the emulator. browxai bundles, builds and
+  fetches none of them, adds no npm package for any of them, and never creates an
+  AVD or a simulator. A missing WebDriverAgent refuses session creation with
+  `wda-unreachable` instead of degrading into an empty snapshot.
+
+  **What refuses, and says why.** `eval_js` / `poll_eval` (no scriptable context
+  in a release-configuration app), the network family (no protocol-level tap
+  without a system proxy or a VPN profile, which is the operator's decision), web
+  storage, `frames_list`, `pdf_save`, and the whole CDP-deep family. Registered
+  secrets do NOT materialise on either native engine — a `<NAME>` alias is typed
+  literally — which is also why RFC 0008 §6's `adb shell input text <secret>` leak
+  sink does not exist here. Real devices are out of scope by policy, not by
+  mechanism. The full per-tool matrix and the lossy parts of each hierarchy
+  mapping are in `docs/tool-reference.md`.
+
+  `android-app` is verified end to end against a real Android 14 emulator: a
+  fifteen-case keystone drives `open_session` → `snapshot` → `find` → `click` →
+  `press` → `screenshot` → `gesture_swipe` → `app_foreground` → `app_list`
+  through the real MCP server and asserts the refusals. `ios-app` has a
+  simulator-gated keystone over a faked WebDriverAgent. Both skip cleanly with no
+  device attached.
+
 ### Changed
+
+- **`open_session` threads the session id into every launch mode, not only
+  `attached`.** It was attach-only because the attach lane was the only one that
+  filed a lease. The `android-app` engine leases too — on a device serial rather
+  than a CDP target, because two UiAutomator clients on one device make every
+  hierarchy dump fail for both — and without the id every native session claimed
+  the lease under the same fallback, so a second session on one device was
+  allowed through. No behaviour change on any browser engine.
+
+- **An element both snapshot tiers see is now one line with one ref, marked
+  `[from-both]`.** The two tiers keyed their refs on different vocabularies —
+  the accessibility tier on the ARIA role plus the accessibility path, the DOM
+  walk on the bare tag plus the DOM path — so the same `<a>` was `link` at one
+  key and `a` at another, no entry could ever match, and every DOM-walk entry was
+  appended unconditionally. Hacker News reported its 228 anchors twice; across
+  six real pages `stats.domWalkCombined` was `0` and `[from-both]` never
+  appeared. An agent counting buttons got double, and one that clicked the
+  DOM-walk ref then re-snapshotted saw the accessibility ref unchanged and could
+  not tell whether its click had landed somewhere else.
+
+  **The identity is the CDP backend node id**, which the accessibility tier
+  carries on every node. The DOM walk has none — it runs as an injected function
+  and sees DOM nodes, not CDP ids — so the join reads it out of the
+  `DOM.getDocument` sweep that already runs for test attributes, by walking the
+  entry's own `:nth-child` path down the swept document. No extra round trip.
+
+  **Nothing is merged on resemblance.** The path picks one child per level and
+  the tag at that index has to match, so it pins the whole ancestor chain; the
+  element's `id` and test attribute are checked on top of it. Two buttons with
+  the same role, the same accessible name and the same `data-testid` stay two
+  refs. Every uncertainty refuses and keeps the duplicate: a path that resolves
+  to nothing, an element that disagrees about its own `id` or test attribute, a
+  backend node id two accessibility nodes claim, and any path that is not a
+  `tag:nth-child(n)` chain — which is every shadow-root path, since the walk's
+  path for a shadow-rooted element stops at the shadow boundary. A closed-shadow
+  entry carries no path at all and never merges.
+
+  An entry whose accessibility node the serialiser emits no line for (a nameless
+  `generic`, a `StaticText`) is also left alone: folding it in would take the
+  element out of the snapshot rather than deduplicate it. That is 3 entries of
+  1,271 across the six pages.
+
+  **What changes for you.** Where you saw two lines for one element you now see
+  one, on the accessibility tier's line, with the accessibility tier's ARIA role
+  (`link`, not the bare tag `a`), its accessible name and its ref. That line
+  gains the DOM walk's findings: the tag, the positional CSS path, the `href` /
+  `input type` discriminators, and the test attribute on roles the accessibility
+  tier's own sweep does not cover. `stats.domWalkCombined` is non-zero and means
+  what it says; `stats.domWalkNew` counts only elements the accessibility tier
+  does not have, so `stats.tier` reads `a11y` rather than `mixed` on a page where
+  the DOM walk contributed nothing new.
+
+  **Refs.** No ref moves. The surviving ref is the accessibility tier's, minted
+  from the same key as before; the DOM-walk key for the same element is simply
+  never minted, so ref numbering for everything else is unchanged within a
+  session. A ref a caller already holds from an earlier snapshot still resolves —
+  the registry keeps it — it just stops appearing in the output. What you lose is
+  the second, `[from-dom]` handle on an element the accessibility tier also
+  reports; address it by its accessibility ref instead.
+
+  **Size.** Measured on the same six pages (react.dev/learn, MDN's Using Fetch,
+  Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
+  Hacker News front page): 59,559 → 49,904 estimated tokens for the serialised
+  body, −16%. 1,268 of the 1,274 DOM-walk entries merged.
+
+  **Cost.** No additional CDP round trip: the `DOM.getDocument` sweep is the one
+  that already ran, and a path is resolved by descending the tree it returned
+  rather than from a table of every element in the document. Interleaved over 101
+  pairs on the same captured page, the merge went 0.89 ms → 2.09 ms on
+  Wikipedia's GDP list and 0.35 ms → 0.56 ms on Hacker News, against whole
+  composes of ~236 ms and ~36 ms.
+
+- **A ref keeps the locator inputs the other tier contributed.** `getA11yTree`
+  re-minted each ref's locator record wholesale, and it runs on every pre- and
+  post-action delta tree as well as on `snapshot` — so the first action of a
+  session wiped the positional CSS path the tier merge had just attached, and
+  `find`'s tier-5 fallback and the ambiguity re-resolution lost the one input
+  that tells two same-role, same-name elements apart. The record is merged now.
+  A ref's key hashes its role, name, path and test attribute, so its role and
+  name cannot change under it and there is nothing an existing record could be
+  stale about.
+
+- **Snapshots now carry the accessibility tree they were always meant to, so
+  snapshot output changes on every page.** The CDP conversion dropped an
+  `ignored` node's entire subtree, and Chromium marks `<html>` and `<body>`
+  ignored (`ignoredReasons: [uninteresting]`) on essentially every page — so the
+  a11y tier emitted a bare root, `stats.a11yInteractive` was `0` everywhere, and
+  the DOM-walk fallback carried every snapshot on its own. On the repo's own
+  keystone fixture the a11y tier went from 1 node to 111.
+
+  **What changes for you.** Snapshots are longer and more deeply nested: roles
+  are real ARIA roles (`link`, not the bare tag `a`) and structure that was
+  missing entirely is present. (This also surfaced the duplication the
+  backend-node-id join above fixes: an element both tiers saw appeared twice,
+  once `[from-dom]`-marked, with two unrelated refs.)
+  `stats.a11yInteractive` is no longer `0` on semantic pages, so the low-content
+  warning stops firing where it was firing spuriously. Use `maxNodes` / `omit` /
+  `scope` if a page's snapshot is larger than you want.
+
+  **Size.** Measured across six real pages (react.dev/learn, MDN's Using Fetch,
+  Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
+  Hacker News front page): the serialised body is 3.8× what it was,
+  17,527 → 66,627 estimated tokens. It is not 12× because Chromium's text and
+  layout leaves are suppressed (below); a raw splice measured 215,386. The
+  ratio is against a tier that emitted nothing, so the comparison is "an empty
+  accessibility tree versus a real one", and the remaining bulk is the page's
+  own structure — `link`, `a` and `cell` nodes are 44,274 of the 66,627, and
+  Wikipedia's GDP table alone is 936 `cell` and 990 `link`. `maxNodes` and
+  `scope` bound it per call.
+
+  **Refs.** Existing refs do not move on the flip this is built for. An ignored
+  node still contributes its path segment to `elementKey`, and sibling indices
+  still count raw `childIds` positions, so a wrapper that goes ignored →
+  exposed **with its AX role value unchanged** re-keys nothing beneath it
+  (verified: giving a bare `<div>` an `aria-label` moves Chromium's
+  `uninteresting` verdict off it and the button underneath holds its `eN`).
+  Two cases do re-key descendants, both verified against real Chromium: a
+  wrapper whose role value changes (`generic` → `group`), because the role is
+  part of the segment; and `role="presentation"`, because Chromium drops the
+  node from the tree entirely rather than marking it ignored, so the path
+  shortens. `aria-hidden` is not a stability case — Chromium marks the
+  container and its descendants ignored, so nothing beneath it is in the tree
+  at all. A rotated ref is a stale handle, not a wrong click: `[ref=eN]` is
+  re-resolved at action time.
+
+  `aria-hidden` subtrees stay out: CDP marks their descendants ignored too.
+  Blink's `InlineTextBox` layout leaves are dropped — they duplicate their
+  `StaticText` parent and were 32 of 111 nodes on the fixture page.
+
+- **`snapshot` emits no line for Chromium's text and layout leaves.**
+  `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable*`, `Abbr`,
+  `EmphasizedText`, `StrongText`, `Ruby*`, `superscript` and `subscript` carry
+  text an ancestor already names, so a line each printed the page twice: 11,172
+  of 19,380 nodes and two thirds of the body across the six pages. Suppressing
+  them took the six-page total from 215,386 to 66,627 estimated tokens. The
+  nodes stay in the tree — `text_search` still matches their text and
+  `extract` still reads them — and one carrying a configured test attribute is
+  still emitted.
+
+- **A suppressed node no longer indents its children.** The serialiser skipped
+  the line for a generic wrapper but kept its children at `depth + 1`, so 26
+  nodes on Bootstrap's docs and 90 on Hacker News sat at an indent that was not
+  their parent's plus one and a spliced control read as nested under an
+  unrelated sibling. Children of a node that emits no line now take that node's
+  own depth. Zero such lines remain on all six pages.
+
+- **`find` no longer ranks text and layout leaves as candidates.** The same
+  roles `snapshot` suppresses are not targets: `role=StaticText[name="button"]`
+  is not a locator Playwright's engine resolves, so probing one spent an
+  auto-wait and reported `actionable: "off-screen"` about something that was
+  never actionable. Because the candidate list is cut to `maxCandidates` before
+  the probes run, they also took the slots. On Bootstrap's forms docs,
+  `find("the search button")` returned five `StaticText` nodes and the warning
+  "no visible candidate", with the real button absent from the result; it now
+  returns that button at rank 1, `actionable: true`. Across a 13-query battery
+  on three pages, top-1 was a non-actionable text leaf on 4 queries and text
+  leaves held 33 of 60 candidate slots; both are now 0, and the battery's total
+  wall clock is 7,431 ms → 2,645 ms. The document root (`RootWebArea`) is
+  excluded for the same reason —
+  its accessible name is the page title. A node carrying a configured test
+  attribute is still ranked whatever its role.
+
+- **The a11y tier attaches the page's test attributes, so it contributes
+  tier-1 `[data-testid=…]` selector hints.** It never had: the per-node
+  enrichment passed a CDP `BackendNodeId` where `DOM.getAttributes` wants a
+  `DOM.NodeId`, and nothing had called `DOM.getDocument`, so no `DOM.NodeId`
+  existed in the session and every call failed with `Could not find node` — 159
+  of 159 on a GitHub pull request, 1,035 of 1,035 on Wikipedia. Dormant while
+  the tier emitted one bare root. One `DOM.getDocument` sweep replaces the
+  per-node loop. Median of five composes on a loaded page: Wikipedia
+  912 ms → 294 ms (184 ms before the accessibility tier emitted anything at
+  all), Hacker News 100 ms → 56 ms (29 ms). The sweep does not pierce, so an
+  element inside a shadow root still gets no test id on the a11y tier; the
+  DOM-walk tier under `includeShadow: "open"` is the path that reports one.
+
+- **`stats.tier` and `[from-dom]` stop changing on the second snapshot of an
+  unchanged page.** `domWalkNew` counted keys new to the ref registry, which is
+  per-session, so the second snapshot reported `domWalkNew: 0` — and a tier of
+  `empty` while the DOM walk was carrying the whole thing — and flipped every
+  `[from-dom]` marker to `[from-both]`. Both counts now describe the snapshot in
+  hand: `domWalkNew` counts entries the a11y tier did not already put in this
+  tree, `domWalkCombined` counts entries it did. Both were honest but dormant
+  while the two tiers keyed refs on different vocabularies and so never landed
+  on the same ref; the backend-node-id join above is what made them reachable.
+
+- **The `snapshot` header's `stats` reports `tier`** — `a11y`, `dom-walk`,
+  `mixed` or `empty` — naming which tier supplied the interactive content.
+  `dom-walk` means the accessibility tier found nothing and the fallback
+  answered anyway. The low-content warning said as much in prose; a caller
+  could not branch on prose. Non-Chromium engines and child frames report
+  `dom-walk` by construction (no CDP accessibility tree there).
+
+- **`touch_start` / `touch_move` / `touch_end` / `gesture_swipe` / `gesture_pinch`
+  are no longer gated on the engine's raw-CDP flag** (RFC 0009 P3). All five
+  declared `deep: true`, so the engine gate refused them from `caps.deep` alone —
+  before the action substrate was consulted. That question is the wrong one for
+  these tools: touch is the primary input on the `ios-app` / `android-app` engines
+  RFC 0008 adds, and neither has CDP, so the flag would have refused a native
+  agent exactly the five tools it needs most.
+
+  The flag retired and the question became "can this engine dispatch touch",
+  asked at the new `ActionSubstrate.gesture(req)`. **Nothing widened.** Firefox
+  and WebKit still refuse all five, because their ActionContext carries no CDP
+  accessor; Safari refuses in its own adapter. The `error` line is
+  character-identical to the one the gate produced, and the envelope is the same
+  `{ok, error, engine, hint, tokensEstimate}`. The `hint` is narrower: it names
+  CDP `Input.dispatchTouchEvent` and says why there is no page-JS fallback,
+  instead of listing eight unrelated CDP domains.
+
+  `mouse_wheel` keeps `deep: true` — no port covers a coordinate-space wheel and
+  no native target has one.
+
+- **`pdf_save` and the teardown video flush go through `CaptureSubstrate`**
+  (RFC 0009 P3). Both held a Playwright `Page` above the capability seam.
+  `pdf(req)` and `prepareVideoSave(state)` join `screenshot`; the Playwright
+  bodies are the verbatim calls they replace, including which of them throw.
+  `pdf_save`'s engine gate is unchanged, so no engine's answer moves.
+
+- **`route` / `route_queue` / `unroute` go through `NetworkSubstrate`**
+  (RFC 0009 P3). The interception registry moved off `SessionEntry` and into the
+  substrate, because a route is a handler installed on an engine handle and only
+  the substrate holds one. The three tools also gate on the `network`
+  sub-interface now: on an engine that declares none, they used to surface
+  `requirePage`'s raw throw as `{ok:false, error}` — indistinguishable from "the
+  route failed to install" for an interception that was never attempted. They
+  return the standard engine-refusal envelope instead. Chromium, Firefox and
+  WebKit are unaffected; all three declare `network`.
 
 - **The `verify_*` family, `find`'s candidate probes, gesture geometry and the
   screenshot caption resolve elements through a port instead of a Playwright
@@ -159,25 +470,6 @@ surface" covers.
   dependency-cruiser rule, `only-the-engine-bundle-selects-a-substrate`, keeps it
   that way: the two standalone selectors are the Playwright bundle's internals and
   only the bundles may import them.
-
-### Deprecated
-
-- **`BrowserSession.page()` is now optional and deprecated.** It promised a
-  `Page` that the safari engine cannot supply and honoured the promise by
-  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
-  as the L5 violation. Optional is a phase, not a design: it makes the compiler
-  enumerate every caller (141 errors, the number that sizes the rest of RFC
-  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
-  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
-  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
-  it and is not the migration path. Every existing caller now routes through
-  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
-  `requireCdp`: it returns the handle on an engine that has one and throws a
-  structured, engine-naming error on one that does not, instead of letting
-  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
-  engine — no adapter, no public shape and no tool response moved.
-
-### Fixed
 
 - **`export_session_report` and the network tools no longer answer "no traffic"
   for an engine that cannot watch traffic.** Real Safari has no protocol-level
@@ -333,6 +625,23 @@ surface" covers.
   `BROWXAI_SDK_UNKNOWN_TOOL`, exported alongside it: no capability can make a
   typo callable, and an unknown name is refused before any capability is
   resolved so it can never land on the permissive `human` default.
+
+### Deprecated
+
+- **`BrowserSession.page()` is now optional and deprecated.** It promised a
+  `Page` that the safari engine cannot supply and honoured the promise by
+  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
+  as the L5 violation. Optional is a phase, not a design: it makes the compiler
+  enumerate every caller (141 errors, the number that sizes the rest of RFC
+  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
+  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
+  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+  it and is not the migration path. Every existing caller now routes through
+  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
+  `requireCdp`: it returns the handle on an engine that has one and throws a
+  structured, engine-naming error on one that does not, instead of letting
+  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
+  engine — no adapter, no public shape and no tool response moved.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 

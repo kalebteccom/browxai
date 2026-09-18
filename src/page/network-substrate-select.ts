@@ -50,7 +50,12 @@ export interface NetworkSubstrateCapableSession {
  *  absent or throws. */
 export function networkSubstrateFor(session: NetworkSubstrateCapableSession): NetworkSubstrate {
   if (!engineDeclares(session.engine, "page")) return new SafariNoopNetworkSubstrate();
-  if (session.cdp) return new CdpNetworkSubstrate(session.cdp());
+  // The CDP substrate takes a PAGE ACCESSOR as well as the CDP handle: request
+  // interception (`route` / `unroute`, RFC 0009 P3) rides Playwright's
+  // `page.route` on every engine, while observation stays on the CDP tap. A thunk
+  // rather than the resolved handle, so a dead target rejects at the member that
+  // needs it instead of at substrate construction.
+  if (session.cdp) return new CdpNetworkSubstrate(session.cdp(), () => requirePage(session));
   const page = requirePage(session);
   return new PlaywrightNetworkSubstrate(page.context(), page, session.engine);
 }

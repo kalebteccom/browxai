@@ -261,8 +261,17 @@ describe("SDK capability gate — EVERY off-by-default capability still refuses 
   // The four capabilities that gate no tool: they govern behaviour inside other
   // tools (clipboard read-back in `shortcut`, stealth patches at session wire-up,
   // the replay capture tier) or a server-start check (`byob-attach`). Pinned so
-  // that a tool declaring one of them fails this suite until it gets coverage
-  // in the per-capability loop below.
+  // that a tool declaring one of them fails this suite until it gets coverage in
+  // the per-capability loop below.
+  //
+  // `native-device` is NOT among them, and the distinction is the point. It gates
+  // SESSION CREATION for both native engines, which each declare it via
+  // `EngineEntry.requiresCapability` — so the refusal lands once at
+  // `open_session` and nothing the engines serve can be reached around it — AND
+  // it gates the ten `device_*` / `app_*` lifecycle tools, which have no browser
+  // analogue and so have no substrate to ride. Two gates for one posture is
+  // deliberate: the session gate is the un-reachable-around one, and the per-tool
+  // rows are what the loop below enumerates.
   it("only clipboard / stealth / byob-attach / replay gate no tool at all", () => {
     const ungated = OFF_BY_DEFAULT.filter((c) => (byCap.get(c) ?? []).length === 0);
     expect(ungated.sort()).toEqual(["byob-attach", "clipboard", "replay", "stealth"]);

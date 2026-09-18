@@ -16,7 +16,7 @@
 import type { CDPSession, Frame } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
 import { bindRefFrame } from "./ref-frames.js";
-import type { A11yNode } from "./a11y.js";
+import { walk, isGenericNoise, type A11yNode } from "./a11y-types.js";
 
 export interface DomWalkEntry {
   role: string;
@@ -298,14 +298,6 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
   return out;
 }`;
 
-/**
- * Convert DOM-walk entries to A11yNode leaves and add them as children of `root`,
- * minting refs through the same `RefRegistry` so the IDs are stable across snapshots
- * (and round-trip with the a11y nodes' refs when both paths see the same element).
- *
- * Returns the count of *new* nodes added (i.e. nodes whose stable key wasn't already
- * present in the registry) so the caller can emit a low-content warning.
- */
 export interface MergeOptions {
   /** when set, refs minted here are namespaced to this frame
    *  (via `elementKey`'s `frameId`) so two iframes with identical markup
@@ -315,8 +307,38 @@ export interface MergeOptions {
    *  registry so action-time `locatorFor` routes through `frame.locator(...)`
    *  instead of `page.locator(...)`. */
   frame?: Frame;
+  /** The backend node id of the element an entry describes, or `undefined`
+   *  when no exact identity is available for it. `undefined` appends the entry
+   *  as its own node — the pre-dedup behaviour — so an uncertain identity
+   *  costs a duplicate and never a wrong merge. */
+  identify?: (entry: DomWalkEntry) => number | undefined;
 }
 
+/**
+ * Fold the DOM-walk entries into `root`, minting refs through the same
+ * `RefRegistry` so the IDs are stable across snapshots.
+ *
+ * An entry the a11y tier already has in this tree is folded into the node the
+ * a11y tier minted — one element, one ref, `source: "both"` — and that node
+ * picks up the facts only the walk has. An entry the a11y tier does not have is
+ * appended as its own leaf, which is the DOM walk's whole reason to exist.
+ *
+ * Returns `{ added, combined }` for THIS snapshot: `added` counts entries the
+ * a11y tier did not already have, `combined` counts entries it did.
+ * `stats.tier` and the low-content warning both read `added`, so the count has
+ * to describe the snapshot in hand, not the session's history.
+ *
+ * Whether the two tiers can recognise each other at all is `opts.identify`'s
+ * answer. Their ref keys cannot: the a11y tier keys on the ARIA role and the
+ * accessibility-tree path, the DOM walk on the bare tag and the DOM path, so
+ * the same `<a>` is `link` at one key and `a` at another and no entry ever
+ * matched — which is why Hacker News reported its 228 anchors twice.
+ * `identify` supplies the shared identity instead: the backend node id, which
+ * the a11y tier carries on every node. Only the CDP composer can build one (see
+ * `dom-index.ts`). The frame, Safari and off-Chromium composers pass none and
+ * every entry is appended, exactly as before — none of the three runs an a11y
+ * tier, so an entry there has nothing to duplicate.
+ */
 export function mergeDomWalkIntoTree(
   root: A11yNode,
   entries: DomWalkEntry[],
@@ -325,41 +347,137 @@ export function mergeDomWalkIntoTree(
 ): { added: number; combined: number } {
   let added = 0;
   let combined = 0;
-  const { frameId, frame } = opts;
+  const { frameId, frame, identify } = opts;
+  const targets = identify ? mergeTargets(root) : undefined;
   for (const e of entries) {
-    const name = e.name || undefined;
-    const testId = e.testId || undefined;
-    const testIdAttr = e.testIdAttr || undefined;
-    const key = elementKey({ role: e.role, name, path: e.structuralPath, testId, frameId });
-    const wasNew = !refs.hasKey(key);
-    const ref = refs.forKey(key);
-    refs.augmentLocator(ref, {
-      role: e.role,
-      name,
-      testId,
-      testIdAttr,
-      cssPath: e.cssPath,
-      source: wasNew ? "dom" : "both",
-      ...(frameId ? { frameId } : {}),
-    });
-    if (frame) bindRefFrame(refs, ref, frame);
-    const node: A11yNode = {
-      ref,
-      role: e.role,
-      name,
-      testId,
-      testIdAttr,
-      tag: e.tag,
-      ...(e.hasHref !== undefined ? { hasHref: e.hasHref } : {}),
-      ...(e.inputType ? { inputType: e.inputType } : {}),
-      id: e.id || undefined,
-      cssPath: e.cssPath || undefined,
-      source: wasNew ? "dom" : "both",
-      children: [],
-    };
-    root.children.push(node);
-    if (wasNew) added++;
-    else combined++;
+    const target = targets && identify ? lookupTarget(targets, identify(e)) : undefined;
+    if (target) {
+      // One a11y node absorbs at most one entry. Two entries claiming the same
+      // element would mean the walk reported it twice, and the second is not
+      // evidence about this node.
+      targets!.delete(target.backendDOMNodeId!);
+      absorbDomEntry(target, e, refs, frameId);
+      combined++;
+      continue;
+    }
+    root.children.push(domEntryNode(e, refs, frameId, frame));
+    added++;
   }
   return { added, combined };
+}
+
+function lookupTarget(
+  targets: Map<number, A11yNode>,
+  backendNodeId: number | undefined,
+): A11yNode | undefined {
+  return backendNodeId === undefined ? undefined : targets.get(backendNodeId);
+}
+
+/**
+ * The a11y nodes a DOM-walk entry may be folded into, by backend node id.
+ *
+ * Two exclusions. A backend node id two a11y nodes claim is dropped: Chromium
+ * can expose one DOM element as several AX nodes, and there is no telling which
+ * of them the walk saw. A node the serialiser emits no line for is dropped too
+ * — folding an entry into one would take the entry's own line out of the
+ * snapshot, so an element an agent can act on would disappear instead of
+ * deduplicating. Measured across six real pages, that second case is 3 entries
+ * of 1,271.
+ */
+function mergeTargets(root: A11yNode): Map<number, A11yNode> {
+  const byBackendId = new Map<number, A11yNode>();
+  const claimedTwice = new Set<number>();
+  for (const { node } of walk(root)) {
+    const bid = node.backendDOMNodeId;
+    if (bid === undefined || isGenericNoise(node)) continue;
+    if (byBackendId.has(bid)) claimedTwice.add(bid);
+    else byBackendId.set(bid, node);
+  }
+  for (const bid of claimedTwice) byBackendId.delete(bid);
+  return byBackendId;
+}
+
+/**
+ * Fold one entry into the a11y node for the same element.
+ *
+ * The a11y tier's own findings stand: its ARIA role, its accessible name and
+ * its ref. The ref especially — it is the handle a caller may already hold, and
+ * the walk's key for the same element is a different string. What the walk adds
+ * is what the a11y tier has no way to see: the tag, the resolvable
+ * `:nth-child` path, the `href` and `input type` role discriminators, the `id`,
+ * and the test attribute on the roles `enrichTestIds` does not cover.
+ *
+ * The walk's name and test attribute land on the NODE and stay out of the ref's
+ * locator recipe, which keeps the a11y tier's. Both would resolve worse: the
+ * walk's name is the element's text content, which is not the accessible name
+ * `getByRole` matches on, and `enrichTestIds` deliberately gives a
+ * registry-level `[data-testid=…]` locator only to the interactive and
+ * structural roles — widening that here would demote a precise role+name
+ * locator to a `[data-testid=…]` shared across every cell of a table. The
+ * snapshot line shows both, and `find` ranks on both, exactly as the
+ * `[from-dom]` line it replaces did.
+ */
+function absorbDomEntry(
+  node: A11yNode,
+  e: DomWalkEntry,
+  refs: RefRegistry,
+  frameId?: string,
+): void {
+  node.source = "both";
+  node.tag = e.tag;
+  if (e.cssPath) node.cssPath = e.cssPath;
+  if (e.hasHref !== undefined) node.hasHref = e.hasHref;
+  if (e.inputType) node.inputType = e.inputType;
+  if (!node.id && e.id) node.id = e.id;
+  // `<output>`, and any element Chromium exposes with an empty accessible name,
+  // reaches the snapshot as a bare `status [ref=eN]`. The walk read its text.
+  if (!node.name && e.name) node.name = e.name;
+  if (!node.testId && e.testId) {
+    node.testId = e.testId;
+    node.testIdAttr = e.testIdAttr || undefined;
+  }
+  refs.augmentLocator(node.ref, {
+    role: node.role,
+    cssPath: e.cssPath,
+    source: "dom",
+    ...(frameId ? { frameId } : {}),
+  });
+}
+
+/** The leaf for an entry no a11y node claims, with its ref minted. */
+function domEntryNode(
+  e: DomWalkEntry,
+  refs: RefRegistry,
+  frameId?: string,
+  frame?: Frame,
+): A11yNode {
+  const name = e.name || undefined;
+  const testId = e.testId || undefined;
+  const testIdAttr = e.testIdAttr || undefined;
+  const key = elementKey({ role: e.role, name, path: e.structuralPath, testId, frameId });
+  const ref = refs.forKey(key);
+  refs.augmentLocator(ref, {
+    role: e.role,
+    name,
+    testId,
+    testIdAttr,
+    cssPath: e.cssPath,
+    source: "dom",
+    ...(frameId ? { frameId } : {}),
+  });
+  if (frame) bindRefFrame(refs, ref, frame);
+  return {
+    ref,
+    role: e.role,
+    name,
+    testId,
+    testIdAttr,
+    tag: e.tag,
+    ...(e.hasHref !== undefined ? { hasHref: e.hasHref } : {}),
+    ...(e.inputType ? { inputType: e.inputType } : {}),
+    id: e.id || undefined,
+    cssPath: e.cssPath || undefined,
+    source: "dom",
+    children: [],
+  };
 }

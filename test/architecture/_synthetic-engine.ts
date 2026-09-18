@@ -21,9 +21,23 @@ import type { RefRegistry } from "../../src/page/refs.js";
 import { elementKey } from "../../src/page/refs.js";
 import type { ComposedSnapshot, ComposeOptions } from "../../src/page/compose.js";
 import type { SnapshotSubstrate } from "../../src/page/snapshot-substrate.js";
-import type { NetworkSubstrate } from "../../src/page/network-substrate.js";
-import type { ActionSubstrate } from "../../src/page/action-substrate.js";
-import type { CaptureResult, CaptureSubstrate } from "../../src/page/capture-substrate.js";
+import {
+  routeInterceptionUnsupported,
+  type NetworkSubstrate,
+  type RouteResult,
+  type UnrouteResult,
+} from "../../src/page/network-substrate.js";
+import type {
+  ActionSubstrate,
+  GestureRequest,
+  GestureResult,
+} from "../../src/page/action-substrate.js";
+import type {
+  CaptureResult,
+  CaptureSubstrate,
+  PdfResult,
+  VideoSave,
+} from "../../src/page/capture-substrate.js";
 import type { StorageSubstrate } from "../../src/page/storage-substrate.js";
 import type { ScriptSubstrate } from "../../src/page/script-substrate.js";
 import type { EmulationResult, EmulationSubstrate } from "../../src/page/emulation-substrate.js";
@@ -99,7 +113,13 @@ class InMemorySnapshotSubstrate implements SnapshotSubstrate {
   ): Promise<ComposedSnapshot> {
     return Promise.resolve({
       tree: buildTree(refs),
-      stats: { a11yInteractive: 1, domWalkEntries: 1, domWalkNew: 1, domWalkCombined: 0 },
+      stats: {
+        tier: "mixed",
+        a11yInteractive: 1,
+        domWalkEntries: 1,
+        domWalkNew: 1,
+        domWalkCombined: 0,
+      },
       warnings: [],
     });
   }
@@ -168,6 +188,52 @@ class InMemoryActionSubstrate implements ActionSubstrate {
   waitFor(): Promise<ActionResult> {
     return Promise.resolve(inMemoryResult({ type: "wait_for" }, true));
   }
+  /** RFC 0009 P3's row of the enforcement table. The synthetic engine declares
+   *  `deep:false` and holds no CDP session, and it ANSWERS the touch pipeline —
+   *  which is the whole point of retiring `deep: true` on the five touch/gesture
+   *  registrations. While the flag was there, `assertEngineSupports` refused
+   *  `gesture_swipe` on this engine before the substrate was consulted, so an
+   *  engine that can dispatch touch by some other means (a native one, RFC 0008)
+   *  could never have run it. Reports the same evidence body the CDP path does. */
+  gesture(req: GestureRequest): Promise<GestureResult> {
+    switch (req.kind) {
+      case "touch":
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            action: req.phase,
+            ...(req.coords ? { coords: req.coords } : {}),
+            identifier: req.identifier ?? 1,
+          },
+        });
+      case "swipe":
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            from: req.from,
+            to: req.to,
+            steps: req.steps ?? 16,
+            durationMs: req.durationMs ?? 200,
+          },
+        });
+      case "pinch": {
+        const startOffset = req.startOffset ?? 40;
+        return Promise.resolve({
+          kind: "dispatched",
+          report: {
+            ok: true,
+            coords: req.coords,
+            scale: req.scale,
+            steps: req.steps ?? 12,
+            startOffset,
+            endOffset: startOffset * req.scale,
+          },
+        });
+      }
+    }
+  }
 }
 
 /** The empty in-memory network substrate — no protocol-level network (the
@@ -208,6 +274,17 @@ class InMemoryNetworkSubstrate implements NetworkSubstrate {
       ok: false,
       error: "network_body is not available on the synthetic engine (no protocol-level network).",
     });
+  }
+  /** A refusal, NOT an empty install. This is the one network member where the
+   *  "answering" fixture must still say no: `{ok:true, active:[]}` for a route
+   *  that was never installed would tell an agent it had stubbed a backend it had
+   *  not, and it would make the sub-interface conformance suite pass on a missing
+   *  gate. */
+  route(): Promise<RouteResult> {
+    return Promise.resolve(routeInterceptionUnsupported("route", this.engine));
+  }
+  unroute(): Promise<UnrouteResult> {
+    return Promise.resolve(routeInterceptionUnsupported("unroute", this.engine));
   }
 }
 
@@ -362,6 +439,22 @@ class InMemoryCaptureSubstrate implements CaptureSubstrate {
   readonly engine = "synthetic";
   screenshot(): Promise<CaptureResult> {
     return Promise.resolve({ kind: "image", data: TINY_PNG, mimeType: "image/png" });
+  }
+  /** Refuses: there is no in-memory renderer to print. A refusal is the plausible
+   *  answer here — the conformance fixture needs a well-formed one, and an engine
+   *  with no print surface is what most engines are. */
+  pdf(): Promise<PdfResult> {
+    return Promise.resolve({
+      kind: "refusal",
+      error: "pdf_save is not supported on the synthetic engine (no renderer to print).",
+      hint: "Open a chromium session to print the page to PDF.",
+    });
+  }
+  /** Nothing recorded, nothing to flush. The teardown path skips the flush on
+   *  null, which is what it did for a session with no recorder before the port
+   *  carried this. */
+  prepareVideoSave(): Promise<VideoSave | null> {
+    return Promise.resolve(null);
   }
 }
 
