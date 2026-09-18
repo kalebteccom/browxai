@@ -31,7 +31,11 @@ if [[ -z "$MSG_BODY" ]]; then
 fi
 
 SUBJECT=$(printf '%s\n' "$MSG_BODY" | head -n 1)
-LINES=$(printf '%s\n' "$MSG_BODY" | grep -c '.' || true)
+# Git trailers (`Key: value`, RFC-822 shape) are exempt from the line count.
+# AGENTS.md asks every agent commit to carry Co-Authored-By and Claude-Session,
+# and a rule that rejects them makes the repo's own attribution requirement
+# impossible to satisfy. What this hook exists to stop is a prose body.
+LINES=$(printf '%s\n' "$MSG_BODY" | grep '.' | grep -cvE '^[A-Za-z][A-Za-z-]*: ' || true)
 
 ERRORS=()
 
@@ -40,7 +44,7 @@ if (( ${#SUBJECT} > MAX_SUBJECT )); then
 fi
 
 if (( LINES > 1 )); then
-  ERRORS+=("Message has ${LINES} non-empty lines — keep it to a single subject line.")
+  ERRORS+=("Message has ${LINES} body lines — keep it to a single subject line.")
 fi
 
 if ! printf '%s' "$SUBJECT" | grep -qE '^(feat|fix|chore|docs|refactor|test|perf|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: .+'; then
