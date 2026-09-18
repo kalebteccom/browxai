@@ -22,7 +22,15 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
 // CDP, so its session is Safari-native and drives the engine entirely through the
 // no-Playwright-Page seam.
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari";
+// `android-app` is the FIRST non-browser engine: a React Native app on an Android
+// emulator, driven over adb's UiAutomator dump and input pipeline (RFC 0008 P2).
+// It is a DISTINCT kind from `android`, which keeps its meaning — real Chrome on
+// a real phone over adb + CDP, `deep: true`, every tool works. Two names that both
+// say "android" is a documentation cost, and renaming a shipped engine kind would
+// be a breaking config change, so the NEW kind takes the qualifier. Like safari it
+// has no Playwright `Page`; unlike safari it has no DOM, no URL and no document,
+// which is why RFC 0009 had to land first.
+export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "android-app";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -30,6 +38,7 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
+  "android-app",
 ];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which

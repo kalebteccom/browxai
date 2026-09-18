@@ -112,7 +112,7 @@ const noPageEvalStringifiedArrow = {
 // scattered through handlers; a sixth engine must be a new adapter behind the
 // port, never an edit to 5-8 existing files. Mirrors the existing custom-rule
 // idiom (meta.type "problem", schema [], create(context) visitor).
-const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
+const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari", "android-app"];
 
 // Files whose single responsibility IS engine selection — engine literals are the
 // point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
@@ -952,7 +952,7 @@ export default tseslint.config(
       "max-params": "off",
     },
   },
-  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp}.ts`) —
+  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp,android-app}.ts`) —
   // `async` is part of the port contract here, so `require-await` is inverted.
   //
   // Every adapter is built over an INJECTED accessor:
@@ -977,6 +977,7 @@ export default tseslint.config(
       "src/page/*-substrate-playwright.ts",
       "src/page/*-substrate-safari.ts",
       "src/page/*-substrate-cdp.ts",
+      "src/page/*-substrate-android-app.ts",
     ],
     rules: {
       "@typescript-eslint/require-await": "off",

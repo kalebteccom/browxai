@@ -105,28 +105,27 @@ describe("decodeEntities / parseBounds", () => {
 });
 
 describe("roleFor", () => {
-  const n = (over: Partial<NativeNode>): NativeNode =>
-    ({
-      className: "android.view.View",
-      packageName: "com.acme.app",
-      text: "",
-      contentDesc: "",
-      resourceId: "",
-      bounds: null,
-      index: 0,
-      clickable: false,
-      longClickable: false,
-      checkable: false,
-      checked: false,
-      enabled: true,
-      focusable: false,
-      focused: false,
-      scrollable: false,
-      selected: false,
-      password: false,
-      children: [],
-      ...over,
-    }) as NativeNode;
+  const n = (over: Partial<NativeNode>): NativeNode => ({
+    className: "android.view.View",
+    packageName: "com.acme.app",
+    text: "",
+    contentDesc: "",
+    resourceId: "",
+    bounds: null,
+    index: 0,
+    clickable: false,
+    longClickable: false,
+    checkable: false,
+    checked: false,
+    enabled: true,
+    focusable: false,
+    focused: false,
+    scrollable: false,
+    selected: false,
+    password: false,
+    children: [],
+    ...over,
+  });
 
   it("maps the widget classes onto the snapshot role vocabulary", () => {
     expect(roleFor(n({ className: "android.widget.Button" }))).toBe("button");

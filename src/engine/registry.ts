@@ -31,7 +31,7 @@ import type { ElementSubstrate } from "../page/element-substrate.js";
 import type { ActionContext } from "../page/actionresult.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ScreenshotSaveResult } from "../page/screenshot-save.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
+import type { Capability, CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 
@@ -207,4 +207,21 @@ export function byobAttachNeedsEndpoint(kind: EngineKind): boolean {
  *  the session registry (mirrors `byobAttachNeedsEndpoint`). */
 export function engineIsAttachOnly(kind: EngineKind): boolean {
   return kind === "android";
+}
+
+/** The off-by-default capability an engine needs before a session on it may
+ *  open, or undefined when the engine broadens nothing.
+ *
+ *  `android-app` needs `native-device` (RFC 0008 §8): it installs and launches
+ *  applications, drives an OS-level input pipeline every app on the device
+ *  receives, and boots and shuts down emulators. The gate sits at SESSION
+ *  CREATION rather than per-tool, which is what makes it un-reachable-around —
+ *  no native tool exists that does not first need a native session.
+ *
+ *  It lives here for the same reason `engineIsAttachOnly` does: the session
+ *  factory consults it generically, so the one engine-specific fact is a row in
+ *  the engine layer and not an `engine === "android-app"` branch in a handler,
+ *  which `no-engine-literal-branches` forbids and the OCP contract tests. */
+export function engineRequiresCapability(kind: EngineKind): Capability | undefined {
+  return kind === "android-app" ? "native-device" : undefined;
 }

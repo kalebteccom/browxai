@@ -32,7 +32,8 @@ export type Capability =
   | "device-emulation"
   | "diagnostics"
   | "canvas"
-  | "replay";
+  | "replay"
+  | "native-device";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -53,6 +54,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "diagnostics",
   "canvas",
   "replay",
+  "native-device",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -323,6 +325,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "replay",
     message:
       "replay capability is ENABLED — `start_recording({replay})` writes a `.browx` session-replay artifact that carries the DOM stream, network + WS metadata (bodies at the re-executable tier), console output and action calls. Registered secrets are masked at capture time before anything reaches disk, but the artifact still carries real page content and is as sensitive as the session it recorded. Store under $BROWX_WORKSPACE and treat every archive as production data. Same posture class as `network-body` / `secrets` / `diagnostics`.",
+  },
+  {
+    capability: "native-device",
+    message:
+      "native-device capability is ENABLED — the `android-app` engine drives an Android emulator over adb. This broadens posture more than any browser capability does: it INSTALLS AND LAUNCHES APPLICATIONS (`app_install` / `app_launch`), drives an OS-LEVEL INPUT PIPELINE that every app on the device receives, boots and shuts down emulators, and reads the device's package list. `open_session({browserType:\"android-app\"})` refuses without it, so the gate sits at session creation and no native tool can be reached around it. On an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator's phone, and real devices are out of scope only by policy, not by mechanism — an `adb devices` entry is an `adb devices` entry. Registered secrets do NOT materialise on this engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text`. A recorded native session still carries real app content in its screenshots. The Android SDK is OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See docs/threat-model.md.",
   },
   {
     capability: "captcha",

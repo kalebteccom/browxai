@@ -106,7 +106,7 @@ export function defaultDeviceIO(adbPath = "adb"): AndroidDeviceIO {
             );
             return;
           }
-          resolve(stdout as string | Buffer);
+          resolve(stdout);
         },
       );
     });

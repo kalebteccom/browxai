@@ -46,7 +46,7 @@ const PAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../src/page")
 
 /** The adapter implementations: one file per engine family behind a port. The
  *  `-types.ts` ports and the `-select.ts` selectors are not adapters. */
-const ADAPTER_FILE = /-substrate-(playwright|safari|cdp)\.ts$/;
+const ADAPTER_FILE = /-substrate-(playwright|safari|cdp|android-app)\.ts$/;
 
 interface PromiseMethod {
   cls: string;

@@ -130,6 +130,7 @@ export class RefRegistry {
       cssPath: existing.cssPath ?? partial.cssPath,
       source: combineSource(existing.source, partial.source),
       frameId: existing.frameId ?? partial.frameId,
+      nativePath: existing.nativePath ?? partial.nativePath,
     };
     this.locatorByRef.set(ref, merged);
   }

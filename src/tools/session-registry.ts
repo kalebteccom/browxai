@@ -5,6 +5,7 @@ import {
   engineEntry,
   byobAttachNeedsEndpoint,
   engineIsAttachOnly,
+  engineRequiresCapability,
   type SubstrateDeps,
   type PostWireDeps,
 } from "../engine/registry.js";
@@ -129,6 +130,25 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // overrides the server default; omitted ⇒ the server engine (legacy). One
       // server can therefore drive sessions on different engines at once.
       const effectiveEngine: EngineKind = spec?.engine ?? serverEngine;
+      // The posture gate for an engine that broadens it. `android-app` needs
+      // `native-device` (RFC 0008 §8): it installs and launches applications and
+      // drives an OS-level input pipeline. The gate sits HERE, at session
+      // creation, because that is what makes it un-reachable-around — every
+      // native tool needs a native session first, so there is no second door.
+      //
+      // The engine→capability map is a row in the engine layer
+      // (`engineRequiresCapability`), consulted generically, so this stays free
+      // of the `engine === "android-app"` literal the OCP contract forbids.
+      const engineCapability = engineRequiresCapability(effectiveEngine);
+      if (engineCapability && !caps.enabled.has(engineCapability)) {
+        throw new Error(
+          `capability-required: session "${id}": the "${effectiveEngine}" engine requires the ` +
+            `"${engineCapability}" capability, which is OFF by default. It installs and launches ` +
+            "applications and drives an OS-level input pipeline on a real device, so it is opt-in. " +
+            `Start the server with BROWX_CAPABILITIES including "${engineCapability}" ` +
+            "(see docs/threat-model.md).",
+        );
+      }
       // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);
       // an explicit per-session engine resolves its own default (android ⇒
       // attached). Non-android explicit engines match the legacy default too.

@@ -150,10 +150,10 @@ export function registerSessionLifecycleTools(
             "Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent).",
           ),
         engine: z
-          .enum(["chromium", "firefox", "webkit", "android", "safari"])
+          .enum(["chromium", "firefox", "webkit", "android", "safari", "android-app"])
           .optional()
           .describe(
-            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
+            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. `android-app` is a NATIVE engine, not a browser: it drives a React Native app on an Android emulator over adb, requires the off-by-default `native-device` capability, leases one device per session, and has no `incognito`. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
           ),
         profile: z
           .string()

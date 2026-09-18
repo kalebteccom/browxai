@@ -102,10 +102,17 @@ export function parseBounds(raw: string): NativeRect | null {
 
 const ATTR_RE = /([\w:-]+)\s*=\s*"([^"]*)"/g;
 
+/** The package qualifier the PLATFORM's own view ids carry. Not an engine name:
+ *  `android:id/content` is the window chrome every app on the device shares. */
+const PLATFORM_ID_NAMESPACE = "android";
+
 function attrs(tagBody: string): Record<string, string> {
   const out: Record<string, string> = {};
   ATTR_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
+  // L7 bound, by the input: the pattern cannot match empty, so `lastIndex`
+  // advances on every iteration and the loop runs at most `tagBody.length`
+  // times. The dump that feeds it is capped upstream by adb's own `maxBuffer`.
   while ((m = ATTR_RE.exec(tagBody)) !== null) out[m[1]!] = decodeEntities(m[2]!);
   return out;
 }
@@ -147,8 +154,12 @@ export function parseHierarchy(xml: string): NativeNode[] {
   const tagRe = /<\/?([\w:-]+)((?:[^>"]|"[^"]*")*?)(\/?)>/g;
   let seenHierarchy = false;
   let m: RegExpExecArray | null;
+  // L7 bound, by the input: every match consumes at least `<x>`, so the loop
+  // runs at most `xml.length / 3` times. The dump that feeds it is capped
+  // upstream by adb's own `maxBuffer`.
   while ((m = tagRe.exec(xml)) !== null) {
-    const [whole, name, body, selfClose] = [m[0]!, m[1]!, m[2]!, m[3]!];
+    const whole = m[0];
+    const [name, body, selfClose] = [m[1]!, m[2]!, m[3]!];
     if (name === "hierarchy") {
       seenHierarchy = true;
       continue;
@@ -251,7 +262,7 @@ export function testIdFor(node: NativeNode): { testId: string; testIdAttr: strin
   const qualifier = slash === -1 ? "" : raw.slice(0, slash).replace(/:id$/, "");
   const id = slash === -1 ? raw : raw.slice(slash + 1);
   if (!id) return undefined;
-  if (qualifier === "android") return undefined;
+  if (qualifier === PLATFORM_ID_NAMESPACE) return undefined;
   return { testId: id, testIdAttr: "resource-id" };
 }
 
@@ -365,27 +376,33 @@ export function composeNativeTree(
     const children = node.children
       .filter((c) => !opts.prune || subtreeInteresting(c))
       .map((c) => build(c, node.children, path));
-    const out: A11yNode = { ref, role, children };
-    if (name) out.name = name;
-    if (tid) {
-      out.testId = tid.testId;
-      out.testIdAttr = tid.testIdAttr;
-    }
-    // The rendered string, when it is not already the name. `find`'s tier-3
-    // matching reads it, and on RN it is often the only human-readable thing on
-    // a node whose label lives on its parent.
-    const text = node.text.trim();
-    if (text && text !== name && !node.password) out.text = text;
-    if (!node.enabled) out.disabled = true;
-    if (node.checkable) out.checked = node.checked;
-    if (node.selected) out.selected = true;
-    if (node.focused) out.focused = true;
-    out.source = "a11y";
-    out.tag = node.className.split(".").pop() ?? node.className;
-    return out;
+    return decorate({ ref, role, children }, node, recipe);
   };
   const top = roots.length === 1 ? roots[0]! : synthesiseRoot(roots);
   return { root: build(top, [top], ""), recipes };
+}
+
+/** Copy the state flags and the rendered text off a native node onto the
+ *  composed one. Split from `build` so the recursion stays about STRUCTURE and
+ *  this stays about one node's fields. */
+function decorate(out: A11yNode, node: NativeNode, recipe: NativeRefRecipe): A11yNode {
+  if (recipe.name) out.name = recipe.name;
+  if (recipe.testId) {
+    out.testId = recipe.testId;
+    out.testIdAttr = recipe.testIdAttr;
+  }
+  // The rendered string, when it is not already the name. `find`'s tier-3
+  // matching reads it, and on RN it is often the only human-readable thing on a
+  // node whose label lives on its parent. Never for a password field.
+  const text = node.text.trim();
+  if (text && text !== recipe.name && !node.password) out.text = text;
+  if (!node.enabled) out.disabled = true;
+  if (node.checkable) out.checked = node.checked;
+  if (node.selected) out.selected = true;
+  if (node.focused) out.focused = true;
+  out.source = "a11y";
+  out.tag = node.className.split(".").pop() ?? node.className;
+  return out;
 }
 
 /** Whether a subtree holds anything worth keeping. Pruning a container whose
