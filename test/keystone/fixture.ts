@@ -59,6 +59,15 @@ const PAGE = `<!doctype html>
          assertion. -->
     <a href="#">More info link</a>
 
+    <!-- Same bare anchor, out of the accessibility tree: aria-hidden makes
+         Chromium mark the container AND its descendants ignored, so the a11y
+         tier reports nothing here and the DOM walk is the only tier that sees
+         it. That keeps a DOM-only, bare-tag anchor candidate on this page now
+         that an element both tiers see is reported once, under its ARIA role.
+         No test attribute on purpose: the hint has to fall through the
+         role=a[name="..."] tier that Playwright's role engine rejects. -->
+    <div aria-hidden="true"><a href="#">Hidden info link</a></div>
+
     <div data-testid="status-box" id="status-box" role="status">Idle</div>
 
     <!-- permission_policy keystone: a click drives navigator.geolocation
@@ -543,6 +552,14 @@ const THIN_A11Y_PAGE = `<!doctype html>
             <a href="/submit">submit</a>
           </td></tr></tbody></table>
         </nav>
+        <!-- A DOM-only element: the a11y tier exposes it as a nameless
+             generic, which the serialiser emits no line for, so the tier merge
+             refuses to fold the DOM walk's entry into it and the entry keeps
+             its own [from-dom] line. It is the fixture's bare-tag candidate —
+             every other element here is reported once, by the a11y tier, under
+             its ARIA role. -->
+        <div id="dom-only" data-testid="dom-only-widget" tabindex="0"
+             style="width:40px;height:20px"></div>
       </td>
     </tr>
     <tr>

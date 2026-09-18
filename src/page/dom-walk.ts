@@ -407,12 +407,15 @@ function mergeTargets(root: A11yNode): Map<number, A11yNode> {
  * `:nth-child` path, the `href` and `input type` role discriminators, the `id`,
  * and the test attribute on the roles `enrichTestIds` does not cover.
  *
- * The test attribute lands on the NODE and not in the ref's locator recipe.
- * `enrichTestIds` deliberately gives a registry-level `[data-testid=…]` locator
- * only to the interactive and structural roles, and widening that here would
- * demote a precise role+name locator to a `[data-testid=…]` shared across every
- * cell of a table. The snapshot line still shows the attribute, and `find`
- * still ranks and disambiguates on it.
+ * The walk's name and test attribute land on the NODE and stay out of the ref's
+ * locator recipe, which keeps the a11y tier's. Both would resolve worse: the
+ * walk's name is the element's text content, which is not the accessible name
+ * `getByRole` matches on, and `enrichTestIds` deliberately gives a
+ * registry-level `[data-testid=…]` locator only to the interactive and
+ * structural roles — widening that here would demote a precise role+name
+ * locator to a `[data-testid=…]` shared across every cell of a table. The
+ * snapshot line shows both, and `find` ranks on both, exactly as the
+ * `[from-dom]` line it replaces did.
  */
 function absorbDomEntry(
   node: A11yNode,
@@ -426,13 +429,15 @@ function absorbDomEntry(
   if (e.hasHref !== undefined) node.hasHref = e.hasHref;
   if (e.inputType) node.inputType = e.inputType;
   if (!node.id && e.id) node.id = e.id;
+  // `<output>`, and any element Chromium exposes with an empty accessible name,
+  // reaches the snapshot as a bare `status [ref=eN]`. The walk read its text.
+  if (!node.name && e.name) node.name = e.name;
   if (!node.testId && e.testId) {
     node.testId = e.testId;
     node.testIdAttr = e.testIdAttr || undefined;
   }
   refs.augmentLocator(node.ref, {
     role: node.role,
-    name: node.name,
     cssPath: e.cssPath,
     source: "dom",
     ...(frameId ? { frameId } : {}),
