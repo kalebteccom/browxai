@@ -14,7 +14,7 @@ Firefox lane; D4/D5 for the substrates; D7 for WebKit; D3/D8 for Android) agains
 the file:line evidence in
 [`references/03-browxai-coupling-audit.md`](../../rfcs/references/03-browxai-coupling-audit.md).
 The `BrowserEngine` port is the inward-pointing contract; each engine
-(chromium, firefox, webkit, android, safari) is an adapter behind it. Read both
+(chromium, firefox, webkit, android, safari, electron) is an adapter behind it. Read both
 the RFC and the audit for the rulings and the coupling map; this doc is the
 standing contract for the code that lives behind the port.
 
@@ -31,7 +31,7 @@ engine land as an adapter rather than a rewrite.
 ## The port (`src/engine/`)
 
 ```
-EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari"   // engines the RFC commits to
+EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "electron"
 //   safari: REAL Safari.app over safaridriver — the FIRST non-Playwright engine
 //   (no Playwright Page, no CDP). The `page` member is ABSENT; a curated subset works via the
 //   Safari-native handle. See the "Safari" section below.
@@ -62,22 +62,23 @@ layer and tools call, and that set is satisfied by the handles above.
 
 ### Files
 
-| File                                  | Role                                                                                                                                  |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `types.ts`                            | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.                                                  |
-| `select.ts`                           | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.                                                |
-| `capabilities.ts`                     | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`.               |
-| `session-cdp.ts`                      | `requireCdp(session)` asserts the optional `cdp()` is present.                                                                        |
-| `tool-gate.ts`                        | `assertEngineSupports(tool, engine)`: the engine-dimension refusal for the CDP-deep tools.                                            |
-| `adapters/playwright-chromium.ts`     | `PlaywrightChromiumAdapter` wraps the Chromium/CDP launch.                                                                            |
-| `adapters/playwright-firefox.ts`      | `PlaywrightFirefoxAdapter`: Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                                           |
-| `adapters/playwright-webkit.ts`       | `PlaywrightWebKitAdapter`: bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                                             |
-| `adapters/android-cdp.ts`             | `AndroidCdpAdapter`: real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                                    |
-| `adapters/adb.ts`                     | adb plumbing: device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.                   |
-| `adapters/safaridriver-hybrid.ts`     | `SafaridriverHybridAdapter`: REAL Safari over safaridriver, WebDriver Classic + experimental BiDi; first non-Playwright.              |
-| `adapters/safari/webdriver-client.ts` | `SafariWebDriverClient`: the WebDriver-Classic HTTP client (the workhorse: navigate/screenshot/element/cookies/execute).              |
-| `adapters/safari/bidi-client.ts`      | `SafariBidiClient`: the BiDi WebSocket client (additive: console/nav events, script), gated behind `safari:experimentalWebSocketUrl`. |
-| `adapters/safari/launch.ts`           | safaridriver spawn + readiness poll + teardown; `safari-unavailable` / `-remote-automation-disabled` / launch-timeout errors.         |
+| File                                  | Role                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `types.ts`                            | `EngineKind`, the sub-interface names, `EngineCapabilities`, `EngineSession` shapes.                                                                                                                                                                                          |
+| `select.ts`                           | `resolveBrowserType(engine)` → Playwright `BrowserType`; `EngineNotYetSupportedError`.                                                                                                                                                                                        |
+| `capabilities.ts`                     | Per-engine capability declarations. Chromium + Android declare everything (incl. `deep`); Firefox + WebKit drop `deep`.                                                                                                                                                       |
+| `session-cdp.ts`                      | `requireCdp(session)` asserts the optional `cdp()` is present.                                                                                                                                                                                                                |
+| `tool-gate.ts`                        | `assertEngineSupports(tool, engine)`: the engine-dimension refusal for the CDP-deep tools.                                                                                                                                                                                    |
+| `adapters/playwright-chromium.ts`     | `PlaywrightChromiumAdapter` wraps the Chromium/CDP launch.                                                                                                                                                                                                                    |
+| `adapters/playwright-firefox.ts`      | `PlaywrightFirefoxAdapter`: Juggler Firefox, no CDP; `firefoxChannelFromEnv` (moz-firefox).                                                                                                                                                                                   |
+| `adapters/playwright-webkit.ts`       | `PlaywrightWebKitAdapter`: bundled WebKit build, no CDP (the WebKit-engine lane, RFC D7).                                                                                                                                                                                     |
+| `adapters/android-cdp.ts`             | `AndroidCdpAdapter`: real Chrome-on-Android over adb + CDP; attach-only, `deep: true` (RFC D3/D8).                                                                                                                                                                            |
+| `adapters/electron-detect.ts`         | `profileAttachedBrowser`: reads which app is on the far end of an attached CDP endpoint off `Browser.getVersion`, and carries the two behaviours that differ with it (`canCreateTargets`, the warning banner) so the session layer never re-derives them from an engine name. |
+| `adapters/adb.ts`                     | adb plumbing: device listing/parse, socket forward, `/json/version` → wsUrl, port mgmt, cleanup, structured errors.                                                                                                                                                           |
+| `adapters/safaridriver-hybrid.ts`     | `SafaridriverHybridAdapter`: REAL Safari over safaridriver, WebDriver Classic + experimental BiDi; first non-Playwright.                                                                                                                                                      |
+| `adapters/safari/webdriver-client.ts` | `SafariWebDriverClient`: the WebDriver-Classic HTTP client (the workhorse: navigate/screenshot/element/cookies/execute).                                                                                                                                                      |
+| `adapters/safari/bidi-client.ts`      | `SafariBidiClient`: the BiDi WebSocket client (additive: console/nav events, script), gated behind `safari:experimentalWebSocketUrl`.                                                                                                                                         |
+| `adapters/safari/launch.ts`           | safaridriver spawn + readiness poll + teardown; `safari-unavailable` / `-remote-automation-disabled` / launch-timeout errors.                                                                                                                                                 |
 
 ## The capability dimension
 
@@ -143,12 +144,15 @@ for every session the server opens. Both resolve through one pure function,
 explicit --engine flag   >   BROWX_ENGINE env   >   default chromium
 ```
 
-- `--engine firefox`, `--engine=webkit`, `BROWX_ENGINE=android` and `--engine=safari` are all valid.
+- `--engine firefox`, `--engine=webkit`, `BROWX_ENGINE=android`, `--engine=safari` and
+  `--engine=electron` are all valid. `electron` is rarely worth naming: the desktop
+  attach lane resolves it from the protocol, and declaring it only changes the
+  default session mode to `attached`.
 - Resolves to `undefined` when neither is set, so `cli.ts` omits `browserType`
   and `server.ts` applies its own `?? "chromium"` default, so it is
   **byte-identical** for anyone not setting the var. Default stays chromium.
 - The value is validated against `IMPLEMENTED_ENGINES` (the real list:
-  `chromium, firefox, webkit, android, safari`). An unknown value (a typo, an
+  `chromium, firefox, webkit, android, safari, electron`). An unknown value (a typo, an
   unsupported browser) throws `UnknownEngineError`, a **structured** message
   listing the implemented engines (the fix is in the error), printed to stderr
   with `exit 2`. Never a stack trace, never a silent fallback to chromium. A bare
@@ -187,13 +191,14 @@ shows as a ✗ with the same implemented-engines message the server prints.
 Each engine runs behind the port today. What each supports is live fact, keyed on
 its capability declaration:
 
-| Engine                | CDP / `deep`  | Attach (BYOB)                                   | Read + action core (snapshot/find/click)      | Network tap           |
-| --------------------- | :-----------: | ----------------------------------------------- | --------------------------------------------- | --------------------- |
-| chromium              | `deep: true`  | connectOverCDP                                  | CDP substrate                                 | CDP tap               |
-| android (adb+CDP)     | `deep: true`  | attach-only (adb-discovered socket)             | CDP substrate                                 | CDP tap               |
-| firefox (Juggler)     | `deep: false` | structured refusal (BiDi-launch model)          | page-side walker substrate                    | Playwright-event tap  |
-| webkit (bundled)      | `deep: false` | structured refusal (no attach client)           | page-side walker substrate                    | Playwright-event tap  |
-| safari (safaridriver) | `deep: false` | structured refusal (isolated automation window) | WebDriver DOM-walk substrate (curated subset) | no protocol-level tap |
+| Engine                 | CDP / `deep`  | Attach (BYOB)                                    | Read + action core (snapshot/find/click)      | Network tap           |
+| ---------------------- | :-----------: | ------------------------------------------------ | --------------------------------------------- | --------------------- |
+| chromium               | `deep: true`  | connectOverCDP                                   | CDP substrate                                 | CDP tap               |
+| android (adb+CDP)      | `deep: true`  | attach-only (adb-discovered socket)              | CDP substrate                                 | CDP tap               |
+| electron (desktop app) | `deep: true`  | attach-only (loopback `--remote-debugging-port`) | CDP substrate                                 | CDP tap               |
+| firefox (Juggler)      | `deep: false` | structured refusal (BiDi-launch model)           | page-side walker substrate                    | Playwright-event tap  |
+| webkit (bundled)       | `deep: false` | structured refusal (no attach client)            | page-side walker substrate                    | Playwright-event tap  |
+| safari (safaridriver)  | `deep: false` | structured refusal (isolated automation window)  | WebDriver DOM-walk substrate (curated subset) | no protocol-level tap |
 
 The seam is correct by construction. Every Chromium test passes, the unit suite
 and the Chromium keystone lane both, because the 139 class-A tools route through
@@ -518,6 +523,93 @@ engine tag is `android`, runs navigate → snapshot → find on the real device,
 runs a deep tool (`coverage_start`) to prove `deep: true` (the exact tool
 firefox/webkit refuse). It is **not** a silently-passing mock. Mocks cannot prove
 the adb forward → `/json/version` → `connectOverCDP` chain reaches a real phone.
+
+## The electron adapter — a desktop app over its debugging port
+
+`adapters/electron.engine.ts` + `adapters/electron-detect.ts`. An Electron
+application launched with `--remote-debugging-port` is Chromium behind a loopback
+CDP endpoint, so the engine reuses `playwrightSubstrateBundle` and
+`playwrightPostWire` verbatim. Zero new substrate code, `deep: true`, every
+CDP-deep tool available.
+
+**Why a new `EngineKind` and not a flag on a chromium session.** The question
+was live, and the argument is evidence, not taste. Three of the engine layer's
+existing declarations have to differ for an attached Electron app, and all three
+are read by machinery keyed on `EngineKind`:
+
+1. `refusedTools` names `navigate`. `EngineCapabilities` is where an engine's
+   limits are declared, and `assertEngineRefuses` reads it through
+   `engineDeclaration(engine)`.
+2. `engineIsAttachOnly` is true, which is what makes the default session mode
+   `attached`. The registry answers that from a set of engine kinds.
+3. `list_sessions` reports the engine per row. An agent told "chromium" for a
+   session that refuses `navigate` and cannot open a second tab has been told
+   the wrong thing about what it is driving.
+
+A boolean on the session would be a second, undeclared oracle sitting next to
+`EngineCapabilities` for facts that record already exists to hold — the exact
+drift `sub-interface-conformance.test.ts` exists to catch, and it would need a
+new reader in every consumer. The cost of the new kind is one 60-line adapter
+module that delegates everything; the substrate and post-wire duplication is
+nil. `android` is the precedent, and its case is weaker: it is also
+Chromium-over-CDP and is also its own kind, for the launch shape alone.
+
+**Detection is the protocol's job, never the operator's.**
+`profileAttachedBrowser(browser)` opens one browser-level CDP session, reads
+`Browser.getVersion`, and matches `\bElectron\/([0-9][\w.]*)` against the
+`userAgent`. Measured: VS Code 1.122.1 answers
+`… (KHTML, like Gecko) Code/1.122.1 Chrome/142.0.7444.265 Electron/39.8.8…`,
+while `product` reads `Chrome/142.0.7444.265` — identical to desktop Chrome —
+and so does Playwright's `browser.version()`. The UA is the one place the
+protocol says it.
+
+The failure direction is deliberate: any probe failure yields the chromium
+profile, byte-identical to the pre-detection attach. An app that overrode its UA
+reads as chromium, which is the status quo, and stays recoverable two ways — the
+pool still refuses structurally when `Target.createTarget` turns out to be
+unavailable, and the operator can name `engine: "electron"`. Probing by CALLING
+`Target.createTarget` is rejected on purpose: on real Chrome it succeeds, and
+succeeding means opening an unwanted tab in the operator's browser to learn
+something.
+
+**One attach lane, two engines.** `attachByobDesktop` in
+`session/byob-attach.ts` serves both chromium and electron. It consumes the
+`AttachedBrowserProfile` record — `{engine, canCreateTargets, detail, warning}` —
+so the session layer never re-derives behaviour from an engine name and no
+`engine === "electron"` branch appears below the seam.
+
+**The three measured breakages and where each is handled.**
+
+| breakage                                                 | handled                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Target.createTarget` answers `"Not supported"`          | `TargetSource.create` became OPTIONAL. `browserTargetSource(browser, {canCreate:false})` omits it, and `acquireTarget` raises `attachTargetCreationUnavailable` naming the live leases. The declaration is the oracle; the pool never calls and catches.                                                                                                                                                               |
+| `page.goto()` inside the app's renderer                  | `refusedTools` → `assertEngineRefuses` → `host.engineGate("navigate", e)`. `reload` / `go_back` / `go_forward` are NOT refused; they operate on the app's own document.                                                                                                                                                                                                                                                |
+| Playwright actionability never settles on desktop chrome | Already handled by the shipped auto-recovery in `page/actions.ts`: 70% of the deadline on the actionability path, then one `force: true` retry with a warning. Measured on VS Code: 4967 ms recovered vs 528 ms with `force: true` passed up front. NOT defaulted to force — inside a logged-in app, skipping the hit-target check is the difference between clicking the named control and clicking what is under it. |
+
+**On the `navigate` reason, corrected by measurement.** The first draft of this
+work said navigating an Electron renderer was unrecoverable. It is not, at least
+on VS Code: `goto("https://example.com")` then `goBack()` restored
+`workbench.html` and the workbench re-rendered (172 monaco elements, title
+back). The refusal stands on the stronger ground it always had — running
+arbitrary web content inside a renderer that a preload script has given IPC to
+is the Electron remote-content hazard — plus the guaranteed loss of all
+in-memory renderer state. Whether an app re-bootstraps at all is per-app:
+VS Code rebuilds from a document, while an app that receives its state over IPC
+once at startup comes back empty. Untested beyond VS Code.
+
+**Attachability is per-app and per-version.** Figma's desktop client runs
+`app.commandLine.removeSwitch("remote-debugging-port")` at main-process startup,
+guarded only by a `FIGMA_TEST` env var — read directly out of the shipped
+`app.asar` of 126.8.18 on macOS. Such an app never opens a port. Do not document
+this engine as "works with Electron apps" without that caveat.
+
+**Endpoint-gated keystone** (`test/keystone/electron.keystone.test.ts`): the same
+honest gate the android keystone uses for `adb devices`. `describe.skip`s unless
+`BROWX_ELECTRON_CDP` names a running app; when one is present it asserts the
+protocol-resolved `engine: "electron"`, reads the app, asserts the `navigate`
+refusal AND that the app is still on its own document afterwards, asserts the
+second-session refusal, and runs a deep tool. Verified live against the VS Code
+instance described in its header — five cases, 1.2 s.
 
 ### Per-engine capability matrix (RFC task #24)
 

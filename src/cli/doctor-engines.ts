@@ -1,10 +1,10 @@
 // `browxai doctor` — the per-engine availability probes.
 //
 // One probe per browser engine doctor reports on: chromium (the managed-mode
-// dependency — a missing binary FAILS doctor) and the three opt-in lanes —
-// firefox, webkit, android — whose probes are always INFORMATIONAL (a missing
-// binary / no device just tells the operator how to enable the engine; it never
-// fails doctor). Each returns a doctor `Check` row; doctor.ts owns the checklist
+// dependency — a missing binary FAILS doctor) and the four opt-in lanes —
+// firefox, webkit, android, electron — whose probes are always INFORMATIONAL (a
+// missing binary / no device / an unset attach endpoint just tells the operator
+// how to enable the engine; it never fails doctor). Each returns a doctor `Check` row; doctor.ts owns the checklist
 // orchestration + the engine-SELECTION diagnostic (which engine the server would
 // run on) and calls these for the readiness rows the selection line points at.
 //
@@ -161,5 +161,65 @@ export async function androidCheck(): Promise<Check> {
     if (localPort) {
       await defaultAdbRunner(forwardRemoveArgs(localPort, serial)).catch(() => undefined);
     }
+  }
+}
+
+/** `Electron/39.8.8` in a DevTools user-agent string. Same token
+ *  `adapters/electron-detect.ts` matches at attach; doctor reads the HTTP
+ *  `/json/version` endpoint instead of opening a CDP session, so the probe costs
+ *  the attached app one GET and holds nothing. */
+const ELECTRON_UA = /\bElectron\/([0-9][\w.]*)/;
+
+/** What is on the far end of `BROWX_ATTACH_CDP`, answered before a session is
+ *  opened. Always informational: the desktop attach lane is opt-in, and an unset
+ *  endpoint or an unreachable one is a configuration state, never a fault.
+ *
+ *  Doctor is the right place for this because the electron lane's whole risk is
+ *  that the operator is not sure what they pointed at. Reporting the app name and
+ *  Electron version from the protocol answers that without driving anything. */
+export async function electronCheck(): Promise<Check> {
+  const name = "electron";
+  const fix =
+    "launch the app with a loopback debugging port (e.g. `--remote-debugging-port=9333`), set BROWX_ATTACH_CDP to it, and grant the `byob-attach` capability. Read docs/threat-model.md first: that port is unauthenticated for the app's lifetime and your EDR will flag the launch (MITRE T1539).";
+  const endpoint = process.env.BROWX_ATTACH_CDP?.trim();
+  if (!endpoint) {
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: 'BROWX_ATTACH_CDP not set (opt-in attach-only lane — browserType:"electron")',
+      fix,
+    };
+  }
+  try {
+    const body = (await defaultFetcher(new URL("/json/version", endpoint).toString())) as {
+      Browser?: string;
+      "User-Agent"?: string;
+    };
+    const ua = body["User-Agent"] ?? "";
+    const electron = ELECTRON_UA.exec(ua);
+    if (!electron) {
+      return {
+        name,
+        ok: true,
+        info: true,
+        detail: `${endpoint} answers, and it is NOT an Electron app (${body.Browser ?? "unknown"}) — the attach lane will open a chromium session`,
+      };
+    }
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: `${endpoint} is an Electron ${electron[1]} app (${body.Browser ?? "unknown"}) — attach-ready as engine "electron"; \`navigate\` will refuse on it`,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message.split(".")[0] : String(e);
+    return {
+      name,
+      ok: true,
+      info: true,
+      detail: `BROWX_ATTACH_CDP=${endpoint} not reachable: ${msg}`,
+      fix,
+    };
   }
 }

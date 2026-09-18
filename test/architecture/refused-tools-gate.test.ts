@@ -35,8 +35,7 @@ import { inMemorySubstrateBundle } from "./_synthetic-engine.js";
 const REFUSER = "probe-refuses-navigate" as EngineKind;
 const PLAIN = "probe-refuses-nothing" as EngineKind;
 
-const WHY =
-  "the probe engine declares navigate refused so this file can assert the gate fires";
+const WHY = "the probe engine declares navigate refused so this file can assert the gate fires";
 
 /** Every sub-interface chromium declares — so the ONLY thing standing between
  *  `navigate` and a well-formed result is the `refusedTools` entry. */

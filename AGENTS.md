@@ -68,7 +68,7 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | ON by default   | `human`            | confirmation hooks, await_human                                                              |
 | OFF + loud-warn | `eval`             | `eval_js`, `poll_eval` — arbitrary JS in page context                                        |
 | OFF + loud-warn | `network-body`     | full response bodies + interception                                                          |
-| OFF + loud-warn | `byob-attach`      | attach to user's existing Chrome (no managed profile)                                        |
+| OFF + loud-warn | `byob-attach`      | attach to user's existing Chrome, or a running desktop Electron app (no managed profile)     |
 | OFF + loud-warn | `clipboard`        | OS clipboard read/write                                                                      |
 | OFF + loud-warn | `file-io`          | `upload_file`, downloads to workspace                                                        |
 | OFF + loud-warn | `secrets`          | `register_secret`, secret materialization at egress                                          |

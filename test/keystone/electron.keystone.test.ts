@@ -116,10 +116,9 @@ describeElectron("electron keystone — a real desktop app over its debugging po
   it(
     "resolves engine:electron from the protocol, with no operator declaration",
     async () => {
-      const listed = await callJson<{ sessions: Array<{ id: string; engine: string; mode: string }> }>(
-        "list_sessions",
-        {},
-      );
+      const listed = await callJson<{
+        sessions: Array<{ id: string; engine: string; mode: string }>;
+      }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === SESSION);
       expect(row, "opened session present in list_sessions").toBeTruthy();
       // The headline. `createServer` was given no browserType, so this is
@@ -138,7 +137,9 @@ describeElectron("electron keystone — a real desktop app over its debugging po
       // selected by CDP presence, no electron-specific code on the read path.
       const snap = await callText("snapshot", { session });
       expect(snap).toContain("url:");
-      expect(snap.split("\n").length, "a real app yields more than a bare root").toBeGreaterThan(10);
+      expect(snap.split("\n").length, "a real app yields more than a bare root").toBeGreaterThan(
+        10,
+      );
 
       const found = await callJson<{ candidates: Array<{ ref: string; bbox?: unknown }> }>("find", {
         session,
