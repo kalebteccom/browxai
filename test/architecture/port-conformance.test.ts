@@ -19,6 +19,7 @@ import { capabilitiesFor, ENGINE_KINDS } from "../../src/engine/index.js";
 import type {
   EngineCapabilities,
   EngineKind,
+  NativeSessionHandle,
   SafariSessionHandle,
 } from "../../src/engine/index.js";
 import type { BrowserSession } from "../../src/session/types.js";
@@ -29,6 +30,7 @@ import {
 } from "../../src/session/launch-options.js";
 import { finalizeAttachedSession } from "../../src/session/byob-attach.js";
 import { buildSafariSession } from "../../src/session/safari-session.js";
+import { buildNativeSession } from "../../src/session/native-session.js";
 import type { AcquiredTarget } from "../../src/session/attach-pool.js";
 
 /** The handles a session finalizer needs, none of which this test drives. The
@@ -61,6 +63,11 @@ const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
       finalizeAttachedSession("android", "S1", stubTarget(), {} as CDPSession, async () => {}),
     ),
   safari: () => Promise.resolve(buildSafariSession({} as SafariSessionHandle)),
+  // android-app (RFC 0008 P2) is the second no-Page engine and the first
+  // non-browser one. Like safari it is built from its own engine-named handle,
+  // and like safari its session OMITS `page` entirely rather than throwing from
+  // it — the assertion below is what holds it to that.
+  "android-app": () => Promise.resolve(buildNativeSession({} as NativeSessionHandle)),
 };
 
 describe("L5 — every adapter honors its declared port contract", () => {
@@ -108,10 +115,13 @@ describe("L5 — every adapter honors its declared port contract", () => {
     const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page");
     it.each(ENGINE_KINDS)("[%s] declares page-availability matching reality", (engine) => {
       const caps = capabilitiesFor(engine)!;
-      // Ground truth: only Safari has no Playwright Page. The `"page"` sub-interface
-      // is present iff the engine returns a real Page; this fails if a non-Safari
-      // engine loses its Page or Safari ever claims one.
-      const hasPlaywrightPage = engine !== "safari";
+      // Ground truth: the no-Page engines are safari (driven over safaridriver)
+      // and android-app (a native app over adb, which has no browser at all). The
+      // `"page"` sub-interface is present iff the engine returns a real Page; this
+      // fails if a Playwright engine loses its Page or a no-Page engine ever
+      // claims one.
+      const noPlaywrightPage: readonly EngineKind[] = ["safari", "android-app"];
+      const hasPlaywrightPage = !noPlaywrightPage.includes(engine);
       expect(hasPagePort(caps)).toBe(hasPlaywrightPage);
     });
 

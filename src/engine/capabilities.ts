@@ -122,12 +122,56 @@ export const SAFARI_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** Android-app (a React Native app on an emulator, over adb — RFC 0008 P2). The
+ *  first NON-BROWSER engine, and its subset is smaller than Safari's for reasons
+ *  that are facts about the platform rather than gaps in the adapter:
+ *
+ *  DECLARED. `lifecycle` / `navigation` / `snapshot` / `input` are the four every
+ *  engine must declare, and a native session honours all four: it opens and closes
+ *  a device lease, `navigate` opens a deep link, `snapshot` composes the
+ *  UiAutomator view hierarchy into `A11yNode`, and the whole input pipeline is
+ *  real OS input. `capture` is `adb exec-out screencap`. `element` is a testID
+ *  query against a freshly-dumped hierarchy, which is what lets the `verify_*`
+ *  family and the gesture geometry run — RFC 0009 P2 split `element` from `page`
+ *  precisely so a Page-free engine could declare it.
+ *
+ *  OMITTED, each because the platform has no such thing:
+ *  - `network` — there is no protocol-level tap on a native app without a system
+ *    proxy or a VPN profile, and installing either is the operator's decision,
+ *    which browxai never makes on their behalf (RFC 0008, Honest limits).
+ *  - `storage` — cookies, localStorage, IndexedDB and the Cache API are web
+ *    storage. An app's data lives in its private sandbox and is reached with
+ *    `app_reset`, not with a cookie jar.
+ *  - `script` — there is no scriptable context in a release-configuration React
+ *    Native app, and reaching into a dev bridge would be a different trust
+ *    posture. `eval_js` / `poll_eval` refuse.
+ *  - `emulation` — geolocation, colour scheme and reduced motion are device
+ *    SETTINGS here, not per-session overrides; changing them would outlive the
+ *    session and mutate the operator's device.
+ *  - `page` — no Playwright `Page`, the same as safari.
+ *
+ *  `deep: false`: no CDP anywhere near a native app, so the CDP-hard tools refuse
+ *  through the existing gate with no per-engine edit. */
+export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
+  engine: "android-app",
+  subInterfaces: new Set<EngineSubInterface>([
+    "lifecycle",
+    "navigation",
+    "snapshot",
+    "input",
+    "capture",
+    "element",
+  ]),
+  deep: false,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
   webkit: WEBKIT_CAPABILITIES,
   android: ANDROID_CAPABILITIES,
   safari: SAFARI_CAPABILITIES,
+  "android-app": ANDROID_APP_CAPABILITIES,
 };
 
 /** The capability declaration for an engine. Chromium + Firefox + WebKit +
