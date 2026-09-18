@@ -79,6 +79,7 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | OFF + loud-warn | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                             |
 | OFF + loud-warn | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                |
 | OFF + loud-warn | `replay`           | `.browx` session-replay artifact capture (DOM stream + network + console)                    |
+| OFF + loud-warn | `native-device`    | the `android-app` engine: installs/launches apps, drives an OS-level input pipeline over adb |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

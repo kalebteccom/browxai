@@ -8,6 +8,67 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`android-app`: browxai drives native Android apps, with the same tools, the
+  same refs and the same evidence format it uses for browsers** (RFC 0008 P2).
+  A sixth engine, and the first that is not a browser: a React Native app on an
+  Android emulator, driven over `adb`. It has no Playwright `Page`, no DOM, no
+  URL and no `Locator` — which is why RFC 0009 had to land first — and it needed
+  no edit to any session factory, to `session-registry.ts` or to `host-build.ts`.
+
+  **The point is that nothing new was invented.** The UiAutomator view hierarchy
+  composes into the `A11yNode` tree `snapshot` already returns, with the same
+  `[ref=eN]` refs, so `find`'s ranking never learns the difference and one CI
+  verifier reads a native session and a web session the same way. `click` is a
+  tap, `press` reaches the hardware keys (`back`, `home`, `appswitch`), `scroll`
+  and `gesture_swipe` are the platform's own primitives, `screenshot` is
+  `screencap`, and the `verify_*` family runs through `ElementSubstrate`.
+
+  **testID over positional refs.** A ref minted on a node carrying a `testID`
+  (Android: the view's `resource-id`) is anchored on the testID, not the
+  structural path, so it survives a layout change that moves the node. Without a
+  testID the full path key applies and the ref is snapshot-local, which is the
+  honest status of an unlabelled element — and `snapshot` warns, naming the
+  count, so a thin-on-testIDs app becomes a fixable list for its team. **Every
+  action re-resolves before it dispatches**: a fresh hierarchy read, in the same
+  call, never a replayed coordinate. **An ambiguous query refuses**, taps nothing
+  and reports the count.
+
+  **Ten new tools for device and app lifecycle**, which browxai had no analogue
+  for: `device_list` / `device_boot` / `device_shutdown`, and `app_list` /
+  `app_install` / `app_uninstall` / `app_launch` / `app_terminate` / `app_reset`
+  / `app_foreground`.
+
+  **Behind the new off-by-default `native-device` capability**, gated at SESSION
+  CREATION — every native tool needs a native session first, so one check closes
+  the surface. It installs and launches applications and drives an OS-level input
+  pipeline, so it is the same posture class as `replay` and `network-body`. See
+  `docs/threat-model.md`.
+
+  **What refuses, and says why.** `gesture_pinch` (no two-finger primitive exists
+  in `adb shell input`, and every way to fake one reports a pinch the app never
+  received), `eval_js` / `poll_eval`, the network family, web storage,
+  `frames_list`, `pdf_save`, and the whole CDP-deep family. Registered secrets do
+  not materialise on this engine, so a `<NAME>` alias is typed literally and
+  `fill` says so — which is also why RFC 0008 §6's `adb shell input text <secret>`
+  leak sink does not exist here.
+
+  Verified end to end against a real Android 14 emulator: a fifteen-case keystone
+  drives `open_session` → `snapshot` → `find` → `click` → `press` → `screenshot`
+  → `gesture_swipe` → `app_foreground` → `app_list` through the real MCP server,
+  and asserts the refusals. It skips cleanly with no device attached.
+
+### Changed
+
+- **`open_session` threads the session id into every launch mode, not only
+  `attached`.** It was attach-only because the attach lane was the only one that
+  filed a lease. The `android-app` engine leases too — on a device serial rather
+  than a CDP target, because two UiAutomator clients on one device make every
+  hierarchy dump fail for both — and without the id every native session claimed
+  the lease under the same fallback, so a second session on one device was
+  allowed through. No behaviour change on any browser engine.
+
 ### Changed
 
 - **Snapshots now carry the accessibility tree they were always meant to, so
