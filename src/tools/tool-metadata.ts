@@ -68,6 +68,7 @@ import { registerConfigApprovalTools } from "./config-approval-tools.js";
 import { registerSecretsCaptchaTools } from "./secrets-captcha-tools.js";
 import { registerInputTools } from "./input-tools.js";
 import { registerExtensionsBatchTools } from "./extensions-batch-tools.js";
+import { registerNativeDeviceTools } from "./native-device-tools.js";
 import { PLUGIN_INFO_TOOL_CAPABILITY } from "./plugin-runtime.js";
 
 /** Build a browser-free `HostDeps` so `buildHost` runs without opening a browser.
@@ -164,6 +165,7 @@ export function collectToolMetadata(): ReadonlyMap<string, ToolRegistration> {
   registerSecretsCaptchaTools(host);
   registerInputTools(host);
   registerExtensionsBatchTools(host);
+  registerNativeDeviceTools(host);
   // The two plugin-info MCP tools register inside the async plugin runtime; their
   // capability (the only metadata that matters for the derived maps) is declared
   // from the shared single source so we don't run the plugin loader to collect it.

@@ -22,7 +22,10 @@
 
 import type { SessionEntry } from "../session/registry.js";
 import type { SubstrateBundle, SubstrateDeps } from "../engine/registry.js";
-import type { NativeSessionHandle } from "../engine/adapters/android-app/handle.js";
+// Through the engine BARREL, never the adapter module: `no-page-handler-to-
+// engine-adapter-or-transport` keeps `src/page/**` off `src/engine/adapters/**`,
+// and the Safari bundle reaches `SafariSessionHandle` the same way.
+import type { NativeSessionHandle } from "../engine/index.js";
 import type { ActionSubstrate } from "./action-substrate-types.js";
 import type { CaptureSubstrate } from "./capture-substrate-types.js";
 import type { ElementSubstrate } from "./element-substrate-types.js";
