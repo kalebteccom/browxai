@@ -1,6 +1,6 @@
 ---
-title: Browser control that reaches past the tab
-description: Browser control that reaches past the tab. MCP-native control across eight engines, including real Safari, real Chrome on an Android device, native apps on a simulator and emulator, and a desktop Electron app, with off-by-default access to the OS clipboard, password managers and a workspace directory.
+title: The same tools for a web page and a native app
+description: One MCP tool surface over eight engines in three families. Five browsers, including real Safari and real Chrome on an Android device, two native-app engines on an Android emulator and the iOS Simulator, and a desktop Electron app attached over CDP, plus the OS clipboard, password managers and a workspace directory.
 template: splash
 tableOfContents: false
 editUrl: false
@@ -12,10 +12,9 @@ lastUpdated: false
     <p class="browx-kicker">MCP-native, across eight engines and onto the host</p>
     <h1 class="browx-wordmark">brow<span class="x">x</span>ai</h1>
     <div class="browx-lede">
-      Browser control that reaches past the tab. Eight engines in three
-      families — five browsers, two native apps, one desktop app — plus the OS
-      clipboard, your password manager and a workspace on disk. All gated off by
-      default.
+      The same tools for a web page and a native app. Eight engines in three
+      families: five browsers, two native apps on an emulator or simulator, and
+      a desktop Electron app. Everything past a browser starts off.
     </div>
     <div class="browx-cta">
       <a href="/getting-started/" class="browx-btn browx-btn--primary">Get started</a>
@@ -110,9 +109,9 @@ lastUpdated: false
   <h2 class="browx-section-title">Why it exists</h2>
   <div class="browx-section-sub">
     browxai is not a wrapper over someone else's MCP server. It owns its own
-    transport to every engine it drives, so it owns the whole session lifecycle.
-    Where a task leaves the browser, browxai follows it onto the host, under a
-    capability you switch on.
+    transport to all eight engines it drives, so it owns the whole session
+    lifecycle. Where a task leaves the browser, for a native app, a desktop app
+    or your host machine, browxai follows it under a capability you switch on.
   </div>
 
   <div class="browx-grid">
@@ -123,6 +122,30 @@ lastUpdated: false
         <code>snapshot()</code> is a scoped, paginated, budgeted accessibility
         tree. <code>find()</code> returns ranked candidates with evidence, not a
         guess. Results stay small on purpose.
+      </div>
+    </div>
+    <div class="browx-card">
+      <span class="browx-card-mark">// native</span>
+      <h3>Native apps, same tools</h3>
+      <div class="browx-card-text">
+        Switch on <code>native-device</code> and <code>find</code>,
+        <code>click</code> and <code>fill</code> drive an app on an Android
+        emulator or the iOS Simulator. The tree comes off the app's view
+        hierarchy, with the same refs a page gets. Android is verified against a
+        live emulator; the iOS lane is newer and needs a WebDriverAgent you run.
+        Emulators and simulators only, no real devices.
+      </div>
+    </div>
+    <div class="browx-card">
+      <span class="browx-card-mark">// desktop</span>
+      <h3>The Electron app you have open</h3>
+      <div class="browx-card-text">
+        An Electron app is Chromium, so one started with
+        <code>--remote-debugging-port</code> answers the same CDP browxai
+        already speaks. Attach to VS Code or Slack and <code>snapshot</code> and
+        <code>find</code> read its UI. Attach-only, <code>navigate</code>
+        refuses, and whether a port opens at all is up to the app and the
+        version.
       </div>
     </div>
     <div class="browx-card">
@@ -141,8 +164,9 @@ lastUpdated: false
       <div class="browx-card-text">
         Capability-gated tools, an origin allow and block list, confirmation
         hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
-        response bodies, the OS clipboard, your password manager, and network
-        mocking are all off until you opt in.
+        response bodies, the OS clipboard, your password manager, the native
+        engines, attaching to a desktop app and network mocking are all off
+        until you opt in.
       </div>
     </div>
     <div class="browx-card">
@@ -159,8 +183,9 @@ lastUpdated: false
       <div class="browx-card-text">
         Isolated per-session contexts: persistent, incognito, or attach to a
         Chrome you already have open, on your desktop or on a plugged-in Android
-        phone. Headed and headless. Config is driven over MCP, with no
-        out-of-band setup.
+        phone. Headed and headless. Pick the engine per session, so one server
+        can hold a Chromium page and an emulator app at once. Config is driven
+        over MCP, with no out-of-band setup.
       </div>
     </div>
   </div>

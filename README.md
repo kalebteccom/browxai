@@ -4,14 +4,29 @@
 
 <h1 align="center">browxai</h1>
 
-<p align="center"><strong>Browser control that reaches past the tab.</strong><br/>
+<p align="center"><strong>The same tools for a web page and a native app.</strong><br/>
 <a href="https://browxai.com">browxai.com</a> · <a href="brand/">brand kit</a></p>
 
-**Give your AI agent a real browser it can navigate, read, and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it. Plus, when you switch them on, a handful of things outside the browser that a real task runs into.**
+**Give your AI agent a real browser it can navigate, read and act on, over the Model Context Protocol or a typed TypeScript SDK. On your machine, or on an Android phone plugged into it. The same `find` and `click` drive a native app on an Android emulator or the iOS Simulator, and the UI of a desktop Electron app you already have open. The engines past a managed browser, and a short reach onto your host machine, are off until you switch them on.**
 
-browxai is a browser-control server designed for agents. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
+browxai is a control server designed for agents. A browser is what it drives most. Point any MCP client (Claude Code, Codex, Pi, …) or a single TypeScript script at it, and your agent gets a compact, safe set of tools (navigate, find, click, fill, read, screenshot) that return small, structured results. It works with any model, and it keeps the dangerous powers off until you turn them on.
 
-It drives eight engines behind one tool surface, in three families. **Five browsers**: Chromium, Firefox and WebKit as browsers it launches for you, real Safari.app over `safaridriver`, and real Chrome on an Android handset attached over adb. **Two native apps**: an app on the iOS Simulator over XCUITest, and an app on an Android emulator over adb's UiAutomator — no DOM, no URL, the same `snapshot` / `find` / `click` and the same refs. **One desktop app**: a running Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port`. Android and Electron are attach-only, so the browser or app has to already be running; browxai never spawns one. The two native engines sit behind the off-by-default `native-device` capability, and attaching to a signed-in desktop app has a security posture worth reading before you do it — see [`docs/threat-model.md`](docs/threat-model.md). CI runs the cross-engine suite on Chromium, Firefox and WebKit on every commit; the other five need a device, a simulator, a running app or macOS, so they are exercised by hand.
+Eight engines sit behind that one tool surface, in three families. They are not three equally proven things. Each paragraph below says how far its evidence goes.
+
+**Five browser engines.** Chromium, Firefox and WebKit are browsers browxai launches for you. `safari` drives real Safari.app over `safaridriver`. `android` drives real Chrome on an Android handset attached over adb. It is attach-only: the browser has to already be running on the device, and a managed launch refuses with `android-launch-not-supported`. CI runs the cross-engine suite on Chromium, Firefox and WebKit on every commit; Android needs a USB device and Safari needs macOS, so those two are exercised by hand.
+
+**Two native-app engines**, both behind the off-by-default `native-device` capability, which `open_session` checks before anything boots, installs or launches. Neither is a browser: no DOM, no URL, and `eval_js`, the network family and web storage all refuse by name. What each app does return is the same `A11yNode` tree with the same `[ref=eN]` refs `snapshot` returns for a page, so `find` and `click` work on it unchanged.
+
+- `android-app` drives an app on an Android emulator through UiAutomator, over `adb`. It is verified end to end against a live Android 14 emulator: fifteen keystone cases through the real MCP server, green from a fresh boot. A device is leased, because two UiAutomator clients on one device break every hierarchy read for both.
+- `ios-app` drives an app on the iOS Simulator through XCUITest. The `simctl` half of it (resolve, boot, install, launch, screenshot, terminate) runs against real simulators in the keystone. The WebDriverAgent transport it reads the hierarchy over has only ever been exercised against a stand-in HTTP server. That proves the engine registration, the ref minting, the action verbs and the tool handlers. It does not prove that a real WebDriverAgent answers those endpoints with these shapes.
+
+WebDriverAgent, Xcode and the Android SDK are yours to install and run. browxai bundles none of them, creates no AVD and no simulator, and a missing WebDriverAgent refuses session creation instead of answering `snapshot` with an empty tree.
+
+**One desktop-app engine.** `electron` attaches to a running Electron application over the `--remote-debugging-port` it was launched with, so VS Code or Slack is in reach. It works because an Electron app is Chromium: the engine reuses the same substrate bundle the Chromium engine uses and adds no new capture code. It differs from an ordinary BYOB attach in three ways the keystone measures. It is attach-only, and `electron-launch-not-supported` says so; browxai will not start a desktop application. `navigate` refuses, because loading a URL into an Electron renderer would run that page inside the application's own privileged renderer. A single-window app exposes one page target and cannot mint another, so a second session refuses with `attach-target-creation-unavailable`. The gate is `byob-attach`, the same one a BYOB Chrome needs, and the debugging port is unauthenticated for the app's lifetime: read [`docs/threat-model.md`](docs/threat-model.md) before pointing it at an app that holds your data.
+
+The Electron evidence is one app, on one machine, in one run: VS Code 1.122.1 on Electron 39.8.8, where `snapshot` returned a 132-line tree in 36 ms, `find` ranked three real candidates with bounding boxes, and a `click` by ref landed. Attachability is a property of the app and the version, and browxai cannot promise it. Figma's desktop client calls `app.commandLine.removeSwitch("remote-debugging-port")` at startup, read out of the shipped `app.asar` of 126.8.18 on macOS, so it never opens a port and there is nothing to attach to. Check the app you actually have.
+
+Simulators, emulators and Electron only. There is no real-device lane on either mobile platform, and no native desktop automation on macOS, Windows or Linux. Electron is in scope because it is Chromium; a Cocoa, Win32 or GTK app has no CDP endpoint and stays out. Nothing here drives input or the screen outside a browser, a driven mobile app, or an Electron app you attached to.
 
 A task rarely stays inside the tab, so browxai reaches a short way onto the host machine. Each reach sits behind its own capability, and none of them is in the default set (`read`, `navigation`, `action`, `human`):
 
@@ -20,7 +35,7 @@ A task rarely stays inside the tab, so browxai reaches a short way onto the host
 - **A workspace on disk** (`file-io`). File reads and writes are rooted at `$BROWX_WORKSPACE` and any path escaping that root is rejected. Scope is that one directory.
 - **A phone over USB.** Device discovery and port forwarding run `adb devices` and `adb forward`, and nothing else.
 
-That is the whole of it. There is no native-app automation, no iOS, and nothing that drives input or the screen outside the browser.
+That is the whole of the host reach: three capabilities and adb. browxai has no general shell tool, no OS-level input outside a browser or an app it opened, and no screen capture beyond those.
 
 ## What your agent can do with it
 
@@ -29,16 +44,18 @@ That is the whole of it. There is no native-app automation, no iOS, and nothing 
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
 - **Log in without seeing the password.** With `credentials` on, the agent asks for an account by name, browxai fetches the username and TOTP code from your vault, and `fill` submits a password the agent only ever knows by alias.
 - **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](docs/tool-reference.md)).
+- **Drive a native app on an emulator.** With `native-device` on, open an `android-app` or `ios-app` session and the agent taps, types and swipes through the same `find` / `click` / `fill` it uses on a page. Ten `device_*` and `app_*` tools cover boot, install, launch and reset. A verb the platform has no primitive for refuses and names what is missing, so `gesture_pinch` works on iOS and refuses on Android.
+- **Drive the desktop app you already have open.** Start VS Code or Slack with `--remote-debugging-port`, point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and `snapshot` / `find` / `click` read and drive the app's own UI. browxai names the engine `electron` off `Browser.getVersion` without being told, so an agent is never told it is driving a plain Chromium tab.
 - **Run in CI without wedging.** Stand the server up headless in a pipeline; every call has a hard anti-wedge deadline, so a stuck page never hangs the run.
 - **Share one browser across agents.** Run `browxai serve --socket` and attach multiple SDK clients to one long-running server (one Chromium), say a parent agent plus a helper script.
 
 ## Why browxai
 
 - **Model-agnostic.** It works with any MCP client (Claude, Codex, …), so nothing here ties you to one model.
-- **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari / a desktop Electron app, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver). Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work everywhere, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason.
+- **Engine-agnostic.** The same tools drive Chromium / Firefox / WebKit / Android Chrome / Safari / a desktop Electron app, each over the protocol that fits it (CDP, WebDriver BiDi, safaridriver), and the two native-app engines over UiAutomator and XCUITest. Pick with `--engine` / `BROWX_ENGINE`; the default is Chromium. Coverage is uneven and the gaps are named: navigation, actions, snapshot/find, screenshots and storage work across the browsers, while the CDP-deep family (tracing, heap, coverage, network interception) is Chromium-only and refuses elsewhere with an explicit `engine:` reason. A native session refuses more, starting with `eval_js` and the whole network family.
 - **Token-efficient.** `snapshot()` returns a compact accessibility tree with stable element refs, not a DOM dump; results are scoped, paginated, and budgeted.
 - **Safe by default.** Capability-gated tools, an origin allow/blocklist, confirmation hooks, and a hard per-call deadline. The dangerous surface (arbitrary JS, full response bodies, OS clipboard, password-manager lookups, workspace file IO, network mocking, attaching to your real Chrome) is off until you opt in.
-- **Reaches the host, on your say-so.** The OS clipboard, your password manager, a workspace directory and a USB-attached phone are all in scope, each behind a capability that starts off.
+- **Reaches past the browser, on your say-so.** The OS clipboard, your password manager, a workspace directory, a USB-attached phone, a native app on an emulator and a running Electron app are all in scope, each behind a capability that starts off.
 - **Owns the full session lifecycle.** Managed profiles, BYOB attach, and sessions that can be authenticated, headed, or headless.
 
 ## Stability
@@ -111,7 +128,9 @@ The same safety gates apply as on the MCP path. Tools that broaden the security 
 - **action tools** (`click` / `fill` / `navigate` / `select` / `wait_for` / …) each return a structured `ActionResult`: what navigated, what structure changed, a console/network slice, and a post-action element probe.
 - **read tools** cover `text_search`, `inspect`, `console_read`, `network_read`, `ws_read` and `screenshot`.
 - **sessions** each get an isolated context (own cookie jar and refs), come in `persistent`, `incognito` or `attached` (BYOB) flavours, and are configured over MCP.
-- **capabilities**: `read`, `navigation`, `action` and `human` are on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, `secrets`, `extensions`, … are explicit opt-ins.
+- **capabilities**: `read`, `navigation`, `action` and `human` are on by default; `eval`, `network-body`, `clipboard`, `file-io`, `byob-attach`, `secrets`, `extensions`, `native-device`, … are explicit opt-ins.
+- **native sessions** (`android-app`, `ios-app`) answer `snapshot` and `find` from a view hierarchy instead of a DOM, and add `device_*` and `app_*` lifecycle tools.
+- **an `electron` session** is Chromium over CDP, with `navigate` refused and no second page target to open.
 
 The full per-tool reference, the security model, and the stability policy are on the **[documentation site](https://browxai.com/)**.
 
@@ -128,7 +147,9 @@ pnpm docs:dev            # the documentation site, locally
 
 Three test lanes, in ascending cost. `pnpm test` is hermetic and browser-free.
 `pnpm test:keystone` drives real browsers: Chromium, Firefox and WebKit in CI.
-Android and Safari need a device and a Mac, so they run manually. Then
+Android, Safari, the two native engines and Electron need a device, a Mac, an
+emulator or a running app, so they run manually and skip cleanly when nothing is
+attached. Then
 `packages/capability-testbed/` is a multi-surface web app plus a harness that
 drives **every** tool against it, run on demand because it needs real browsers
 with every off-by-default capability switched on. The testbed lane is where the
