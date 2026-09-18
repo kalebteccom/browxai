@@ -589,6 +589,41 @@ const IGNORED_WRAPPER_PAGE = `<!doctype html>
   <output id="log" data-testid="wrapper-log">unclicked</output>
 </body></html>`;
 
+// The two snapshot tiers seeing the same page. Every element here is reached by
+// BOTH the CDP accessibility tree and the page-side DOM walk, so before the
+// backend-node-id join each one appeared twice with two unrelated refs.
+//
+// Three shapes, all load-bearing for the tier-dedup keystone:
+//   - one anchor — must yield exactly one ref, and that ref must click
+//   - two buttons with the SAME role, the SAME accessible name and the SAME
+//     test attribute, differing only in position and in state. Merging them
+//     would hand an agent one ref for two buttons, so they must stay two — and
+//     the `disabled` on the second is how the keystone tells the two lines
+//     apart without trusting the ref numbering.
+//   - a `tabindex` div with a test attribute and no accessible name. The a11y
+//     tier exposes it as a nameless `generic` the serialiser emits no line for,
+//     so the DOM walk's own `[from-dom]` line is the only one the agent gets
+//     and the merge must leave it alone.
+const TIER_DEDUP_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>tier dedup keystone</title></head>
+<body>
+  <nav>
+    <a href="#dedup-target" id="dedup-anchor"
+       onclick="document.getElementById('dedup-log').textContent='anchor-clicked'">Only Once</a>
+  </nav>
+  <section id="first-panel">
+    <button type="button" data-testid="save-btn"
+            onclick="document.getElementById('dedup-log').textContent='first-save'">Save</button>
+  </section>
+  <section id="second-panel">
+    <button type="button" data-testid="save-btn" disabled>Save</button>
+  </section>
+  <div tabindex="0" data-testid="opaque-widget" style="width:40px;height:20px"></div>
+  <output id="dedup-log" data-testid="dedup-log">unclicked</output>
+  <p id="dedup-target">target</p>
+</body></html>`;
+
 // A documentation page shaped like the one that broke `find`: one real search
 // button whose accessible name does not contain the query's words in order, and
 // prose that says "button" and "search" over and over. Chromium emits a
@@ -1098,6 +1133,7 @@ function handleUpgrade(
  *   GET /thin-a11y-page   → table-shaped markup with a thin a11y tree
  *   GET /ignored-wrapper-page → interactive content under CDP-ignored wrappers
  *   GET /find-statictext-page → one real button buried in prose that repeats its words
+ *   GET /tier-dedup-page  → elements both snapshot tiers see, for the tier join
  *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
@@ -1163,6 +1199,11 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/ignored-wrapper-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(IGNORED_WRAPPER_PAGE);
+      return;
+    }
+    if (u.pathname === "/tier-dedup-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(TIER_DEDUP_PAGE);
       return;
     }
     if (u.pathname === "/find-statictext-page") {
