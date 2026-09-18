@@ -3,22 +3,28 @@
 // reads `e.session.native!()` exactly as the Safari bundle reads
 // `e.session.safari!()`.
 //
-// FIVE PORTS ARE REAL AND FOUR REFUSE, AND THE SPLIT IS DECLARED, NOT HIDDEN.
+// SIX PORTS ARE REAL AND THREE REFUSE, AND THE SPLIT IS DECLARED, NOT HIDDEN.
 // `android-app`'s capability row (`capabilities.ts`) declares `lifecycle`,
 // `navigation`, `snapshot`, `input`, `capture` and `element`, and OMITS
 // `network`, `storage`, `script` and `emulation`. The declaration is what makes
 // the tools refuse — `subInterfaceGate` runs before the handler touches a
 // substrate — and `sub-interface-conformance.test.ts` holds the two together.
 //
-// The four omitted positions are filled with a THROWING proxy rather than a
-// plausible empty value. That is the lesson `SafariNoopNetworkSubstrate` taught:
-// it answered `{total: 0, requests: []}` for a question Safari could not answer,
-// and a well-formed "no traffic occurred" is indistinguishable from a true
-// negative in a report a human is about to sign off. A native session genuinely
-// has no cookies, no localStorage, no scriptable context and no media-query
-// emulation, so the honest value is no value. The proxy shape is the architecture
-// suite's own (`test/architecture/_synthetic-engine.ts`), used here for the same
-// reason: it proves these ports are never reached on the shipped path, loudly.
+// NO OMITTED PORT ANSWERS A PLAUSIBLE EMPTY. That is the lesson
+// `SafariNoopNetworkSubstrate` taught: it answered `{total: 0, requests: []}` for
+// a question Safari could not answer, and a well-formed "no traffic occurred" is
+// indistinguishable from a true negative in a report a human is about to sign
+// off. A native session genuinely has no cookies, no localStorage, no scriptable
+// context and no media-query emulation, so the honest value is no value.
+//
+// `storage` / `script` / `emulation` are a THROWING PROXY — the architecture
+// suite's own shape (`test/architecture/_synthetic-engine.ts`), used here for the
+// same reason: it proves these ports are never reached on the shipped path,
+// loudly. `network` needed a real adapter, and finding that out is what the
+// keystone against a device bought: the session factory calls `network.attach()`
+// for EVERY engine at wiring time, before any tool is involved, so a proxy there
+// broke session creation itself. `network-substrate-android-app.ts` splits wiring
+// from answering — the wiring members no-op and the agent-facing reads throw.
 
 import type { SessionEntry } from "../session/registry.js";
 import type { SubstrateBundle, SubstrateDeps } from "../engine/registry.js";
@@ -40,6 +46,7 @@ import { NativeCaptureSubstrate } from "./capture-substrate-android-app.js";
 import { NativeElementSubstrate } from "./element-substrate-android-app.js";
 import { NativeSnapshotSubstrate } from "./snapshot-substrate-android-app.js";
 import { NativeTargetSubstrate } from "./target-substrate-android-app.js";
+import { NativeNoNetworkSubstrate } from "./network-substrate-android-app.js";
 
 /** The engine tag every native substrate reports. */
 export const ANDROID_APP_ENGINE = "android-app";
@@ -90,8 +97,12 @@ export function androidAppSubstrateBundle(deps: SubstrateDeps): SubstrateBundle 
     target: (e: SessionEntry): TargetSubstrate =>
       new NativeTargetSubstrate(handleOf(e).device, ANDROID_APP_ENGINE),
     element: (e: SessionEntry): ElementSubstrate => elementsOf(e),
-    // The four the engine declares no sub-interface for. See the module header.
-    network: (): NetworkSubstrate => unsupportedPort<NetworkSubstrate>("network"),
+    // `network` is the one omitted port with a REAL adapter, because the session
+    // factory calls `attach()` on it for every engine at wiring time — the
+    // keystone against a real device found that in one run. Its wiring members
+    // no-op and its agent-facing reads throw; see the module header there.
+    network: (): NetworkSubstrate => new NativeNoNetworkSubstrate(ANDROID_APP_ENGINE),
+    // The three the engine declares no sub-interface for and nothing reaches.
     storage: (): StorageSubstrate => unsupportedPort<StorageSubstrate>("storage"),
     script: (): ScriptSubstrate => unsupportedPort<ScriptSubstrate>("script"),
     emulation: (): EmulationSubstrate => unsupportedPort<EmulationSubstrate>("emulation"),

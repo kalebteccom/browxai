@@ -258,6 +258,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
           browserType: effectiveEngine,
+          sessionId: id,
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
@@ -281,6 +282,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           recordHar: creationRecordHar,
           recordVideo: creationRecordVideo,
           browserType: effectiveEngine,
+          // Threaded on every branch, not just `attached`. It was attach-only
+          // because the attach lane is the only one that FILED A LEASE — and the
+          // native engine leases too, on a device serial rather than a CDP
+          // target (RFC 0008, Honest limits: one UiAutomator owner per device).
+          // Without it every native session claimed the lease under the same
+          // fallback id, so a second session on one device was allowed through
+          // and both sessions' dumps would have started failing.
+          sessionId: id,
         });
       }
       // Initialise HAR recorder state. If `recordHar` was wired at context
