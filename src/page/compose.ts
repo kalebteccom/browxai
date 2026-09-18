@@ -5,9 +5,10 @@
 //   - Always get the a11y tree first (it carries roles, accessible names, structure).
 //   - Always run the DOM walk (uniform behaviour, predictable cost — one
 //     Runtime.evaluate per snapshot is cheap relative to the rest of a CDP roundtrip).
-//   - Merge: DOM-walk entries become children of the root tree. Entries whose stable
-//     key already matches an a11y node get `source: "both"`; entries new to the
-//     registry get `source: "dom"`. The a11y nodes keep `source: "a11y"` (default).
+//   - Merge: an entry whose element the a11y tier already has folds into that
+//     a11y node, which keeps its ref and takes `source: "both"`. An entry the
+//     a11y tier does not have becomes a child of the root with `source: "dom"`.
+//     The identity is the backend node id, read through `dom-index.ts`.
 //   - If the a11y tree has fewer than LOW_A11Y_THRESHOLD interactive descendants
 //     under the root, emit a warning telling the agent the DOM-walk source carried
 //     the load (#11) — most adopters interpret an empty-ish a11y tree as "page is
@@ -25,6 +26,7 @@ import {
   type DomWalkEntry,
 } from "./dom-walk.js";
 import { annotateStructuralContext } from "./structural.js";
+import { buildDomIndex, EMPTY_DOM_INDEX, type DomIndex } from "./dom-index.js";
 import { LOW_A11Y_THRESHOLD } from "../util/config.js";
 import { elementKey } from "./refs.js";
 import { harvestClosedShadowElements } from "./shadow.js";
@@ -61,7 +63,11 @@ export async function composeSnapshot(
   testAttributes: string[],
   opts: ComposeOptions = {},
 ): Promise<ComposedSnapshot> {
-  const a11y = await getA11yTree(cdp, refs, testAttributes).catch(() => null);
+  // One `DOM.getDocument` sweep serves both tiers: the a11y tier reads its test
+  // attributes off it, and the merge reads the backend node id that tells it
+  // which a11y node a DOM-walk entry is a second sighting of.
+  const domIndex = await buildDomIndex(cdp, testAttributes).catch(() => EMPTY_DOM_INDEX);
+  const a11y = await getA11yTree(cdp, refs, testAttributes, domIndex).catch(() => null);
   if (a11y) markSource(a11y, "a11y");
 
   const a11yInteractive = a11y ? countInteractive(a11y) : 0;
@@ -88,7 +94,9 @@ export async function composeSnapshot(
     closedShadowWarning = harvested.warning;
   }
   const allEntries = [...entries, ...closedEntries];
-  const merge = a11y ? mergeDomWalkIntoTree(a11y, allEntries, refs) : { added: 0, combined: 0 };
+  const merge = a11y
+    ? mergeDomWalkIntoTree(a11y, allEntries, refs, { identify: identifyVia(domIndex) })
+    : { added: 0, combined: 0 };
 
   // After merging a11y + DOM-walk, tag descendants of repeated containers
   // with their structural neighbourhood (row/column/rowText). Cheap O(n)
@@ -207,6 +215,26 @@ export async function composeSnapshotForFrame(
 function resolveTier(a11yInteractive: number, domWalkNew: number): SnapshotTier {
   if (a11yInteractive > 0) return domWalkNew > 0 ? "mixed" : "a11y";
   return domWalkNew > 0 ? "dom-walk" : "empty";
+}
+
+/**
+ * The shared identity the merge deduplicates on: the backend node id of the
+ * element a DOM-walk entry describes, read out of the sweep by the entry's own
+ * `:nth-child` path and checked against the `id` and test attribute the entry
+ * reported for it.
+ *
+ * A closed-shadow entry carries an empty `cssPath` (closed shadow has no
+ * addressable selector from the page side), and every open-shadow entry's path
+ * stops at the shadow boundary, so neither is in the sweep and neither merges.
+ * Both keep the separate `[from-dom]` node they have always had.
+ */
+function identifyVia(index: DomIndex): (entry: DomWalkEntry) => number | undefined {
+  return (e) =>
+    index.backendIdFor(e.cssPath, {
+      id: e.id ?? "",
+      testId: e.testId ?? "",
+      testIdAttr: e.testIdAttr ?? "",
+    });
 }
 
 function markSource(root: A11yNode, source: "a11y"): void {
