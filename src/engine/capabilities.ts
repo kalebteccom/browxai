@@ -123,25 +123,42 @@ export const SAFARI_CAPABILITIES: EngineCapabilities = {
 };
 
 /** The one tool `electron` refuses by name. `navigate` would RUN — that is the
- *  problem. Measured: pointing an attached Electron renderer at any other
- *  document replaces the application UI and the app does not recover; there is no
- *  back-navigation to an app that was never a history entry. So the refusal is a
- *  declaration, not a runtime failure, and it names the reason.
+ *  problem. It loads a URL INTO the application's own renderer process, which is
+ *  a privileged place on many Electron apps: a preload script routinely exposes
+ *  IPC to the main process there, and the app's own document is often a
+ *  `file://`-class origin. Putting arbitrary web content in it is the Electron
+ *  remote-content hazard, and it holds however the app copes afterwards.
+ *
+ *  ON RECOVERY — what the measurement actually said. The first draft of this
+ *  reason claimed the app never comes back. That is wrong, at least here: driving
+ *  VS Code 1.122.1 / Electron 39.8.8 to `https://example.com` and then calling
+ *  `goBack` restored `workbench.html` and the workbench re-rendered (172 monaco
+ *  elements, title back). What is gone either way is every scrap of in-memory
+ *  renderer state — open editors, unsaved buffers, the app's whole store. Whether
+ *  the bootstrap survives a re-navigation at all is per-app and per-version: VS
+ *  Code re-bootstraps from a document, while an app that received its state over
+ *  IPC once at first load and never re-requests it comes back empty. Untested
+ *  elsewhere; browxai does not have the operator's Slack to experiment on.
  *
  *  `go_back` / `go_forward` / `reload` are NOT here: they operate within the
  *  renderer's own history and are exactly what the app's own keyboard shortcuts
- *  do. `reload` on VS Code is Cmd-R. */
+ *  do. `reload` on VS Code is Cmd-R, and `go_back` is what recovered the window
+ *  in the measurement above. */
 const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
   [
     "navigate",
-    "Loading a URL into an attached Electron renderer REPLACES the application's " +
-      "own document, and the application does not come back — its window is left on " +
-      "whatever page was loaded, with no history entry to return to. This is " +
-      "unrecoverable without the user quitting and relaunching the app, so browxai " +
-      "refuses rather than performing it. Drive the app through its own UI (click / " +
-      "press / fill on the elements `snapshot` and `find` return); use `reload` if " +
-      "you need the app's own document re-loaded. To fetch a URL, open a separate " +
-      'chromium session (`open_session({ engine: "chromium" })`).',
+    "Loading a URL into an attached Electron renderer runs that page INSIDE the " +
+      "application's own renderer process, which on many Electron apps is privileged " +
+      "(a preload script exposes IPC to the main process, and the app document is " +
+      "often a file-class origin). browxai will not put arbitrary web content there. " +
+      "It also replaces the application's document: every scrap of in-memory state — " +
+      "open editors, unsaved buffers, the app's store — is gone, and whether the app " +
+      "re-bootstraps at all is per-app (VS Code recovered via go_back when measured; " +
+      "an app that gets its state over IPC once at startup will not). Drive the app " +
+      "through its own UI instead: click / press / fill on the elements `snapshot` " +
+      "and `find` return. `reload` re-loads the app's OWN document and is allowed. " +
+      "To fetch a URL, open a separate chromium session " +
+      '(`open_session({ engine: "chromium" })`).',
   ],
 ]);
 
@@ -149,8 +166,10 @@ const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
  *  `--remote-debugging-port`). Like android it IS Chromium and speaks FULL CDP, so
  *  it declares `deep: true` and needs no new substrate — the CDP snapshot/network
  *  substrates and the full Playwright post-wire serve it verbatim. Measured
- *  against VS Code 1.122.1 / Electron 39.8.8: `composeSnapshot` returns a usable
- *  tree, `locatorFor` resolves, refs are stable across snapshots.
+ *  against VS Code 1.122.1 / Electron 39.8.8: `snapshot` returned a 132-line tree
+ *  in 36ms, `find` ranked three real candidates with bboxes, and the `locatorFor`
+ *  behind them resolved to exactly one element. 113 of 118 named refs held across
+ *  two consecutive snapshots.
  *
  *  Every sub-interface is declared, including `navigation` — the renderer has a
  *  real history and `reload` / `go_back` / `go_forward` all work on it. The ONE

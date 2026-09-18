@@ -288,3 +288,71 @@ describe("touchAttachLease", () => {
     expect(() => touchAttachLease("s", "T1")).toThrow(/attach-lease-expired/);
   });
 });
+
+/** A source with no `create` — the shape `browserTargetSource(browser,
+ *  { canCreate: false })` returns for an attached Electron app, whose
+ *  `Target.createTarget` answers "Not supported" (measured, Electron 39.8.8).
+ *  The refusal has to be STRUCTURAL: the pool reads the absent member and names
+ *  the limitation. Calling through and relaying the raw protocol string is what
+ *  the Electron attach did before, and `Protocol error (Target.createTarget):
+ *  Not supported` tells an agent nothing it can act on. */
+function creationlessSource(existing: PoolTarget[]): TargetSource {
+  return { list: () => Promise.resolve(existing) };
+}
+
+describe("acquireTarget on a source that cannot create targets", () => {
+  it("claims a pre-existing target exactly as it would on an ordinary browser", async () => {
+    const leases = new AttachLeaseTable();
+    const ep = "http://127.0.0.1:9601";
+    const acquired = await acquireTarget(leases, creationlessSource([target("R1", fakePage())]), {
+      sessionId: "one",
+      endpoint: ep,
+    });
+    expect(acquired.targetId).toBe("R1");
+    // Not created, so not owned, so release must never close the app's window.
+    expect(acquired.created).toBe(false);
+    expect(leases.get("one")!.owned).toBe(false);
+  });
+
+  it("refuses with attach-target-creation-unavailable once every target is leased", async () => {
+    const leases = new AttachLeaseTable();
+    const ep = "http://127.0.0.1:9602";
+    const only = [target("R1", fakePage())];
+    await acquireTarget(leases, creationlessSource(only), { sessionId: "one", endpoint: ep });
+    await expect(
+      acquireTarget(leases, creationlessSource(only), { sessionId: "two", endpoint: ep }),
+    ).rejects.toThrow(/attach-target-creation-unavailable/);
+  });
+
+  it("names the session holding the target so the caller knows what to close", async () => {
+    const leases = new AttachLeaseTable();
+    const ep = "http://127.0.0.1:9603";
+    const only = [target("R1", fakePage())];
+    await acquireTarget(leases, creationlessSource(only), { sessionId: "holder", endpoint: ep });
+    const err = (await acquireTarget(leases, creationlessSource(only), {
+      sessionId: "two",
+      endpoint: ep,
+    }).catch((e: unknown) => e)) as Error;
+    expect(err.message).toContain("holder");
+    expect(err.message).toContain("R1");
+    // It also distinguishes itself from browxai's OWN pool ceiling, which has a
+    // different fix: close a browxai session versus open a window in the app.
+    expect(err.message).not.toContain("attach-pool-exhausted");
+    expect(err.message).toMatch(/open another window IN THE APP/i);
+  });
+
+  it("never reaches the refusal while a free target remains", async () => {
+    const leases = new AttachLeaseTable();
+    const ep = "http://127.0.0.1:9604";
+    const two = [target("R1", fakePage()), target("R2", fakePage())];
+    const a = await acquireTarget(leases, creationlessSource(two), {
+      sessionId: "one",
+      endpoint: ep,
+    });
+    const b = await acquireTarget(leases, creationlessSource(two), {
+      sessionId: "two",
+      endpoint: ep,
+    });
+    expect([a.targetId, b.targetId].sort()).toEqual(["R1", "R2"]);
+  });
+});

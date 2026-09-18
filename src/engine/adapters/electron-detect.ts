@@ -32,9 +32,11 @@ import type { Browser } from "playwright-core";
 /** `Electron/39.8.8`. Anchored on the token boundary so a page title or a path
  *  segment containing the word cannot match. */
 const ELECTRON_UA = /\bElectron\/([0-9][\w.]*)/;
-/** The app's own token, first in the UA product list: `Code/1.122.1`. Present on
- *  every Electron app that has not replaced its UA; absent is not fatal. */
-const APP_UA = /\)\s+([A-Za-z][\w.-]*\/[\w.]+)\s+AppleWebKit/;
+/** The app's own token, which Electron splices between the Gecko comment and the
+ *  Chrome token: `… (KHTML, like Gecko) Code/1.122.1 Chrome/142.0.7444.265 …`.
+ *  Present on every Electron app that has not replaced its UA; absent is not
+ *  fatal — the banner then says "an Electron app". */
+const APP_UA = /\(KHTML, like Gecko\)\s+([A-Za-z][\w.-]*\/[\w.]+)\s+Chrome\//;
 
 /** What the attach lane needs to know about the far end, resolved once per
  *  connection. Carries the engine AND the two behaviours that differ with it, so
@@ -87,8 +89,9 @@ function electronAttachWarning(app: string, electron: string): string {
     "  - NOT-OWNED: on shutdown browxai detaches; it never closes the app.",
     "  - The CDP port is unauthenticated. ANY local process can attach to it",
     "    for as long as the app runs — browxai does not hold it exclusively.",
-    "  - `navigate` is REFUSED on this session: loading a URL into the",
-    "    renderer destroys the app's UI unrecoverably. Drive it by clicking.",
+    "  - `navigate` is REFUSED on this session: it would run a web page inside",
+    "    the app's own privileged renderer and wipe its in-memory state. Drive",
+    "    the app by clicking. `reload` / `go_back` / `go_forward` still work.",
     "",
     "  Detection note: running an app with --remote-debugging-port alongside",
     "  --user-data-dir matches published EDR rules for infostealer cookie",

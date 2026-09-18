@@ -8,7 +8,8 @@
 // engine layer's existing declarations have to differ, and all three are read by
 // machinery keyed on `EngineKind`:
 //   - `refusedTools` names `navigate`, because loading a URL into an Electron
-//     renderer destroys the application's UI unrecoverably.
+//     renderer runs that page inside the application's own privileged renderer
+//     and discards everything the renderer held.
 //   - `engineIsAttachOnly` is true: browxai never launches the app. The operator
 //     launched it; browxai joins.
 //   - `list_sessions` reports the engine, and an agent reading "chromium" for a
