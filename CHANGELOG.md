@@ -26,14 +26,16 @@ surface" covers.
   warning stops firing where it was firing spuriously. Use `maxNodes` / `omit` /
   `scope` if a page's snapshot is larger than you want.
 
-  **Size.** Measured across six real pages (react.dev, MDN, Wikipedia's GDP
-  table, Bootstrap's forms docs, a GitHub pull request, Hacker News): the
-  serialised body is 4.0× what it was, 19,530 → 78,953 estimated tokens. It is
-  not 10× because Chromium's text and layout leaves are suppressed (below); a
-  raw splice measured 199,310. The ratio is against a tier that emitted
-  nothing, so the comparison is "an empty accessibility tree versus a real one",
-  and the remaining bulk is the page's own structure — Wikipedia's GDP table is
-  936 `cell` and 990 `link` nodes. `maxNodes` and `scope` bound it per call.
+  **Size.** Measured across six real pages (react.dev/learn, MDN's Using Fetch,
+  Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
+  Hacker News front page): the serialised body is 3.8× what it was,
+  17,527 → 66,627 estimated tokens. It is not 12× because Chromium's text and
+  layout leaves are suppressed (below); a raw splice measured 215,386. The
+  ratio is against a tier that emitted nothing, so the comparison is "an empty
+  accessibility tree versus a real one", and the remaining bulk is the page's
+  own structure — `link`, `a` and `cell` nodes are 44,274 of the 66,627, and
+  Wikipedia's GDP table alone is 936 `cell` and 990 `link`. `maxNodes` and
+  `scope` bound it per call.
 
   **Refs.** Existing refs do not move on the flip this is built for. An ignored
   node still contributes its path segment to `elementKey`, and sibling indices
@@ -57,9 +59,9 @@ surface" covers.
 - **`snapshot` emits no line for Chromium's text and layout leaves.**
   `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable*`, `Abbr`,
   `EmphasizedText`, `StrongText`, `Ruby*`, `superscript` and `subscript` carry
-  text an ancestor already names, so a line each printed the page twice: 8,090
-  of 17,710 nodes and two thirds of the body across the six pages. Suppressing
-  them took the six-page total from 199,310 to 78,953 estimated tokens. The
+  text an ancestor already names, so a line each printed the page twice: 11,172
+  of 19,380 nodes and two thirds of the body across the six pages. Suppressing
+  them took the six-page total from 215,386 to 66,627 estimated tokens. The
   nodes stay in the tree — `text_search` still matches their text and
   `extract` still reads them — and one carrying a configured test attribute is
   still emitted.
@@ -79,8 +81,11 @@ surface" covers.
   the probes run, they also took the slots. On Bootstrap's forms docs,
   `find("the search button")` returned five `StaticText` nodes and the warning
   "no visible candidate", with the real button absent from the result; it now
-  returns that button at rank 1, `actionable: true`, and the call is 612 ms →
-  ~90 ms. The document root (`RootWebArea`) is excluded for the same reason —
+  returns that button at rank 1, `actionable: true`. Across a 13-query battery
+  on three pages, top-1 was a non-actionable text leaf on 4 queries and text
+  leaves held 33 of 60 candidate slots; both are now 0, and the battery's total
+  wall clock is 7,431 ms → 2,645 ms. The document root (`RootWebArea`) is
+  excluded for the same reason —
   its accessible name is the page title. A node carrying a configured test
   attribute is still ranked whatever its role.
 
@@ -91,8 +96,9 @@ surface" covers.
   existed in the session and every call failed with `Could not find node` — 159
   of 159 on a GitHub pull request, 1,035 of 1,035 on Wikipedia. Dormant while
   the tier emitted one bare root. One `DOM.getDocument` sweep replaces the
-  per-node loop; six-page snapshot latency is 1,398 ms → 793 ms, Wikipedia
-  643 ms → 285 ms, Hacker News 100 ms → 49 ms. The sweep does not pierce, so an
+  per-node loop. Median of five composes on a loaded page: Wikipedia
+  912 ms → 294 ms (184 ms before the accessibility tier emitted anything at
+  all), Hacker News 100 ms → 56 ms (29 ms). The sweep does not pierce, so an
   element inside a shadow root still gets no test id on the a11y tier; the
   DOM-walk tier under `includeShadow: "open"` is the path that reports one.
 
