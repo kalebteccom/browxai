@@ -258,14 +258,25 @@ describe("SDK callTool — the always-on capabilities carry no ceiling", () => {
 describe("SDK capability gate — EVERY off-by-default capability still refuses when unset", () => {
   const byCap = toolsByCapability();
 
-  // The four capabilities that gate no tool: they govern behaviour inside other
+  // The five capabilities that gate no tool: they govern behaviour inside other
   // tools (clipboard read-back in `shortcut`, stealth patches at session wire-up,
-  // the replay capture tier) or a server-start check (`byob-attach`). Pinned so
-  // that a tool declaring one of them fails this suite until it gets coverage
-  // in the per-capability loop below.
-  it("only clipboard / stealth / byob-attach / replay gate no tool at all", () => {
+  // the replay capture tier), a server-start check (`byob-attach`), or SESSION
+  // CREATION for a whole engine (`native-device`, RFC 0008 §8 — the ios-app
+  // engine declares it via `EngineEntry.requiresCapability`, so the refusal lands
+  // once at `open_session` and no tool the engine serves can be reached around
+  // it; a per-tool row would have to be repeated on every tool it serves and
+  // would still leave session creation ungated). Pinned so that a tool declaring
+  // one of them fails this suite until it gets coverage in the per-capability
+  // loop below.
+  it("only clipboard / stealth / byob-attach / replay / native-device gate no tool at all", () => {
     const ungated = OFF_BY_DEFAULT.filter((c) => (byCap.get(c) ?? []).length === 0);
-    expect(ungated.sort()).toEqual(["byob-attach", "clipboard", "replay", "stealth"]);
+    expect(ungated.sort()).toEqual([
+      "byob-attach",
+      "clipboard",
+      "native-device",
+      "replay",
+      "stealth",
+    ]);
   });
 
   for (const cap of OFF_BY_DEFAULT) {

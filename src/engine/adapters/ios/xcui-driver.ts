@@ -172,6 +172,13 @@ export class IosXcuiDriver implements NativeDriver {
     await this.wda.pressButton(name);
   }
 
+  /** `simctl openurl`, not a WebDriverAgent call: it is the platform's own
+   *  deep-link entry point and it works whether or not an XCUITest session is
+   *  attached. */
+  async openUrl(url: string): Promise<void> {
+    await this.sim.openUrl(url);
+  }
+
   async foregroundApp(): Promise<NativeAppInfo> {
     const info = await this.wda.activeAppInfo();
     return {

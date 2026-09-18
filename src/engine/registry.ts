@@ -31,7 +31,7 @@ import type { ElementSubstrate } from "../page/element-substrate.js";
 import type { ActionContext } from "../page/actionresult.js";
 import type { RefRegistry } from "../page/refs.js";
 import type { ScreenshotSaveResult } from "../page/screenshot-save.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
+import type { Capability, CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 
@@ -110,6 +110,18 @@ export interface EngineEntry {
    *  `capabilitiesFor(kind)`; the registry makes the adapter the owner of its
    *  own row, not a central table. */
   readonly capabilities: EngineCapabilities;
+  /** An operator capability that must be granted before this engine can open a
+   *  session AT ALL. Absent (every browser engine) means the default capability
+   *  set covers it.
+   *
+   *  It is engine-level rather than per-tool because the posture broadening is
+   *  the SESSION, not any one call: RFC 0008's native engines install and launch
+   *  applications, drive an OS-level input pipeline and photograph the screen
+   *  before a single tool runs. A per-tool gate would have to be repeated on
+   *  every tool the engine serves and would still leave session creation itself
+   *  ungated. Declared here so a new engine gets the gate by registering, with no
+   *  edit to the session factory. */
+  readonly requiresCapability?: Capability;
   /** Launch + return the lifecycle session for one of the session modes. Subsumes
    *  the per-engine launch/attach branching the three session factories carried;
    *  the factories keep only their MODE concern (the launch mode is threaded
@@ -207,4 +219,13 @@ export function byobAttachNeedsEndpoint(kind: EngineKind): boolean {
  *  the session registry (mirrors `byobAttachNeedsEndpoint`). */
 export function engineIsAttachOnly(kind: EngineKind): boolean {
   return kind === "android";
+}
+
+/** The operator capability an engine needs before it may open a session, or
+ *  undefined when the default set covers it. Read by the session factory, so the
+ *  gate is data-driven: an engine declares its requirement at registration and no
+ *  session-layer edit follows. Non-throwing for an unregistered engine — the
+ *  factory's own `engineEntry` lookup reports that. */
+export function engineRequiredCapability(kind: EngineKind): Capability | undefined {
+  return REGISTRY.get(kind)?.requiresCapability;
 }

@@ -15,3 +15,4 @@ import "./adapters/firefox.engine.js";
 import "./adapters/webkit.engine.js";
 import "./adapters/android.engine.js";
 import "./adapters/safari.engine.js";
+import "./adapters/ios-app.engine.js";

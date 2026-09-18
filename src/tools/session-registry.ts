@@ -5,6 +5,7 @@ import {
   engineEntry,
   byobAttachNeedsEndpoint,
   engineIsAttachOnly,
+  engineRequiredCapability,
   type SubstrateDeps,
   type PostWireDeps,
 } from "../engine/registry.js";
@@ -52,7 +53,7 @@ import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
+import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -129,6 +130,23 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // overrides the server default; omitted ⇒ the server engine (legacy). One
       // server can therefore drive sessions on different engines at once.
       const effectiveEngine: EngineKind = spec?.engine ?? serverEngine;
+      // The ENGINE-level capability gate (RFC 0008 §8). An engine whose session
+      // broadens posture on its own — a native engine installs and launches
+      // applications, drives an OS-level input pipeline and photographs the
+      // screen before any tool runs — declares the capability it needs at
+      // registration, and the refusal lands here, at session creation, so no tool
+      // it serves can be reached around it. Data-driven: adding such an engine is
+      // still one `registerEngine(...)` call.
+      const requiredCapability = engineRequiredCapability(effectiveEngine);
+      if (requiredCapability && capabilityMissing(requiredCapability, caps)) {
+        throw new Error(
+          `capability-required: the "${effectiveEngine}" engine needs the ` +
+            `\`${requiredCapability}\` capability, which is OFF by default. Add it to ` +
+            `BROWX_CAPABILITIES (e.g. BROWX_CAPABILITIES=read,navigation,action,human,` +
+            `${requiredCapability}) and restart the server. See docs/threat-model.md for what ` +
+            "it grants.",
+        );
+      }
       // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);
       // an explicit per-session engine resolves its own default (android ⇒
       // attached). Non-android explicit engines match the legacy default too.

@@ -121,6 +121,10 @@ export interface NativeDriver {
   pinch(centre: NativePoint, scale: number, velocity: number): Promise<void>;
   /** A hardware or software button — `home`, `lock`, `volumeup`, `return`. */
   pressButton(name: string): Promise<void>;
+  /** Open a URL scheme. This is what `navigate` means on a native target: there
+   *  is no address bar, so the only navigation an app exposes is a deep link
+   *  (RFC 0008 §2). */
+  openUrl(url: string): Promise<void>;
   /** The frontmost application. */
   foregroundApp(): Promise<NativeAppInfo>;
   close(): Promise<void>;

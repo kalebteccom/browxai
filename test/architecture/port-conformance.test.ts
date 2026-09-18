@@ -19,6 +19,7 @@ import { capabilitiesFor, ENGINE_KINDS } from "../../src/engine/index.js";
 import type {
   EngineCapabilities,
   EngineKind,
+  NativeSessionHandle,
   SafariSessionHandle,
 } from "../../src/engine/index.js";
 import type { BrowserSession } from "../../src/session/types.js";
@@ -29,6 +30,7 @@ import {
 } from "../../src/session/launch-options.js";
 import { finalizeAttachedSession } from "../../src/session/byob-attach.js";
 import { buildSafariSession } from "../../src/session/safari-session.js";
+import { buildIosSession } from "../../src/session/ios-session.js";
 import type { AcquiredTarget } from "../../src/session/attach-pool.js";
 
 /** The handles a session finalizer needs, none of which this test drives. The
@@ -61,7 +63,16 @@ const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
       finalizeAttachedSession("android", "S1", stubTarget(), {} as CDPSession, async () => {}),
     ),
   safari: () => Promise.resolve(buildSafariSession({} as SafariSessionHandle)),
+  // ios-app is the SECOND no-Playwright-Page engine (RFC 0008). Its session is
+  // built from a native handle rather than launched handles, which is the whole
+  // point of the assertion below: it must carry `native()` and NOT `page()`.
+  "ios-app": () => Promise.resolve(buildIosSession({} as NativeSessionHandle)),
 };
+
+/** Engines that back no Playwright `Page`. It was the literal `engine !== "safari"`
+ *  until a second one registered — a hardcoded single name is a ground truth that
+ *  goes stale on the day it matters most. */
+const NO_PLAYWRIGHT_PAGE: ReadonlySet<EngineKind> = new Set<EngineKind>(["safari", "ios-app"]);
 
 describe("L5 — every adapter honors its declared port contract", () => {
   it.each(ENGINE_KINDS)(
@@ -108,10 +119,10 @@ describe("L5 — every adapter honors its declared port contract", () => {
     const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page");
     it.each(ENGINE_KINDS)("[%s] declares page-availability matching reality", (engine) => {
       const caps = capabilitiesFor(engine)!;
-      // Ground truth: only Safari has no Playwright Page. The `"page"` sub-interface
-      // is present iff the engine returns a real Page; this fails if a non-Safari
-      // engine loses its Page or Safari ever claims one.
-      const hasPlaywrightPage = engine !== "safari";
+      // Ground truth: the engines in `NO_PLAYWRIGHT_PAGE` back none. The `"page"`
+      // sub-interface is present iff the engine returns a real Page; this fails if
+      // a browser engine loses its Page or a no-Page engine ever claims one.
+      const hasPlaywrightPage = !NO_PLAYWRIGHT_PAGE.has(engine);
       expect(hasPagePort(caps)).toBe(hasPlaywrightPage);
     });
 

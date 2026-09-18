@@ -391,6 +391,17 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
   return { enabled, disabledTools, warnings };
 }
 
+/** Whether `capability` is NOT in the active set.
+ *
+ *  It exists so a caller outside the gate's home files can ask the question
+ *  without spelling `caps.enabled.has(...)` itself, which the
+ *  `no-inlined-capability-checks` lint rule forbids for good reason: a scattered
+ *  gate is a scattered audit surface. The engine-level gate in the session
+ *  factory (`EngineEntry.requiresCapability`) is the caller this was added for. */
+export function capabilityMissing(capability: Capability, caps: CapabilityConfig): boolean {
+  return !caps.enabled.has(capability);
+}
+
 /** Returns true iff the tool is enabled given the active capability set. */
 export function isToolEnabled(tool: string, caps: CapabilityConfig): boolean {
   const cap = toolCapabilityMap().get(tool);

@@ -34,6 +34,12 @@ export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
+  // ios-app (RFC 0008): the iOS Simulator's XCUITest hierarchy. Like safari it has
+  // no Playwright `BrowserType`, so it is absent from `BROWSER_TYPES` below and
+  // `resolveBrowserType` is never its path — the engine owns its own transport
+  // (`simctl` plus an XCUITest driver). It is additionally gated on the
+  // `native-device` capability at session creation.
+  "ios-app",
 ];
 
 export class EngineNotYetSupportedError extends Error {
@@ -41,8 +47,9 @@ export class EngineNotYetSupportedError extends Error {
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium, firefox, webkit, android, and safari are wired today. " +
-        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", or "safari".',
+        "chromium, firefox, webkit, android, safari and ios-app are wired today. " +
+        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", "safari", ' +
+        'or "ios-app".',
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;
