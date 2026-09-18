@@ -13,7 +13,7 @@ import { elementKey, RefRegistry } from "./refs.js";
 export type { A11yNode, StructuralContext } from "./a11y-types.js";
 export { MAX_WALK_DEPTH, walk } from "./a11y-types.js";
 import type { A11yNode } from "./a11y-types.js";
-import { walk } from "./a11y-types.js";
+import { MAX_WALK_DEPTH, walk } from "./a11y-types.js";
 
 // Raw CDP shapes (subset we use).
 interface RawProp {
@@ -54,6 +54,21 @@ function applyAxProperties(node: A11yNode, properties: RawProp[]): void {
       node[p.name as (typeof TRISTATE_AX_PROPS)[number]] = v as boolean | "mixed";
     }
   }
+}
+
+/**
+ * Does this raw node contribute an entry of its own? Two reasons it doesn't —
+ * either way its children still splice into its parent (see `convert`).
+ *
+ * `ignored`: CDP says the node is not exposed to assistive tech.
+ *
+ * `InlineTextBox`: Blink's per-line layout box under a `StaticText`. It carries
+ * a fragment of text already on its parent, is never actionable, and on the
+ * repo's own fixture page accounts for 32 of 111 a11y nodes — a ref and a
+ * snapshot line each, for no signal the `StaticText` doesn't already give.
+ */
+function isDropped(raw: RawAXNode): boolean {
+  return raw.ignored === true || raw.role?.value === "InlineTextBox";
 }
 
 function stringifyAxValue(v: unknown): string | undefined {
@@ -103,8 +118,44 @@ export async function getA11yTree(
   // they show up as CDP properties; a future cycle can switch to a batch fetch
   // if the attribute coverage isn't enough.
 
-  const convert = (raw: RawAXNode, path: string): A11yNode | null => {
-    if (raw.ignored) return null;
+  // `ignored` marks a node CDP does not expose to assistive tech — that node
+  // only, not its subtree. Its children are routinely exposed and interactive:
+  // real Chromium marks `<html>` and `<body>` ignored (`uninteresting`) on
+  // essentially every page, and presentational wrappers (`role="presentation"`,
+  // layout tables, list scaffolding) sit above real controls. So an ignored
+  // node contributes no entry of its own and its converted children splice into
+  // its parent, in place, in document order. An `aria-hidden` container needs
+  // no special case: CDP marks its descendants ignored too, so nothing survives.
+  //
+  // Paths: an ignored node still contributes its `${role}[${i}]` segment even
+  // though it emits no node, so a path can name a node the output doesn't
+  // contain. That is the deliberate trade. The path feeds `elementKey`, and a
+  // ref's whole job is to survive re-snapshotting.
+  //
+  // What the segment buys, measured against real Chromium: a wrapper that flips
+  // between ignored and exposed WITH ITS AX ROLE VALUE UNCHANGED keeps every
+  // descendant ref. Giving a bare `<div>` an `aria-label` moves Chromium's
+  // `uninteresting` verdict off it — the node goes ignored → exposed and stays
+  // `generic` — and the button beneath it holds its `eN`. Sibling indices count
+  // raw `childIds` positions for the same reason: an ignored sibling keeps its
+  // slot rather than shifting everything after it.
+  //
+  // What it does not buy, same measurement:
+  //   - A wrapper whose AX ROLE VALUE changes re-keys its descendants, because
+  //     the role is part of the segment. `generic` → `group` rotated the button
+  //     underneath it.
+  //   - `role="presentation"` re-keys them too, and for a different reason:
+  //     Chromium drops the node from the tree entirely rather than marking it
+  //     ignored, so there is no segment left to keep and the path shortens.
+  //   - `aria-hidden` is not a ref-stability case at all. Chromium marks the
+  //     container AND its descendants ignored, so the button is not in the tree
+  //     to hold a ref.
+  // `[ref=eN]` is re-resolved at action time, so a rotated ref is a stale
+  // handle, not a wrong click.
+  const seen = new Set<string>();
+
+  /** Materialise one raw node (no children) and mint its ref. */
+  const materialise = (raw: RawAXNode, path: string): A11yNode => {
     const role = raw.role?.value ?? "generic";
     const name = raw.name?.value;
     const node: A11yNode = {
@@ -123,33 +174,157 @@ export async function getA11yTree(
       testId: node.testId,
       source: "a11y",
     });
+    return node;
+  };
+
+  /** Convert a raw node's children into the flat list they contribute, ignored
+   *  nodes already spliced. */
+  const convertChildren = (raw: RawAXNode, path: string, depth: number): A11yNode[] => {
+    const out: A11yNode[] = [];
     let i = 0;
     for (const cid of raw.childIds ?? []) {
       const c = byId.get(cid);
       if (!c) continue;
-      const cv = convert(c, `${path}/${c.role?.value ?? "generic"}[${i}]`);
-      if (cv) node.children.push(cv);
+      // Appended one at a time, not spread: an ignored wrapper over a very wide
+      // list splices its whole child list into this call, and a spread of more
+      // than ~65k elements overflows the argument stack.
+      for (const n of convert(c, `${path}/${c.role?.value ?? "generic"}[${i}]`, depth + 1)) {
+        out.push(n);
+      }
       i++;
     }
-    return node;
+    return out;
   };
 
-  const tree = convert(root, root.role?.value ?? "root");
-  if (!tree) return null;
+  /** What this raw node contributes to its parent: itself, or — when ignored —
+   *  its surviving descendants. `seen` bounds the walk: `childIds` is a graph,
+   *  so a child naming an ancestor (or claimed by two parents) would otherwise
+   *  recurse without end. First visit in document order wins. `MAX_WALK_DEPTH`
+   *  is the same containment ceiling `walk()` applies downstream. */
+  const convert = (raw: RawAXNode, path: string, depth: number): A11yNode[] => {
+    if (seen.has(raw.nodeId)) return [];
+    seen.add(raw.nodeId);
+    // Materialise before recursing so refs mint in document pre-order.
+    const node = isDropped(raw) ? null : materialise(raw, path);
+    const children = depth >= MAX_WALK_DEPTH ? [] : convertChildren(raw, path, depth);
+    if (!node) return children;
+    node.children = children;
+    return [node];
+  };
+
+  // The root is materialised whether or not it is ignored: the tree needs
+  // exactly one root, and it is the anchor `mergeDomWalkIntoTree` hangs
+  // DOM-walk entries off. An ignored root serialises away anyway — the
+  // serialiser drops nameless `none` / `generic` nodes.
+  const rootPath = root.role?.value ?? "root";
+  seen.add(root.nodeId);
+  const tree = materialise(root, rootPath);
+  tree.children = convertChildren(root, rootPath, 0);
   await enrichTestIds(cdp, tree, testIdAttributes, refs);
   return tree;
 }
 
+/** A `DOM.Node`, the subset the attribute sweep reads. Children hang off five
+ *  different fields; missing any of them loses a whole subtree. */
+interface RawDomNode {
+  backendNodeId?: number;
+  /** Flat `["name", "value", "name", "value", …]`. */
+  attributes?: string[];
+  children?: RawDomNode[];
+  shadowRoots?: RawDomNode[];
+  pseudoElements?: RawDomNode[];
+  contentDocument?: RawDomNode;
+  templateContent?: RawDomNode;
+}
+
+/** Containment ceiling on the DOM sweep, in the spirit of `MAX_WALK_DEPTH`. The
+ *  heaviest page measured here (Wikipedia's GDP list) returns ~30k nodes, so
+ *  this never trips on a real document; it bounds a malformed or adversarial
+ *  one. */
+const MAX_DOM_SWEEP_NODES = 500_000;
+
+/** The first configured test attribute this element carries, in the caller's
+ *  preference order. */
+function firstTestAttr(
+  attributes: string[],
+  attrs: string[],
+): { testId: string; testIdAttr: string } | undefined {
+  for (const a of attrs) {
+    for (let i = 0; i < attributes.length; i += 2) {
+      if (attributes[i] === a && attributes[i + 1]) {
+        return { testId: attributes[i + 1]!, testIdAttr: a };
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
- * For nodes with a `backendDOMNodeId`, read off the configured test-attribute(s) in
- * preference order via CDP, attaching the first match to `node.testId`. Also
- * re-keys the node's ref through `refs` so the testId is part of the stable key
- * (testId-bearing nodes keep their refs across snapshots even if neighbourhood text
- * shifts).
+ * Every element carrying one of the configured test attributes, keyed by
+ * **backend** node id — the id `Accessibility.getFullAXTree` reports.
  *
- * Batched in one `DOM.getDocument` walk would be cheaper, but per-node
- * `DOM.resolveNode`+`DOM.describeNode` is simpler and doesn't need to be
- * perf-tuned. If this dominates snapshot latency, switch to a batched approach.
+ * One `DOM.getDocument` roundtrip returns the whole tree with attributes
+ * inline. The per-node `DOM.getAttributes` loop this replaced passed a
+ * `BackendNodeId` where the command wants a `DOM.NodeId`, and nothing had ever
+ * called `DOM.getDocument`, so no `DOM.NodeId` existed in the session at all:
+ * on a GitHub pull-request page all 159 calls failed with
+ * `Could not find node` and zero test ids were attached. Measured against the
+ * two working alternatives on four real pages, the sweep is also the cheap one
+ * — 9-39 ms, against 327-1932 ms for
+ * `DOM.pushNodesByBackendIdsToFrontend` plus a `DOM.getAttributes` per node.
+ *
+ * The sweep does not pierce. Shadow roots and iframe content documents are
+ * reached only when a caller opts into `pierce`, and that opt-in is what gates
+ * closed-shadow content from reaching the agent at all; a test attribute read
+ * out of a closed shadow root here would route around it. So an element inside
+ * a shadow root keeps no test id on the a11y tier — the DOM-walk tier under
+ * `includeShadow: "open"` is the path that reports one.
+ */
+async function readTestAttributes(
+  cdp: CDPSession,
+  attrs: string[],
+): Promise<Map<number, { testId: string; testIdAttr: string }>> {
+  const found = new Map<number, { testId: string; testIdAttr: string }>();
+  let root: RawDomNode;
+  try {
+    root = (await cdp.send("DOM.getDocument", { depth: -1 })).root;
+  } catch {
+    // No DOM agent (detached target, mid-navigation) — no test ids this pass.
+    return found;
+  }
+  const stack: RawDomNode[] = [root];
+  let visited = 0;
+  while (stack.length && visited < MAX_DOM_SWEEP_NODES) {
+    const n = stack.pop()!;
+    visited++;
+    if (n.backendNodeId !== undefined && n.attributes?.length) {
+      const hit = firstTestAttr(n.attributes, attrs);
+      if (hit) found.set(n.backendNodeId, hit);
+    }
+    pushDomChildren(n, stack);
+  }
+  return found;
+}
+
+/** A `DOM.Node`'s children hang off five different fields. Missing any one of
+ *  them silently loses a whole subtree's test attributes. */
+function pushDomChildren(n: RawDomNode, stack: RawDomNode[]): void {
+  for (const c of n.children ?? []) stack.push(c);
+  for (const c of n.shadowRoots ?? []) stack.push(c);
+  for (const c of n.pseudoElements ?? []) stack.push(c);
+  if (n.contentDocument) stack.push(n.contentDocument);
+  if (n.templateContent) stack.push(n.templateContent);
+}
+
+/**
+ * Attach the configured test-attribute value to the roles an agent acts on, and
+ * refresh the registry's locator inputs so `locatorFor` resolves the ref through
+ * the tier-1 `[data-testid=…]` selector rather than role+name.
+ *
+ * The ref's stable key is NOT recomputed. The key was minted in document
+ * pre-order before the sweep ran, and re-keying here would rotate the ref of
+ * every test-attribute-bearing node on the snapshot that first attached one —
+ * the opposite of what a ref is for.
  */
 async function enrichTestIds(
   cdp: CDPSession,
@@ -157,33 +332,22 @@ async function enrichTestIds(
   attrs: string[],
   refs: RefRegistry,
 ): Promise<void> {
+  const wanted: A11yNode[] = [];
   for (const { node } of walk(root)) {
     if (node.backendDOMNodeId === undefined) continue;
     // Only enrich roles the agent's likely to act on (interactive / structural).
     if (!INTERACTIVE_ROLES.has(node.role) && !STRUCTURAL_ROLES.has(node.role)) continue;
-    try {
-      const { attributes } = await cdp.send("DOM.getAttributes", {
-        nodeId: node.backendDOMNodeId,
-      });
-      // attributes is a flat ["name", "value", "name", "value", ...] array.
-      const attrMap = new Map<string, string>();
-      for (let i = 0; i < attributes.length; i += 2) {
-        attrMap.set(attributes[i]!, attributes[i + 1] ?? "");
-      }
-      for (const a of attrs) {
-        const v = attrMap.get(a);
-        if (v) {
-          node.testId = v;
-          node.testIdAttr = a;
-          // Refresh the registry's locator inputs so action tools can resolve
-          // the ref back to a data-testid-bearing Playwright locator.
-          refs.augmentLocator(node.ref, { testId: node.testId, testIdAttr: a });
-          break;
-        }
-      }
-    } catch {
-      // Node may be detached / not in DOM tree; that's fine, no testId then.
-    }
+    wanted.push(node);
+  }
+  if (!wanted.length) return;
+  const byBackendId = await readTestAttributes(cdp, attrs);
+  if (!byBackendId.size) return;
+  for (const node of wanted) {
+    const hit = byBackendId.get(node.backendDOMNodeId!);
+    if (!hit) continue;
+    node.testId = hit.testId;
+    node.testIdAttr = hit.testIdAttr;
+    refs.augmentLocator(node.ref, { testId: hit.testId, testIdAttr: hit.testIdAttr });
   }
 }
 

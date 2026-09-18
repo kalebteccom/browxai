@@ -12,11 +12,26 @@
 
 import type { A11yNode } from "./a11y-types.js";
 
+/**
+ * Which tier supplied the snapshot's interactive content.
+ *
+ * - `a11y` — the CDP accessibility tree carried it.
+ * - `dom-walk` — the a11y tier produced no interactive node and the DOM-walk
+ *   fallback carried the snapshot on its own. The fallback answers, so without
+ *   this the degradation is invisible: a snapshot that quietly changed tier
+ *   reads exactly like one that didn't.
+ * - `mixed` — both tiers contributed.
+ * - `empty` — neither found anything interactive.
+ */
+export type SnapshotTier = "a11y" | "dom-walk" | "mixed" | "empty";
+
 export interface ComposedSnapshot {
   /** The combined tree. Root is the a11y root; DOM-walk leaves are appended as children. */
   tree: A11yNode | null;
   /** Counts and source mix — useful for the low-content warning + debugging. */
   stats: {
+    /** Which tier the content came from. See `SnapshotTier`. */
+    tier: SnapshotTier;
     a11yInteractive: number;
     domWalkEntries: number;
     domWalkNew: number;

@@ -558,6 +558,65 @@ const THIN_A11Y_PAGE = `<!doctype html>
 </center>
 </body></html>`;
 
+// Interactive content parked under wrappers Chromium marks `ignored` in the CDP
+// accessibility tree. Three shapes, all real:
+//   - `role="presentation"` div          → ignored `<none>`, button exposed
+//   - layout `<table role="presentation">` → ignored table/row/cell chain, button exposed
+//   - `aria-hidden="true"` container     → container AND descendants ignored
+// `<html>` / `<body>` are ignored (`uninteresting`) on every page, so the whole
+// page already sits under an ignored node. Pinned by the a11y-ignored-subtree
+// keystone: the exposed buttons must reach the snapshot through the a11y tier,
+// the aria-hidden one must not.
+const IGNORED_WRAPPER_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ignored wrapper keystone</title></head>
+<body>
+  <div role="presentation">
+    <button data-testid="presentational-btn" type="button"
+            onclick="document.getElementById('log').textContent='presentational-clicked'">
+      Presentational Child
+    </button>
+  </div>
+  <table role="presentation"><tbody><tr><td>
+    <button data-testid="layout-table-btn" type="button">Layout Table Child</button>
+  </td></tr></tbody></table>
+  <ul role="presentation">
+    <li role="presentation"><a href="#deep">Presentational List Link</a></li>
+  </ul>
+  <div aria-hidden="true">
+    <button data-testid="aria-hidden-btn" type="button">Aria Hidden Child</button>
+  </div>
+  <output id="log" data-testid="wrapper-log">unclicked</output>
+</body></html>`;
+
+// A documentation page shaped like the one that broke `find`: one real search
+// button whose accessible name does not contain the query's words in order, and
+// prose that says "button" and "search" over and over. Chromium emits a
+// `StaticText` node per text run, each scoring a phrase match on the bare word,
+// so before the role filter the five candidate slots went to `StaticText` and
+// the button was not in the result at all.
+const FIND_STATICTEXT_PAGE = `<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>find statictext keystone</title></head>
+<body>
+  <nav>
+    <button type="button" id="site-search"
+            onclick="document.getElementById('find-log').textContent='search-clicked'">
+      Search (Command+K)
+    </button>
+  </nav>
+  <main>
+    <h2>Buttons</h2>
+    <p>button</p>
+    <p>button</p>
+    <p>search</p>
+    <p>search button</p>
+    <ul><li>button</li><li>button</li><li>search button</li></ul>
+    <p><code>button</code></p>
+  </main>
+  <output id="find-log" data-testid="find-log">unclicked</output>
+</body></html>`;
+
 const OVERFLOW_PAGE = `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>overflow keystone</title>
@@ -1037,6 +1096,8 @@ function handleUpgrade(
  *   GET /challenge-*      → the three challenge-marker pages (detection keystone)
  *   GET /ws-page          → page that opens a WebSocket against /ws
  *   GET /thin-a11y-page   → table-shaped markup with a thin a11y tree
+ *   GET /ignored-wrapper-page → interactive content under CDP-ignored wrappers
+ *   GET /find-statictext-page → one real button buried in prose that repeats its words
  *   WS  /ws               → RFC 6455 echo (text frames only)
  */
 export async function startFixture(): Promise<Fixture> {
@@ -1097,6 +1158,16 @@ export async function startFixture(): Promise<Fixture> {
     if (u.pathname === "/thin-a11y-page") {
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(THIN_A11Y_PAGE);
+      return;
+    }
+    if (u.pathname === "/ignored-wrapper-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(IGNORED_WRAPPER_PAGE);
+      return;
+    }
+    if (u.pathname === "/find-statictext-page") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end(FIND_STATICTEXT_PAGE);
       return;
     }
     if (u.pathname === "/overflow-page") {

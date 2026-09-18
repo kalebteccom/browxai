@@ -22,6 +22,58 @@
 // rejected), so the walk always terminates within `MAX_WALK_DEPTH` levels.
 export const MAX_WALK_DEPTH = 2000;
 
+/**
+ * Chromium AX roles that carry text or layout and are never something an agent
+ * acts on. Two families:
+ *
+ * Blink's text leaves — `StaticText`, `InlineTextBox`, `LineBreak`,
+ * `ListMarker`. The string one carries is already the accessible name of the
+ * control, heading, cell or paragraph that encloses it, so a line for each
+ * repeats the page a second time. Measured across six real pages
+ * (react.dev, MDN, Wikipedia, Bootstrap docs, a GitHub PR, Hacker News):
+ * 8,090 of 17,710 nodes and 66,640 of ~199,000 estimated snapshot tokens.
+ *
+ * Layout and typography wrappers — `LayoutTable*` is Blink's verdict that a
+ * `<table>` is page furniture rather than data; `Abbr`, `EmphasizedText`,
+ * `StrongText`, `Ruby*`, `superscript`, `subscript` wrap text an ancestor
+ * already names.
+ *
+ * Two consumers read this set. `find` will not rank one as a candidate:
+ * `role=StaticText[name="button"]` is not a locator Playwright's engine
+ * resolves, so probing one spends an auto-wait and comes back
+ * `actionable: "off-screen"` about something that was never actionable, and on
+ * Bootstrap's forms page five such nodes filled every candidate slot and pushed
+ * the real search button out of the result. The serialiser emits no line for
+ * one.
+ *
+ * The node stays in the tree either way — `text_search` matches against these
+ * names, and dropping the subtree is the defect this branch fixed. A node
+ * carrying a test attribute is exempt in both consumers: an explicit
+ * `data-testid` is the author saying this element is addressed by name.
+ */
+export const PRESENTATIONAL_ROLES: ReadonlySet<string> = new Set([
+  "StaticText",
+  "InlineTextBox",
+  "LineBreak",
+  "ListMarker",
+  "LayoutTable",
+  "LayoutTableRow",
+  "LayoutTableCell",
+  "Abbr",
+  "EmphasizedText",
+  "StrongText",
+  "Ruby",
+  "RubyAnnotation",
+  "superscript",
+  "subscript",
+]);
+
+/** True when the node is page furniture rather than content: a presentational
+ *  role and no test attribute claiming it. */
+export function isPresentational(node: Pick<A11yNode, "role" | "testId">): boolean {
+  return !node.testId && PRESENTATIONAL_ROLES.has(node.role);
+}
+
 export interface A11yNode {
   ref: string;
   role: string;
@@ -35,7 +87,11 @@ export interface A11yNode {
   testIdAttr?: string;
   /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
    *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
-   *  discovered by both paths. #7 / #8 plumbing. */
+   *  discovered by both paths in the same snapshot. "both" is currently
+   *  unreachable — the two tiers key refs on different vocabularies, so they
+   *  never land on the same ref (see `mergeDomWalkIntoTree`). It used to appear
+   *  on every DOM-walk node from the second snapshot on, which meant only that
+   *  the ref registry had seen the key before. */
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;

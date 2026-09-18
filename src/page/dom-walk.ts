@@ -16,7 +16,7 @@
 import type { CDPSession, Frame } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
 import { bindRefFrame } from "./ref-frames.js";
-import type { A11yNode } from "./a11y.js";
+import { walk, type A11yNode } from "./a11y-types.js";
 
 export interface DomWalkEntry {
   role: string;
@@ -303,8 +303,20 @@ const PAGE_SCRIPT = `function(testAttrs, max, walkOpenShadow) {
  * minting refs through the same `RefRegistry` so the IDs are stable across snapshots
  * (and round-trip with the a11y nodes' refs when both paths see the same element).
  *
- * Returns the count of *new* nodes added (i.e. nodes whose stable key wasn't already
- * present in the registry) so the caller can emit a low-content warning.
+ * Returns `{ added, combined }` for THIS snapshot: `added` counts entries the
+ * a11y tier did not already put in this tree, `combined` counts entries it did.
+ * `stats.tier` and the low-content warning both read `added`, so the count has
+ * to describe the snapshot in hand, not the session's history.
+ *
+ * `combined` is zero on every page measured so far, and that is a real finding
+ * rather than a bug in the counting: the two tiers key their refs on different
+ * vocabularies — the a11y tier on the ARIA role and the accessibility-tree
+ * path, the DOM walk on the bare tag and the DOM path — so the same `<a>` is
+ * `link` at one key and `a` at another and no entry can ever match. Every
+ * DOM-walk entry is appended unconditionally, which is why Hacker News reports
+ * 228 anchors twice. Deduplicating needs a shared identity between the tiers
+ * (the backend node id is the candidate; the page-side walk does not have one
+ * today), not a different count here.
  */
 export interface MergeOptions {
   /** when set, refs minted here are namespaced to this frame
@@ -326,13 +338,23 @@ export function mergeDomWalkIntoTree(
   let added = 0;
   let combined = 0;
   const { frameId, frame } = opts;
+  // The refs the tree already carries when the merge starts — the a11y tier's,
+  // for THIS snapshot. The question `added` answers is "did the DOM walk
+  // contribute content the a11y tier did not", and the registry cannot answer
+  // it: a registry remembers every snapshot in the session, so from the second
+  // snapshot on every entry looked like one seen before, `added` fell to zero,
+  // and `stats.tier` reported "empty" while the DOM walk was carrying the whole
+  // snapshot. Same reading flipped `[from-dom]` to `[from-both]` on the second
+  // snapshot of an unchanged page.
+  const a11yRefs = new Set<string>();
+  for (const { node } of walk(root)) a11yRefs.add(node.ref);
   for (const e of entries) {
     const name = e.name || undefined;
     const testId = e.testId || undefined;
     const testIdAttr = e.testIdAttr || undefined;
     const key = elementKey({ role: e.role, name, path: e.structuralPath, testId, frameId });
-    const wasNew = !refs.hasKey(key);
     const ref = refs.forKey(key);
+    const wasNew = !a11yRefs.has(ref);
     refs.augmentLocator(ref, {
       role: e.role,
       name,

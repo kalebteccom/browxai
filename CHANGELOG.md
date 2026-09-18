@@ -10,6 +10,118 @@ surface" covers.
 
 ### Changed
 
+- **Snapshots now carry the accessibility tree they were always meant to, so
+  snapshot output changes on every page.** The CDP conversion dropped an
+  `ignored` node's entire subtree, and Chromium marks `<html>` and `<body>`
+  ignored (`ignoredReasons: [uninteresting]`) on essentially every page — so the
+  a11y tier emitted a bare root, `stats.a11yInteractive` was `0` everywhere, and
+  the DOM-walk fallback carried every snapshot on its own. On the repo's own
+  keystone fixture the a11y tier went from 1 node to 111.
+
+  **What changes for you.** Snapshots are longer and more deeply nested: roles
+  are real ARIA roles (`link`, not the bare tag `a`), structure that was missing
+  entirely is present, and many elements now show up twice — once from the a11y
+  tier and once, `[from-dom]`-marked, from the DOM walk, with different refs.
+  `stats.a11yInteractive` is no longer `0` on semantic pages, so the low-content
+  warning stops firing where it was firing spuriously. Use `maxNodes` / `omit` /
+  `scope` if a page's snapshot is larger than you want.
+
+  **Size.** Measured across six real pages (react.dev/learn, MDN's Using Fetch,
+  Wikipedia's GDP table, Bootstrap's forms docs, a GitHub pull request, the
+  Hacker News front page): the serialised body is 3.8× what it was,
+  17,527 → 66,627 estimated tokens. It is not 12× because Chromium's text and
+  layout leaves are suppressed (below); a raw splice measured 215,386. The
+  ratio is against a tier that emitted nothing, so the comparison is "an empty
+  accessibility tree versus a real one", and the remaining bulk is the page's
+  own structure — `link`, `a` and `cell` nodes are 44,274 of the 66,627, and
+  Wikipedia's GDP table alone is 936 `cell` and 990 `link`. `maxNodes` and
+  `scope` bound it per call.
+
+  **Refs.** Existing refs do not move on the flip this is built for. An ignored
+  node still contributes its path segment to `elementKey`, and sibling indices
+  still count raw `childIds` positions, so a wrapper that goes ignored →
+  exposed **with its AX role value unchanged** re-keys nothing beneath it
+  (verified: giving a bare `<div>` an `aria-label` moves Chromium's
+  `uninteresting` verdict off it and the button underneath holds its `eN`).
+  Two cases do re-key descendants, both verified against real Chromium: a
+  wrapper whose role value changes (`generic` → `group`), because the role is
+  part of the segment; and `role="presentation"`, because Chromium drops the
+  node from the tree entirely rather than marking it ignored, so the path
+  shortens. `aria-hidden` is not a stability case — Chromium marks the
+  container and its descendants ignored, so nothing beneath it is in the tree
+  at all. A rotated ref is a stale handle, not a wrong click: `[ref=eN]` is
+  re-resolved at action time.
+
+  `aria-hidden` subtrees stay out: CDP marks their descendants ignored too.
+  Blink's `InlineTextBox` layout leaves are dropped — they duplicate their
+  `StaticText` parent and were 32 of 111 nodes on the fixture page.
+
+- **`snapshot` emits no line for Chromium's text and layout leaves.**
+  `StaticText`, `LineBreak`, `ListMarker`, `LayoutTable*`, `Abbr`,
+  `EmphasizedText`, `StrongText`, `Ruby*`, `superscript` and `subscript` carry
+  text an ancestor already names, so a line each printed the page twice: 11,172
+  of 19,380 nodes and two thirds of the body across the six pages. Suppressing
+  them took the six-page total from 215,386 to 66,627 estimated tokens. The
+  nodes stay in the tree — `text_search` still matches their text and
+  `extract` still reads them — and one carrying a configured test attribute is
+  still emitted.
+
+- **A suppressed node no longer indents its children.** The serialiser skipped
+  the line for a generic wrapper but kept its children at `depth + 1`, so 26
+  nodes on Bootstrap's docs and 90 on Hacker News sat at an indent that was not
+  their parent's plus one and a spliced control read as nested under an
+  unrelated sibling. Children of a node that emits no line now take that node's
+  own depth. Zero such lines remain on all six pages.
+
+- **`find` no longer ranks text and layout leaves as candidates.** The same
+  roles `snapshot` suppresses are not targets: `role=StaticText[name="button"]`
+  is not a locator Playwright's engine resolves, so probing one spent an
+  auto-wait and reported `actionable: "off-screen"` about something that was
+  never actionable. Because the candidate list is cut to `maxCandidates` before
+  the probes run, they also took the slots. On Bootstrap's forms docs,
+  `find("the search button")` returned five `StaticText` nodes and the warning
+  "no visible candidate", with the real button absent from the result; it now
+  returns that button at rank 1, `actionable: true`. Across a 13-query battery
+  on three pages, top-1 was a non-actionable text leaf on 4 queries and text
+  leaves held 33 of 60 candidate slots; both are now 0, and the battery's total
+  wall clock is 7,431 ms → 2,645 ms. The document root (`RootWebArea`) is
+  excluded for the same reason —
+  its accessible name is the page title. A node carrying a configured test
+  attribute is still ranked whatever its role.
+
+- **The a11y tier attaches the page's test attributes, so it contributes
+  tier-1 `[data-testid=…]` selector hints.** It never had: the per-node
+  enrichment passed a CDP `BackendNodeId` where `DOM.getAttributes` wants a
+  `DOM.NodeId`, and nothing had called `DOM.getDocument`, so no `DOM.NodeId`
+  existed in the session and every call failed with `Could not find node` — 159
+  of 159 on a GitHub pull request, 1,035 of 1,035 on Wikipedia. Dormant while
+  the tier emitted one bare root. One `DOM.getDocument` sweep replaces the
+  per-node loop. Median of five composes on a loaded page: Wikipedia
+  912 ms → 294 ms (184 ms before the accessibility tier emitted anything at
+  all), Hacker News 100 ms → 56 ms (29 ms). The sweep does not pierce, so an
+  element inside a shadow root still gets no test id on the a11y tier; the
+  DOM-walk tier under `includeShadow: "open"` is the path that reports one.
+
+- **`stats.tier` and `[from-dom]` stop changing on the second snapshot of an
+  unchanged page.** `domWalkNew` counted keys new to the ref registry, which is
+  per-session, so the second snapshot reported `domWalkNew: 0` — and a tier of
+  `empty` while the DOM walk was carrying the whole thing — and flipped every
+  `[from-dom]` marker to `[from-both]`. Both counts now describe the snapshot in
+  hand: `domWalkNew` counts entries the a11y tier did not already put in this
+  tree, `domWalkCombined` counts entries it did. `domWalkCombined` is `0` on
+  every page measured and `[from-both]` no longer appears, because the two tiers
+  key refs on different vocabularies (ARIA role + accessibility path against
+  bare tag + DOM path) and so never land on the same ref. That is also why an
+  element found by both tiers appears twice with different refs; deduplicating
+  needs a shared identity between the tiers and is not in this change.
+
+- **The `snapshot` header's `stats` reports `tier`** — `a11y`, `dom-walk`,
+  `mixed` or `empty` — naming which tier supplied the interactive content.
+  `dom-walk` means the accessibility tier found nothing and the fallback
+  answered anyway. The low-content warning said as much in prose; a caller
+  could not branch on prose. Non-Chromium engines and child frames report
+  `dom-walk` by construction (no CDP accessibility tree there).
+
 - **`touch_start` / `touch_move` / `touch_end` / `gesture_swipe` / `gesture_pinch`
   are no longer gated on the engine's raw-CDP flag** (RFC 0009 P3). All five
   declared `deep: true`, so the engine gate refused them from `caps.deep` alone —

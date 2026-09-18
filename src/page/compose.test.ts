@@ -12,6 +12,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CDPSession } from "playwright-core";
 import { composeSnapshot } from "./compose.js";
+import { serialise } from "./snapshot.js";
 import { RefRegistry } from "./refs.js";
 
 function fakeCdp(sendImpl: (method: string, params?: unknown) => Promise<unknown>): CDPSession {
@@ -103,6 +104,28 @@ function happyPathCdp(opts: { closedAvailable?: boolean; pierceFails?: boolean }
   });
 }
 
+/** A page whose a11y tree is a bare root and whose DOM walk finds one button —
+ *  the silent-degradation shape, and the one where a second snapshot used to
+ *  change its own answer. */
+function domWalkOnlyCdp(): CDPSession {
+  return fakeCdp(async (method) => {
+    switch (method) {
+      case "Accessibility.enable":
+        return {};
+      case "Accessibility.getFullAXTree":
+        return { nodes: [{ nodeId: "1", role: { value: "RootWebArea" } }] };
+      case "Runtime.evaluate":
+        return {
+          result: {
+            value: [{ role: "button", name: "Only DOM", structuralPath: "body/button[0]" }],
+          },
+        };
+      default:
+        throw new Error(`unexpected CDP method ${method}`);
+    }
+  });
+}
+
 describe("composeSnapshot —  back-compat", () => {
   it("omitting `opts` produces no stats and no warnings", async () => {
     const cdp = happyPathCdp();
@@ -110,10 +133,15 @@ describe("composeSnapshot —  back-compat", () => {
     const out = await composeSnapshot(cdp, refs, ["data-testid"]);
     expect(out.stats).not.toHaveProperty("closedShadowEntries");
     expect(out.warnings.some((w) => w.toLowerCase().includes("closed"))).toBe(false);
-    // CDP DOM.getDocument MUST NOT have been called when pierce wasn't
-    // requested — the cost is non-trivial on big pages.
-    const calls = (cdp.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
-    expect(calls).not.toContain("DOM.getDocument");
+    // `DOM.getDocument` runs — the test-attribute sweep is one roundtrip
+    // (9-39 ms on the four heaviest pages measured) and replaces a
+    // `DOM.getAttributes` per node that failed on every call. What must NOT
+    // run unasked is the closed-shadow PIERCE, which is a second sweep.
+    const getDocumentCalls = (cdp.send as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => c[0] === "DOM.getDocument",
+    );
+    expect(getDocumentCalls).toHaveLength(1);
+    expect(getDocumentCalls[0]![1]).toEqual({ depth: -1 });
   });
 
   it("passing `{}` is identical to omitting opts", async () => {
@@ -121,6 +149,50 @@ describe("composeSnapshot —  back-compat", () => {
     const refs = new RefRegistry();
     const out = await composeSnapshot(cdp, refs, ["data-testid"], {});
     expect(out.stats).not.toHaveProperty("closedShadowEntries");
+  });
+});
+
+describe("composeSnapshot — stats.tier names the tier that carried the snapshot", () => {
+  it("reports `a11y` when the accessibility tree supplied the content", async () => {
+    // The fixture's DOM walk returns [], so only the a11y tier contributes.
+    const out = await composeSnapshot(happyPathCdp(), new RefRegistry(), ["data-testid"]);
+    expect(out.stats.tier).toBe("a11y");
+  });
+
+  it("reports `dom-walk` when the a11y tier found nothing interactive", async () => {
+    // Root only, no interactive descendants — the silent-degradation case.
+    const out = await composeSnapshot(domWalkOnlyCdp(), new RefRegistry(), ["data-testid"]);
+    expect(out.stats.a11yInteractive).toBe(0);
+    expect(out.stats.domWalkNew).toBe(1);
+    expect(out.stats.tier).toBe("dom-walk");
+  });
+
+  it("reports the same tier on the second snapshot of an unchanged page", async () => {
+    // The registry is per-session and remembers every snapshot, so keying
+    // `domWalkNew` off it made the second snapshot of an identical page report
+    // `domWalkNew: 0` and `tier: "empty"` while the DOM walk was still carrying
+    // the whole thing. Both existing tier tests used a fresh registry, which is
+    // exactly the case that never showed the bug.
+    const refs = new RefRegistry();
+    const cdp = domWalkOnlyCdp();
+    const first = await composeSnapshot(cdp, refs, ["data-testid"]);
+    const second = await composeSnapshot(cdp, refs, ["data-testid"]);
+    expect(second.stats).toEqual(first.stats);
+    expect(second.stats.tier).toBe("dom-walk");
+    expect(second.stats.domWalkNew).toBe(1);
+    expect(second.stats.domWalkCombined).toBe(0);
+  });
+
+  it("keeps a DOM-walk node marked [from-dom] across re-snapshots", async () => {
+    // Same reading of the registry flipped the provenance marker: identical
+    // page, and the second snapshot said `[from-both]` — "both tiers found
+    // this" — about a node only the DOM walk ever saw.
+    const refs = new RefRegistry();
+    const cdp = domWalkOnlyCdp();
+    const first = await composeSnapshot(cdp, refs, ["data-testid"]);
+    const second = await composeSnapshot(cdp, refs, ["data-testid"]);
+    expect(serialise(first.tree!)).toContain("[from-dom]");
+    expect(serialise(second.tree!)).toBe(serialise(first.tree!));
   });
 });
 
