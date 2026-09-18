@@ -74,6 +74,29 @@ export function isPresentational(node: Pick<A11yNode, "role" | "testId">): boole
   return !node.testId && PRESENTATIONAL_ROLES.has(node.role);
 }
 
+/**
+ * Drop nodes that carry no agent signal:
+ * - role "generic" / "presentation" with no name and no testId
+ * - role "none"
+ * - Chromium's text and layout leaves (`PRESENTATIONAL_ROLES`): a `StaticText`
+ *   repeats the accessible name of the control, heading, cell or paragraph
+ *   above it, so emitting both prints the page twice. Across six real pages
+ *   these were 8,090 of 17,710 nodes and two thirds of the serialised body.
+ *   The node stays in the tree — `text_search` matches against it — it just
+ *   gets no line of its own.
+ *
+ * Two readers. The serialiser skips emitting a line for one (its children still
+ * come through). The tier merge refuses to fold a DOM-walk entry into one: a
+ * node that emits no line cannot carry the entry's evidence, and folding would
+ * delete from the snapshot an element the DOM walk had reported.
+ */
+export function isGenericNoise(n: Pick<A11yNode, "role" | "name" | "testId">): boolean {
+  if (n.testId) return false;
+  if (n.role === "none") return true;
+  if ((n.role === "generic" || n.role === "presentation") && !n.name) return true;
+  return isPresentational(n);
+}
+
 export interface A11yNode {
   ref: string;
   role: string;
@@ -85,13 +108,12 @@ export interface A11yNode {
   testId?: string;
   /** Attribute *name* that yielded `testId` — preserves which convention matched. */
   testIdAttr?: string;
-  /** Where this node came from. Default = "a11y" for the CDP-a11y path; "dom" for the
-   *  DOM-walk fallback (see dom-walk.ts) and "both" when a node was independently
-   *  discovered by both paths in the same snapshot. "both" is currently
-   *  unreachable — the two tiers key refs on different vocabularies, so they
-   *  never land on the same ref (see `mergeDomWalkIntoTree`). It used to appear
-   *  on every DOM-walk node from the second snapshot on, which meant only that
-   *  the ref registry had seen the key before. */
+  /** Where this node came from. "a11y" for the CDP-a11y path, "dom" for the
+   *  DOM-walk fallback (see dom-walk.ts), "both" when both tiers saw the same
+   *  element in the same snapshot — matched on the backend node id, the one
+   *  identity the two vocabularies share. A "both" node is the a11y tier's
+   *  node, keeping its ref, carrying the tag / path / test attribute the walk
+   *  added. */
   source?: "a11y" | "dom" | "both";
   /** Tag name (DOM-walk only — informational for the agent). */
   tag?: string;

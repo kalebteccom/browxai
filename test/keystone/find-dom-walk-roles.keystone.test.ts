@@ -6,8 +6,12 @@
 // The fixture's a11y tree used to be empty here, which is where the page's name
 // comes from: the conversion dropped every subtree under an `ignored` node, and
 // Chromium marks `<html>` / `<body>` ignored on every page. Since that fix the
-// a11y tier reports these links too (as role `link`), so both tiers emit a
-// candidate for the same element. The DOM-walk half is what this keystone pins.
+// a11y tier reports these links too (as role `link`), and the tier merge folds
+// the DOM walk's entry into the a11y node, so each link is one candidate under
+// its ARIA role. The page's `tabindex` div is what still arrives as the DOM
+// walk's own: the a11y tier exposes it as a nameless `generic` the serialiser
+// emits no line for, so the merge leaves the entry alone. That is the bare-tag
+// half this keystone pins.
 //
 // `find`'s interactive bonus and container demotion key off ARIA role names, so
 // neither fired for any DOM-walk candidate until the resolution moved to the
@@ -93,10 +97,13 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
           text: string;
         }
       ).text;
-      // Both tiers report this fixture: the a11y tier as role `link`, the DOM
-      // walk as the bare tag `a`, marked [from-dom].
-      expect(snap).toMatch(/a "past".*\[from-dom\]/);
-      expect(snap).toContain('link "past"');
+      // Both tiers report the links, so each is one `[from-both]` line under
+      // the a11y tier's ARIA role. The `tabindex` div is the DOM walk's alone —
+      // the a11y tier exposes it as a nameless `generic` the serialiser emits
+      // no line for — so it keeps its `[from-dom]` line AND its bare tag.
+      expect(snap).toMatch(/link "past".*\[from-both\]/);
+      expect(snap).not.toMatch(/a "past"/);
+      expect(snap).toMatch(/div .*dom-only-widget.*\[from-dom\]/);
       expect(snap).toContain('"tier":"mixed"');
     },
     KEYSTONE_TIMEOUT,
@@ -122,19 +129,26 @@ describe("find keystone — DOM-walk candidates carry bare HTML tags", () => {
       expect(linkAt).toBe(0);
       expect(navAt).toBeGreaterThan(linkAt);
 
-      // The bare-tag candidates are the DOM walk's — the a11y tier resolves the
-      // same elements to `link` / `navigation`, so pick by role, not position.
-      // Position would be arbitrary between the two: both tiers now report the
-      // same `data-testid`, because the a11y tier attaches test attributes at
-      // all (its `DOM.getAttributes` sweep used to fail on every node).
-      const link = found.candidates.find((c) => c.testId === "past" && c.role === "a");
-      const navBar = found.candidates.find(
-        (c) => c.testId === "top-navigation-bar" && c.role === "nav",
-      );
+      // One candidate per element: both tiers see these two, so each arrives
+      // once, under the a11y tier's ARIA role.
+      const link = found.candidates.find((c) => c.testId === "past");
+      const navBar = found.candidates.find((c) => c.testId === "top-navigation-bar");
+      expect(link, "a candidate for past").toBeTruthy();
+      expect(navBar, "a candidate for the navigation bar").toBeTruthy();
+      expect(link!.role).toBe("link");
+      expect(navBar!.role).toBe("navigation");
+      expect(found.candidates.filter((c) => c.testId === "past")).toHaveLength(1);
 
-      // DOM-walk-sourced: the bare tag, never the resolved ARIA role.
-      expect(link, "a bare-tag `a` candidate for past").toBeTruthy();
-      expect(navBar, "a bare-tag `nav` candidate for the navigation bar").toBeTruthy();
+      // The DOM walk's own candidate carries the bare tag, never a resolved
+      // ARIA role: `role` feeds `elementKey`, so normalising it at the merge
+      // would rotate every DOM-sourced ref.
+      const domOnly = await callJson<{ candidates: Candidate[] }>("find", {
+        session,
+        query: "dom-only-widget",
+      });
+      const widget = domOnly.candidates.find((c) => c.testId === "dom-only-widget");
+      expect(widget, "a bare-tag candidate for the DOM-only widget").toBeTruthy();
+      expect(widget!.role).toBe("div");
 
       // Container demotion on a bare `nav` is pinned deterministically in the
       // `rankByVisibility` unit tests. It is not asserted here: the phrase

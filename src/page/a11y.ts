@@ -5,6 +5,7 @@
 
 import type { CDPSession } from "playwright-core";
 import { elementKey, RefRegistry } from "./refs.js";
+import { buildDomIndex, type DomIndex } from "./dom-index.js";
 
 // The node shape, the walk-depth cap and the pure `walk()` live on the
 // vendor-free leaf `a11y-types.ts` so the SnapshotSubstrate port can name
@@ -98,11 +99,17 @@ function stringifyAxValue(v: unknown): string | undefined {
  * `["data-testid", "data-test", "data-cy", "data-qa"]`. Order-sensitive: the
  * **first** match on a node wins. The matched attribute *name* is preserved on
  * the node as `testIdAttr` so selectorHint can emit the right selector.
+ *
+ * `index` is one `DOM.getDocument` sweep of the same document. Pass the one the
+ * caller already has — `composeSnapshot` builds it for the tier join and would
+ * otherwise pay for a second sweep of the same tree. Omitted, this builds its
+ * own.
  */
 export async function getA11yTree(
   cdp: CDPSession,
   refs: RefRegistry,
   testIdAttributes: string[] = ["data-testid", "data-test", "data-cy", "data-qa"],
+  index?: DomIndex,
 ): Promise<A11yNode | null> {
   // Enable is idempotent; safe to call repeatedly.
   await cdp.send("Accessibility.enable");
@@ -111,12 +118,6 @@ export async function getA11yTree(
 
   const byId = new Map<string, RawAXNode>(nodes.map((n) => [n.nodeId, n]));
   const root = nodes.find((n) => !n.parentId || !byId.has(n.parentId)) ?? nodes[0]!;
-
-  // We resolve testId attributes per-node lazily — only the ones that have a
-  // backendDOMNodeId and are roles we care about (interactives). For we
-  // hold off on a batched DOM.getAttributes call and just attach testIds when
-  // they show up as CDP properties; a future cycle can switch to a batch fetch
-  // if the attribute coverage isn't enough.
 
   // `ignored` marks a node CDP does not expose to assistive tech — that node
   // only, not its subtree. Its children are routinely exposed and interactive:
@@ -167,13 +168,16 @@ export async function getA11yTree(
       children: [],
     };
     applyAxProperties(node, raw.properties ?? []);
-    // testId attaches later in enrichTestIds if we batch-fetch attributes.
-    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }), {
-      role,
-      name,
-      testId: node.testId,
-      source: "a11y",
-    });
+    // testId attaches later, in enrichTestIds.
+    node.ref = refs.forKey(elementKey({ role, name, path, testId: node.testId }));
+    // Augment, never overwrite. `forKey(key, locator)` replaces the ref's whole
+    // locator record, and this runs on every pre/post-action delta tree as well
+    // as on `snapshot` — so it used to wipe the `cssPath` the tier merge had
+    // attached, and a ref whose role+name locator matched two nodes lost the
+    // one input that tells them apart. The key hashes role, name, path and
+    // testId, so a ref's role and name cannot change under it; there is nothing
+    // here that an existing record could be stale about.
+    refs.augmentLocator(node.ref, { role, name, testId: node.testId, source: "a11y" });
     return node;
   };
 
@@ -220,100 +224,8 @@ export async function getA11yTree(
   seen.add(root.nodeId);
   const tree = materialise(root, rootPath);
   tree.children = convertChildren(root, rootPath, 0);
-  await enrichTestIds(cdp, tree, testIdAttributes, refs);
+  await enrichTestIds(cdp, tree, testIdAttributes, refs, index);
   return tree;
-}
-
-/** A `DOM.Node`, the subset the attribute sweep reads. Children hang off five
- *  different fields; missing any of them loses a whole subtree. */
-interface RawDomNode {
-  backendNodeId?: number;
-  /** Flat `["name", "value", "name", "value", …]`. */
-  attributes?: string[];
-  children?: RawDomNode[];
-  shadowRoots?: RawDomNode[];
-  pseudoElements?: RawDomNode[];
-  contentDocument?: RawDomNode;
-  templateContent?: RawDomNode;
-}
-
-/** Containment ceiling on the DOM sweep, in the spirit of `MAX_WALK_DEPTH`. The
- *  heaviest page measured here (Wikipedia's GDP list) returns ~30k nodes, so
- *  this never trips on a real document; it bounds a malformed or adversarial
- *  one. */
-const MAX_DOM_SWEEP_NODES = 500_000;
-
-/** The first configured test attribute this element carries, in the caller's
- *  preference order. */
-function firstTestAttr(
-  attributes: string[],
-  attrs: string[],
-): { testId: string; testIdAttr: string } | undefined {
-  for (const a of attrs) {
-    for (let i = 0; i < attributes.length; i += 2) {
-      if (attributes[i] === a && attributes[i + 1]) {
-        return { testId: attributes[i + 1]!, testIdAttr: a };
-      }
-    }
-  }
-  return undefined;
-}
-
-/**
- * Every element carrying one of the configured test attributes, keyed by
- * **backend** node id — the id `Accessibility.getFullAXTree` reports.
- *
- * One `DOM.getDocument` roundtrip returns the whole tree with attributes
- * inline. The per-node `DOM.getAttributes` loop this replaced passed a
- * `BackendNodeId` where the command wants a `DOM.NodeId`, and nothing had ever
- * called `DOM.getDocument`, so no `DOM.NodeId` existed in the session at all:
- * on a GitHub pull-request page all 159 calls failed with
- * `Could not find node` and zero test ids were attached. Measured against the
- * two working alternatives on four real pages, the sweep is also the cheap one
- * — 9-39 ms, against 327-1932 ms for
- * `DOM.pushNodesByBackendIdsToFrontend` plus a `DOM.getAttributes` per node.
- *
- * The sweep does not pierce. Shadow roots and iframe content documents are
- * reached only when a caller opts into `pierce`, and that opt-in is what gates
- * closed-shadow content from reaching the agent at all; a test attribute read
- * out of a closed shadow root here would route around it. So an element inside
- * a shadow root keeps no test id on the a11y tier — the DOM-walk tier under
- * `includeShadow: "open"` is the path that reports one.
- */
-async function readTestAttributes(
-  cdp: CDPSession,
-  attrs: string[],
-): Promise<Map<number, { testId: string; testIdAttr: string }>> {
-  const found = new Map<number, { testId: string; testIdAttr: string }>();
-  let root: RawDomNode;
-  try {
-    root = (await cdp.send("DOM.getDocument", { depth: -1 })).root;
-  } catch {
-    // No DOM agent (detached target, mid-navigation) — no test ids this pass.
-    return found;
-  }
-  const stack: RawDomNode[] = [root];
-  let visited = 0;
-  while (stack.length && visited < MAX_DOM_SWEEP_NODES) {
-    const n = stack.pop()!;
-    visited++;
-    if (n.backendNodeId !== undefined && n.attributes?.length) {
-      const hit = firstTestAttr(n.attributes, attrs);
-      if (hit) found.set(n.backendNodeId, hit);
-    }
-    pushDomChildren(n, stack);
-  }
-  return found;
-}
-
-/** A `DOM.Node`'s children hang off five different fields. Missing any one of
- *  them silently loses a whole subtree's test attributes. */
-function pushDomChildren(n: RawDomNode, stack: RawDomNode[]): void {
-  for (const c of n.children ?? []) stack.push(c);
-  for (const c of n.shadowRoots ?? []) stack.push(c);
-  for (const c of n.pseudoElements ?? []) stack.push(c);
-  if (n.contentDocument) stack.push(n.contentDocument);
-  if (n.templateContent) stack.push(n.templateContent);
 }
 
 /**
@@ -331,6 +243,7 @@ async function enrichTestIds(
   root: A11yNode,
   attrs: string[],
   refs: RefRegistry,
+  index?: DomIndex,
 ): Promise<void> {
   const wanted: A11yNode[] = [];
   for (const { node } of walk(root)) {
@@ -340,10 +253,10 @@ async function enrichTestIds(
     wanted.push(node);
   }
   if (!wanted.length) return;
-  const byBackendId = await readTestAttributes(cdp, attrs);
-  if (!byBackendId.size) return;
+  const dom = index ?? (await buildDomIndex(cdp, attrs));
+  if (!dom.testAttrCount) return;
   for (const node of wanted) {
-    const hit = byBackendId.get(node.backendDOMNodeId!);
+    const hit = dom.testAttrOf(node.backendDOMNodeId!);
     if (!hit) continue;
     node.testId = hit.testId;
     node.testIdAttr = hit.testIdAttr;
