@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type EngineKind } from "./engine/index.js";
+import { engineIsAttachOnly } from "./engine/registry.js";
 import { type SessionMode } from "./session/registry.js";
 import { resolveCredentialsProvider } from "./util/credentials.js";
 import { resolveConfig } from "./util/config.js";
@@ -199,12 +200,14 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // (engine-not-yet-supported) — there is no silent fallback to chromium.
   const serverEngine: EngineKind = opts.browserType ?? "chromium";
   // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
-  // persistent. android is ATTACH-ONLY (the user's real Chrome-on-Android over
-  // adb + CDP), so it defaults to "attached" with no BROWX_ATTACH_CDP
-  // (the endpoint is DISCOVERED over adb, not configured). This is the default a
-  // lazily-created session inherits; an explicit open_session can override per id.
+  // persistent. An ATTACH-ONLY engine defaults to "attached" regardless —
+  // android (the user's real Chrome-on-Android, discovered over adb) and electron
+  // (a desktop app the operator launched with a debugging port). Which engines
+  // those are is the engine layer's fact, read through `engineIsAttachOnly`, so
+  // this line stays engine-agnostic. This is the default a lazily-created session
+  // inherits; an explicit open_session can override per id.
   const serverDefaultMode: SessionMode =
-    serverEngine === "android" || opts.attachCdp ? "attached" : "persistent";
+    engineIsAttachOnly(serverEngine) || opts.attachCdp ? "attached" : "persistent";
   const registry = buildSessionRegistry({
     opts,
     resolvedConfig,

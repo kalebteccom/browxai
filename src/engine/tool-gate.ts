@@ -204,6 +204,28 @@ export function assertEngineSubInterface(
   };
 }
 
+/** Returns a structured refusal when `engine` names `tool` in its `refusedTools`
+ *  declaration, else null. THIRD dimension of the same gate: `assertEngineSupports`
+ *  answers "does this engine have the raw-CDP escape hatch",
+ *  `assertEngineSubInterface` answers "does it implement this sub-interface at
+ *  all", and this one answers "can it run this tool WITHOUT doing harm".
+ *
+ *  The distinction matters because a `refusedTools` entry names a tool that would
+ *  otherwise SUCCEED. `navigate` on electron has a Page, a CDP handle and a
+ *  declared `navigation` sub-interface; `page.goto()` returns a response. It also
+ *  destroys the attached application. Neither of the other two dimensions can
+ *  express "works, and must not run", so a declaration that does is the honest
+ *  shape — and it keeps the reason at the engine's own capability row instead of
+ *  an `engine === "…"` branch in the navigate handler. */
+export function assertEngineRefuses(tool: string, engine: EngineKind): EngineRefusal | null {
+  const why = engineDeclaration(engine)?.refusedTools?.get(tool);
+  if (why === undefined) return null;
+  return {
+    error: `tool "${tool}" is refused on the "${engine}" engine`,
+    hint: why,
+  };
+}
+
 export function assertEngineSupports(tool: string, engine: EngineKind): EngineRefusal | null {
   // D1 fail-safe FIRST: a `DEEP_TOOLS.has` on an empty unbootstrapped set returns
   // false for every tool, so the early `return null` below would un-gate the

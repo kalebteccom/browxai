@@ -25,6 +25,7 @@ export {
   WEBKIT_CAPABILITIES,
   ANDROID_CAPABILITIES,
   SAFARI_CAPABILITIES,
+  ELECTRON_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { requirePage, type PageCapable } from "./session-page.js";
@@ -32,10 +33,13 @@ export { engineDeclares } from "./sub-interface.js";
 export {
   assertEngineSubInterface,
   assertEngineSupports,
+  assertEngineRefuses,
   DEEP_TOOLS,
   type EngineRefusal,
 } from "./tool-gate.js";
 export { PlaywrightChromiumAdapter } from "./adapters/playwright-chromium.js";
+export { profileAttachedBrowser } from "./adapters/electron-detect.js";
+export type { AttachedBrowserProfile } from "./adapters/electron-detect.js";
 export type { PersistentLaunchSpec, EphemeralLaunchSpec } from "./adapters/playwright-chromium.js";
 export {
   PlaywrightFirefoxAdapter,

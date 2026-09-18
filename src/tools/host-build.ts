@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   assertEngineSubInterface,
   assertEngineSupports,
+  assertEngineRefuses,
   requireCdp,
   type EngineKind,
   type EngineRefusal,
@@ -233,7 +234,13 @@ export function buildHost(deps: HostDeps): ToolHost {
   };
 
   const engineGate = (toolName: string, e: SessionEntry) => {
-    const refusal = assertEngineSupports(toolName, e.session.engine);
+    // Two dimensions, one helper, so no call site has to know there are two.
+    // `assertEngineSupports` refuses a tool the engine CANNOT run (no raw-CDP
+    // escape hatch); `assertEngineRefuses` refuses one it CAN run and must not
+    // (`navigate` on an attached Electron app destroys the application's UI).
+    const refusal =
+      assertEngineSupports(toolName, e.session.engine) ??
+      assertEngineRefuses(toolName, e.session.engine);
     return refusal ? engineRefusalText(e.session.engine, refusal) : null;
   };
 

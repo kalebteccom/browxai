@@ -5,7 +5,7 @@
 // adapters/<engine>.engine.ts). The `engine === "…"` dispatch chain that used to
 // live here is now data-driven — byte-identical, only relocated.
 //
-// The attach PRIMITIVES (`attachByobChromium` / `openAndroidByobSession` /
+// The attach PRIMITIVES (`attachByobDesktop` / `openAndroidByobSession` /
 // `assertByobAttach`) live in byob-attach.ts so the engine-registration graph does
 // not cycle back through this module's `engineEntry` import; they are re-exported
 // here for back-compat with existing importers.
@@ -15,7 +15,7 @@ import type { EngineKind } from "../engine/index.js";
 import "../engine/register-engines.js";
 import type { BrowserSession, SessionOptions } from "./types.js";
 
-export { attachByobChromium, openAndroidByobSession, assertByobAttach } from "./byob-attach.js";
+export { attachByobDesktop, openAndroidByobSession, assertByobAttach } from "./byob-attach.js";
 
 /** BYOB / attach session — resolves the engine and hands off to the
  *  EngineRegistry's per-engine attach body. */

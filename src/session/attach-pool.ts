@@ -63,6 +63,27 @@ export function attachPoolExhausted(
   );
 }
 
+/** Every window/view the attached app exposes is already leased, and the app
+ *  cannot be asked for another. Distinct from `attachPoolExhausted`, which is
+ *  browxai's OWN ceiling and is raised by closing a browxai session; this one is
+ *  a limit of the attached application, and the fix is to open another window in
+ *  the app itself. Naming which sessions hold what is the actionable part. */
+export function attachTargetCreationUnavailable(
+  endpoint: string,
+  leases: readonly AttachLease[],
+): Error {
+  const live = leases.map((l) => `${l.sessionId}→${l.targetId}`).join(", ") || "none";
+  return new Error(
+    `attach-target-creation-unavailable: every target on "${endpoint}" is already leased and the ` +
+      "attached application cannot create another. Its renderer targets are owned by the " +
+      "application's own window management, so the CDP `Target.createTarget` call answers \"Not " +
+      'supported" (this is normal for Electron apps — VS Code, Slack, Discord — not a fault). ' +
+      `Live leases: ${live}. Either close a browxai session to free one of those targets, or open ` +
+      "another window IN THE APP (its own New Window command) and retry — browxai claims " +
+      "pre-existing targets and will pick it up.",
+  );
+}
+
 export class AttachLeaseTable {
   private readonly bySession = new Map<string, AttachLease>();
 
@@ -153,7 +174,16 @@ export interface PoolTarget {
 
 export interface TargetSource {
   list(): Promise<PoolTarget[]>;
-  create(): Promise<PoolTarget>;
+  /** Mint a fresh target. OPTIONAL: an attached browser that cannot create one
+   *  over the protocol omits it, and `acquireTarget` then refuses with
+   *  `attachTargetCreationUnavailable` instead of surfacing a raw protocol error.
+   *
+   *  Electron is the case. Its renderer targets belong to the application's own
+   *  window management, so `Target.createTarget` answers "Not supported"
+   *  (measured, Electron 39.8.8) and Playwright's `context.newPage()` fails with
+   *  the same protocol error underneath. Presence here is the declaration; the
+   *  pool never probes by calling and catching. */
+  create?(): Promise<PoolTarget>;
 }
 
 export interface AcquiredTarget extends PoolTarget {
@@ -172,6 +202,20 @@ function serializePerEndpoint<T>(endpoint: string, run: () => Promise<T>): Promi
     next.catch(() => undefined),
   );
   return next;
+}
+
+/** No free target left, so mint one — or refuse, structurally, when the source
+ *  declares it cannot. The DECLARATION (`create` present) is the oracle: calling
+ *  and catching would turn a known limitation into a raw protocol string
+ *  (`Protocol error (Target.createTarget): Not supported`), which is what the
+ *  Electron attach used to surface. */
+async function createTarget(
+  source: TargetSource,
+  endpoint: string,
+  held: readonly AttachLease[],
+): Promise<PoolTarget> {
+  if (source.create === undefined) throw attachTargetCreationUnavailable(endpoint, held);
+  return source.create();
 }
 
 export function acquireTarget(
@@ -193,7 +237,7 @@ export function acquireTarget(
 
     const taken = new Set(held.map((l) => l.targetId));
     const free = (await source.list()).find((t) => !taken.has(t.targetId) && !t.page.isClosed());
-    const target = free ?? (await source.create());
+    const target = free ?? (await createTarget(source, spec.endpoint, held));
     if (target.page.isClosed()) throw attachTargetGone(spec.sessionId, target.targetId);
     const created = free === undefined;
     leases.claim({ ...spec, targetId: target.targetId, owned: created });

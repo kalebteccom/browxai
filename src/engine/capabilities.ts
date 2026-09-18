@@ -122,12 +122,62 @@ export const SAFARI_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** The one tool `electron` refuses by name. `navigate` would RUN — that is the
+ *  problem. Measured: pointing an attached Electron renderer at any other
+ *  document replaces the application UI and the app does not recover; there is no
+ *  back-navigation to an app that was never a history entry. So the refusal is a
+ *  declaration, not a runtime failure, and it names the reason.
+ *
+ *  `go_back` / `go_forward` / `reload` are NOT here: they operate within the
+ *  renderer's own history and are exactly what the app's own keyboard shortcuts
+ *  do. `reload` on VS Code is Cmd-R. */
+const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
+  [
+    "navigate",
+    "Loading a URL into an attached Electron renderer REPLACES the application's " +
+      "own document, and the application does not come back — its window is left on " +
+      "whatever page was loaded, with no history entry to return to. This is " +
+      "unrecoverable without the user quitting and relaunching the app, so browxai " +
+      "refuses rather than performing it. Drive the app through its own UI (click / " +
+      "press / fill on the elements `snapshot` and `find` return); use `reload` if " +
+      "you need the app's own document re-loaded. To fetch a URL, open a separate " +
+      'chromium session (`open_session({ engine: "chromium" })`).',
+  ],
+]);
+
+/** Electron (a desktop Electron application attached over its
+ *  `--remote-debugging-port`). Like android it IS Chromium and speaks FULL CDP, so
+ *  it declares `deep: true` and needs no new substrate — the CDP snapshot/network
+ *  substrates and the full Playwright post-wire serve it verbatim. Measured
+ *  against VS Code 1.122.1 / Electron 39.8.8: `composeSnapshot` returns a usable
+ *  tree, `locatorFor` resolves, refs are stable across snapshots.
+ *
+ *  Every sub-interface is declared, including `navigation` — the renderer has a
+ *  real history and `reload` / `go_back` / `go_forward` all work on it. The ONE
+ *  navigation verb that must not run is `navigate`, and it is declared in
+ *  `refusedTools` above rather than by dropping the sub-interface, because
+ *  dropping it would refuse three working tools to gate one (and `navigation` is
+ *  one of the four sub-interfaces no engine may omit).
+ *
+ *  The other Electron limit is not a capability but a lease shape:
+ *  `Target.createTarget` answers "Not supported" (measured), so the attach pool
+ *  claims pre-existing renderer targets and structured-refuses when they are all
+ *  leased. That lives in the attach lane (`session/attach-pool.ts`), where the
+ *  pool can name which sessions hold what. */
+export const ELECTRON_CAPABILITIES: EngineCapabilities = {
+  engine: "electron",
+  subInterfaces: new Set(ALL_SUB_INTERFACES),
+  deep: true,
+  refusedTools: ELECTRON_REFUSED_TOOLS,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
   webkit: WEBKIT_CAPABILITIES,
   android: ANDROID_CAPABILITIES,
   safari: SAFARI_CAPABILITIES,
+  electron: ELECTRON_CAPABILITIES,
 };
 
 /** The capability declaration for an engine. Chromium + Firefox + WebKit +

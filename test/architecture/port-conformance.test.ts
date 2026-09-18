@@ -61,6 +61,12 @@ const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
       finalizeAttachedSession("android", "S1", stubTarget(), {} as CDPSession, async () => {}),
     ),
   safari: () => Promise.resolve(buildSafariSession({} as SafariSessionHandle)),
+  // electron is attach-only too, and rides the SAME attached-session finalizer as
+  // chromium and android — a real Playwright Page over a real CDP session.
+  electron: () =>
+    Promise.resolve(
+      finalizeAttachedSession("electron", "S1", stubTarget(), {} as CDPSession, async () => {}),
+    ),
 };
 
 describe("L5 — every adapter honors its declared port contract", () => {
@@ -73,9 +79,11 @@ describe("L5 — every adapter honors its declared port contract", () => {
       // Safari, must be able to produce an a11y snapshot.
       expect(caps!.subInterfaces.has("snapshot")).toBe(true);
       // No engine may claim `deep` (the raw-CDP escape hatch) without a real CDP
-      // handle — only chromium and the Chrome-on-Android attach declare it.
+      // handle. The three that do are the three Chromium-family lanes: desktop
+      // chromium, the Chrome-on-Android attach, and the Electron-app attach.
+      // firefox / webkit / safari must never appear here.
       if (caps!.deep) {
-        expect(["chromium", "android"]).toContain(engine);
+        expect(["chromium", "android", "electron"]).toContain(engine);
       }
     },
   );

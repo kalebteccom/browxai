@@ -19,21 +19,29 @@ const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
   firefox,
   webkit,
   android: chromium,
+  // `electron` resolves to Playwright's `chromium` BrowserType for the same
+  // reason android does — an Electron app IS Chromium and the adapter attaches
+  // with `chromium.connectOverCDP(endpoint)` over the app's loopback debugging
+  // port, reusing the exact Chromium transport.
+  electron: chromium,
 };
 
 /** Engines wired today. Chromium + Firefox (Playwright's bundled Juggler build)
  *  + WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness
  *  lane, NOT Safari) + Android (real Chrome-on-Android attached over adb + CDP —
  *  full CDP, `deep: true`) + Safari (REAL Safari.app over safaridriver — the
- *  first non-Playwright engine, no Playwright Page, curated subset). All five
- *  `EngineKind` members are implemented; the no-silent-no-op selection error
- *  remains for any future engine declared before its adapter lands. */
+ *  first non-Playwright engine, no Playwright Page, curated subset) + Electron (a
+ *  desktop Electron app attached over its --remote-debugging-port — full CDP,
+ *  `deep: true`, attach-only). All six `EngineKind` members are implemented; the
+ *  no-silent-no-op selection error remains for any future engine declared before
+ *  its adapter lands. */
 export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "chromium",
   "firefox",
   "webkit",
   "android",
   "safari",
+  "electron",
 ];
 
 export class EngineNotYetSupportedError extends Error {
@@ -41,8 +49,9 @@ export class EngineNotYetSupportedError extends Error {
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium, firefox, webkit, android, and safari are wired today. " +
-        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", or "safari".',
+        "chromium, firefox, webkit, android, safari, and electron are wired today. " +
+        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", "safari", ' +
+        'or "electron".',
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;

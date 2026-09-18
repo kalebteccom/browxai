@@ -112,7 +112,7 @@ const noPageEvalStringifiedArrow = {
 // scattered through handlers; a sixth engine must be a new adapter behind the
 // port, never an edit to 5-8 existing files. Mirrors the existing custom-rule
 // idiom (meta.type "problem", schema [], create(context) visitor).
-const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari"];
+const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari", "electron"];
 
 // Files whose single responsibility IS engine selection — engine literals are the
 // point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
@@ -826,18 +826,25 @@ export default tseslint.config(
   },
   // RFC 0004 P1 — `no-engine-literal-branches` is now whole-tree clean: the four
   // session-layer dispatch files (session-registry / managed / incognito / byob)
-  // were relocated behind the EngineRegistry, so they leave this list. What
-  // remains are the two NON-dispatch engine references the rule still flags but
-  // which are legitimately engine-aware (and have no dispatch chain to relocate):
-  //   - server.ts:291  — `serverEngine === "android"` selects the default session
-  //     MODE (android is attach-only), not an engine launch branch.
-  //   - cli/doctor.ts:320 — `selectedEngine === "chromium"` is a diagnostic check
-  //     in the doctor report, not a dispatch.
+  // were relocated behind the EngineRegistry, so they leave this list.
+  //
+  // RATCHET (electron): `src/server.ts` leaves it too. Its one literal was
+  // `serverEngine === "android"` picking the default session MODE, and a second
+  // attach-only engine made that spelling wrong rather than merely untidy — it
+  // would have silently defaulted an electron server to `persistent`. It now
+  // calls `engineIsAttachOnly`, the engine layer's own declaration, which is
+  // what the rule asks for. An entry comes off this list in the change that
+  // removes its last literal.
+  //
+  // What remains is the one NON-dispatch engine reference the rule still flags
+  // and which is legitimately engine-aware (with no dispatch chain to relocate):
+  //   - cli/doctor.ts — `selectedEngine === "chromium"` is a diagnostic check in
+  //     the doctor report, not a dispatch.
   // Kept allowlisted (with this rationale) per the §7 meta-rule's reviewable-config
   // escape valve — never an inline disable. A NEW engine-literal dispatch in any
   // other file still errors.
   {
-    files: ["src/server.ts", "src/cli/doctor.ts"],
+    files: ["src/cli/doctor.ts"],
     rules: {
       "browxai-local/no-engine-literal-branches": "off",
     },

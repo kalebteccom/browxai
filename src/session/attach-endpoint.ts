@@ -86,9 +86,19 @@ async function pageTargetId(page: Page): Promise<string> {
 }
 
 /** The pool's view of an attached browser: every live page across every context
- *  is a claimable target, and a new tab in the first context is the fallback. */
-export function browserTargetSource(browser: Browser): TargetSource {
-  return {
+ *  is a claimable target, and a new tab in the first context is the fallback.
+ *
+ *  `canCreate: false` drops the fallback, for an attached app whose targets the
+ *  protocol cannot mint — Electron answers `Target.createTarget` with "Not
+ *  supported", and `context.newPage()` fails with that same protocol error
+ *  underneath. Omitting `create` makes the limit a DECLARATION the pool reads,
+ *  so `acquireTarget` refuses with a message naming the live leases instead of
+ *  relaying a raw protocol string. */
+export function browserTargetSource(
+  browser: Browser,
+  opts: { canCreate?: boolean } = {},
+): TargetSource {
+  const source: TargetSource = {
     list: async () => {
       const pages = browser
         .contexts()
@@ -102,6 +112,10 @@ export function browserTargetSource(browser: Browser): TargetSource {
       );
       return resolved.filter((t): t is PoolTarget => t !== undefined);
     },
+  };
+  if (opts.canCreate === false) return source;
+  return {
+    ...source,
     create: async () => {
       const context = browser.contexts()[0] ?? (await browser.newContext());
       const page = await context.newPage();

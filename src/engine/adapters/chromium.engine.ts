@@ -20,7 +20,7 @@ import {
   finalizeIncognitoSession,
 } from "../../session/launch-options.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
-import { attachByobChromium } from "../../session/byob-attach.js";
+import { attachByobDesktop } from "../../session/byob-attach.js";
 
 /** Build a chromium `BrowserSession` for the requested launch mode. The
  *  per-engine launch dispatch the three factories carried (`engine === "…"`)
@@ -30,7 +30,7 @@ import { attachByobChromium } from "../../session/byob-attach.js";
 async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession> {
   const mode = opts.launchMode ?? "managed";
   if (mode === "byob") {
-    return attachByobChromium(opts);
+    return attachByobDesktop(opts);
   }
   if (mode === "incognito") {
     const adapter = new PlaywrightChromiumAdapter();

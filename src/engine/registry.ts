@@ -198,13 +198,20 @@ export function byobAttachNeedsEndpoint(kind: EngineKind): boolean {
   return kind !== "android";
 }
 
+/** Engines with no managed/ephemeral launch at all — browxai never spawns the
+ *  browser, it joins one the operator already started. Android: real
+ *  Chrome-on-Android over adb, where "launch a browser we own" is not a thing on
+ *  someone's phone. Electron: the app is VS Code or Slack, and deciding to run it
+ *  with a debugging port is the operator's call about their own machine, never
+ *  browxai's. Both adapters surface a structured `<engine>-launch-not-supported`
+ *  if a managed launch is attempted anyway. */
+const ATTACH_ONLY_ENGINES: ReadonlySet<EngineKind> = new Set<EngineKind>(["android", "electron"]);
+
 /** Whether an engine can ONLY attach (no managed/ephemeral launch), so its
- *  default session mode is "attached" even with no `BROWX_ATTACH_CDP`. Android is
- *  attach-only — real Chrome-on-Android over adb; managed/ephemeral launch
- *  returns a structured `android-launch-not-supported`. The session registry
- *  consults this for its per-session default mode, so the one android-specific
- *  default-mode fact lives here in the engine layer, not as a literal branch in
- *  the session registry (mirrors `byobAttachNeedsEndpoint`). */
+ *  default session mode is "attached" even with no `BROWX_ATTACH_CDP`. The
+ *  session registry consults this for its per-session default mode, so the
+ *  per-engine default-mode facts live here in the engine layer, not as literal
+ *  branches in the session registry (mirrors `byobAttachNeedsEndpoint`). */
 export function engineIsAttachOnly(kind: EngineKind): boolean {
-  return kind === "android";
+  return ATTACH_ONLY_ENGINES.has(kind);
 }
