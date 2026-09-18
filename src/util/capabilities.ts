@@ -32,7 +32,8 @@ export type Capability =
   | "device-emulation"
   | "diagnostics"
   | "canvas"
-  | "replay";
+  | "replay"
+  | "native-device";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -53,6 +54,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "diagnostics",
   "canvas",
   "replay",
+  "native-device",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -323,6 +325,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "replay",
     message:
       "replay capability is ENABLED — `start_recording({replay})` writes a `.browx` session-replay artifact that carries the DOM stream, network + WS metadata (bodies at the re-executable tier), console output and action calls. Registered secrets are masked at capture time before anything reaches disk, but the artifact still carries real page content and is as sensitive as the session it recorded. Store under $BROWX_WORKSPACE and treat every archive as production data. Same posture class as `network-body` / `secrets` / `diagnostics`.",
+  },
+  {
+    capability: "native-device",
+    message:
+      "native-device capability is ENABLED — `open_session({engine:\"ios-app\"})` boots an iOS Simulator, installs and launches an application, drives an OS-level input pipeline and reads the device's screen. It broadens posture further than any browser capability: the SAME code path aimed at a real device (a later phase) reaches the operator's phone rather than a sandbox. Xcode and the Simulator runtimes are OPERATOR-SUPPLIED — never bundled, never auto-installed. A recorded native session carries a residual secret-leak sink no masking closes: the iOS keyboard draws a character-preview bubble above the pressed key, and a screen recording catches it even for a password field. Same posture class as `replay` / `network-body` / `secrets` — see docs/threat-model.md.",
   },
   {
     capability: "captcha",

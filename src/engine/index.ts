@@ -10,6 +10,17 @@ export type {
   EngineLaunchHandles,
 } from "./types.js";
 export { ENGINE_KINDS } from "./types.js";
+export { nativeScopeUrl } from "./native-types.js";
+export type {
+  NativeAppInfo,
+  NativeDeviceInfo,
+  NativeDriver,
+  NativeNode,
+  NativePlatform,
+  NativePoint,
+  NativeRect,
+  NativeSessionHandle,
+} from "./native-types.js";
 export {
   resolveBrowserType,
   EngineNotYetSupportedError,

@@ -4,7 +4,7 @@
 // no close, no storage reset on shutdown).
 
 import type { CDPSession, Page } from "playwright-core";
-import type { EngineKind, SafariSessionHandle } from "../engine/index.js";
+import type { EngineKind, NativeSessionHandle, SafariSessionHandle } from "../engine/index.js";
 
 export type SessionMode = "managed" | "byob";
 
@@ -154,5 +154,11 @@ export interface BrowserSession {
    *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the
    *  capability gate refuses the rest up front. Absent on every other engine. */
   safari?(): SafariSessionHandle;
+  /** The native-target handle — present ONLY on the native-app engines (RFC 0008
+   *  §1.4), which have no Playwright `Page`, no CDP and no document. Carries the
+   *  driver, the device id, the app id and the platform; the native substrate
+   *  bundle reads it exactly as the Safari bundle reads `safari()`. Absent on
+   *  every browser engine. */
+  native?(): NativeSessionHandle;
   close(): Promise<void>;
 }

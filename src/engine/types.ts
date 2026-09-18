@@ -22,7 +22,13 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
 // CDP, so its session is Safari-native and drives the engine entirely through the
 // no-Playwright-Page seam.
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari";
+// `ios-app` is the FIRST native-app engine (RFC 0008 §1.1): the iOS Simulator's
+// XCUITest element hierarchy, driven over `xcrun simctl` for lifecycle and an
+// XCUITest driver for reads and input. It has no Playwright Page, no CDP and no
+// document — the `android` kind above keeps its meaning (real Chrome on a real
+// phone), which is why the native kinds take the `-app` qualifier rather than
+// renaming a shipped engine.
+export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -30,6 +36,7 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
+  "ios-app",
 ];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which
