@@ -12,7 +12,7 @@
 // drags, presses and pinches. Synthesising one from the others would report a
 // `touch_start` that never happened.
 
-import type { NativeSessionHandle, NativePoint } from "../engine/native-types.js";
+import type { IosNativeHandle, NativePoint } from "../engine/native-types.js";
 import type { ActionResult } from "./actionresult-types.js";
 import type * as actions from "./actions-types.js";
 import type { GestureRequest, GestureResult } from "./gesture-types.js";
@@ -31,7 +31,7 @@ const SWIPE_MS = 300;
 /** The screen rectangle, read from the hierarchy root. Asking the tree rather
  *  than assuming a device size keeps this correct across iPhone, iPad and a
  *  rotated device. */
-async function screenSize(handle: NativeSessionHandle): Promise<{ width: number; height: number }> {
+async function screenSize(handle: IosNativeHandle): Promise<{ width: number; height: number }> {
   const root = await handle.driver.hierarchy();
   return { width: root.rect.width, height: root.rect.height };
 }
@@ -56,7 +56,7 @@ function swipePath(
 }
 
 export async function iosScroll(
-  handle: NativeSessionHandle,
+  handle: IosNativeHandle,
   args: actions.ScrollArgs,
 ): Promise<ActionResult> {
   if (args.target && args.intoView !== false && !args.to && !args.by) {
@@ -107,7 +107,7 @@ const DEFAULT_SWIPE_MS = 200;
 const DEFAULT_PINCH_OFFSET = 40;
 
 export async function iosGesture(
-  handle: NativeSessionHandle,
+  handle: IosNativeHandle,
   req: GestureRequest,
 ): Promise<GestureResult> {
   switch (req.kind) {

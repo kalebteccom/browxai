@@ -22,13 +22,18 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
 // CDP, so its session is Safari-native and drives the engine entirely through the
 // no-Playwright-Page seam.
-// `ios-app` is the FIRST native-app engine (RFC 0008 §1.1): the iOS Simulator's
-// XCUITest element hierarchy, driven over `xcrun simctl` for lifecycle and an
-// XCUITest driver for reads and input. It has no Playwright Page, no CDP and no
-// document — the `android` kind above keeps its meaning (real Chrome on a real
-// phone), which is why the native kinds take the `-app` qualifier rather than
-// renaming a shipped engine.
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app";
+// The native-app engines take an `-app` qualifier. `ios-app` drives the iOS
+// Simulator's XCUITest element hierarchy over `xcrun simctl` for lifecycle and an
+// XCUITest driver for reads and input; `android-app` drives an Android emulator
+// over adb's UiAutomator dump and input pipeline (RFC 0008). Neither has a
+// Playwright `Page`, CDP, a DOM, a URL or a document, which is why RFC 0009 had
+// to land first. Both are DISTINCT from `android`, which keeps its meaning — real
+// Chrome on a real phone over adb + CDP, `deep: true`, every tool works. Two
+// kinds that both say "android" is a documentation cost, and renaming a shipped
+// engine kind would be a breaking config change, so the NEW kinds take the
+// qualifier.
+export type EngineKind =
+  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -37,6 +42,7 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "android",
   "safari",
   "ios-app",
+  "android-app",
 ];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which

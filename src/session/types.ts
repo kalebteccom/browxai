@@ -154,11 +154,17 @@ export interface BrowserSession {
    *  WebDriver Classic + BiDi clients) route through `safari()` instead, and the
    *  capability gate refuses the rest up front. Absent on every other engine. */
   safari?(): SafariSessionHandle;
-  /** The native-target handle — present ONLY on the native-app engines (RFC 0008
-   *  §1.4), which have no Playwright `Page`, no CDP and no document. Carries the
-   *  driver, the device id, the app id and the platform; the native substrate
-   *  bundle reads it exactly as the Safari bundle reads `safari()`. Absent on
-   *  every browser engine. */
+  /** The native-engine handle — present ONLY on the native-app engines
+   *  (`ios-app`, `android-app`). RFC 0008 §1 item 4, which RFC 0009 left standing
+   *  and generalised: every engine reaches its own concrete world through an
+   *  optional, engine-named accessor, and no engine promises a handle it lacks.
+   *
+   *  A native session has no Playwright `Page`, no CDP and no DOM, so the `page`,
+   *  `cdp` and `targetId` members are all ABSENT and its substrate bundle reads
+   *  this handle instead — exactly as the Safari bundle reads `safari()`. The
+   *  handle carries the platform, the device id, the app under test and the
+   *  `NativeDriver` each adapter drives its own device and screen objects behind.
+   *  Absent on every browser engine. */
   native?(): NativeSessionHandle;
   close(): Promise<void>;
 }

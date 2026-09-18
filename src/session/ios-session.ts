@@ -14,10 +14,10 @@
 // Factored out of the engine module so it unit-tests with a fake driver — no
 // simulator, no WebDriverAgent.
 
-import type { NativeSessionHandle } from "../engine/index.js";
+import type { IosNativeHandle } from "../engine/index.js";
 import type { BrowserSession } from "./types.js";
 
-export function buildIosSession(handle: NativeSessionHandle): BrowserSession {
+export function buildIosSession(handle: IosNativeHandle): BrowserSession {
   let closed = false;
   return {
     mode: "managed",

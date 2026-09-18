@@ -12,15 +12,19 @@ export type {
 export { ENGINE_KINDS } from "./types.js";
 export { nativeScopeUrl } from "./native-types.js";
 export type {
+  IosNativeHandle,
   NativeAppInfo,
+  NativeAppTarget,
   NativeDeviceInfo,
   NativeDriver,
+  NativeLifecycle,
   NativeNode,
   NativePlatform,
   NativePoint,
   NativeRect,
   NativeSessionHandle,
 } from "./native-types.js";
+export { NativeUnsupportedError } from "./native-types.js";
 export {
   resolveBrowserType,
   EngineNotYetSupportedError,
@@ -36,10 +40,13 @@ export {
   WEBKIT_CAPABILITIES,
   ANDROID_CAPABILITIES,
   SAFARI_CAPABILITIES,
+  IOS_APP_CAPABILITIES,
+  ANDROID_APP_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
 export { requirePage, type PageCapable } from "./session-page.js";
 export { engineDeclares } from "./sub-interface.js";
+export { engineRequiresCapability } from "./registry.js";
 export {
   assertEngineSubInterface,
   assertEngineSupports,
@@ -88,3 +95,14 @@ export {
   defaultFetcher,
 } from "./adapters/adb.js";
 export type { AdbDevice, AdbRunner, Fetcher } from "./adapters/adb.js";
+export {
+  AndroidDevice,
+  NativeDeviceError,
+  defaultDeviceIO,
+} from "./adapters/android-app/device.js";
+export type { AndroidDeviceIO } from "./adapters/android-app/device.js";
+export type { AndroidNativeHandle } from "./adapters/android-app/handle.js";
+export {
+  AndroidEmulatorAdapter,
+  type AndroidEmulatorDeps,
+} from "./adapters/android-app/emulator.js";

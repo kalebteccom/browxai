@@ -1,5 +1,5 @@
-// The ios-app engine registration — RFC 0008's first native-app engine. The
-// `safari.engine.ts` template: one `registerEngine(...)` call declaring the
+// The ios-app engine registration — one of RFC 0008's two native-app engines,
+// alongside `android-app`. The `safari.engine.ts` template: one `registerEngine(...)` call declaring the
 // capability row, the launch function, the substrate bundle and the post-wire
 // step, in a module nothing else edits.
 //
@@ -18,12 +18,11 @@
 // fix, rather than as a degraded read per tool call.
 //
 // The device and the app are read from the environment, mirroring the android
-// engine's `BROWX_ANDROID_SERIAL`. RFC 0008 §2 proposes them as an
+// engine's `BROWX_ANDROID_APP_SERIAL`. RFC 0008 §2 proposes them as an
 // `open_session({native:{…}})` option instead; that is a wire-schema change both
-// native engines want to make the same way, so it belongs to the commit that
-// merges them, not to whichever lands first.
+// native engines want to make the same way, and neither has made it yet.
 
-import type { NativeSessionHandle } from "../native-types.js";
+import type { IosNativeHandle } from "../native-types.js";
 import type { BrowserSession, SessionOptions } from "../../session/types.js";
 import { log } from "../../util/logging.js";
 import { registerEngine } from "../registry.js";
@@ -32,6 +31,7 @@ import { buildIosSession } from "../../session/ios-session.js";
 import { iosSubstrateBundle } from "../../page/substrate-bundle-ios.js";
 import { IosSimulator, resolveSimulator } from "./ios/simulator.js";
 import { IosXcuiDriver } from "./ios/xcui-driver.js";
+import { IosLifecycle } from "./ios/lifecycle.js";
 import { DEFAULT_WDA_URL, WdaClient } from "./ios/wda-client.js";
 
 /** The environment the operator configures an ios-app session with. */
@@ -64,7 +64,7 @@ export interface IosAdapterDeps {
 }
 
 /** Boot, install, launch, attach — and hand back the native session handle. */
-export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<NativeSessionHandle> {
+export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<IosNativeHandle> {
   const env = iosEnvFrom(deps.env ?? process.env);
   if (!env.appId) {
     throw new Error(
@@ -97,8 +97,9 @@ export async function launchIosSession(deps: IosAdapterDeps = {}): Promise<Nativ
     engine: "ios-app",
     platform: "ios",
     deviceId: device.id,
-    appId: env.appId,
+    app: { appId: env.appId },
     driver,
+    lifecycle: new IosLifecycle(sim, driver),
     close: async () => {
       // The XCUITest session and the app process are what this session owns. The
       // simulator is not: booting one costs tens of seconds and the operator may

@@ -12,7 +12,7 @@
 // port in `snapshot-substrate-types.ts`) → this implementation → the native
 // driver. This file never imports back from the `snapshot-substrate.js` barrel.
 
-import type { NativeSessionHandle } from "../engine/native-types.js";
+import type { IosNativeHandle } from "../engine/native-types.js";
 import { nativeScopeUrl } from "../engine/native-types.js";
 import type { A11yNode } from "./a11y-types.js";
 import type { ComposedSnapshot, ComposeOptions } from "./compose-types.js";
@@ -34,7 +34,7 @@ const SOURCE_NOTE =
 
 export class IosSnapshotSubstrate implements SnapshotSubstrate {
   readonly engine = "ios-app";
-  constructor(private readonly handle: NativeSessionHandle) {}
+  constructor(private readonly handle: IosNativeHandle) {}
 
   async compose(
     refs: RefRegistry,

@@ -15,13 +15,21 @@
 // appeared/removed sets come from the snapshot substrate's pre and post trees,
 // which do work on this engine.
 
-import type { NativeSessionHandle, NativePoint } from "../engine/native-types.js";
+import type { IosNativeHandle, NativePoint } from "../engine/native-types.js";
 import type { ActionResult, DispatchedAction, ElementProbe } from "./actionresult-types.js";
 import type * as actions from "./actions-types.js";
 import type { ElementRefusal, ElementSubstrate, Rect } from "./element-substrate-types.js";
 import { elementQueryFor } from "./element-query.js";
 
 const EMPTY_NETWORK = { summary: { total: 0, byType: {}, failed: 0 } };
+
+/** Said on every `fill`, because an agent that registered a secret has no other
+ *  way to learn it was not substituted. The android engine says the same thing
+ *  for the same reason. */
+const FILL_SECRETS_NOTE =
+  "Registered secrets do NOT materialise on the ios-app engine: a `<NAME>` alias is typed or set " +
+  "literally. Secret substitution lives in the Playwright action core, which a native session " +
+  "never reaches.";
 
 const ENVELOPE_NOTE =
   "the ios-app engine drives XCUITest: the action envelope's console and network slices are not " +
@@ -31,7 +39,7 @@ const ENVELOPE_NOTE =
 /** What every verb needs. `elements` is the session's own `IosElementSubstrate`,
  *  so re-resolution is the same code path the verify family uses. */
 export interface IosActionDeps {
-  readonly handle: NativeSessionHandle;
+  readonly handle: IosNativeHandle;
   readonly elements: ElementSubstrate;
 }
 
@@ -173,6 +181,7 @@ export async function iosFill(
         await deps.handle.driver.setValue(elementId, value);
         return iosResult(descriptor, true, {
           element: { ref: target.ref, stillAttached: true, value },
+          warnings: [ENVELOPE_NOTE, FILL_SECRETS_NOTE],
         });
       }
     }
@@ -185,6 +194,7 @@ export async function iosFill(
     element: { ref: target.ref, stillAttached: true, value },
     warnings: [
       ENVELOPE_NOTE,
+      FILL_SECRETS_NOTE,
       "this element carries no accessibility identifier, so the value was TYPED through the " +
         "on-screen keyboard rather than set on the element. The iOS keyboard draws a character " +
         "preview above each pressed key, which a screen recording captures even for a secure " +

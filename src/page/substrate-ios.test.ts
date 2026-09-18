@@ -13,9 +13,10 @@ import { describe, it, expect } from "vitest";
 import type {
   NativeAppInfo,
   NativeDriver,
+  NativeLifecycle,
   NativeNode,
   NativePoint,
-  NativeSessionHandle,
+  IosNativeHandle,
 } from "../engine/native-types.js";
 import type { ElementToken } from "./element-substrate-types.js";
 import { RefRegistry } from "./refs.js";
@@ -119,20 +120,31 @@ class FakeDriver implements NativeDriver {
   async close(): Promise<void> {}
 }
 
-function handleFor(driver: NativeDriver): NativeSessionHandle {
+/** The substrates under test never touch app lifecycle — that is the `app_*`
+ *  tool family's seam, covered by its own tests. Every member throws, so a
+ *  substrate that grew a hidden call to it fails loudly here rather than
+ *  silently passing against a stub that answered something plausible. */
+const UNREACHED_LIFECYCLE: NativeLifecycle = new Proxy({} as NativeLifecycle, {
+  get(_t, prop) {
+    throw new Error(`substrate reached NativeLifecycle.${String(prop)}, which no substrate owns`);
+  },
+});
+
+function handleFor(driver: NativeDriver): IosNativeHandle {
   return {
     engine: "ios-app",
     platform: "ios",
     deviceId: "UDID-1",
-    appId: "com.acme.checkout",
+    app: { appId: "com.acme.checkout" },
     driver,
+    lifecycle: UNREACHED_LIFECYCLE,
     close: async () => {},
   };
 }
 
 interface Rig {
   driver: FakeDriver;
-  handle: NativeSessionHandle;
+  handle: IosNativeHandle;
   refs: RefRegistry;
   elements: IosElementSubstrate;
   actions: IosActionSubstrate;

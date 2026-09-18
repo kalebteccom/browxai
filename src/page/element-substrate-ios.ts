@@ -27,7 +27,7 @@
 // (the port in `element-substrate-types.ts`) → this implementation → the native
 // driver. This file never imports back from the `element-substrate.js` barrel.
 
-import type { NativeNode, NativeSessionHandle } from "../engine/native-types.js";
+import type { NativeNode, IosNativeHandle } from "../engine/native-types.js";
 import type {
   ElementBoundsResult,
   ElementCountResult,
@@ -51,7 +51,7 @@ export class IosElementSubstrate implements ElementSubstrate {
   readonly engine = "ios-app";
 
   constructor(
-    private readonly handle: NativeSessionHandle,
+    private readonly handle: IosNativeHandle,
     private readonly refs: RefRegistry,
   ) {}
 

@@ -377,10 +377,12 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
       await callJson("open_session", { session, mode: "incognito" });
       await callJson("navigate", { session, url: `${fixture.url}/` });
 
-      // Target the <a>More info link</a> fixture node (no testid). DOM-walk
-      // emits `role="a"` (bare tag), buildSelectorHint() falls through to a
-      // `role=a[name="More info link"]` hint, and Playwright's role-locator
-      // can't resolve "a" as an ARIA role. Pre-fix the per-candidate probe
+      // Target the aria-hidden <a>Hidden info link</a> fixture node (no
+      // testid). It is out of the accessibility tree, so the DOM walk is the
+      // only tier that reports it and the tier merge has nothing to fold it
+      // into: it arrives with `role="a"` (bare tag), buildSelectorHint() falls
+      // through to a `role=a[name="Hidden info link"]` hint, and Playwright's
+      // role-locator can't resolve "a" as an ARIA role. Pre-fix the per-candidate probe
       // loop would auto-wait the action-timeout window on this hint until
       // the outer 5 s anti-wedge clipped the whole call; post-fix the
       // per-probe cap returns each miss in ≤500 ms and parallel execution
@@ -388,7 +390,7 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
       const t0 = Date.now();
       const found = await callJson<{
         candidates: Array<{ selectorHint: string }>;
-      }>("find", { session, query: "More info link" });
+      }>("find", { session, query: "Hidden info link" });
       const elapsed = Date.now() - t0;
 
       expect(found.candidates.length).toBeGreaterThan(0);
@@ -403,7 +405,9 @@ describe("headless-CI keystone — find() wall-clock regression", () => {
   );
 });
 
-// Same fixture node, the visibility half. A DOM-walk-sourced candidate reports
+// Same fixture node — the aria-hidden anchor, which the accessibility tier does
+// not expose and the tier merge therefore leaves alone. The visibility half: a
+// DOM-walk-sourced candidate reports
 // its bare tag in `role` ("a"), so the built hint is `role=a[name="…"]` — a
 // locator Playwright's role engine rejects. Both bbox probes then fail and a
 // rendered link is reported bbox:null / clipped:true / actionable:"off-screen",
@@ -429,7 +433,7 @@ describe("headless-CI keystone — DOM-walk candidates are not falsely off-scree
           actionable: unknown;
         }>;
         warnings: string[];
-      }>("find", { session, query: "More info link" });
+      }>("find", { session, query: "Hidden info link" });
 
       const domWalked = found.candidates.find((c) => c.role === "a");
       expect(domWalked, "DOM-walk-sourced <a> candidate present").toBeTruthy();
@@ -448,7 +452,7 @@ describe("headless-CI keystone — DOM-walk candidates are not falsely off-scree
       // visibleOnly must not drop it now that the probe reports the truth.
       const visibleOnly = await callJson<{ candidates: Array<{ role: string }> }>("find", {
         session,
-        query: "More info link",
+        query: "Hidden info link",
         visibleOnly: true,
       });
       expect(visibleOnly.candidates.some((c) => c.role === "a")).toBe(true);

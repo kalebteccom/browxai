@@ -47,11 +47,11 @@ const PAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "../../src/page")
 /** The adapter implementations: one file per engine family behind a port. The
  *  `-types.ts` ports and the `-select.ts` selectors are not adapters.
  *
- *  `ios` is RFC 0008's native engine; `none` is the shared no-protocol network
- *  substrate two engines now use. Both are adapters and both carry the hazard —
- *  an injected accessor that can start failing long after construction — so they
- *  join the scan rather than sit outside it. */
-const ADAPTER_FILE = /-substrate-(playwright|safari|cdp|ios|none)\.ts$/;
+ *  `ios` and `android-app` are RFC 0008's two native engines; `none` is the
+ *  shared no-protocol network substrate two engines use. All are adapters and all
+ *  carry the hazard — an injected accessor that can start failing long after
+ *  construction — so they join the scan rather than sit outside it. */
+const ADAPTER_FILE = /-substrate-(playwright|safari|cdp|ios|android-app|none)\.ts$/;
 
 interface PromiseMethod {
   cls: string;

@@ -130,30 +130,111 @@ export interface NativeDriver {
   close(): Promise<void>;
 }
 
+/** The app under test, as the session currently understands it. */
+export interface NativeAppTarget {
+  /** Bundle id / package id, e.g. `com.acme.app`. */
+  appId: string;
+  /** The activity the last launch resolved to, where the platform has one.
+   *  Android does; iOS does not, and leaves it absent rather than inventing a
+   *  screen name the platform never reported. */
+  activity?: string;
+}
+
+/** Raised by a `NativeLifecycle` verb the platform has no primitive for. A
+ *  structural refusal naming the engine and what is missing — never a silent
+ *  no-op and never a plausible empty, which is the whole point of the
+ *  sub-interface gate this mirrors. */
+export class NativeUnsupportedError extends Error {
+  readonly engine: EngineKind;
+  readonly verb: string;
+  constructor(engine: EngineKind, verb: string, detail: string) {
+    super(
+      `native-verb-unsupported: \`${verb}\` has no implementation on the "${engine}" engine. ${detail}`,
+    );
+    this.name = "NativeUnsupportedError";
+    this.engine = engine;
+    this.verb = verb;
+  }
+}
+
+/** Device and app lifecycle — the seam the `app_*` tool family drives, one
+ *  implementation per native adapter.
+ *
+ *  It is separate from `NativeDriver` because the two answer different
+ *  questions. The driver reads and drives the SCREEN of the app under test; this
+ *  installs, launches, stops and enumerates APPLICATIONS, which is a posture
+ *  broadening rather than a read (RFC 0008 §8) and is why the whole family sits
+ *  behind `native-device`.
+ *
+ *  A verb the platform has no primitive for throws `NativeUnsupportedError`. It
+ *  does NOT return an empty list or a silent success: `app_uninstall` reporting
+ *  `{ok:true}` on an engine that uninstalled nothing is the failure mode the
+ *  omitted-sub-interface gate exists to prevent, one layer down. */
+export interface NativeLifecycle {
+  /** Installed application ids on the session's device. */
+  apps(includeSystem: boolean): Promise<string[]>;
+  /** Install an application bundle from a HOST path. */
+  install(bundlePath: string, reinstall: boolean): Promise<void>;
+  /** Remove an application and its data. */
+  uninstall(appId: string): Promise<void>;
+  /** Launch an application and report what the platform resolved. */
+  launch(appId: string): Promise<NativeAppTarget>;
+  /** Stop a running application. Its data survives. */
+  terminate(appId: string): Promise<void>;
+  /** Clear an application's data and its granted runtime permissions. */
+  reset(appId: string): Promise<void>;
+  /** Which application owns the foreground right now, or null mid-transition. */
+  foreground(): Promise<NativeAppTarget | null>;
+}
+
 /** The native session handle — `BrowserSession.native?()`, mirroring `safari?()`.
- *  Carries the driver, the device it is leased to, the app under test and the
- *  platform, which is exactly what RFC 0008 §1.4 specifies. The native substrate
- *  bundle reads it the way the Safari bundle reads `e.session.safari!()`. */
+ *  Carries the platform, the device the session is leased to, the app under test
+ *  and the app-lifecycle seam, which is RFC 0008 §1.4.
+ *
+ *  It carries NO transport member. The two native engines reach their screens
+ *  through genuinely different seams — iOS through a `NativeDriver` over
+ *  WebDriverAgent, Android through a shared `NativeScreen` over `uiautomator
+ *  dump` — and each adapter extends this shape with its own, which its own
+ *  substrate bundle is the only reader of. Putting one engine's transport on the
+ *  shared handle would make the other engine carry a member nothing calls.
+ *
+ *  The native substrate bundle reads it the way the Safari bundle reads
+ *  `e.session.safari!()`. */
 export interface NativeSessionHandle {
   readonly engine: EngineKind;
   readonly platform: NativePlatform;
   /** Simulator UDID / emulator serial. */
   readonly deviceId: string;
-  /** Bundle id of the app under test. */
-  readonly appId: string;
-  readonly driver: NativeDriver;
+  /** The app under test. MUTABLE: `app_launch` can point a live session at a
+   *  different application without reopening it, and `app_uninstall` can leave a
+   *  session with none. */
+  app: NativeAppTarget | undefined;
+  /** Device and app lifecycle. Every native session has one; its individual
+   *  verbs refuse where the platform has no primitive. */
+  readonly lifecycle: NativeLifecycle;
   close(): Promise<void>;
+}
+
+/** The iOS-flavoured handle: the generic shape plus the XCUITest driver its
+ *  substrates read. Declared here, beside `NativeDriver`, because the
+ *  `src/page/*-substrate-ios.ts` adapters name it and `src/page/**` may not
+ *  import `src/engine/adapters/**`. */
+export interface IosNativeHandle extends NativeSessionHandle {
+  readonly driver: NativeDriver;
 }
 
 /** The secret-scope string a native session presents in place of a page URL.
  *  `SecretRegistry.materialize` checks scope by case-insensitive substring
  *  containment, so `app://com.acme.app/` contains `com.acme.app` and a secret
- *  registered with `scope: "com.acme.app"` materialises here and refuses in a
+ *  registered with `scope: "com.acme.app"` would scope here and refuse in a
  *  different app's session — with no change to the check itself (RFC 0008 §1.5,
- *  §6). */
-export function nativeScopeUrl(
-  handle: Pick<NativeSessionHandle, "appId">,
-  screen?: string,
-): string {
-  return `app://${handle.appId}/${screen ?? ""}`;
+ *  §6). NOTE that no native `fill` reaches `materialize` today: substitution
+ *  lives in the Playwright action core, so a `<NAME>` alias is typed literally on
+ *  both native engines and `fill` warns that it was.
+ *
+ *  A session with no app under test reports `app://unknown`, which is a real
+ *  state (`app_uninstall` of the app under test leaves it) and not an error. */
+export function nativeScopeUrl(handle: Pick<NativeSessionHandle, "app">, screen?: string): string {
+  if (!handle.app) return "app://unknown";
+  return `app://${handle.app.appId}/${screen ?? ""}`;
 }

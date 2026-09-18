@@ -109,10 +109,18 @@ const noPageEvalStringifiedArrow = {
 // string literal — `engine === "safari"`, `session.engine !== "chromium"`,
 // `case "webkit":` — outside the engine-select layer. Engine dispatch belongs in
 // the EngineRegistry (post-D1) and the capability-driven substrate selectors, not
-// scattered through handlers; a sixth engine must be a new adapter behind the
+// scattered through handlers; an eighth engine must be a new adapter behind the
 // port, never an edit to 5-8 existing files. Mirrors the existing custom-rule
 // idiom (meta.type "problem", schema [], create(context) visitor).
-const ENGINE_KINDS = ["chromium", "firefox", "webkit", "android", "safari", "ios-app"];
+const ENGINE_KINDS = [
+  "chromium",
+  "firefox",
+  "webkit",
+  "android",
+  "safari",
+  "ios-app",
+  "android-app",
+];
 
 // Files whose single responsibility IS engine selection — engine literals are the
 // point there, not a leak. select.ts / capabilities.ts / registry.ts (post-D1)
@@ -952,7 +960,8 @@ export default tseslint.config(
       "max-params": "off",
     },
   },
-  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp,ios,none}.ts`) —
+  // Substrate adapters
+  // (`src/page/*-substrate-{playwright,safari,cdp,ios,android-app,none}.ts`) —
   // `async` is part of the port contract here, so `require-await` is inverted.
   //
   // Every adapter is built over an INJECTED accessor:
@@ -977,9 +986,10 @@ export default tseslint.config(
       "src/page/*-substrate-playwright.ts",
       "src/page/*-substrate-safari.ts",
       "src/page/*-substrate-cdp.ts",
-      // RFC 0008's native engine, and the no-protocol network substrate two
-      // engines now share. Both are adapters and both carry the same hazard.
+      // RFC 0008's two native engines, and the no-protocol network substrate two
+      // engines share. All are adapters and all carry the same hazard.
       "src/page/*-substrate-ios.ts",
+      "src/page/*-substrate-android-app.ts",
       "src/page/*-substrate-none.ts",
     ],
     rules: {

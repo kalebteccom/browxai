@@ -14,7 +14,7 @@
 // (the port in `capture-substrate-types.ts`) → this implementation → simctl. This
 // file never imports back from the `capture-substrate.js` barrel.
 
-import type { NativeSessionHandle } from "../engine/native-types.js";
+import type { IosNativeHandle } from "../engine/native-types.js";
 import type { ScreenshotSaveResult } from "./screenshot-save.js";
 import type {
   CaptureResult,
@@ -36,7 +36,7 @@ export class IosCaptureSubstrate implements CaptureSubstrate {
   readonly engine = "ios-app";
 
   constructor(
-    private readonly handle: NativeSessionHandle,
+    private readonly handle: IosNativeHandle,
     private readonly save: SaveScreenshot,
   ) {}
 

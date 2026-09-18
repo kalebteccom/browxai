@@ -19,13 +19,13 @@
 // (the port in `target-substrate-types.ts`) → this implementation → the native
 // driver. This file never imports back from the `target-substrate.js` barrel.
 
-import type { NativeSessionHandle } from "../engine/native-types.js";
+import type { IosNativeHandle } from "../engine/native-types.js";
 import { nativeScopeUrl } from "../engine/native-types.js";
 import type { TargetSubstrate } from "./target-substrate-types.js";
 
 export class IosTargetSubstrate implements TargetSubstrate {
   readonly engine = "ios-app";
-  constructor(private readonly handle: NativeSessionHandle) {}
+  constructor(private readonly handle: IosNativeHandle) {}
 
   async url(): Promise<string> {
     const app = await this.handle.driver.foregroundApp().catch(() => undefined);

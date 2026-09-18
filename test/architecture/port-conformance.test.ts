@@ -31,6 +31,7 @@ import {
 import { finalizeAttachedSession } from "../../src/session/byob-attach.js";
 import { buildSafariSession } from "../../src/session/safari-session.js";
 import { buildIosSession } from "../../src/session/ios-session.js";
+import { buildNativeSession } from "../../src/session/native-session.js";
 import type { AcquiredTarget } from "../../src/session/attach-pool.js";
 
 /** The handles a session finalizer needs, none of which this test drives. The
@@ -51,7 +52,7 @@ function stubTarget(): AcquiredTarget {
 
 /** One buildable session per engine, through the engine's OWN session
  *  constructor — the function its `makeAdapter` actually returns from. Asserted
- *  exhaustive over `ENGINE_KINDS` below, so a sixth engine fails this file on the
+ *  exhaustive over `ENGINE_KINDS` below, so an eighth engine fails this file on the
  *  day it registers rather than sliding in unchecked. */
 const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
   chromium: () => finalizeManagedSession("chromium", {}, "/tmp/p", stubHandles()),
@@ -63,16 +64,22 @@ const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
       finalizeAttachedSession("android", "S1", stubTarget(), {} as CDPSession, async () => {}),
     ),
   safari: () => Promise.resolve(buildSafariSession({} as SafariSessionHandle)),
-  // ios-app is the SECOND no-Playwright-Page engine (RFC 0008). Its session is
-  // built from a native handle rather than launched handles, which is the whole
-  // point of the assertion below: it must carry `native()` and NOT `page()`.
+  // The two native engines (RFC 0008) are the second and third no-Playwright-Page
+  // engines. Each session is built from its own native handle rather than from
+  // launched handles, which is the whole point of the assertion below: it must
+  // carry `native()` and OMIT `page()` entirely rather than throw from it.
   "ios-app": () => Promise.resolve(buildIosSession({} as NativeSessionHandle)),
+  "android-app": () => Promise.resolve(buildNativeSession({} as unknown as AndroidNativeHandle)),
 };
 
 /** Engines that back no Playwright `Page`. It was the literal `engine !== "safari"`
  *  until a second one registered — a hardcoded single name is a ground truth that
  *  goes stale on the day it matters most. */
-const NO_PLAYWRIGHT_PAGE: ReadonlySet<EngineKind> = new Set<EngineKind>(["safari", "ios-app"]);
+const NO_PLAYWRIGHT_PAGE: ReadonlySet<EngineKind> = new Set<EngineKind>([
+  "safari",
+  "ios-app",
+  "android-app",
+]);
 
 describe("L5 — every adapter honors its declared port contract", () => {
   it.each(ENGINE_KINDS)(
@@ -119,9 +126,11 @@ describe("L5 — every adapter honors its declared port contract", () => {
     const hasPagePort = (caps: EngineCapabilities) => caps.subInterfaces.has("page");
     it.each(ENGINE_KINDS)("[%s] declares page-availability matching reality", (engine) => {
       const caps = capabilitiesFor(engine)!;
-      // Ground truth: the engines in `NO_PLAYWRIGHT_PAGE` back none. The `"page"`
+      // Ground truth: the engines in `NO_PLAYWRIGHT_PAGE` back none — safari
+      // (driven over safaridriver) and the two native engines (an app on a
+      // simulator or an emulator, which have no browser at all). The `"page"`
       // sub-interface is present iff the engine returns a real Page; this fails if
-      // a browser engine loses its Page or a no-Page engine ever claims one.
+      // a Playwright engine loses its Page or a no-Page engine ever claims one.
       const hasPlaywrightPage = !NO_PLAYWRIGHT_PAGE.has(engine);
       expect(hasPagePort(caps)).toBe(hasPlaywrightPage);
     });
@@ -135,7 +144,7 @@ describe("L5 — every adapter honors its declared port contract", () => {
     // engine-naming refusal was unreachable code on the one engine it exists for.
     //
     // Data-driven over the engine registry: the builder map is asserted exhaustive
-    // over `ENGINE_KINDS`, so a sixth engine is covered the day it lands.
+    // over `ENGINE_KINDS`, so an eighth engine is covered the day it lands.
     it("every engine has a session builder — the map is exhaustive over the registry", () => {
       expect(
         [...ENGINE_KINDS].sort(),

@@ -3,8 +3,8 @@
 // The composition root (createServer / the session factories) imports it for its
 // side effect so the registry is fully populated before any session opens.
 //
-// Adding a sixth engine = one new `adapters/<engine>.engine.ts` module + one line
-// here. No edit to any session factory, the session registry, or host-build —
+// Adding an eighth engine = one new `adapters/<engine>.engine.ts` module + one
+// line here. No edit to any session factory, the session registry, or host-build —
 // which is the open-closed claim the ocp-engine-contract keystone proves.
 //
 // Each import is side-effect-only (the module body calls registerEngine at load);
@@ -16,3 +16,4 @@ import "./adapters/webkit.engine.js";
 import "./adapters/android.engine.js";
 import "./adapters/safari.engine.js";
 import "./adapters/ios-app.engine.js";
+import "./adapters/android-app.engine.js";

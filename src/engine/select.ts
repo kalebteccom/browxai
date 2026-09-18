@@ -25,21 +25,25 @@ const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
  *  + WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness
  *  lane, NOT Safari) + Android (real Chrome-on-Android attached over adb + CDP —
  *  full CDP, `deep: true`) + Safari (REAL Safari.app over safaridriver — the
- *  first non-Playwright engine, no Playwright Page, curated subset). All five
- *  `EngineKind` members are implemented; the no-silent-no-op selection error
- *  remains for any future engine declared before its adapter lands. */
+ *  first non-Playwright engine, no Playwright Page, curated subset) + Android-app
+ *  (a React Native app on an emulator over adb — the first NON-BROWSER engine).
+ *  All six `EngineKind` members are implemented; the no-silent-no-op selection
+ *  error remains for any future engine declared before its adapter lands. */
 export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "chromium",
   "firefox",
   "webkit",
   "android",
   "safari",
-  // ios-app (RFC 0008): the iOS Simulator's XCUITest hierarchy. Like safari it has
-  // no Playwright `BrowserType`, so it is absent from `BROWSER_TYPES` below and
-  // `resolveBrowserType` is never its path — the engine owns its own transport
-  // (`simctl` plus an XCUITest driver). It is additionally gated on the
-  // `native-device` capability at session creation.
+  // The NON-BROWSER engines (RFC 0008): the iOS Simulator's XCUITest hierarchy
+  // over `simctl` plus an XCUITest driver, and an Android emulator over adb's
+  // UiAutomator dump and input pipeline. Like safari neither has a Playwright
+  // `BrowserType`, so neither has a `BROWSER_TYPES` entry below and
+  // `resolveBrowserType` is never their path — each engine owns its transport.
+  // Both are additionally gated on the `native-device` capability at session
+  // creation.
   "ios-app",
+  "android-app",
 ];
 
 export class EngineNotYetSupportedError extends Error {
@@ -47,9 +51,10 @@ export class EngineNotYetSupportedError extends Error {
   constructor(engine: EngineKind) {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
-        "chromium, firefox, webkit, android, safari and ios-app are wired today. " +
-        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", "safari", ' +
-        'or "ios-app".',
+        `${IMPLEMENTED_ENGINES.join(", ")} are wired today. ` +
+        `Use browserType:"chromium" (the default) or any of ${IMPLEMENTED_ENGINES.slice(1)
+          .map((k) => `"${k}"`)
+          .join(", ")}.`,
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;

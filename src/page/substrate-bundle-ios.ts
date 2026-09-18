@@ -1,7 +1,7 @@
 // The ios-app `SubstrateBundle` factory — the engine's own answer to "which
 // adapter serves each capability", the shape `substrate-bundle-safari.ts`
 // established for an engine with no Playwright `Page`. Every selector reads the
-// native handle (`e.session.native!()`), present on every ios-app session by
+// native handle (`handleOf(e)`), present on every ios-app session by
 // construction.
 //
 // Five of the nine are REAL: snapshot (the XCUITest hierarchy), element
@@ -19,6 +19,7 @@
 // interception — refuses.
 
 import type { SessionEntry } from "../session/registry.js";
+import type { IosNativeHandle } from "../engine/index.js";
 import type { SubstrateBundle, SubstrateDeps } from "../engine/registry.js";
 import type { ActionSubstrate } from "./action-substrate.js";
 import type { CaptureSubstrate } from "./capture-substrate.js";
@@ -44,19 +45,22 @@ const NO_NETWORK =
   "installing either is the operator's decision — browxai never makes it on their behalf.";
 
 export function iosSubstrateBundle(deps: SubstrateDeps): SubstrateBundle {
+  // `BrowserSession.native()` is one member serving both native engines, so the
+  // engine's own bundle narrows it to the handle that engine built. Same shape as
+  // the Safari bundle's `e.session.safari!()`.
+  const handleOf = (e: SessionEntry): IosNativeHandle => e.session.native!() as IosNativeHandle;
   // One element substrate per session, shared by the verify family and by every
   // action verb. Sharing it is what makes "re-resolve before dispatch" a single
   // code path rather than two that can drift.
   const elementsFor = (e: SessionEntry): ElementSubstrate =>
-    new IosElementSubstrate(e.session.native!(), e.refs);
+    new IosElementSubstrate(handleOf(e), e.refs);
   return {
     actions: (e: SessionEntry): ActionSubstrate =>
-      new IosActionSubstrate(e.session.native!(), elementsFor(e)),
+      new IosActionSubstrate(handleOf(e), elementsFor(e)),
     element: elementsFor,
-    snapshot: (e: SessionEntry): SnapshotSubstrate => new IosSnapshotSubstrate(e.session.native!()),
-    capture: (e: SessionEntry): CaptureSubstrate =>
-      new IosCaptureSubstrate(e.session.native!(), deps.save),
-    target: (e: SessionEntry): TargetSubstrate => new IosTargetSubstrate(e.session.native!()),
+    snapshot: (e: SessionEntry): SnapshotSubstrate => new IosSnapshotSubstrate(handleOf(e)),
+    capture: (e: SessionEntry): CaptureSubstrate => new IosCaptureSubstrate(handleOf(e), deps.save),
+    target: (e: SessionEntry): TargetSubstrate => new IosTargetSubstrate(handleOf(e)),
     network: (): NetworkSubstrate => new NoProtocolNetworkSubstrate("ios-app", NO_NETWORK),
     storage: (): StorageSubstrate => iosStorageSubstrate(),
     script: (): ScriptSubstrate => new IosScriptSubstrate(),

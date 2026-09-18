@@ -8,7 +8,7 @@
 // (the port in `action-substrate-types.ts`) → this implementation → the native
 // driver. This file never imports back from the `action-substrate.js` barrel.
 
-import type { NativeSessionHandle } from "../engine/native-types.js";
+import type { IosNativeHandle } from "../engine/native-types.js";
 import type { ActionResult } from "./actionresult-types.js";
 import type { ActionSubstrate } from "./action-substrate-types.js";
 import type * as actions from "./actions-types.js";
@@ -30,7 +30,7 @@ export class IosActionSubstrate implements ActionSubstrate {
   private readonly deps: IosActionDeps;
 
   constructor(
-    private readonly handle: NativeSessionHandle,
+    private readonly handle: IosNativeHandle,
     elements: ElementSubstrate,
   ) {
     this.deps = { handle, elements };
