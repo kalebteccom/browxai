@@ -72,10 +72,6 @@ export function bootArgs(udid: string): readonly string[] {
   return ["simctl", "boot", udid];
 }
 
-export function shutdownArgs(udid: string): readonly string[] {
-  return ["simctl", "shutdown", udid];
-}
-
 /** `simctl bootstatus -b` blocks until the device finishes booting, which is the
  *  difference between "the boot command returned" and "SpringBoard is up". */
 export function bootStatusArgs(udid: string): readonly string[] {
@@ -84,10 +80,6 @@ export function bootStatusArgs(udid: string): readonly string[] {
 
 export function installArgs(udid: string, appPath: string): readonly string[] {
   return ["simctl", "install", udid, appPath];
-}
-
-export function uninstallArgs(udid: string, bundleId: string): readonly string[] {
-  return ["simctl", "uninstall", udid, bundleId];
 }
 
 export function launchArgs(udid: string, bundleId: string): readonly string[] {
@@ -104,14 +96,6 @@ export function listAppsArgs(udid: string): readonly string[] {
 
 export function openUrlArgs(udid: string, url: string): readonly string[] {
   return ["simctl", "openurl", udid, url];
-}
-
-export function privacyGrantArgs(
-  udid: string,
-  service: string,
-  bundleId: string,
-): readonly string[] {
-  return ["simctl", "privacy", udid, "grant", service, bundleId];
 }
 
 /** `simctl io <udid> screenshot <path>`. simctl writes screenshots to a FILE —

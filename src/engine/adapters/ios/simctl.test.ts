@@ -19,7 +19,6 @@ import {
   parseDevices,
   parseInstalledApps,
   parseLaunchPid,
-  privacyGrantArgs,
   runtimeLabel,
   screenshotArgs,
   selectDevice,
@@ -95,7 +94,6 @@ describe("simctl argv construction", () => {
       bootStatusArgs("U"),
       installArgs("U", "/tmp/a b/My.app"),
       terminateArgs("U", "com.x"),
-      privacyGrantArgs("U", "camera", "com.x"),
       screenshotArgs("U", "/tmp/a b/s.png"),
     ]) {
       expect(argv.every((a) => typeof a === "string")).toBe(true);

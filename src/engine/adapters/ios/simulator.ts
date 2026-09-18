@@ -1,13 +1,19 @@
 // Simulator and application lifecycle for the ios-app engine — the layer that
 // runs the pure `simctl.ts` argv builders in order and parses what comes back:
-// boot then wait for boot to finish, install, launch, terminate, shut down,
-// screenshot, open a deep link, grant a privacy permission.
+// boot then wait for boot to finish, install, launch, terminate, list apps,
+// screenshot, open a deep link.
+//
+// Shutdown, uninstall and `simctl privacy grant` are ABSENT, and deliberately.
+// Each is one argv line away, and none has a caller: a session does not shut down
+// a device it may not have booted, and `grant_permissions` / `app_reset` are RFC
+// 0008 tool registrations that have not landed. A method no caller reaches is the
+// speculative generality architecture-principles.md §4a forbids; the commit that
+// adds the tool adds its argv builder with it.
 //
 // It is a class only because every call needs the same two things (the runner and
-// the device id) and threading both through eight free functions reads worse. It
+// the device id) and threading both through seven free functions reads worse. It
 // holds no simulator state of its own: every method asks simctl, so a device the
-// operator shut down behind our back is reported as shut down rather than
-// remembered as booted.
+// operator shut down behind our back is reported as shut down.
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,10 +31,8 @@ import {
   parseInstalledApps,
   parseDevices,
   parseLaunchPid,
-  privacyGrantArgs,
   screenshotArgs,
   selectDevice,
-  shutdownArgs,
   terminateArgs,
   type SimctlRunner,
 } from "./simctl.js";
@@ -72,12 +76,6 @@ export class IosSimulator {
     await this.run(bootStatusArgs(this.udid));
   }
 
-  /** Shut the device down. Best-effort by contract — teardown never fails a
-   *  session over a simulator that was already gone. */
-  async shutdown(): Promise<void> {
-    await this.run(shutdownArgs(this.udid)).catch(() => "");
-  }
-
   /** Install a `.app` bundle. The path is an argv element, never interpolated. */
   async install(appPath: string): Promise<void> {
     await this.run(installArgs(this.udid, appPath));
@@ -103,12 +101,6 @@ export class IosSimulator {
   /** Open a URL scheme — the deep-link form of `navigate` (RFC 0008 §2). */
   async openUrl(url: string): Promise<void> {
     await this.run(openUrlArgs(this.udid, url));
-  }
-
-  /** Grant a privacy permission on the app's behalf. Reaches a sandbox on a
-   *  simulator; the `native-device` capability is what gates it. */
-  async grantPrivacy(service: string, bundleId: string): Promise<void> {
-    await this.run(privacyGrantArgs(this.udid, service, bundleId));
   }
 
   /** A full-screen PNG. simctl writes screenshots to a file rather than stdout,
