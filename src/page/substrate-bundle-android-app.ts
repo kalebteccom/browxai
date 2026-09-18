@@ -31,7 +31,7 @@ import type { SubstrateBundle, SubstrateDeps } from "../engine/registry.js";
 // Through the engine BARREL, never the adapter module: `no-page-handler-to-
 // engine-adapter-or-transport` keeps `src/page/**` off `src/engine/adapters/**`,
 // and the Safari bundle reaches `SafariSessionHandle` the same way.
-import type { NativeSessionHandle } from "../engine/index.js";
+import type { AndroidNativeHandle } from "../engine/index.js";
 import type { ActionSubstrate } from "./action-substrate-types.js";
 import type { CaptureSubstrate } from "./capture-substrate-types.js";
 import type { ElementSubstrate } from "./element-substrate-types.js";
@@ -75,7 +75,12 @@ function unsupportedPort<T extends object>(port: string): T {
  *  `save` sink for `screenshot({path})`, which keeps every write workspace-rooted
  *  through the same chokepoint the Playwright bundle uses. */
 export function androidAppSubstrateBundle(deps: SubstrateDeps): SubstrateBundle {
-  const handleOf = (e: SessionEntry): NativeSessionHandle => e.session.native!();
+  // `BrowserSession.native()` is one member serving both native engines, so the
+  // engine's own bundle narrows it to the handle that engine built. Same shape as
+  // the Safari bundle's `e.session.safari!()`, and reached only from a bundle the
+  // registry hands out for THIS engine.
+  const handleOf = (e: SessionEntry): AndroidNativeHandle =>
+    e.session.native!() as AndroidNativeHandle;
   /** One element adapter per session, named once because three bundle entries
    *  want it: the port itself, the action substrate's re-resolution, and the
    *  capture adapter's crop bounds. Minting it three times would be three objects

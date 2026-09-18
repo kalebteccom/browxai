@@ -13,10 +13,9 @@
 // view-hierarchy source and the app under test.
 
 import type { AndroidDevice } from "../engine/adapters/android-app/device.js";
-import type {
-  NativeAppTarget,
-  NativeSessionHandle,
-} from "../engine/adapters/android-app/handle.js";
+import type { AndroidNativeHandle } from "../engine/adapters/android-app/handle.js";
+import { AndroidLifecycle } from "../engine/adapters/android-app/lifecycle.js";
+import type { NativeAppTarget } from "../engine/native-types.js";
 import { NativeScreen } from "../page/native-screen.js";
 import type { BrowserSession } from "./types.js";
 
@@ -25,10 +24,13 @@ export function buildNativeHandle(
   device: AndroidDevice,
   app: NativeAppTarget | undefined,
   release: () => Promise<void>,
-): NativeSessionHandle {
-  const handle: NativeSessionHandle = {
+): AndroidNativeHandle {
+  const handle: AndroidNativeHandle = {
+    engine: "android-app",
     platform: "android",
+    deviceId: device.serial,
     device,
+    lifecycle: new AndroidLifecycle(device),
     // One screen per session, shared by all five substrates, so one action costs
     // one `uiautomator dump` rather than one per substrate that wants to look.
     screen: new NativeScreen({ dump: () => device.dumpHierarchy() }),
@@ -43,7 +45,7 @@ export function buildNativeHandle(
  *  managed browser session owns its profile. It does NOT mean browxai launched
  *  the emulator: `device_boot` does that, as its own tool, and closing a session
  *  never shuts a device down. */
-export function buildNativeSession(handle: NativeSessionHandle): BrowserSession {
+export function buildNativeSession(handle: AndroidNativeHandle): BrowserSession {
   return {
     mode: "managed",
     // The device outlives the session. `close()` releases the lease; it does not

@@ -22,15 +22,18 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // events), non-BYOB isolated automation windows. It has NO Playwright Page and NO
 // CDP, so its session is Safari-native and drives the engine entirely through the
 // no-Playwright-Page seam.
-// `android-app` is the FIRST non-browser engine: a React Native app on an Android
-// emulator, driven over adb's UiAutomator dump and input pipeline (RFC 0008 P2).
-// It is a DISTINCT kind from `android`, which keeps its meaning — real Chrome on
-// a real phone over adb + CDP, `deep: true`, every tool works. Two names that both
-// say "android" is a documentation cost, and renaming a shipped engine kind would
-// be a breaking config change, so the NEW kind takes the qualifier. Like safari it
-// has no Playwright `Page`; unlike safari it has no DOM, no URL and no document,
-// which is why RFC 0009 had to land first.
-export type EngineKind = "chromium" | "firefox" | "webkit" | "android" | "safari" | "android-app";
+// The native-app engines take an `-app` qualifier. `ios-app` drives the iOS
+// Simulator's XCUITest element hierarchy over `xcrun simctl` for lifecycle and an
+// XCUITest driver for reads and input; `android-app` drives an Android emulator
+// over adb's UiAutomator dump and input pipeline (RFC 0008). Neither has a
+// Playwright `Page`, CDP, a DOM, a URL or a document, which is why RFC 0009 had
+// to land first. Both are DISTINCT from `android`, which keeps its meaning — real
+// Chrome on a real phone over adb + CDP, `deep: true`, every tool works. Two
+// kinds that both say "android" is a documentation cost, and renaming a shipped
+// engine kind would be a breaking config change, so the NEW kinds take the
+// qualifier.
+export type EngineKind =
+  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -38,6 +41,7 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
+  "ios-app",
   "android-app",
 ];
 

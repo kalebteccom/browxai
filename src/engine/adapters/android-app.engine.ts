@@ -1,8 +1,9 @@
-// Android-app engine registration (RFC 0008 P2) — the first NON-BROWSER engine.
+// Android-app engine registration (RFC 0008) — one of the two native engines,
+// alongside `ios-app`.
 //
-// It is the sixth `registerEngine(...)` call and it required no edit to any
-// session factory, to `session-registry.ts` or to `host-build.ts`, which is the
-// open-closed claim `ocp-engine-contract` exists to prove. What it did require
+// It is a `registerEngine(...)` call like every other and it required no edit to
+// any session factory, to `session-registry.ts` or to `host-build.ts`, which is
+// the open-closed claim `ocp-engine-contract` exists to prove. What it did require
 // was RFC 0009: an engine with no `Page`, no DOM, no URL and no `Locator` can
 // only work once `TargetSubstrate`, `ElementSubstrate` and the capture widening
 // exist, and they do.
@@ -130,6 +131,12 @@ async function makeAndroidAppAdapter(opts: SessionOptions): Promise<BrowserSessi
 registerEngine({
   kind: "android-app",
   capabilities: capabilitiesFor("android-app")!,
+  // Off by default and loud-warned. The gate sits at SESSION CREATION rather than
+  // per tool, so no native tool can be reached around it: this engine installs and
+  // launches applications, drives an OS-level input pipeline every app on the
+  // device receives, and photographs the screen, and the same code path aimed at
+  // a real handset reaches the operator's phone (RFC 0008 §8).
+  requiresCapability: "native-device",
   makeAdapter: makeAndroidAppAdapter,
   makeSubstrates: (deps) => androidAppSubstrateBundle(deps),
   // Nothing to wire. The Playwright engines attach console, bridge, policy,

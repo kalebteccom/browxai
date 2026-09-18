@@ -10,6 +10,21 @@ export type {
   EngineLaunchHandles,
 } from "./types.js";
 export { ENGINE_KINDS } from "./types.js";
+export { nativeScopeUrl } from "./native-types.js";
+export type {
+  IosNativeHandle,
+  NativeAppInfo,
+  NativeAppTarget,
+  NativeDeviceInfo,
+  NativeDriver,
+  NativeLifecycle,
+  NativeNode,
+  NativePlatform,
+  NativePoint,
+  NativeRect,
+  NativeSessionHandle,
+} from "./native-types.js";
+export { NativeUnsupportedError } from "./native-types.js";
 export {
   resolveBrowserType,
   EngineNotYetSupportedError,
@@ -25,6 +40,7 @@ export {
   WEBKIT_CAPABILITIES,
   ANDROID_CAPABILITIES,
   SAFARI_CAPABILITIES,
+  IOS_APP_CAPABILITIES,
   ANDROID_APP_CAPABILITIES,
 } from "./capabilities.js";
 export { requireCdp, type CdpCapable } from "./session-cdp.js";
@@ -85,7 +101,7 @@ export {
   defaultDeviceIO,
 } from "./adapters/android-app/device.js";
 export type { AndroidDeviceIO } from "./adapters/android-app/device.js";
-export type { NativeAppTarget, NativeSessionHandle } from "./adapters/android-app/handle.js";
+export type { AndroidNativeHandle } from "./adapters/android-app/handle.js";
 export {
   AndroidEmulatorAdapter,
   type AndroidEmulatorDeps,

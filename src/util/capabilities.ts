@@ -329,7 +329,7 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
   {
     capability: "native-device",
     message:
-      "native-device capability is ENABLED — the `android-app` engine drives an Android emulator over adb. This broadens posture more than any browser capability does: it INSTALLS AND LAUNCHES APPLICATIONS (`app_install` / `app_launch`), drives an OS-LEVEL INPUT PIPELINE that every app on the device receives, boots and shuts down emulators, and reads the device's package list. `open_session({browserType:\"android-app\"})` refuses without it, so the gate sits at session creation and no native tool can be reached around it. On an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator's phone, and real devices are out of scope only by policy, not by mechanism — an `adb devices` entry is an `adb devices` entry. Registered secrets do NOT materialise on this engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text`. A recorded native session still carries real app content in its screenshots. The Android SDK is OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See docs/threat-model.md.",
+      'native-device capability is ENABLED — it gates the two native ENGINES, `ios-app` (an iOS Simulator over `simctl` plus an operator-run WebDriverAgent) and `android-app` (an Android emulator over adb). They broaden posture more than any browser capability does: both INSTALL AND LAUNCH APPLICATIONS, drive an OS-LEVEL INPUT PIPELINE that every app on the device receives, boot and shut down simulators and emulators, and read the device\'s screen and its installed-app list. `open_session({browserType:"ios-app"})` and `open_session({browserType:"android-app"})` both refuse with `capability-required` without it, so the gate sits at session creation and no native tool can be reached around it. On a simulator or an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator\'s phone, and real devices are out of scope by policy, not by mechanism. Registered secrets do NOT materialise on either native engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text` — the leak sink RFC 0008 §6 names. Recordings still carry real app content: a native screenshot photographs the screen, and the iOS keyboard draws a character-preview bubble above the pressed key that a recording catches even for a password field. Xcode with its Simulator runtimes, and the Android SDK, are OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See docs/threat-model.md.',
   },
   {
     capability: "captcha",
@@ -389,6 +389,17 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
     if (!enabled.has(cap)) disabledTools.push({ tool, capability: cap });
   }
   return { enabled, disabledTools, warnings };
+}
+
+/** Whether `capability` is NOT in the active set.
+ *
+ *  It exists so a caller outside the gate's home files can ask the question
+ *  without spelling `caps.enabled.has(...)` itself, which the
+ *  `no-inlined-capability-checks` lint rule forbids for good reason: a scattered
+ *  gate is a scattered audit surface. The engine-level gate in the session
+ *  factory (`EngineEntry.requiresCapability`) is the caller this was added for. */
+export function capabilityMissing(capability: Capability, caps: CapabilityConfig): boolean {
+  return !caps.enabled.has(capability);
 }
 
 /** Returns true iff the tool is enabled given the active capability set. */

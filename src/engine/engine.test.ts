@@ -14,30 +14,33 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the six engines (safari and android-app are declared)", () => {
+  it("commits to the seven engines (safari and the two native engines declared)", () => {
     expect(ENGINE_KINDS).toEqual([
       "chromium",
       "firefox",
       "webkit",
       "android",
       "safari",
+      "ios-app",
       "android-app",
     ]);
   });
 
-  it("wires all six engines including safari and android-app", () => {
+  it("wires all seven engines including safari and both native engines", () => {
     // safari is the first non-Playwright engine: driven over safaridriver, no
     // Playwright Page, reachable via `--engine safari` / BROWX_ENGINE=safari
-    // through the no-Playwright-Page session seam. `android-app` (RFC 0008 P2)
-    // is the first NON-BROWSER engine: a React Native app on an emulator over
-    // adb, gated behind the off-by-default `native-device` capability at session
-    // creation.
+    // through the no-Playwright-Page session seam. `ios-app` and `android-app`
+    // (RFC 0008) are the NON-BROWSER engines, with no document at all: an app on
+    // the iOS Simulator over XCUITest and an app on an Android emulator over adb.
+    // Both are gated behind the off-by-default `native-device` capability at
+    // session creation.
     expect(IMPLEMENTED_ENGINES).toEqual([
       "chromium",
       "firefox",
       "webkit",
       "android",
       "safari",
+      "ios-app",
       "android-app",
     ]);
   });

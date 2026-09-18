@@ -1,38 +1,27 @@
-// The native session handle — RFC 0008 §1 item 4, which RFC 0009 left standing:
-// `native?(): NativeSessionHandle` on `BrowserSession`, mirroring `safari?()`.
+// The android-app session handle — the ADAPTER-INTERNAL extension of the shared
+// `NativeSessionHandle` (`src/engine/native-types.ts`).
 //
-// The pattern is the one RFC 0009 settled on for every engine: no engine promises
-// a handle it lacks, and each reaches its own concrete world through an optional,
-// engine-named accessor. A native substrate reads `e.session.native!()` exactly
-// as the Safari bundle reads `e.session.safari!()`.
+// The shared handle carries what both native engines genuinely have: the
+// platform, the device the session is leased to, the app under test and the
+// app-lifecycle seam. What it does NOT carry is a transport member, because the
+// two engines' transports are not two spellings of one thing — iOS reads its
+// screen through a `NativeDriver` over WebDriverAgent, and this engine reads its
+// screen through a shared `NativeScreen` over `uiautomator dump`. So each adapter
+// extends the shared shape with its own, and its own substrate bundle is the only
+// reader of the extension.
 //
-// `platform` is on the handle rather than derived from the engine kind because
-// P4's `ios-app` shares this shape: a simulator handle carries the same screen
-// and the same lifecycle verbs over a different transport, and the substrates
-// above it should not need a second switch to find that out.
+// `screen` is shared across the bundle on purpose: every substrate reads through
+// it, so one action costs one `uiautomator dump` and not one per substrate.
 
+import type { NativeSessionHandle } from "../../native-types.js";
 import type { NativeScreen } from "../../../page/native-screen.js";
 import type { AndroidDevice } from "./device.js";
 
-/** The app under test, as named at session open. */
-export interface NativeAppTarget {
-  /** The package id, e.g. `com.acme.app`. */
-  appId: string;
-  /** The activity the last launch resolved to, when one has been launched. */
-  activity?: string;
-}
-
-/** The native-engine escape hatch. Present ONLY on a native session. */
-export interface NativeSessionHandle {
-  /** Which native platform this is. `ios-app` (RFC 0008 P4) reuses the shape. */
+/** The android-app engine's session handle. */
+export interface AndroidNativeHandle extends NativeSessionHandle {
   readonly platform: "android";
   /** The device or emulator this session is leased to. */
   readonly device: AndroidDevice;
-  /** The shared view-hierarchy source. Every substrate reads through it, so one
-   *  action costs one `uiautomator dump` and not one per substrate. */
+  /** The shared view-hierarchy source. */
   readonly screen: NativeScreen;
-  /** The app under test. Mutable across the session because `app_launch` can
-   *  point a session at a different app without reopening it. */
-  app: NativeAppTarget | undefined;
-  close(): Promise<void>;
 }

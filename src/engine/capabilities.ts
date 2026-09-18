@@ -122,6 +122,42 @@ export const SAFARI_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** ios-app (the iOS Simulator over XCUITest — the FIRST native-app engine, and the
+ *  first with no document at all). A curated SUBSET, and each omission is a thing
+ *  the platform genuinely does not have rather than a thing not written yet:
+ *
+ *  DECLARED. `lifecycle` (boot / install / launch / terminate over `simctl`),
+ *  `navigation` (deep links — `simctl openurl`; there is no address bar and no
+ *  history stack), `snapshot` (the XCUITest accessibility hierarchy, which is
+ *  richer than a DOM walk), `input` (tap, element-scoped set-value, key input,
+ *  scroll, and swipe and pinch as real XCUITest primitives), `capture`
+ *  (`simctl io screenshot`) and `element` — the native engines are what RFC 0009
+ *  P2 split `element` from `page` FOR, and the verify family runs here.
+ *
+ *  OMITTED. `page`: there is no Playwright `Page`, no document and no frame tree.
+ *  `network`: there is no protocol-level tap on a native app without a system
+ *  proxy or a VPN profile, and installing either is the operator's decision.
+ *  `storage`: cookies / localStorage / IndexedDB / the Cache API are
+ *  document-scoped web-platform stores. `script`: a release-configuration app has
+ *  no scriptable context, and reaching into a development bridge would be a
+ *  different trust posture. `emulation`: geolocation, appearance and reduced
+ *  motion are DEVICE settings that outlive the session, not per-session overrides.
+ *
+ *  `deep: false` — no CDP — gates the CDP-deep tools through the existing
+ *  `caps.deep` gate with no per-engine edit. */
+export const IOS_APP_CAPABILITIES: EngineCapabilities = {
+  engine: "ios-app",
+  subInterfaces: new Set<EngineSubInterface>([
+    "lifecycle",
+    "navigation",
+    "snapshot",
+    "input",
+    "capture",
+    "element",
+  ]),
+  deep: false,
+};
+
 /** Android-app (a React Native app on an emulator, over adb — RFC 0008 P2). The
  *  first NON-BROWSER engine, and its subset is smaller than Safari's for reasons
  *  that are facts about the platform rather than gaps in the adapter:
@@ -171,6 +207,7 @@ const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   webkit: WEBKIT_CAPABILITIES,
   android: ANDROID_CAPABILITIES,
   safari: SAFARI_CAPABILITIES,
+  "ios-app": IOS_APP_CAPABILITIES,
   "android-app": ANDROID_APP_CAPABILITIES,
 };
 

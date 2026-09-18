@@ -288,7 +288,7 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
       expect(pressed.ok).toBe(true);
       const fg = await callJson<{
         ok: boolean;
-        foreground: { packageName: string } | null;
+        foreground: { appId: string; activity?: string } | null;
         url: string;
       }>("app_foreground", { session });
       expect(fg.ok).toBe(true);
@@ -385,12 +385,14 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
     async () => {
       const session = "native-flow";
       await callJson("open_session", { session });
-      const body = await callJson<{ ok: boolean; apps: string[]; serial: string }>("app_list", {
+      const body = await callJson<{ ok: boolean; apps: string[]; device: string }>("app_list", {
         session,
       });
       expect(body.ok).toBe(true);
       expect(Array.isArray(body.apps)).toBe(true);
-      expect(body.serial.length).toBeGreaterThan(0);
+      // `device`, not `serial`: one lifecycle surface serves both native engines
+      // and an iOS udid is not a serial.
+      expect(body.device.length).toBeGreaterThan(0);
     },
     KEYSTONE_TIMEOUT,
   );

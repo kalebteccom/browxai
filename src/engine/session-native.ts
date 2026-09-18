@@ -12,11 +12,13 @@
 // `no-engine-literal-branches` forbids) or a bare `native!()` that erases to
 // `undefined()` and an opaque `TypeError` on any other engine.
 //
-// The refusal is REACHED. Every other engine's session omits the member, so a
+// The refusal is REACHED. Every other engine's session omits the member, so an
 // `app_launch` call on a chromium session lands here and gets a sentence that
-// says what to do instead.
+// says what to do instead. A native session HAS the member, and a verb its
+// platform lacks refuses one layer down, from `NativeLifecycle`, with
+// `NativeUnsupportedError` naming the engine and the missing primitive.
 
-import type { NativeSessionHandle } from "./adapters/android-app/handle.js";
+import type { NativeSessionHandle } from "./native-types.js";
 
 /** A session shape carrying the optional native accessor plus its engine tag.
  *  The full `BrowserSession` satisfies this; the narrow shape keeps this module
@@ -38,8 +40,8 @@ export function requireNative(session: NativeCapable): NativeSessionHandle {
       `${NATIVE_ENGINE_REQUIRED}: engine "${session.engine}" is not a native engine, and this ` +
         "tool drives a device. Device and app lifecycle have no browser analogue — there is no " +
         "package to launch and no foreground app to report. Open a native session with " +
-        '`open_session({browserType:"android-app"})`, which needs the off-by-default ' +
-        "`native-device` capability.",
+        '`open_session({browserType:"ios-app"})` or `open_session({browserType:"android-app"})`, ' +
+        "either of which needs the off-by-default `native-device` capability.",
     );
   }
   return session.native();

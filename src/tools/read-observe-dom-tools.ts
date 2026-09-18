@@ -259,7 +259,7 @@ export function registerReadObserveDomTools(host: ToolHost): void {
             // a candidate hint against the live DOM, and find ranks from the
             // substrate tree alone. Keyed on the DECLARATION (RFC 0004 D5), not on
             // the presence of a rival engine's handle: `s.safari ? …` said "is this
-            // the one no-Page engine I know about", which a sixth engine would
+            // the one no-Page engine I know about", which another engine would
             // silently fail. `find` degrades here rather than refusing, so it reads
             // the declaration directly instead of going through `subInterfaceGate`.
             //

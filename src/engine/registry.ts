@@ -6,8 +6,8 @@
 // branch survives above the seam.
 //
 // This realizes architecture-principles §4 ("new engine = new adapter behind the
-// existing port"): a sixth engine is a sixth `registerEngine(...)` call in a new
-// file, with no edit to managed.ts / incognito.ts / byob.ts / session-registry.ts
+// existing port"): an eighth engine is an eighth `registerEngine(...)` call in a
+// new file, with no edit to managed.ts / incognito.ts / byob.ts / session-registry.ts
 // / host-build.ts. The strangler-fig discipline (RFC 0004 §1.2): the registry is
 // a pure indirection over the SAME adapter instances + the SAME post-wire steps
 // the if-chains drove, so each engine's observable session is byte-identical —
@@ -110,6 +110,18 @@ export interface EngineEntry {
    *  `capabilitiesFor(kind)`; the registry makes the adapter the owner of its
    *  own row, not a central table. */
   readonly capabilities: EngineCapabilities;
+  /** An operator capability that must be granted before this engine can open a
+   *  session AT ALL. Absent (every browser engine) means the default capability
+   *  set covers it.
+   *
+   *  It is engine-level rather than per-tool because the posture broadening is
+   *  the SESSION, not any one call: RFC 0008's native engines install and launch
+   *  applications, drive an OS-level input pipeline and photograph the screen
+   *  before a single tool runs. A per-tool gate would have to be repeated on
+   *  every tool the engine serves and would still leave session creation itself
+   *  ungated. Declared here so a new engine gets the gate by registering, with no
+   *  edit to the session factory. */
+  readonly requiresCapability?: Capability;
   /** Launch + return the lifecycle session for one of the session modes. Subsumes
    *  the per-engine launch/attach branching the three session factories carried;
    *  the factories keep only their MODE concern (the launch mode is threaded
@@ -143,7 +155,7 @@ export interface EngineEntry {
 const REGISTRY = new Map<EngineKind, EngineEntry>();
 
 /** Add-only registration. Called once per adapter-registration module at module
- *  load. A sixth engine is a sixth `registerEngine(...)` call in a new file — no
+ *  load. An eighth engine is an eighth `registerEngine(...)` call in a new file — no
  *  edit here. Re-registering an engine is a programming error, surfaced loudly so
  *  a duplicate (e.g. a double-imported barrel) never silently shadows. */
 export function registerEngine(def: EngineEntry): void {
@@ -209,19 +221,24 @@ export function engineIsAttachOnly(kind: EngineKind): boolean {
   return kind === "android";
 }
 
-/** The off-by-default capability an engine needs before a session on it may
- *  open, or undefined when the engine broadens nothing.
+/** The off-by-default operator capability an engine needs before a session on it
+ *  may open, or undefined when the engine broadens nothing. Read from the
+ *  engine's own `EngineEntry.requiresCapability`, so the gate is data-driven: an
+ *  engine declares its requirement at registration and no session-layer edit
+ *  follows. Non-throwing for an unregistered engine — the factory's own
+ *  `engineEntry` lookup reports that.
  *
- *  `android-app` needs `native-device` (RFC 0008 §8): it installs and launches
- *  applications, drives an OS-level input pipeline every app on the device
- *  receives, and boots and shuts down emulators. The gate sits at SESSION
- *  CREATION rather than per-tool, which is what makes it un-reachable-around —
- *  no native tool exists that does not first need a native session.
+ *  Both native engines declare `native-device` (RFC 0008 §8): they install and
+ *  launch applications, drive an OS-level input pipeline every app on the device
+ *  receives, and boot and shut down simulators/emulators. The gate sits at
+ *  SESSION CREATION rather than per-tool, which is what makes it
+ *  un-reachable-around — no native tool exists that does not first need a native
+ *  session.
  *
  *  It lives here for the same reason `engineIsAttachOnly` does: the session
- *  factory consults it generically, so the one engine-specific fact is a row in
- *  the engine layer and not an `engine === "android-app"` branch in a handler,
- *  which `no-engine-literal-branches` forbids and the OCP contract tests. */
+ *  factory consults it generically, so no `engine === "<literal>"` branch reaches
+ *  a handler, which `no-engine-literal-branches` forbids and the OCP contract
+ *  tests. */
 export function engineRequiresCapability(kind: EngineKind): Capability | undefined {
-  return kind === "android-app" ? "native-device" : undefined;
+  return REGISTRY.get(kind)?.requiresCapability;
 }

@@ -60,26 +60,26 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted.
 
-| State           | Capability         | Notes                                                                                        |
-| --------------- | ------------------ | -------------------------------------------------------------------------------------------- |
-| ON by default   | `read`             | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot |
-| ON by default   | `navigation`       | navigate, go_back, go_forward, reload                                                        |
-| ON by default   | `action`           | click, fill, select, drag, scroll, hover, press, wait_for                                    |
-| ON by default   | `human`            | confirmation hooks, await_human                                                              |
-| OFF + loud-warn | `eval`             | `eval_js`, `poll_eval` — arbitrary JS in page context                                        |
-| OFF + loud-warn | `network-body`     | full response bodies + interception                                                          |
-| OFF + loud-warn | `byob-attach`      | attach to user's existing Chrome (no managed profile)                                        |
-| OFF + loud-warn | `clipboard`        | OS clipboard read/write                                                                      |
-| OFF + loud-warn | `file-io`          | `upload_file`, downloads to workspace                                                        |
-| OFF + loud-warn | `secrets`          | `register_secret`, secret materialization at egress                                          |
-| OFF + loud-warn | `extensions`       | install/inspect Chrome extensions                                                            |
-| OFF + loud-warn | `stealth`          | anti-fingerprint posture tweaks                                                              |
-| OFF + loud-warn | `captcha`          | captcha solver glue                                                                          |
-| OFF + loud-warn | `device-emulation` | viewport / UA / geolocation overrides beyond defaults                                        |
-| OFF + loud-warn | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                             |
-| OFF + loud-warn | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                |
-| OFF + loud-warn | `replay`           | `.browx` session-replay artifact capture (DOM stream + network + console)                    |
-| OFF + loud-warn | `native-device`    | the `android-app` engine: installs/launches apps, drives an OS-level input pipeline over adb |
+| State           | Capability         | Notes                                                                                         |
+| --------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| ON by default   | `read`             | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot  |
+| ON by default   | `navigation`       | navigate, go_back, go_forward, reload                                                         |
+| ON by default   | `action`           | click, fill, select, drag, scroll, hover, press, wait_for                                     |
+| ON by default   | `human`            | confirmation hooks, await_human                                                               |
+| OFF + loud-warn | `eval`             | `eval_js`, `poll_eval` — arbitrary JS in page context                                         |
+| OFF + loud-warn | `network-body`     | full response bodies + interception                                                           |
+| OFF + loud-warn | `byob-attach`      | attach to user's existing Chrome (no managed profile)                                         |
+| OFF + loud-warn | `clipboard`        | OS clipboard read/write                                                                       |
+| OFF + loud-warn | `file-io`          | `upload_file`, downloads to workspace                                                         |
+| OFF + loud-warn | `secrets`          | `register_secret`, secret materialization at egress                                           |
+| OFF + loud-warn | `extensions`       | install/inspect Chrome extensions                                                             |
+| OFF + loud-warn | `stealth`          | anti-fingerprint posture tweaks                                                               |
+| OFF + loud-warn | `captcha`          | captcha solver glue                                                                           |
+| OFF + loud-warn | `device-emulation` | viewport / UA / geolocation overrides beyond defaults                                         |
+| OFF + loud-warn | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                              |
+| OFF + loud-warn | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                 |
+| OFF + loud-warn | `replay`           | `.browx` session-replay artifact capture (DOM stream + network + console)                     |
+| OFF + loud-warn | `native-device`    | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

@@ -10,54 +10,87 @@ surface" covers.
 
 ### Added
 
-- **`android-app`: browxai drives native Android apps, with the same tools, the
-  same refs and the same evidence format it uses for browsers** (RFC 0008 P2).
-  A sixth engine, and the first that is not a browser: a React Native app on an
-  Android emulator, driven over `adb`. It has no Playwright `Page`, no DOM, no
-  URL and no `Locator` — which is why RFC 0009 had to land first — and it needed
-  no edit to any session factory, to `session-registry.ts` or to `host-build.ts`.
+- **Two native engines: `ios-app` and `android-app`. browxai drives native
+  mobile apps with the same tools, the same refs and the same evidence format it
+  uses for browsers** (RFC 0008). `ios-app` boots an iOS Simulator, launches an
+  app and reads its XCUITest accessibility hierarchy; `android-app` leases an
+  Android emulator and reads its UiAutomator view hierarchy over `adb`. Neither
+  is a browser: no Playwright `Page`, no DOM, no URL and no `Locator` — which is
+  why RFC 0009 had to land first — and neither needed an edit to any session
+  factory, to `session-registry.ts` or to `host-build.ts`. Each is one new
+  adapter and one `registerEngine(...)` call.
 
-  **The point is that nothing new was invented.** The UiAutomator view hierarchy
-  composes into the `A11yNode` tree `snapshot` already returns, with the same
+  **The point is that nothing new was invented.** Both hierarchies compose into
+  the `A11yNode` tree `snapshot` and `find` already return, with the same
   `[ref=eN]` refs, so `find`'s ranking never learns the difference and one CI
   verifier reads a native session and a web session the same way. `click` is a
-  tap, `press` reaches the hardware keys (`back`, `home`, `appswitch`), `scroll`
-  and `gesture_swipe` are the platform's own primitives, `screenshot` is
-  `screencap`, and the `verify_*` family runs through `ElementSubstrate`.
+  tap, `fill` types into the field, `press` reaches the hardware keys, `scroll`
+  and `gesture_swipe` are platform primitives, `screenshot` is `simctl io
+  screenshot` / `screencap`, and the `verify_*` family runs through
+  `ElementSubstrate` — which is what RFC 0009 P2 split `element` from `page` for.
+  `gesture_pinch` is a real XCUITest primitive on iOS; on Android it refuses,
+  because `adb shell input` has no two-finger primitive and every way to fake one
+  reports a pinch the app never received.
 
-  **testID over positional refs.** A ref minted on a node carrying a `testID`
-  (Android: the view's `resource-id`) is anchored on the testID, not the
-  structural path, so it survives a layout change that moves the node. Without a
-  testID the full path key applies and the ref is snapshot-local, which is the
-  honest status of an unlabelled element — and `snapshot` warns, naming the
-  count, so a thin-on-testIDs app becomes a fixable list for its team. **Every
+  **The accessibility identifier is the tier-1 selector, not a position.** A node
+  carrying one — iOS's `accessibilityIdentifier`, Android's `resource-id`, both
+  of which a React Native `testID` compiles to — is keyed WITHOUT its structural
+  path, so its ref survives a layout change that moves it. A node without one is
+  keyed on its path and its ref is snapshot-local: move it and the old ref reports
+  `stale-element` rather than resolving to whatever now occupies its rectangle.
+  On Android, `snapshot` warns when an app is thin on testIDs, naming the count,
+  so a degraded selector model becomes a fixable list for the app team. **Every
   action re-resolves before it dispatches**: a fresh hierarchy read, in the same
   call, never a replayed coordinate. **An ambiguous query refuses**, taps nothing
   and reports the count.
 
   **Ten new tools for device and app lifecycle**, which browxai had no analogue
   for: `device_list` / `device_boot` / `device_shutdown`, and `app_list` /
-  `app_install` / `app_uninstall` / `app_launch` / `app_terminate` / `app_reset`
-  / `app_foreground`.
+  `app_install` / `app_uninstall` / `app_launch` / `app_terminate` /
+  `app_reset` / `app_foreground`. **One surface over both engines**: each `app_*`
+  verb routes through a `NativeLifecycle` seam on the session handle, which the
+  adapter implements over `adb` or `simctl`. A verb the platform has no primitive
+  for REFUSES, naming the engine and what is missing — `app_uninstall` and
+  `app_reset` do that on `ios-app`, because `simctl uninstall` would remove an app
+  from a device the session leases rather than owns and iOS has no per-app data
+  clear at all (`simctl erase` wipes every app). A structural refusal is the point:
+  `app_reset` answering `ok:true` having cleared nothing is the plausible-empty the
+  sub-interface gate exists to catch, one layer down. `device_list` reports iOS
+  simulators alongside adb devices; `device_boot` and `device_shutdown` stay
+  adb/AVD-scoped, because an `ios-app` session boots the simulator it resolves at
+  session creation and never shuts one down. The iOS session's own device and app
+  still come from `BROWX_IOS_DEVICE` / `BROWX_IOS_APP_ID` / `BROWX_IOS_APP_PATH`.
 
   **Behind the new off-by-default `native-device` capability**, gated at SESSION
-  CREATION — every native tool needs a native session first, so one check closes
-  the surface. It installs and launches applications and drives an OS-level input
-  pipeline, so it is the same posture class as `replay` and `network-body`. See
-  `docs/threat-model.md`.
+  CREATION for both engines — every native tool needs a native session first, so
+  one check closes the surface, and nothing is booted, installed or launched
+  before the gate runs. Installing and launching applications and driving an
+  OS-level input pipeline is the same posture class as `replay` and
+  `network-body`. See `docs/threat-model.md`.
 
-  **What refuses, and says why.** `gesture_pinch` (no two-finger primitive exists
-  in `adb shell input`, and every way to fake one reports a pinch the app never
-  received), `eval_js` / `poll_eval`, the network family, web storage,
-  `frames_list`, `pdf_save`, and the whole CDP-deep family. Registered secrets do
-  not materialise on this engine, so a `<NAME>` alias is typed literally and
-  `fill` says so — which is also why RFC 0008 §6's `adb shell input text <secret>`
-  leak sink does not exist here.
+  **No new dependency, and nothing GPL.** Xcode supplies `xcrun simctl`,
+  WebDriverAgent (Apache-2.0) supplies the XCUITest hierarchy over HTTP, and the
+  Android SDK supplies `adb` and the emulator. browxai bundles, builds and
+  fetches none of them, adds no npm package for any of them, and never creates an
+  AVD or a simulator. A missing WebDriverAgent refuses session creation with
+  `wda-unreachable` instead of degrading into an empty snapshot.
 
-  Verified end to end against a real Android 14 emulator: a fifteen-case keystone
-  drives `open_session` → `snapshot` → `find` → `click` → `press` → `screenshot`
-  → `gesture_swipe` → `app_foreground` → `app_list` through the real MCP server,
-  and asserts the refusals. It skips cleanly with no device attached.
+  **What refuses, and says why.** `eval_js` / `poll_eval` (no scriptable context
+  in a release-configuration app), the network family (no protocol-level tap
+  without a system proxy or a VPN profile, which is the operator's decision), web
+  storage, `frames_list`, `pdf_save`, and the whole CDP-deep family. Registered
+  secrets do NOT materialise on either native engine — a `<NAME>` alias is typed
+  literally — which is also why RFC 0008 §6's `adb shell input text <secret>` leak
+  sink does not exist here. Real devices are out of scope by policy, not by
+  mechanism. The full per-tool matrix and the lossy parts of each hierarchy
+  mapping are in `docs/tool-reference.md`.
+
+  `android-app` is verified end to end against a real Android 14 emulator: a
+  fifteen-case keystone drives `open_session` → `snapshot` → `find` → `click` →
+  `press` → `screenshot` → `gesture_swipe` → `app_foreground` → `app_list`
+  through the real MCP server and asserts the refusals. `ios-app` has a
+  simulator-gated keystone over a faked WebDriverAgent. Both skip cleanly with no
+  device attached.
 
 ### Changed
 
@@ -68,8 +101,6 @@ surface" covers.
   hierarchy dump fail for both — and without the id every native session claimed
   the lease under the same fallback, so a second session on one device was
   allowed through. No behaviour change on any browser engine.
-
-### Changed
 
 - **An element both snapshot tiers see is now one line with one ref, marked
   `[from-both]`.** The two tiers keyed their refs on different vocabularies —
@@ -440,25 +471,6 @@ surface" covers.
   that way: the two standalone selectors are the Playwright bundle's internals and
   only the bundles may import them.
 
-### Deprecated
-
-- **`BrowserSession.page()` is now optional and deprecated.** It promised a
-  `Page` that the safari engine cannot supply and honoured the promise by
-  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
-  as the L5 violation. Optional is a phase, not a design: it makes the compiler
-  enumerate every caller (141 errors, the number that sizes the rest of RFC
-  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
-  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
-  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
-  it and is not the migration path. Every existing caller now routes through
-  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
-  `requireCdp`: it returns the handle on an engine that has one and throws a
-  structured, engine-naming error on one that does not, instead of letting
-  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
-  engine — no adapter, no public shape and no tool response moved.
-
-### Fixed
-
 - **`export_session_report` and the network tools no longer answer "no traffic"
   for an engine that cannot watch traffic.** Real Safari has no protocol-level
   network tap, and `SafariNoopNetworkSubstrate` answered `network_read` with
@@ -613,6 +625,23 @@ surface" covers.
   `BROWXAI_SDK_UNKNOWN_TOOL`, exported alongside it: no capability can make a
   typo callable, and an unknown name is refused before any capability is
   resolved so it can never land on the permissive `human` default.
+
+### Deprecated
+
+- **`BrowserSession.page()` is now optional and deprecated.** It promised a
+  `Page` that the safari engine cannot supply and honoured the promise by
+  throwing — the present-but-unconditionally-throwing port method RFC 0004 named
+  as the L5 violation. Optional is a phase, not a design: it makes the compiler
+  enumerate every caller (141 errors, the number that sizes the rest of RFC
+  0009), and RFC 0009 P5 removes the member for `playwright?()`, an engine-named
+  escape hatch that mirrors `safari?()`. Page-availability is declared once, as
+  `caps.subInterfaces.has("page")`; `if (session.page)` is a second spelling of
+  it and is not the migration path. Every existing caller now routes through
+  `requirePage(session)` (`src/engine/session-page.ts`), which mirrors
+  `requireCdp`: it returns the handle on an engine that has one and throws a
+  structured, engine-naming error on one that does not, instead of letting
+  `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
+  engine — no adapter, no public shape and no tool response moved.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 

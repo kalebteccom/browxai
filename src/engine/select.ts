@@ -35,9 +35,14 @@ export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "webkit",
   "android",
   "safari",
-  // The first NON-BROWSER engine: a React Native app on an Android emulator over
-  // adb (RFC 0008 P2). Like safari it has no Playwright BrowserType, so it has no
-  // `BROWSER_TYPES` entry and `resolveBrowserType` is never its path.
+  // The NON-BROWSER engines (RFC 0008): the iOS Simulator's XCUITest hierarchy
+  // over `simctl` plus an XCUITest driver, and an Android emulator over adb's
+  // UiAutomator dump and input pipeline. Like safari neither has a Playwright
+  // `BrowserType`, so neither has a `BROWSER_TYPES` entry below and
+  // `resolveBrowserType` is never their path — each engine owns its transport.
+  // Both are additionally gated on the `native-device` capability at session
+  // creation.
+  "ios-app",
   "android-app",
 ];
 
@@ -47,8 +52,9 @@ export class EngineNotYetSupportedError extends Error {
     super(
       `engine-not-yet-supported: "${engine}" is declared but not yet implemented — ` +
         `${IMPLEMENTED_ENGINES.join(", ")} are wired today. ` +
-        'Use browserType:"chromium" (the default), "firefox", "webkit", "android", "safari", or ' +
-        '"android-app".',
+        `Use browserType:"chromium" (the default) or any of ${IMPLEMENTED_ENGINES.slice(1)
+          .map((k) => `"${k}"`)
+          .join(", ")}.`,
     );
     this.name = "EngineNotYetSupportedError";
     this.engine = engine;

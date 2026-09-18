@@ -53,7 +53,7 @@ import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
-import type { CapabilityConfig } from "../util/capabilities.js";
+import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -130,23 +130,27 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // overrides the server default; omitted ⇒ the server engine (legacy). One
       // server can therefore drive sessions on different engines at once.
       const effectiveEngine: EngineKind = spec?.engine ?? serverEngine;
-      // The posture gate for an engine that broadens it. `android-app` needs
-      // `native-device` (RFC 0008 §8): it installs and launches applications and
-      // drives an OS-level input pipeline. The gate sits HERE, at session
-      // creation, because that is what makes it un-reachable-around — every
-      // native tool needs a native session first, so there is no second door.
+      // The ENGINE-level capability gate (RFC 0008 §8). An engine whose session
+      // broadens posture on its own — a native engine installs and launches
+      // applications, drives an OS-level input pipeline and photographs the
+      // screen before any tool runs — declares the capability it needs at
+      // registration, and the refusal lands HERE, at session creation, because
+      // that is what makes it un-reachable-around: every native tool needs a
+      // native session first, so there is no second door.
       //
       // The engine→capability map is a row in the engine layer
       // (`engineRequiresCapability`), consulted generically, so this stays free
-      // of the `engine === "android-app"` literal the OCP contract forbids.
+      // of the `engine === "<literal>"` branch the OCP contract forbids, and
+      // adding such an engine is still one `registerEngine(...)` call.
       const engineCapability = engineRequiresCapability(effectiveEngine);
-      if (engineCapability && !caps.enabled.has(engineCapability)) {
+      if (engineCapability && capabilityMissing(engineCapability, caps)) {
         throw new Error(
-          `capability-required: session "${id}": the "${effectiveEngine}" engine requires the ` +
-            `"${engineCapability}" capability, which is OFF by default. It installs and launches ` +
-            "applications and drives an OS-level input pipeline on a real device, so it is opt-in. " +
-            `Start the server with BROWX_CAPABILITIES including "${engineCapability}" ` +
-            "(see docs/threat-model.md).",
+          `capability-required: session "${id}": the "${effectiveEngine}" engine needs the ` +
+            `\`${engineCapability}\` capability, which is OFF by default. It installs and ` +
+            "launches applications and drives an OS-level input pipeline on a device, so it is " +
+            `opt-in. Add it to BROWX_CAPABILITIES (e.g. BROWX_CAPABILITIES=read,navigation,` +
+            `action,human,${engineCapability}) and restart the server. See docs/threat-model.md ` +
+            "for what it grants.",
         );
       }
       // Omitted engine keeps the exact legacy default mode (`serverDefaultMode`);
