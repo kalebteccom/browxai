@@ -952,7 +952,7 @@ export default tseslint.config(
       "max-params": "off",
     },
   },
-  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp}.ts`) —
+  // Substrate adapters (`src/page/*-substrate-{playwright,safari,cdp,ios,none}.ts`) —
   // `async` is part of the port contract here, so `require-await` is inverted.
   //
   // Every adapter is built over an INJECTED accessor:
@@ -977,6 +977,10 @@ export default tseslint.config(
       "src/page/*-substrate-playwright.ts",
       "src/page/*-substrate-safari.ts",
       "src/page/*-substrate-cdp.ts",
+      // RFC 0008's native engine, and the no-protocol network substrate two
+      // engines now share. Both are adapters and both carry the same hazard.
+      "src/page/*-substrate-ios.ts",
+      "src/page/*-substrate-none.ts",
     ],
     rules: {
       "@typescript-eslint/require-await": "off",

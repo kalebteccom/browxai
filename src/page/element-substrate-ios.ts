@@ -34,6 +34,7 @@ import type {
   ElementProbeRequest,
   ElementProbeResult,
   ElementQuery,
+  ElementReading,
   ElementRefusal,
   ElementResolution,
   ElementScope,
@@ -108,18 +109,7 @@ export class IosElementSubstrate implements ElementSubstrate {
     const node = hits[0];
     if (!node) return this.missing(el.query, 0);
     if (hits.length > 1) return this.missing(el.query, hits.length);
-    return {
-      kind: "reading",
-      ...(want.matches ? { matches: 1 } : {}),
-      ...(want.visible ? { visible: node.visible } : {}),
-      ...(want.notVisibleReason && !node.visible
-        ? { notVisibleReason: "XCUITest reports the element as not hittable on the current screen" }
-        : {}),
-      ...(want.enabled ? { enabled: node.enabled } : {}),
-      ...(want.text ? { text: node.label ?? null } : {}),
-      ...(want.value ? { value: node.value ?? node.placeholder ?? null } : {}),
-      ...(want.attribute !== undefined ? { attribute: attributeOf(node, want.attribute) } : {}),
-    };
+    return readingFor(node, want);
   }
 
   async count(query: ElementQuery): Promise<ElementCountResult> {
@@ -201,30 +191,43 @@ export class IosElementSubstrate implements ElementSubstrate {
   }
 }
 
-/** The named attribute of a node, or null when it carries none. The names are the
- *  platform's own, so `verify_attribute({name: "accessibilityIdentifier"})` reads
- *  what an iOS engineer would expect it to. */
+/** One node's state, filtered to what the request asked for. A field the request
+ *  did not name is ABSENT — the port's rule, and what lets `find`'s probe pay for
+ *  one round trip while the verify family pays for another. */
+function readingFor(node: NativeNode, want: ElementProbeRequest): ElementReading {
+  return {
+    kind: "reading",
+    ...(want.matches ? { matches: 1 } : {}),
+    ...(want.visible ? { visible: node.visible } : {}),
+    ...(want.notVisibleReason && !node.visible
+      ? { notVisibleReason: "XCUITest reports the element as not hittable on the current screen" }
+      : {}),
+    ...(want.enabled ? { enabled: node.enabled } : {}),
+    ...(want.text ? { text: node.label ?? null } : {}),
+    ...(want.value ? { value: node.value ?? node.placeholder ?? null } : {}),
+    ...(want.attribute !== undefined ? { attribute: attributeOf(node, want.attribute) } : {}),
+  };
+}
+
+/** Attribute name → the node field it reads. The names are the PLATFORM's own,
+ *  so `verify_attribute({name: "accessibilityIdentifier"})` reads what an iOS
+ *  engineer expects it to; the aliases beside each are what a React Native author
+ *  and a WebDriver user call the same thing. */
+const ATTRIBUTE_READERS: Readonly<Record<string, (n: NativeNode) => string | null>> = {
+  accessibilityidentifier: (n) => n.identifier ?? null,
+  identifier: (n) => n.identifier ?? null,
+  testid: (n) => n.identifier ?? null,
+  label: (n) => n.label ?? null,
+  name: (n) => n.label ?? null,
+  value: (n) => n.value ?? null,
+  placeholder: (n) => n.placeholder ?? null,
+  placeholdervalue: (n) => n.placeholder ?? null,
+  type: (n) => n.type,
+  enabled: (n) => String(n.enabled),
+  visible: (n) => String(n.visible),
+};
+
+/** The named attribute of a node, or null when it carries none. */
 function attributeOf(node: NativeNode, name: string): string | null {
-  switch (name.toLowerCase()) {
-    case "accessibilityidentifier":
-    case "identifier":
-    case "testid":
-      return node.identifier ?? null;
-    case "label":
-    case "name":
-      return node.label ?? null;
-    case "value":
-      return node.value ?? null;
-    case "placeholder":
-    case "placeholdervalue":
-      return node.placeholder ?? null;
-    case "type":
-      return node.type;
-    case "enabled":
-      return String(node.enabled);
-    case "visible":
-      return String(node.visible);
-    default:
-      return null;
-  }
+  return ATTRIBUTE_READERS[name.toLowerCase()]?.(node) ?? null;
 }

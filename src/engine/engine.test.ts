@@ -15,14 +15,7 @@ import {
 
 describe("engine port — EngineKind + selection", () => {
   it("commits to the six engines (safari and ios-app are declared)", () => {
-    expect(ENGINE_KINDS).toEqual([
-      "chromium",
-      "firefox",
-      "webkit",
-      "android",
-      "safari",
-      "ios-app",
-    ]);
+    expect(ENGINE_KINDS).toEqual(["chromium", "firefox", "webkit", "android", "safari", "ios-app"]);
   });
 
   it("wires all six engines including safari and ios-app (operator-reachable)", () => {

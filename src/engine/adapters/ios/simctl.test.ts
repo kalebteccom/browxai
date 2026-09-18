@@ -52,7 +52,12 @@ const LIST_JSON = JSON.stringify({
       },
     ],
     "com.apple.CoreSimulator.SimRuntime.tvOS-16-1": [
-      { udid: "CDAC2948-4927-4501-B01C-9B8870B6216E", isAvailable: true, state: "Shutdown", name: "Apple TV 4K" },
+      {
+        udid: "CDAC2948-4927-4501-B01C-9B8870B6216E",
+        isAvailable: true,
+        state: "Shutdown",
+        name: "Apple TV 4K",
+      },
     ],
   },
 });
@@ -141,7 +146,9 @@ describe("selectDevice", () => {
   const devices = parseDevices(LIST_JSON);
 
   it("matches a requested udid or an exact device name", () => {
-    expect(selectDevice(devices, "5B31F7E3-0372-431C-89F1-7CE1A3DC28FD").name).toBe("iPhone 15 Pro");
+    expect(selectDevice(devices, "5B31F7E3-0372-431C-89F1-7CE1A3DC28FD").name).toBe(
+      "iPhone 15 Pro",
+    );
     expect(selectDevice(devices, "iPhone 17").id).toBe("EFFE589F-6328-47F3-B0BE-44075216B709");
   });
 

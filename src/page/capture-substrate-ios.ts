@@ -56,7 +56,7 @@ export class IosCaptureSubstrate implements CaptureSubstrate {
       return {
         kind: "refusal",
         error:
-          "`format: \"jpeg\"` is not available on the ios-app engine — `simctl io screenshot` " +
+          '`format: "jpeg"` is not available on the ios-app engine — `simctl io screenshot` ' +
           "encodes PNG and re-encoding would need a media binary browxai does not bundle.",
         hint: 'Request `format: "png"`, which is the default.',
       };
@@ -64,7 +64,10 @@ export class IosCaptureSubstrate implements CaptureSubstrate {
     const png = await this.handle.driver.screenshot();
     if (req.path !== undefined) {
       try {
-        return { kind: "saved", result: this.save(png, { path: req.path, format: "png", fullPage: true }) };
+        return {
+          kind: "saved",
+          result: this.save(png, { path: req.path, format: "png", fullPage: true }),
+        };
       } catch (err) {
         return { kind: "save-error", error: err instanceof Error ? err.message : String(err) };
       }

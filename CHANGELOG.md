@@ -8,6 +8,42 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`ios-app`: a sixth engine that drives a native iOS application on the
+  Simulator** (RFC 0008 P2). `open_session({engine:"ios-app"})` boots a
+  simulator, launches an app and reads its XCUITest accessibility hierarchy as
+  the same `A11yNode` tree `snapshot` and `find` already speak — role, name and
+  `[ref=eN]`, with no tool above the substrate layer learning it is not a
+  browser. `click` (tap), `fill`, `press`, `scroll`, `verify_*`, `screenshot`,
+  `gesture_swipe` and `gesture_pinch` run; swipe and pinch are XCUITest
+  primitives here, not synthesised touch sequences.
+
+  **Gated on the new off-by-default `native-device` capability**, at session
+  creation, so nothing is booted or installed before the gate runs. It broadens
+  posture further than any browser capability — see `docs/threat-model.md`.
+
+  **The selector model is the accessibility identifier, not a position.** A node
+  carrying an `accessibilityIdentifier` (what a React Native `testID` compiles
+  to) is keyed WITHOUT its structural path, so its ref survives a layout change
+  that moves it. A node without one is keyed on its path and its ref is
+  snapshot-local: move it and the old ref reports `stale-element` rather than
+  resolving to whatever now occupies its rectangle. Every action re-resolves its
+  ref against a freshly read hierarchy immediately before dispatch, and an
+  ambiguous target is a refusal naming the count.
+
+  **Two operator-supplied pieces, no new dependency.** Xcode provides
+  `xcrun simctl` for simulator and app lifecycle; WebDriverAgent (Apache-2.0)
+  provides the XCUITest hierarchy over HTTP. browxai bundles, builds and fetches
+  neither, adds no npm package for either, and reaches nothing GPL. A missing
+  WebDriverAgent refuses session creation with `wda-unreachable` instead of
+  degrading into an empty snapshot.
+
+  Real devices are out of scope. The network, storage, script and emulation
+  families refuse on this engine rather than answering a plausible empty; the
+  full per-tool matrix and the lossy parts of the hierarchy mapping are in
+  `docs/tool-reference.md`.
+
 ### Changed
 
 - **Snapshots now carry the accessibility tree they were always meant to, so

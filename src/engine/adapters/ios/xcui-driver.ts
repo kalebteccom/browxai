@@ -44,6 +44,16 @@ function flag(raw: unknown): boolean {
   return raw === true || raw === "true" || raw === "1" || raw === 1;
 }
 
+/** A WebDriverAgent `value` as a string, or undefined. Only a SCALAR is
+ *  stringified: a switch control reports `"1"`, a slider `"50%"`, a picker a
+ *  number — and an object would stringify to `[object Object]`, which reads like
+ *  a value and is not one. */
+function scalar(raw: unknown): string | undefined {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  return undefined;
+}
+
 function rectOf(raw: WdaNode["rect"]): NativeRect {
   return {
     x: raw?.x ?? 0,
@@ -91,7 +101,7 @@ export function elementType(raw: string | undefined): string {
 export function toNativeTree(raw: unknown, maxDepth = 200): NativeNode {
   const convert = (node: WdaNode, depth: number): NativeNode => {
     const label = typeof node.label === "string" && node.label ? node.label : undefined;
-    const value = node.value === null || node.value === undefined ? undefined : String(node.value);
+    const value = scalar(node.value);
     const placeholder =
       typeof node.placeholderValue === "string" && node.placeholderValue
         ? node.placeholderValue
@@ -111,7 +121,10 @@ export function toNativeTree(raw: unknown, maxDepth = 200): NativeNode {
         depth >= maxDepth ? [] : (node.children ?? []).map((child) => convert(child, depth + 1)),
     };
   };
-  return convert((raw ?? {}) as WdaNode, 0);
+  // `raw` is the parsed `value` of a WebDriverAgent response, so its static type
+  // is `unknown` and `convert` re-checks every field it reads. A null dump yields
+  // a well-formed empty root.
+  return convert(raw ?? {}, 0);
 }
 
 /** Seconds, because `dragfromtoforduration` takes seconds while every browxai

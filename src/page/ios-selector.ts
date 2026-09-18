@@ -59,19 +59,12 @@ export function parseNativeSelector(selector: string): NativeMatcher {
 
   const attribute = ATTRIBUTE.exec(raw);
   if (attribute) {
-    const attr = attribute[1]!.toLowerCase();
-    const value = attribute[2] ?? attribute[3] ?? attribute[4] ?? "";
-    if (IDENTIFIER_ATTRS.has(attr)) return identifierMatcher(value);
-    // `name` is the ACCESSIBLE NAME everywhere else in browxai, so it is the
-    // label here too — not a second spelling of the identifier.
-    if (attr === "label" || attr === "name") return labelMatcher(value);
-    if (attr === "value") {
-      return { describe: raw, matches: (n) => n.value === value };
-    }
-    if (attr === "type") {
-      return { describe: raw, matches: (n) => n.type === value };
-    }
-    throw new UnparseableSelectorError(selector);
+    return attributeMatcher(
+      attribute[1]!.toLowerCase(),
+      attribute[2] ?? attribute[3] ?? attribute[4] ?? "",
+      raw,
+      selector,
+    );
   }
 
   const roleName = ROLE_WITH_NAME.exec(raw);
@@ -97,6 +90,21 @@ export function parseNativeSelector(selector: string): NativeMatcher {
     describe: raw,
     matches: (n) => n.identifier === raw || (n.identifier === undefined && n.label === raw),
   };
+}
+
+/** `[attr="value"]`. `name` is the ACCESSIBLE NAME everywhere else in browxai, so
+ *  it is the label here too — never a second spelling of the identifier. */
+function attributeMatcher(
+  attr: string,
+  value: string,
+  describe: string,
+  original: string,
+): NativeMatcher {
+  if (IDENTIFIER_ATTRS.has(attr)) return identifierMatcher(value);
+  if (attr === "label" || attr === "name") return labelMatcher(value);
+  if (attr === "value") return { describe, matches: (n) => n.value === value };
+  if (attr === "type") return { describe, matches: (n) => n.type === value };
+  throw new UnparseableSelectorError(original);
 }
 
 function identifierMatcher(value: string): NativeMatcher {

@@ -18,11 +18,7 @@
 import type { NativeSessionHandle, NativePoint } from "../engine/native-types.js";
 import type { ActionResult, DispatchedAction, ElementProbe } from "./actionresult-types.js";
 import type * as actions from "./actions-types.js";
-import type {
-  ElementRefusal,
-  ElementSubstrate,
-  Rect,
-} from "./element-substrate-types.js";
+import type { ElementRefusal, ElementSubstrate, Rect } from "./element-substrate-types.js";
 import { elementQueryFor } from "./element-query.js";
 
 const EMPTY_NETWORK = { summary: { total: 0, byType: {}, failed: 0 } };
@@ -71,7 +67,9 @@ export function iosResult(
 /** A refusal for a verb this engine genuinely has no primitive for. Names the
  *  reason, never "unsupported" alone. */
 export function iosUnsupported(type: DispatchedAction["type"], why: string): ActionResult {
-  return iosResult({ type }, false, { error: `\`${type}\` is not supported on the ios-app engine — ${why}` });
+  return iosResult({ type }, false, {
+    error: `\`${type}\` is not supported on the ios-app engine — ${why}`,
+  });
 }
 
 /** The centre of the element a target resolves to, re-read from a fresh
@@ -98,7 +96,8 @@ export async function pointFor(
     return {
       kind: "refusal",
       reason: "stale-element",
-      error: "the element resolved but XCUITest reports a zero-area frame for it, so there is no point to tap",
+      error:
+        "the element resolved but XCUITest reports a zero-area frame for it, so there is no point to tap",
       hint: "The element is off-screen or collapsed. Scroll it into view, then re-snapshot.",
     };
   }
@@ -111,20 +110,14 @@ export function centreOf(rect: Rect): NativePoint {
 
 /** Render an element refusal as the action's own failure envelope, so a caller
  *  sees one shape whether the refusal came from resolution or from dispatch. */
-export function refusedAction(
-  descriptor: DispatchedAction,
-  refusal: ElementRefusal,
-): ActionResult {
+export function refusedAction(descriptor: DispatchedAction, refusal: ElementRefusal): ActionResult {
   return iosResult(descriptor, false, {
     error: `${refusal.reason}: ${refusal.error}`,
     ...(refusal.hint ? { hint: refusal.hint } : {}),
   });
 }
 
-export async function iosNavigate(
-  deps: IosActionDeps,
-  url: string,
-): Promise<ActionResult> {
+export async function iosNavigate(deps: IosActionDeps, url: string): Promise<ActionResult> {
   if (!/^[a-zA-Z][\w+.-]*:/.test(url)) {
     return iosResult({ type: "navigate", url }, false, {
       error:
@@ -178,7 +171,9 @@ export async function iosFill(
       const elementId = await deps.handle.driver.findByIdentifier(identifier);
       if (elementId) {
         await deps.handle.driver.setValue(elementId, value);
-        return iosResult(descriptor, true, { element: { ref: target.ref, stillAttached: true, value } });
+        return iosResult(descriptor, true, {
+          element: { ref: target.ref, stillAttached: true, value },
+        });
       }
     }
   }
@@ -226,7 +221,7 @@ export async function iosPress(
   if (/^(back|browserback)$/i.test(key)) {
     return iosResult(descriptor, false, {
       error:
-        "iOS has no hardware back key — `press({key:\"back\"})` is an Android idiom. Tap the " +
+        'iOS has no hardware back key — `press({key:"back"})` is an Android idiom. Tap the ' +
         "navigation bar's back button (it is in the snapshot), or use `gesture_swipe` for the " +
         "edge-swipe gesture.",
     });

@@ -237,7 +237,9 @@ describe("the composed A11yNode tree", () => {
         children: [
           node({
             type: "Table",
-            children: [node({ type: "Cell", children: [node({ type: "StaticText", label: "x" })] })],
+            children: [
+              node({ type: "Cell", children: [node({ type: "StaticText", label: "x" })] }),
+            ],
           }),
         ],
       }),

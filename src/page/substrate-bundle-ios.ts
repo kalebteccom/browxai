@@ -53,8 +53,7 @@ export function iosSubstrateBundle(deps: SubstrateDeps): SubstrateBundle {
     actions: (e: SessionEntry): ActionSubstrate =>
       new IosActionSubstrate(e.session.native!(), elementsFor(e)),
     element: elementsFor,
-    snapshot: (e: SessionEntry): SnapshotSubstrate =>
-      new IosSnapshotSubstrate(e.session.native!()),
+    snapshot: (e: SessionEntry): SnapshotSubstrate => new IosSnapshotSubstrate(e.session.native!()),
     capture: (e: SessionEntry): CaptureSubstrate =>
       new IosCaptureSubstrate(e.session.native!(), deps.save),
     target: (e: SessionEntry): TargetSubstrate => new IosTargetSubstrate(e.session.native!()),

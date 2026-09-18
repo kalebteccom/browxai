@@ -243,15 +243,20 @@ export function parseLaunchPid(stdout: string): number | undefined {
  *  part ("Unable to boot device in current state: Booted"). */
 export const defaultSimctlRunner: SimctlRunner = (args) =>
   new Promise<string>((resolve, reject) => {
-    execFile("xcrun", [...args], { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 }, (err, out, errText) => {
-      if (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          reject(new XcodeNotInstalledError());
+    execFile(
+      "xcrun",
+      [...args],
+      { timeout: 120_000, maxBuffer: 16 * 1024 * 1024 },
+      (err, out, errText) => {
+        if (err) {
+          if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            reject(new XcodeNotInstalledError());
+            return;
+          }
+          reject(new Error(`xcrun ${args.join(" ")} failed: ${errText || err.message}`));
           return;
         }
-        reject(new Error(`xcrun ${args.join(" ")} failed: ${errText || err.message}`));
-        return;
-      }
-      resolve(out);
-    });
+        resolve(out);
+      },
+    );
   });

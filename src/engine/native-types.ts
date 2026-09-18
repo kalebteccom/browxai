@@ -151,6 +151,9 @@ export interface NativeSessionHandle {
  *  registered with `scope: "com.acme.app"` materialises here and refuses in a
  *  different app's session — with no change to the check itself (RFC 0008 §1.5,
  *  §6). */
-export function nativeScopeUrl(handle: Pick<NativeSessionHandle, "appId">, screen?: string): string {
+export function nativeScopeUrl(
+  handle: Pick<NativeSessionHandle, "appId">,
+  screen?: string,
+): string {
   return `app://${handle.appId}/${screen ?? ""}`;
 }

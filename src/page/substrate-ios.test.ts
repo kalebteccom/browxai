@@ -17,6 +17,7 @@ import type {
   NativePoint,
   NativeSessionHandle,
 } from "../engine/native-types.js";
+import type { ElementToken } from "./element-substrate-types.js";
 import { RefRegistry } from "./refs.js";
 import { IosSnapshotSubstrate } from "./snapshot-substrate-ios.js";
 import { IosElementSubstrate } from "./element-substrate-ios.js";
@@ -216,7 +217,7 @@ describe("IosElementSubstrate re-resolves against a FRESH hierarchy", () => {
     const refs = await snapshotRefs(r);
     const resolved = await r.elements.resolve({ kind: "ref", ref: refs.get("Pay now")! });
     expect(resolved.kind).toBe("element");
-    const bounds = await r.elements.bounds((resolved as { el: never }).el);
+    const bounds = await r.elements.bounds((resolved as { kind: "element"; el: ElementToken }).el);
     expect(bounds).toMatchObject({ kind: "bounds", rect: { y: 300 } });
   });
 
@@ -378,7 +379,7 @@ describe("IosActionSubstrate", () => {
     });
     expect(res.ok).toBe(true);
     expect(r.driver.dispatched.map((d) => d.kind)).toEqual(["tap", "typeText"]);
-    expect(res.warnings!.join(" ")).toMatch(/character preview/);
+    expect(res.warnings.join(" ")).toMatch(/character preview/);
   });
 
   it("maps press to the simulator's hardware buttons, and keys to text", async () => {
@@ -423,7 +424,7 @@ describe("IosActionSubstrate", () => {
     const r = rig();
     const res = await r.actions.scroll({ to: "bottom" });
     expect(r.driver.dispatched).toHaveLength(8);
-    expect(res.warnings!.join(" ")).toMatch(/bounded best effort/);
+    expect(res.warnings.join(" ")).toMatch(/bounded best effort/);
   });
 
   it("refuses scroll-into-view, naming the primitive it would need", async () => {
@@ -445,7 +446,11 @@ describe("IosActionSubstrate", () => {
     // ONE primitive with a duration, so one step. Echoing a requested step count
     // would be inventing evidence.
     expect(swiped).toMatchObject({ report: { steps: 1, durationMs: 250 } });
-    const pinched = await r.actions.gesture({ kind: "pinch", coords: { x: 200, y: 400 }, scale: 2 });
+    const pinched = await r.actions.gesture({
+      kind: "pinch",
+      coords: { x: 200, y: 400 },
+      scale: 2,
+    });
     expect(pinched).toMatchObject({ kind: "dispatched", report: { scale: 2 } });
     expect(r.driver.dispatched.map((d) => d.kind)).toEqual(["swipe", "pinch"]);
   });
@@ -461,13 +466,15 @@ describe("IosActionSubstrate", () => {
   it("names the missing primitive for every verb it refuses", async () => {
     const r = rig();
     for (const res of [
-      await r.actions.hover({ target: { coords: { x: 1, y: 1 } } }),
-      await r.actions.select({ target: { coords: { x: 1, y: 1 } }, values: [] }),
-      await r.actions.goBack({}),
-      await r.actions.goForward({}),
-      await r.actions.setViewport({ width: 1, height: 1 }),
-      await r.actions.waitFor({}),
-      await r.actions.chooseOption({ target: { coords: { x: 1, y: 1 } }, option: "x" }),
+      // Each verb IGNORES its arguments, the way `SafariActionSubstrate`'s
+      // refusals do: the answer does not depend on what was asked.
+      await r.actions.hover(),
+      await r.actions.select(),
+      await r.actions.goBack(),
+      await r.actions.goForward(),
+      await r.actions.setViewport(),
+      await r.actions.waitFor(),
+      await r.actions.chooseOption(),
     ]) {
       expect(res.ok).toBe(false);
       expect(res.error!.length, res.error).toBeGreaterThan(60);
@@ -511,7 +518,7 @@ describe("IosCaptureSubstrate", () => {
   it("reports no video flush", async () => {
     const r = rig();
     const capture = new IosCaptureSubstrate(r.handle, () => ({}) as never);
-    expect(await capture.prepareVideoSave({} as never)).toBeNull();
+    expect(await capture.prepareVideoSave()).toBeNull();
   });
 });
 

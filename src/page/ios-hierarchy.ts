@@ -145,9 +145,7 @@ export function* walkNative(
   root: NativeNode,
   frameId?: string,
 ): Generator<NativeWalkEntry, void, undefined> {
-  const stack: Array<{ node: NativeNode; path: string }> = [
-    { node: root, path: root.type },
-  ];
+  const stack: Array<{ node: NativeNode; path: string }> = [{ node: root, path: root.type }];
   while (stack.length) {
     const next = stack.pop()!;
     yield { ...next, key: nativeElementKey(next.node, next.path, frameId) };
@@ -221,7 +219,11 @@ function a11yNodeFor(entry: NativeWalkEntry, refs: RefRegistry, frameId?: string
  *  for the unaddressable-element report RFC 0008 asks to ship with the selector
  *  model: a node with neither an identifier nor a label cannot be named, and the
  *  app team is the only party who can fix that. */
-export function countAddressable(root: NativeNode): { identified: number; labelled: number; total: number } {
+export function countAddressable(root: NativeNode): {
+  identified: number;
+  labelled: number;
+  total: number;
+} {
   let identified = 0;
   let labelled = 0;
   let total = 0;

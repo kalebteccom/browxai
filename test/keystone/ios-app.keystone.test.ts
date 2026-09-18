@@ -285,10 +285,9 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
     async () => {
       const opened = await callJson<{ ok: boolean }>("open_session", { session: SESSION });
       expect(opened.ok, JSON.stringify(opened)).toBe(true);
-      const listed = await callJson<{ sessions: Array<{ id: string; engine: string; url: string }> }>(
-        "list_sessions",
-        {},
-      );
+      const listed = await callJson<{
+        sessions: Array<{ id: string; engine: string; url: string }>;
+      }>("list_sessions", {});
       const row = listed.sessions.find((s) => s.id === SESSION);
       expect(row?.engine).toBe("ios-app");
       // The TargetSubstrate's `app://` scope, which is also what the secret-scope
@@ -378,8 +377,7 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
       // device, whatever the faked hierarchy says.
       const res = await handlers.screenshot({ session: SESSION });
       const image = res.content.find((c) => (c as { type: string }).type === "image") as
-        | { type: string; data: string; mimeType: string }
-        | undefined;
+        { type: string; data: string; mimeType: string } | undefined;
       expect(image, JSON.stringify(res.content).slice(0, 300)).toBeTruthy();
       expect(image!.mimeType).toBe("image/png");
       expect(Buffer.from(image!.data, "base64").subarray(0, 8).toString("hex")).toBe(
@@ -397,8 +395,10 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
         from: { x: 200, y: 700 },
         to: { x: 200, y: 200 },
       });
-      expect(swiped.error, "gesture_swipe must reach the substrate on a deep:false engine")
-        .toBeUndefined();
+      expect(
+        swiped.error,
+        "gesture_swipe must reach the substrate on a deep:false engine",
+      ).toBeUndefined();
       expect(swiped.ok).toBe(true);
       // deep:false ⇒ the CDP-hard family refuses through the existing gate, with
       // no per-engine edit.

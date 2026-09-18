@@ -7,7 +7,13 @@ import type { NativeNode } from "../engine/native-types.js";
 import { parseNativeSelector, UnparseableSelectorError } from "./ios-selector.js";
 
 function node(partial: Partial<NativeNode> & { type: string }): NativeNode {
-  return { enabled: true, visible: true, rect: { x: 0, y: 0, width: 1, height: 1 }, children: [], ...partial };
+  return {
+    enabled: true,
+    visible: true,
+    rect: { x: 0, y: 0, width: 1, height: 1 },
+    children: [],
+    ...partial,
+  };
 }
 
 const SUBMIT = node({ type: "Button", identifier: "checkout-submit", label: "Pay now" });
@@ -23,7 +29,11 @@ describe("parseNativeSelector", () => {
   });
 
   it("accepts the ecosystem's two other spellings of the same thing", () => {
-    for (const spelling of ['[testID="checkout-submit"]', '[identifier="checkout-submit"]', "~checkout-submit"]) {
+    for (const spelling of [
+      '[testID="checkout-submit"]',
+      '[identifier="checkout-submit"]',
+      "~checkout-submit",
+    ]) {
       expect(parseNativeSelector(spelling).matches(SUBMIT), spelling).toBe(true);
     }
   });
