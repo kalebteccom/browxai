@@ -17,3 +17,4 @@ import "./adapters/android.engine.js";
 import "./adapters/safari.engine.js";
 import "./adapters/ios-app.engine.js";
 import "./adapters/android-app.engine.js";
+import "./adapters/electron.engine.js";

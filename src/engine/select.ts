@@ -19,16 +19,24 @@ const BROWSER_TYPES: Partial<Record<EngineKind, BrowserType>> = {
   firefox,
   webkit,
   android: chromium,
+  // `electron` resolves to Playwright's `chromium` BrowserType for the same
+  // reason android does — an Electron app IS Chromium and the adapter attaches
+  // with `chromium.connectOverCDP(endpoint)` over the app's loopback debugging
+  // port, reusing the exact Chromium transport.
+  electron: chromium,
 };
 
 /** Engines wired today. Chromium + Firefox (Playwright's bundled Juggler build)
  *  + WebKit (Playwright's bundled WebKit build — the WebKit-ENGINE correctness
  *  lane, NOT Safari) + Android (real Chrome-on-Android attached over adb + CDP —
  *  full CDP, `deep: true`) + Safari (REAL Safari.app over safaridriver — the
- *  first non-Playwright engine, no Playwright Page, curated subset) + Android-app
- *  (a React Native app on an emulator over adb — the first NON-BROWSER engine).
- *  All six `EngineKind` members are implemented; the no-silent-no-op selection
- *  error remains for any future engine declared before its adapter lands. */
+ *  first non-Playwright engine, no Playwright Page, curated subset) + iOS-app and
+ *  Android-app (the NON-BROWSER engines — an app on the iOS Simulator over
+ *  XCUITest, and a React Native app on an Android emulator over adb) + Electron (a
+ *  desktop Electron app attached over its --remote-debugging-port — full CDP,
+ *  `deep: true`, attach-only). All eight `EngineKind` members are implemented; the
+ *  no-silent-no-op selection error remains for any future engine declared before
+ *  its adapter lands. */
 export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   "chromium",
   "firefox",
@@ -44,6 +52,11 @@ export const IMPLEMENTED_ENGINES: readonly EngineKind[] = [
   // creation.
   "ios-app",
   "android-app",
+  // The DESKTOP-app engine: an Electron application attached over its
+  // `--remote-debugging-port`. It IS Chromium, so it maps to the chromium
+  // `BrowserType` above and reuses the CDP transport verbatim; it is attach-only
+  // and rides the `byob-attach` capability at session creation.
+  "electron",
 ];
 
 export class EngineNotYetSupportedError extends Error {

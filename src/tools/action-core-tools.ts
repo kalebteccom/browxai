@@ -34,6 +34,12 @@ export function registerActionCoreTools(
       const g = host.gateCheck("navigate");
       if (g) return g;
       const e = await host.entryFor(session);
+      // Engine dimension BEFORE the confirm hook: on an engine that declares
+      // `navigate` refused, there is nothing for a human to approve — the tool
+      // will not run whatever they answer, and asking would read as a policy
+      // block rather than an engine limit.
+      const eg = host.engineGate("navigate", e);
+      if (eg) return eg;
       const decision = await confirmNavigation(url, host.confirmCtxFor(e));
       if (!decision.ok) return host.denyContent("navigate", decision);
       const td = host.actionTimeout({ timeoutMs });

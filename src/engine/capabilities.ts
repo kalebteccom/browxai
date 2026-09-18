@@ -201,6 +201,74 @@ export const ANDROID_APP_CAPABILITIES: EngineCapabilities = {
   deep: false,
 };
 
+/** The one tool `electron` refuses by name. `navigate` would RUN — that is the
+ *  problem. It loads a URL INTO the application's own renderer process, which is
+ *  a privileged place on many Electron apps: a preload script routinely exposes
+ *  IPC to the main process there, and the app's own document is often a
+ *  `file://`-class origin. Putting arbitrary web content in it is the Electron
+ *  remote-content hazard, and it holds however the app copes afterwards.
+ *
+ *  ON RECOVERY — what the measurement actually said. The first draft of this
+ *  reason claimed the app never comes back. That is wrong, at least here: driving
+ *  VS Code 1.122.1 / Electron 39.8.8 to `https://example.com` and then calling
+ *  `goBack` restored `workbench.html` and the workbench re-rendered (172 monaco
+ *  elements, title back). What is gone either way is every scrap of in-memory
+ *  renderer state — open editors, unsaved buffers, the app's whole store. Whether
+ *  the bootstrap survives a re-navigation at all is per-app and per-version: VS
+ *  Code re-bootstraps from a document, while an app that received its state over
+ *  IPC once at first load and never re-requests it comes back empty. Untested
+ *  elsewhere; browxai does not have the operator's Slack to experiment on.
+ *
+ *  `go_back` / `go_forward` / `reload` are NOT here: they operate within the
+ *  renderer's own history and are exactly what the app's own keyboard shortcuts
+ *  do. `reload` on VS Code is Cmd-R, and `go_back` is what recovered the window
+ *  in the measurement above. */
+const ELECTRON_REFUSED_TOOLS: ReadonlyMap<string, string> = new Map([
+  [
+    "navigate",
+    "Loading a URL into an attached Electron renderer runs that page INSIDE the " +
+      "application's own renderer process, which on many Electron apps is privileged " +
+      "(a preload script exposes IPC to the main process, and the app document is " +
+      "often a file-class origin). browxai will not put arbitrary web content there. " +
+      "It also replaces the application's document: every scrap of in-memory state — " +
+      "open editors, unsaved buffers, the app's store — is gone, and whether the app " +
+      "re-bootstraps at all is per-app (VS Code recovered via go_back when measured; " +
+      "an app that gets its state over IPC once at startup will not). Drive the app " +
+      "through its own UI instead: click / press / fill on the elements `snapshot` " +
+      "and `find` return. `reload` re-loads the app's OWN document and is allowed. " +
+      "To fetch a URL, open a separate chromium session " +
+      '(`open_session({ engine: "chromium" })`).',
+  ],
+]);
+
+/** Electron (a desktop Electron application attached over its
+ *  `--remote-debugging-port`). Like android it IS Chromium and speaks FULL CDP, so
+ *  it declares `deep: true` and needs no new substrate — the CDP snapshot/network
+ *  substrates and the full Playwright post-wire serve it verbatim. Measured
+ *  against VS Code 1.122.1 / Electron 39.8.8: `snapshot` returned a 132-line tree
+ *  in 36ms, `find` ranked three real candidates with bboxes, and the `locatorFor`
+ *  behind them resolved to exactly one element. 113 of 118 named refs held across
+ *  two consecutive snapshots.
+ *
+ *  Every sub-interface is declared, including `navigation` — the renderer has a
+ *  real history and `reload` / `go_back` / `go_forward` all work on it. The ONE
+ *  navigation verb that must not run is `navigate`, and it is declared in
+ *  `refusedTools` above rather than by dropping the sub-interface, because
+ *  dropping it would refuse three working tools to gate one (and `navigation` is
+ *  one of the four sub-interfaces no engine may omit).
+ *
+ *  The other Electron limit is not a capability but a lease shape:
+ *  `Target.createTarget` answers "Not supported" (measured), so the attach pool
+ *  claims pre-existing renderer targets and structured-refuses when they are all
+ *  leased. That lives in the attach lane (`session/attach-pool.ts`), where the
+ *  pool can name which sessions hold what. */
+export const ELECTRON_CAPABILITIES: EngineCapabilities = {
+  engine: "electron",
+  subInterfaces: new Set(ALL_SUB_INTERFACES),
+  deep: true,
+  refusedTools: ELECTRON_REFUSED_TOOLS,
+};
+
 const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   chromium: CHROMIUM_CAPABILITIES,
   firefox: FIREFOX_CAPABILITIES,
@@ -209,11 +277,12 @@ const DECLARATIONS: Partial<Record<EngineKind, EngineCapabilities>> = {
   safari: SAFARI_CAPABILITIES,
   "ios-app": IOS_APP_CAPABILITIES,
   "android-app": ANDROID_APP_CAPABILITIES,
+  electron: ELECTRON_CAPABILITIES,
 };
 
-/** The capability declaration for an engine. Chromium + Firefox + WebKit +
- *  Android all have declarations; the partial map keeps room
- *  for engines whose adapter hasn't landed yet (returns undefined for those). */
+/** The capability declaration for an engine. All eight engine kinds have
+ *  declarations today; the partial map keeps room for engines whose adapter
+ *  hasn't landed yet (returns undefined for those). */
 export function capabilitiesFor(engine: EngineKind): EngineCapabilities | undefined {
   return DECLARATIONS[engine];
 }

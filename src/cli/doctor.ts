@@ -19,7 +19,13 @@ import { resolveWorkspace } from "../util/workspace.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
-import { chromiumCheck, firefoxCheck, webkitCheck, androidCheck } from "./doctor-engines.js";
+import {
+  chromiumCheck,
+  firefoxCheck,
+  webkitCheck,
+  androidCheck,
+  electronCheck,
+} from "./doctor-engines.js";
 import {
   IMPLEMENTED_ENGINES,
   resolveEngineSelection,
@@ -204,6 +210,15 @@ export async function runDoctor(): Promise<number> {
   // and if one is ready, forwards the socket + probes /json/version, then removes
   // the forward.
   checks.push(await androidCheck());
+
+  // 8a5. Electron availability (opt-in attach-only engine — a running desktop
+  // Electron app over its `--remote-debugging-port`). Informational, and it
+  // exists because this lane's whole risk is the operator not being sure what
+  // BROWX_ATTACH_CDP points at. Reads `/json/version` off the endpoint and names
+  // the app + Electron version from the protocol; opens no session and holds no
+  // CDP handle. Unset endpoint, unreachable endpoint, and "that is ordinary
+  // Chrome" are all reported states, never failures.
+  checks.push(await electronCheck());
 
   // 8b. SELECTED browser engine. Resolves the operator's choice exactly as the
   // MCP server does: explicit `--engine <kind>` > `BROWX_ENGINE` env > default

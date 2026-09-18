@@ -12,7 +12,12 @@
 import { randomUUID } from "node:crypto";
 import type { CDPSession, Page } from "playwright-core";
 import { log } from "../util/logging.js";
-import { AndroidCdpAdapter, PlaywrightChromiumAdapter } from "../engine/index.js";
+import {
+  AndroidCdpAdapter,
+  PlaywrightChromiumAdapter,
+  profileAttachedBrowser,
+  type AttachedBrowserProfile,
+} from "../engine/index.js";
 import { acquireConnection, browserTargetSource } from "./attach-endpoint.js";
 import {
   acquireTarget,
@@ -40,22 +45,6 @@ function assertLoopback(endpoint: string): URL {
   }
   return url;
 }
-
-const ATTACH_WARNING = [
-  "================================================================",
-  "  browxai is attaching to an EXTERNAL Chrome over CDP (BYOB).",
-  "  This Chrome is treated as NOT-OWNED: on shutdown browxai detaches",
-  "  but does NOT close the browser or reset its storage.",
-  "",
-  "  Sharp edges (you accepted these by setting BROWX_ATTACH_CDP):",
-  "  - The browser may have --disable-web-security (SOP off).",
-  "  - The browser holds your real profile: every cookie, password,",
-  "    and authed tab is in scope of any page the agent visits.",
-  "  - The CDP port is unauthenticated; any local process can attach.",
-  "",
-  "  Managed mode (the default) avoids all of the above. See docs/threat-model.md.",
-  "================================================================",
-].join("\n");
 
 // The attached page may pre-paint with zero metrics; ensure a usable viewport so
 // the visible-rect bbox path (page/bbox.ts) doesn't intersect against
@@ -136,7 +125,7 @@ function boundPage(sessionId: string, target: AcquiredTarget): () => Page {
  *  declares for each of them. The test that holds the two in agreement builds a
  *  session through this function (test/architecture/port-conformance.test.ts). */
 export function finalizeAttachedSession(
-  engine: "chromium" | "android",
+  engine: "chromium" | "android" | "electron",
   sessionId: string,
   target: AcquiredTarget,
   cdp: CDPSession,
@@ -224,28 +213,45 @@ export function assertByobAttach(opts: SessionOptions & { attachCdp?: string }):
   return assertLoopback(opts.attachCdp).toString();
 }
 
-/** The Chromium CDP-attach (BYOB) lane — the desktop URL-attach path. Asserts the
- *  loopback endpoint, joins the endpoint's shared connection, leases one page
- *  target, ensures a usable viewport, and builds the not-owned `BrowserSession`.
- *  The chromium engine module's `makeAdapter` byob branch calls this;
+/** The desktop CDP-attach (BYOB) lane. Asserts the loopback endpoint, joins the
+ *  endpoint's shared connection, asks the PROTOCOL what is on the other end,
+ *  leases one page target, ensures a usable viewport, and builds the not-owned
+ *  `BrowserSession`.
+ *
+ *  ONE lane, two engines. The chromium and electron engine modules both route
+ *  their `makeAdapter` byob branch here, and the session's engine is whatever
+ *  `profileAttachedBrowser` read off `Browser.getVersion` — the declared
+ *  `browserType` is a default, the protocol is the authority. So an operator who
+ *  points `BROWX_ATTACH_CDP` at their Slack gets an electron session with
+ *  electron's refusals whether or not they said so, and one who points it at
+ *  Chrome gets the byte-identical chromium path they had before: the profile is
+ *  chromium, the warning text is the same string, the target source still
+ *  creates, and `finalizeAttachedSession` is called with the same arguments.
+ *
  *  firefox/webkit/safari surface their own structured attach refusals from their
  *  own engine modules, and android attaches over adb via
- *  `openAndroidByobSession` — so no engine-name branch survives here. */
-export async function attachByobChromium(
+ *  `openAndroidByobSession` — so no engine-name branch survives here. The two
+ *  behaviours that DO differ arrive as fields on the profile record
+ *  (`canCreateTargets`, `warning`), never re-derived from the engine name. */
+export async function attachByobDesktop(
   opts: SessionOptions & { attachCdp?: string },
 ): Promise<BrowserSession> {
   const endpoint = assertByobAttach(opts);
-  log.warn(ATTACH_WARNING);
-  log.info("session.byob: attaching", { endpoint, owner: "external", engine: "chromium" });
-
   const sessionId = leaseSessionId(opts);
   const adapter = new PlaywrightChromiumAdapter();
   const connection = await acquireConnection(endpoint, (e) => adapter.connectOverCdp(e));
 
   let target: AcquiredTarget;
   let cdp: CDPSession;
+  let profile: AttachedBrowserProfile;
   try {
-    target = await acquireTarget(attachLeases, browserTargetSource(connection.browser), {
+    profile = await profileAttachedBrowser(connection.browser);
+    log.warn(profile.warning);
+    log.info("session.byob: attaching", { endpoint, ...profile.detail });
+    const source = browserTargetSource(connection.browser, {
+      canCreate: profile.canCreateTargets,
+    });
+    target = await acquireTarget(attachLeases, source, {
       sessionId,
       endpoint: connection.endpoint,
     });
@@ -263,5 +269,7 @@ export async function attachByobChromium(
 
   await ensureViewport(cdp);
 
-  return finalizeAttachedSession("chromium", sessionId, target, cdp, () => connection.release());
+  return finalizeAttachedSession(profile.engine, sessionId, target, cdp, () =>
+    connection.release(),
+  );
 }

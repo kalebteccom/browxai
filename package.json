@@ -1,7 +1,7 @@
 {
   "name": "browxai",
   "version": "0.10.1",
-  "description": "MCP-native, model-agnostic browser control for agents across five engines including real Safari and Chrome on an Android device, plus off-by-default access to the OS clipboard, password managers, and a workspace directory.",
+  "description": "MCP-native, model-agnostic browser control for agents across eight engines including real Safari, Chrome on an Android device, native apps on a simulator or emulator, and a desktop Electron app, plus off-by-default access to the OS clipboard, password managers, and a workspace directory.",
   "author": "Kalebtec <security@kalebtec.com>",
   "license": "MIT",
   "type": "module",

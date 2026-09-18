@@ -32,8 +32,21 @@ import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core"
 // kinds that both say "android" is a documentation cost, and renaming a shipped
 // engine kind would be a breaking config change, so the NEW kinds take the
 // qualifier.
+//
+// `electron` is a desktop Electron application (VS Code, Slack, Discord, …)
+// attached over its `--remote-debugging-port`. Like `android` it IS Chromium —
+// full CDP, `deep: true`, the verbatim CDP substrates — and like `android` it is
+// a DISTINCT kind rather than `chromium` because the protocol surface differs in
+// ways the tool gate has to know about, not just the launch shape:
+//   - `Target.createTarget` answers "Not supported" (measured, Electron 39.8.8),
+//     so the attach pool cannot mint a target and must refuse instead.
+//   - Loading a URL into the app's own renderer is the Electron remote-content
+//     hazard, so `navigate` is a declared refusal (`refusedTools`).
+// Both facts are per-ENGINE capability declarations, and the gate that reads them
+// keys on `EngineKind`. A flag on a chromium session would have to be re-read by
+// every consumer as a second, undeclared oracle.
 export type EngineKind =
-  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app";
+  "chromium" | "firefox" | "webkit" | "android" | "safari" | "ios-app" | "android-app" | "electron";
 
 export const ENGINE_KINDS: readonly EngineKind[] = [
   "chromium",
@@ -43,6 +56,7 @@ export const ENGINE_KINDS: readonly EngineKind[] = [
   "safari",
   "ios-app",
   "android-app",
+  "electron",
 ];
 
 /** Capability-segregated sub-interfaces of the port. An adapter declares which
@@ -110,6 +124,23 @@ export interface EngineCapabilities {
    *  home for the ~19 CDP-hard operations. Chromium: true. Firefox/WebKit will
    *  declare false and gate those tools. */
   readonly deep: boolean;
+  /** Tools this engine refuses BY NAME, mapped to the reason the refusal exists.
+   *  The third gate dimension, and the one for a tool that neither needs `deep`
+   *  nor a missing sub-interface — it would RUN, and running it is the harm.
+   *
+   *  `navigate` on electron is the case that forced it: `page.goto()` loads the
+   *  page INTO the application's own renderer process, which on many Electron apps
+   *  is privileged (a preload script exposes IPC to the main process) — and it
+   *  discards every scrap of the app's in-memory renderer state on the way.
+   *  The mechanism is present (electron declares `navigation`; `go_back` /
+   *  `go_forward` / `reload` all work on it), so omitting the sub-interface would
+   *  refuse three working tools to gate one, and the sub-interface-conformance
+   *  gate forbids omitting `navigation` at all — it is one of the four an engine
+   *  cannot be an engine without.
+   *
+   *  Omitted on every engine that refuses nothing by name, which is all of them
+   *  but electron. */
+  readonly refusedTools?: ReadonlyMap<string, string>;
 }
 
 /** A live engine-backed session. The adapter owns engine selection + launch;

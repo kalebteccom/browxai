@@ -52,7 +52,7 @@ function stubTarget(): AcquiredTarget {
 
 /** One buildable session per engine, through the engine's OWN session
  *  constructor — the function its `makeAdapter` actually returns from. Asserted
- *  exhaustive over `ENGINE_KINDS` below, so an eighth engine fails this file on the
+ *  exhaustive over `ENGINE_KINDS` below, so a ninth engine fails this file on the
  *  day it registers rather than sliding in unchecked. */
 const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
   chromium: () => finalizeManagedSession("chromium", {}, "/tmp/p", stubHandles()),
@@ -70,6 +70,12 @@ const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
   // carry `native()` and OMIT `page()` entirely rather than throw from it.
   "ios-app": () => Promise.resolve(buildIosSession({} as NativeSessionHandle)),
   "android-app": () => Promise.resolve(buildNativeSession({} as unknown as AndroidNativeHandle)),
+  // electron is attach-only too, and rides the SAME attached-session finalizer as
+  // chromium and android — a real Playwright Page over a real CDP session.
+  electron: () =>
+    Promise.resolve(
+      finalizeAttachedSession("electron", "S1", stubTarget(), {} as CDPSession, async () => {}),
+    ),
 };
 
 /** Engines that back no Playwright `Page`. It was the literal `engine !== "safari"`
@@ -91,9 +97,11 @@ describe("L5 — every adapter honors its declared port contract", () => {
       // Safari, must be able to produce an a11y snapshot.
       expect(caps!.subInterfaces.has("snapshot")).toBe(true);
       // No engine may claim `deep` (the raw-CDP escape hatch) without a real CDP
-      // handle — only chromium and the Chrome-on-Android attach declare it.
+      // handle. The three that do are the three Chromium-family lanes: desktop
+      // chromium, the Chrome-on-Android attach, and the Electron-app attach.
+      // firefox / webkit / safari must never appear here.
       if (caps!.deep) {
-        expect(["chromium", "android"]).toContain(engine);
+        expect(["chromium", "android", "electron"]).toContain(engine);
       }
     },
   );

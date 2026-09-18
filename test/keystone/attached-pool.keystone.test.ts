@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
 import { createServer } from "../../src/server.js";
-import { attachByobChromium } from "../../src/session/byob-attach.js";
+import { attachByobDesktop } from "../../src/session/byob-attach.js";
 import { startFixture, type Fixture } from "./fixture.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
@@ -143,8 +143,8 @@ describePool("attached-target pool — two sessions, one Chrome", () => {
   it(
     "leases two distinct targets and keeps each session's writes on its own page",
     async () => {
-      const a = await attachByobChromium({ attachCdp: endpoint, sessionId: "pool-a" });
-      const b = await attachByobChromium({ attachCdp: endpoint, sessionId: "pool-b" });
+      const a = await attachByobDesktop({ attachCdp: endpoint, sessionId: "pool-a" });
+      const b = await attachByobDesktop({ attachCdp: endpoint, sessionId: "pool-b" });
 
       expect(a.targetId?.()).toBeTruthy();
       expect(b.targetId?.()).toBeTruthy();

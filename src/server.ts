@@ -4,6 +4,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { type EngineKind } from "./engine/index.js";
+import { engineIsAttachOnly } from "./engine/registry.js";
 import { type SessionMode } from "./session/registry.js";
 import { resolveCredentialsProvider } from "./util/credentials.js";
 import { resolveConfig } from "./util/config.js";
@@ -79,9 +80,14 @@ export interface StartOptions {
   attachCdp?: string;
   headless?: boolean;
   /** Browser engine for sessions this server launches. Defaults to
-   *  `"chromium"`. chromium, firefox, and webkit are all wired today (see
-   *  src/engine/); a future-declared engine without an adapter is rejected at
-   *  the launch path with a clear `engine-not-yet-supported` error. */
+   *  `"chromium"`. All eight kinds are wired today (see src/engine/); a
+   *  future-declared engine without an adapter is rejected at the launch path
+   *  with a clear `engine-not-yet-supported` error.
+   *
+   *  `electron` is the one you rarely pass: the desktop CDP-attach lane resolves
+   *  it from the protocol, so `attachCdp` pointed at a running Electron app
+   *  yields an electron session whether or not this says so. Passing it changes
+   *  the DEFAULT session mode to `attached` (electron is attach-only). */
   browserType?: EngineKind;
 }
 
@@ -195,17 +201,20 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // list_tools / discovery still don't launch a browser, and every existing
   // caller that omits `session` keeps working unchanged.
   // The engine every session this server opens runs on. Defaults to chromium;
-  // firefox + webkit + android are also wired (the launch path drives each via
-  // its adapter). A future-declared engine without an adapter is rejected
-  // (engine-not-yet-supported) — there is no silent fallback to chromium.
+  // firefox + webkit + android + safari + electron are also wired (the launch
+  // path drives each via its adapter). A future-declared engine without an
+  // adapter is rejected (engine-not-yet-supported) — there is no silent fallback
+  // to chromium.
   const serverEngine: EngineKind = opts.browserType ?? "chromium";
   // The server-level launch mode: BYOB when BROWX_ATTACH_CDP is set, else
-  // persistent. android is ATTACH-ONLY (the user's real Chrome-on-Android over
-  // adb + CDP), so it defaults to "attached" with no BROWX_ATTACH_CDP
-  // (the endpoint is DISCOVERED over adb, not configured). This is the default a
-  // lazily-created session inherits; an explicit open_session can override per id.
+  // persistent. An ATTACH-ONLY engine defaults to "attached" regardless —
+  // android (the user's real Chrome-on-Android, discovered over adb) and electron
+  // (a desktop app the operator launched with a debugging port). Which engines
+  // those are is the engine layer's fact, read through `engineIsAttachOnly`, so
+  // this line stays engine-agnostic. This is the default a lazily-created session
+  // inherits; an explicit open_session can override per id.
   const serverDefaultMode: SessionMode =
-    serverEngine === "android" || opts.attachCdp ? "attached" : "persistent";
+    engineIsAttachOnly(serverEngine) || opts.attachCdp ? "attached" : "persistent";
   const registry = buildSessionRegistry({
     opts,
     resolvedConfig,

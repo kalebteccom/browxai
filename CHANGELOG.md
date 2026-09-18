@@ -92,6 +92,66 @@ surface" covers.
   simulator-gated keystone over a faked WebDriverAgent. Both skip cleanly with no
   device attached.
 
+- **browxai drives desktop Electron applications** — VS Code, Slack, Discord and
+  anything else built on Electron — as an eighth engine, `electron`, and the only
+  one in the desktop-app family. With the two native engines above it takes the
+  roster to eight in three families: five browsers, two native app, one desktop.
+  An Electron app launched with `--remote-debugging-port` is Chromium behind a
+  CDP port, so point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and the read
+  and action surface works against the app's own UI. It reuses the CDP substrates
+  and the Playwright post-wire verbatim: no new substrate code, `deep: true`,
+  every CDP-deep tool available.
+
+  **You do not declare it.** The desktop attach lane reads
+  `Browser.getVersion`'s user agent, which carries an `Electron/<version>` token
+  that `product` and `browser.version()` both omit, and reports
+  `engine: "electron"` on the session. An app that has replaced its user agent
+  reads as `chromium` — the pre-existing behaviour, unchanged — and can be named
+  explicitly with `open_session({ engine: "electron" })`.
+
+  **Measured** against VS Code 1.122.1 / Electron 39.8.8 on macOS: `snapshot`
+  returned a 132-line tree in 36 ms, `find` ranked three real candidates with
+  bounding boxes, a `click` by ref landed, and 113 of 118 named refs held across
+  two consecutive snapshots.
+
+  **Three things differ from an ordinary Chrome attach**, each a refusal or a
+  documented cost rather than a surprise:
+
+  - `navigate` is **refused** (`{ok:false, engine:"electron", hint}`). It would
+    run a web page inside the application's own renderer, privileged on many
+    Electron apps through a preload IPC bridge, and discard every scrap of that
+    renderer's in-memory state. `reload` / `go_back` / `go_forward` work.
+  - A second session on a single-window app is **refused** with
+    `attach-target-creation-unavailable`, naming the session that holds the
+    target. Electron answers `Target.createTarget` with `"Not supported"`, so
+    browxai claims pre-existing renderer targets and cannot mint one. This
+    replaces a raw `Protocol error (Target.createTarget): Not supported`.
+  - `click` against perpetually-animating desktop chrome costs the shipped
+    actionability auto-recovery: measured 4967 ms versus 528 ms for the same
+    click passed `force: true`. browxai does not force by default — inside a
+    logged-in app, skipping the hit-target check is the difference between
+    clicking the control you named and clicking what is under it.
+
+  **Attaching to an app you are signed into is a security decision.** It rides
+  the existing `byob-attach` capability (same mechanism, same unauthenticated
+  loopback port, one env var), and the `byob_action` confirm hook — on by
+  default — fires on every action against it. Launching an app with
+  `--remote-debugging-port` alongside `--user-data-dir` matches prebuilt EDR
+  rules for infostealer cookie theft (MITRE T1539); that detection is correct,
+  and your security team should hear it from you first. Attachability is
+  per-app and per-version: Figma's desktop client strips the switch
+  (`app.commandLine.removeSwitch("remote-debugging-port")`, read out of the
+  shipped `app.asar` of 126.8.18), so it exposes no port at all. See
+  `docs/threat-model.md` under `byob-attach`.
+
+- **`EngineCapabilities.refusedTools`** — a third engine-gate dimension, for a
+  tool the engine *can* run and must not. `deep` answers "is the raw-CDP escape
+  hatch there" and `subInterfaces` answers "is the port implemented"; neither
+  can express `navigate` on Electron, which has a Page, a CDP handle and a
+  declared `navigation` sub-interface, and whose `page.goto()` returns a 200.
+  The refusal carries the same `{ok:false, error, engine, hint}` shape as the
+  other two, so a caller can still tell "the engine will not" from "it failed".
+
 ### Changed
 
 - **`open_session` threads the session id into every launch mode, not only
