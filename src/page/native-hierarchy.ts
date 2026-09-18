@@ -439,12 +439,20 @@ function synthesiseRoot(roots: NativeNode[]): NativeNode {
   };
 }
 
+/** The field separator inside the digest. A unit separator rather than a space,
+ *  because a label may contain spaces: `{className:"a b", text:""}` and
+ *  `{className:"a", text:"b"}` would otherwise hash the same and two different
+ *  screens would report one generation. Written as an escape so this file stays
+ *  plain ASCII — a literal control character in source breaks `grep`, some
+ *  editors and several diff tools. */
+const SEP = "\u001f";
+
 /** A content hash of a composed tree, for the snapshot-generation counter the
  *  element substrate reports when a ref was minted against an older dump. */
 export function hierarchyDigest(roots: NativeNode[]): string {
   const h = createHash("sha256");
   const walk = (n: NativeNode): void => {
-    h.update(`${n.className} ${n.resourceId} ${n.contentDesc} ${n.text} `);
+    h.update(`${n.className}${SEP}${n.resourceId}${SEP}${n.contentDesc}${SEP}${n.text}${SEP}`);
     for (const c of n.children) walk(c);
   };
   for (const r of roots) walk(r);
