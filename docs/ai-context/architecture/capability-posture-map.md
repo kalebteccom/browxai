@@ -6,12 +6,12 @@ Safe by default, with no auto-broadening. Every off-by-default capability carrie
 
 These are enabled. Withholding them reduces browxai to a read-only crawler.
 
-| Capability   | Tools                                                                                        | Rationale                                                              |
-| ------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere. |
-| `navigation` | navigate, go_back, go_forward, reload                                                        | URL changes are visible to the agent and to the user.                  |
-| `action`     | click, fill, select, drag, scroll, hover, press, wait_for                                    | User-emulating actions; bounded by anti-wedge deadlines.               |
-| `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener.            |
+| Capability   | Tools                                                                                        | Rationale                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere.                                                   |
+| `navigation` | navigate, go_back, go_forward, reload                                                        | URL changes are visible to the agent and to the user.                                                                    |
+| `action`     | click, fill, select, drag, scroll, hover, press, wait_for                                    | User-emulating actions; bounded by anti-wedge deadlines.                                                                 |
+| `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener. The answer comes only from the `browxai` CDP isolated world. |
 
 ## Off-by-default capabilities
 
@@ -32,6 +32,7 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 | `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff   | Captures session artifacts (workspace-scoped, but artifact-producing). |
 | `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)      | Composes with `eval`; canvas-app plugins gate through this.            |
 | `replay`           | `.browx` session-replay artifact capture (DOM + network + console) | Archive carries real page content; as sensitive as the session was.    |
+| `self-approval`    | `approve_actions`                                                  | Lets the agent answer the confirm hooks meant to stop its own actions. |
 
 ## Composition rules
 

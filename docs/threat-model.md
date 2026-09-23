@@ -180,6 +180,43 @@ Defenses:
   `force:true` has the same see-through-the-user property, and browxai applies it
   automatically as a recovery.
 
+### 7. Page content answering for the human
+
+`await_human`, the confirm hooks and every `ask-human` policy wait for a person.
+Page content is untrusted, so the page must not be able to give that answer, and
+neither may the agent the hooks exist to hold back. Defenses:
+
+- **The answer channel is outside the page's JS world.** browxai creates a CDP
+  isolated world named `browxai` on every page a session owns, evaluates the
+  `__browx` helper there, and installs a per-session CDP binding scoped to that
+  world. A binding call counts only when CDP reports it came from one of that
+  world's execution contexts. Page scripts share the DOM with the world but not
+  its globals, so they cannot see or call the binding. The human reaches the
+  world from DevTools by picking `browxai` in the console's context dropdown.
+- **The page-visible `window.__browx` is display-only.** It logs where the real
+  channel lives and returns `false`. The `data-browx-signal` attribute is no
+  longer read.
+- **No fallback on engines without CDP.** firefox, webkit, safari and the native
+  engines cannot host the world, so they get no human channel: `await_human`
+  refuses at once with `no-human-channel`, and the confirm hooks and `ask-human`
+  policies fail closed.
+- **The agent can't approve itself by default.** `approve_actions` sits behind the
+  off-by-default `self-approval` capability, and `set_config` cannot add a
+  capability (see "Configuring").
+- **Attached sessions wire only their own tab.** A shared attached browser holds
+  other sessions' tabs, so a bridge wires its leased tab and popups opened from
+  it, never a neighbour's.
+
+Pinned by `test/keystone/human-channel.keystone.test.ts` (real Chromium, plus
+the firefox and webkit refusals) and `test/keystone/approval-config-gate.keystone.test.ts`.
+
+Anything that runs in the page's main world with the agent's authority, such as
+`eval_js` under the `eval` capability, still cannot reach the isolated world.
+A different human channel would need the same property. An MCP-elicitation
+prompt, for instance, has to be sent from inside the `tools/call` that waits for
+the answer: Claude Code answers elicitation only while a call is pending and
+cancels it otherwise.
+
 ## What browxai explicitly does NOT defend against
 
 | Concern                                                                                  | Why we don't defend                                                                                                                                                                                                                                                                                         | What to do instead                                                                              |
@@ -213,7 +250,11 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `human`, default **on**. Tools: `await_human`, `name_ref`.
 
-  Pure coordination primitives.
+  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it.
+
+- `self-approval`, default **off**. Tools: `approve_actions`.
+
+  Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, `file_download`, `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
 
 - `eval`, default **off**. Tools: `eval_js`.
 
@@ -230,7 +271,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
   **Attaching to a desktop Electron app (`engine: electron`) rides this same capability.** `BROWX_ATTACH_CDP` can point at any loopback CDP endpoint, and a running Electron application — VS Code, Slack, Discord, and others — exposes one when launched with `--remote-debugging-port`. browxai detects that case from `Browser.getVersion`'s user agent and reports the session as `engine: "electron"`; it does not ask you to declare it, and it does not refuse the attach. **This is the same hazard `byob-attach` already names, in a sharper form, so it is not a separate capability:** the endpoint is one env var, and an operator who set it to an app's port chose that app. A second toggle for a decision already made by choosing the port would read as a control without being one. What is genuinely different is written out below.
 
   - **One app, one identity, no URL bar.** An attached Chrome holds many origins and the origin allowlist can fence them. An attached Electron app is one signed-in application: its whole surface is the user's authenticated session, and the allowlist has nothing to constrain. Everything the signed-in user can reach — conversations, files, tokens in `localStorage` — is in scope of any tool call.
-  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window rather than acting. Use `approve_actions({ scopes: ["byob_action"] })` deliberately, with a short `ttlSeconds`.
+  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window rather than acting. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
   - **`navigate` is refused outright** on an Electron session (`EngineCapabilities.refusedTools`). It would run an arbitrary web page inside the application's own renderer, which on many Electron apps is privileged through a preload IPC bridge, and it discards everything that renderer held in memory. `reload` / `go_back` / `go_forward` stay available — they operate on the app's own document.
   - **Your EDR will flag the launch, and it should.** Starting a Chromium-family app with `--remote-debugging-port` alongside `--user-data-dir` matches prebuilt detection rules for infostealer cookie theft (MITRE **T1539**, Steal Web Session Cookie) — the Elastic Security ruleset ships one. That is a correct detection, not a false positive: the technique browxai uses here is the technique the rule looks for. Expect the alert, and tell your security team before they find it.
   - **The port is unauthenticated for the life of the app.** browxai does not hold it exclusively; any local process can attach to the same endpoint while the app runs. Prefer a throwaway instance with its own `--user-data-dir` where the work allows it, and quit the app when done.
@@ -331,6 +372,25 @@ BROWX_CAPABILITIES=read,navigation,action,human,eval
 
 Comma-separated, order-insensitive. Omitted = default set (no `eval`, no `byob-attach`,
 no `file-io`). `BROWX_CAPABILITIES=read` ships a read-only server.
+
+**The environment sets the ceiling; config can only narrow it.** `set_config` is an
+MCP tool, so the agent can call it. A `capabilities` list it saves is intersected
+with `BROWX_CAPABILITIES` (or the default set when that is unset) at every server
+start, and `set_config` refuses a patch naming a capability outside the active set.
+Saved names beyond the ceiling are dropped with a startup warning. Up to v0.10.1 a
+saved list replaced `BROWX_CAPABILITIES` from the next start, so an agent could
+widen its own capabilities across a restart.
+
+`BROWX_CONFIG_READONLY=1` goes further for embedders that manage config
+themselves: `set_config`, `reset_config` and `approve_actions` are not registered,
+so no harness can offer them to the model, and the config store refuses writes.
+
+`BROWX_DEFAULT_PROFILE=<dir>` moves the default session's persistent profile out
+of `$BROWX_WORKSPACE/profile`. It is operator-set like `BROWX_WORKSPACE`, so it may
+sit outside the workspace; this is the one browser-profile path the no-trace
+contract doesn't cover. The start fails on a relative path, the filesystem root,
+the home directory itself, a symlink, a non-directory, or a directory owned by
+another user. A missing directory is created `0700`.
 
 A `confirm_required` set lists actions that always block on `await_human` before
 executing, regardless of capability:
