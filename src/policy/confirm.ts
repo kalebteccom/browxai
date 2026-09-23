@@ -11,7 +11,7 @@
 
 import { isOriginAllowed, type OriginPolicy } from "./origin.js";
 import type { ConfirmHook } from "../util/capabilities.js";
-import { HUMAN_CHANNEL_HINT, type BrowxBridge } from "../helper/bridge.js";
+import type { BrowxBridge } from "../helper/bridge.js";
 import { log } from "../util/logging.js";
 
 export interface ConfirmContext {
@@ -176,9 +176,12 @@ async function askHuman(
       asked: false,
     };
   }
-  log.info(`${prompt} — ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true) to proceed`);
+  const ticket = ctx.bridge.newTicket();
+  log.info(
+    `${prompt} — ${ctx.bridge.humanHint()}, call __browx.confirm(true, "${ticket}") to proceed`,
+  );
   try {
-    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
+    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000, ticket);
     const value =
       sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
         ? (sig.data as { value: unknown }).value

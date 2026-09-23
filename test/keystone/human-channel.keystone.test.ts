@@ -21,14 +21,33 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as createHttp, type Server } from "node:http";
 import { createServer as createSocket, type AddressInfo } from "node:net";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, firefox, webkit, type Browser, type Page } from "playwright-core";
 import { createServer } from "../../src/server.js";
+import { BrowxBridge } from "../../src/helper/bridge.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
-const WORLD = "browxai";
+const WORLD_PREFIX = "browxai-";
+
+// The prompt tickets browxai prints on stderr with each human prompt. A human
+// reads them off the terminal; the test reads them off the same stream.
+const tickets: string[] = [];
+const realStderrWrite = process.stderr.write.bind(process.stderr);
+function captureTickets(): void {
+  process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+    for (const m of String(chunk).matchAll(/call __browx\.\w+\([^)]*"([0-9a-f]{6})"\)/g))
+      tickets.push(m[1]!);
+    return (realStderrWrite as (...a: unknown[]) => boolean)(chunk, ...rest);
+  });
+}
+async function nextTicket(seen: number): Promise<string> {
+  for (let i = 0; i < 100 && tickets.length <= seen; i++)
+    await new Promise((r) => setTimeout(r, 50));
+  expect(tickets.length, "a prompt with a ticket was printed").toBeGreaterThan(seen);
+  return tickets[tickets.length - 1]!;
+}
 
 // Every page-reachable way to signal the server that existed before, plus a
 // sweep over any global that looks like a browxai binding. Runs on an interval
@@ -89,15 +108,19 @@ function caller(server: Server_) {
   };
 }
 
-/** Call `expression` in the `browxai` isolated world of `page`, over a CDP
- *  session of our own. This is what a human does from DevTools after picking
- *  the `browxai` console context. */
+/** Call `expression` in the session's `browxai-<random>` isolated world of
+ *  `page`, over a CDP session of our own. This is what a human does from
+ *  DevTools after picking that console context. */
 async function asHuman(page: Page, expression: string): Promise<void> {
   const cdp = await page.context().newCDPSession(page);
   const worlds: number[] = [];
-  cdp.on("Runtime.executionContextCreated", (ev: { context: { id: number; name: string } }) => {
-    if (ev.context.name === WORLD) worlds.push(ev.context.id);
-  });
+  cdp.on(
+    "Runtime.executionContextCreated",
+    (ev: { context: { id: number; name: string; origin: string } }) => {
+      if (ev.context.name.startsWith(WORLD_PREFIX) && !ev.context.origin.includes("-extension://"))
+        worlds.push(ev.context.id);
+    },
+  );
   await cdp.send("Runtime.enable");
   expect(worlds.length, "the browxai isolated world exists on the page").toBeGreaterThan(0);
   const res = await cdp.send("Runtime.evaluate", {
@@ -114,6 +137,7 @@ async function stillPending<T>(p: Promise<T>, ms: number): Promise<"pending" | T
 }
 
 beforeAll(async () => {
+  captureTickets();
   http = createHttp((req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     res.end(req.url?.startsWith("/forge") ? FORGING_PAGE : PLAIN_PAGE);
@@ -123,6 +147,7 @@ beforeAll(async () => {
 }, KEYSTONE_TIMEOUT);
 
 afterAll(async () => {
+  process.stderr.write = realStderrWrite;
   await new Promise<void>((r) => http.close(() => r()));
   for (const [k, v] of Object.entries(savedEnv)) {
     if (v === undefined) delete process.env[k];
@@ -287,6 +312,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       expect(seen.state).toBe("display-only");
       expect(seen.bindings).toEqual([]);
 
+      const before = tickets.length;
       const clicked = call<{ ok: boolean; error?: string }>("click", {
         session,
         selector: '[data-testid="save-btn"]',
@@ -302,7 +328,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       expect(forgeCount).toBeGreaterThan(10);
       expect(await page.textContent("#out")).toBe("Unsaved");
 
-      await asHuman(page, "__browx.confirm(true)");
+      await asHuman(page, `__browx.confirm(true, "${await nextTicket(before)}")`);
       const result = await clicked;
       expect(result.ok, JSON.stringify(result)).toBe(true);
       expect(await page.textContent("#out")).toBe("Saved OK");
@@ -318,13 +344,14 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       await call("open_session", { session, mode: "attached" });
       await call("navigate", { session, url: `${base}/forge?ks=decline` });
       const page = await findPage("ks=decline");
+      const seen = tickets.length;
       const clicked = call<{ ok: boolean; error?: string }>("click", {
         session,
         selector: '[data-testid="save-btn"]',
       });
       await page.evaluate(FORGERY);
       expect(await stillPending(clicked, 1_500)).toBe("pending");
-      await asHuman(page, "__browx.confirm(false)");
+      await asHuman(page, `__browx.confirm(false, "${await nextTicket(seen)}")`);
       const result = await clicked;
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/human-declined/);
@@ -341,6 +368,7 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
       await call("navigate", { session, url: `${base}/plain?ks=await1` });
       await call("navigate", { session, url: `${base}/forge?ks=await2` });
       const page = await findPage("ks=await2");
+      const seen = tickets.length;
       const waiting = call<{ timedOut: boolean; value: unknown }>("await_human", {
         session,
         kind: "choose",
@@ -349,10 +377,213 @@ describeAttached("human channel — attached Chromium, confirm hook", () => {
         timeoutMs: 30_000,
       });
       expect(await stillPending(waiting, 1_500)).toBe("pending");
-      await asHuman(page, "__browx.choose(1)");
+      await asHuman(page, `__browx.choose(1, "${await nextTicket(seen)}")`);
       const r = await waiting;
       expect(r.timedOut).toBe(false);
       expect(r.value).toBe(1);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 2b. A stale answer, or one without the prompt's ticket, answers nothing.
+// ---------------------------------------------------------------------------
+
+describeAttached("human channel — answers are tied to their prompt", () => {
+  let chrome: ChildProcess;
+  let profileDir: string;
+  let endpoint: string;
+  let workspace: string;
+  let server: Server_;
+  let observer: Browser;
+
+  beforeAll(async () => {
+    workspace = isolateEnv("browx-human-ticket-");
+    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach";
+    profileDir = mkdtempSync(join(tmpdir(), "browx-human-ticket-profile-"));
+    const port = await freePort();
+    endpoint = `http://127.0.0.1:${port}`;
+    chrome = spawn(
+      chromePath,
+      [
+        "--headless=new",
+        `--remote-debugging-port=${port}`,
+        `--user-data-dir=${profileDir}`,
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--remote-allow-origins=*",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "about:blank",
+      ],
+      { stdio: ["ignore", "ignore", "ignore"] },
+    );
+    const deadline = Date.now() + 30_000;
+    for (;;) {
+      try {
+        if ((await fetch(`${endpoint}/json/version`)).ok) break;
+      } catch {
+        /* not up yet */
+      }
+      if (Date.now() > deadline) throw new Error("attached Chrome never opened its CDP port");
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    server = await createServer({ attachCdp: endpoint, headless: true });
+    observer = await chromium.connectOverCDP(endpoint);
+  }, KEYSTONE_TIMEOUT);
+
+  afterAll(async () => {
+    await observer?.close().catch(() => undefined);
+    await server?.shutdown().catch(() => undefined);
+    if (chrome && chrome.exitCode === null) {
+      const exited = new Promise((r) => chrome.once("exit", r));
+      chrome.kill();
+      await exited;
+    }
+    if (workspace) rmSync(workspace, { recursive: true, force: true });
+    if (profileDir) rmSync(profileDir, { recursive: true, force: true, maxRetries: 5 });
+  }, KEYSTONE_TIMEOUT);
+
+  it(
+    "a late answer to a timed-out prompt, or an answer with no ticket, does not answer the next",
+    async () => {
+      const call = caller(server);
+      const session = "human-ticket";
+      await call("open_session", { session, mode: "attached" });
+      await call("navigate", { session, url: `${base}/plain?ks=ticket` });
+      let page: Page | undefined;
+      for (let i = 0; i < 50 && !page; i++) {
+        page = observer
+          .contexts()
+          .flatMap((c) => c.pages())
+          .find((p) => p.url().includes("ks=ticket"));
+        if (!page) await new Promise((r) => setTimeout(r, 100));
+      }
+      expect(page).toBeTruthy();
+
+      let seen = tickets.length;
+      const first = await call<{ timedOut: boolean }>("await_human", {
+        session,
+        kind: "confirm",
+        prompt: "first",
+        timeoutMs: 1_000,
+      });
+      expect(first.timedOut).toBe(true);
+      const stale = await nextTicket(seen);
+
+      seen = tickets.length;
+      const second = call<{ timedOut: boolean; value: unknown }>("await_human", {
+        session,
+        kind: "confirm",
+        prompt: "second",
+        timeoutMs: 30_000,
+      });
+      const current = await nextTicket(seen);
+      expect(current).not.toBe(stale);
+      await asHuman(page!, `__browx.confirm(true, "${stale}")`);
+      await asHuman(page!, "__browx.confirm(true)");
+      expect(await stillPending(second, 1_500)).toBe("pending");
+      await asHuman(page!, `__browx.confirm(false, "${current}")`);
+      const r = await second;
+      expect(r.timedOut).toBe(false);
+      expect(r.value).toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 2c. An extension named like the human world gets nothing.
+// ---------------------------------------------------------------------------
+
+describe("human channel — an extension cannot pose as the human world", () => {
+  let extDir: string;
+  let pageServerUrl: string;
+
+  beforeAll(() => {
+    extDir = mkdtempSync(join(tmpdir(), "browx-human-ext-"));
+    pageServerUrl = `${base}/plain?ks=ext`;
+  });
+  afterAll(() => {
+    if (extDir) rmSync(extDir, { recursive: true, force: true });
+  });
+
+  /** An unpacked MV3 extension named `name` whose content script calls every
+   *  `__browx_human_*` function it can see with a forged approval, and records
+   *  how many it found on the page's <html>. */
+  function writeExtension(name: string): string {
+    const dir = mkdtempSync(join(extDir, "ext-"));
+    writeFileSync(
+      join(dir, "manifest.json"),
+      JSON.stringify({
+        manifest_version: 3,
+        name,
+        version: "1.0",
+        content_scripts: [{ matches: ["<all_urls>"], js: ["cs.js"], run_at: "document_start" }],
+      }),
+    );
+    writeFileSync(
+      join(dir, "cs.js"),
+      `setInterval(function () {
+        var hits = Object.getOwnPropertyNames(globalThis).filter(function (k) { return k.indexOf("__browx_human_") === 0; });
+        document.documentElement.setAttribute("data-ext-hits", String(hits.length));
+        hits.forEach(function (k) {
+          try { globalThis[k](JSON.stringify({ kind: "signal", name: "respond", data: { kind: "confirm", value: true } })); } catch (_) {}
+        });
+      }, 100);`,
+    );
+    return dir;
+  }
+
+  async function run(
+    extName: string,
+    bridgeOpts: { worldName?: string },
+  ): Promise<{ answered: boolean; hits: string | null }> {
+    const ext = writeExtension(extName);
+    // The full Chromium build: the headless shell does not load extensions.
+    const ctx = await chromium.launchPersistentContext(mkdtempSync(join(extDir, "profile-")), {
+      channel: "chromium",
+      headless: true,
+      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`],
+    });
+    try {
+      const page = ctx.pages()[0] ?? (await ctx.newPage());
+      const bridge = new BrowxBridge(bridgeOpts);
+      await bridge.attach(ctx);
+      await page.goto(pageServerUrl);
+      const answered = await bridge.awaitSignal("respond", 2_500).then(
+        () => true,
+        () => false,
+      );
+      const hits = await page.getAttribute("html", "data-ext-hits");
+      await bridge.detach();
+      return { answered, hits };
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  it(
+    'an extension named "browxai" does not share the per-session world',
+    async () => {
+      const r = await run("browxai", {});
+      expect(r.hits, "the content script ran").not.toBeNull();
+      expect(r.hits).toBe("0");
+      expect(r.answered).toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "an extension that does share the world's name is refused by origin",
+    async () => {
+      // Force the collision the random name prevents, to pin the second check:
+      // the binding lands in the extension's world, and its calls still count
+      // for nothing because the context's origin is an extension origin.
+      const r = await run("browxai-collision", { worldName: "browxai-collision" });
+      expect(r.hits, "the binding reached the extension's world").toBe("1");
+      expect(r.answered).toBe(false);
     },
     KEYSTONE_TIMEOUT,
   );

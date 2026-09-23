@@ -26,7 +26,7 @@ import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { ConsoleBuffer } from "../page/console.js";
-import { BrowxBridge, HUMAN_CHANNEL_HINT } from "../helper/bridge.js";
+import { BrowxBridge } from "../helper/bridge.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
 import { requireCdp, requirePage } from "../engine/index.js";
@@ -125,11 +125,12 @@ export async function rebuildPersistentForExtensions(
     requirePage(sess).context(),
     e.permission,
     async (permission, origin) => {
+      const ticket = br.newTicket();
       log.info(
-        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
+        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
       );
       try {
-        const sig = await br.awaitSignal("respond", 300_000);
+        const sig = await br.awaitSignal("respond", 300_000, ticket);
         const data = sig.data as { kind?: string; value?: unknown } | null;
         if (data && data.kind === "confirm" && data.value === true) return "allow";
         return "deny";
@@ -146,11 +147,12 @@ export async function rebuildPersistentForExtensions(
   // fresh (the old one was torn down), so the binding + init-script install
   // afresh and the sync-decision hint is re-seeded.
   await attachNotificationPolicy(requirePage(sess).context(), e.notification, async (n) => {
+    const ticket = br.newTicket();
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000);
+      const sig = await br.awaitSignal("respond", 300_000, ticket);
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";
@@ -167,11 +169,12 @@ export async function rebuildPersistentForExtensions(
     e.fsPicker,
     workspace.root,
     async (api, suggestedName) => {
+      const ticket = br.newTicket();
       log.info(
-        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.respond({files:[…]}) (or fs_picker_respond)`,
+        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${br.humanHint()}, call __browx.respond({kind:"fs_picker_respond", value:{files:[…]}}, "${ticket}") (or fs_picker_respond)`,
       );
       try {
-        const sig = await br.awaitSignal("respond", 300_000);
+        const sig = await br.awaitSignal("respond", 300_000, ticket);
         const data = sig.data as { kind?: string; value?: unknown } | null;
         if (
           data &&
