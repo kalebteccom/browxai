@@ -3,7 +3,16 @@
 // never at cwd. Resolved once at startup.
 
 import { homedir } from "node:os";
-import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fchmodSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+} from "node:fs";
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { log } from "./logging.js";
 
@@ -74,7 +83,23 @@ export function resolveDefaultProfileDir(env: NodeJS.ProcessEnv = process.env): 
     return dir;
   }
   mkdirSync(dir, { recursive: true, mode: 0o700 });
-  chmodSync(dir, 0o700);
+  // Something could have swapped the path between the existence check and the
+  // mkdir. Check again, then chmod through a descriptor opened with O_NOFOLLOW,
+  // so the mode lands on the directory we checked and never on a link target.
+  const st = lstatSync(dir);
+  if (st.isSymbolicLink()) fail("became a symlink while it was being created");
+  if (!st.isDirectory()) fail("is not a directory after creation");
+  if (typeof process.getuid === "function" && st.uid !== process.getuid())
+    fail("is owned by another user after creation");
+  const fd = openSync(
+    dir,
+    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (fsConstants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fchmodSync(fd, 0o700);
+  } finally {
+    closeSync(fd);
+  }
   return dir;
 }
 
