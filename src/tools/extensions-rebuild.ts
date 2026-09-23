@@ -169,7 +169,7 @@ export async function rebuildPersistentForExtensions(
     async (api, suggestedName) => {
       const ticket = br.newTicket();
       log.info(
-        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${br.humanHint()}, call __browx.respond({kind:"fs_picker_respond", value:{files:[…]}}, "${ticket}") (or fs_picker_respond)`,
+        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${br.humanHint()}, call __browx.respond({kind:"fs_picker_respond", value:{files:[…]}}, "${ticket}"). Not an approval gate: the agent can switch this session to fsPickerPolicy "allow" and answer with fs_picker_respond`,
       );
       try {
         const sig = await br.awaitSignal("respond", 300_000, ticket);
