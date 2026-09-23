@@ -116,7 +116,7 @@
     "eslint": "^9.12.0",
     "eslint-plugin-import-x": "^4.3.0",
     "globals": "^15.11.0",
-    "jscpd": "^5.0.9",
+    "jscpd": "^5.2.1",
     "license-checker-rseidelsohn": "^4.4.2",
     "lint-staged": "^15.2.10",
     "prettier": "^3.3.3",
