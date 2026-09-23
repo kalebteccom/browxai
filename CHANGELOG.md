@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
+
+Security release: fixes GHSA-m8v2-5758-xw44 (approval prompts in 0.10.1 and earlier could be answered by page scripts, a browser extension or the agent itself). Upgrade notes: unattended flows that call `approve_actions` need `self-approval` in `BROWX_CAPABILITIES`; a capability enabled earlier through `set_config` must be added to `BROWX_CAPABILITIES`; profile snapshots taken before 0.11.0 must be taken again; human answers now go through the DevTools context named in the prompt, with the prompt's ticket.
+
 ### Added
 
 - **`self-approval` capability, off by default.** It gates `approve_actions`,
