@@ -9,11 +9,18 @@ describe("BrowxBridge — detach state", () => {
     expect(b.isDetached()).toBe(true);
   });
 
-  it("detach() rejects any outstanding awaitSignal() waiters", async () => {
+  it("awaitSignal() refuses at once when no page carries the human channel", async () => {
+    // An unattached bridge stands in for an engine without CDP: there is no
+    // isolated world to answer from, so a caller must not be left waiting.
     const b = new BrowxBridge();
-    const pending = b.awaitSignal("never-fires", 0);
+    expect(b.humanChannelAvailable()).toBe(false);
+    await expect(b.awaitSignal("respond", 0)).rejects.toThrow(/^no-human-channel:/);
+  });
+
+  it("awaitSignal() refuses after detach()", async () => {
+    const b = new BrowxBridge();
     await b.detach();
-    await expect(pending).rejects.toThrow(/bridge detached/);
+    await expect(b.awaitSignal("proceed", 0)).rejects.toThrow(/no-human-channel/);
   });
 
   it("detach() is idempotent — second call is a no-op", async () => {

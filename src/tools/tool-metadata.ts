@@ -78,7 +78,15 @@ import { PLUGIN_INFO_TOOL_CAPABILITY } from "./plugin-runtime.js";
  *  only stores and never invokes at construction. */
 function makeMetadataHostDeps(): HostDeps {
   const workspace = resolveWorkspace();
-  const configStore = new ConfigStore(workspace.root);
+  // The metadata table is the full surface, whatever this process's env says:
+  // BROWX_CONFIG_READONLY drops tools from a served registry, not from the
+  // capability and batch rows they declare. It reads no policy from the file,
+  // so a malformed config.json is the server start's error to report, not this.
+  const configStore = new ConfigStore(
+    workspace.root,
+    { ...process.env, BROWX_CONFIG_READONLY: "" },
+    { onMalformed: "ignore" },
+  );
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);
   const config = resolveConfig(cfgEnv);

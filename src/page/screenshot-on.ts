@@ -23,7 +23,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 
 export const TRIGGERS = ["navigation", "console-error", "network-mutation", "dialog"] as const;
 export type Trigger = (typeof TRIGGERS)[number];
@@ -170,7 +170,7 @@ export async function runScreenshotOn(
 
   // Resolve + create the target dir under $BROWX_WORKSPACE.
   // `resolveWorkspacePath` rejects path escapes before any byte hits disk.
-  const resolvedDir = resolveWorkspacePath(workspaceRoot, args.intoDir, "screenshot_on");
+  const resolvedDir = resolveWorkspaceWritePath(workspaceRoot, args.intoDir, "screenshot_on");
   mkdirSync(resolvedDir, { recursive: true });
 
   const fmt: "png" | "jpeg" = args.format ?? "png";

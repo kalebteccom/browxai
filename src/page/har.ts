@@ -32,7 +32,11 @@
 import { existsSync, mkdirSync, statSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { BrowserContext } from "playwright-core";
-import { resolveWorkspacePath } from "../session/storage.js";
+import {
+  resolveWorkspacePath,
+  resolveWorkspaceReadPath,
+  resolveWorkspaceWritePath,
+} from "../session/storage.js";
 
 /** Maximum size (in bytes) at which a finalized HAR is returned inline rather
  *  than only by path. Mirrors the same cap used by `network_body` / storage
@@ -94,7 +98,7 @@ export function resolveHarPath(
   tool: string,
 ): string {
   const resolved = userPath
-    ? resolveWorkspacePath(workspaceRoot, userPath, tool)
+    ? resolveWorkspaceWritePath(workspaceRoot, userPath, tool)
     : resolveWorkspacePath(workspaceRoot, `har/${defaultHarFilename(sessionId)}`, tool);
   // `resolved` is workspace-rooted by construction (resolveWorkspacePath rejects
   // any escape from `workspaceRoot`); so `dirname(resolved)` is workspace-rooted
@@ -119,7 +123,7 @@ export function resolveHarReplayPaths(
     if (typeof h !== "string" || !h) {
       throw new Error(`${tool}: \`hars\` entries must be non-empty workspace-rooted strings`);
     }
-    const resolved = resolveWorkspacePath(workspaceRoot, h, tool);
+    const resolved = resolveWorkspaceReadPath(workspaceRoot, h, tool);
     if (!existsSync(resolved)) {
       throw new Error(`${tool}: HAR replay file not found at "${resolved}"`);
     }

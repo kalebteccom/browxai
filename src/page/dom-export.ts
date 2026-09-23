@@ -33,7 +33,7 @@
 
 import { resolve as resolvePath, dirname } from "node:path";
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 
 export type DomExportFormat = "html" | "jsonl";
 
@@ -188,7 +188,7 @@ export async function domExport(
   const format: DomExportFormat = args.format ?? "html";
   const includeShadow = args.includeShadow ?? true;
   const relPath = args.path ?? defaultDomExportPath(sessionId, format);
-  const resolved = resolveWorkspacePath(workspaceRoot, relPath, "dom_export");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, relPath, "dom_export");
 
   const walked = await page.evaluate(PAGE_WALK_FN, {
     mode: format,

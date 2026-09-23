@@ -56,23 +56,27 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // over BiDi in its own post-wire; every Playwright engine attaches here.)
   entry.console.attach(requirePage(sess));
 
-  // browser bridge — the page-side __browx signalling channel.
-  await br.attach(ctx);
+  // human channel — `__browx` in a CDP isolated world the page cannot reach.
+  // An attached session shares its browser context with other sessions, so it
+  // wires only its own leased tab.
+  await br.attach(ctx, entry.mode === "attached" ? { root: requirePage(sess) } : {});
 
   // dialog policy — install per-page on current + future pages.
   attachDialogPolicy(ctx, entry.dialog);
 
   // permission policy — install per-context binding + init-script wrappers, plus
   // the CDP baseline (Browser.setPermission per supported name). The ask-human
-  // handler routes through the bridge — `__browx.confirm(true|false)` from
-  // page-side DevTools releases the wait. Best-effort: attach failures still leave
+  // handler routes through the bridge — `__browx.confirm(true|false)` from the
+  // DevTools console context named in the prompt (`browxai-<random>`), with the
+  // prompt's ticket, releases the wait. Best-effort: attach failures still leave
   // the CDP baseline below in place.
   await attachPermissionPolicy(ctx, entry.permission, async (permission, origin) => {
+    const ticket = br.newTicket();
     log.info(
-      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
+      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000);
+      const sig = await br.awaitSignal("respond", 300_000, ticket);
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";
@@ -85,11 +89,12 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // notification-construction policy — per-context wrapper + binding around
   // `new Notification(...)`. Default `allow` preserves browser default.
   await attachNotificationPolicy(ctx, entry.notification, async (n) => {
+    const ticket = br.newTicket();
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000);
+      const sig = await br.awaitSignal("respond", 300_000, ticket);
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";
@@ -102,11 +107,12 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // The server-side write target for `createWritable()` is workspace-rooted and
   // validated against `workspace.root` at `fs_picker_respond` time.
   await attachFsPickerPolicy(ctx, entry.fsPicker, workspace.root, async (api, suggestedName) => {
+    const ticket = br.newTicket();
     log.info(
-      `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+      `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${br.humanHint()}, call __browx.respond({kind:"fs_picker_respond", value:{files:[…]}}, "${ticket}"). Not an approval gate: the agent can switch this session to fsPickerPolicy "allow" and answer with fs_picker_respond`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000);
+      const sig = await br.awaitSignal("respond", 300_000, ticket);
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (
         data &&

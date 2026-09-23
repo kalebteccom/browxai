@@ -8,7 +8,7 @@
 // the composition root's per-server isolation. Behaviour is byte-identical to the
 // prior in-closure helper; only the dependency wiring is made explicit.
 
-import { DEFAULT_SESSION_ID, type SessionEntry } from "../session/registry.js";
+import type { SessionEntry } from "../session/registry.js";
 import { openManagedSession } from "../session/managed.js";
 import { resolveDevice } from "../session/device.js";
 import { reapplyAll as reapplyEmulation } from "../session/emulation.js";
@@ -60,11 +60,11 @@ export async function rebuildPersistentForExtensions(
   const { caps, configStore, workspace, opts, resolvedConfig } = deps;
   const headless = opts.headless ?? resolvedConfig.headless;
   const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
-  const profileName = e.launchProfile ?? e.id;
-  const profileDir =
-    e.id === DEFAULT_SESSION_ID && !e.launchProfile
-      ? workspace.sub("profile")
-      : workspace.sub(`profiles/${profileName}`);
+  // Relaunch on the directory the session actually launched on. Recomputing it
+  // from the id and profile name cannot tell `open_session()` (the default
+  // profile, maybe BROWX_DEFAULT_PROFILE) from `open_session({profile:"default"})`
+  // (`profiles/default`), since both record `launchProfile: "default"`.
+  const profileDir = e.session.profileDir ?? workspace.sub(`profiles/${e.launchProfile ?? e.id}`);
   const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
   // Preserve the engine across the rebuild (extensions are Chromium-only, so
   // this is chromium today; reading it before close keeps the rebuild engine-
@@ -123,11 +123,12 @@ export async function rebuildPersistentForExtensions(
     requirePage(sess).context(),
     e.permission,
     async (permission, origin) => {
+      const ticket = br.newTicket();
       log.info(
-        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
+        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
       );
       try {
-        const sig = await br.awaitSignal("respond", 300_000);
+        const sig = await br.awaitSignal("respond", 300_000, ticket);
         const data = sig.data as { kind?: string; value?: unknown } | null;
         if (data && data.kind === "confirm" && data.value === true) return "allow";
         return "deny";
@@ -144,11 +145,12 @@ export async function rebuildPersistentForExtensions(
   // fresh (the old one was torn down), so the binding + init-script install
   // afresh and the sync-decision hint is re-seeded.
   await attachNotificationPolicy(requirePage(sess).context(), e.notification, async (n) => {
+    const ticket = br.newTicket();
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000);
+      const sig = await br.awaitSignal("respond", 300_000, ticket);
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";
@@ -165,11 +167,12 @@ export async function rebuildPersistentForExtensions(
     e.fsPicker,
     workspace.root,
     async (api, suggestedName) => {
+      const ticket = br.newTicket();
       log.info(
-        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${br.humanHint()}, call __browx.respond({kind:"fs_picker_respond", value:{files:[…]}}, "${ticket}"). Not an approval gate: the agent can switch this session to fsPickerPolicy "allow" and answer with fs_picker_respond`,
       );
       try {
-        const sig = await br.awaitSignal("respond", 300_000);
+        const sig = await br.awaitSignal("respond", 300_000, ticket);
         const data = sig.data as { kind?: string; value?: unknown } | null;
         if (
           data &&

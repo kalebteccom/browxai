@@ -11,13 +11,16 @@ function buildAwaitHumanPrompt(
   kind: string,
   prompt: string,
   choices: string[] | undefined,
+  hint: string,
+  ticket: string,
 ): string {
   if (kind === "choose" && choices) {
-    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`;
+    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ ${hint}, call __browx.choose(<index>, "${ticket}")`;
   }
-  if (kind === "confirm") return `${prompt} → call __browx.confirm(true|false)`;
-  if (kind === "input") return `${prompt} → call __browx.input('your text')`;
-  return `${prompt} → call __browx.proceed() to release`;
+  if (kind === "confirm")
+    return `${prompt} → ${hint}, call __browx.confirm(true|false, "${ticket}")`;
+  if (kind === "input") return `${prompt} → ${hint}, call __browx.input('your text', "${ticket}")`;
+  return `${prompt} → ${hint}, call __browx.proceed("${ticket}")`;
 }
 
 /**
@@ -45,12 +48,13 @@ export function registerBatchHumanTools(
     {
       capability: "human",
       description:
-        "Block until the human responds in the page. Operator reads `prompt` from the server's stderr (or a future banner UI) and triggers a response from DevTools:\n" +
-        "  - `acknowledge` → `__browx.proceed()` (or `signal('proceed')`)\n" +
-        "  - `confirm`     → `__browx.confirm(true|false)`\n" +
-        "  - `choose`      → `__browx.choose(<index-into-choices>)`\n" +
-        "  - `input`       → `__browx.input('typed text')`\n" +
-        "Returns `{ kind, value, timedOut }`. `pick_element` kind (in-page hover-pick overlay) is deferred to .",
+        "Block until the human responds. Operator reads `prompt` from the server's stderr and answers from DevTools, in the `browxai-<random>` console context the prompt names (a per-session isolated world page scripts and extensions cannot reach; the page's own `window.__browx` is display-only and answers nothing):\n" +
+        "  - `acknowledge` → `__browx.proceed(ticket)`\n" +
+        "  - `confirm`     → `__browx.confirm(true|false, ticket)`\n" +
+        "  - `choose`      → `__browx.choose(<index-into-choices>, ticket)`\n" +
+        "  - `input`       → `__browx.input('typed text', ticket)`\n" +
+        "The world name and the per-prompt `ticket` are printed with the prompt on stderr; an answer without the current ticket is dropped.\n" +
+        "Returns `{ kind, value, timedOut }`. On an engine without CDP (firefox, webkit, safari, the native engines) there is no isolated world, so it returns at once with `error` starting `no-human-channel` instead of waiting.",
       inputSchema: {
         kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
         prompt: z
@@ -84,11 +88,12 @@ export function registerBatchHumanTools(
       // hard-capped at 1h. await_human is human-paced — NOT under the 5s
       // action default — but never unbounded.
       const humanMs = Math.min(timeoutMs && timeoutMs > 0 ? timeoutMs : 300_000, 3_600_000);
-      const promptBody = buildAwaitHumanPrompt(kind, prompt, choices);
+      const ticket = e.bridge.newTicket();
+      const promptBody = buildAwaitHumanPrompt(kind, prompt, choices, e.bridge.humanHint(), ticket);
       log.info(`await_human (${kind}): ${promptBody}`);
       const signalName = kind === "acknowledge" ? "proceed" : "respond";
       try {
-        const sig = await e.bridge.awaitSignal(signalName, humanMs);
+        const sig = await e.bridge.awaitSignal(signalName, humanMs, ticket);
         // For typed kinds the page sends `{ kind, value }`; for acknowledge it sends any/null.
         let value: unknown = sig.data;
         if (

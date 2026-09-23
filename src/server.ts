@@ -116,6 +116,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // resolvers consume the *resolved* chain re-expressed as an env shape, so
   // precedence is centralised in the store without rewriting each resolver.
   const workspace = resolveWorkspace();
+  // Validate (and create 0700) BROWX_DEFAULT_PROFILE up front, so a bad value
+  // fails the start instead of the first browser call.
+  if (process.env.BROWX_DEFAULT_PROFILE?.trim()) workspace.defaultProfile();
   const configStore = new ConfigStore(workspace.root);
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);
@@ -133,6 +136,22 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(`browxai: ${w}`);
+  if (configStore.readonly)
+    log.info(
+      "browxai: BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
+    );
+  const loosened = configStore.policyAdjustments().filter((k) => k !== "capabilities");
+  if (loosened.length)
+    log.warn(
+      `browxai: the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
+        "a saved layer can only tighten these keys, so the environment's values hold. See docs/threat-model.md.",
+    );
+  const droppedCaps = configStore.droppedCapabilities();
+  if (droppedCaps.length)
+    log.warn(
+      `browxai: the saved config names capabilities beyond BROWX_CAPABILITIES (${droppedCaps.join(", ")}); ` +
+        "a saved list can only narrow the start-time set, so they stay off. Set them in BROWX_CAPABILITIES to enable them.",
+    );
   // Credentials provider: resolved once at server start. The provider object
   // is constructed even when the capability is off so per-deployment config
   // validation (unknown provider name → warn) happens up front. Per-call

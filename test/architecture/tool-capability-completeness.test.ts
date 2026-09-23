@@ -21,7 +21,7 @@ import "../../src/tools/tool-metadata.js";
 import { TOOL_CAPABILITY, type Capability } from "../../src/util/capabilities.js";
 import { registeredToolNames } from "./_surface.js";
 
-// The 10 control-plane coordination primitives that legitimately have NO browser
+// The 9 control-plane coordination primitives that legitimately have NO browser
 // capability and default to `human`: session lifecycle, batch orchestration,
 // config, and the approval workflow. These are the SANCTIONED human-defaults —
 // they declare no `capability` at registration on purpose.
@@ -34,7 +34,6 @@ const HUMAN_DEFAULT_ALLOWLIST = new Set<string>([
   "get_config",
   "set_config",
   "reset_config",
-  "approve_actions",
   "list_approvals",
 ]);
 

@@ -10,6 +10,28 @@ surface" covers.
 
 ### Added
 
+- **`self-approval` capability, off by default.** It gates `approve_actions`,
+  which lets the agent pre-approve the confirm hooks that hold its own actions.
+  Without it `approve_actions` returns the standard gate refusal
+  (`requiredCapability: "self-approval"`) and grants nothing. Loud warning at
+  boot when enabled. **Breaking for unattended flows that call
+  `approve_actions`:** add `self-approval` to `BROWX_CAPABILITIES`, or drop the
+  hook you mean from `BROWX_CONFIRM_REQUIRED`.
+- **`BROWX_CONFIG_READONLY=1`.** `set_config`, `reset_config` and
+  `approve_actions` are not registered, so they are absent from `tools/list` and
+  from `batch`, and the config store refuses writes. For embedders that manage
+  config outside the agent session.
+- **`BROWX_DEFAULT_PROFILE=<dir>`.** The persistent profile directory for the
+  `default` session, in place of `<workspace>/profile`. Checked at server start:
+  it must be absolute (or `~/…`), and the filesystem root, the home directory
+  itself, a symlink, a non-directory and a directory owned by another user fail
+  the start. A missing directory is created with mode `0700`, re-checked after
+  creation, and chmodded through a descriptor opened with `O_NOFOLLOW`. `profile_snapshot` and `profile_restore` use it for the
+  `default` profile too. The extensions
+  rebuild of a persistent session now relaunches on the directory the session
+  actually launched on; it used to recompute one from the session id, and for
+  the default session got `<workspace>/profiles/default`, a different profile.
+
 - **Two native engines: `ios-app` and `android-app`. browxai drives native
   mobile apps with the same tools, the same refs and the same evidence format it
   uses for browsers** (RFC 0008). `ios-app` boots an iOS Simulator, launches an
@@ -702,6 +724,75 @@ surface" covers.
   structured, engine-naming error on one that does not, instead of letting
   `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
   engine — no adapter, no public shape and no tool response moved.
+
+### Security
+
+- **Page scripts could answer a human prompt (all versions up to and including
+  v0.10.1).** `await_human`, the confirm hooks (`byob_action`,
+  `navigate_off_allowlist`) and the `ask-human` permission, notification and
+  file-picker policies waited on a channel that lived in the page's own
+  JavaScript world, so content on the page could supply the answer meant to come
+  from a person. The channel now lives in a CDP isolated world named `browxai`,
+  behind a per-session binding that exists only there, and a call counts only
+  when CDP reports it came from that world. The page-visible `window.__browx` is
+  display-only and the `data-browx-signal` attribute is no longer read. A human
+  answers from DevTools after picking `browxai` in the console context dropdown.
+  Engines without CDP (firefox, webkit, safari, the native engines) have no such
+  world and now refuse: `await_human` returns `no-human-channel` at once, and
+  the hooks and `ask-human` policies fail closed. An attached session wires only
+  its own leased tab. Pinned by `test/keystone/human-channel.keystone.test.ts`.
+- **An extension named `browxai` could answer the human prompts.** The first
+  version of the isolated-world channel above used a fixed world name, and CDP
+  scopes a binding by world name, so an extension with that name received the
+  binding in its content-script world. Each session's world is now
+  `browxai-<random>`, printed with the prompt, and a context with an extension
+  origin is refused regardless of name. An extension with the `debugger`
+  permission can still reach the world over CDP, so the `extensions` capability
+  is documented as equivalent to `self-approval`.
+- **A late answer could answer the next prompt.** Answers that arrived with no
+  prompt pending were queued and handed to the next wait. Each prompt now prints
+  a ticket, an answer counts only with the current ticket, and nothing is
+  queued. The human-facing calls take the ticket as their last argument:
+  `__browx.confirm(true, "a1b2c3")`, `__browx.proceed("a1b2c3")`.
+- **The agent could approve its own confirm hooks (all versions with
+  `approve_actions`).** `approve_actions` had no capability gate. It now needs
+  `self-approval` (see Added).
+- **The agent could widen its own capabilities across a restart (all versions
+  with `set_config`).** A `capabilities` list saved through `set_config`
+  replaced `BROWX_CAPABILITIES` at the next server start. `BROWX_CAPABILITIES`
+  (or the default set when unset) is now the ceiling: `set_config` refuses a
+  patch that names a capability outside the active set, and at every start a
+  saved or session list is intersected with the ceiling, with a warning naming
+  anything dropped. **If you enabled a capability through `set_config`, it is
+  off after upgrading until you add it to `BROWX_CAPABILITIES`.** Unknown names
+  in a saved list are dropped too, so they no longer fail the next start.
+- **The agent could loosen the rest of its policy through config (all versions
+  with `set_config`).** The same env-ceiling rule now covers `confirmRequired`
+  (hooks can be added, not removed), `allowedOrigins` (narrow only; an empty or
+  disjoint list falls back to the env list instead of meaning "any origin"),
+  `blockedOrigins` (add only), `disableWebSecurity` (off only) and `plugins`
+  (subset only). `set_config` refuses a loosening patch with
+  `policy-not-loosenable`, and saved layers are clamped at start with a warning.
+  **`disableWebSecurity` now turns on only with `BROWX_DISABLE_WEB_SECURITY=1`,**
+  and a saved `plugins` list may only name plugins listed in the new
+  `BROWX_PLUGINS`. If you set either through `set_config`, move it to the
+  environment.
+- **Write tools could overwrite operator files in the workspace.** `pdf_save`,
+  `dom_export`, `asset_export`, heap snapshots and the other tools that write an
+  agent-chosen workspace path now refuse `config.json`, `plugins.json`,
+  `plugins-lock.json`, the `plugins/`, `profile/` and `profiles/` trees and the
+  `BROWX_DEFAULT_PROFILE` directory, plus `profile-snapshots/`, `chrome-profile/`
+  and the snapshot key. `profile_restore` refuses a snapshot `profile_snapshot`
+  did not write or whose files changed since (a signed manifest in each snapshot),
+  and now replaces the profile with exactly the snapshot through a temp directory
+  and a swap, instead of copying over it (which wrote through symlinks left in the
+  profile, kept files the snapshot lacked, and failed on a leftover `Singleton*`
+  link). Tools that read an agent-chosen path (`upload_file`, `drop_files` and
+  the rest) refuse operator files, the snapshot key and profile trees;
+  **snapshots taken with an earlier version must be taken again.** A
+  `config.json` that cannot be parsed now fails the server start instead of being
+  ignored, which used to drop the saved restrictions, and `set_config` refuses an
+  origin or confirm hook the next start could not parse.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 

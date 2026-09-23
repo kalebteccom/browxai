@@ -84,6 +84,14 @@ Reports against the following are in scope:
 - **In-page script injection outside the `eval_js` gate** — any path
   that ships agent-supplied code into the page that is not the documented
   `eval_js` tool behind the `eval` capability.
+- **Human-prompt forgery** — any path that lets page content, or the
+  agent without the `self-approval` capability, answer `await_human`, a
+  confirm hook, or an `ask-human` policy in place of the human.
+- **Self-widening** — any path that lets the agent loosen policy past
+  what the server's environment set: enable a capability, drop a confirm
+  hook, widen or clear the origin lists, turn on `disableWebSecurity`, or
+  add a plugin (for example through `set_config` or by overwriting a
+  workspace file the operator owns).
 
 ## Out of scope
 
@@ -112,7 +120,7 @@ lifecycle script runs at install time.
 
 **What we DO NOT promise.** Enabling a capability gate (`eval`, `file-io`,
 `network-body`, `extensions`, `byob-attach`, `device-emulation`,
-`secrets`, `canvas`, etc.) is opt-in to adopter-side execution risk.
+`secrets`, `canvas`, `self-approval`, etc.) is opt-in to adopter-side execution risk.
 The capability gate is a **Schelling point**, not a sandbox. browxai
 does not isolate or filter what runs once the gate is open. The host is
 responsible for the trust posture of code, URLs, and inputs that pass

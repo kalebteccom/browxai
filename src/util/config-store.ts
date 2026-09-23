@@ -15,6 +15,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./logging.js";
 import { invariant } from "./invariant.js";
+import {
+  clampPolicy,
+  policyAdjustments,
+  policyCeiling,
+  type PolicyCeiling,
+} from "./config-ceiling.js";
 
 /** Full resolved view consumed by the server. */
 export interface ResolvedConfig {
@@ -114,6 +120,13 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (hos) layer.hideOverlaySelectors = hos;
   const ch = env.BROWX_CHANNEL?.trim();
   if (ch) layer.channel = ch;
+  // The two policy keys the env sets only as a ceiling for the persistent
+  // layers (see config-ceiling.ts): the operator's opt-in to SOP-off launches,
+  // and the plugins a saved `plugins` list may name.
+  const dws = env.BROWX_DISABLE_WEB_SECURITY?.trim().toLowerCase();
+  if (dws === "1" || dws === "true") layer.disableWebSecurity = true;
+  const pl = list(env.BROWX_PLUGINS?.trim());
+  if (pl) layer.plugins = pl;
   return layer;
 }
 
@@ -122,30 +135,80 @@ interface PersistedFile {
   project?: ConfigLayer;
 }
 
+const LIST_KEYS = [
+  "testAttributes",
+  "capabilities",
+  "confirmRequired",
+  "allowedOrigins",
+  "blockedOrigins",
+  "hideOverlaySelectors",
+  "plugins",
+] as const;
+
+/** Shape-check the persisted file. Unknown top-level sections are ignored; a
+ *  known section that is not an object, or a list key that is not a string
+ *  list, is malformed. */
+function parsePersisted(raw: unknown): PersistedFile {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new Error("top level is not an object");
+  const out: PersistedFile = {};
+  for (const scope of ["user", "project"] as const) {
+    const layer = (raw as Record<string, unknown>)[scope];
+    if (layer === undefined) continue;
+    if (!layer || typeof layer !== "object" || Array.isArray(layer))
+      throw new Error(`"${scope}" is not an object`);
+    for (const k of LIST_KEYS) {
+      const v = (layer as Record<string, unknown>)[k];
+      if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string")))
+        throw new Error(`"${scope}.${k}" is not a list of strings`);
+    }
+    out[scope] = layer;
+  }
+  return out;
+}
+
+/** True when `BROWX_CONFIG_READONLY` asks for a read-only config store. */
+export function configReadonlyFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env.BROWX_CONFIG_READONLY?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export class ConfigStore {
   private filePath: string;
   private persisted: PersistedFile = {};
   private env: ConfigLayer;
+  /** Set from `BROWX_CONFIG_READONLY`. The persistent layers still load and
+   *  resolve; only writes are refused. */
+  readonly readonly: boolean;
 
-  constructor(workspaceRoot: string, env: NodeJS.ProcessEnv = process.env) {
+  constructor(
+    workspaceRoot: string,
+    env: NodeJS.ProcessEnv = process.env,
+    opts: { onMalformed?: "throw" | "ignore" } = {},
+  ) {
     this.filePath = join(workspaceRoot, CONFIG_FILE);
     this.env = envLayer(env);
-    this.load();
+    this.readonly = configReadonlyFromEnv(env);
+    this.load(opts.onMalformed ?? "throw");
   }
 
-  private load(): void {
+  /** A malformed file fails loudly by default. Ignoring it would drop the
+   *  operator's saved narrowing (tighter origins, extra confirm hooks), and a
+   *  tool that can write into the workspace could force that by corrupting the
+   *  file. Only the browser-free metadata collector tolerates it. */
+  private load(onMalformed: "throw" | "ignore"): void {
     if (!existsSync(this.filePath)) return;
     try {
-      const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as PersistedFile;
-      // Defensive: only accept the two known sections; ignore anything else.
-      this.persisted = {
-        ...(raw.user && typeof raw.user === "object" ? { user: raw.user } : {}),
-        ...(raw.project && typeof raw.project === "object" ? { project: raw.project } : {}),
-      };
+      const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as unknown;
+      this.persisted = parsePersisted(raw);
     } catch (e) {
-      log.warn(`config: ${CONFIG_FILE} is malformed — ignoring persistent layers`, {
-        error: e instanceof Error ? e.message : String(e),
-      });
+      const why = e instanceof Error ? e.message : String(e);
+      if (onMalformed === "throw")
+        throw new Error(
+          `config: ${this.filePath} is malformed (${why}). Fix or remove it; browxai will not ` +
+            "start on a config file it cannot read, because ignoring it would drop saved restrictions.",
+        );
+      log.warn(`config: ${CONFIG_FILE} is malformed — ignoring persistent layers`, { error: why });
       this.persisted = {};
     }
   }
@@ -222,11 +285,48 @@ export class ConfigStore {
       chain[chain.length - 1]!.scope === "session",
       "config precedence: `session` must be the highest-precedence layer",
     );
+    return clampPolicy(this.resolveUnbounded(sessionPatch), this.ceiling());
+  }
+
+  /** The precedence merge before the ceiling is applied. */
+  private resolveUnbounded(sessionPatch?: ConfigLayer): ResolvedConfig {
     let acc: ResolvedConfig = { ...BUILTIN_DEFAULTS, unstable: { ...BUILTIN_DEFAULTS.unstable } };
-    for (const layer of chain) {
+    for (const layer of ConfigStore.PRECEDENCE) {
       acc = ConfigStore.apply(acc, layer.read(this, sessionPatch));
     }
     return acc;
+  }
+
+  /** The operator's policy ceiling: the env layer, else the built-in defaults.
+   *  No saved or session layer may loosen a key past it (config-ceiling.ts). */
+  ceiling(): PolicyCeiling {
+    return policyCeiling(this.env, BUILTIN_DEFAULTS);
+  }
+
+  /** Policy keys where the persisted layers asked for more than the ceiling
+   *  allows. The resolved view ignores that part; the server warns at start. */
+  policyAdjustments(): string[] {
+    return policyAdjustments(this.resolveUnbounded(), this.resolve());
+  }
+
+  /** The widest capability list any layer may resolve to: `BROWX_CAPABILITIES`
+   *  when set, else the built-in default set. A saved or session `capabilities`
+   *  list can only narrow it. The operator sets the ceiling in the server's
+   *  environment; `set_config` is agent-reachable, so it must never widen what
+   *  the next server start enables. */
+  capabilityCeiling(): string[] {
+    return [...(this.env.capabilities ?? BUILTIN_DEFAULTS.capabilities)];
+  }
+
+  /** Capabilities a persisted layer names that the ceiling does not allow.
+   *  They are dropped from the resolved view; the server warns once at start. */
+  droppedCapabilities(): string[] {
+    const ceiling = new Set(this.capabilityCeiling());
+    const named = new Set<string>();
+    for (const scope of ["user", "project"] as const) {
+      for (const c of this.persisted[scope]?.capabilities ?? []) named.add(c);
+    }
+    return [...named].filter((c) => !ceiling.has(c));
   }
 
   /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. Reads the
@@ -244,6 +344,7 @@ export class ConfigStore {
 
   /** Persist a patch into `user` or `project`. The only writer of config.json. */
   setLayer(scope: PersistentScope, patch: ConfigLayer): void {
+    this.assertWritable();
     const current = this.persisted[scope] ?? {};
     this.persisted[scope] = {
       ...current,
@@ -254,8 +355,16 @@ export class ConfigStore {
     log.info(`config: set scope="${scope}"`, { keys: Object.keys(patch) });
   }
 
+  private assertWritable(): void {
+    if (this.readonly)
+      throw new Error(
+        "config-readonly: BROWX_CONFIG_READONLY is set; the config store refuses writes",
+      );
+  }
+
   /** Clear a persistent layer entirely. */
   resetLayer(scope: PersistentScope): void {
+    this.assertWritable();
     delete this.persisted[scope];
     this.save();
     log.info(`config: reset scope="${scope}"`);

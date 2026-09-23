@@ -20,10 +20,10 @@ export interface ConfirmContext {
   bridge: BrowxBridge | null;
   /** True iff the active session attached over CDP (BYOB). */
   isByob: boolean;
-  /** session-scoped pre-approvals. When a scope is granted, confirm
-   *  hooks for that scope auto-approve without the page-side `__browx.confirm`
-   *  round-trip. Lets non-Claude MCP clients run unattended without a human
-   *  at DevTools to issue confirms. */
+  /** Pre-approvals from `approve_actions`. When a scope is granted, confirm
+   *  hooks for that scope auto-approve without asking the human. Granting is
+   *  gated on the off-by-default `self-approval` capability, because the agent
+   *  whose actions the hook is meant to stop is the one calling the tool. */
   approvals?: ApprovalStore;
 }
 
@@ -35,8 +35,9 @@ export interface ConfirmContext {
  * consume is logged for audit.
  *
  * Pre-approval is *not* an override; the confirm hook still runs, finds the
- * grant, and returns ok:true with `reason: "pre-approved"`. The page-side
- * channel is the fallback when no pre-approval covers the scope.
+ * grant, and returns ok:true with `reason: "pre-approved"`. The human channel
+ * is the fallback when no pre-approval covers the scope. The only writer is
+ * `approve_actions`, behind the `self-approval` capability.
  */
 export class ApprovalStore {
   private grants = new Map<ConfirmHook, { expiresAt: number; grantedAt: number; uses: number }>();
@@ -135,31 +136,7 @@ export async function confirmNavigation(
   if (ctx.approvals?.consume("navigate_off_allowlist")) {
     return { ok: true, reason: "pre-approved", asked: false };
   }
-  if (!ctx.bridge) {
-    // No bridge means no way to confirm — fail closed.
-    return {
-      ok: false,
-      reason: "off-allowlist; no helper bridge to confirm; blocked",
-      asked: false,
-    };
-  }
-  log.info(`confirm navigate (off-allowlist): ${url} — call __browx.confirm(true) to proceed`);
-  try {
-    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
-    const value =
-      sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
-        ? (sig.data as { value: unknown }).value
-        : sig.data;
-    return value === true
-      ? { ok: true, reason: "human-approved", asked: true }
-      : { ok: false, reason: "human-declined", asked: true };
-  } catch (e) {
-    return {
-      ok: false,
-      reason: `confirm timed out / failed: ${e instanceof Error ? e.message : String(e)}`,
-      asked: true,
-    };
-  }
+  return askHuman(ctx, "off-allowlist", `confirm navigate (off-allowlist): ${url}`);
 }
 
 /**
@@ -181,12 +158,30 @@ export async function confirmByobAction(
   if (ctx.approvals?.consume("byob_action")) {
     return { ok: true, reason: "pre-approved", asked: false };
   }
-  if (!ctx.bridge) {
-    return { ok: false, reason: "byob; no helper bridge to confirm; blocked", asked: false };
+  return askHuman(ctx, "byob", `confirm byob ${toolName}`);
+}
+
+/** Block on the human channel for a yes/no. Fails closed when the session has
+ *  no bridge or no human channel (an engine without CDP): nothing the page can
+ *  reach may stand in for the human. */
+async function askHuman(
+  ctx: ConfirmContext,
+  label: string,
+  prompt: string,
+): Promise<ConfirmDecision> {
+  if (!ctx.bridge || !ctx.bridge.humanChannelAvailable()) {
+    return {
+      ok: false,
+      reason: `${label}; no human channel on this session to confirm; blocked`,
+      asked: false,
+    };
   }
-  log.info(`confirm byob ${toolName} — call __browx.confirm(true) to proceed`);
+  const ticket = ctx.bridge.newTicket();
+  log.info(
+    `${prompt} — ${ctx.bridge.humanHint()}, call __browx.confirm(true, "${ticket}") to proceed`,
+  );
   try {
-    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
+    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000, ticket);
     const value =
       sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
         ? (sig.data as { value: unknown }).value

@@ -90,7 +90,7 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-attach-pool-"));
   process.env.BROWX_WORKSPACE = workspace;
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach";
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,self-approval";
 
   fixture = await startFixture();
   if (!chromePath || !existsSync(chromePath)) return;

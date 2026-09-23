@@ -34,6 +34,7 @@ import { resolve, sep } from "node:path";
 import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { resolveTarget, type ActionTarget } from "./locator.js";
+import { assertReadableWorkspacePath } from "../util/workspace.js";
 
 export interface DropFileInputPath {
   /** Workspace-rooted file path. Mutually exclusive with `contents`. */
@@ -107,6 +108,7 @@ function preparePathFile(workspaceRoot: string, f: DropFileInputPath, i: number)
       `drop_files: files[${i}].path must resolve inside $BROWX_WORKSPACE — stage the file there, or use \`contents\` (base64)`,
     );
   }
+  assertReadableWorkspacePath(workspaceRoot, resolved, "drop_files");
   let buf: Buffer;
   try {
     buf = readFileSync(resolved);
