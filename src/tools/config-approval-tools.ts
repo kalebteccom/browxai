@@ -12,7 +12,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
   // plugin runtime starts later). Destructuring would snapshot the empty
   // pre-load array, so get_config would always report `plugins: []`. Read it
   // live inside the handler instead.
-  const { z, register, caps, configStore, approvals } = host;
+  const { z, register, caps, configStore, approvals, gateCheck } = host;
 
   // ---------- config store ----------
 
@@ -152,8 +152,9 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     "approve_actions",
     {
       batchable: true,
+      capability: "self-approval",
       description:
-        'session-scoped pre-approval for one or more confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)`. The client calls this once at session start with the scopes to pre-approve (e.g. `["byob_action"]`) and an optional TTL; confirm hooks for those scopes auto-approve within the window. Each grant + consume is logged for audit. Falls back to page-side confirm when no grant covers the scope. Pre-approval is **not** a security boundary — it\'s an unblock for headless flows; tighten by capping `ttlSeconds` per-session.',
+        'Pre-approve one or more confirm-required scopes for a TTL window, so confirm hooks for those scopes pass without asking the human. Requires the off-by-default `self-approval` capability: the confirm hooks exist to stop the agent\'s own actions, and this tool lets the agent answer them itself, so the operator has to opt in at server start. Refused with `requiredCapability: "self-approval"` when the capability is not active. Each grant + consume is logged for audit. Falls back to asking the human when no grant covers the scope. Keep `ttlSeconds` short.',
       inputSchema: {
         scopes: z
           .array(z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]))
@@ -171,6 +172,8 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       },
     },
     async ({ scopes, ttlSeconds }) => {
+      const g = gateCheck("approve_actions");
+      if (g) return g;
       const ttl = ttlSeconds ?? 3600;
       for (const scope of scopes) approvals.grant(scope, ttl);
       return {

@@ -33,7 +33,8 @@ export type Capability =
   | "diagnostics"
   | "canvas"
   | "replay"
-  | "native-device";
+  | "native-device"
+  | "self-approval";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -55,6 +56,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "canvas",
   "replay",
   "native-device",
+  "self-approval",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -330,6 +332,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "native-device",
     message:
       'native-device capability is ENABLED — it gates the two native ENGINES, `ios-app` (an iOS Simulator over `simctl` plus an operator-run WebDriverAgent) and `android-app` (an Android emulator over adb). They broaden posture more than any browser capability does: both INSTALL AND LAUNCH APPLICATIONS, drive an OS-LEVEL INPUT PIPELINE that every app on the device receives, boot and shut down simulators and emulators, and read the device\'s screen and its installed-app list. `open_session({browserType:"ios-app"})` and `open_session({browserType:"android-app"})` both refuse with `capability-required` without it, so the gate sits at session creation and no native tool can be reached around it. On a simulator or an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator\'s phone, and real devices are out of scope by policy, not by mechanism. Registered secrets do NOT materialise on either native engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text` — the leak sink RFC 0008 §6 names. Recordings still carry real app content: a native screenshot photographs the screen, and the iOS keyboard draws a character-preview bubble above the pressed key that a recording catches even for a password field. Xcode with its Simulator runtimes, and the Android SDK, are OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See docs/threat-model.md.',
+  },
+  {
+    capability: "self-approval",
+    message:
+      "self-approval capability is ENABLED — `approve_actions` lets the agent pre-approve the confirm hooks (`byob_action`, `navigate_off_allowlist`, …) that exist to stop the agent's own actions until a human says yes. Every grant and every consume is logged. Enable it only for unattended runs where you accept that the agent answers its own confirmations; prefer removing a single hook from BROWX_CONFIRM_REQUIRED when that is what you mean. See docs/threat-model.md.",
   },
   {
     capability: "captcha",

@@ -267,7 +267,7 @@ export function buildHost(deps: HostDeps): ToolHost {
             ok: false,
             action: { type: toolName },
             error: `policy: ${decision.reason}`,
-            hint: "This is NOT a human-approval wall and NOT a selector failure. As an MCP client, call `approve_actions({ scopes:[…], ttlSeconds })` once at session start to enable action tools for the session (e.g. scopes:[\"byob_action\"]). Alternatives: remove the entry from BROWX_CONFIRM_REQUIRED, or a human responds `true` to the page-side confirm. Don't mark the feature unverified — it's gated, not broken.",
+            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true)` from the DevTools `browxai` console context; the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
           },
           null,
           2,

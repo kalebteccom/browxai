@@ -323,4 +323,5 @@ export const HARNESS_CAPABILITIES = [
   "device-emulation",
   "diagnostics",
   "canvas",
+  "self-approval",
 ] as const;
