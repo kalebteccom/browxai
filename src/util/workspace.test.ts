@@ -12,7 +12,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { resolveDefaultProfileDir, resolveWorkspace } from "./workspace.js";
+import {
+  assertWritableWorkspacePath,
+  resolveDefaultProfileDir,
+  resolveWorkspace,
+  resolveWorkspaceWritePath,
+} from "./workspace.js";
 
 let tmp: string;
 beforeEach(() => {
@@ -105,5 +110,48 @@ describe("BROWX_DEFAULT_PROFILE", () => {
     chmodSync(dir, 0o755);
     expect(resolveDefaultProfileDir({ BROWX_DEFAULT_PROFILE: dir })).toBe(dir);
     expect(statSync(dir).mode & 0o777).toBe(0o755);
+  });
+});
+
+describe("protected workspace paths", () => {
+  it("refuses the config store, plugin files and profile trees for writes", () => {
+    const root = join(tmp, "ws");
+    mkdirSync(root);
+    for (const p of [
+      "config.json",
+      "Config.JSON",
+      "a/../config.json",
+      "plugins.json",
+      "plugins-lock.json",
+      "plugins/node_modules/x/index.js",
+      "profile",
+      "profile/Default/Cookies",
+      "profiles/a/Cookies",
+    ])
+      expect(() => resolveWorkspaceWritePath(root, p, "t"), p).toThrow(/refusing to write/);
+    expect(resolveWorkspaceWritePath(root, "dumps/config.json", "t")).toBe(
+      join(root, "dumps", "config.json"),
+    );
+    expect(resolveWorkspaceWritePath(root, "profile-notes.txt", "t")).toBe(
+      join(root, "profile-notes.txt"),
+    );
+  });
+
+  it("follows a symlink inside the workspace before deciding", () => {
+    const root = join(tmp, "ws2");
+    mkdirSync(root);
+    symlinkSync(root, join(root, "alias"));
+    expect(() => resolveWorkspaceWritePath(root, "alias/config.json", "t")).toThrow(
+      /refusing to write/,
+    );
+  });
+
+  it("refuses the BROWX_DEFAULT_PROFILE tree", () => {
+    const root = join(tmp, "ws3");
+    mkdirSync(root);
+    const env = { BROWX_DEFAULT_PROFILE: join(root, "my-profile") };
+    expect(() =>
+      assertWritableWorkspacePath(root, join(root, "my-profile", "Cookies"), "t", env),
+    ).toThrow(/BROWX_DEFAULT_PROFILE/);
   });
 });

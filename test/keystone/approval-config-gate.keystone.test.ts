@@ -16,7 +16,15 @@
 // the operator's directory, created 0700.
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -279,6 +287,53 @@ describe("other policy keys cannot be loosened through config", () => {
       );
       const call = caller(await start());
       expect(await heldByHook(call, B)).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describe("operator files cannot be overwritten by write tools", () => {
+  it(
+    "pdf_save and dom_export refuse the config store, plugin files and profiles",
+    async () => {
+      process.env.BROWX_CAPABILITIES = "read,navigation,action,human,file-io";
+      const call = caller(await start());
+      const saved = await call<{ ok: boolean }>("set_config", {
+        scope: "user",
+        patch: { confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"] },
+      });
+      expect(saved.ok).toBe(true);
+      const before = readFileSync(join(workspace, "config.json"), "utf8");
+      await call("navigate", { url: "data:text/html,<p>x</p>" });
+      for (const path of ["config.json", "CONFIG.json", "./sub/../config.json"]) {
+        const r = await call<{ ok: boolean; error?: string }>("pdf_save", { path });
+        expect(r.ok, path).toBe(false);
+        expect(r.error).toMatch(/refusing to write/);
+      }
+      for (const path of [
+        "plugins.json",
+        "plugins/x.html",
+        "profile/x.html",
+        "profiles/a/x.html",
+      ]) {
+        const r = await call<{ ok: boolean; error?: string }>("dom_export", { path });
+        expect(r.ok, path).toBe(false);
+        expect(r.error).toMatch(/refusing to write/);
+      }
+      expect(readFileSync(join(workspace, "config.json"), "utf8")).toBe(before);
+      expect(existsSync(join(workspace, "plugins.json"))).toBe(false);
+      // An ordinary path still works.
+      const ok = await call<{ ok: boolean }>("dom_export", { path: "dumps/x.html" });
+      expect(ok.ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a malformed config.json fails the server start",
+    async () => {
+      writeFileSync(join(workspace, "config.json"), "%PDF-1.7 not json");
+      await expect(createServer({ headless: true })).rejects.toThrow(/config\.json is malformed/);
     },
     KEYSTONE_TIMEOUT,
   );

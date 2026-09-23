@@ -12,7 +12,7 @@
 
 import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 
 export const MIN_INTERVAL_MS = 100;
 export const MAX_INTERVAL_MS = 60_000;
@@ -148,7 +148,7 @@ export async function runSchedule(
   // Resolve + create the target dir under $BROWX_WORKSPACE. `resolveWorkspacePath`
   // rejects path-escape attempts before any byte hits disk (same chokepoint as
   // `screenshot({path})`).
-  const resolvedDir = resolveWorkspacePath(workspaceRoot, args.intoDir, "screenshot_schedule");
+  const resolvedDir = resolveWorkspaceWritePath(workspaceRoot, args.intoDir, "screenshot_schedule");
   mkdirSync(resolvedDir, { recursive: true });
 
   const fmt: "png" | "jpeg" = args.format ?? "png";
@@ -214,7 +214,7 @@ export function defaultScheduleDir(sessionId: string, now: Date = new Date()): s
 /** Shared dir-creation helper — re-used by `screenshot_on`. Rooted inside
  *  $BROWX_WORKSPACE (path escape is rejected by `resolveWorkspacePath`). */
 export function ensureWorkspaceDir(workspaceRoot: string, intoDir: string, tool: string): string {
-  const resolved = resolveWorkspacePath(workspaceRoot, intoDir, tool);
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, intoDir, tool);
   // $BROWX_WORKSPACE-rooted by construction (resolveWorkspacePath above).
   mkdirSync(resolved, { recursive: true });
   return resolved;

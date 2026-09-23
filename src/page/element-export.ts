@@ -38,7 +38,7 @@
 import { resolve as resolvePath, dirname, join } from "node:path";
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import type { Locator, Page } from "playwright-core";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 import { locatorFor } from "./locator.js";
 import type { RefRegistry } from "./refs.js";
 import {
@@ -334,7 +334,7 @@ export async function elementExport(
   }
   const maxBytes = Math.floor(maxSizeMb * 1024 * 1024);
   const relPath = args.intoDir ?? defaultElementExportPath(sessionId, args.ref, format);
-  const resolved = resolveWorkspacePath(workspaceRoot, relPath, "element_export");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, relPath, "element_export");
 
   await assertResolves(locator, args.ref);
 

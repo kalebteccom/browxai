@@ -41,7 +41,12 @@ import {
   rmSync,
 } from "node:fs";
 import type { BrowserContext, Page } from "playwright-core";
-import { assertSafeName, isSafeName, resolveWorkspacePath } from "../util/workspace.js";
+import {
+  assertSafeName,
+  isSafeName,
+  resolveWorkspacePath,
+  resolveWorkspaceWritePath,
+} from "../util/workspace.js";
 
 // The plain-data storage vocabulary lives in `storage-types.ts` so the
 // StorageSubstrate port can name it without reaching playwright-core through
@@ -55,7 +60,7 @@ import type { StorageStateBlob, CookieInput, WebStorageKind } from "./storage-ty
 // root resolver, so util-layer modules depend on it inward instead of reaching
 // up into session). Re-exported here so the storage-state callers that import
 // them from this module keep working unchanged.
-export { assertSafeName, resolveWorkspacePath };
+export { assertSafeName, resolveWorkspacePath, resolveWorkspaceWritePath };
 
 // ---- layer 1: bulk --------------------------------------------------------
 
@@ -70,7 +75,7 @@ export async function dumpStorageState(
   if (opts.path === undefined) return { state };
   // `resolved` is workspace-rooted by construction — `resolveWorkspacePath`
   // (above) rejects any path outside `workspace.root` / $BROWX_WORKSPACE.
-  const resolved = resolveWorkspacePath(workspaceRoot, opts.path, "dump_storage_state");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, opts.path, "dump_storage_state");
   const json = JSON.stringify(state, null, 2);
   // ensure parent dir exists — still under workspace.root by construction.
   const parent = resolved.substring(0, Math.max(resolved.lastIndexOf(sep), 0));

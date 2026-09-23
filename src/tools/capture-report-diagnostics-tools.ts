@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { sep as pathSep } from "node:path";
 import { estimateTokens } from "../util/tokens.js";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath as writePath } from "../session/storage.js";
 import { DEFAULT_SESSION_ID } from "../session/registry.js";
 import {
   buildReportSummary,
@@ -395,7 +395,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
       let writtenBytes: number | undefined;
       if (path !== undefined) {
         try {
-          const resolved = resolveWorkspacePath(workspace.root, path, "export_playwright_script");
+          const resolved = writePath(workspace.root, path, "export_playwright_script");
           // Ensure parent dir exists — same pattern dumpStorageState uses.
           const parent = resolved.substring(0, Math.max(resolved.lastIndexOf(pathSep), 0));
           if (parent && !existsSync(parent)) mkdirSync(parent, { recursive: true });

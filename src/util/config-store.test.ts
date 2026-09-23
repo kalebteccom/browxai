@@ -84,10 +84,16 @@ describe("ConfigStore precedence", () => {
     expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).user).toBeUndefined();
   });
 
-  it("a malformed config.json degrades to defaults + warn, never throws", () => {
+  it("a malformed config.json fails loudly instead of dropping saved restrictions", () => {
     writeFileSync(join(dir, "config.json"), "{ not valid json");
-    const s = new ConfigStore(dir, {});
-    expect(s.resolve()).toEqual(BUILTIN_DEFAULTS);
+    expect(() => new ConfigStore(dir, {})).toThrow(/config\.json is malformed/);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: ["x"] }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/"user" is not an object/);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { allowedOrigins: "x" } }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/user\.allowedOrigins/);
+    // The metadata collector's lenient mode still degrades to defaults.
+    writeFileSync(join(dir, "config.json"), "{ not valid json");
+    expect(new ConfigStore(dir, {}, { onMalformed: "ignore" }).resolve()).toEqual(BUILTIN_DEFAULTS);
   });
 
   it("ignores unknown sections in config.json", () => {

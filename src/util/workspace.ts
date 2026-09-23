@@ -3,8 +3,8 @@
 // never at cwd. Resolved once at startup.
 
 import { homedir } from "node:os";
-import { chmodSync, existsSync, lstatSync, mkdirSync } from "node:fs";
-import { isAbsolute, join, parse, resolve, sep } from "node:path";
+import { chmodSync, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { log } from "./logging.js";
 
 const DEFAULT_WORKSPACE = join(homedir(), ".browxai");
@@ -123,5 +123,70 @@ export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: str
         `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
     );
   }
+  return resolved;
+}
+
+// ---- protected workspace paths -------------------------------------------
+//
+// Some files under the workspace are the operator's, not the agent's: the
+// config store, the plugin declaration and install tree, and the browser
+// profiles. A tool that writes an agent-chosen path (`pdf_save`, `dom_export`,
+// `asset_export`, a heap snapshot, …) must never land on one. Overwriting
+// `config.json` would reset the operator's saved narrowing, and writing
+// `plugins.json` would declare code to load at the next start.
+
+const PROTECTED_FILES = ["config.json", "plugins.json", "plugins-lock.json"];
+const PROTECTED_DIRS = ["plugins", "profile", "profiles"];
+
+/** `p` with its longest existing ancestor replaced by that ancestor's real
+ *  path, so a symlink inside the workspace cannot route around the check. */
+function realish(p: string): string {
+  let head = p;
+  const tail: string[] = [];
+  // cap: one step per path segment; `dirname` reaches the root and returns.
+  while (!existsSync(head)) {
+    const parent = dirname(head);
+    if (parent === head) return p;
+    tail.unshift(basename(head));
+    head = parent;
+  }
+  try {
+    return join(realpathSync(head), ...tail);
+  } catch {
+    return p;
+  }
+}
+
+/** Throws when `abs` is, or is inside, a protected operator path. Compares
+ *  case-insensitively, because the default macOS filesystem is. */
+export function assertWritableWorkspacePath(
+  workspaceRoot: string,
+  abs: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const rootReal = realish(resolve(workspaceRoot)).toLowerCase();
+  const target = realish(resolve(abs)).toLowerCase();
+  const under = (dir: string) => target === dir || target.startsWith(dir + sep);
+  const refuse = (what: string): never => {
+    throw new Error(
+      `${tool}: refusing to write "${abs}" — it is ${what}, which only the operator changes. ` +
+        "Pick another workspace path.",
+    );
+  };
+  for (const f of PROTECTED_FILES) if (target === join(rootReal, f)) refuse(`the workspace ${f}`);
+  for (const d of PROTECTED_DIRS) if (under(join(rootReal, d))) refuse(`under the workspace ${d}/`);
+  const dp = env.BROWX_DEFAULT_PROFILE?.trim();
+  if (dp) {
+    const expanded = dp.replace(/^~(?=$|\/)/, homedir());
+    if (isAbsolute(expanded) && under(realish(resolve(expanded)).toLowerCase()))
+      refuse("under BROWX_DEFAULT_PROFILE");
+  }
+}
+
+/** `resolveWorkspacePath` for a path the caller is about to WRITE. */
+export function resolveWorkspaceWritePath(workspaceRoot: string, p: string, tool: string): string {
+  const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
+  assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }

@@ -44,6 +44,7 @@
 
 import { resolve, sep } from "node:path";
 import { InstallGuard, PolicyRecordBuffer } from "./policy-buffer.js";
+import { assertWritableWorkspacePath } from "../util/workspace.js";
 
 export type FsPickerMode = "allow" | "deny" | "raise" | "ask-human";
 
@@ -250,6 +251,8 @@ export function resolveWorkspaceFsPath(workspaceRoot: string, path: string): str
       "fs_picker_respond: `path` must resolve inside $BROWX_WORKSPACE — stage the file there, or use `contents` (base64)",
     );
   }
+  // The page writes through a save-picker handle to this path.
+  assertWritableWorkspacePath(workspaceRoot, resolved, "fs_picker_respond");
   return resolved;
 }
 

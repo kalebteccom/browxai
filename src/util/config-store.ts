@@ -135,6 +135,38 @@ interface PersistedFile {
   project?: ConfigLayer;
 }
 
+const LIST_KEYS = [
+  "testAttributes",
+  "capabilities",
+  "confirmRequired",
+  "allowedOrigins",
+  "blockedOrigins",
+  "hideOverlaySelectors",
+  "plugins",
+] as const;
+
+/** Shape-check the persisted file. Unknown top-level sections are ignored; a
+ *  known section that is not an object, or a list key that is not a string
+ *  list, is malformed. */
+function parsePersisted(raw: unknown): PersistedFile {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw))
+    throw new Error("top level is not an object");
+  const out: PersistedFile = {};
+  for (const scope of ["user", "project"] as const) {
+    const layer = (raw as Record<string, unknown>)[scope];
+    if (layer === undefined) continue;
+    if (!layer || typeof layer !== "object" || Array.isArray(layer))
+      throw new Error(`"${scope}" is not an object`);
+    for (const k of LIST_KEYS) {
+      const v = (layer as Record<string, unknown>)[k];
+      if (v !== undefined && (!Array.isArray(v) || v.some((x) => typeof x !== "string")))
+        throw new Error(`"${scope}.${k}" is not a list of strings`);
+    }
+    out[scope] = layer;
+  }
+  return out;
+}
+
 /** True when `BROWX_CONFIG_READONLY` asks for a read-only config store. */
 export function configReadonlyFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   const v = env.BROWX_CONFIG_READONLY?.trim().toLowerCase();
@@ -149,26 +181,34 @@ export class ConfigStore {
    *  resolve; only writes are refused. */
   readonly readonly: boolean;
 
-  constructor(workspaceRoot: string, env: NodeJS.ProcessEnv = process.env) {
+  constructor(
+    workspaceRoot: string,
+    env: NodeJS.ProcessEnv = process.env,
+    opts: { onMalformed?: "throw" | "ignore" } = {},
+  ) {
     this.filePath = join(workspaceRoot, CONFIG_FILE);
     this.env = envLayer(env);
     this.readonly = configReadonlyFromEnv(env);
-    this.load();
+    this.load(opts.onMalformed ?? "throw");
   }
 
-  private load(): void {
+  /** A malformed file fails loudly by default. Ignoring it would drop the
+   *  operator's saved narrowing (tighter origins, extra confirm hooks), and a
+   *  tool that can write into the workspace could force that by corrupting the
+   *  file. Only the browser-free metadata collector tolerates it. */
+  private load(onMalformed: "throw" | "ignore"): void {
     if (!existsSync(this.filePath)) return;
     try {
-      const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as PersistedFile;
-      // Defensive: only accept the two known sections; ignore anything else.
-      this.persisted = {
-        ...(raw.user && typeof raw.user === "object" ? { user: raw.user } : {}),
-        ...(raw.project && typeof raw.project === "object" ? { project: raw.project } : {}),
-      };
+      const raw = JSON.parse(readFileSync(this.filePath, "utf8")) as unknown;
+      this.persisted = parsePersisted(raw);
     } catch (e) {
-      log.warn(`config: ${CONFIG_FILE} is malformed — ignoring persistent layers`, {
-        error: e instanceof Error ? e.message : String(e),
-      });
+      const why = e instanceof Error ? e.message : String(e);
+      if (onMalformed === "throw")
+        throw new Error(
+          `config: ${this.filePath} is malformed (${why}). Fix or remove it; browxai will not ` +
+            "start on a config file it cannot read, because ignoring it would drop saved restrictions.",
+        );
+      log.warn(`config: ${CONFIG_FILE} is malformed — ignoring persistent layers`, { error: why });
       this.persisted = {};
     }
   }

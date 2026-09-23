@@ -10,7 +10,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { deflateRawSync, gunzipSync, gzipSync, inflateRawSync } from "node:zlib";
 
-import { resolveWorkspacePath } from "../util/workspace.js";
+import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../util/workspace.js";
 import { REPLAY_ARTIFACT_EXT, type ReplayEvent, type ReplayManifest } from "./schema.js";
 
 const TOOL = "replay_artifact";
@@ -137,7 +137,7 @@ export async function writeArtifact(input: WriteArtifactInput): Promise<WriteArt
   const name = input.path.endsWith(REPLAY_ARTIFACT_EXT)
     ? input.path
     : input.path + REPLAY_ARTIFACT_EXT;
-  const abs = resolveWorkspacePath(input.workspaceRoot, name, TOOL);
+  const abs = resolveWorkspaceWritePath(input.workspaceRoot, name, TOOL);
   // `abs` is inside $BROWX_WORKSPACE by construction — resolveWorkspacePath
   // throws on anything that escapes the root, so both writes below are rooted.
   await mkdir(dirname(abs), { recursive: true });
