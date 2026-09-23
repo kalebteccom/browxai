@@ -98,9 +98,9 @@ The `confirmRequired` set selects which policy hooks ask first. Valid hooks are
 `navigate_off_allowlist`, `file_download`, `file_upload`, and `byob_action`;
 the default is `navigate_off_allowlist` and `byob_action`. Each routes through
 the `await_human` mechanism, which is human-paced and hard-capped so it can
-never wait forever. The human answers from DevTools in the `browxai` console
-context, an isolated world the page's own scripts cannot reach, so a page
-cannot approve an action for the human. On engines without CDP there is no such
+never wait forever. The human answers from DevTools in the console context the
+prompt names, a per-session isolated world the page's own scripts cannot reach,
+so a page cannot approve an action for the human. On engines without CDP there is no such
 world, and the hooks fail closed.
 
 ## The anti-wedge deadline
@@ -124,8 +124,9 @@ A few knobs are sharp enough to call out directly:
   unless a flow genuinely needs it.
 - `network-body` exposes full response bodies, which can carry secrets.
 - `disableWebSecurity` turns off the same-origin policy and CORS for managed and
-  incognito sessions. It is `false` by default, it cannot be set from any
-  environment variable, and it warns loudly at boot and per launch. Use it only
+  incognito sessions. It is `false` by default, only the operator can turn it
+  on (`BROWX_DISABLE_WEB_SECURITY=1`), `set_config` can only turn it off, and it
+  warns loudly at boot and per launch. Use it only
   against test or dev targets.
 
 The one rule that holds across all of it: page text is untrusted. An agent must

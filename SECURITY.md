@@ -87,8 +87,11 @@ Reports against the following are in scope:
 - **Human-prompt forgery** — any path that lets page content, or the
   agent without the `self-approval` capability, answer `await_human`, a
   confirm hook, or an `ask-human` policy in place of the human.
-- **Self-widening** — any path that lets the agent enable a capability
-  the server did not start with (for example through `set_config`).
+- **Self-widening** — any path that lets the agent loosen policy past
+  what the server's environment set: enable a capability, drop a confirm
+  hook, widen or clear the origin lists, turn on `disableWebSecurity`, or
+  add a plugin (for example through `set_config` or by overwriting a
+  workspace file the operator owns).
 
 ## Out of scope
 

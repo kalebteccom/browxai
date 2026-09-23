@@ -23,6 +23,10 @@ built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (ope
   machine-managed (do not hand-edit it). Arrays replace; the `unstable.*`
   namespace shallow-merges. Changes apply to sessions opened after the call.
 - `reset_config({ scope: "user" | "project" })` clears that persistent layer.
+- The policy keys (`capabilities`, `confirmRequired`, `allowedOrigins`,
+  `blockedOrigins`, `disableWebSecurity`, `plugins`) can only be tightened
+  through config. The server's environment is the ceiling; a loosening patch is
+  refused and a loosening saved value is ignored at start with a warning.
 - With `BROWX_CONFIG_READONLY=1` in the server's environment, `set_config`,
   `reset_config` and `approve_actions` are not registered at all, and the store
   refuses writes.
@@ -55,9 +59,9 @@ takes a per-call `timeoutMs` override; raise that for one known-slow call
 rather than raising the global default. The value is clamped to a one-hour
 ceiling.
 
-**`disableWebSecurity`** cannot be set from any environment variable. Set it
-only through `set_config` or the managed config file, so it can never be
-ambiently enabled. It applies to managed and incognito sessions; an attached
+**`disableWebSecurity`** is turned on only by the operator, with
+`BROWX_DISABLE_WEB_SECURITY=1` in the server's environment. `set_config` can turn
+it off and never on, because the agent can call `set_config`. It applies to managed and incognito sessions; an attached
 Chrome keeps whatever flags it was launched with.
 
 **`channel`** picks which browser binary a chromium session launches. Unset,

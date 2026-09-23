@@ -25,10 +25,11 @@ surface" covers.
   `default` session, in place of `<workspace>/profile`. Checked at server start:
   it must be absolute (or `~/…`), and the filesystem root, the home directory
   itself, a symlink, a non-directory and a directory owned by another user fail
-  the start. A missing directory is created with mode `0700`. The extensions
-  rebuild of the default session now resolves the same directory; it used
-  `<workspace>/profiles/default` before, a different profile from the one the
-  session launched on.
+  the start. A missing directory is created with mode `0700`, re-checked after
+  creation, and chmodded through a descriptor opened with `O_NOFOLLOW`. The extensions
+  rebuild of a persistent session now relaunches on the directory the session
+  actually launched on; it used to recompute one from the session id, and for
+  the default session got `<workspace>/profiles/default`, a different profile.
 
 - **Two native engines: `ios-app` and `android-app`. browxai drives native
   mobile apps with the same tools, the same refs and the same evidence format it
@@ -739,6 +740,19 @@ surface" covers.
   world and now refuse: `await_human` returns `no-human-channel` at once, and
   the hooks and `ask-human` policies fail closed. An attached session wires only
   its own leased tab. Pinned by `test/keystone/human-channel.keystone.test.ts`.
+- **An extension named `browxai` could answer the human prompts.** The first
+  version of the isolated-world channel above used a fixed world name, and CDP
+  scopes a binding by world name, so an extension with that name received the
+  binding in its content-script world. Each session's world is now
+  `browxai-<random>`, printed with the prompt, and a context with an extension
+  origin is refused regardless of name. An extension with the `debugger`
+  permission can still reach the world over CDP, so the `extensions` capability
+  is documented as equivalent to `self-approval`.
+- **A late answer could answer the next prompt.** Answers that arrived with no
+  prompt pending were queued and handed to the next wait. Each prompt now prints
+  a ticket, an answer counts only with the current ticket, and nothing is
+  queued. The human-facing calls take the ticket as their last argument:
+  `__browx.confirm(true, "a1b2c3")`, `__browx.proceed("a1b2c3")`.
 - **The agent could approve its own confirm hooks (all versions with
   `approve_actions`).** `approve_actions` had no capability gate. It now needs
   `self-approval` (see Added).
@@ -751,6 +765,24 @@ surface" covers.
   anything dropped. **If you enabled a capability through `set_config`, it is
   off after upgrading until you add it to `BROWX_CAPABILITIES`.** Unknown names
   in a saved list are dropped too, so they no longer fail the next start.
+- **The agent could loosen the rest of its policy through config (all versions
+  with `set_config`).** The same env-ceiling rule now covers `confirmRequired`
+  (hooks can be added, not removed), `allowedOrigins` (narrow only; an empty or
+  disjoint list falls back to the env list instead of meaning "any origin"),
+  `blockedOrigins` (add only), `disableWebSecurity` (off only) and `plugins`
+  (subset only). `set_config` refuses a loosening patch with
+  `policy-not-loosenable`, and saved layers are clamped at start with a warning.
+  **`disableWebSecurity` now turns on only with `BROWX_DISABLE_WEB_SECURITY=1`,**
+  and a saved `plugins` list may only name plugins listed in the new
+  `BROWX_PLUGINS`. If you set either through `set_config`, move it to the
+  environment.
+- **Write tools could overwrite operator files in the workspace.** `pdf_save`,
+  `dom_export`, `asset_export`, heap snapshots and the other tools that write an
+  agent-chosen workspace path now refuse `config.json`, `plugins.json`,
+  `plugins-lock.json`, the `plugins/`, `profile/` and `profiles/` trees and the
+  `BROWX_DEFAULT_PROFILE` directory. A `config.json` that cannot be parsed now
+  fails the server start instead of being ignored, which used to drop the saved
+  restrictions.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 

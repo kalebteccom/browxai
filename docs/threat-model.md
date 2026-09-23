@@ -187,12 +187,23 @@ Page content is untrusted, so the page must not be able to give that answer, and
 neither may the agent the hooks exist to hold back. Defenses:
 
 - **The answer channel is outside the page's JS world.** browxai creates a CDP
-  isolated world named `browxai` on every page a session owns, evaluates the
-  `__browx` helper there, and installs a per-session CDP binding scoped to that
-  world. A binding call counts only when CDP reports it came from one of that
-  world's execution contexts. Page scripts share the DOM with the world but not
-  its globals, so they cannot see or call the binding. The human reaches the
-  world from DevTools by picking `browxai` in the console's context dropdown.
+  isolated world named `browxai-<random>` (fresh per session) on every page a
+  session owns, evaluates the `__browx` helper there, and installs a per-session
+  CDP binding scoped to that world name. A binding call counts only when CDP
+  reports it came from one of that world's execution contexts. Page scripts
+  share the DOM with the world but not its globals, so they cannot see or call
+  the binding. The human reaches the world from DevTools by picking the name the
+  stderr prompt prints.
+- **The world name is unguessable, and extension contexts are refused.** CDP
+  scopes a binding by world _name_, and a Chrome extension's content-script
+  world is named after the extension. With a fixed name, an extension called
+  `browxai` received the binding and could answer. The random suffix keeps the
+  binding out of any other world, and a context whose origin is an extension
+  origin is refused even if the names match.
+- **Each answer carries its prompt's ticket.** The prompt prints a short ticket
+  (`__browx.confirm(true, "a1b2c3")`). An answer is accepted only while its
+  prompt is pending and only with that ticket; nothing is queued. A late answer
+  to a prompt that timed out cannot answer the next one.
 - **The page-visible `window.__browx` is display-only.** It logs where the real
   channel lives and returns `false`. The `data-browx-signal` attribute is no
   longer read.
@@ -212,6 +223,13 @@ the firefox and webkit refusals) and `test/keystone/approval-config-gate.keyston
 
 Anything that runs in the page's main world with the agent's authority, such as
 `eval_js` under the `eval` capability, still cannot reach the isolated world.
+
+**Extensions are the exception, and count as self-approval.** A loaded extension
+with the `debugger` permission, or anything else speaking CDP to the browser, can
+enumerate the session's worlds, evaluate in the human world and answer every
+prompt. So can a content script if it learns the world name some other way. Treat
+the `extensions` capability, and any extension with the `debugger` permission in
+a profile an attached session drives, as equivalent to granting `self-approval`.
 A different human channel would need the same property. An MCP-elicitation
 prompt, for instance, has to be sent from inside the `tools/call` that waits for
 the answer: Claude Code answers elicitation only while a call is pending and
@@ -313,7 +331,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `extensions`, default **off**. Tools: `extensions_install`, `extensions_list`, `extensions_reload`, `extensions_trigger`, `extensions_uninstall`.
 
-  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). Workspace-rooted path safety on `extensions_install`. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
+  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. **It is also effectively `self-approval`:** an extension with the `debugger` permission can reach the human world over CDP and answer `await_human` and every confirm hook (section 7). The same holds for such an extension already installed in a profile an attached session drives. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). Workspace-rooted path safety on `extensions_install`. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
 
 - `stealth`, default **off**. Tools: none, this one is a behaviour gate.
 
@@ -360,9 +378,9 @@ capability off has zero runtime cost.
 Capabilities gate _tools_. One dangerous knob is a _launch option_, not a
 tool, so it's a gated **config key** with the same loud-warning treatment:
 
-| Config key           | Default | Effect / gating                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disableWebSecurity` | **off** | `managed`/`incognito` launch with `--disable-web-security --disable-site-isolation-trials`, which turns SOP/CORS off browser-wide. **Not** mappable from any `BROWX_*` env var (can't be ambiently enabled); set only via `set_config` or the managed config file. Loud warning at server boot **and** per session launch. No effect on `attached`/BYOB. Same posture class as `eval`/`byob-attach`: explicit, auditable, off-by-default. |
+| Config key           | Default | Effect / gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disableWebSecurity` | **off** | `managed`/`incognito` launch with `--disable-web-security --disable-site-isolation-trials`, which turns SOP/CORS off browser-wide. Turned on only by the operator, with `BROWX_DISABLE_WEB_SECURITY=1` in the server's environment; a saved or `set_config` value can only turn it off (up to v0.10.1 it was set through `set_config`, which the agent can call). Loud warning at server boot **and** per session launch. No effect on `attached`/BYOB. Same posture class as `eval`/`byob-attach`: explicit, auditable, off-by-default. |
 
 ### Configuring
 
@@ -373,13 +391,36 @@ BROWX_CAPABILITIES=read,navigation,action,human,eval
 Comma-separated, order-insensitive. Omitted = default set (no `eval`, no `byob-attach`,
 no `file-io`). `BROWX_CAPABILITIES=read` ships a read-only server.
 
-**The environment sets the ceiling; config can only narrow it.** `set_config` is an
-MCP tool, so the agent can call it. A `capabilities` list it saves is intersected
-with `BROWX_CAPABILITIES` (or the default set when that is unset) at every server
-start, and `set_config` refuses a patch naming a capability outside the active set.
-Saved names beyond the ceiling are dropped with a startup warning. Up to v0.10.1 a
-saved list replaced `BROWX_CAPABILITIES` from the next start, so an agent could
-widen its own capabilities across a restart.
+**The environment sets the ceiling; config can only tighten it.** `set_config` is
+an MCP tool, so the agent can call it, and what it saves outlives the session. Every
+policy key is therefore bounded by the server's environment (or the built-in
+default where the environment leaves a key unset):
+
+| Key                  | Ceiling from                 | A saved or session layer may                                                                                   |
+| -------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `capabilities`       | `BROWX_CAPABILITIES`         | drop capabilities, never add                                                                                   |
+| `confirmRequired`    | `BROWX_CONFIRM_REQUIRED`     | add hooks, never remove                                                                                        |
+| `allowedOrigins`     | `BROWX_ALLOWED_ORIGINS`      | narrow a set list (exact strings); an empty or disjoint list falls back to the env list, never to "any origin" |
+| `blockedOrigins`     | `BROWX_BLOCKED_ORIGINS`      | add origins, never remove                                                                                      |
+| `disableWebSecurity` | `BROWX_DISABLE_WEB_SECURITY` | turn it off, never on                                                                                          |
+| `plugins`            | `BROWX_PLUGINS`              | name a subset, never add                                                                                       |
+
+`set_config` refuses a loosening patch (`capabilities-not-widenable` or
+`policy-not-loosenable`, naming the keys), and at every start the saved layers are
+clamped the same way with a warning naming what was ignored. `reset_config` can
+only remove tightenings, back to the environment's values. Up to v0.10.1 a saved
+value replaced the environment's from the next start (or, for `disableWebSecurity`,
+the next `open_session`), so an agent could widen its own posture.
+
+**Operator files are write-protected.** Tools that write an agent-chosen workspace
+path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`,
+`screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
+`export_playwright_script`, the file-picker write target) refuse
+`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the `plugins/`,
+`profile/` and `profiles/` trees and the `BROWX_DEFAULT_PROFILE` directory,
+case-insensitively and after resolving symlinks. A `config.json` browxai cannot
+parse fails the server start, so corrupting the file cannot drop saved
+restrictions.
 
 `BROWX_CONFIG_READONLY=1` goes further for embedders that manage config
 themselves: `set_config`, `reset_config` and `approve_actions` are not registered,
@@ -390,7 +431,9 @@ of `$BROWX_WORKSPACE/profile`. It is operator-set like `BROWX_WORKSPACE`, so it 
 sit outside the workspace; this is the one browser-profile path the no-trace
 contract doesn't cover. The start fails on a relative path, the filesystem root,
 the home directory itself, a symlink, a non-directory, or a directory owned by
-another user. A missing directory is created `0700`.
+another user. A missing directory is created `0700`, re-checked after creation
+(a path that turned into a symlink in between is refused), and chmodded through a
+descriptor opened with `O_NOFOLLOW`.
 
 A `confirm_required` set lists actions that always block on `await_human` before
 executing, regardless of capability:
