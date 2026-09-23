@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import {
+  cpSync,
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { snapshotProfile, restoreProfile } from "./profile-snapshot.js";
@@ -60,5 +68,63 @@ describe("restoreProfile", () => {
   it("throws when the snapshot does not exist", () => {
     seedProfile("default", "f", "x");
     expect(() => restoreProfile(ws, undefined, "nope")).toThrow(/no snapshot/);
+  });
+});
+
+describe("snapshot provenance", () => {
+  it("refuses a snapshot directory profile_snapshot did not write", () => {
+    const forged = join(ws, "profile-snapshots", "planted");
+    mkdirSync(forged, { recursive: true });
+    writeFileSync(join(forged, "Cookies"), "attacker");
+    expect(() => restoreProfile(ws, undefined, "planted")).toThrow(/no snapshot manifest/);
+    expect(existsSync(join(ws, "profile", "Cookies"))).toBe(false);
+  });
+
+  it("refuses a snapshot whose files changed after it was taken", () => {
+    seedProfile("default", "data.txt", "ORIGINAL");
+    snapshotProfile(ws, undefined, "s1");
+    writeFileSync(join(ws, "profile-snapshots", "s1", "data.txt"), "TAMPERED");
+    expect(() => restoreProfile(ws, undefined, "s1")).toThrow(/changed after it was taken/);
+    writeFileSync(join(ws, "profile-snapshots", "s1", "data.txt"), "ORIGINAL");
+    writeFileSync(join(ws, "profile-snapshots", "s1", "extra"), "x");
+    expect(() => restoreProfile(ws, undefined, "s1")).toThrow(/changed after it was taken/);
+  });
+
+  it("refuses a manifest signed with another key, or copied from another snapshot name", () => {
+    seedProfile("default", "data.txt", "ORIGINAL");
+    snapshotProfile(ws, undefined, "s1");
+    // Same bytes under a different name: the MAC binds the name.
+    cpSync(join(ws, "profile-snapshots", "s1"), join(ws, "profile-snapshots", "s2"), {
+      recursive: true,
+    });
+    expect(() => restoreProfile(ws, undefined, "s2")).toThrow(/not signed by this workspace/);
+    // A rotated key invalidates old manifests.
+    writeFileSync(join(ws, ".browx-snapshot-key"), Buffer.alloc(32, 7));
+    expect(() => restoreProfile(ws, undefined, "s1")).toThrow(/not signed by this workspace/);
+  });
+
+  it("the manifest never lands in the restored profile, and re-snapshot replaces", () => {
+    seedProfile("default", "a.txt", "A");
+    snapshotProfile(ws, undefined, "s1");
+    rmSync(join(ws, "profile", "a.txt"));
+    seedProfile("default", "b.txt", "B");
+    snapshotProfile(ws, undefined, "s1");
+    expect(existsSync(join(ws, "profile-snapshots", "s1", "a.txt"))).toBe(false);
+    restoreProfile(ws, undefined, "s1");
+    expect(existsSync(join(ws, "profile", ".browx-snapshot.json"))).toBe(false);
+  });
+
+  it("default resolves to the given default profile dir (BROWX_DEFAULT_PROFILE)", () => {
+    const external = mkdtempSync(join(tmpdir(), "browx-prof-ext-"));
+    try {
+      writeFileSync(join(external, "Cookies"), "EXT");
+      snapshotProfile(ws, undefined, "ext", external);
+      writeFileSync(join(external, "Cookies"), "MUTATED");
+      restoreProfile(ws, "default", "ext", external);
+      expect(readFileSync(join(external, "Cookies"), "utf8")).toBe("EXT");
+      expect(existsSync(join(ws, "profile"))).toBe(false);
+    } finally {
+      rmSync(external, { recursive: true, force: true });
+    }
   });
 });

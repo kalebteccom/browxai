@@ -127,6 +127,10 @@ describe("protected workspace paths", () => {
       "profile",
       "profile/Default/Cookies",
       "profiles/a/Cookies",
+      "profile-snapshots/s1/Cookies",
+      "Profile-Snapshots/s1",
+      "chrome-profile/Default/Cookies",
+      ".browx-snapshot-key",
     ])
       expect(() => resolveWorkspaceWritePath(root, p, "t"), p).toThrow(/refusing to write/);
     expect(resolveWorkspaceWritePath(root, "dumps/config.json", "t")).toBe(

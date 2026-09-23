@@ -155,13 +155,21 @@ export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: str
 //
 // Some files under the workspace are the operator's, not the agent's: the
 // config store, the plugin declaration and install tree, and the browser
-// profiles. A tool that writes an agent-chosen path (`pdf_save`, `dom_export`,
+// profiles and their snapshots. A tool that writes an agent-chosen path (`pdf_save`, `dom_export`,
 // `asset_export`, a heap snapshot, …) must never land on one. Overwriting
 // `config.json` would reset the operator's saved narrowing, and writing
 // `plugins.json` would declare code to load at the next start.
 
-const PROTECTED_FILES = ["config.json", "plugins.json", "plugins-lock.json"];
-const PROTECTED_DIRS = ["plugins", "profile", "profiles"];
+const PROTECTED_FILES = [
+  "config.json",
+  "plugins.json",
+  "plugins-lock.json",
+  // The key profile_snapshot MACs its manifests with (session/profile-snapshot.ts).
+  ".browx-snapshot-key",
+];
+// `profile-snapshots` is restored over a profile; `chrome-profile` is the one
+// `browxai chrome start` launches, which an attached session drives.
+const PROTECTED_DIRS = ["plugins", "profile", "profiles", "profile-snapshots", "chrome-profile"];
 
 /** `p` with its longest existing ancestor replaced by that ancestor's real
  *  path, so a symlink inside the workspace cannot route around the check. */
