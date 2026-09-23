@@ -12,16 +12,21 @@
 
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
+  chmodSync,
+  closeSync,
   cpSync,
   existsSync,
   lstatSync,
+  openSync,
   readdirSync,
   readFileSync,
   readlinkSync,
+  readSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 // Provenance. `profile_restore` copies a snapshot over a browser profile, and a
 // browser profile holds cookies and saved logins, so a snapshot must be one
@@ -53,17 +58,32 @@ function snapshotKey(workspaceRoot: string): Buffer {
   return key;
 }
 
+/** Feed a file into `h` in fixed-size chunks, so a large profile file never
+ *  sits in memory whole. */
+function hashFile(h: ReturnType<typeof createHash>, path: string): void {
+  const fd = openSync(path, "r");
+  try {
+    const buf = Buffer.allocUnsafe(1 << 20);
+    let n: number;
+    // cap: ends at EOF; each read advances the file position.
+    while ((n = readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n));
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** Digest of every entry under `dir` except the manifest: relative path, kind,
  *  and content (a symlink contributes its target string, never what it points
- *  at). Sorted, so the digest does not depend on readdir order. */
-function treeDigest(dir: string): string {
+ *  at). Sorted, so the digest does not depend on readdir order. Exported, with
+ *  the entry cap as a parameter, for tests. */
+export function treeDigest(dir: string, maxEntries = MAX_ENTRIES): string {
   const h = createHash("sha256");
   const entries: string[] = [];
   const walk = (rel: string): void => {
     for (const name of readdirSync(join(dir, rel)).sort()) {
       const r = rel ? `${rel}/${name}` : name;
       if (r === MANIFEST) continue;
-      if (entries.length >= MAX_ENTRIES) throw new Error("profile snapshot has too many entries");
+      if (entries.length >= maxEntries) throw new Error("profile snapshot has too many entries");
       entries.push(r);
       const st = lstatSync(join(dir, r));
       if (st.isSymbolicLink()) h.update(`L\0${r}\0${readlinkSync(join(dir, r))}\0`);
@@ -72,7 +92,7 @@ function treeDigest(dir: string): string {
         walk(r);
       } else if (st.isFile()) {
         h.update(`F\0${r}\0${st.size}\0`);
-        h.update(readFileSync(join(dir, r)));
+        hashFile(h, join(dir, r));
       } else throw new Error(`profile snapshot holds an unsupported entry: ${r}`);
     }
   };
@@ -160,19 +180,14 @@ export function restoreProfile(
       `profile_restore: no snapshot "${snapshot}" — take one with profile_snapshot first`,
     );
   }
-  verifySnapshot(workspaceRoot, snapshot, src);
-  cpSync(src, dest, {
-    recursive: true,
-    force: true,
-    verbatimSymlinks: true,
-    filter: (from) => from !== join(src, MANIFEST),
-  });
+  const digest = verifySnapshot(workspaceRoot, snapshot, src);
+  replaceWithSnapshot(src, dest, digest, snapshot);
   return { ok: true, action: "restore", profile: profile ?? "default", snapshot };
 }
 
 /** Throws unless `dir` carries a manifest this workspace's key signed and its
  *  tree still matches the digest in it. */
-function verifySnapshot(workspaceRoot: string, snapshot: string, dir: string): void {
+function verifySnapshot(workspaceRoot: string, snapshot: string, dir: string): string {
   const refuse = (why: string): never => {
     throw new Error(
       `profile_restore: refusing snapshot "${snapshot}": ${why}. Only a snapshot profile_snapshot ` +
@@ -195,4 +210,64 @@ function verifySnapshot(workspaceRoot: string, snapshot: string, dir: string): v
   if (got.length !== want.length || !timingSafeEqual(got, want))
     refuse("its manifest was not signed by this workspace");
   if (treeDigest(dir) !== digest) refuse("its files changed after it was taken");
+  return digest;
+}
+
+/**
+ * Make `dest` exactly the snapshot. Copies into a fresh sibling directory,
+ * checks the copy against the signed digest (the snapshot could change between
+ * the check and the copy), then swaps it in: the old profile is renamed aside,
+ * the copy renamed into place, the old one removed. Nothing is copied over the
+ * existing tree, so a symlink left in the profile is never written through, a
+ * leftover `Singleton*` link cannot collide with the copy, and files the
+ * snapshot does not hold do not survive.
+ */
+function replaceWithSnapshot(src: string, dest: string, digest: string, snapshot: string): void {
+  let mode = 0o700;
+  if (existsSync(dest) || isLink(dest)) {
+    const st = lstatSync(dest);
+    if (st.isSymbolicLink())
+      throw new Error(`profile_restore: the profile directory "${dest}" is a symlink; refusing`);
+    if (!st.isDirectory())
+      throw new Error(`profile_restore: "${dest}" exists and is not a directory; refusing`);
+    mode = st.mode & 0o777;
+  }
+  const tag = `${process.pid}-${Date.now().toString(36)}`;
+  const tmp = join(dirname(dest), `.${basename(dest)}.restore-${tag}`);
+  const old = join(dirname(dest), `.${basename(dest)}.old-${tag}`);
+  try {
+    cpSync(src, tmp, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      verbatimSymlinks: true,
+      filter: (from) => from !== join(src, MANIFEST),
+    });
+    if (treeDigest(tmp) !== digest)
+      throw new Error(
+        `profile_restore: snapshot "${snapshot}" changed while it was being restored; refusing`,
+      );
+    chmodSync(tmp, mode);
+  } catch (e) {
+    rmSync(tmp, { recursive: true, force: true });
+    throw e;
+  }
+  const hadDest = existsSync(dest);
+  if (hadDest) renameSync(dest, old);
+  try {
+    renameSync(tmp, dest);
+  } catch (e) {
+    if (hadDest) renameSync(old, dest);
+    rmSync(tmp, { recursive: true, force: true });
+    throw e;
+  }
+  if (hadDest) rmSync(old, { recursive: true, force: true });
+}
+
+function isLink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
