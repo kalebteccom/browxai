@@ -242,6 +242,26 @@ describe("ConfigStore capability ceiling", () => {
   });
 });
 
+describe("ConfigStore BROWX_CONFIG_READONLY", () => {
+  it("refuses setLayer and resetLayer and leaves config.json untouched", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { headless: true } }));
+    const before = readFileSync(join(dir, "config.json"), "utf8");
+    const s = new ConfigStore(dir, { BROWX_CONFIG_READONLY: "1" });
+    expect(s.readonly).toBe(true);
+    expect(() => s.setLayer("user", { headless: false })).toThrow(/^config-readonly/);
+    expect(() => s.resetLayer("user")).toThrow(/^config-readonly/);
+    expect(readFileSync(join(dir, "config.json"), "utf8")).toBe(before);
+    // Reads still resolve the persisted layers.
+    expect(s.resolve().headless).toBe(true);
+  });
+
+  it("is off unless the value is 1 or true", () => {
+    expect(new ConfigStore(dir, {}).readonly).toBe(false);
+    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "0" }).readonly).toBe(false);
+    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "TRUE" }).readonly).toBe(true);
+  });
+});
+
 describe("resolvedToEnv adapter", () => {
   it("round-trips through the env-shaped resolvers", () => {
     const env = resolvedToEnv({

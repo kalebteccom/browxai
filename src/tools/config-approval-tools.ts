@@ -98,124 +98,133 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     },
   );
 
-  register(
-    "set_config",
-    {
-      description:
-        'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. `capabilities` can only NARROW: a patch naming a capability outside the active set is refused with `error: "capabilities-not-widenable"`, and a saved list is clamped to BROWX_CAPABILITIES at every server start.',
-      inputSchema: {
-        scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
-        patch: z
-          .object(CONFIG_PATCH_SCHEMA)
-          .describe("Partial config — only the keys you want to override."),
+  // `BROWX_CONFIG_READONLY=1` leaves the three tools that change policy
+  // unregistered, so they are absent from tools/list and no harness can offer
+  // them to the model: `set_config`, `reset_config` and `approve_actions`. An
+  // embedder that manages config itself sets it. `ConfigStore` also refuses
+  // writes in this mode, as a second layer.
+  if (!configStore.readonly) {
+    register(
+      "set_config",
+      {
+        description:
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. `capabilities` can only NARROW: a patch naming a capability outside the active set is refused with `error: "capabilities-not-widenable"`, and a saved list is clamped to BROWX_CAPABILITIES at every server start.',
+        inputSchema: {
+          scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
+          patch: z
+            .object(CONFIG_PATCH_SCHEMA)
+            .describe("Partial config — only the keys you want to override."),
+        },
       },
-    },
-    async ({ scope, patch }) => {
-      // A saved `capabilities` list is clamped to BROWX_CAPABILITIES at every
-      // start, so it can only narrow. Refuse a widening patch outright, so the
-      // caller learns that now instead of at the next restart.
-      const widening = (patch.capabilities ?? []).filter((c) =>
-        capabilityMissing(c as Capability, caps),
-      );
-      if (widening.length) {
-        return refusal({
-          ok: false,
-          error: "capabilities-not-widenable",
-          widening,
-          activeCapabilities: [...caps.enabled].sort(),
-          hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
-        });
-      }
-      configStore.setLayer(scope, patch);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
-  );
-
-  register(
-    "reset_config",
-    {
-      description:
-        "Clear a persistent config layer (`user` or `project`) entirely. The built-in defaults + env layer remain.",
-      inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
-    },
-    async ({ scope }) => {
-      configStore.resetLayer(scope);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { ok: true, cleared: scope, resolved: configStore.resolve() },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
-  );
-
-  // ---------- session pre-approvals ----------
-
-  register(
-    "approve_actions",
-    {
-      batchable: true,
-      capability: "self-approval",
-      description:
-        'Pre-approve one or more confirm-required scopes for a TTL window, so confirm hooks for those scopes pass without asking the human. Requires the off-by-default `self-approval` capability: the confirm hooks exist to stop the agent\'s own actions, and this tool lets the agent answer them itself, so the operator has to opt in at server start. Refused with `requiredCapability: "self-approval"` when the capability is not active. Each grant + consume is logged for audit. Falls back to asking the human when no grant covers the scope. Keep `ttlSeconds` short.',
-      inputSchema: {
-        scopes: z
-          .array(z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]))
-          .min(1)
-          .describe("Confirm scope names to grant. Same vocabulary as BROWX_CONFIRM_REQUIRED."),
-        ttlSeconds: z
-          .number()
-          .int()
-          .positive()
-          .max(24 * 60 * 60)
-          .optional()
-          .describe(
-            "Lifetime of the grant in seconds. Default 3600 (1 hour). Hard cap 86400 (24h).",
-          ),
+      async ({ scope, patch }) => {
+        // A saved `capabilities` list is clamped to BROWX_CAPABILITIES at every
+        // start, so it can only narrow. Refuse a widening patch outright, so the
+        // caller learns that now instead of at the next restart.
+        const widening = (patch.capabilities ?? []).filter((c) =>
+          capabilityMissing(c as Capability, caps),
+        );
+        if (widening.length) {
+          return refusal({
+            ok: false,
+            error: "capabilities-not-widenable",
+            widening,
+            activeCapabilities: [...caps.enabled].sort(),
+            hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
+          });
+        }
+        configStore.setLayer(scope, patch);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
       },
-    },
-    async ({ scopes, ttlSeconds }) => {
-      const g = gateCheck("approve_actions");
-      if (g) return g;
-      const ttl = ttlSeconds ?? 3600;
-      for (const scope of scopes) approvals.grant(scope, ttl);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                ok: true,
-                granted: scopes,
-                ttlSeconds: ttl,
-                expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
-                note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
-              },
-              null,
-              2,
+    );
+
+    register(
+      "reset_config",
+      {
+        description:
+          "Clear a persistent config layer (`user` or `project`) entirely. The built-in defaults + env layer remain.",
+        inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
+      },
+      async ({ scope }) => {
+        configStore.resetLayer(scope);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { ok: true, cleared: scope, resolved: configStore.resolve() },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+    );
+
+    // ---------- session pre-approvals ----------
+
+    register(
+      "approve_actions",
+      {
+        batchable: true,
+        capability: "self-approval",
+        description:
+          'Pre-approve one or more confirm-required scopes for a TTL window, so confirm hooks for those scopes pass without asking the human. Requires the off-by-default `self-approval` capability: the confirm hooks exist to stop the agent\'s own actions, and this tool lets the agent answer them itself, so the operator has to opt in at server start. Refused with `requiredCapability: "self-approval"` when the capability is not active. Each grant + consume is logged for audit. Falls back to asking the human when no grant covers the scope. Keep `ttlSeconds` short.',
+        inputSchema: {
+          scopes: z
+            .array(
+              z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]),
+            )
+            .min(1)
+            .describe("Confirm scope names to grant. Same vocabulary as BROWX_CONFIRM_REQUIRED."),
+          ttlSeconds: z
+            .number()
+            .int()
+            .positive()
+            .max(24 * 60 * 60)
+            .optional()
+            .describe(
+              "Lifetime of the grant in seconds. Default 3600 (1 hour). Hard cap 86400 (24h).",
             ),
-          },
-        ],
-      };
-    },
-  );
+        },
+      },
+      async ({ scopes, ttlSeconds }) => {
+        const g = gateCheck("approve_actions");
+        if (g) return g;
+        const ttl = ttlSeconds ?? 3600;
+        for (const scope of scopes) approvals.grant(scope, ttl);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ok: true,
+                  granted: scopes,
+                  ttlSeconds: ttl,
+                  expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+                  note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+    );
+  }
 
   register(
     "list_approvals",

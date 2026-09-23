@@ -133,6 +133,10 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(`browxai: ${w}`);
+  if (configStore.readonly)
+    log.info(
+      "browxai: BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
+    );
   const droppedCaps = configStore.droppedCapabilities();
   if (droppedCaps.length)
     log.warn(

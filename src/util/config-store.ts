@@ -122,14 +122,24 @@ interface PersistedFile {
   project?: ConfigLayer;
 }
 
+/** True when `BROWX_CONFIG_READONLY` asks for a read-only config store. */
+export function configReadonlyFromEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const v = env.BROWX_CONFIG_READONLY?.trim().toLowerCase();
+  return v === "1" || v === "true";
+}
+
 export class ConfigStore {
   private filePath: string;
   private persisted: PersistedFile = {};
   private env: ConfigLayer;
+  /** Set from `BROWX_CONFIG_READONLY`. The persistent layers still load and
+   *  resolve; only writes are refused. */
+  readonly readonly: boolean;
 
   constructor(workspaceRoot: string, env: NodeJS.ProcessEnv = process.env) {
     this.filePath = join(workspaceRoot, CONFIG_FILE);
     this.env = envLayer(env);
+    this.readonly = configReadonlyFromEnv(env);
     this.load();
   }
 
@@ -265,6 +275,7 @@ export class ConfigStore {
 
   /** Persist a patch into `user` or `project`. The only writer of config.json. */
   setLayer(scope: PersistentScope, patch: ConfigLayer): void {
+    this.assertWritable();
     const current = this.persisted[scope] ?? {};
     this.persisted[scope] = {
       ...current,
@@ -275,8 +286,16 @@ export class ConfigStore {
     log.info(`config: set scope="${scope}"`, { keys: Object.keys(patch) });
   }
 
+  private assertWritable(): void {
+    if (this.readonly)
+      throw new Error(
+        "config-readonly: BROWX_CONFIG_READONLY is set; the config store refuses writes",
+      );
+  }
+
   /** Clear a persistent layer entirely. */
   resetLayer(scope: PersistentScope): void {
+    this.assertWritable();
     delete this.persisted[scope];
     this.save();
     log.info(`config: reset scope="${scope}"`);
