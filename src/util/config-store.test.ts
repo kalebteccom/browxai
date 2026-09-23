@@ -31,15 +31,13 @@ describe("ConfigStore precedence", () => {
     writeFileSync(
       join(dir, "config.json"),
       JSON.stringify({
-        user: { capabilities: ["read", "navigation"] },
-        project: { capabilities: ["read", "navigation", "action"] },
+        user: { testAttributes: ["data-u"] },
+        project: { testAttributes: ["data-p"] },
       }),
     );
-    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read" });
-    expect(s.resolve().capabilities).toEqual(["read", "navigation", "action"]); // project wins
-    expect(
-      s.resolve({ capabilities: ["read", "navigation", "action", "human", "eval"] }).capabilities,
-    ).toEqual(["read", "navigation", "action", "human", "eval"]); // session wins
+    const s = new ConfigStore(dir, { BROWX_TEST_ATTRIBUTES: "data-env" });
+    expect(s.resolve().testAttributes).toEqual(["data-p"]); // project wins
+    expect(s.resolve({ testAttributes: ["data-s"] }).testAttributes).toEqual(["data-s"]); // session wins
   });
 
   it("arrays replace (not merge) across layers", () => {
@@ -205,6 +203,42 @@ describe("hideOverlaySelectors precedence", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("ConfigStore capability ceiling", () => {
+  it("a saved list narrows the env set but never widens it", () => {
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        user: { capabilities: ["read", "navigation", "eval", "self-approval"] },
+        project: { capabilities: ["read", "eval", "byob-attach"] },
+      }),
+    );
+    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read,navigation,eval" });
+    // project wins the precedence, then the ceiling drops byob-attach.
+    expect(s.resolve().capabilities).toEqual(["read", "eval"]);
+    expect(s.droppedCapabilities().sort()).toEqual(["byob-attach", "self-approval"]);
+  });
+
+  it("with no BROWX_CAPABILITIES the ceiling is the built-in default set", () => {
+    const s = new ConfigStore(dir, {});
+    s.setLayer("user", { capabilities: ["read", "eval", "network-body"] });
+    const fresh = new ConfigStore(dir, {});
+    expect(fresh.resolve().capabilities).toEqual(["read"]);
+    expect(fresh.capabilityCeiling()).toEqual(BUILTIN_DEFAULTS.capabilities);
+    expect(fresh.droppedCapabilities().sort()).toEqual(["eval", "network-body"]);
+  });
+
+  it("a session patch cannot widen either", () => {
+    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read" });
+    expect(s.resolve({ capabilities: ["read", "eval"] }).capabilities).toEqual(["read"]);
+  });
+
+  it("an unknown name in a saved list is dropped, so it cannot fail the next start", () => {
+    const s = new ConfigStore(dir, {});
+    s.setLayer("user", { capabilities: ["read", "not-a-capability"] });
+    expect(new ConfigStore(dir, {}).resolve().capabilities).toEqual(["read"]);
   });
 });
 

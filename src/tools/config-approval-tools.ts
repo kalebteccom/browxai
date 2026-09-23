@@ -1,4 +1,5 @@
 import type { ToolHost } from "./host.js";
+import { capabilityMissing, type Capability } from "../util/capabilities.js";
 
 /**
  * Config-store + pre-approval tools — the browxai-managed layered config store
@@ -15,6 +16,10 @@ export function registerConfigApprovalTools(host: ToolHost): void {
   const { z, register, caps, configStore, approvals, gateCheck } = host;
 
   // ---------- config store ----------
+
+  const refusal = (body: Record<string, unknown>) => ({
+    content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
+  });
 
   const CONFIG_PATCH_SCHEMA = {
     testAttributes: z.array(z.string()).optional(),
@@ -97,7 +102,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     "set_config",
     {
       description:
-        "Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). This is the ONLY supported way to set persistent config — no env vars, no hand-edited files. Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes.",
+        'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. `capabilities` can only NARROW: a patch naming a capability outside the active set is refused with `error: "capabilities-not-widenable"`, and a saved list is clamped to BROWX_CAPABILITIES at every server start.',
       inputSchema: {
         scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
         patch: z
@@ -106,6 +111,21 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       },
     },
     async ({ scope, patch }) => {
+      // A saved `capabilities` list is clamped to BROWX_CAPABILITIES at every
+      // start, so it can only narrow. Refuse a widening patch outright, so the
+      // caller learns that now instead of at the next restart.
+      const widening = (patch.capabilities ?? []).filter((c) =>
+        capabilityMissing(c as Capability, caps),
+      );
+      if (widening.length) {
+        return refusal({
+          ok: false,
+          error: "capabilities-not-widenable",
+          widening,
+          activeCapabilities: [...caps.enabled].sort(),
+          hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
+        });
+      }
       configStore.setLayer(scope, patch);
       return {
         content: [

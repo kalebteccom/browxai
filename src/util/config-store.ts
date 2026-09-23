@@ -226,7 +226,28 @@ export class ConfigStore {
     for (const layer of chain) {
       acc = ConfigStore.apply(acc, layer.read(this, sessionPatch));
     }
-    return acc;
+    const ceiling = new Set(this.capabilityCeiling());
+    return { ...acc, capabilities: acc.capabilities.filter((c) => ceiling.has(c)) };
+  }
+
+  /** The widest capability list any layer may resolve to: `BROWX_CAPABILITIES`
+   *  when set, else the built-in default set. A saved or session `capabilities`
+   *  list can only narrow it. The operator sets the ceiling in the server's
+   *  environment; `set_config` is agent-reachable, so it must never widen what
+   *  the next server start enables. */
+  capabilityCeiling(): string[] {
+    return [...(this.env.capabilities ?? BUILTIN_DEFAULTS.capabilities)];
+  }
+
+  /** Capabilities a persisted layer names that the ceiling does not allow.
+   *  They are dropped from the resolved view; the server warns once at start. */
+  droppedCapabilities(): string[] {
+    const ceiling = new Set(this.capabilityCeiling());
+    const named = new Set<string>();
+    for (const scope of ["user", "project"] as const) {
+      for (const c of this.persisted[scope]?.capabilities ?? []) named.add(c);
+    }
+    return [...named].filter((c) => !ceiling.has(c));
   }
 
   /** Inspect one layer (raw, pre-merge) — for `get_config({ scope })`. Reads the

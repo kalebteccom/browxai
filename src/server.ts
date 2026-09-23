@@ -133,6 +133,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     origins: describePolicy(originPolicy),
   });
   for (const w of caps.warnings) log.warn(`browxai: ${w}`);
+  const droppedCaps = configStore.droppedCapabilities();
+  if (droppedCaps.length)
+    log.warn(
+      `browxai: the saved config names capabilities beyond BROWX_CAPABILITIES (${droppedCaps.join(", ")}); ` +
+        "a saved list can only narrow the start-time set, so they stay off. Set them in BROWX_CAPABILITIES to enable them.",
+    );
   // Credentials provider: resolved once at server start. The provider object
   // is constructed even when the capability is off so per-deployment config
   // validation (unknown provider name → warn) happens up front. Per-call
