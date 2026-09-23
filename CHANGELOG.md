@@ -26,7 +26,8 @@ surface" covers.
   it must be absolute (or `~/…`), and the filesystem root, the home directory
   itself, a symlink, a non-directory and a directory owned by another user fail
   the start. A missing directory is created with mode `0700`, re-checked after
-  creation, and chmodded through a descriptor opened with `O_NOFOLLOW`. The extensions
+  creation, and chmodded through a descriptor opened with `O_NOFOLLOW`. `profile_snapshot` and `profile_restore` use it for the
+  `default` profile too. The extensions
   rebuild of a persistent session now relaunches on the directory the session
   actually launched on; it used to recompute one from the session id, and for
   the default session got `<workspace>/profiles/default`, a different profile.
@@ -780,9 +781,13 @@ surface" covers.
   `dom_export`, `asset_export`, heap snapshots and the other tools that write an
   agent-chosen workspace path now refuse `config.json`, `plugins.json`,
   `plugins-lock.json`, the `plugins/`, `profile/` and `profiles/` trees and the
-  `BROWX_DEFAULT_PROFILE` directory. A `config.json` that cannot be parsed now
-  fails the server start instead of being ignored, which used to drop the saved
-  restrictions.
+  `BROWX_DEFAULT_PROFILE` directory, plus `profile-snapshots/`, `chrome-profile/`
+  and the snapshot key. `profile_restore` refuses a snapshot `profile_snapshot`
+  did not write or whose files changed since (a signed manifest in each snapshot);
+  **snapshots taken with an earlier version must be taken again.** A
+  `config.json` that cannot be parsed now fails the server start instead of being
+  ignored, which used to drop the saved restrictions, and `set_config` refuses an
+  origin or confirm hook the next start could not parse.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 

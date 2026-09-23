@@ -416,9 +416,15 @@ the next `open_session`), so an agent could widen its own posture.
 path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`,
 `screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
 `export_playwright_script`, the file-picker write target) refuse
-`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the `plugins/`,
-`profile/` and `profiles/` trees and the `BROWX_DEFAULT_PROFILE` directory,
-case-insensitively and after resolving symlinks. A `config.json` browxai cannot
+`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the snapshot key,
+the `plugins/`, `profile/`, `profiles/`, `profile-snapshots/` and `chrome-profile/`
+trees and the `BROWX_DEFAULT_PROFILE` directory, case-insensitively and after
+resolving symlinks. `profile_restore` copies a snapshot over a profile, so it also
+checks provenance: each snapshot carries a manifest with a digest of its files,
+MACed with a key kept in the workspace, and a snapshot without a valid manifest,
+or whose files changed since, is refused. Snapshots taken before this release have
+no manifest; take them again. `set_config` also refuses an origin or confirm hook
+the next start could not parse. A `config.json` browxai cannot
 parse fails the server start, so corrupting the file cannot drop saved
 restrictions.
 
