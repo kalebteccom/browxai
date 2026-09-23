@@ -116,6 +116,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   // resolvers consume the *resolved* chain re-expressed as an env shape, so
   // precedence is centralised in the store without rewriting each resolver.
   const workspace = resolveWorkspace();
+  // Validate (and create 0700) BROWX_DEFAULT_PROFILE up front, so a bad value
+  // fails the start instead of the first browser call.
+  if (process.env.BROWX_DEFAULT_PROFILE?.trim()) workspace.defaultProfile();
   const configStore = new ConfigStore(workspace.root);
   const resolvedConfig = configStore.resolve();
   const cfgEnv = resolvedToEnv(resolvedConfig);

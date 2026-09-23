@@ -3,8 +3,9 @@
 // never at cwd. Resolved once at startup.
 
 import { homedir } from "node:os";
-import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import { chmodSync, existsSync, lstatSync, mkdirSync } from "node:fs";
+import { isAbsolute, join, parse, resolve, sep } from "node:path";
+import { log } from "./logging.js";
 
 const DEFAULT_WORKSPACE = join(homedir(), ".browxai");
 
@@ -13,20 +14,76 @@ export interface Workspace {
   readonly root: string;
   /** Subdir helper — `workspace.sub("profile")` → `<root>/profile`, created if missing. */
   sub(name: string): string;
+  /** The default session's persistent profile directory: `BROWX_DEFAULT_PROFILE`
+   *  when set (validated, created 0700), else `<root>/profile`. */
+  defaultProfile(): string;
 }
 
 export function resolveWorkspace(env: NodeJS.ProcessEnv = process.env): Workspace {
   const raw = env.BROWX_WORKSPACE?.trim();
   const root = raw ? resolve(raw.replace(/^~(?=$|\/)/, homedir())) : DEFAULT_WORKSPACE;
   if (!existsSync(root)) mkdirSync(root, { recursive: true });
+  const sub = (name: string): string => {
+    const p = join(root, name);
+    if (!existsSync(p)) mkdirSync(p, { recursive: true });
+    return p;
+  };
   return {
     root,
-    sub(name) {
-      const p = join(root, name);
-      if (!existsSync(p)) mkdirSync(p, { recursive: true });
-      return p;
-    },
+    sub,
+    defaultProfile: () => resolveDefaultProfileDir(env) ?? sub("profile"),
   };
+}
+
+/**
+ * `BROWX_DEFAULT_PROFILE=<dir>`: the persistent profile directory the default
+ * session launches on, for an embedder that keeps browser profiles outside the
+ * workspace. Operator-set, like `BROWX_WORKSPACE`, so it may sit anywhere; the
+ * checks stop a typo or a planted link from pointing a browser profile, which
+ * holds cookies and saved logins, somewhere unintended.
+ *
+ * Refuses a relative path, the filesystem root, the home directory itself, a
+ * symlink, a non-directory, and a directory owned by another user. Creates a
+ * missing directory with mode 0700. Warns (does not refuse) when an existing
+ * directory is readable by group or others. Returns undefined when unset.
+ */
+export function resolveDefaultProfileDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env.BROWX_DEFAULT_PROFILE?.trim();
+  if (!raw) return undefined;
+  const fail = (why: string): never => {
+    throw new Error(`BROWX_DEFAULT_PROFILE: ${why} (got "${raw}")`);
+  };
+  if (raw.includes("\0")) fail("contains a NUL byte");
+  const expanded = raw.replace(/^~(?=$|\/)/, homedir());
+  if (!isAbsolute(expanded)) fail("must be an absolute path or start with ~/");
+  const dir = resolve(expanded);
+  if (dir === parse(dir).root) fail("refuses the filesystem root");
+  if (dir === resolve(homedir())) fail("refuses the home directory itself; name a subdirectory");
+  if (existsSync(dir) || isDanglingLink(dir)) {
+    const st = lstatSync(dir);
+    if (st.isSymbolicLink()) fail("is a symlink; point it at the real directory");
+    if (!st.isDirectory()) fail("exists and is not a directory");
+    if (typeof process.getuid === "function" && st.uid !== process.getuid())
+      fail("is owned by another user");
+    if ((st.mode & 0o077) !== 0) {
+      log.warn(
+        `BROWX_DEFAULT_PROFILE ${dir} is accessible to group or others ` +
+          `(mode ${(st.mode & 0o777).toString(8)}); a browser profile holds cookies and saved logins, chmod 700 it`,
+      );
+    }
+    return dir;
+  }
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  chmodSync(dir, 0o700);
+  return dir;
+}
+
+function isDanglingLink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 // ---- workspace path / name validators -------------------------------------

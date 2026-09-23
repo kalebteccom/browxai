@@ -266,11 +266,12 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
-        // dir for back-compat; named/explicit profiles get their own dir so
-        // sessions don't share a cookie jar on disk.
+        // dir for back-compat (or BROWX_DEFAULT_PROFILE when the operator set
+        // one); named/explicit profiles get their own dir so sessions don't
+        // share a cookie jar on disk.
         const profileDir =
           id === DEFAULT_SESSION_ID && !spec?.profile
-            ? workspace.sub("profile")
+            ? workspace.defaultProfile()
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
         // first launch — no extensions registered yet (the registry is
         // mutated by the `extensions_*` tools post-creation, and a rebuild

@@ -61,9 +61,11 @@ export async function rebuildPersistentForExtensions(
   const headless = opts.headless ?? resolvedConfig.headless;
   const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
   const profileName = e.launchProfile ?? e.id;
+  // The factory records `launchProfile: spec.profile ?? id`, so a default
+  // session opened without a named profile carries `launchProfile: "default"`.
   const profileDir =
-    e.id === DEFAULT_SESSION_ID && !e.launchProfile
-      ? workspace.sub("profile")
+    e.id === DEFAULT_SESSION_ID && profileName === DEFAULT_SESSION_ID
+      ? workspace.defaultProfile()
       : workspace.sub(`profiles/${profileName}`);
   const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
   // Preserve the engine across the rebuild (extensions are Chromium-only, so
