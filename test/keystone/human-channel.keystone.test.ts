@@ -36,11 +36,11 @@ const WORLD_PREFIX = "browxai-";
 const tickets: string[] = [];
 const realStderrWrite = process.stderr.write.bind(process.stderr);
 function captureTickets(): void {
-  process.stderr.write = ((chunk: unknown, ...rest: unknown[]) => {
+  process.stderr.write = (chunk: unknown, ...rest: unknown[]) => {
     for (const m of String(chunk).matchAll(/call __browx\.\w+\([^)]*"([0-9a-f]{6})"\)/g))
       tickets.push(m[1]!);
     return (realStderrWrite as (...a: unknown[]) => boolean)(chunk, ...rest);
-  });
+  };
 }
 async function nextTicket(seen: number): Promise<string> {
   for (let i = 0; i < 100 && tickets.length <= seen; i++)

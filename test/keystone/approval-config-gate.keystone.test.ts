@@ -18,6 +18,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -325,6 +326,68 @@ describe("operator files cannot be overwritten by write tools", () => {
       // An ordinary path still works.
       const ok = await call<{ ok: boolean }>("dom_export", { path: "dumps/x.html" });
       expect(ok.ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "profile snapshots and the chrome profile are protected; restore needs a real snapshot",
+    async () => {
+      process.env.BROWX_CAPABILITIES = "read,navigation,action,human,file-io";
+      const call = caller(await start());
+      await call("navigate", { url: "data:text/html,<p>x</p>" });
+      for (const path of ["profile-snapshots/s1/Cookies", "chrome-profile/Default/Cookies"]) {
+        const r = await call<{ ok: boolean; error?: string }>("dom_export", { path });
+        expect(r.ok, path).toBe(false);
+        expect(r.error).toMatch(/refusing to write/);
+      }
+      await call("close_sessions", { all: true });
+
+      // Bytes that reached profile-snapshots/ some other way.
+      const planted = join(workspace, "profile-snapshots", "planted");
+      mkdirSync(planted, { recursive: true });
+      writeFileSync(join(planted, "Planted"), "attacker bytes");
+      const refused = await call<{ ok: boolean; error?: string }>("profile_restore", {
+        snapshot: "planted",
+      });
+      expect(refused.ok).toBe(false);
+      expect(refused.error).toMatch(/no snapshot manifest/);
+      expect(existsSync(join(workspace, "profile", "Planted"))).toBe(false);
+
+      // The real round trip still works.
+      const snap = await call<{ ok: boolean }>("profile_snapshot", { snapshot: "good" });
+      expect(snap.ok).toBe(true);
+      writeFileSync(join(workspace, "profile-snapshots", "good", "Planted"), "x");
+      const tampered = await call<{ ok: boolean; error?: string }>("profile_restore", {
+        snapshot: "good",
+      });
+      expect(tampered.error).toMatch(/changed after it was taken/);
+      rmSync(join(workspace, "profile-snapshots", "good", "Planted"));
+      const restored = await call<{ ok: boolean }>("profile_restore", { snapshot: "good" });
+      expect(restored.ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "set_config refuses an origin or confirm hook the next start could not parse",
+    async () => {
+      const call = caller(await start());
+      for (const patch of [
+        { blockedOrigins: ["not a url"] },
+        { allowedOrigins: ["https://a.example,https://b.example"] },
+        { confirmRequired: ["navigate_off_allowlist", "byob_action", "bogus_hook"] },
+      ]) {
+        const r = await call<{ ok: boolean; error: string }>("set_config", {
+          scope: "user",
+          patch,
+        });
+        expect(r.ok, JSON.stringify(patch)).toBe(false);
+        expect(r.error).toBe("invalid-config-value");
+      }
+      expect(existsSync(join(workspace, "config.json"))).toBe(false);
+      // The next start is unaffected.
+      await start();
     },
     KEYSTONE_TIMEOUT,
   );
