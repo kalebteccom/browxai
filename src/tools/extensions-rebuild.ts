@@ -26,7 +26,7 @@ import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { ConsoleBuffer } from "../page/console.js";
-import { BrowxBridge } from "../helper/bridge.js";
+import { BrowxBridge, HUMAN_CHANNEL_HINT } from "../helper/bridge.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
 import { requireCdp, requirePage } from "../engine/index.js";
@@ -124,7 +124,7 @@ export async function rebuildPersistentForExtensions(
     e.permission,
     async (permission, origin) => {
       log.info(
-        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
+        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
       );
       try {
         const sig = await br.awaitSignal("respond", 300_000);
@@ -145,7 +145,7 @@ export async function rebuildPersistentForExtensions(
   // afresh and the sync-decision hint is re-seeded.
   await attachNotificationPolicy(requirePage(sess).context(), e.notification, async (n) => {
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
     );
     try {
       const sig = await br.awaitSignal("respond", 300_000);
@@ -166,7 +166,7 @@ export async function rebuildPersistentForExtensions(
     workspace.root,
     async (api, suggestedName) => {
       log.info(
-        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+        `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.respond({files:[…]}) (or fs_picker_respond)`,
       );
       try {
         const sig = await br.awaitSignal("respond", 300_000);

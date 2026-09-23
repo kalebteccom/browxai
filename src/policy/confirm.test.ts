@@ -5,7 +5,8 @@ import {
   confirmByobAction,
   type ConfirmContext,
 } from "./confirm.js";
-import type { OriginPolicy } from "./origin.js";
+import { resolveOriginPolicy, type OriginPolicy } from "./origin.js";
+import { BrowxBridge } from "../helper/bridge.js";
 
 const NO_POLICY: OriginPolicy = { allowed: [], blocked: [] };
 
@@ -89,11 +90,32 @@ describe("confirmByobAction with pre-approval", () => {
     expect(decision.asked).toBe(false);
   });
 
-  it("falls back to bridge-blocked path when no grant is present", async () => {
-    // No bridge + no approvals + byob_action hook → blocked (would need page-side confirm).
+  it("falls back to the blocked path when no grant is present", async () => {
+    // No bridge + no approvals + byob_action hook → blocked (would need a human).
     const decision = await confirmByobAction("click", ctx({ approvals: new ApprovalStore() }));
     expect(decision.ok).toBe(false);
-    expect(decision.reason).toContain("no helper bridge");
+    expect(decision.reason).toContain("no human channel");
+  });
+
+  it("fails closed when the bridge has no human channel (an engine without CDP)", async () => {
+    // A fresh, unattached bridge carries no isolated-world channel. The hook must
+    // block without waiting, not fall back to anything the page can reach.
+    const bridge = new BrowxBridge();
+    const byob = await confirmByobAction("click", ctx({ bridge }));
+    expect(byob).toEqual({
+      ok: false,
+      reason: "byob; no human channel on this session to confirm; blocked",
+      asked: false,
+    });
+    const nav = await confirmNavigation(
+      "https://off.example/",
+      ctx({
+        bridge,
+        policy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://on.example" }),
+      }),
+    );
+    expect(nav.ok).toBe(false);
+    expect(nav.asked).toBe(false);
   });
 
   it("passes through for non-BYOB sessions regardless of approvals", async () => {

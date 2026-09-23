@@ -40,6 +40,7 @@ import { attachDownloadCapture } from "../page/downloads.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
 import { requirePage } from "../engine/index.js";
+import { HUMAN_CHANNEL_HINT } from "../helper/bridge.js";
 
 /** Attach the full Playwright post-creation bookkeeping to a freshly-built
  *  SessionEntry, using the per-server `deps` (caps / configStore / workspace) the
@@ -56,20 +57,22 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // over BiDi in its own post-wire; every Playwright engine attaches here.)
   entry.console.attach(requirePage(sess));
 
-  // browser bridge — the page-side __browx signalling channel.
-  await br.attach(ctx);
+  // human channel — `__browx` in a CDP isolated world the page cannot reach.
+  // An attached session shares its browser context with other sessions, so it
+  // wires only its own leased tab.
+  await br.attach(ctx, entry.mode === "attached" ? { root: requirePage(sess) } : {});
 
   // dialog policy — install per-page on current + future pages.
   attachDialogPolicy(ctx, entry.dialog);
 
   // permission policy — install per-context binding + init-script wrappers, plus
   // the CDP baseline (Browser.setPermission per supported name). The ask-human
-  // handler routes through the bridge — `__browx.confirm(true|false)` from
-  // page-side DevTools releases the wait. Best-effort: attach failures still leave
+  // handler routes through the bridge — `__browx.confirm(true|false)` from the
+  // DevTools `browxai` console context releases the wait. Best-effort: attach failures still leave
   // the CDP baseline below in place.
   await attachPermissionPolicy(ctx, entry.permission, async (permission, origin) => {
     log.info(
-      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → call __browx.confirm(true|false) in DevTools to respond`,
+      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
     );
     try {
       const sig = await br.awaitSignal("respond", 300_000);
@@ -86,7 +89,7 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // `new Notification(...)`. Default `allow` preserves browser default.
   await attachNotificationPolicy(ctx, entry.notification, async (n) => {
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → call __browx.confirm(true|false) in DevTools to respond`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`,
     );
     try {
       const sig = await br.awaitSignal("respond", 300_000);
@@ -103,7 +106,7 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   // validated against `workspace.root` at `fs_picker_respond` time.
   await attachFsPickerPolicy(ctx, entry.fsPicker, workspace.root, async (api, suggestedName) => {
     log.info(
-      `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → call __browx.respond({files:[…]}) in DevTools (or fs_picker_respond) to answer`,
+      `fs-picker ask-human: ${api}${suggestedName ? ` (${suggestedName})` : ""} → ${HUMAN_CHANNEL_HINT}, call __browx.respond({files:[…]}) (or fs_picker_respond)`,
     );
     try {
       const sig = await br.awaitSignal("respond", 300_000);

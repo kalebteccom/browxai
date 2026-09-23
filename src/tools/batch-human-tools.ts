@@ -1,5 +1,6 @@
 import { runBatch } from "../util/batch.js";
 import { log } from "../util/logging.js";
+import { HUMAN_CHANNEL_HINT } from "../helper/bridge.js";
 import { SESSION_ARG } from "./schemas.js";
 import type { RegisterHost, GateHost, SessionHost, ServerServicesHost } from "./host.js";
 
@@ -13,11 +14,12 @@ function buildAwaitHumanPrompt(
   choices: string[] | undefined,
 ): string {
   if (kind === "choose" && choices) {
-    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ call __browx.choose(<index>) in DevTools to respond`;
+    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ ${HUMAN_CHANNEL_HINT}, call __browx.choose(<index>)`;
   }
-  if (kind === "confirm") return `${prompt} → call __browx.confirm(true|false)`;
-  if (kind === "input") return `${prompt} → call __browx.input('your text')`;
-  return `${prompt} → call __browx.proceed() to release`;
+  if (kind === "confirm")
+    return `${prompt} → ${HUMAN_CHANNEL_HINT}, call __browx.confirm(true|false)`;
+  if (kind === "input") return `${prompt} → ${HUMAN_CHANNEL_HINT}, call __browx.input('your text')`;
+  return `${prompt} → ${HUMAN_CHANNEL_HINT}, call __browx.proceed()`;
 }
 
 /**
@@ -45,12 +47,12 @@ export function registerBatchHumanTools(
     {
       capability: "human",
       description:
-        "Block until the human responds in the page. Operator reads `prompt` from the server's stderr (or a future banner UI) and triggers a response from DevTools:\n" +
+        "Block until the human responds. Operator reads `prompt` from the server's stderr and answers from DevTools, in the `browxai` console context (an isolated world page scripts cannot reach; the page's own `window.__browx` is display-only and answers nothing):\n" +
         "  - `acknowledge` → `__browx.proceed()` (or `signal('proceed')`)\n" +
         "  - `confirm`     → `__browx.confirm(true|false)`\n" +
         "  - `choose`      → `__browx.choose(<index-into-choices>)`\n" +
         "  - `input`       → `__browx.input('typed text')`\n" +
-        "Returns `{ kind, value, timedOut }`. `pick_element` kind (in-page hover-pick overlay) is deferred to .",
+        "Returns `{ kind, value, timedOut }`. On an engine without CDP (firefox, webkit, safari, the native engines) there is no isolated world, so it returns at once with `error` starting `no-human-channel` instead of waiting.",
       inputSchema: {
         kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
         prompt: z
