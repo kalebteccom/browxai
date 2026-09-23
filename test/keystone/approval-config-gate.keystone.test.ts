@@ -175,6 +175,115 @@ describe("capabilities cannot be widened through config", () => {
   );
 });
 
+describe("other policy keys cannot be loosened through config", () => {
+  const A = "http://127.0.0.1:9";
+  const B = "http://localhost:9";
+
+  /** True when `navigate` is still waiting on the human after `ms`: a confirm
+   *  hook is holding it. A loosened policy lets it through (or fail) at once. */
+  async function heldByHook(call: ReturnType<typeof caller>, url: string, ms = 2_500) {
+    const p = call("navigate", { url });
+    const r = await Promise.race([
+      p.then(() => "settled" as const),
+      new Promise<"held">((res) => setTimeout(() => res("held"), ms)),
+    ]);
+    p.catch(() => undefined);
+    return r === "held";
+  }
+
+  it(
+    "set_config refuses every loosening patch and writes nothing",
+    async () => {
+      process.env.BROWX_ALLOWED_ORIGINS = A;
+      process.env.BROWX_BLOCKED_ORIGINS = B;
+      const call = caller(await start());
+      const patches: Array<[string, Record<string, unknown>]> = [
+        ["confirmRequired", { confirmRequired: [] }],
+        ["allowedOrigins", { allowedOrigins: [] }],
+        ["allowedOrigins", { allowedOrigins: ["https://evil.example"] }],
+        ["blockedOrigins", { blockedOrigins: [] }],
+        ["disableWebSecurity", { disableWebSecurity: true }],
+        ["plugins", { plugins: ["@browxai/plugin-example"] }],
+      ];
+      for (const [key, patch] of patches) {
+        const r = await call<{ ok: boolean; error: string; loosening: Record<string, unknown> }>(
+          "set_config",
+          { scope: "user", patch },
+        );
+        expect(r.ok, key).toBe(false);
+        expect(r.error).toBe("policy-not-loosenable");
+        expect(Object.keys(r.loosening)).toEqual([key]);
+      }
+      expect(existsSync(join(workspace, "config.json"))).toBe(false);
+      // Tightening still works.
+      const ok = await call<{ ok: boolean }>("set_config", {
+        scope: "user",
+        patch: { confirmRequired: ["navigate_off_allowlist", "byob_action", "file_upload"] },
+      });
+      expect(ok.ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a saved layer that loosens every key is clamped at start",
+    async () => {
+      process.env.BROWX_ALLOWED_ORIGINS = A;
+      process.env.BROWX_BLOCKED_ORIGINS = "http://blocked.invalid";
+      writeFileSync(
+        join(workspace, "config.json"),
+        JSON.stringify({
+          user: {
+            confirmRequired: [],
+            allowedOrigins: [],
+            blockedOrigins: [],
+            disableWebSecurity: true,
+            plugins: ["@browxai/plugin-example"],
+          },
+        }),
+      );
+      const server = await start();
+      const call = caller(server);
+      const cfg = await call<{
+        config: {
+          confirmRequired: string[];
+          allowedOrigins: string[];
+          blockedOrigins: string[];
+          disableWebSecurity?: boolean;
+          plugins: string[];
+        };
+      }>("get_config", {});
+      expect(cfg.config.confirmRequired).toEqual(
+        expect.arrayContaining(["navigate_off_allowlist", "byob_action"]),
+      );
+      expect(cfg.config.allowedOrigins).toEqual([A]);
+      expect(cfg.config.blockedOrigins).toEqual(["http://blocked.invalid"]);
+      expect(cfg.config.disableWebSecurity).toBeUndefined();
+      expect(cfg.config.plugins).toEqual([]);
+      const listed = await call<{ plugins: unknown[] }>("plugins_list", {});
+      expect(listed.plugins).toEqual([]);
+      // Behaviour, not just the view: the allowlist and its confirm hook still
+      // hold an off-allowlist navigation for the human.
+      expect(await heldByHook(call, B)).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a saved blockedOrigins: [] does not unblock an env-blocked origin",
+    async () => {
+      process.env.BROWX_BLOCKED_ORIGINS = B;
+      writeFileSync(
+        join(workspace, "config.json"),
+        JSON.stringify({ user: { blockedOrigins: [], confirmRequired: [] } }),
+      );
+      const call = caller(await start());
+      expect(await heldByHook(call, B)).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 describe("BROWX_CONFIG_READONLY", () => {
   const HIDDEN = ["set_config", "reset_config", "approve_actions"];
 

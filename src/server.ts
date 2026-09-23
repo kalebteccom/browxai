@@ -140,6 +140,12 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     log.info(
       "browxai: BROWX_CONFIG_READONLY is set; set_config, reset_config and approve_actions are not registered",
     );
+  const loosened = configStore.policyAdjustments().filter((k) => k !== "capabilities");
+  if (loosened.length)
+    log.warn(
+      `browxai: the saved config asks for looser policy than the server's environment allows (${loosened.join(", ")}); ` +
+        "a saved layer can only tighten these keys, so the environment's values hold. See docs/threat-model.md.",
+    );
   const droppedCaps = configStore.droppedCapabilities();
   if (droppedCaps.length)
     log.warn(

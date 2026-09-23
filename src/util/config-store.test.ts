@@ -41,10 +41,8 @@ describe("ConfigStore precedence", () => {
   });
 
   it("arrays replace (not merge) across layers", () => {
-    const s = new ConfigStore(dir, { BROWX_ALLOWED_ORIGINS: "https://a.com,https://b.com" });
-    expect(s.resolve({ allowedOrigins: ["https://c.com"] }).allowedOrigins).toEqual([
-      "https://c.com",
-    ]);
+    const s = new ConfigStore(dir, { BROWX_HIDE_OVERLAY_SELECTORS: "#a,#b" });
+    expect(s.resolve({ hideOverlaySelectors: ["#c"] }).hideOverlaySelectors).toEqual(["#c"]);
   });
 
   it("unstable.* shallow-merges across layers instead of replacing", () => {
@@ -128,15 +126,13 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
 
-  it("disableWebSecurity is NOT mappable from any env var (security invariant)", () => {
-    // Deliberately excluded from the legacy layer — must never be ambiently
-    // enabled via the environment. Any plausible env spelling stays undefined.
-    const l = envLayer({
-      BROWX_DISABLE_WEB_SECURITY: "1",
-      BROWX_DISABLEWEBSECURITY: "true",
-      BROWX_INSECURE: "1",
-    });
+  it("disableWebSecurity maps only from the exact BROWX_DISABLE_WEB_SECURITY opt-in", () => {
+    // The env is the operator's channel; `set_config` is the agent's. SOP-off is
+    // the operator's call, so only the env can turn it on, and only by this name.
+    expect(envLayer({ BROWX_DISABLE_WEB_SECURITY: "1" }).disableWebSecurity).toBe(true);
+    const l = envLayer({ BROWX_DISABLEWEBSECURITY: "true", BROWX_INSECURE: "1" });
     expect(l.disableWebSecurity).toBeUndefined();
+    expect(envLayer({ BROWX_DISABLE_WEB_SECURITY: "0" }).disableWebSecurity).toBeUndefined();
   });
 
   it("maps BROWX_CHANNEL onto `channel`, and omits it when blank", () => {
@@ -164,15 +160,19 @@ describe("actionTimeoutMs precedence", () => {
 });
 
 describe("disableWebSecurity precedence", () => {
-  it("defaults off; settable only via user/project/session layers", () => {
+  it("defaults off; only the env turns it on; a saved layer can only turn it off", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
     try {
-      const s = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
-      expect(s.resolve().disableWebSecurity).toBeUndefined(); // env can't enable it
-      s.setLayer("project", { disableWebSecurity: true });
-      expect(s.resolve().disableWebSecurity).toBe(true);
-      // session layer can still override back off
-      expect(s.resolve({ disableWebSecurity: false }).disableWebSecurity).toBe(false);
+      const off = new ConfigStore(dir, {});
+      off.setLayer("project", { disableWebSecurity: true });
+      expect(off.resolve().disableWebSecurity).toBeUndefined(); // config can't enable it
+      const on = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
+      expect(on.resolve().disableWebSecurity).toBe(true);
+      on.setLayer("project", { disableWebSecurity: false });
+      expect(on.resolve().disableWebSecurity).toBeUndefined();
+      expect(
+        new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" }).resolve({}).disableWebSecurity,
+      ).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

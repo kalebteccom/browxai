@@ -15,6 +15,12 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "./logging.js";
 import { invariant } from "./invariant.js";
+import {
+  clampPolicy,
+  policyAdjustments,
+  policyCeiling,
+  type PolicyCeiling,
+} from "./config-ceiling.js";
 
 /** Full resolved view consumed by the server. */
 export interface ResolvedConfig {
@@ -114,6 +120,13 @@ export function envLayer(env: NodeJS.ProcessEnv = process.env): ConfigLayer {
   if (hos) layer.hideOverlaySelectors = hos;
   const ch = env.BROWX_CHANNEL?.trim();
   if (ch) layer.channel = ch;
+  // The two policy keys the env sets only as a ceiling for the persistent
+  // layers (see config-ceiling.ts): the operator's opt-in to SOP-off launches,
+  // and the plugins a saved `plugins` list may name.
+  const dws = env.BROWX_DISABLE_WEB_SECURITY?.trim().toLowerCase();
+  if (dws === "1" || dws === "true") layer.disableWebSecurity = true;
+  const pl = list(env.BROWX_PLUGINS?.trim());
+  if (pl) layer.plugins = pl;
   return layer;
 }
 
@@ -232,12 +245,28 @@ export class ConfigStore {
       chain[chain.length - 1]!.scope === "session",
       "config precedence: `session` must be the highest-precedence layer",
     );
+    return clampPolicy(this.resolveUnbounded(sessionPatch), this.ceiling());
+  }
+
+  /** The precedence merge before the ceiling is applied. */
+  private resolveUnbounded(sessionPatch?: ConfigLayer): ResolvedConfig {
     let acc: ResolvedConfig = { ...BUILTIN_DEFAULTS, unstable: { ...BUILTIN_DEFAULTS.unstable } };
-    for (const layer of chain) {
+    for (const layer of ConfigStore.PRECEDENCE) {
       acc = ConfigStore.apply(acc, layer.read(this, sessionPatch));
     }
-    const ceiling = new Set(this.capabilityCeiling());
-    return { ...acc, capabilities: acc.capabilities.filter((c) => ceiling.has(c)) };
+    return acc;
+  }
+
+  /** The operator's policy ceiling: the env layer, else the built-in defaults.
+   *  No saved or session layer may loosen a key past it (config-ceiling.ts). */
+  ceiling(): PolicyCeiling {
+    return policyCeiling(this.env, BUILTIN_DEFAULTS);
+  }
+
+  /** Policy keys where the persisted layers asked for more than the ceiling
+   *  allows. The resolved view ignores that part; the server warns at start. */
+  policyAdjustments(): string[] {
+    return policyAdjustments(this.resolveUnbounded(), this.resolve());
   }
 
   /** The widest capability list any layer may resolve to: `BROWX_CAPABILITIES`

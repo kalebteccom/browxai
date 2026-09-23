@@ -1,5 +1,6 @@
 import type { ToolHost } from "./host.js";
 import { capabilityMissing, type Capability } from "../util/capabilities.js";
+import { policyWidening } from "../util/config-ceiling.js";
 
 /**
  * Config-store + pre-approval tools — the browxai-managed layered config store
@@ -108,7 +109,7 @@ export function registerConfigApprovalTools(host: ToolHost): void {
       "set_config",
       {
         description:
-          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. `capabilities` can only NARROW: a patch naming a capability outside the active set is refused with `error: "capabilities-not-widenable"`, and a saved list is clamped to BROWX_CAPABILITIES at every server start.',
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start.',
         inputSchema: {
           scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
           patch: z
@@ -130,6 +131,16 @@ export function registerConfigApprovalTools(host: ToolHost): void {
             widening,
             activeCapabilities: [...caps.enabled].sort(),
             hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
+          });
+        }
+        // The other policy keys: the same rule against the env ceiling.
+        const loosening = policyWidening(patch, configStore.ceiling());
+        if (Object.keys(loosening).length) {
+          return refusal({
+            ok: false,
+            error: "policy-not-loosenable",
+            loosening,
+            hint: "`set_config` can only tighten policy keys: add confirm hooks and blocked origins, narrow allowed origins and plugins, turn disableWebSecurity off. Loosening one is the operator's decision, made in the server's environment (BROWX_CONFIRM_REQUIRED, BROWX_ALLOWED_ORIGINS, BROWX_BLOCKED_ORIGINS, BROWX_DISABLE_WEB_SECURITY, BROWX_PLUGINS).",
           });
         }
         configStore.setLayer(scope, patch);
