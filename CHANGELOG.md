@@ -783,7 +783,12 @@ surface" covers.
   `plugins-lock.json`, the `plugins/`, `profile/` and `profiles/` trees and the
   `BROWX_DEFAULT_PROFILE` directory, plus `profile-snapshots/`, `chrome-profile/`
   and the snapshot key. `profile_restore` refuses a snapshot `profile_snapshot`
-  did not write or whose files changed since (a signed manifest in each snapshot);
+  did not write or whose files changed since (a signed manifest in each snapshot),
+  and now replaces the profile with exactly the snapshot through a temp directory
+  and a swap, instead of copying over it (which wrote through symlinks left in the
+  profile, kept files the snapshot lacked, and failed on a leftover `Singleton*`
+  link). Tools that read an agent-chosen path (`upload_file`, `drop_files` and
+  the rest) refuse operator files, the snapshot key and profile trees;
   **snapshots taken with an earlier version must be taken again.** A
   `config.json` that cannot be parsed now fails the server start instead of being
   ignored, which used to drop the saved restrictions, and `set_config` refuses an

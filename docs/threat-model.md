@@ -422,8 +422,19 @@ trees and the `BROWX_DEFAULT_PROFILE` directory, case-insensitively and after
 resolving symlinks. `profile_restore` copies a snapshot over a profile, so it also
 checks provenance: each snapshot carries a manifest with a digest of its files,
 MACed with a key kept in the workspace, and a snapshot without a valid manifest,
-or whose files changed since, is refused. Snapshots taken before this release have
-no manifest; take them again. `set_config` also refuses an origin or confirm hook
+or whose files changed since, is refused. Restore copies into a fresh sibling
+directory, re-checks the copy against the signed digest, then swaps it in, so the
+profile becomes exactly the snapshot and nothing is written through a symlink left
+in it. Snapshots taken before this release have no manifest; take them again.
+
+**Operator files and profiles are read-protected too.** Tools that read an
+agent-chosen workspace path (`upload_file`, `drop_files`, the file-picker open
+path, `inject_storage_state` from a path, HAR replay, replay-artifact
+reads, heap and trace reads, `extensions_install`) refuse the same operator files,
+including the snapshot key, and every browser-profile tree (`profile/`,
+`profiles/`, `profile-snapshots/`, `chrome-profile/`, `BROWX_DEFAULT_PROFILE`).
+Otherwise `upload_file` could hand a cookie store or the key to the page, and so
+to the agent. `plugins/` stays readable. `set_config` also refuses an origin or confirm hook
 the next start could not parse. A `config.json` browxai cannot
 parse fails the server start, so corrupting the file cannot drop saved
 restrictions.
