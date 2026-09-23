@@ -45,6 +45,7 @@ import {
   assertSafeName,
   isSafeName,
   resolveWorkspacePath,
+  resolveWorkspaceReadPath,
   resolveWorkspaceWritePath,
 } from "../util/workspace.js";
 
@@ -60,7 +61,12 @@ import type { StorageStateBlob, CookieInput, WebStorageKind } from "./storage-ty
 // root resolver, so util-layer modules depend on it inward instead of reaching
 // up into session). Re-exported here so the storage-state callers that import
 // them from this module keep working unchanged.
-export { assertSafeName, resolveWorkspacePath, resolveWorkspaceWritePath };
+export {
+  assertSafeName,
+  resolveWorkspacePath,
+  resolveWorkspaceReadPath,
+  resolveWorkspaceWritePath,
+};
 
 // ---- layer 1: bulk --------------------------------------------------------
 
@@ -90,7 +96,7 @@ export function readStorageStateFile(
   p: string,
   tool: string,
 ): StorageStateBlob {
-  const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
+  const resolved = resolveWorkspaceReadPath(workspaceRoot, p, tool);
   if (!existsSync(resolved)) {
     throw new Error(`${tool}: storage-state file not found at "${resolved}"`);
   }

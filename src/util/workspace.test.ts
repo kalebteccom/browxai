@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
+  assertReadableWorkspacePath,
   assertWritableWorkspacePath,
   resolveDefaultProfileDir,
   resolveWorkspace,
@@ -157,5 +158,30 @@ describe("protected workspace paths", () => {
     expect(() =>
       assertWritableWorkspacePath(root, join(root, "my-profile", "Cookies"), "t", env),
     ).toThrow(/BROWX_DEFAULT_PROFILE/);
+  });
+});
+
+describe("read-protected workspace paths", () => {
+  it("refuses operator files and profile trees, allows the rest (including plugins/)", () => {
+    const root = join(tmp, "wsr");
+    mkdirSync(root);
+    for (const p of [
+      ".browx-snapshot-key",
+      "config.json",
+      "plugins.json",
+      "profile/Default/Cookies",
+      "profiles/a/Cookies",
+      "profile-snapshots/s1/Cookies",
+      "chrome-profile/Default/Cookies",
+    ])
+      expect(() => assertReadableWorkspacePath(root, join(root, p), "t"), p).toThrow(
+        /refusing to read/,
+      );
+    expect(() =>
+      assertReadableWorkspacePath(root, join(root, "plugins", "x", "index.js"), "t"),
+    ).not.toThrow();
+    expect(() =>
+      assertReadableWorkspacePath(root, join(root, "uploads", "a.png"), "t"),
+    ).not.toThrow();
   });
 });

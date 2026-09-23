@@ -38,6 +38,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
+import { assertReadableWorkspacePath } from "../util/workspace.js";
 
 /**
  * Loaded-extension record. `id` is the Chrome-computed extension id (a 32-char
@@ -105,6 +106,7 @@ export function resolveExtensionPath(workspaceRoot: string, p: string, tool: str
         `Stage the unpacked extension directory under the workspace.`,
     );
   }
+  assertReadableWorkspacePath(workspaceRoot, resolved, tool);
   if (!existsSync(resolved)) {
     throw new Error(`${tool}: extension directory not found at "${resolved}"`);
   }

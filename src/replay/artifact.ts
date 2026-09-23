@@ -10,7 +10,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { deflateRawSync, gunzipSync, gzipSync, inflateRawSync } from "node:zlib";
 
-import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../util/workspace.js";
+import { resolveWorkspaceReadPath, resolveWorkspaceWritePath } from "../util/workspace.js";
 import { REPLAY_ARTIFACT_EXT, type ReplayEvent, type ReplayManifest } from "./schema.js";
 
 const TOOL = "replay_artifact";
@@ -147,7 +147,7 @@ export async function writeArtifact(input: WriteArtifactInput): Promise<WriteArt
 }
 
 export async function readArtifact(workspaceRoot: string, path: string): Promise<ReplayArtifact> {
-  const abs = resolveWorkspacePath(workspaceRoot, path, TOOL);
+  const abs = resolveWorkspaceReadPath(workspaceRoot, path, TOOL);
   const files = zipRead(await readFile(abs));
 
   const manifestRaw = files.get(MANIFEST_ENTRY);

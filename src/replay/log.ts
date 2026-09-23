@@ -5,7 +5,7 @@
 import { mkdir, open as openFile, readFile, type FileHandle } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../util/workspace.js";
+import { resolveWorkspaceReadPath, resolveWorkspaceWritePath } from "../util/workspace.js";
 import type { ReplayEvent, ReplayEventType, ReplayManifest } from "./schema.js";
 
 export const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
@@ -220,5 +220,5 @@ export class ReplayLog {
 }
 
 export async function readEventLog(workspaceRoot: string, path: string): Promise<Buffer> {
-  return await readFile(resolveWorkspacePath(workspaceRoot, path, TOOL));
+  return await readFile(resolveWorkspaceReadPath(workspaceRoot, path, TOOL));
 }

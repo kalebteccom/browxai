@@ -393,6 +393,37 @@ describe("operator files cannot be overwritten by write tools", () => {
   );
 
   it(
+    "upload_file and drop_files refuse to read operator files and profiles",
+    async () => {
+      process.env.BROWX_CAPABILITIES = "read,navigation,action,human,file-io";
+      const call = caller(await start());
+      await call("navigate", {
+        url: "data:text/html,<input type=file id=f><div id=d style='width:50px;height:50px'>d</div>",
+      });
+      // Make the key exist, as a first profile_snapshot would.
+      writeFileSync(join(workspace, ".browx-snapshot-key"), Buffer.alloc(32, 1));
+      writeFileSync(join(workspace, "ok.txt"), "fine");
+      for (const path of [".browx-snapshot-key", "config.json", "profile/Default/Cookies"]) {
+        const r = await call<{ ok: boolean; error?: string }>("upload_file", {
+          selector: "#f",
+          path,
+        });
+        expect(r.ok, path).toBe(false);
+        expect(r.error, path).toMatch(/refusing to read/);
+        const d = await call<{ ok: boolean; error?: string }>("drop_files", {
+          selector: "#d",
+          files: [{ path }],
+        });
+        expect(d.ok, path).toBe(false);
+        expect(JSON.stringify(d), path).toMatch(/refusing to read/);
+      }
+      const ok = await call<{ ok: boolean }>("upload_file", { selector: "#f", path: "ok.txt" });
+      expect(ok.ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "a malformed config.json fails the server start",
     async () => {
       writeFileSync(join(workspace, "config.json"), "%PDF-1.7 not json");

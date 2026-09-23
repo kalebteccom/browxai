@@ -190,31 +190,70 @@ function realish(p: string): string {
   }
 }
 
-/** Throws when `abs` is, or is inside, a protected operator path. Compares
+/** Directories whose contents the agent may not READ through a path-taking
+ *  tool either: browser profiles hold cookie stores and saved logins, and a
+ *  snapshot is a profile. (`plugins/` is readable; it is code, not secrets.) */
+const READ_PROTECTED_DIRS = ["profile", "profiles", "profile-snapshots", "chrome-profile"];
+
+/** What protected operator path `abs` is or sits in, or null. Compares
  *  case-insensitively, because the default macOS filesystem is. */
+function protectedHit(
+  workspaceRoot: string,
+  abs: string,
+  dirs: readonly string[],
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const rootReal = realish(resolve(workspaceRoot)).toLowerCase();
+  const target = realish(resolve(abs)).toLowerCase();
+  const under = (dir: string) => target === dir || target.startsWith(dir + sep);
+  for (const f of PROTECTED_FILES) if (target === join(rootReal, f)) return `the workspace ${f}`;
+  for (const d of dirs) if (under(join(rootReal, d))) return `under the workspace ${d}/`;
+  const dp = env.BROWX_DEFAULT_PROFILE?.trim();
+  if (dp) {
+    const expanded = dp.replace(/^~(?=$|\/)/, homedir());
+    if (isAbsolute(expanded) && under(realish(resolve(expanded)).toLowerCase()))
+      return "under BROWX_DEFAULT_PROFILE";
+  }
+  return null;
+}
+
+/** Throws when `abs` is, or is inside, a protected operator path. */
 export function assertWritableWorkspacePath(
   workspaceRoot: string,
   abs: string,
   tool: string,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const rootReal = realish(resolve(workspaceRoot)).toLowerCase();
-  const target = realish(resolve(abs)).toLowerCase();
-  const under = (dir: string) => target === dir || target.startsWith(dir + sep);
-  const refuse = (what: string): never => {
+  const hit = protectedHit(workspaceRoot, abs, PROTECTED_DIRS, env);
+  if (hit)
     throw new Error(
-      `${tool}: refusing to write "${abs}" — it is ${what}, which only the operator changes. ` +
+      `${tool}: refusing to write "${abs}" — it is ${hit}, which only the operator changes. ` +
         "Pick another workspace path.",
     );
-  };
-  for (const f of PROTECTED_FILES) if (target === join(rootReal, f)) refuse(`the workspace ${f}`);
-  for (const d of PROTECTED_DIRS) if (under(join(rootReal, d))) refuse(`under the workspace ${d}/`);
-  const dp = env.BROWX_DEFAULT_PROFILE?.trim();
-  if (dp) {
-    const expanded = dp.replace(/^~(?=$|\/)/, homedir());
-    if (isAbsolute(expanded) && under(realish(resolve(expanded)).toLowerCase()))
-      refuse("under BROWX_DEFAULT_PROFILE");
-  }
+}
+
+/** Throws when `abs` is an operator file or inside a browser profile, for a
+ *  tool that READS an agent-chosen path (`upload_file` would otherwise hand the
+ *  snapshot key or a cookie store to the page, and so to the agent). */
+export function assertReadableWorkspacePath(
+  workspaceRoot: string,
+  abs: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const hit = protectedHit(workspaceRoot, abs, READ_PROTECTED_DIRS, env);
+  if (hit)
+    throw new Error(
+      `${tool}: refusing to read "${abs}" — it is ${hit}, which tools do not read. ` +
+        "Pick another workspace path.",
+    );
+}
+
+/** `resolveWorkspacePath` for a path the caller is about to READ. */
+export function resolveWorkspaceReadPath(workspaceRoot: string, p: string, tool: string): string {
+  const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
+  assertReadableWorkspacePath(workspaceRoot, resolved, tool);
+  return resolved;
 }
 
 /** `resolveWorkspacePath` for a path the caller is about to WRITE. */
