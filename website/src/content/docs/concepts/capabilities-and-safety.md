@@ -10,7 +10,7 @@ that stay on are bounded.
 For the full trust analysis, read the [threat model](/security/threat-model/).
 This page is the working summary.
 
-<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, and diagnostics, is off until you opt in at server start.">
+<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, diagnostics, and self-approval, is off until you opt in at server start.">
   <div class="browx-posture-zone is-on">
     <span class="browx-posture-head"><span class="dot"></span>on by default</span>
     <span class="browx-posture-note">read-only or bounded, always safe to run</span>
@@ -38,6 +38,7 @@ This page is the working summary.
       <span class="browx-cap is-off">device-emulation</span>
       <span class="browx-cap is-off">canvas</span>
       <span class="browx-cap is-off">diagnostics</span>
+      <span class="browx-cap is-off">self-approval</span>
     </div>
   </div>
 </div>
@@ -65,13 +66,16 @@ Off by default, each opted in deliberately:
 - `secrets` enables the per-session sensitive-data registry and egress masking.
 - `extensions` enables per-session unpacked-extension management (headed and
   persistent only).
+- `self-approval` enables `approve_actions`, which lets the agent pre-approve
+  the confirmation hooks meant to stop its own actions.
 - `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
   `diagnostics` gate the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and
   trade-offs.
 
 Because capabilities resolve at server start, changing them means restarting
-the server. Request only what the task in front of you needs: a scrape run
+the server. `BROWX_CAPABILITIES` is the ceiling: a `capabilities` list saved
+through `set_config` can narrow it and never widen it. Request only what the task in front of you needs: a scrape run
 wants `read` and `navigation`; nothing about scraping needs `eval` or
 `network-body`.
 
@@ -94,7 +98,10 @@ The `confirmRequired` set selects which policy hooks ask first. Valid hooks are
 `navigate_off_allowlist`, `file_download`, `file_upload`, and `byob_action`;
 the default is `navigate_off_allowlist` and `byob_action`. Each routes through
 the `await_human` mechanism, which is human-paced and hard-capped so it can
-never wait forever.
+never wait forever. The human answers from DevTools in the `browxai` console
+context, an isolated world the page's own scripts cannot reach, so a page
+cannot approve an action for the human. On engines without CDP there is no such
+world, and the hooks fail closed.
 
 ## The anti-wedge deadline
 

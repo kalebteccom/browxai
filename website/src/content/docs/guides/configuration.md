@@ -23,6 +23,9 @@ built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (ope
   machine-managed (do not hand-edit it). Arrays replace; the `unstable.*`
   namespace shallow-merges. Changes apply to sessions opened after the call.
 - `reset_config({ scope: "user" | "project" })` clears that persistent layer.
+- With `BROWX_CONFIG_READONLY=1` in the server's environment, `set_config`,
+  `reset_config` and `approve_actions` are not registered at all, and the store
+  refuses writes.
 
 A `session` scope is set per call through `open_session`, and wins over the
 persisted layers for that session only.
@@ -32,7 +35,7 @@ persisted layers for that session only.
 | Key                                 | What it does                                                                                                             |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.                     |
-| `capabilities`                      | The enabled capability set. See [Capabilities and safety](/concepts/capabilities-and-safety/).                           |
+| `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.  |
 | `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                     |
 | `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                   |
 | `headless`                          | Launch managed Chromium headless.                                                                                        |

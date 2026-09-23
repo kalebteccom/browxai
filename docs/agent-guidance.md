@@ -199,10 +199,12 @@ BROWX_CAPABILITIES=read,navigation,action,human,file-io
 ```
 
 A gate-blocked call returns a structured `requiredCapability` error. That's
-the moment to ask for one specific grant, not a reason to start broad. And a
-`policy: …` block is a pre-approval issue, not a failure: call
-`approve_actions({scopes:[…]})` once and retry instead of marking the flow
-broken.
+the moment to ask for one specific grant, not a reason to start broad. A
+`policy: …` block means a confirm hook held the action, and the flow isn't
+broken. Ask the human to answer it from the DevTools `browxai` console
+context, or ask the operator to drop that hook or enable `self-approval` for an
+unattended run. `approve_actions` refuses until the operator does, and a
+`set_config` patch can't add capabilities.
 
 ## Two reflexes that hold everywhere
 

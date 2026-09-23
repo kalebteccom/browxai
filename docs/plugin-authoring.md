@@ -183,9 +183,9 @@ At load time the runtime checks every declared capability is in the
 server's active set. Mismatch → your plugin is disabled with status
 `disabled-by-capability-mismatch` and the reason surfaces on
 `plugins_list`. The operator can fix by adding the capability to
-`BROWX_CAPABILITIES` (or `set_config({capabilities:[...]})`) and
-restarting the server. Capabilities are resolved ONCE at server
-start.
+`BROWX_CAPABILITIES` and restarting the server (a saved
+`set_config({capabilities})` list can only narrow that set). Capabilities
+are resolved ONCE at server start.
 
 At dispatch time every tool you register goes through the host's
 capability gate against your declared `capabilities` (specifically:

@@ -10,6 +10,26 @@ surface" covers.
 
 ### Added
 
+- **`self-approval` capability, off by default.** It gates `approve_actions`,
+  which lets the agent pre-approve the confirm hooks that hold its own actions.
+  Without it `approve_actions` returns the standard gate refusal
+  (`requiredCapability: "self-approval"`) and grants nothing. Loud warning at
+  boot when enabled. **Breaking for unattended flows that call
+  `approve_actions`:** add `self-approval` to `BROWX_CAPABILITIES`, or drop the
+  hook you mean from `BROWX_CONFIRM_REQUIRED`.
+- **`BROWX_CONFIG_READONLY=1`.** `set_config`, `reset_config` and
+  `approve_actions` are not registered, so they are absent from `tools/list` and
+  from `batch`, and the config store refuses writes. For embedders that manage
+  config outside the agent session.
+- **`BROWX_DEFAULT_PROFILE=<dir>`.** The persistent profile directory for the
+  `default` session, in place of `<workspace>/profile`. Checked at server start:
+  it must be absolute (or `~/…`), and the filesystem root, the home directory
+  itself, a symlink, a non-directory and a directory owned by another user fail
+  the start. A missing directory is created with mode `0700`. The extensions
+  rebuild of the default session now resolves the same directory; it used
+  `<workspace>/profiles/default` before, a different profile from the one the
+  session launched on.
+
 - **Two native engines: `ios-app` and `android-app`. browxai drives native
   mobile apps with the same tools, the same refs and the same evidence format it
   uses for browsers** (RFC 0008). `ios-app` boots an iOS Simulator, launches an
@@ -702,6 +722,35 @@ surface" covers.
   structured, engine-naming error on one that does not, instead of letting
   `undefined()` surface as an opaque `TypeError`. Behaviour is unchanged on every
   engine — no adapter, no public shape and no tool response moved.
+
+### Security
+
+- **Page scripts could answer a human prompt (all versions up to and including
+  v0.10.1).** `await_human`, the confirm hooks (`byob_action`,
+  `navigate_off_allowlist`) and the `ask-human` permission, notification and
+  file-picker policies waited on a channel that lived in the page's own
+  JavaScript world, so content on the page could supply the answer meant to come
+  from a person. The channel now lives in a CDP isolated world named `browxai`,
+  behind a per-session binding that exists only there, and a call counts only
+  when CDP reports it came from that world. The page-visible `window.__browx` is
+  display-only and the `data-browx-signal` attribute is no longer read. A human
+  answers from DevTools after picking `browxai` in the console context dropdown.
+  Engines without CDP (firefox, webkit, safari, the native engines) have no such
+  world and now refuse: `await_human` returns `no-human-channel` at once, and
+  the hooks and `ask-human` policies fail closed. An attached session wires only
+  its own leased tab. Pinned by `test/keystone/human-channel.keystone.test.ts`.
+- **The agent could approve its own confirm hooks (all versions with
+  `approve_actions`).** `approve_actions` had no capability gate. It now needs
+  `self-approval` (see Added).
+- **The agent could widen its own capabilities across a restart (all versions
+  with `set_config`).** A `capabilities` list saved through `set_config`
+  replaced `BROWX_CAPABILITIES` at the next server start. `BROWX_CAPABILITIES`
+  (or the default set when unset) is now the ceiling: `set_config` refuses a
+  patch that names a capability outside the active set, and at every start a
+  saved or session list is intersected with the ceiling, with a warning naming
+  anything dropped. **If you enabled a capability through `set_config`, it is
+  off after upgrading until you add it to `BROWX_CAPABILITIES`.** Unknown names
+  in a saved list are dropped too, so they no longer fail the next start.
 
 ## v0.10.1 — 2026-09-14 — Session replay, and a deep secret-masking fix
 
