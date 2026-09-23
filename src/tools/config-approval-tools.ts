@@ -1,6 +1,36 @@
 import type { ToolHost } from "./host.js";
-import { capabilityMissing, type Capability } from "../util/capabilities.js";
+import { capabilityMissing, resolveConfirmHooks, type Capability } from "../util/capabilities.js";
 import { policyWidening } from "../util/config-ceiling.js";
+import { resolveOriginPolicy } from "../policy/origin.js";
+
+/** The first unparseable origin or unknown confirm hook in a patch, or null.
+ *  Each entry is checked on its own; a comma inside one is refused because the
+ *  start-time resolvers read these lists comma-joined. */
+function invalidPolicyValues(patch: {
+  allowedOrigins?: string[];
+  blockedOrigins?: string[];
+  confirmRequired?: string[];
+}): { key: string; value: string; reason: string } | null {
+  for (const key of ["allowedOrigins", "blockedOrigins"] as const) {
+    for (const value of patch[key] ?? []) {
+      if (value.includes(",")) return { key, value, reason: "an entry cannot contain a comma" };
+      try {
+        resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: value });
+      } catch (e) {
+        return { key, value, reason: e instanceof Error ? e.message : String(e) };
+      }
+    }
+  }
+  for (const value of patch.confirmRequired ?? []) {
+    try {
+      if (value.includes(",")) throw new Error("an entry cannot contain a comma");
+      resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: value });
+    } catch (e) {
+      return { key: "confirmRequired", value, reason: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return null;
+}
 
 /**
  * Config-store + pre-approval tools — the browxai-managed layered config store
@@ -133,6 +163,10 @@ export function registerConfigApprovalTools(host: ToolHost): void {
             hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
           });
         }
+        // Values the next start parses. A bad one would crash that start
+        // (server.ts resolves the origin policy and confirm hooks from them).
+        const invalid = invalidPolicyValues(patch);
+        if (invalid) return refusal({ ok: false, error: "invalid-config-value", ...invalid });
         // The other policy keys: the same rule against the env ceiling.
         const loosening = policyWidening(patch, configStore.ceiling());
         if (Object.keys(loosening).length) {
