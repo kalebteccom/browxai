@@ -111,9 +111,8 @@ steps:
   # ci.yml keystone: real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   - name: keystone
     # INVARIANT: runs strictly after every build step so the box never runs the browsers beside the unit suites.
-    # WARNING: pnpm-lock.yaml pins playwright-core 1.62.1 but this image is 1.60.0, so its preinstalled browsers do not match.
-    # The install below fetches the 1.62.1 builds into the cache volume; bump the tag to v1.62.1-noble once it is on the box.
-    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume, as ci.yml does.
+    image: node:26-bookworm
     depends_on: [build-node22, build-node26, quality, audit, package-contents]
     volumes:
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
