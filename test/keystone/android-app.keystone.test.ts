@@ -1,9 +1,10 @@
 // Android-app keystone — the proof RFC 0008 P2's engine drives a REAL Android
 // device end to end, through the real MCP server, with no mock anywhere.
 //
-// REQUIRES a ready Android device or emulator; SKIPS cleanly otherwise, the same
-// honest device-gate the android / firefox / webkit keystones use. A
-// skipped-but-written keystone is what lets this be verified the day a device
+// REQUIRES a ready Android device or emulator. It SKIPS only when adb lists no
+// device at all. A device that is listed but not usable (offline, `sys.boot_completed`
+// not 1, UiAutomator server silent) FAILS the live lane, see `android-device-gate.ts`.
+// A skipped-but-written keystone is what lets this be verified the day a device
 // appears; a silently-passing mock would not be.
 //
 // To run live: `emulator -avd <name> -no-window` (or attach a device), then
@@ -29,30 +30,21 @@
 // refusal needs no device.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
+import { androidAppDeviceGate } from "./android-device-gate.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
 const KEYSTONE_TIMEOUT = 180_000;
 
-/** A ready device present? `adb devices` at module load, the same shape as the
- *  android keystone's gate. Any failure (adb missing, no device) → skip. */
-const deviceAvailable = (() => {
-  try {
-    const out = execFileSync("adb", ["devices"], { timeout: 5000, encoding: "utf8" });
-    return out
-      .split("\n")
-      .slice(1)
-      .some((line) => /\sdevice\s*$/.test(line.trimEnd()));
-  } catch {
-    return false;
-  }
-})();
-const describeDevice = deviceAvailable ? describe : describe.skip;
+/** Skip only when adb lists no device. A device that IS listed but is not booted,
+ *  or whose UiAutomator server does not answer, is a broken environment and the
+ *  live lane fails on it (see `beforeAll` below) instead of reporting green. */
+const gate = androidAppDeviceGate();
+const describeDevice = gate.kind === "absent" ? describe.skip : describe;
 
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -177,7 +169,9 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
   }
 
   beforeAll(async () => {
-    if (!deviceAvailable) return;
+    if (gate.kind === "unusable") {
+      throw new Error(`android-app keystone: a device is listed but not usable. ${gate.reason}`);
+    }
     clearBrowxEnv();
     workspace = mkdtempSync(join(tmpdir(), "browx-native-keystone-"));
     process.env.BROWX_WORKSPACE = workspace;
@@ -187,7 +181,6 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
   }, KEYSTONE_TIMEOUT);
 
   afterAll(async () => {
-    if (!deviceAvailable) return;
     await server?.shutdown().catch(() => undefined);
     restoreEnv();
     if (workspace) rmSync(workspace, { recursive: true, force: true });
