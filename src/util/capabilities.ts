@@ -34,7 +34,8 @@ export type Capability =
   | "canvas"
   | "replay"
   | "native-device"
-  | "self-approval";
+  | "self-approval"
+  | "human-gate-override";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -57,6 +58,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "replay",
   "native-device",
   "self-approval",
+  "human-gate-override",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -337,6 +339,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "self-approval",
     message:
       "self-approval capability is ENABLED — `approve_actions` lets the agent pre-approve the confirm hooks (`byob_action`, `navigate_off_allowlist`, …) that exist to stop the agent's own actions until a human says yes. Every grant and every consume is logged. Enable it only for unattended runs where you accept that the agent answers its own confirmations; prefer removing a single hook from BROWX_CONFIRM_REQUIRED when that is what you mean. See docs/threat-model.md.",
+  },
+  {
+    capability: "human-gate-override",
+    message:
+      "human-gate-override capability is ENABLED — `set_permission_policy` and `set_fs_picker_policy` may move a session's permission or file-picker policy away from `ask-human`. Those policies exist to hold the page's permission requests and file-picker calls until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it both tools still accept every change that leaves `ask-human` in place. See docs/threat-model.md.",
   },
   {
     capability: "captcha",
