@@ -15,6 +15,19 @@ surface" covers.
   with `BROWX_DEFAULT_PROFILE` and `BROWX_CONFIG_READONLY`, the human-prompt
   answer path as of v0.11.0, and a proposed operator channel. Not published to
   the site.
+- **`human-gate-override` capability, off by default.** `set_permission_policy`
+  and `set_fs_picker_policy` now refuse to move a session's policy off
+  `ask-human` (the top-level mode or any `perPermission` / `perAPI` entry)
+  unless it is enabled. Both are `action` tools, so the agent could switch an
+  `ask-human` policy to `allow` and answer the file-picker prompt itself with
+  `fs_picker_respond`. A refused call returns the standard gate refusal
+  (`requiredCapability: "human-gate-override"`, plus a `reason` naming the
+  keys) and changes nothing. Changes that keep `ask-human` in place, and every
+  change on a policy with no `ask-human` key, work as before. Loud warning at
+  boot when enabled. **Breaking for unattended flows that open a session on
+  `ask-human` and later switch it:** add `human-gate-override` to
+  `BROWX_CAPABILITIES`, or open the session on the policy you mean.
+  `set_notification_policy` is not covered.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 

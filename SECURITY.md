@@ -86,7 +86,9 @@ Reports against the following are in scope:
   `eval_js` tool behind the `eval` capability.
 - **Human-prompt forgery** — any path that lets page content, or the
   agent without the `self-approval` capability, answer `await_human`, a
-  confirm hook, or an `ask-human` policy in place of the human.
+  confirm hook, or an `ask-human` policy in place of the human. The agent
+  switching a permission or file-picker `ask-human` policy to `allow`
+  without the `human-gate-override` capability counts too.
 - **Self-widening** — any path that lets the agent loosen policy past
   what the server's environment set: enable a capability, drop a confirm
   hook, widen or clear the origin lists, turn on `disableWebSecurity`, or

@@ -214,12 +214,24 @@ neither may the agent the hooks exist to hold back. Defenses:
 - **The agent can't approve itself by default.** `approve_actions` sits behind the
   off-by-default `self-approval` capability, and `set_config` cannot add a
   capability (see "Configuring").
+- **The agent can't turn an `ask-human` policy into `allow` by default.**
+  `set_permission_policy` and `set_fs_picker_policy` are `action` tools, so
+  before this gate the agent could switch a session's `ask-human` policy to
+  `allow` and answer the file-picker prompt itself with `fs_picker_respond`. Both
+  setters now compare the effective mode of every key (the top-level mode and
+  each `perPermission` / `perAPI` entry) before and after the change, and refuse
+  any change that moves a key off `ask-human`. The refusal is the standard gate
+  shape (`requiredCapability: "human-gate-override"`, plus a `reason` naming the
+  keys) and runs before the policy or the CDP permission baseline is touched.
+  Changes that keep `ask-human` in place, and every change on a policy that has
+  no `ask-human` key, are still accepted.
 - **Attached sessions wire only their own tab.** A shared attached browser holds
   other sessions' tabs, so a bridge wires its leased tab and popups opened from
   it, never a neighbour's.
 
 Pinned by `test/keystone/human-channel.keystone.test.ts` (real Chromium, plus
-the firefox and webkit refusals) and `test/keystone/approval-config-gate.keystone.test.ts`.
+the firefox and webkit refusals), `test/keystone/approval-config-gate.keystone.test.ts`
+and `test/keystone/ask-human-gate.keystone.test.ts`.
 
 Anything that runs in the page's main world with the agent's authority, such as
 `eval_js` under the `eval` capability, still cannot reach the isolated world.
@@ -273,6 +285,10 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 - `self-approval`, default **off**. Tools: `approve_actions`.
 
   Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, `file_download`, `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
+
+- `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy` and `set_fs_picker_policy`.
+
+  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and both setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability both tools refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`. `set_notification_policy` is not covered.
 
 - `eval`, default **off**. Tools: `eval_js`.
 
