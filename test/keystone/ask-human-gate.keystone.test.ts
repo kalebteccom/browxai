@@ -307,7 +307,20 @@ describe("grant_permissions on an ask-human policy", () => {
       expect(refused.reason).toMatch(/midi/);
       expect(await midiState(call, session)).toBe("prompt");
 
-      // Wrapped names still go through (the wrapper asks the human), and so does clearing.
+      // Notification.permission reads the native state, so a grant would let the
+      // page show notifications with no prompt: refused too.
+      const notif = await call<Refusal>("grant_permissions", {
+        session,
+        permissions: ["notifications"],
+      });
+      expect(notif.requiredCapability).toBe("human-gate-override");
+      const states = await call<{ states: Record<string, string> }>("permission_state", {
+        session,
+        permissions: ["notifications"],
+      });
+      expect(states.states.notifications).not.toBe("granted");
+
+      // Wrapped names still go through (their main entry points ask the human), and so does clearing.
       const wrapped = await call<{ ok: boolean }>("grant_permissions", {
         session,
         permissions: ["geolocation"],

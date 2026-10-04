@@ -38,10 +38,11 @@ export function askHumanPolicyGate(
 }
 
 /** Refusal for a native grant of permissions whose policy is `ask-human`. A
- *  grant flips the browser's own state to `granted`. Names the page-side
- *  wrappers intercept (`wrapped`) still ask the human first; the rest (midi,
- *  sensors, payment-handler, background-sync, and anything outside the
- *  supported list) resolve natively with no prompt, so only those are refused.
+ *  grant flips the browser's own state to `granted`. Names whose main
+ *  entry point the page-side wrappers intercept (`wrapped`) still ask the human
+ *  there; the rest (notifications, midi, sensors, payment-handler,
+ *  background-sync, and anything outside the supported list) resolve natively
+ *  with no prompt, so only those are refused.
  *  `modeFor` is the session's effective mode per permission name. */
 export function askHumanGrantGate(
   gateCheck: GateCheck,

@@ -66,6 +66,18 @@ describe("askHumanGrantGate", () => {
     expect(body(r).requiredCapability).toBe("human-gate-override");
   });
 
+  it("refuses notifications: only requestPermission is wrapped, permission reads native state", () => {
+    const r = askHumanGrantGate(
+      refuse,
+      "grant_permissions",
+      ["notifications"],
+      modeFor({ notifications: "ask-human" }),
+      WRAPPED_PERMISSIONS,
+    );
+    expect(body(r).requiredCapability).toBe("human-gate-override");
+    expect(WRAPPED_PERMISSIONS).not.toContain("notifications");
+  });
+
   it("lets wrapped permissions through: the page wrapper still asks the human", () => {
     const r = askHumanGrantGate(
       refuse,

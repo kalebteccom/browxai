@@ -221,16 +221,22 @@ neither may the agent the hooks exist to hold back. Defenses:
   `fs_picker_respond`. The three setters now compare the effective mode of every
   key (the top-level mode and each `perPermission` / `perAPI` entry) before and
   after the change, and refuse any change that moves a key off `ask-human`. The
-  refusal is the standard gate shape (`requiredCapability:
-"human-gate-override"`, plus a `reason` naming the keys) and runs before the
+  refusal is the standard gate shape (a `requiredCapability` of
+  `"human-gate-override"`, plus a `reason` naming the keys) and runs before the
   policy or the CDP permission baseline is touched. Changes that keep
   `ask-human` in place, and every change on a policy that has no `ask-human`
   key, are still accepted. `grant_permissions` is gated the same way for the
-  permissions the page-side wrappers don't intercept (`midi`, `midi-sysex`,
-  `payment-handler`, `background-sync`, the sensors): those resolve from the
-  browser's own grant state, so a native grant would skip the prompt. Wrapped
-  names (camera, microphone, geolocation, notifications, clipboard) still ask the
-  human whatever the native state, so granting them is not refused. Residual:
+  permissions the page-side wrappers don't intercept (`notifications`, `midi`,
+  `midi-sysex`, `payment-handler`, `background-sync`, the sensors): those resolve
+  from the browser's own grant state, so a native grant would skip the prompt.
+  For `notifications` only `Notification.requestPermission` is wrapped, while
+  `Notification.permission` reads the native state. Granting camera, microphone,
+  geolocation and clipboard is not refused, because the wrappers sit on their
+  main entry points (`getUserMedia`, `getCurrentPosition` / `watchPosition`, the
+  `navigator.clipboard` methods). Residual: those wrappers are the only guard on
+  those names. A page that calls legacy `webkitGetUserMedia` or reaches the
+  native method through its prototype gets the browser's grant state, so a
+  native grant of them can still skip the prompt. Residual:
   the gate protects a session once it is open. `open_session` takes
   `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` from the agent, so
   `close_session` followed by `open_session` with `allow` replaces an
@@ -300,7 +306,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy` and `grant_permissions`.
 
-  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. Not covered: `open_session` accepts any policy for a new session, so closing an `ask-human` session and reopening it with `allow` is not blocked. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
+  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. Not covered: `open_session` accepts any policy for a new session, so closing an `ask-human` session and reopening it with `allow` is not blocked. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
 
 - `eval`, default **off**. Tools: `eval_js`.
 

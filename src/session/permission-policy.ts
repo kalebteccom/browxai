@@ -73,16 +73,20 @@ export const SUPPORTED_PERMISSIONS = [
 ] as const;
 export type SupportedPermission = (typeof SUPPORTED_PERMISSIONS)[number];
 
-/** Names whose page API the init-script wraps, so the policy (and an
- *  `ask-human` prompt) runs before the native call whatever the browser's own
- *  grant state is. Every other supported name is handled natively: its page API
- *  reads the browser's grant state directly, and a native grant lets it through
- *  with no prompt. Keep in step with `permission-page-script.ts`. */
+/** Names whose main page entry point the init-script wraps (`getUserMedia`,
+ *  `geolocation.getCurrentPosition` / `watchPosition`, the `navigator.clipboard`
+ *  methods), so the policy (and an `ask-human` prompt) runs before the native
+ *  call whatever the browser's own grant state is. Other entry points for the
+ *  same names (legacy `webkitGetUserMedia`, the native method reached through
+ *  its prototype) are not wrapped. Every other supported name, `notifications`
+ *  included, is handled natively: only `Notification.requestPermission` is
+ *  wrapped, and `Notification.permission` reads the browser's grant state, so a
+ *  native grant lets the page show notifications with no prompt. Keep in step
+ *  with `permission-page-script.ts`. */
 export const WRAPPED_PERMISSIONS: readonly string[] = [
   "camera",
   "microphone",
   "geolocation",
-  "notifications",
   "clipboard-read",
   "clipboard-write",
 ];
