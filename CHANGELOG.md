@@ -18,7 +18,7 @@ surface" covers.
 - **`human-gate-override` capability, off by default.** `set_permission_policy`
   and `set_fs_picker_policy` now refuse to move a session's policy off
   `ask-human` (the top-level mode or any `perPermission` / `perAPI` entry)
-  unless it is enabled. Both are `action` tools, so the agent could switch an
+  unless it is enabled, and so does `set_notification_policy`. Both are `action` tools, so the agent could switch an
   `ask-human` policy to `allow` and answer the file-picker prompt itself with
   `fs_picker_respond`. A refused call returns the standard gate refusal
   (`requiredCapability: "human-gate-override"`, plus a `reason` naming the
@@ -27,7 +27,11 @@ surface" covers.
   boot when enabled. **Breaking for unattended flows that open a session on
   `ask-human` and later switch it:** add `human-gate-override` to
   `BROWX_CAPABILITIES`, or open the session on the policy you mean.
-  `set_notification_policy` is not covered.
+  `grant_permissions` is refused for permissions the page-side wrappers don't
+  intercept (`midi`, `midi-sysex`, `payment-handler`, `background-sync`, the
+  sensors) while their policy is `ask-human`, since a native grant skips the
+  prompt. Not covered: closing an `ask-human` session and reopening it with
+  `allow` through `open_session`.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 

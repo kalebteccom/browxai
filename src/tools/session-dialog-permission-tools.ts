@@ -15,7 +15,8 @@ import {
   type FsPickerPolicy,
   type FsPickerFile,
 } from "../session/fs-picker.js";
-import { leavingAskHuman, type PolicyShape } from "../policy/ask-human-guard.js";
+import type { PolicyShape } from "../policy/ask-human-guard.js";
+import { askHumanPolicyGate } from "./ask-human-gate.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,
@@ -38,24 +39,12 @@ export function registerSessionDialogPermissionTools(
 ): void {
   const { z, register, gateCheck, entryFor, workspace } = host;
 
-  /** Refusal for a policy change that would move a key off `ask-human`, or null
-   *  when the change keeps every `ask-human` key or the operator enabled
-   *  `human-gate-override`. Runs before the policy is touched, so a refused
-   *  call changes nothing. */
   const askHumanGate = (
     tool: string,
     current: PolicyShape,
     next: PolicyShape,
     supportedKeys: readonly string[],
-  ) => {
-    const moved = leavingAskHuman(current, next, supportedKeys);
-    if (moved.length === 0) return null;
-    return gateCheck(
-      tool,
-      ["human-gate-override"],
-      `${tool} would move ${moved.map((k) => (k === "*" ? "the top-level default" : k)).join(", ")} off "ask-human". That policy holds the request for a human answer, and this tool is the agent's, so leaving it needs the operator-set human-gate-override capability. Changes that keep "ask-human" in place are still accepted.`,
-    );
-  };
+  ) => askHumanPolicyGate(gateCheck, tool, current, next, supportedKeys);
 
   register(
     "set_dialog_policy",

@@ -73,6 +73,20 @@ export const SUPPORTED_PERMISSIONS = [
 ] as const;
 export type SupportedPermission = (typeof SUPPORTED_PERMISSIONS)[number];
 
+/** Names whose page API the init-script wraps, so the policy (and an
+ *  `ask-human` prompt) runs before the native call whatever the browser's own
+ *  grant state is. Every other supported name is handled natively: its page API
+ *  reads the browser's grant state directly, and a native grant lets it through
+ *  with no prompt. Keep in step with `permission-page-script.ts`. */
+export const WRAPPED_PERMISSIONS: readonly string[] = [
+  "camera",
+  "microphone",
+  "geolocation",
+  "notifications",
+  "clipboard-read",
+  "clipboard-write",
+];
+
 /** Subset of names CDP `Browser.setPermission` accepts. Maps our canonical
  *  names to the CDP descriptor names (most are 1:1; midi vs midi-sysex,
  *  notifications vs background-sync etc. all match CDP's permission enum). */

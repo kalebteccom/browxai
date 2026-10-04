@@ -343,7 +343,7 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
   {
     capability: "human-gate-override",
     message:
-      "human-gate-override capability is ENABLED — `set_permission_policy` and `set_fs_picker_policy` may move a session's permission or file-picker policy away from `ask-human`. Those policies exist to hold the page's permission requests and file-picker calls until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it both tools still accept every change that leaves `ask-human` in place. See docs/threat-model.md.",
+      "human-gate-override capability is ENABLED — `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy` may move a session's policy away from `ask-human`, and `grant_permissions` may natively grant permissions held on it. Those policies exist to hold the page's permission requests, file-picker calls and notifications until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it the setters still accept every change that leaves `ask-human` in place. See docs/threat-model.md.",
   },
   {
     capability: "captcha",

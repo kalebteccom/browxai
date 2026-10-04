@@ -81,7 +81,7 @@ Safe by default — no auto-broadening. Every off-by-default capability has a pe
 | OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                     |
 | OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input |
 | OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions        |
-| OFF + loud-warn | `human-gate-override` | `set_permission_policy` / `set_fs_picker_policy` may move a policy off `ask-human`            |
+| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

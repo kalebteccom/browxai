@@ -69,9 +69,10 @@ Off by default, each opted in deliberately:
   persistent only).
 - `self-approval` enables `approve_actions`, which lets the agent pre-approve
   the confirmation hooks meant to stop its own actions.
-- `human-gate-override` lets `set_permission_policy` and `set_fs_picker_policy`
-  move a policy off `ask-human`. Without it both refuse, so the agent can't
-  switch a held prompt to `allow` and answer it itself.
+- `human-gate-override` lets `set_permission_policy`, `set_fs_picker_policy` and
+  `set_notification_policy` move a policy off `ask-human`, and lets
+  `grant_permissions` natively grant what that policy holds. Without it they
+  refuse, so the agent can't switch a held prompt to `allow` and answer it itself.
 - `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
   `diagnostics` gate the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and

@@ -78,6 +78,7 @@ async function openAskHuman(call: Call, session: string): Promise<void> {
     mode: "incognito",
     permissionPolicy: "ask-human",
     fsPickerPolicy: "ask-human",
+    notificationPolicy: "ask-human",
   });
   expect(opened.ok).not.toBe(false);
   await call("navigate", { session, url: `${fixture.url}/` });
@@ -90,6 +91,15 @@ async function geolocationState(call: Call, session: string): Promise<string> {
   });
   expect(r.ok).toBe(true);
   return r.states.geolocation!;
+}
+
+async function midiState(call: Call, session: string): Promise<string> {
+  const r = await call<{ ok: boolean; states: Record<string, string> }>("permission_state", {
+    session,
+    permissions: ["midi"],
+  });
+  expect(r.ok).toBe(true);
+  return r.states.midi!;
 }
 
 /** `start` plus a raw-text caller, for tools (`snapshot`) that answer in plain text. */
@@ -246,6 +256,80 @@ describe("set_fs_picker_policy leaving ask-human", () => {
       expect(clicked.fsPickerRequests?.find((r) => r.api === "showSaveFilePicker")?.handledAs).toBe(
         "allowed",
       );
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describe("set_notification_policy leaving ask-human", () => {
+  it(
+    "refuses without human-gate-override and keeps the policy; allows it with the capability",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const session = "ks-notif-denied";
+      await openAskHuman(call, session);
+      const refused = await call<Refusal>("set_notification_policy", { session, mode: "allow" });
+      expect(refused.ok).toBe(false);
+      expect(refused.requiredCapability).toBe("human-gate-override");
+      const kept = await call<{ ok: boolean; policy: { mode: string } }>(
+        "set_notification_policy",
+        { session, mode: "ask-human" },
+      );
+      expect(kept.ok).toBe(true);
+      expect(kept.policy.mode).toBe("ask-human");
+
+      const callOverride = await start(`${DEFAULT_CAPS},human-gate-override`);
+      const s2 = "ks-notif-allowed";
+      await openAskHuman(callOverride, s2);
+      const changed = await callOverride<{ ok: boolean; policy: { mode: string } }>(
+        "set_notification_policy",
+        { session: s2, mode: "allow" },
+      );
+      expect(changed.ok).toBe(true);
+      expect(changed.policy.mode).toBe("allow");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describe("grant_permissions on an ask-human policy", () => {
+  it(
+    "refuses a native grant the page wrappers don't intercept, without the capability",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const session = "ks-grant-denied";
+      await openAskHuman(call, session);
+      expect(await midiState(call, session)).toBe("prompt");
+
+      const refused = await call<Refusal>("grant_permissions", { session, permissions: ["midi"] });
+      expect(refused.ok).toBe(false);
+      expect(refused.requiredCapability).toBe("human-gate-override");
+      expect(refused.reason).toMatch(/midi/);
+      expect(await midiState(call, session)).toBe("prompt");
+
+      // Wrapped names still go through (the wrapper asks the human), and so does clearing.
+      const wrapped = await call<{ ok: boolean }>("grant_permissions", {
+        session,
+        permissions: ["geolocation"],
+      });
+      expect(wrapped.ok).toBe(true);
+      expect((await call<{ ok: boolean }>("grant_permissions", { session })).ok).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "grants it when the operator enabled human-gate-override",
+    async () => {
+      const call = await start(`${DEFAULT_CAPS},human-gate-override`);
+      const session = "ks-grant-allowed";
+      await openAskHuman(call, session);
+      const granted = await call<{ ok: boolean }>("grant_permissions", {
+        session,
+        permissions: ["midi"],
+      });
+      expect(granted.ok).toBe(true);
+      expect(await midiState(call, session)).toBe("granted");
     },
     KEYSTONE_TIMEOUT,
   );
