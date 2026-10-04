@@ -1,0 +1,135 @@
+# Mirrors .github/workflows/ci.yml and quality.yml on the self-hosted box. The GitHub workflows stay in place.
+# Not mirrored: secret-scan (trufflehog) and zizmor, neither ships in a node image. release.yml and dependabot-auto-merge.yml wait on a secrets plan.
+# INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
+# INVARIANT: no step builds an image; images are pulled by exact tag.
+when:
+  - event: push
+    branch: main
+  - event: pull_request
+
+# WORKAROUND: Woodpecker steps share one workspace, so two steps that run `pnpm install` at once would race on node_modules.
+# The steps therefore form a single chain; the slot pool still caps what each step runs.
+steps:
+  # Node 22 is the declared floor in `engines` (the Safari BiDi client uses Node's global WebSocket); 26 is what development runs on.
+  - name: build-node22
+    # WORKAROUND: the trackxai-ci images carry pnpm 9.15.9 but package.json pins pnpm@9.0.0, so plain node images plus corepack honour `packageManager`.
+    image: node:22-bookworm
+    depends_on: []
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    commands:
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm typecheck
+      - bash scripts/gate-slot.sh pnpm test
+
+  - name: build-node26
+    # WORKAROUND: Node 25 and later stopped bundling corepack, so install it when the image lacks it.
+    image: node:26-bookworm
+    depends_on: [build-node22]
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm typecheck
+      - bash scripts/gate-slot.sh pnpm test
+
+  # quality.yml: lint, audit and package-contents (secret-scan and zizmor excluded, see header).
+  - name: quality
+    image: node:26-bookworm
+    depends_on: [build-node26]
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm lint
+      - bash scripts/gate-slot.sh pnpm format:check
+      - bash scripts/gate-slot.sh pnpm run depcheck
+      # depcruise and jscpd are reporting-only today (warn severity, no threshold), as in quality.yml.
+      - bash scripts/gate-slot.sh pnpm depcruise
+      - bash scripts/gate-slot.sh pnpm jscpd:check
+
+  - name: audit
+    image: node:26-bookworm
+    depends_on: [quality]
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm audit:prod
+      - bash scripts/gate-slot.sh pnpm licenses:check
+      - bash scripts/gate-slot.sh node scripts/lockfile-lint.mjs
+
+  - name: package-contents
+    image: node:26-bookworm
+    depends_on: [audit]
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm build
+      - bash scripts/gate-slot.sh node scripts/audit-package-contents.mjs
+
+  # ci.yml keystone: real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
+  - name: keystone
+    # INVARIANT: runs strictly after every build step so the box never runs the browsers beside the unit suites.
+    # WARNING: pnpm-lock.yaml pins playwright-core 1.62.1 but this image is 1.60.0, so its preinstalled browsers do not match.
+    # The install below fetches the 1.62.1 builds into the cache volume; bump the tag to v1.62.1-noble once it is on the box.
+    image: mcr.microsoft.com/playwright:v1.60.0-noble
+    depends_on: [build-node22, build-node26, quality, audit, package-contents]
+    volumes:
+      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
+      - /home/gitops/cache/browxai/corepack:/corepack
+      - /home/gitops/cache/browxai/playwright-browsers:/playwright-browsers
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    environment:
+      COREPACK_HOME: /corepack
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /playwright-browsers
+    commands:
+      - command -v corepack >/dev/null || npm install --global corepack
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
+      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install --with-deps chromium firefox webkit
+      # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it.
+      - bash scripts/gate-slot.sh pnpm build
+      - bash scripts/gate-slot.sh pnpm test:keystone
