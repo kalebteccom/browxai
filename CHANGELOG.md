@@ -8,6 +8,29 @@ surface" covers.
 
 ## Unreleased
 
+## [0.12.0] - 2026-10-05
+
+Operator channel and live view, and a gate on leaving `ask-human`.
+
+**Breaking for unattended flows.** A new off-by-default capability,
+`human-gate-override`, now guards every way the agent could end an `ask-human`
+hold. Without it in `BROWX_CAPABILITIES`:
+
+- `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy`
+  refuse any change that moves the top-level mode or a `perPermission` /
+  `perAPI` entry off `ask-human`.
+- `grant_permissions` refuses `notifications`, `midi`, `midi-sysex`,
+  `payment-handler`, `background-sync` and the sensors while their policy is
+  `ask-human`.
+- `open_session` refuses to reopen a name that last closed holding `ask-human`
+  with a policy that ends the hold, and inherits the hold when the call names
+  none.
+
+Each refusal is the standard gate shape (`requiredCapability:
+"human-gate-override"`, plus a `reason`) and changes nothing. A flow that opens
+a session on `ask-human` and switches it later needs the capability added, or
+needs to open the session on the policy it means.
+
 ### Added
 
 - **`live-view` capability, off by default.** The host daemon on the
