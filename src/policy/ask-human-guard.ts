@@ -1,5 +1,6 @@
-// Guard for the two runtime setters that can replace an `ask-human` policy
-// (`set_permission_policy`, `set_fs_picker_policy`).
+// Guard for the tools that can replace an `ask-human` policy
+// (`set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy`,
+// and `open_session` on a name that last held one).
 //
 // `ask-human` holds a page's permission request or file-picker call until a
 // person answers on the human channel. Both setters are `action` tools, so
@@ -45,4 +46,10 @@ export function leavingAskHuman(
     }
   }
   return moved;
+}
+
+/** Whether a policy holds anything for a human: the top-level mode or any
+ *  per-key override is `ask-human`. */
+export function holdsAskHuman(p: PolicyShape): boolean {
+  return p.mode === "ask-human" || Object.values(p.overrides ?? {}).includes("ask-human");
 }

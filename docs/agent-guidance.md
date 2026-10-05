@@ -207,7 +207,8 @@ unattended run. `approve_actions` refuses until the operator does, and a
 `set_config` patch can't add capabilities. The same goes for an `ask-human`
 permission or file-picker policy: `set_permission_policy` and
 `set_fs_picker_policy` refuse to move it to `allow` (or anything else) until the
-operator enables `human-gate-override`.
+operator enables `human-gate-override`. Closing such a session and reopening the
+name with `allow` is refused the same way; leave the policy out to keep it.
 
 ## Two reflexes that hold everywhere
 

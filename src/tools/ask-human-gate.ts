@@ -5,6 +5,10 @@
 // refusal keeps the standard `requiredCapability` shape.
 
 import { leavingAskHuman, type PolicyShape } from "../policy/ask-human-guard.js";
+import type { HeldAskHuman } from "../session/registry.js";
+import { SUPPORTED_PERMISSIONS, type PermissionPolicy } from "../session/permission-policy.js";
+import type { NotificationPolicy } from "../session/notification-policy.js";
+import { SUPPORTED_FS_PICKER_APIS, type FsPickerPolicy } from "../session/fs-picker-policy.js";
 import type { Capability } from "../util/capabilities.js";
 import type { ToolResponse } from "./host.js";
 
@@ -57,5 +61,62 @@ export function askHumanGrantGate(
     tool,
     ["human-gate-override"],
     `${tool} would natively grant ${held.join(", ")}, which the session's permission policy holds on "ask-human". Those permissions are handled natively by the browser, so a grant skips the human prompt. ${HOLD}`,
+  );
+}
+
+/** The policies `open_session` was asked to apply, as parsed. */
+export interface RequestedPolicies {
+  permission?: PermissionPolicy;
+  notification?: NotificationPolicy;
+  fsPicker?: FsPickerPolicy;
+}
+
+/** Refusal for an `open_session` that would reopen a session name with a policy
+ *  that ends an `ask-human` hold the name carried when it last closed, or null
+ *  when nothing moves or the operator enabled `human-gate-override`. A policy the
+ *  call leaves out is inherited from the hold, so only an explicit policy can
+ *  move. Without this, closing an `ask-human` session and reopening the name with
+ *  `allow` would sidestep the setters' gate. Runs before anything is launched. */
+export function askHumanReopenGate(
+  gateCheck: GateCheck,
+  session: string,
+  held: HeldAskHuman | undefined,
+  requested: RequestedPolicies,
+): ToolResponse | null {
+  if (!held) return null;
+  const moved: string[] = [];
+  if (held.permission && requested.permission) {
+    const a = held.permission;
+    const b = requested.permission;
+    const keys = leavingAskHuman(
+      { mode: a.mode, overrides: a.perPermission },
+      { mode: b.mode, overrides: b.perPermission },
+      SUPPORTED_PERMISSIONS,
+    );
+    if (keys.length > 0) moved.push(`permissionPolicy (${keys.join(", ")})`);
+  }
+  if (held.notification && requested.notification) {
+    const keys = leavingAskHuman(
+      { mode: held.notification.mode },
+      { mode: requested.notification.mode },
+      ["notifications"],
+    );
+    if (keys.length > 0) moved.push("notificationPolicy");
+  }
+  if (held.fsPicker && requested.fsPicker) {
+    const a = held.fsPicker;
+    const b = requested.fsPicker;
+    const keys = leavingAskHuman(
+      { mode: a.mode, overrides: a.perAPI },
+      { mode: b.mode, overrides: b.perAPI },
+      SUPPORTED_FS_PICKER_APIS,
+    );
+    if (keys.length > 0) moved.push(`fsPickerPolicy (${keys.join(", ")})`);
+  }
+  if (moved.length === 0) return null;
+  return gateCheck(
+    "open_session",
+    ["human-gate-override"],
+    `open_session would reopen "${session}" with ${moved.join(", ")} off "ask-human", but that session held it for a human when it closed. ${HOLD} Leave the policy out to keep what the session held.`,
   );
 }

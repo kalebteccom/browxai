@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { askHumanGrantGate, askHumanPolicyGate } from "./ask-human-gate.js";
+import { askHumanGrantGate, askHumanPolicyGate, askHumanReopenGate } from "./ask-human-gate.js";
 import { WRAPPED_PERMISSIONS } from "../session/permission-policy.js";
 import type { Capability } from "../util/capabilities.js";
 import type { ToolResponse } from "./host.js";
@@ -96,6 +96,58 @@ describe("askHumanGrantGate", () => {
       ["midi"],
       modeFor({ camera: "ask-human" }),
       WRAPPED_PERMISSIONS,
+    );
+    expect(r).toBeNull();
+  });
+});
+
+describe("askHumanReopenGate", () => {
+  const held = {
+    permission: { mode: "ask-human" as const },
+    notification: { mode: "ask-human" as const },
+    fsPicker: { mode: "ask-human" as const, perAPI: { showSaveFilePicker: "deny" as const } },
+  };
+
+  it("lets a name that held nothing open with any policy", () => {
+    const r = askHumanReopenGate(refuse, "s", undefined, { permission: { mode: "allow" } });
+    expect(r).toBeNull();
+  });
+
+  it("lets a reopen that names no policy through: the hold is inherited", () => {
+    expect(askHumanReopenGate(refuse, "s", held, {})).toBeNull();
+  });
+
+  it("lets a reopen that keeps ask-human through", () => {
+    const r = askHumanReopenGate(refuse, "s", held, {
+      permission: { mode: "ask-human", perPermission: { camera: "ask-human" } },
+      notification: { mode: "ask-human" },
+      fsPicker: { mode: "ask-human" },
+    });
+    expect(r).toBeNull();
+    // A key the old policy already took off ask-human may move again.
+    const second = askHumanReopenGate(refuse, "s", held, {
+      fsPicker: { mode: "ask-human", perAPI: { showSaveFilePicker: "allow" } },
+    });
+    expect(second).toBeNull();
+  });
+
+  it("refuses a policy that leaves ask-human and names each one", () => {
+    const r = askHumanReopenGate(refuse, "s", held, {
+      permission: { mode: "allow" },
+      notification: { mode: "deny" },
+      fsPicker: { mode: "ask-human", perAPI: { showOpenFilePicker: "allow" } },
+    });
+    expect(body(r).requiredCapability).toBe("human-gate-override");
+    expect(body(r).tool).toBe("open_session");
+    expect(body(r).reason).toMatch(/permissionPolicy.*notificationPolicy.*fsPickerPolicy/);
+  });
+
+  it("does not touch a policy the name did not hold", () => {
+    const r = askHumanReopenGate(
+      refuse,
+      "s",
+      { permission: { mode: "ask-human" } },
+      { notification: { mode: "allow" }, fsPicker: { mode: "allow" } },
     );
     expect(r).toBeNull();
   });

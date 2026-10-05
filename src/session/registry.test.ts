@@ -261,4 +261,91 @@ describe("SessionRegistry", () => {
     await reg.get(); // re-create
     expect(factory).toHaveBeenCalledTimes(2);
   });
+
+  describe("ask-human memory across close", () => {
+    const withPolicies = (
+      id: string,
+      p: { perm?: string; notif?: string; pick?: string },
+    ): SessionEntry => {
+      const e = fakeEntry(id);
+      e.permission = new PermissionPolicyState({ mode: (p.perm ?? "raise") as "raise" });
+      e.notification = new NotificationPolicyState({ mode: (p.notif ?? "allow") as "allow" });
+      e.fsPicker = new FsPickerPolicyState({ mode: (p.pick ?? "raise") as "raise" });
+      return e;
+    };
+
+    it("records the ask-human policies a name held at close, and only those", async () => {
+      const reg = new SessionRegistry(
+        async (id) => withPolicies(id, { perm: "ask-human", notif: "allow" }),
+        async () => undefined,
+      );
+      await reg.get("s");
+      expect(reg.heldAskHuman("s")).toBeUndefined();
+      await reg.close("s");
+      expect(reg.heldAskHuman("s")).toEqual({ permission: { mode: "ask-human" } });
+    });
+
+    it("catches an ask-human per-key override under a different top-level mode", async () => {
+      const reg = new SessionRegistry(
+        async (id) => {
+          const e = withPolicies(id, {});
+          e.fsPicker = new FsPickerPolicyState({
+            mode: "allow",
+            perAPI: { showSaveFilePicker: "ask-human" },
+          });
+          return e;
+        },
+        async () => undefined,
+      );
+      await reg.get("s");
+      await reg.closeMatching({ all: true });
+      expect(reg.heldAskHuman("s")?.fsPicker?.perAPI?.showSaveFilePicker).toBe("ask-human");
+    });
+
+    it("a reopen inherits a policy the spec leaves out and keeps one it names", async () => {
+      const factory = vi.fn(async (id: string) => withPolicies(id, { perm: "ask-human" }));
+      const reg = new SessionRegistry(factory, async () => undefined);
+      await reg.get("s");
+      await reg.close("s");
+      await reg.get("s", { notificationPolicy: { mode: "deny" } });
+      expect(factory).toHaveBeenLastCalledWith("s", {
+        permissionPolicy: { mode: "ask-human" },
+        notificationPolicy: { mode: "deny" },
+        fsPickerPolicy: undefined,
+      });
+    });
+
+    it("a lazily re-created default session inherits the hold", async () => {
+      const factory = vi.fn(async (id: string) => withPolicies(id, { notif: "ask-human" }));
+      const reg = new SessionRegistry(factory, async () => undefined);
+      await reg.get();
+      await reg.close(DEFAULT_SESSION_ID);
+      await reg.get();
+      expect(factory).toHaveBeenLastCalledWith(
+        "default",
+        expect.objectContaining({ notificationPolicy: { mode: "ask-human" } }),
+      );
+    });
+
+    it("a name that never held ask-human gets its spec untouched", async () => {
+      const factory = vi.fn(async (id: string) => withPolicies(id, { perm: "allow" }));
+      const reg = new SessionRegistry(factory, async () => undefined);
+      await reg.get("s", { permissionPolicy: { mode: "allow" } });
+      await reg.close("s");
+      expect(reg.heldAskHuman("s")).toBeUndefined();
+      await reg.get("s", { permissionPolicy: { mode: "allow" } });
+      expect(factory).toHaveBeenLastCalledWith("s", { permissionPolicy: { mode: "allow" } });
+    });
+
+    it("a hold moved off ask-human before close is released", async () => {
+      const reg = new SessionRegistry(
+        async (id) => withPolicies(id, { perm: "ask-human" }),
+        async () => undefined,
+      );
+      const e = await reg.get("s");
+      e.permission.set({ mode: "allow" });
+      await reg.close("s");
+      expect(reg.heldAskHuman("s")).toBeUndefined();
+    });
+  });
 });

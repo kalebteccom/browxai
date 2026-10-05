@@ -32,8 +32,17 @@ surface" covers.
   `background-sync`, the sensors) while their policy is `ask-human`, since a
   native grant skips the prompt. Camera, microphone, geolocation and clipboard
   stay grantable: their wrappers cover the main entry points only, so legacy
-  `webkitGetUserMedia` and prototype calls remain a residual. Not covered: closing an `ask-human` session and reopening it with
-  `allow` through `open_session`.
+  `webkitGetUserMedia` and prototype calls remain a residual.
+- **`open_session` can't reopen an `ask-human` session name with a policy that
+  ends the hold.** The session registry now records, per name, which of
+  `permissionPolicy`, `fsPickerPolicy` and `notificationPolicy` held `ask-human`
+  when the session last closed. Reopening that name with a policy that moves a
+  held key off `ask-human` (to `allow`, `deny` or `raise`) is refused with
+  `requiredCapability: "human-gate-override"` before anything launches, unless
+  the operator enabled it. A policy the call leaves out is inherited from the
+  hold, so a reopen with no policy, and a lazily re-created `default` session,
+  keep `ask-human` too. A name that never held `ask-human` still opens with any
+  policy. The record lives for the server process and is keyed on the name.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 
