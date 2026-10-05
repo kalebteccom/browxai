@@ -399,7 +399,7 @@ export function operatorCombinationWarnings(caps: CapabilityConfig): string[] {
   }
   if (!capabilityMissing("human-gate-override", caps)) {
     out.push(
-      "operator-channel is on together with human-gate-override: the agent can move a permission, notification or file-picker policy off ask-human, and a request on a policy that no longer asks never reaches the daemon. Drop human-gate-override if the daemon is meant to decide every such prompt.",
+      "operator-channel is on together with human-gate-override: the agent can move a permission, notification or file-picker policy off ask-human (or reopen a session name with a looser one), and a request on a policy that no longer asks never reaches the daemon. Drop human-gate-override if the daemon is meant to decide every such prompt.",
     );
   }
   return out;
