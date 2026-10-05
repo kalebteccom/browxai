@@ -26,7 +26,7 @@ import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { WsInteractiveRegistry } from "../page/ws-interactive.js";
 import { WorkersRegistry } from "../page/workers.js";
 import { ConsoleBuffer } from "../page/console.js";
-import { BrowxBridge } from "../helper/bridge.js";
+import { notificationPrompt, permissionPrompt } from "../helper/operator-prompts.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
 import { requireCdp, requirePage } from "../engine/index.js";
@@ -112,7 +112,7 @@ export async function rebuildPersistentForExtensions(
   const wsBuf = networkSub.ws;
   consoleBuf.setSecrets(e.secrets);
   networkSub.setSecrets(e.secrets);
-  const br = new BrowxBridge();
+  const br = e.bridge.successor();
   await br.attach(requirePage(sess).context());
   attachDialogPolicy(requirePage(sess).context(), e.dialog);
   // Re-attach permission policy on the rebuilt context. The state's
@@ -125,10 +125,15 @@ export async function rebuildPersistentForExtensions(
     async (permission, origin) => {
       const ticket = br.newTicket();
       log.info(
-        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
+        `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.answerHint(`__browx.confirm(true|false, "${ticket}")`)}`,
       );
       try {
-        const sig = await br.awaitSignal("respond", 300_000, ticket);
+        const sig = await br.awaitSignal(
+          "respond",
+          300_000,
+          ticket,
+          permissionPrompt(permission, origin),
+        );
         const data = sig.data as { kind?: string; value?: unknown } | null;
         if (data && data.kind === "confirm" && data.value === true) return "allow";
         return "deny";
@@ -147,10 +152,10 @@ export async function rebuildPersistentForExtensions(
   await attachNotificationPolicy(requirePage(sess).context(), e.notification, async (n) => {
     const ticket = br.newTicket();
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.answerHint(`__browx.confirm(true|false, "${ticket}")`)}`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000, ticket);
+      const sig = await br.awaitSignal("respond", 300_000, ticket, notificationPrompt(n));
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";

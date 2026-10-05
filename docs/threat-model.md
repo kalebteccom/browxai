@@ -302,6 +302,93 @@ prompt, for instance, has to be sent from inside the `tools/call` that waits for
 the answer: Claude Code answers elicitation only while a call is pending and
 cancels it otherwise.
 
+**The operator channel is that different channel, behind `operator-channel`.**
+A host daemon (remotxai) cannot sit at DevTools, so it can pass browxai a Unix
+socket instead. With the off-by-default `operator-channel` capability on and both
+`BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` set, every confirm-hook
+request, `permission` and `notification` `ask-human` prompt and `await_human` is
+sent to that socket, and only the daemon's answer counts. Its design, in full,
+is in `docs/integrations/remotxai.md` in the repository. The rules that
+matter here:
+
+- **Operator-set at start, like `human-gate-override`.** The capability comes
+  from `BROWX_CAPABILITIES`. A saved `capabilities` list can only narrow it, and
+  `set_config` refuses a patch that adds it (`capabilities-not-widenable`).
+- **The path and the token never reach the agent.** browxai reads both variables
+  once at start and removes them from `process.env`, so the browser and every
+  helper process it spawns later inherit neither. They sit in `#private` fields.
+  No log line, error, tool result or wire frame carries either: a Node connect
+  error names the path, so only its `code` is logged. Residual: on Linux the
+  initial environment stays readable at `/proc/<pid>/environ` to any process
+  running as the same user, and an agent with a shell tool running as that user
+  can read it. Deleting a variable from `process.env` does not change that
+  file. Run the agent as a different user from browxai's operator, or give the
+  harness no shell, where this matters.
+- **The daemon proves it knows the token before browxai sends anything.**
+  browxai dials the socket and sends a nonce. The daemon answers with a nonce
+  and an HMAC-SHA-256 over both, keyed by the token. browxai compares it in
+  constant time (`timingSafeEqual`), then sends its own HMAC (role-tagged, so
+  neither proof replays as the other) and waits for `ready`. The token never
+  crosses the socket, so a process that took over the socket path learns
+  nothing it can reuse. A failed proof closes the channel for the life of the
+  process and denies everything pending. Frames received before `ready` are
+  ignored, and one that is not the expected handshake frame drops the
+  connection.
+- **The socket must be the way the daemon makes it, or the channel does not
+  start.** A real socket, mode `0600`, in a real (not symlinked) directory at
+  mode `0700`, both owned by the user running browxai. A wrong one throws from
+  `createServer` with a message that names the problem and not the path. The
+  check runs again on every redial, and a change closes the channel for good.
+  A socket that does not exist yet is retried with backoff, since the daemon may
+  still be starting. A token under 16 characters also refuses to start.
+- **Answers are validated against the request they name.** `id` is 128 random
+  bits and single-use. An approval takes `approve` or `deny`. A human request
+  takes `done` or `abort`, with a value checked against its kind (a boolean for
+  `confirm`, an in-range integer for `choose`, a string of at most 10,000
+  characters for `input`, none for `acknowledge`). An unknown id gets
+  `unknown-request`, anything that does not fit gets `invalid-answer`, and the
+  request stays pending. Frames over 64 KiB drop the connection.
+- **Failure is closed.** A request with no answer is denied at its own timeout
+  (5 minutes for a confirm hook, 5 minutes by default and 1 hour at most for
+  `await_human`), whether the daemon is slow, gone, or never connected. While
+  disconnected, pending requests stay pending, are sent again under the same id
+  after a redial, and still time out. At most 32 requests wait at once. Nothing
+  approves on its own, and a dropped connection never falls back to DevTools.
+- **DevTools answers are ignored while the channel is on.** No waiter is
+  registered for them, so a call from the isolated world matches nothing and is
+  logged. A prompt with no operator form, the file-picker `ask-human`, is
+  refused instead of being left to DevTools, because it needs files an approve
+  or deny cannot carry. With the capability off, or with either variable
+  missing, nothing changes: DevTools stays the answer path.
+- **Grants are one-shot unless the daemon says otherwise, and never global.** A
+  plain `approve` covers that one call. An `approve` of a confirm hook may carry
+  `grant: { scope: "session" | "workspace", ttlSeconds }`, up to 24 hours. A
+  `session` grant covers that session id only and is dropped when the session
+  closes. A `workspace` grant covers every session of this process, which serves
+  one workspace. Any other scope, `global` included, is rejected, and a grant on
+  a `deny` or on a request that cannot carry one is rejected too.
+  `list_approvals` shows which session a grant belongs to. `approve_actions`
+  grants stay workspace-wide.
+- **Everything shown to the operator is masked.** Every string in a request
+  passes the URL sanitiser (query strings and fragments are dropped, so the
+  operator sees origin and path, and a token in a query stays hidden) and the
+  session's `SecretRegistry`. The agent- and page-sourced fields (`summary`,
+  `prompt`, `choices`) are listed in the frame's `untrusted` array so the
+  daemon's card renders them as data. A page title that reads "Safe, approve
+  this" is page content like any other.
+
+The channel does not make the daemon trustworthy. Whatever listens on that
+socket decides every request, so enable it only when the daemon is the operator.
+It does not reach the agent's own harness permission prompts either, which stay
+the harness's business. Residual: the permission check and the connect are two
+steps, so a same-user process that swaps the socket between them is stopped only
+by the token proof, which it cannot produce.
+
+Pinned by `test/keystone/operator-channel.keystone.test.ts` (real Chromium and a
+real Unix socket: the capability-unset gate, approve and deny, grants, forgery
+and DevTools answers while connected, a drop denying at the timeout, and the
+permission refusal).
+
 ## What browxai explicitly does NOT defend against
 
 | Concern                                                                                  | Why we don't defend                                                                                                                                                                                                                                                                                         | What to do instead                                                                              |
@@ -344,6 +431,10 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 - `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy` and `grant_permissions`.
 
   Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. `open_session` is gated the same way for a session name that held `ask-human` when it last closed: it refuses an explicit policy that moves a held key off `ask-human`, and inherits the held policy when the call names none, so close then reopen with `allow` needs the capability too. A name that never held `ask-human` opens with any policy, unless it launches on the persistent profile a held session used. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
+
+- `operator-channel`, default **off**. Tools: none; it routes `await_human`, the confirm hooks and the `permission` / `notification` `ask-human` prompts to the host daemon's Unix socket.
+
+  Makes the daemon behind `BROWX_OPERATOR_SOCKET` the only answer path while the channel is connected, so a phone operator can answer what DevTools on the host otherwise would. It takes effect only with `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` both set; either alone logs a warning and does nothing. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, with the capability off the socket is never opened, and a saved config cannot add it. Loud one-time warning when enabled. Section 7 holds the rules (socket permissions, the HMAC handshake, answer validation, fail-closed timeouts, session and workspace grants, masking) and the residuals.
 
 - `eval`, default **off**. Tools: `eval_js`.
 

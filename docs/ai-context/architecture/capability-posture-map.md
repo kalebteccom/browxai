@@ -34,6 +34,7 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 | `replay`              | `.browx` session-replay artifact capture (DOM + network + console)                                                     | Archive carries real page content; as sensitive as the session was.        |
 | `self-approval`       | `approve_actions`                                                                                                      | Lets the agent answer the confirm hooks meant to stop its own actions.     |
 | `human-gate-override` | none (gates a branch of `set_permission_policy` / `set_fs_picker_policy` / `set_notification_policy` / `open_session`) | Lets the agent move a policy off `ask-human` and answer the prompt itself. |
+| `operator-channel`    | none (routes `await_human` and the confirm hooks to the daemon socket)    | Makes the daemon behind an operator-set socket the only answer path.       |
 
 ## Composition rules
 
