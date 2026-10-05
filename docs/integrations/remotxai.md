@@ -528,7 +528,7 @@ Limits of this first cut:
   Polled screenshots for `firefox`, `webkit`, `safari` and the native engines
   are not built, and their rates are unmeasured.
 - **One page.** The stream follows the session's own page, not tabs the agent
-  opens later.
+  opens later. If that page closes the stream ends with `page-closed`.
 - **Open sessions only.** `view.start` for a session that is not open gets
   `unknown-session`. A view never launches a browser, so the daemon retries once
   the agent has made its first browser call.

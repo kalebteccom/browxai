@@ -1,7 +1,12 @@
-// The live view's frames go to the operator socket and nowhere else, and the
-// agent has no handle on the stream. Both are structural, so a source scan holds
-// them: a new reader of the screencast, or a tool that imports the view hub,
-// fails here before it can ship.
+// A source scan of `src/` that guards the live view against regressions in this
+// repository: a new reader of the CDP screencast, a tool module that names the
+// view registry, or a view module that gains a filesystem or log call that could
+// carry a frame, fails here before it ships. It is a regex scan, so it is not a
+// sandbox. It does not see code outside `src/`, and plugins are trusted
+// in-process code that can reach a CDP handle without going through any of this
+// (a documented residual in docs/threat-model.md). What keeps frames off the
+// agent's tools is that no tool is registered for the stream, which the keystone
+// checks against the live handler list.
 
 import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
@@ -48,7 +53,7 @@ describe("live view isolation", () => {
     ]);
   });
 
-  it("is never handed to a tool, a page helper, the SDK or a plugin", () => {
+  it("is never named by a tool, a page helper, the SDK or the plugin runtime in src/", () => {
     const reach = holding(/\bliveView\b/).filter(
       (f) =>
         (f.startsWith("src/tools/") && f !== "src/tools/session-registry.ts") ||

@@ -441,8 +441,14 @@ phone sees what the agent sees. The rules that matter here:
   on the authenticated socket, and nothing the agent can call (a tool result,
   `list_sessions`, `get_config`) reports whether one runs. The channel holds the
   stream registry privately. Only the session registry registers a frame source
-  with it, and `test/architecture/live-view-isolation.test.ts` fails if a tool,
-  a page helper, the SDK or a plugin reaches it.
+  with it. `test/architecture/live-view-isolation.test.ts` is a source scan of
+  `src/` that fails if a tool, a page helper or the SDK module names the
+  registry, if a second file reads the CDP screencast, or if the view modules
+  gain a filesystem or log call that could carry a frame. It is a guard against
+  regressions in this repository, not a sandbox. Plugins are trusted in-process
+  code: they run in browxai's process and can reach a CDP handle themselves, so a
+  plugin you install can read what the screencast would. That is a documented
+  residual, as it is for every other capability.
 - **Frames go to the daemon socket and nowhere else.** Not to a tool result, a
   log line, an artifact, a session report, a HAR, a recording, the workspace or
   disk of any kind. A frame is held for the one call that sends it. The only
@@ -457,8 +463,11 @@ phone sees what the agent sees. The rules that matter here:
   not encode frames nobody will take: the stream cannot run faster than its
   frame rate, 5 fps at most. A frame unacked after 5 seconds is counted lost,
   and a stream with no ack for 30 seconds ends (`stalled`). Approvals share the
-  socket, so a frame holds up a request by at most the unflushed bytes of one
-  frame.
+  socket and a request does not jump the queue. The most one can wait behind is
+  what a frame may leave queued: up to 16 KiB already unflushed, plus one frame of
+  up to 16 parts, about 640 KB of base64 (655,360 characters). A frame is sent
+  only when the socket holds 16 KiB or less, and at most one is unacked, so that
+  bound holds however slow the daemon reads.
 - **It steps down when the daemon is slow.** A window of 2 seconds with at
   least 40% of its frames dropped (and at least two) moves the stream one of four
   steps toward 1 fps and 640 px. Ten clean seconds with an ack round trip well
@@ -473,14 +482,16 @@ phone sees what the agent sees. The rules that matter here:
   to a smaller picture. No part makes a line over the limit that drops the
   connection.
 - **A stream never outlives its connection or its session.** A dropped or closed
-  channel, a closed session and a daemon `view.stop` each stop the screencast
+  channel, a closed session, the session's page closing and a daemon `view.stop`
+  each stop the screencast
   (`Page.stopScreencast`), and a redial resumes nothing: the daemon has to ask
   again. A browser rebuilt for extensions leaves a stream with no source until
   the daemon restarts it.
 - **Chromium only.** The source is CDP `Page.startScreencast` on the session's
   own handle, so a session on an engine with no CDP handle is refused with
   `view-unsupported`. The stream follows the session's own page, not tabs the
-  agent opens later.
+  agent opens later, and ends with `page-closed` if that page closes. The
+  screencast is asked for a height of at most twice the width.
 
 The frame is page-sourced and untrusted. The daemon renders it as an image and
 never logs, stores or interprets it; a page can draw "approve this" on screen

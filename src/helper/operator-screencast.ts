@@ -12,7 +12,7 @@ import type { ViewFrame, ViewHandle, ViewSource } from "./operator-view-hub.js";
  *  browser was rebuilt binds to the live handle. */
 export function cdpViewSource(getCdp: () => CDPSession | undefined): ViewSource {
   return {
-    async start(picture, onFrame): Promise<ViewHandle> {
+    async start(picture, onFrame, onClosed): Promise<ViewHandle> {
       const cdp = getCdp();
       if (!cdp) throw new Error("no CDP handle");
       const listener = (ev: { data: string; sessionId: number }): void => {
@@ -26,20 +26,28 @@ export function cdpViewSource(getCdp: () => CDPSession | undefined): ViewSource 
         onFrame(frame);
       };
       cdp.on("Page.screencastFrame", listener);
+      // The CDP session closes with its page. The stream ends then and does not
+      // idle with no frames until the session closes.
+      const closed = (): void => onClosed();
+      cdp.on("close", closed);
       try {
         await cdp.send("Page.startScreencast", {
           format: "jpeg",
           quality: picture.quality,
           maxWidth: picture.maxWidth,
+          // A tall viewport would otherwise keep its full height at this width.
+          maxHeight: picture.maxWidth * 2,
           everyNthFrame: 1,
         });
       } catch (e) {
         cdp.off("Page.screencastFrame", listener);
+        cdp.off("close", closed);
         throw e;
       }
       return {
         async stop(): Promise<void> {
           cdp.off("Page.screencastFrame", listener);
+          cdp.off("close", closed);
           await cdp.send("Page.stopScreencast").catch(() => undefined);
         },
       };

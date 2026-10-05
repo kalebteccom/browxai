@@ -20,7 +20,7 @@ surface" covers.
   its own ack to Chromium so the browser encodes at the stream rate. A daemon
   that falls behind steps the stream down to 1 fps and 640 px. A frame travels
   as `part` / `parts` lines of 30 KiB of JPEG so no line passes the 64 KiB
-  limit. The stream ends on `view.stop`, a closed session, a dropped
+  limit. The stream ends on `view.stop`, a closed session or page, a dropped
   connection, 30 s without an ack or a CDP failure. It needs `operator-channel`
   (the server refuses to start without it), the agent has no tool to start,
   stop or read it, and no frame reaches a tool result, log, artifact, report,

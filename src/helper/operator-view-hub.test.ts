@@ -14,21 +14,34 @@ type Frame = Record<string, unknown>;
 class FakeSource implements ViewSource {
   starts: Array<{ quality: number; maxWidth: number }> = [];
   stops = 0;
+  /** Handles started and not yet stopped. More than one is an orphan stream. */
+  active = 0;
   acked = 0;
   failStart = false;
+  /** Milliseconds a start takes, as a CDP round trip does. */
+  startDelayMs = 0;
   #onFrame: ((f: ViewFrame) => void) | null = null;
+  #onClosed: (() => void) | null = null;
 
   async start(
     picture: { quality: number; maxWidth: number },
     onFrame: (f: ViewFrame) => void,
+    onClosed: () => void,
   ): Promise<ViewHandle> {
+    if (this.startDelayMs) await new Promise((r) => setTimeout(r, this.startDelayMs));
     if (this.failStart) throw new Error("secret page title that must never leave");
     this.starts.push(picture);
+    this.active++;
+    // One shared screencast, as on a session's single CDP handle: a stop from
+    // any handle ends it for all.
     this.#onFrame = onFrame;
+    this.#onClosed = onClosed;
     return {
       stop: async () => {
         this.stops++;
+        this.active--;
         this.#onFrame = null;
+        this.#onClosed = null;
       },
     };
   }
@@ -39,6 +52,11 @@ class FakeSource implements ViewSource {
 
   emit(data = "AAAA"): void {
     this.#onFrame?.({ data, ack: () => void this.acked++ });
+  }
+
+  /** The page behind the source closed. */
+  close(): void {
+    this.#onClosed?.();
   }
 }
 
@@ -151,6 +169,7 @@ describe("ViewHub — start and stop", () => {
       { type: "view.stopped", session: "default", reason: "daemon" },
     ]);
     hub.handle({ type: "view.stop", session: "default" });
+    await vi.advanceTimersByTimeAsync(0);
     expect(sink.of("view.stopped")).toHaveLength(2);
   });
 
@@ -181,6 +200,80 @@ describe("ViewHub — start and stop", () => {
     expect(source.live).toBe(false);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(source.starts).toHaveLength(1);
+  });
+});
+
+describe("ViewHub — concurrent starts and stops", () => {
+  it("leaves one stream after two back-to-back view.start for a running session", async () => {
+    source.startDelayMs = 20;
+    await startView();
+    await vi.advanceTimersByTimeAsync(50);
+    hub.handle({ type: "view.start", session: "default", maxWidth: 800 });
+    hub.handle({ type: "view.start", session: "default", maxWidth: 700 });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(source.active).toBe(1);
+    expect(source.live).toBe(true);
+    expect(source.starts.map((p) => p.maxWidth)).toEqual([960, 800, 700]);
+    // The one stream is the last request, and view.stop reaches it.
+    hub.handle({ type: "view.stop", session: "default" });
+    await vi.advanceTimersByTimeAsync(50);
+    expect(source.active).toBe(0);
+    expect(source.live).toBe(false);
+    expect(sink.of("view.stopped")).toHaveLength(1);
+  });
+
+  it("counts a session once against the stream limit when it is started twice at once", async () => {
+    source.startDelayMs = 20;
+    for (let i = 0; i < MAX_STREAMS - 1; i++) {
+      hub.register(`s${i}`, new FakeSource());
+      await startView({}, `s${i}`);
+    }
+    hub.handle({ type: "view.start", session: "default" });
+    hub.handle({ type: "view.start", session: "default" });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(sink.of("error")).toEqual([]);
+    expect(source.active).toBe(1);
+  });
+
+  it("runs a view.stop after the view.start that was in flight, and leaves nothing running", async () => {
+    source.startDelayMs = 50;
+    hub.handle({ type: "view.start", session: "default" });
+    hub.handle({ type: "view.stop", session: "default" });
+    await vi.advanceTimersByTimeAsync(200);
+    expect(source.active).toBe(0);
+    expect(source.live).toBe(false);
+  });
+
+  it("ends a stream whose session closes while it is starting", async () => {
+    source.startDelayMs = 50;
+    hub.handle({ type: "view.start", session: "default" });
+    await vi.advanceTimersByTimeAsync(10);
+    const closing = hub.unregister("default");
+    await vi.advanceTimersByTimeAsync(200);
+    await closing;
+    expect(source.active).toBe(0);
+    expect(sink.of("view.started")).toEqual([]);
+  });
+
+  it("does not start a view.start that was queued before the channel dropped", async () => {
+    source.startDelayMs = 50;
+    await startView();
+    await vi.advanceTimersByTimeAsync(100);
+    hub.handle({ type: "view.start", session: "default" });
+    hub.stopAll("channel-down");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(source.active).toBe(0);
+    expect(source.live).toBe(false);
+  });
+
+  it("stops a stream whose page closes", async () => {
+    await startView();
+    source.close();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sink.of("view.stopped")).toEqual([
+      { type: "view.stopped", session: "default", reason: "page-closed" },
+    ]);
+    expect(source.active).toBe(0);
   });
 });
 

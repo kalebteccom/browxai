@@ -46,6 +46,8 @@ export interface ViewSource {
   start(
     picture: { quality: number; maxWidth: number },
     onFrame: (frame: ViewFrame) => void,
+    /** Called once if the source ends by itself, as when its page closes. */
+    onClosed: () => void,
   ): Promise<ViewHandle>;
 }
 
@@ -65,7 +67,13 @@ export interface LiveViewRegistry {
 }
 
 export type ViewStopReason =
-  "daemon" | "session-closed" | "channel-down" | "channel-closed" | "stalled" | "source-error";
+  | "daemon"
+  | "session-closed"
+  | "channel-down"
+  | "channel-closed"
+  | "stalled"
+  | "page-closed"
+  | "source-error";
 
 /** Share of a frame interval a frame may arrive early without being dropped. */
 const RATE_SLACK = 0.25;
@@ -97,10 +105,18 @@ class Stream {
 
   async begin(): Promise<void> {
     this.#width = this.adapter.level.width;
-    this.#handle = await this.source.start(this.#picture(), (f) => this.#onFrame(f));
+    this.#handle = await this.#open();
     if (this.stopped) return void (await this.#handle.stop().catch(() => undefined));
     this.#tick = setInterval(() => this.#onTick(), WINDOW_MS);
     this.#tick.unref();
+  }
+
+  #open(): Promise<ViewHandle> {
+    return this.source.start(
+      this.#picture(),
+      (f) => this.#onFrame(f),
+      () => this.onEnd(this, "page-closed"),
+    );
   }
 
   #picture(): { quality: number; maxWidth: number } {
@@ -173,7 +189,7 @@ class Stream {
       await this.#handle?.stop();
       if (this.stopped) return;
       this.#width = level.width;
-      this.#handle = await this.source.start(this.#picture(), (f) => this.#onFrame(f));
+      this.#handle = await this.#open();
       if (this.stopped) await this.#handle.stop().catch(() => undefined);
     } catch {
       this.#handle = null;
@@ -199,6 +215,11 @@ export class ViewHub implements LiveViewRegistry {
   // `null` is a session with no frame source.
   readonly #sources = new Map<string, ViewSource | null>();
   readonly #streams = new Map<string, Stream>();
+  /** Per session, the last queued start or stop. A session's starts and stops run
+   *  one at a time, in the order they arrived. */
+  readonly #chains = new Map<string, Promise<void>>();
+  /** Bumped by `stopAll`, so a start queued before a disconnect does not run after it. */
+  #epoch = 0;
 
   constructor(private readonly sink: ViewSink) {}
 
@@ -208,8 +229,11 @@ export class ViewHub implements LiveViewRegistry {
 
   async unregister(session: string): Promise<void> {
     this.#sources.delete(session);
-    const s = this.#streams.get(session);
-    if (s) await this.#finish(s, "session-closed");
+    // A start in flight sees the source gone and ends its own stream.
+    await this.#serial(session, async () => {
+      const s = this.#streams.get(session);
+      if (s) await this.#finish(s, "session-closed");
+    });
   }
 
   /** One frame from the daemon: `view.start`, `view.stop` or `frame.ack`. */
@@ -220,7 +244,20 @@ export class ViewHub implements LiveViewRegistry {
   }
 
   stopAll(reason: ViewStopReason): void {
+    this.#epoch++;
     for (const s of [...this.#streams.values()]) void this.#finish(s, reason);
+  }
+
+  #serial(session: string, run: () => Promise<void>): Promise<void> {
+    const prev = this.#chains.get(session) ?? Promise.resolve();
+    const next: Promise<void> = prev
+      .then(run)
+      .catch(() => undefined)
+      .finally(() => {
+        if (this.#chains.get(session) === next) this.#chains.delete(session);
+      });
+    this.#chains.set(session, next);
+    return next;
   }
 
   #error(code: string, session?: unknown): void {
@@ -231,16 +268,27 @@ export class ViewHub implements LiveViewRegistry {
     });
   }
 
-  async #start(f: Record<string, unknown>): Promise<void> {
+  #start(f: Record<string, unknown>): Promise<void> {
     const check = parseViewStart(f);
-    if (!check.ok) return this.#error(check.code, f.session);
+    if (!check.ok) return Promise.resolve(this.#error(check.code, f.session));
     const { session, params } = check;
+    const epoch = this.#epoch;
+    return this.#serial(session, () => this.#run(session, params, epoch));
+  }
+
+  /** One start, run alone for its session. The source is read again after each
+   *  await: the session may have closed or the channel dropped meanwhile. */
+  async #run(session: string, params: ViewParams, epoch: number): Promise<void> {
+    if (epoch !== this.#epoch) return;
     if (!this.#sources.has(session)) return this.#error("unknown-session", session);
     const source = this.#sources.get(session);
     if (!source) return this.#error("view-unsupported", session);
     const old = this.#streams.get(session);
     if (!old && this.#streams.size >= MAX_STREAMS) return this.#error("view-limit", session);
     if (old) await this.#finish(old, "daemon", false);
+    if (epoch !== this.#epoch || this.#sources.get(session) !== source) {
+      return this.#error("unknown-session", session);
+    }
     const stream = new Stream(
       session,
       params,
@@ -258,6 +306,7 @@ export class ViewHub implements LiveViewRegistry {
       return this.#error("view-failed", session);
     }
     if (stream.stopped) return;
+    if (this.#sources.get(session) !== source) return this.#finish(stream, "session-closed");
     log.info("browxai: live view started");
     this.sink.send({
       type: "view.started",
@@ -269,13 +318,16 @@ export class ViewHub implements LiveViewRegistry {
     });
   }
 
-  #stop(f: Record<string, unknown>): void {
-    const s = typeof f.session === "string" ? this.#streams.get(f.session) : undefined;
-    if (s) return void this.#finish(s, "daemon");
-    // Stopping what is not running is answered like stopping what was.
-    if (typeof f.session === "string") {
-      this.sink.send({ type: "view.stopped", session: f.session.slice(0, 128), reason: "daemon" });
-    }
+  #stop(f: Record<string, unknown>): Promise<void> {
+    if (typeof f.session !== "string") return Promise.resolve();
+    const session = f.session.slice(0, 128);
+    // Queued behind any start in flight, so it stops the stream that start makes.
+    return this.#serial(session, async () => {
+      const s = this.#streams.get(session);
+      if (s) return this.#finish(s, "daemon");
+      // Stopping what is not running is answered like stopping what was.
+      this.sink.send({ type: "view.stopped", session, reason: "daemon" });
+    });
   }
 
   #onAck(f: Record<string, unknown>): void {
