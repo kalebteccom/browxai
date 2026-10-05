@@ -204,7 +204,10 @@ the moment to ask for one specific grant, not a reason to start broad. A
 broken. Ask the human to answer it from the DevTools console context the
 prompt names, or ask the operator to drop that hook or enable `self-approval` for an
 unattended run. `approve_actions` refuses until the operator does, and a
-`set_config` patch can't add capabilities.
+`set_config` patch can't add capabilities. The same goes for an `ask-human`
+permission or file-picker policy: `set_permission_policy` and
+`set_fs_picker_policy` refuse to move it to `allow` (or anything else) until the
+operator enables `human-gate-override`.
 
 ## Two reflexes that hold everywhere
 

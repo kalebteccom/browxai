@@ -10,6 +10,7 @@ import {
 } from "../session/notification.js";
 import { SUPPORTED_DEVICE_APIS } from "../session/device-emu.js";
 import { SESSION_ARG } from "./schemas.js";
+import { askHumanPolicyGate } from "./ask-human-gate.js";
 import type {
   RegisterHost,
   GateHost,
@@ -117,7 +118,7 @@ export function registerSessionNotificationDeviceTools(
         '  - "deny"      — Constructor throws `NotAllowedError` (the same exception the browser raises when permission is denied). Use to suppress OS notifications while still observing what the page would have shown.\n' +
         '  - "raise"     — Constructor throws AND RECORDS; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled notification — set notificationPolicy"}`. Useful when notifications should be a hard signal that the action triggered an unexpected user-facing event.\n' +
         '  - "ask-human" — server blocks on `__browx.confirm(true|false)` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human({kind:"confirm"})` mechanism; page scripts cannot answer it), then resolves to allow/deny per the human\'s answer. The constructor returns a stub synchronously (the spec requires a sync return); the real OS notification fires once the human-decision resolves.\n' +
-        "Persists across navigation: the init-script is re-injected on every new document within the session. Returns the resolved policy. Captured calls surface on `ActionResult.notifications[] = [{title, body?, icon?, tag?, timestamp, origin?, handledAs}]`.",
+        'Leaving `ask-human` (to any other mode) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability; changes that keep `ask-human` are always accepted. Persists across navigation: the init-script is re-injected on every new document within the session. Returns the resolved policy. Captured calls surface on `ActionResult.notifications[] = [{title, body?, icon?, tag?, timestamp, origin?, handledAs}]`.',
       inputSchema: {
         mode: z
           .enum(["allow", "deny", "raise", "ask-human"])
@@ -131,6 +132,14 @@ export function registerSessionNotificationDeviceTools(
       const e = await entryFor(args.session);
       try {
         const next: NotificationPolicy = { mode: args.mode };
+        const refused = askHumanPolicyGate(
+          gateCheck,
+          "set_notification_policy",
+          { mode: e.notification.current().mode },
+          { mode: next.mode },
+          ["notifications"],
+        );
+        if (refused) return refused;
         const resolved = e.notification.set(next);
         // Push the new sync-decision hint to every live page so the
         // constructor's throw timing tracks the policy without a reload.

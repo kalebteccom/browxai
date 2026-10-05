@@ -15,6 +15,25 @@ surface" covers.
   with `BROWX_DEFAULT_PROFILE` and `BROWX_CONFIG_READONLY`, the human-prompt
   answer path as of v0.11.0, and a proposed operator channel. Not published to
   the site.
+- **`human-gate-override` capability, off by default.** `set_permission_policy`
+  and `set_fs_picker_policy` now refuse to move a session's policy off
+  `ask-human` (the top-level mode or any `perPermission` / `perAPI` entry)
+  unless it is enabled, and so does `set_notification_policy`. All three are
+  `action` tools, so the agent could switch an `ask-human` policy to `allow`
+  and answer the file-picker prompt itself with `fs_picker_respond`. A refused call returns the standard gate refusal
+  (`requiredCapability: "human-gate-override"`, plus a `reason` naming the
+  keys) and changes nothing. Changes that keep `ask-human` in place, and every
+  change on a policy with no `ask-human` key, work as before. Loud warning at
+  boot when enabled. **Breaking for unattended flows that open a session on
+  `ask-human` and later switch it:** add `human-gate-override` to
+  `BROWX_CAPABILITIES`, or open the session on the policy you mean.
+  `grant_permissions` is refused for permissions the page-side wrappers don't
+  intercept (`notifications`, `midi`, `midi-sysex`, `payment-handler`,
+  `background-sync`, the sensors) while their policy is `ask-human`, since a
+  native grant skips the prompt. Camera, microphone, geolocation and clipboard
+  stay grantable: their wrappers cover the main entry points only, so legacy
+  `webkitGetUserMedia` and prototype calls remain a residual. Not covered: closing an `ask-human` session and reopening it with
+  `allow` through `open_session`.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 
