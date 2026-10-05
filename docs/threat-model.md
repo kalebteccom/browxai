@@ -533,8 +533,12 @@ unusable. Defenses:
   poll, and its reply is ignored, so a page polling it past 20/s only sheds its
   own notices. It cannot shed a real `getUserMedia` or notification decision. A
   decision flow uses a handful of calls (a few per feature use, one per
-  permission prompt), so legitimate use stays far inside the budget. An `in
-flight` slot is held while a handler waits, for example on a human.
+  permission prompt), so legitimate use stays far inside the budget. An
+  `in flight` slot is held while a handler waits, for example on a human. The
+  in-flight cap is per page, not per frame: a hostile iframe whose calls wait on
+  an `ask-human` prompt can hold all 32 decision slots, and the main frame's
+  next real prompt is then shed (a deny or a hang, never an allow) until one
+  of those prompts is answered or times out.
 
 - **Buckets are per page, with a per-frame share for decisions.** One tab's flood
   leaves other tabs' budget alone. Inside a page, calls from one frame also
@@ -558,19 +562,32 @@ flight` slot is held while a handler waits, for example on a human.
 - **Nothing over budget is approved.** The deny-equivalent is the same answer a
   `deny` policy gives, and an unanswered call leaves the wrapped API
   unresolved. No path turns a shed call into an allow, so `ask-human` cannot be
-  flooded into an approval and the flood does not queue prompts for the human.
-- **A shed file write truncates the file, and the page is told.** A write's
-  normal reply means "written", so a dropped chunk gets no reply. The handle is
-  marked, the file keeps what was written before the first dropped chunk, and
-  every later `write()` or `close()` on that handle rejects with a
-  `NotAllowedError` instead of resolving, so the page never sees success for an
-  incomplete file (`close()` still finalises what arrived). The server logs one
-  line for the handle, with its byte count, on top of the counter below. The
-  write budget is a burst of 1024 chunks, then 100 per second. A saver that fires
-  chunks without awaiting each one (`for (...) writer.write(c)`) is affected
-  once it passes 1024 chunks at once, and a saver that awaits each chunk is not
-  affected at any size (300 awaited chunks and 900 chunks fired at once both
-  write the whole file in the keystone). Write bigger chunks, or await them.
+  flooded into an approval. Under `ask-human` a page can still queue up to 32
+  prompts for the human at once (the in-flight cap), and no more.
+- **A shed file write truncates the file, and never reads as success.** A
+  write's normal reply means "written", so a dropped chunk gets no reply and the
+  page's promise for that chunk never settles. The handle is marked and the file
+  keeps what was written before the first dropped chunk. A later `write()` or
+  `close()` on that handle that does get a token rejects with a
+  `NotAllowedError` (`close()` still finalises what arrived), so a saver that
+  fires chunks without awaiting them and then calls `close()` sees a rejection or
+  a hang, not success. A saver that awaits each chunk hangs on the first dropped
+  chunk and never reaches the later calls. Either way the page is not told the
+  save worked. The server logs one line for the handle, with its byte count, on
+  top of the counter below. The shed hook finds the handle by matching
+  `"handleId":"..."` in the first 200 bytes of the payload, which the page
+  script always writes first; a call that does not match marks nothing and is
+  still dropped.
+- **The write budget in numbers.** A burst of 1024 chunks, then 100 per second.
+  A saver that fires chunks without awaiting each one (`for (...) writer.write(c)`)
+  is affected once it passes 1024 chunks at once. A saver that awaits each chunk
+  spends one token per round trip: over loopback a round trip is a few
+  milliseconds, so it can go faster than the 100/s refill and drain the bucket
+  after about 1024 plus its surplus over 100 per second, which for a fast saver
+  is on the order of 1100 chunks, and it then hangs. The keystone covers 300
+  awaited chunks and 900 chunks fired at once, and both write the whole file; it
+  does not cover an awaited saver past 1100 chunks. A 64 KiB chunk size puts that
+  limit near 70 MiB. Write bigger chunks to stay under it.
 - **Replay events are dropped silently.** Over the replay budget a call is
   dropped with no reply and nothing else changes: no state is closed or failed.
   The DOM stream loses those events and the counter below records the loss. The
