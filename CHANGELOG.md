@@ -42,7 +42,10 @@ surface" covers.
   the operator enabled it. A policy the call leaves out is inherited from the
   hold, so a reopen with no policy, and a lazily re-created `default` session,
   keep `ask-human` too. A name that never held `ask-human` still opens with any
-  policy. The record lives for the server process and is keyed on the name.
+  policy. A different name launched on the held session's persistent profile
+  (`open_session({ profile })`) is refused the same way, since the profile
+  carries its cookies and login state. The record lives for the server process
+  and is keyed on the name; attached sessions are not pinned.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 

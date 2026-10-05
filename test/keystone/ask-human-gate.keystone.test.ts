@@ -412,6 +412,85 @@ describe("open_session reopening an ask-human session name", () => {
   );
 
   it(
+    "records the hold for close_sessions by prefix and by idleMs",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      await openAskHuman(call, "ks-pfx-a");
+      await openAskHuman(call, "ks-other-b");
+      await call("close_sessions", { prefix: "ks-pfx-" });
+      expect(
+        (await reopen(call, "ks-pfx-a", { permissionPolicy: "allow" })).requiredCapability,
+      ).toBe("human-gate-override");
+      // The session the prefix did not match is still open and untouched.
+      expect(await liveSessions(call)).toContain("ks-other-b");
+
+      await new Promise((r) => setTimeout(r, 50));
+      await call("close_sessions", { idleMs: 10 });
+      expect(
+        (await reopen(call, "ks-other-b", { fsPickerPolicy: "allow" })).requiredCapability,
+      ).toBe("human-gate-override");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "refuses another name on the held profile, and leaves a different profile alone",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const persistent = (session: string, extra: Record<string, unknown>) =>
+        call<Refusal>("open_session", { session, mode: "persistent", ...extra });
+      const opened = await persistent("ks-prof-held", {
+        profile: "ks-held-prof",
+        permissionPolicy: "ask-human",
+      });
+      expect(opened.ok).not.toBe(false);
+      await call("close_session", { session: "ks-prof-held" });
+
+      // A new name pointing at the held profile is the same reopen.
+      for (const extra of [{ permissionPolicy: "allow" }, {}]) {
+        const refused = await persistent("ks-prof-thief", { profile: "ks-held-prof", ...extra });
+        expect(refused.ok).toBe(false);
+        expect(refused.requiredCapability).toBe("human-gate-override");
+        expect(refused.reason).toMatch(/profile/);
+        expect(await liveSessions(call)).not.toContain("ks-prof-thief");
+      }
+      // Keeping ask-human on it is fine.
+      const kept = await persistent("ks-prof-thief", {
+        profile: "ks-held-prof",
+        permissionPolicy: "ask-human",
+      });
+      expect(kept.ok).not.toBe(false);
+      await call("close_session", { session: "ks-prof-thief" });
+
+      // A different name on a different profile is unaffected.
+      const free = await persistent("ks-prof-free", {
+        profile: "ks-free-prof",
+        permissionPolicy: "allow",
+      });
+      expect(free.ok).not.toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "lets another name use the held profile when the operator enabled human-gate-override",
+    async () => {
+      const call = await start(`${DEFAULT_CAPS},human-gate-override`);
+      const open = (session: string, extra: Record<string, unknown>) =>
+        call<Refusal>("open_session", {
+          session,
+          mode: "persistent",
+          profile: "ks-ovr-prof",
+          ...extra,
+        });
+      expect((await open("ks-ovr-a", { permissionPolicy: "ask-human" })).ok).not.toBe(false);
+      await call("close_session", { session: "ks-ovr-a" });
+      expect((await open("ks-ovr-b", { permissionPolicy: "allow" })).ok).not.toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
     "reopens with allow when the operator enabled human-gate-override",
     async () => {
       const call = await start(`${DEFAULT_CAPS},human-gate-override`);

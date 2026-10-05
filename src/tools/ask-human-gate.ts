@@ -5,11 +5,11 @@
 // refusal keeps the standard `requiredCapability` shape.
 
 import { leavingAskHuman, type PolicyShape } from "../policy/ask-human-guard.js";
-import type { HeldAskHuman } from "../session/registry.js";
+import type { HeldAskHuman, OpenSpec, SessionRegistry } from "../session/registry.js";
 import { SUPPORTED_PERMISSIONS, type PermissionPolicy } from "../session/permission-policy.js";
 import type { NotificationPolicy } from "../session/notification-policy.js";
 import { SUPPORTED_FS_PICKER_APIS, type FsPickerPolicy } from "../session/fs-picker-policy.js";
-import type { Capability } from "../util/capabilities.js";
+import { capabilityMissing, type Capability, type CapabilityConfig } from "../util/capabilities.js";
 import type { ToolResponse } from "./host.js";
 
 type GateCheck = (
@@ -71,19 +71,9 @@ export interface RequestedPolicies {
   fsPicker?: FsPickerPolicy;
 }
 
-/** Refusal for an `open_session` that would reopen a session name with a policy
- *  that ends an `ask-human` hold the name carried when it last closed, or null
- *  when nothing moves or the operator enabled `human-gate-override`. A policy the
- *  call leaves out is inherited from the hold, so only an explicit policy can
- *  move. Without this, closing an `ask-human` session and reopening the name with
- *  `allow` would sidestep the setters' gate. Runs before anything is launched. */
-export function askHumanReopenGate(
-  gateCheck: GateCheck,
-  session: string,
-  held: HeldAskHuman | undefined,
-  requested: RequestedPolicies,
-): ToolResponse | null {
-  if (!held) return null;
+/** Which held policies the requested ones would move off `ask-human`, as labels
+ *  for a refusal reason. A kind missing on either side never moves. */
+function policiesMoved(held: HeldAskHuman, requested: RequestedPolicies): string[] {
   const moved: string[] = [];
   if (held.permission && requested.permission) {
     const a = held.permission;
@@ -113,10 +103,75 @@ export function askHumanReopenGate(
     );
     if (keys.length > 0) moved.push(`fsPickerPolicy (${keys.join(", ")})`);
   }
+  return moved;
+}
+
+/** Refusal for an `open_session` that would reopen a session name with a policy
+ *  that ends an `ask-human` hold the name carried when it last closed, or null
+ *  when nothing moves or the operator enabled `human-gate-override`. A policy the
+ *  call leaves out is inherited from the hold, so only an explicit policy can
+ *  move. Without this, closing an `ask-human` session and reopening the name with
+ *  `allow` would sidestep the setters' gate. Runs before anything is launched. */
+export function askHumanReopenGate(
+  gateCheck: GateCheck,
+  session: string,
+  held: HeldAskHuman | undefined,
+  requested: RequestedPolicies,
+): ToolResponse | null {
+  const moved = held ? policiesMoved(held, requested) : [];
   if (moved.length === 0) return null;
   return gateCheck(
     "open_session",
     ["human-gate-override"],
     `open_session would reopen "${session}" with ${moved.join(", ")} off "ask-human", but that session held it for a human when it closed. ${HOLD} Leave the policy out to keep what the session held.`,
   );
+}
+
+/** Thrown at session creation when a different name would launch on the profile
+ *  directory of a session that held `ask-human`, under a policy that ends the
+ *  hold. The profile carries the held session's cookies and login state, so a new
+ *  name on it is the same reopen. `open_session` turns it into the standard gate
+ *  refusal. */
+export class AskHumanProfileRefused extends Error {}
+
+/** The reason a launch on a held profile must be refused, or null. `requested`
+ *  is what the new session would run with, defaults filled in for anything the
+ *  caller left out, since a different name inherits nothing. */
+export function askHumanProfileReason(
+  held: HeldAskHuman | undefined,
+  name: string,
+  requested: RequestedPolicies,
+): string | null {
+  const moved = held ? policiesMoved(held, requested) : [];
+  if (moved.length === 0) return null;
+  return `open_session would launch "${name}" on a profile that a session holding "ask-human" used, with ${moved.join(", ")} off "ask-human". The profile carries that session's cookies and login state, so this is the same reopen. ${HOLD} Use a different profile, or keep "ask-human".`;
+}
+
+/** Throws `AskHumanProfileRefused` when `name` would launch on the profile
+ *  directory of a closed session that held `ask-human`, under a policy that moves
+ *  a held key off it, and the operator did not enable `human-gate-override`. The
+ *  defaults a session gets for a policy it leaves out count as requested. Runs in
+ *  the session factory, before the browser launches. */
+export function refuseHeldProfile(
+  registry: Pick<SessionRegistry, "heldOnProfile">,
+  caps: CapabilityConfig,
+  name: string,
+  profileDir: string,
+  spec: OpenSpec | undefined,
+): void {
+  const held = registry.heldOnProfile(profileDir);
+  if (!held || !capabilityMissing("human-gate-override", caps)) return;
+  const reason = askHumanProfileReason(held, name, {
+    permission: spec?.permissionPolicy ?? { mode: "raise" },
+    notification: spec?.notificationPolicy ?? { mode: "allow" },
+    fsPicker: spec?.fsPickerPolicy ?? { mode: "raise" },
+  });
+  if (reason) throw new AskHumanProfileRefused(reason);
+}
+
+/** The standard gate refusal for an `AskHumanProfileRefused`, or null for any
+ *  other error. */
+export function askHumanProfileRefusal(gateCheck: GateCheck, err: unknown): ToolResponse | null {
+  if (!(err instanceof AskHumanProfileRefused)) return null;
+  return gateCheck("open_session", ["human-gate-override"], err.message);
 }

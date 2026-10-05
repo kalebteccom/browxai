@@ -1,7 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { askHumanGrantGate, askHumanPolicyGate, askHumanReopenGate } from "./ask-human-gate.js";
+import {
+  AskHumanProfileRefused,
+  askHumanGrantGate,
+  askHumanPolicyGate,
+  askHumanProfileRefusal,
+  askHumanReopenGate,
+  refuseHeldProfile,
+} from "./ask-human-gate.js";
 import { WRAPPED_PERMISSIONS } from "../session/permission-policy.js";
-import type { Capability } from "../util/capabilities.js";
+import type { Capability, CapabilityConfig } from "../util/capabilities.js";
 import type { ToolResponse } from "./host.js";
 
 const refuse = (tool: string, extra?: readonly Capability[], reason?: string): ToolResponse => ({
@@ -98,6 +105,42 @@ describe("askHumanGrantGate", () => {
       WRAPPED_PERMISSIONS,
     );
     expect(r).toBeNull();
+  });
+});
+
+describe("refuseHeldProfile", () => {
+  const held = { profileDir: "/ws/profiles/p", permission: { mode: "ask-human" as const } };
+  const registry = { heldOnProfile: (d: string) => (d === "/ws/profiles/p" ? held : undefined) };
+  const caps = (...on: string[]) => ({ enabled: new Set(on) }) as unknown as CapabilityConfig;
+
+  it("refuses another name on a held profile, defaults included", () => {
+    expect(() => refuseHeldProfile(registry, caps(), "x", "/ws/profiles/p", undefined)).toThrow(
+      AskHumanProfileRefused,
+    );
+    expect(() =>
+      refuseHeldProfile(registry, caps(), "x", "/ws/profiles/p", {
+        permissionPolicy: { mode: "allow" },
+      }),
+    ).toThrow(/permissionPolicy/);
+  });
+
+  it("lets through ask-human, another profile, or human-gate-override", () => {
+    const keep = { permissionPolicy: { mode: "ask-human" as const } };
+    expect(() => refuseHeldProfile(registry, caps(), "x", "/ws/profiles/p", keep)).not.toThrow();
+    expect(() =>
+      refuseHeldProfile(registry, caps(), "x", "/ws/profiles/q", undefined),
+    ).not.toThrow();
+    expect(() =>
+      refuseHeldProfile(registry, caps("human-gate-override"), "x", "/ws/profiles/p", undefined),
+    ).not.toThrow();
+  });
+
+  it("maps the error to the standard gate refusal and ignores other errors", () => {
+    const err = new AskHumanProfileRefused("why");
+    expect(body(askHumanProfileRefusal(refuse, err)).requiredCapability).toBe(
+      "human-gate-override",
+    );
+    expect(askHumanProfileRefusal(refuse, new Error("other"))).toBeNull();
   });
 });
 

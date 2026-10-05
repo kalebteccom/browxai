@@ -255,13 +255,31 @@ neither may the agent the hooks exist to hold back. Defenses:
   permissions and pickers, `allow` for notifications), and so is the policy of a
   lazily re-created session such as `default`. A name that never held
   `ask-human` opens with any policy, and moving onto `ask-human` is free.
+  The record also stores the persistent profile directory the session ran on.
+  A different name launched on that directory would reuse the held session's
+  cookies and login state, so a launch on it is refused with the same gate
+  refusal unless the policies it would run with (defaults included, since a
+  different name inherits nothing) keep every held key on `ask-human`. The check
+  runs in the session factory before the browser launches, and covers a lazily
+  created session too.
   Residuals: the record lives for the server process, so a restart forgets it
-  (the operator restarting the server is the operator's call); and it is keyed
-  on the session name, so the agent can still open a different, never-`ask-human`
-  name with `allow`. That session is new and carries none of the closed
-  session's pages or login state, but it is a way to run without a human gate
-  that the setters' gate never covered either. Nothing records which party chose `ask-human` for a name: the agent
-  opening a session on it is recorded the same, which only restricts the agent.
+  (the operator restarting the server is the operator's call). An `attached`
+  session is not pinned: every attached session leases a tab of the same BYOB
+  browser, so the cookies of a held attached session are reachable from a new
+  name opened `allow`, and pinning by endpoint would refuse every attached open
+  after one held close. An incognito session holds no profile, so nothing
+  carries over from it. The record is keyed on the session name and the agent
+  chooses names, so it can open a different, never-`ask-human` name on a fresh
+  profile with `allow`: that session is new and carries none of the closed
+  session's state, but it runs without a human gate that the setters' gate
+  never covered either. The agent can also set `ask-human` on `default`, close
+  it, and every lazily created `default` session then inherits the hold until
+  the server restarts or the operator enables `human-gate-override`. That
+  only restricts the agent (a stricter-only denial of service), and so does
+  every record the agent causes. The map holds a few bytes per name, bounded by
+  the names the agent opens in one server process. Nothing records which party
+  chose `ask-human` for a name: the agent opening a session on it is recorded
+  the same.
 - **Attached sessions wire only their own tab.** A shared attached browser holds
   other sessions' tabs, so a bridge wires its leased tab and popups opened from
   it, never a neighbour's.
@@ -325,7 +343,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy` and `grant_permissions`.
 
-  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. `open_session` is gated the same way for a session name that held `ask-human` when it last closed: it refuses an explicit policy that moves a held key off `ask-human`, and inherits the held policy when the call names none, so close then reopen with `allow` needs the capability too. A name that never held `ask-human` opens with any policy. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
+  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. `open_session` is gated the same way for a session name that held `ask-human` when it last closed: it refuses an explicit policy that moves a held key off `ask-human`, and inherits the held policy when the call names none, so close then reopen with `allow` needs the capability too. A name that never held `ask-human` opens with any policy, unless it launches on the persistent profile a held session used. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
 
 - `eval`, default **off**. Tools: `eval_js`.
 

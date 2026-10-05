@@ -40,6 +40,9 @@ export const DEFAULT_SESSION_ID = "default";
 /** The `ask-human` policies a session name held when it last closed. Only the
  *  policies that held something for a human are present. */
 export interface HeldAskHuman {
+  /** The persistent profile directory the session ran on, when it had one. A
+   *  different name launched on it would reuse the same cookies and login state. */
+  profileDir?: string;
   permission?: PermissionPolicy;
   notification?: NotificationPolicy;
   fsPicker?: FsPickerPolicy;
@@ -56,7 +59,9 @@ function heldBy(e: SessionEntry): HeldAskHuman | undefined {
   if (holdsAskHuman({ mode: perm.mode, overrides: perm.perPermission })) held.permission = perm;
   if (holdsAskHuman({ mode: notif.mode })) held.notification = notif;
   if (holdsAskHuman({ mode: pick.mode, overrides: pick.perAPI })) held.fsPicker = pick;
-  return Object.keys(held).length > 0 ? held : undefined;
+  if (Object.keys(held).length === 0) return undefined;
+  if (e.session.profileDir) held.profileDir = e.session.profileDir;
+  return held;
 }
 
 export class SessionRegistry {
@@ -104,6 +109,13 @@ export class SessionRegistry {
   /** The `ask-human` policies this name held when it last closed, if any. */
   heldAskHuman(id: string): HeldAskHuman | undefined {
     return this.held.get(id);
+  }
+
+  /** The record of a closed `ask-human` session that ran on this profile
+   *  directory, whatever its name. */
+  heldOnProfile(profileDir: string): HeldAskHuman | undefined {
+    for (const held of this.held.values()) if (held.profileDir === profileDir) return held;
+    return undefined;
   }
 
   /** Fill each policy the spec leaves out with the one the name held on

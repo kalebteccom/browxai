@@ -337,6 +337,50 @@ describe("SessionRegistry", () => {
       expect(factory).toHaveBeenLastCalledWith("s", { permissionPolicy: { mode: "allow" } });
     });
 
+    it("closeMatching by prefix records the hold of the matched sessions only", async () => {
+      const reg = new SessionRegistry(
+        async (id) => withPolicies(id, { perm: "ask-human" }),
+        async () => undefined,
+      );
+      await reg.get("agentA-1");
+      await reg.get("agentB-1");
+      await reg.closeMatching({ prefix: "agentA-" });
+      expect(reg.heldAskHuman("agentA-1")).toBeDefined();
+      expect(reg.heldAskHuman("agentB-1")).toBeUndefined();
+    });
+
+    it("closeMatching by idleMs records the hold of the idle session", async () => {
+      const reg = new SessionRegistry(
+        async (id) => withPolicies(id, { perm: "ask-human" }),
+        async () => undefined,
+      );
+      const stale = await reg.get("stale");
+      stale.lastActivityAt = Date.now() - 60_000;
+      await reg.get("fresh");
+      await reg.closeMatching({ idleMs: 30_000 });
+      expect(reg.heldAskHuman("stale")).toBeDefined();
+      expect(reg.heldAskHuman("fresh")).toBeUndefined();
+    });
+
+    it("records the profile directory, and finds the hold by it under another name", async () => {
+      const reg = new SessionRegistry(
+        async (id) => {
+          const e = withPolicies(id, { perm: "ask-human" });
+          e.session = {
+            close: vi.fn(async () => undefined),
+            profileDir: `/ws/profiles/${id}`,
+          } as any;
+          return e;
+        },
+        async () => undefined,
+      );
+      await reg.get("held");
+      await reg.close("held");
+      expect(reg.heldAskHuman("held")?.profileDir).toBe("/ws/profiles/held");
+      expect(reg.heldOnProfile("/ws/profiles/held")?.permission).toEqual({ mode: "ask-human" });
+      expect(reg.heldOnProfile("/ws/profiles/other")).toBeUndefined();
+    });
+
     it("a hold moved off ask-human before close is released", async () => {
       const reg = new SessionRegistry(
         async (id) => withPolicies(id, { perm: "ask-human" }),

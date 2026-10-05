@@ -6,6 +6,7 @@ import {
   requirePage,
   type EngineKind,
 } from "../engine/index.js";
+import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
 import type {
   GateHost,
@@ -339,7 +340,7 @@ export function registerSessionLifecycleTools(
           ...buildOpenSessionResultFields(e, hars),
         });
       } catch (err) {
-        return lifecycleError(err);
+        return askHumanProfileRefusal(gateCheck, err) ?? lifecycleError(err);
       }
     },
   );

@@ -54,6 +54,7 @@ import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
 import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
+import { refuseHeldProfile } from "./ask-human-gate.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -123,7 +124,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
    *  land. (RFC 0009 P3.) */
   const captureFor = (e: SessionEntry): CaptureSubstrate =>
     engineEntry(e.session.engine).makeSubstrates(registrySubstrateDeps).capture(e);
-  return new SessionRegistry(
+  const registry: SessionRegistry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
       // The engine for THIS session: an explicit `open_session({engine})`
@@ -273,6 +274,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           id === DEFAULT_SESSION_ID && !spec?.profile
             ? workspace.defaultProfile()
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
+        refuseHeldProfile(registry, caps, id, profileDir, spec);
         // first launch — no extensions registered yet (the registry is
         // mutated by the `extensions_*` tools post-creation, and a rebuild
         // path materialises the list into launch flags then).
@@ -530,4 +532,5 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       }
     },
   );
+  return registry;
 }
