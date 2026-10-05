@@ -96,7 +96,7 @@ export async function attachPermissionPolicy(
     );
     await context.exposeBinding(
       "__browx_permission_observe",
-      bindingGuard.wrap("permission_observe", "decision", (_source, _payload: string) => {
+      bindingGuard.wrap("permission_observe", "observe", (_source, _payload: string) => {
         // Read-side breadcrumb only — no decision, no record (the page calling
         // permissions.query() is too noisy to record per-call).
         return undefined;

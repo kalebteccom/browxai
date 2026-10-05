@@ -8,9 +8,40 @@ import {
   type BindingClass,
 } from "./binding-guard.js";
 
+const NO_FRAME = { frameBurst: 0, frameRefillPerSec: 0 };
 const SMALL: Record<BindingClass, BindingBudget> = {
-  decision: { burst: 3, refillPerSec: 1, maxInFlight: 2, shedReplyBurst: 1, shedReplyPerSec: 0 },
-  write: { burst: 2, refillPerSec: 1, maxInFlight: 8, shedReplyBurst: 0, shedReplyPerSec: 0 },
+  decision: {
+    burst: 3,
+    refillPerSec: 1,
+    maxInFlight: 2,
+    shedReplyBurst: 1,
+    shedReplyPerSec: 0,
+    ...NO_FRAME,
+  },
+  observe: {
+    burst: 2,
+    refillPerSec: 0,
+    maxInFlight: 2,
+    shedReplyBurst: 0,
+    shedReplyPerSec: 0,
+    ...NO_FRAME,
+  },
+  write: {
+    burst: 2,
+    refillPerSec: 1,
+    maxInFlight: 8,
+    shedReplyBurst: 0,
+    shedReplyPerSec: 0,
+    ...NO_FRAME,
+  },
+  replay: {
+    burst: 2,
+    refillPerSec: 1,
+    maxInFlight: 8,
+    shedReplyBurst: 0,
+    shedReplyPerSec: 0,
+    ...NO_FRAME,
+  },
 };
 
 function setup(budgets = SMALL) {
@@ -214,6 +245,62 @@ describe("BindingGuard", () => {
     const wrapped = guard.wrap("check", "decision", () => "allow", { denyResult: () => "deny" });
     for (let i = 0; i < 3; i++) wrapped({}, "{}");
     expect(wrapped({}, "{}")).toBe("deny");
+  });
+
+  it("heavy observe traffic does not shed real decisions", async () => {
+    const { guard } = setup();
+    const observe = guard.wrap("permission_observe", "observe", () => undefined);
+    const check = guard.wrap("permission_check", "decision", () => "allow", {
+      denyResult: () => "deny",
+    });
+    const page = {};
+    // A page polling permissions.query() far past the observe budget.
+    const polled = Array.from({ length: 500 }, () => observe({ page }, "{}"));
+    expect(await neverSettles(polled[499])).toBe(true);
+    // The decision bucket is untouched.
+    expect([1, 2, 3].map(() => check({ page }, "{}"))).toEqual(["allow", "allow", "allow"]);
+  });
+
+  it("a frame cannot use the whole page budget, and the page cap still holds", () => {
+    const budgets = {
+      ...SMALL,
+      decision: {
+        ...SMALL.decision,
+        burst: 5,
+        shedReplyBurst: 5,
+        frameBurst: 3,
+        frameRefillPerSec: 0,
+      },
+    };
+    const { guard } = setup(budgets);
+    const wrapped = guard.wrap("check", "decision", () => "allow", { denyResult: () => "deny" });
+    const page = {};
+    const hostile = {};
+    const main = {};
+    const out = [1, 2, 3, 4].map(() => wrapped({ page, frame: hostile }, "{}"));
+    expect(out).toEqual(["allow", "allow", "allow", "deny"]);
+    // The hostile frame took 3 of the page's 5 and was stopped by its own
+    // sub-bucket; the main frame still gets the other 2.
+    expect([1, 2, 3].map(() => wrapped({ page, frame: main }, "{}"))).toEqual([
+      "allow",
+      "allow",
+      "deny",
+    ]);
+    // The page cap holds for a fresh frame too.
+    expect(wrapped({ page, frame: {} }, "{}")).toBe("deny");
+  });
+
+  it("a replay-class call over budget is dropped without closing or failing anything", async () => {
+    const { guard } = setup();
+    let seen = 0;
+    const wrapped = guard.wrap("replay_emit", "replay", () => {
+      seen++;
+    });
+    const page = {};
+    wrapped({ page }, "1");
+    wrapped({ page }, "2");
+    expect(await neverSettles(wrapped({ page }, "3"))).toBe(true);
+    expect(seen).toBe(2);
   });
 
   it("the default decision budget leaves room for normal use", () => {

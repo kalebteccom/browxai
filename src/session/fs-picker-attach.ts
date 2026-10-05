@@ -38,6 +38,21 @@ interface WritableTarget {
   truncated: boolean;
   closed: boolean;
   bytesWritten: number;
+  /** A chunk for this handle was shed over the call budget, so the file now has
+   *  a hole. Every later write or close on it rejects page-side instead of
+   *  reporting success. */
+  shed?: boolean;
+}
+
+/** Thrown out of the write binding so the page's `write()` / `close()` promise
+ *  rejects: a write that was dropped must never read as a success. */
+class ShedWriteError extends Error {
+  constructor() {
+    super(
+      "browxai: file write dropped, the page sent chunks faster than the binding call budget allows",
+    );
+    this.name = "NotAllowedError";
+  }
 }
 
 /** Server-side wire-up. Installs:
@@ -163,6 +178,7 @@ export async function attachFsPickerPolicy(
             if (!id || !op) return undefined;
             const target = handles.get(id);
             if (!target) return undefined;
+            if (target.shed && op !== "close" && op !== "abort") throw new ShedWriteError();
             if (target.closed && op !== "close" && op !== "abort") return undefined;
             if (target.path === null) {
               // Open-picker read-side; the page is writing back to a virtual
@@ -226,6 +242,9 @@ export async function attachFsPickerPolicy(
                   writeFileSync(path, Buffer.alloc(0));
                   target.truncated = true;
                 }
+                // The file is finalised with what arrived, and the page is told
+                // it is incomplete.
+                if (target.shed) throw new ShedWriteError();
                 return undefined;
               }
               case "abort": {
@@ -236,6 +255,7 @@ export async function attachFsPickerPolicy(
                 return undefined;
             }
           } catch (err) {
+            if (err instanceof ShedWriteError) throw err;
             log.warn("session.fs-picker: write handler error", {
               error: err instanceof Error ? err.message : String(err),
             });
@@ -246,7 +266,14 @@ export async function attachFsPickerPolicy(
           onShed: (payload) => {
             const id = /"handleId":"([^"]{1,64})"/.exec(payload.slice(0, 200))?.[1];
             const target = id ? handles.get(id) : undefined;
-            if (target) target.closed = true;
+            if (!target || target.shed) return;
+            target.shed = true;
+            // Once per handle, on top of the coalesced counter: this one names
+            // a file that is now incomplete.
+            log.warn(
+              "session.fs-picker: file write dropped over the binding call budget; the file is truncated and later writes to this handle reject",
+              { handleId: id, api: target.api, bytesWritten: target.bytesWritten },
+            );
           },
         },
       ),

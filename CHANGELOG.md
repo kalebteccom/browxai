@@ -75,17 +75,22 @@ surface" covers.
 
 - **A page can no longer stall its own session by flooding the `__browx_*`
   bindings.** Any script on a page can call the permission, notification,
-  file-picker and device bindings, and each call costs a CDP round trip that is
-  answered by evaluating back into the page. At about 120 calls/s that queue
-  starved the session's own click and snapshot commands (one click answered
-  after 164 s on a Linux container). Each page now has a token-bucket budget
-  shared by its decision bindings (a burst of 100, 25 per second, 32 in flight)
-  and a separate one for file-picker writes (256, 100 per second). A call over
-  budget never reaches the handler, so it is not recorded and never asks a
-  human. A few answer the binding's deny-equivalent at once (`deny`, or
-  `refused` for devices), and the rest never settle, which sends no reply and
-  adds no traffic. Nothing over budget is ever approved. A write over budget
-  closes its handle, so no later chunk can land after the gap. A flood logs one
+  file-picker, device and replay bindings, and each call costs a CDP round trip
+  that is answered by evaluating back into the page. At about 120 calls/s that
+  queue starved the session's own click and snapshot commands (one click answered
+  after 164 s on a Linux container). Each page now has token-bucket budgets per
+  binding class: decisions (a burst of 100, 25 per second, 32 in flight, plus a
+  per-frame share so one iframe cannot spend the page's budget alone),
+  `permission_observe` (its own bucket, so `permissions.query()` polling cannot
+  shed a real decision), file-picker writes (1024, 100 per second) and replay
+  events (1000, 150 per second). A call over budget never reaches the handler, so
+  it is not recorded and never asks a human. A few decision calls answer the
+  binding's deny-equivalent at once (`deny`, or `refused` for devices), and the
+  rest never settle, which sends no reply and adds no traffic. Nothing over
+  budget is ever approved. A file write over budget truncates the file: every
+  later `write()` or `close()` on that handle rejects with `NotAllowedError`
+  instead of reporting success, and the server logs the truncation once per
+  handle. Replay events over budget are dropped silently. A flood logs one
   coalesced counter at most every 5 seconds. See `docs/threat-model.md` section 8.
 
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening

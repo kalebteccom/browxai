@@ -16,7 +16,13 @@
 //      is collected; the only thing left behind is the caller's own pending
 //      promise inside the flooding page.
 // A shed call never reaches the handler, so it is not recorded, never asks a
-// human, and never writes a file.
+// human, and never writes a file. A binding whose normal reply means success
+// (file writes) passes `onShed` to fail closed on its own state, so a dropped
+// call is never followed by a reply that reads as success.
+//
+// Buckets are per page and per class, so a chatty notice binding cannot use up
+// the budget a decision needs. A frame can also have its own smaller share,
+// taken before the page bucket.
 //
 // Shedding is logged as a coalesced counter, never per call.
 
@@ -26,12 +32,25 @@ import { log } from "../util/logging.js";
  *  page is read; the rest is whatever the engine supplies. */
 export interface BindingSource {
   page?: object;
+  frame?: object;
   context?: object;
 }
 
-export type BindingClass = "decision" | "write";
+/** Each class has its own buckets, so a binding that is called often and needs
+ *  no answer (`observe`) cannot use up the budget a real decision needs.
+ *   - decision: permission, notification, fs-picker and device checks.
+ *   - observe: fire-and-forget notices whose reply is ignored.
+ *   - write: file chunks to a granted handle.
+ *   - replay: the replay recorder's event sink. */
+export type BindingClass = "decision" | "observe" | "write" | "replay";
 
 export interface BindingBudget {
+  /** A sub-bucket per frame, taken before the page bucket, so one frame (a
+   *  hostile cross-origin iframe) cannot use the whole page budget on its own.
+   *  A burst of 0 turns it off. All frames of a page together stay inside the
+   *  page budget. */
+  frameBurst: number;
+  frameRefillPerSec: number;
   /** Tokens a quiet page can spend at once. */
   burst: number;
   /** Tokens added per second. */
@@ -45,8 +64,12 @@ export interface BindingBudget {
 }
 
 /** Decision bindings are consulted a handful of times per feature use, so the
- *  budget is generous. Writes carry file chunks from a granted handle, so they
- *  get a larger bucket and no deny reply: their normal reply means "written". */
+ *  budget is generous. `observe` is called on every `permissions.query()`, which
+ *  a page may poll, so it has a bucket of its own and sheds silently. Writes
+ *  carry file chunks from a granted handle, so they get a larger bucket and no
+ *  deny reply: their normal reply means "written". Replay events come one per
+ *  rrweb event, a busy page emits hundreds in a burst, and a dropped one costs
+ *  replay fidelity and nothing else, so it sheds silently too. */
 export const DEFAULT_BUDGETS: Record<BindingClass, BindingBudget> = {
   decision: {
     burst: 100,
@@ -54,13 +77,35 @@ export const DEFAULT_BUDGETS: Record<BindingClass, BindingBudget> = {
     maxInFlight: 32,
     shedReplyBurst: 10,
     shedReplyPerSec: 2,
+    frameBurst: 50,
+    frameRefillPerSec: 12.5,
+  },
+  observe: {
+    burst: 100,
+    refillPerSec: 20,
+    maxInFlight: 8,
+    shedReplyBurst: 0,
+    shedReplyPerSec: 0,
+    frameBurst: 50,
+    frameRefillPerSec: 10,
   },
   write: {
-    burst: 256,
+    burst: 1024,
     refillPerSec: 100,
     maxInFlight: 64,
     shedReplyBurst: 0,
     shedReplyPerSec: 0,
+    frameBurst: 0,
+    frameRefillPerSec: 0,
+  },
+  replay: {
+    burst: 1000,
+    refillPerSec: 150,
+    maxInFlight: 64,
+    shedReplyBurst: 0,
+    shedReplyPerSec: 0,
+    frameBurst: 0,
+    frameRefillPerSec: 0,
   },
 };
 
@@ -98,6 +143,8 @@ interface PageState {
   classes: Record<BindingClass, ClassState>;
 }
 
+const CLASSES: readonly BindingClass[] = ["decision", "observe", "write", "replay"];
+
 export interface BindingGuardOptions {
   now?: () => number;
   budgets?: Record<BindingClass, BindingBudget>;
@@ -110,6 +157,7 @@ export class BindingGuard {
   private readonly budgets: Record<BindingClass, BindingBudget>;
   private readonly report: NonNullable<BindingGuardOptions["report"]>;
   private readonly pages = new WeakMap<object, PageState>();
+  private readonly frames = new WeakMap<object, Map<BindingClass, TokenBucket>>();
   private readonly fallbackKey = {};
   private pendingShed: Record<string, number> = {};
   private pendingTotal = 0;
@@ -117,7 +165,8 @@ export class BindingGuard {
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(opts: BindingGuardOptions = {}) {
-    this.now = opts.now ?? Date.now;
+    // A monotonic clock: a wall-clock step must not refill or drain a bucket.
+    this.now = opts.now ?? (() => performance.now());
     this.budgets = opts.budgets ?? DEFAULT_BUDGETS;
     this.report =
       opts.report ??
@@ -137,7 +186,14 @@ export class BindingGuard {
     return (source, payload) => {
       const state = this.stateFor(source, cls);
       const t = this.now();
-      if (state.inFlight >= this.budgets[cls].maxInFlight || !state.budget.take(t)) {
+      // The frame bucket goes first: a frame over its own share is shed without
+      // touching the page budget the other frames draw on.
+      const frameBucket = this.frameBucket(source, cls);
+      if (
+        state.inFlight >= this.budgets[cls].maxInFlight ||
+        (frameBucket && !frameBucket.take(t)) ||
+        !state.budget.take(t)
+      ) {
         this.shed(name);
         try {
           opts.onShed?.(payload);
@@ -180,10 +236,32 @@ export class BindingGuard {
           inFlight: 0,
         };
       };
-      page = { classes: { decision: mk("decision"), write: mk("write") } };
+      page = {
+        classes: Object.fromEntries(CLASSES.map((c) => [c, mk(c)])) as Record<
+          BindingClass,
+          ClassState
+        >,
+      };
       this.pages.set(key, page);
     }
     return page.classes[cls];
+  }
+
+  private frameBucket(source: BindingSource | undefined, cls: BindingClass): TokenBucket | null {
+    const b = this.budgets[cls];
+    const frame = source?.frame;
+    if (!frame || b.frameBurst <= 0) return null;
+    let perClass = this.frames.get(frame);
+    if (!perClass) {
+      perClass = new Map();
+      this.frames.set(frame, perClass);
+    }
+    let bucket = perClass.get(cls);
+    if (!bucket) {
+      bucket = new TokenBucket(b.frameBurst, b.frameRefillPerSec, this.now());
+      perClass.set(cls, bucket);
+    }
+    return bucket;
   }
 
   private shed(name: string): void {

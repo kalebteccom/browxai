@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { BrowserContext, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { bindingGuard } from "../session/binding-guard.js";
 import type { ReplayEvent } from "./schema.js";
 
 /** Page-side globals. Kept in one place because the init script, the stop
@@ -300,9 +301,15 @@ export async function attachDomCapture(
 
 async function installBinding(context: BrowserContext, attachment: Attachment): Promise<void> {
   try {
-    await context.exposeBinding(EMIT_BINDING, (source, payload: string) => {
-      attachment.sink(payload, source.page);
-    });
+    // A page can call this binding as fast as it likes. Over the per-page
+    // budget an event is dropped without a reply and nothing else is touched:
+    // the stream loses fidelity and no state is closed or failed.
+    await context.exposeBinding(
+      EMIT_BINDING,
+      bindingGuard.wrap("replay_emit", "replay", (source, payload: string) => {
+        attachment.sink(payload, source.page as Page | undefined);
+      }),
+    );
   } catch (err) {
     // Already-registered is the expected failure on BYOB multi-attach, where
     // another browxai process owns the binding on the same Chrome. The page

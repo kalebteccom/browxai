@@ -19,7 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer as createHttp, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
@@ -115,6 +115,33 @@ window.addEventListener("load", function () { window.startFlood(${FLOOD_MS}); })
 const QUIET_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>quiet</title></head>
 <body>${PAGE_BODY}<script>${ASK_SCRIPT}</script></body></html>`;
 
+// A page that saves a file the way real code does: `writeLoop(n, awaitEach)`
+// writes n 1 KiB chunks through `createWritable()`, either awaiting each chunk or
+// firing them all and awaiting once, then closes. The outcome lands in the title.
+const WRITER_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>writer</title></head>
+<body>
+<button data-testid="w-await" onclick="writeLoop(300, true)">await 300</button>
+<button data-testid="w-burst" onclick="writeLoop(900, false)">burst 900</button>
+<button data-testid="w-over" onclick="writeLoop(1500, false)">burst 1500</button>
+<script>
+  async function writeLoop(n, awaitEach) {
+    var h = await window.showSaveFilePicker({ suggestedName: "o.bin" });
+    var w = await h.createWritable();
+    var chunk = new Uint8Array(1024).fill(65);
+    var ps = [];
+    for (var i = 0; i < n; i++) {
+      var p = w.write(chunk);
+      if (awaitEach) await p; else ps.push(p);
+    }
+    ps.push(w.close());
+    var outcome = await Promise.race([
+      Promise.all(ps).then(function () { return "ok"; }, function (e) { return "rejected:" + e.name; }),
+      new Promise(function (r) { setTimeout(function () { r("pending"); }, 3000); }),
+    ]);
+    document.title = "WRITE-" + outcome;
+  }
+</script></body></html>`;
+
 let http: Server;
 let base: string;
 
@@ -161,7 +188,10 @@ beforeAll(async () => {
   };
   http = createHttp((req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(req.url?.startsWith("/quiet") ? QUIET_PAGE : FLOOD_PAGE);
+    const url = req.url ?? "";
+    res.end(
+      url.startsWith("/quiet") ? QUIET_PAGE : url.startsWith("/writer") ? WRITER_PAGE : FLOOD_PAGE,
+    );
   });
   await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
@@ -264,6 +294,68 @@ describe("binding flood — managed Chromium", () => {
       await json("click", { session, selector: '[data-testid="ask-one-btn"]' });
       const after = await pollSnapshot(() => text("snapshot", { session }), "ASKED", 10_000);
       expect(after).toContain("ASKED allow");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
+describe("binding budget — file writer loops, real Chromium", () => {
+  let server: Server_;
+  let workspace: string;
+
+  beforeAll(async () => {
+    workspace = isolateEnv("browx-binding-writer-");
+    process.env.BROWX_CAPABILITIES = "read,navigation,action,human,file-io";
+    server = await createServer({ headless: true });
+  }, KEYSTONE_TIMEOUT);
+
+  afterAll(async () => {
+    await server?.shutdown().catch(() => undefined);
+    if (workspace) rmSync(workspace, { recursive: true, force: true });
+  }, KEYSTONE_TIMEOUT);
+
+  async function save(
+    testid: string,
+    file: string,
+  ): Promise<{ title: string; bytes: number | null }> {
+    const { json, text } = caller(server);
+    const session = `writer-${testid}`;
+    await json("open_session", { session, mode: "incognito" });
+    await json("set_fs_picker_policy", { session, mode: "allow" });
+    await json("navigate", { session, url: `${base}/writer` });
+    await json("fs_picker_respond", {
+      session,
+      api: "showSaveFilePicker",
+      files: [{ path: file }],
+    });
+    await json("click", { session, selector: `[data-testid="${testid}"]` });
+    const snap = await pollSnapshot(() => text("snapshot", { session }), "WRITE-", 15_000);
+    const title = /WRITE-[^\s"]+/.exec(snap)?.[0] ?? "";
+    const path = join(workspace, file);
+    return { title, bytes: existsSync(path) ? statSync(path).size : null };
+  }
+
+  it(
+    "a real saver, awaiting each chunk or firing 900 at once, writes the whole file",
+    async () => {
+      const awaited = await save("w-await", "awaited.bin");
+      expect(awaited).toEqual({ title: "WRITE-ok", bytes: 300 * 1024 });
+      const burst = await save("w-burst", "burst.bin");
+      expect(burst).toEqual({ title: "WRITE-ok", bytes: 900 * 1024 });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a writer that fires more chunks than the burst never sees success for a truncated file",
+    async () => {
+      const over = await save("w-over", "over.bin");
+      expect(over.title, "the page is not told the save worked").not.toBe("WRITE-ok");
+      expect(over.bytes ?? 0).toBeLessThan(1500 * 1024);
+      expect(
+        stderrLog.some((l) => l.includes("file write dropped over the binding call budget")),
+        "the truncation is logged for the handle",
+      ).toBe(true);
     },
     KEYSTONE_TIMEOUT,
   );

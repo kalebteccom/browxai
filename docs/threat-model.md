@@ -423,45 +423,75 @@ permission refusal).
 
 ### 8. A page flooding the session's own bindings
 
-The permission, notification, file-picker and device wrappers talk to the server
-through page bindings (`__browx_permission_check`, `__browx_permission_observe`,
-`__browx_notification_check`, `__browx_fs_picker_check`, `__browx_fs_picker_write`,
-`__browx_device_check`). Page content is untrusted and can call any of them
-directly. Each call is a CDP event to the server and a reply the server
-evaluates back into the page, and Playwright sends that reply whatever the
+The permission, notification, file-picker, device and replay wrappers talk to the
+server through page bindings (`__browx_permission_check`,
+`__browx_permission_observe`, `__browx_notification_check`,
+`__browx_fs_picker_check`, `__browx_fs_picker_write`, `__browx_device_check`, and
+`__browx_rrweb_emit` while `replay` is on). Page content is untrusted and can
+call any of them directly. Each call is a CDP event to the server and a reply the
+server evaluates back into the page, and Playwright sends that reply whatever the
 handler did. A page that calls in a loop queues replies on its own session
 faster than the browser drains them, and the session's click and snapshot
 commands wait behind that queue. A hostile page could make its own session
 unusable. Defenses:
 
-- **A per-page budget, applied before the handler.** Decision bindings share a
-  token bucket per page: a burst of 100 calls, refilled at 25 per second, and at
-  most 32 calls in flight at once (a call waiting on a human holds a slot).
-  `__browx_fs_picker_write` has its own bucket: a burst of 256, refilled at 100
-  per second, 64 in flight. Buckets are per page, so one tab's flood leaves the
-  others' budget alone. A permission, notification or file-picker flow uses a
-  handful of calls, so legitimate use stays far inside the budget.
+- **A per-page budget, applied before the handler.** Each class of binding has a
+  token bucket per page, so one class cannot use up another's budget:
+
+  | Class                                  | Burst | Refill | In flight |
+  | -------------------------------------- | ----- | ------ | --------- |
+  | decision (the four `*_check` bindings) | 100   | 25/s   | 32        |
+  | observe (`permission_observe`)         | 100   | 20/s   | 8         |
+  | write (`fs_picker_write`)              | 1024  | 100/s  | 64        |
+  | replay (`rrweb_emit`)                  | 1000  | 150/s  | 64        |
+
+  `permission_observe` fires on every `permissions.query()`, which a page may
+  poll, and its reply is ignored, so a page polling it past 20/s only sheds its
+  own notices. It cannot shed a real `getUserMedia` or notification decision. A
+  decision flow uses a handful of calls (a few per feature use, one per
+  permission prompt), so legitimate use stays far inside the budget. An `in
+flight` slot is held while a handler waits, for example on a human.
+
+- **Buckets are per page, with a per-frame share for decisions.** One tab's flood
+  leaves other tabs' budget alone. Inside a page, calls from one frame also
+  draw on a per-frame bucket (decision: burst 50, 12.5/s; observe: 50, 10/s)
+  that is taken first, so a hostile cross-origin iframe is stopped by its own
+  share and cannot use the whole page budget by itself. The page budget still
+  caps every frame together: several flooding frames can add up to it and shed
+  the main frame's decisions. File writes and replay events are not split per
+  frame.
 - **What a shed call sees.** A call over budget never reaches the handler: it is
   not recorded in `permissionRequests` / `notifications` / `fsPickerRequests` /
   `device_requests`, it does not open an `ask-human` prompt, and it does not
-  write a file. A small second bucket (10 calls, refilled at 2 per second) answers
-  the binding's deny-equivalent at once: `"deny"` for permission and
-  notification checks, `{decision:"deny"}` for file-picker checks and
-  `{decision:"refused",devices:[]}` for device checks. Calls beyond that never
-  settle: no reply is sent, so the flood adds no CDP traffic, and the only thing
-  left behind is the flooding page's own pending promise. A page that
-  exceeds the budget therefore sees its wrapped API (`getUserMedia`,
+  write a file. For decision bindings a small second bucket (10 calls, refilled
+  at 2 per second) answers the binding's deny-equivalent at once: `"deny"` for
+  permission and notification checks, `{decision:"deny"}` for file-picker checks
+  and `{decision:"refused",devices:[]}` for device checks. Every other shed call
+  never settles: no reply is sent, so the flood adds no CDP traffic, and the
+  only thing left behind is the flooding page's own pending promise. A page
+  that exceeds the budget sees its wrapped API (`getUserMedia`,
   `showSaveFilePicker`, ...) fail or hang, which is the page's own doing.
 - **Nothing over budget is approved.** The deny-equivalent is the same answer a
   `deny` policy gives, and an unanswered call leaves the wrapped API
   unresolved. No path turns a shed call into an allow, so `ask-human` cannot be
   flooded into an approval and the flood does not queue prompts for the human.
-- **A shed file write closes its handle.** A write's normal reply means
-  "written", so there is no safe answer to send and the call never settles. The
-  handle is closed as well, so a later chunk cannot land after the gap and leave
-  a file with a hole in it. The file keeps what was written before the first shed
-  chunk. A page streaming more than about 100 chunks per second to one granted
-  handle (after a 256-chunk burst) hits this; write larger chunks.
+- **A shed file write truncates the file, and the page is told.** A write's
+  normal reply means "written", so a dropped chunk gets no reply. The handle is
+  marked, the file keeps what was written before the first dropped chunk, and
+  every later `write()` or `close()` on that handle rejects with a
+  `NotAllowedError` instead of resolving, so the page never sees success for an
+  incomplete file (`close()` still finalises what arrived). The server logs one
+  line for the handle, with its byte count, on top of the counter below. The
+  write budget is a burst of 1024 chunks, then 100 per second. A saver that fires
+  chunks without awaiting each one (`for (...) writer.write(c)`) is affected
+  once it passes 1024 chunks at once, and a saver that awaits each chunk is not
+  affected at any size (300 awaited chunks and 900 chunks fired at once both
+  write the whole file in the keystone). Write bigger chunks, or await them.
+- **Replay events are dropped silently.** Over the replay budget a call is
+  dropped with no reply and nothing else changes: no state is closed or failed.
+  The DOM stream loses those events and the counter below records the loss. The
+  recorder's own sink is already capped (500,000 events or 64 MiB, whichever
+  comes first), so a flood cannot grow it without bound.
 - **Logging is a coalesced counter.** The first shed call logs
   `binding calls shed over the per-page budget` with the count and a per-binding
   breakdown (binding names only, nothing the page controls). After that, at most
@@ -472,10 +502,12 @@ unusable. Defenses:
 Pinned by `test/keystone/binding-flood.keystone.test.ts` (real Chromium: a
 bounded flood of about 400 calls/s for 3 seconds across every binding while a
 click and a snapshot complete, shed calls deny under an `allow` policy, the
-counter is logged a few times and not per call, and a quiet page and a page after
-the flood still get the policy's real answer) and
-`src/session/binding-guard.test.ts`. The human-answer channel (section 7) is not
-a page binding and is untouched.
+counter is logged a few times and not per call, a quiet page and a page after
+the flood still get the policy's real answer, and real file-saver loops write
+whole files or fail loudly) and `src/session/binding-guard.test.ts` and
+`src/session/binding-shed-never-allow.test.ts` (a shed call is never an approval
+for each decision binding, and observe traffic does not shed decisions). The
+human-answer channel (section 7) is not a page binding and is untouched.
 
 ## What browxai explicitly does NOT defend against
 
