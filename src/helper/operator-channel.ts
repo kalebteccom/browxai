@@ -14,6 +14,12 @@
 //     constant time) before browxai sends a request, and browxai proves the
 //     same back. The token never crosses the socket.
 //
+// With the `live-view` capability on, the same connection also carries the live
+// view: the daemon starts and stops a screencast per session (`view.start`,
+// `view.stop`) and acks each frame, and the frames go back on this socket and
+// nowhere else. The agent has no way to start, stop or read it. See
+// `operator-view-hub.ts`.
+//
 // Failure is closed. A request with no answer is denied at its own timeout,
 // whether the daemon is slow, gone, or never connected. Nothing here approves
 // on its own, and a dropped connection never falls back to DevTools.
@@ -23,6 +29,8 @@ import { randomBytes } from "node:crypto";
 import { log } from "../util/logging.js";
 import { PACKAGE_VERSION } from "../util/version.js";
 import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
+import { MAX_UNFLUSHED_BYTES } from "./operator-view.js";
+import { ViewHub, type LiveViewRegistry, type ViewSink } from "./operator-view-hub.js";
 import {
   CLASS_LIMIT,
   MAX_PENDING,
@@ -49,6 +57,7 @@ import {
 
 export type { OperatorDecision, OperatorGrant, HumanKind } from "./operator-protocol.js";
 export type { OperatorPrompt, OperatorAsk } from "./operator-frames.js";
+export type { LiveViewRegistry, ViewSource } from "./operator-view-hub.js";
 
 export interface OperatorAnswer {
   decision: OperatorDecision;
@@ -60,6 +69,9 @@ export interface OperatorAnswer {
  *  `timed out after <n>ms`), on cancel and when the channel is closed. */
 export interface OperatorChannel {
   ask(req: OperatorAsk, signal?: AbortSignal): Promise<OperatorAnswer>;
+  /** Where sessions register their frame source. Present only with `live-view`
+   *  on. The server's session registry wires it; no tool reaches it. */
+  readonly liveView?: LiveViewRegistry;
   close(): void;
 }
 
@@ -101,10 +113,25 @@ class OperatorLink implements OperatorChannel {
   #lastUnsafe = "";
   readonly #pending = new Map<string, Pending>();
   readonly #pageAsks = new Map<string, Promise<OperatorAnswer>>();
+  readonly #views: ViewHub | null;
+  readonly liveView?: LiveViewRegistry;
 
-  constructor(path: string, token: string) {
+  constructor(path: string, token: string, liveView = false) {
     this.#path = path;
     this.#token = token;
+    if (liveView) {
+      const sink: ViewSink = {
+        canWrite: () =>
+          this.#state === "ready" &&
+          this.#sock !== null &&
+          this.#sock.writableLength <= MAX_UNFLUSHED_BYTES,
+        send: (frame) => this.#send(frame),
+      };
+      this.#views = new ViewHub(sink);
+      this.liveView = this.#views;
+    } else {
+      this.#views = null;
+    }
   }
 
   start(): void {
@@ -220,6 +247,7 @@ class OperatorLink implements OperatorChannel {
   close(): void {
     if (this.#state === "closed") return;
     this.#state = "closed";
+    this.#views?.stopAll("channel-closed");
     this.#clearTimers();
     this.#sock?.destroy();
     this.#sock = null;
@@ -270,6 +298,9 @@ class OperatorLink implements OperatorChannel {
       if (this.#sock !== sock) return;
       this.#sock = null;
       this.#clearHandshake();
+      // A stream never outlives the connection it started on. A redial gets
+      // none until the daemon asks again.
+      this.#views?.stopAll("channel-down");
       if (this.#state === "closed") return;
       this.#state = "down";
       this.#scheduleRetry();
@@ -336,7 +367,20 @@ class OperatorLink implements OperatorChannel {
     if (f.v !== OPERATOR_PROTOCOL_VERSION) return;
     if (this.#state === "hello") return this.#onWelcome(sock, f);
     if (this.#state === "auth") return this.#onReady(sock, f);
-    if (this.#state === "ready" && f.type === "answer") this.#onAnswer(f);
+    if (this.#state !== "ready") return;
+    if (f.type === "answer") return this.#onAnswer(f);
+    if (f.type === "view.start" || f.type === "view.stop" || f.type === "frame.ack") {
+      this.#onView(f);
+    }
+  }
+
+  #onView(f: Record<string, unknown>): void {
+    if (this.#views) return this.#views.handle(f);
+    // Capability off: say so, so the daemon is not left waiting. Nothing starts.
+    if (f.type === "view.start") {
+      const session = typeof f.session === "string" ? { session: f.session.slice(0, 128) } : {};
+      this.#send({ type: "error", code: "view-disabled", ...session });
+    }
   }
 
   #onWelcome(sock: Socket, f: Record<string, unknown>): void {
@@ -419,6 +463,13 @@ export function openOperatorChannel(
   env: NodeJS.ProcessEnv = process.env,
 ): OperatorChannel | null {
   const { socketPath, token } = takeOperatorEnv(env);
+  const liveView = !capabilityMissing("live-view", caps);
+  if (liveView && capabilityMissing("operator-channel", caps)) {
+    // Frames go only to the daemon, and the daemon is on the operator channel.
+    throw new Error(
+      "live-view: refusing to start: the live-view capability needs operator-channel, because frames go only to the daemon on its socket",
+    );
+  }
   if (capabilityMissing("operator-channel", caps)) {
     if (socketPath || token) {
       log.warn(
@@ -451,7 +502,7 @@ export function openOperatorChannel(
     );
   }
   for (const w of operatorCombinationWarnings(caps)) log.warn(`browxai: ${w}`);
-  const link = new OperatorLink(socketPath, token);
+  const link = new OperatorLink(socketPath, token, liveView);
   link.start();
   return link;
 }

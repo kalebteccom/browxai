@@ -35,6 +35,7 @@ Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({
 | `self-approval`       | `approve_actions`                                                                                                      | Lets the agent answer the confirm hooks meant to stop its own actions.                                                                                         |
 | `human-gate-override` | none (gates a branch of `set_permission_policy` / `set_fs_picker_policy` / `set_notification_policy` / `open_session`) | Lets the agent move a policy off `ask-human` and answer the prompt itself.                                                                                     |
 | `operator-channel`    | none (routes `await_human` and the confirm hooks to the daemon socket)                                                 | Makes the daemon behind an operator-set socket the only answer path. `self-approval` and `human-gate-override` skip it, so booting with either logs a warning. |
+| `live-view`           | none (the operator-socket daemon starts a screencast; frames go to that socket only)                                   | Needs `operator-channel`, or the server will not start. Masking does not cover pixels. The agent cannot start, stop or read it.                                |
 
 ## Composition rules
 

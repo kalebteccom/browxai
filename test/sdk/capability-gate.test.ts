@@ -258,10 +258,12 @@ describe("SDK callTool — the always-on capabilities carry no ceiling", () => {
 describe("SDK capability gate — EVERY off-by-default capability still refuses when unset", () => {
   const byCap = toolsByCapability();
 
-  // The six capabilities that gate no tool: they govern behaviour inside other
+  // The seven capabilities that gate no tool: they govern behaviour inside other
   // tools (clipboard read-back in `shortcut`, stealth patches at session wire-up,
   // the replay capture tier, `human-gate-override` on the `ask-human` policy
-  // setters, `operator-channel` on where human prompts are sent) or a server-start check (`byob-attach`). Pinned so
+  // setters, `operator-channel` on where human prompts are sent, `live-view` on
+  // what the daemon may start on that channel, which no tool can) or a
+  // server-start check (`byob-attach`). Pinned so
   // that a tool declaring one of them fails this suite until it gets coverage in
   // the per-capability loop below.
   //
@@ -273,12 +275,13 @@ describe("SDK capability gate — EVERY off-by-default capability still refuses 
   // analogue and so have no substrate to ride. Two gates for one posture is
   // deliberate: the session gate is the un-reachable-around one, and the per-tool
   // rows are what the loop below enumerates.
-  it("only clipboard / stealth / byob-attach / replay / human-gate-override / operator-channel gate no tool at all", () => {
+  it("only clipboard / stealth / byob-attach / replay / human-gate-override / operator-channel / live-view gate no tool at all", () => {
     const ungated = OFF_BY_DEFAULT.filter((c) => (byCap.get(c) ?? []).length === 0);
     expect(ungated.sort()).toEqual([
       "byob-attach",
       "clipboard",
       "human-gate-override",
+      "live-view",
       "operator-channel",
       "replay",
       "stealth",

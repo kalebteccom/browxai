@@ -421,6 +421,90 @@ real Unix socket: the capability-unset gate, approve and deny, grants, forgery
 and DevTools answers while connected, a drop denying at the timeout, and the
 permission refusal).
 
+**The live view is a second capability on the same channel, `live-view`.** With
+it on (and `operator-channel` with it, or the server refuses to start), the
+daemon can ask for a screencast of a session's browser, so the operator on a
+phone sees what the agent sees. The rules that matter here:
+
+- **Secret masking does not cover frames.** Frames are pixels. The
+  `SecretRegistry` substitutes strings, and a frame has none. A registered
+  secret typed into a visible field, a password or token the page renders and
+  anything else drawn in the viewport reach the daemon as drawn, and then the operator's phone and whatever path leads to
+  it. `screenshot` has the same limit. Turn it on only when the daemon is the
+  operator and the path from it to the operator's screen is one you trust. The
+  startup warning says so by name.
+- **Operator-set at start, and the agent cannot start, stop or read it.** The
+  capability comes from `BROWX_CAPABILITIES`, a saved `capabilities` list can
+  only narrow it, and `set_config` refuses a patch that adds it
+  (`capabilities-not-widenable`). There is no tool for it. The stream is
+  started and stopped per session by the daemon's `view.start` and `view.stop`
+  on the authenticated socket, and nothing the agent can call (a tool result,
+  `list_sessions`, `get_config`) reports whether one runs. The channel holds the
+  stream registry privately. Only the session registry registers a frame source
+  with it. `test/architecture/live-view-isolation.test.ts` is a source scan of
+  `src/` that fails if a tool, a page helper or the SDK module names the
+  registry, if a second file reads the CDP screencast, or if the view modules
+  gain a filesystem or log call that could carry a frame. It is a guard against
+  regressions in this repository, not a sandbox. Plugins are trusted in-process
+  code: they run in browxai's process and can reach a CDP handle themselves, so a
+  plugin you install can read what the screencast would. That is a documented
+  residual, as it is for every other capability.
+- **Frames go to the daemon socket and nowhere else.** Not to a tool result, a
+  log line, an artifact, a session report, a HAR, a recording, the workspace or
+  disk of any kind. A frame is held for the one call that sends it. The only
+  reader of the CDP screencast is `src/helper/operator-screencast.ts`, which the
+  isolation test pins. An error never carries frame content or the browser's own
+  message: a refusal is a code (`view-disabled`, `unknown-session`,
+  `view-unsupported`, `invalid-view`, `view-limit`, `view-failed`).
+- **Nothing queues.** One frame is in flight per stream until the daemon acks
+  it (`frame.ack` with the session and `seq`). A frame that arrives while the
+  last is unacked, or while the socket holds more than 16 KiB unflushed, is
+  dropped. browxai also holds back its own ack to Chromium, so the browser does
+  not encode frames nobody will take: the stream cannot run faster than its
+  frame rate, 5 fps at most. A frame unacked after 5 seconds is counted lost,
+  and a stream with no ack for 30 seconds ends (`stalled`). Approvals share the
+  socket and a request does not jump the queue. The most one can wait behind is
+  what a frame may leave queued: up to 16 KiB already unflushed, plus one frame of
+  up to 16 parts, about 640 KB of base64 (655,360 characters). A frame is sent
+  only when the socket holds 16 KiB or less, and at most one is unacked, so that
+  bound holds however slow the daemon reads.
+- **It steps down when the daemon is slow.** A window of 2 seconds with at
+  least 40% of its frames dropped (and at least two) moves the stream one of four
+  steps toward 1 fps and 640 px. Ten clean seconds with an ack round trip well
+  inside the faster step's frame interval move it one back. Starting values are
+  5 fps, 960 px wide and JPEG quality 60. The daemon may ask for less, never
+  more than 5 fps, 1280 px and quality 80; a larger number is clamped, and
+  `view.started` reports what applied. At most 4 streams run at once.
+- **A frame fits the 64 KiB line limit by being cut.** A JPEG of a busy page is
+  often over 64 KiB, so a frame travels as `part` / `parts` frames of 30 KiB of
+  JPEG each (40,960 base64 characters), at most 16 parts, all in one write. A
+  frame needing more is dropped and counts as slowness, so the stream steps down
+  to a smaller picture. No part makes a line over the limit that drops the
+  connection.
+- **A stream never outlives its connection or its session.** A dropped or closed
+  channel, a closed session, the session's page closing and a daemon `view.stop`
+  each stop the screencast
+  (`Page.stopScreencast`), and a redial resumes nothing: the daemon has to ask
+  again. A browser rebuilt for extensions leaves a stream with no source until
+  the daemon restarts it.
+- **Chromium only.** The source is CDP `Page.startScreencast` on the session's
+  own handle, so a session on an engine with no CDP handle is refused with
+  `view-unsupported`. The stream follows the session's own page, not tabs the
+  agent opens later, and ends with `page-closed` if that page closes. The
+  screencast is asked for a height of at most twice the width.
+
+The frame is page-sourced and untrusted. The daemon renders it as an image and
+never logs, stores or interprets it; a page can draw "approve this" on screen
+like any text, and the operator is looking at it.
+
+Pinned by `test/keystone/live-view.keystone.test.ts` (real Chromium and a real
+Unix socket: the start-time refusal without `operator-channel`, the
+capability-unset gate, frames at the 5 fps cap as real JPEGs under the line
+limit, no tool or tool result naming the stream, no frame in the workspace or
+the log, stops on `view.stop`, session close and a dropped connection, one
+frame held with no ack, and the step-down to 640 px under slow acks) and by the
+isolation scan beside it.
+
 ### 8. A page flooding the session's own bindings
 
 The permission, notification, file-picker, device and replay wrappers talk to the
@@ -556,6 +640,10 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Makes the daemon behind `BROWX_OPERATOR_SOCKET` the only answer path while the channel is connected, so a phone operator can answer what DevTools on the host otherwise would. It needs `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` both set; with the capability on and either missing, the server refuses to start. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, with the capability off the socket is never opened, and a saved config cannot add it. Loud one-time warning when enabled. Section 7 holds the rules (socket permissions, the HMAC handshake, answer validation, frame and pending limits, fail-closed timeouts, session and workspace grants, masking), the residuals (the token is readable by a same-user process from the initial environment, frames after the handshake carry no MAC) and the two capabilities that skip the daemon (`self-approval`, `human-gate-override`).
 
+- `live-view`, default **off**. Tools: none; it lets the host daemon on the operator-channel socket start a JPEG screencast of a session, up to 5 fps and 1280 px, defaulting to 5 fps, 960 px and quality 60 and stepping down to 1 fps and 640 px when the daemon is slow.
+
+  Needs `operator-channel`: with `live-view` on and `operator-channel` off the server refuses to start, because frames go only to the daemon. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, and with it off a daemon's `view.start` gets `view-disabled` and no screencast starts. The agent cannot start, stop or read the stream, and no tool result, log, artifact, report, HAR or recording carries a frame. **Secret masking does not cover frames: a registered secret that is visible on screen reaches the daemon as pixels, as it does in `screenshot`.** Loud one-time warning when enabled. Section 7 holds the rules (flow control, drops, step-down, frame parts, stop conditions) and the residuals.
+
 - `eval`, default **off**. Tools: `eval_js`.
 
   Arbitrary page-side JS execution. Off by default; loud warning when enabled.
@@ -605,7 +693,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `secrets`, default **off**. Tools: `register_secret`.
 
-  Per-session sensitive-data registry + egress masking. Once registered, `fill` / `press` materialise `<NAME>` → real value at Playwright dispatch; every other egress sink (network, console, ws, snapshot, find, text_search, network_body) substitutes the real value back to `<NAME>` before returning. **The load-bearing invariant: the agent NEVER receives the real value in any tool result.** Required for safely automating auth flows when transcripts are shareable (adoption reports, GitHub issues, eval datasets). Loud one-time warning at server boot + at first `register_secret` call. See `docs/tool-reference.md` for the per-sink masking matrix and limitations. Notably, `screenshot` is a partial sink (warning when page text reveals a registered value; pixel-level region-blur deferred), and base64 response bodies in `network_body` pass through unchanged.
+  Per-session sensitive-data registry + egress masking. Once registered, `fill` / `press` materialise `<NAME>` → real value at Playwright dispatch; every other egress sink (network, console, ws, snapshot, find, text_search, network_body) substitutes the real value back to `<NAME>` before returning. **The load-bearing invariant: the agent NEVER receives the real value in any tool result.** Required for safely automating auth flows when transcripts are shareable (adoption reports, GitHub issues, eval datasets). Loud one-time warning at server boot + at first `register_secret` call. See `docs/tool-reference.md` for the per-sink masking matrix and limitations. Notably, `screenshot` is a partial sink (warning when page text reveals a registered value; pixel-level region-blur deferred), base64 response bodies in `network_body` pass through unchanged, and the `live-view` frames are pixels that masking does not touch at all.
 
 - `credentials`, default **off**. Tools: `get_totp`, `get_credential`.
 

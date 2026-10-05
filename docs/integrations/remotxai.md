@@ -1,10 +1,9 @@
 # browxai in remotxai sessions: integration design
 
 Status: design, written against browxai v0.11.0. Everything under a
-**Proposed** heading is unbuilt, except the operator socket (Path B in section
-3), which is built. Everything under **Exists** names the file that implements
-it. Not published to browxai.com: the site syncs only the pages
-listed in `website/scripts/doc-pipeline.mjs`.
+**Proposed** heading is unbuilt, except the operator socket (Path B in section 3) and the live view on it (section 4), which are built. Everything under
+**Exists** names the file that implements it. Not published to browxai.com: the
+site syncs only the pages listed in `website/scripts/doc-pipeline.mjs`.
 
 Use v0.11.0 or later. Earlier versions let page scripts and the agent answer
 human prompts, and let the agent widen its own capabilities through
@@ -36,7 +35,7 @@ below depends on it.
 | Plugin contract            | Exists | `register(api)` with `registerTool`, `callTool`, `log` (`docs/plugin-authoring.md`, `src/plugin/`). Plugins can add tools. They cannot subscribe to events.                                                                                                        |
 | Events to an outside party | None   | browxai sends no MCP notifications and has no webhook or event socket. Logging is stderr only (`src/util/logging.ts`).                                                                                                                                             |
 | Human-in-the-loop          | Exists | `await_human`, confirm hooks, `approve_actions` (behind `self-approval`) and `list_approvals`. The prompt goes to stderr. The answer comes from a DevTools console context the prompt names. Details in [Approvals and await_human](#3-approvals-and-await_human). |
-| Screencast / live frames   | None   | Nearest: `screenshot` (inline image), `screenshot_schedule` / `screenshot_on` (files, `file-io`), `open_session({recordVideo})` (`.webm` written at `close_session`), `.browx` replay (written at `end_recording`, `replay` capability).                           |
+| Screencast / live frames   | Exists | Behind `live-view` on the operator socket (`src/helper/operator-view-hub.ts`, section 4). Otherwise `screenshot` (inline image), `screenshot_schedule` / `screenshot_on` (`file-io`), `recordVideo`, `.browx` replay.                                              |
 | Credentials                | Exists | `register_secret` (`secrets`), `get_credential` / `get_totp` (`credentials`), `auth_save` / `auth_load` / `auth_list` / `auth_delete` (`action` / `read`). See [Credentials](#5-credentials-and-secrets).                                                          |
 
 Capabilities are resolved once at server start from `BROWX_CAPABILITIES`
@@ -458,49 +457,84 @@ Chrome with `browxai chrome start`, point the session's browxai at it with
 sessions, fires the `byob_action` confirm hook on every action, and leaves an
 unauthenticated CDP port on loopback for the life of the browser.
 
-### Proposed: frames on the operator socket
+### Exists: frames on the operator socket
 
-- **Gate.** A new capability `live-view`, off by default, with a startup
-  warning. It requires `operator-channel`. There is no MCP tool for it: the
-  daemon starts and stops the stream, and the agent can neither start it nor
-  read frames.
-- **Control and frames.** The daemon sends `view.start` and `view.stop`
-  (shapes below). Proposed clamps: `maxFps` 0.2 to 5, `quality` up to 80,
-  `maxWidth` up to 1280. browxai keeps one frame in flight until the daemon
-  acks it. A newer frame replaces an unsent one, so a slow link drops frames
-  and never queues them.
+Behind the `live-view` capability (`src/helper/operator-view.ts`,
+`src/helper/operator-view-hub.ts`, `src/helper/operator-screencast.ts`). The
+wire contract is in `docs/tool-reference.md`, "Live view (operator channel)".
+
+- **Gate.** `live-view`, off by default, with a startup warning. It requires
+  `operator-channel`: with `live-view` on and `operator-channel` off the server
+  refuses to start. There is no MCP tool for it. The daemon starts and stops the
+  stream per session, and the agent can neither start it nor read frames. With
+  the capability off, a `view.start` gets `{ "type": "error", "code":
+"view-disabled" }`.
+- **Defaults and ceilings.** `view.start` with no fields streams 5 fps, 960 px
+  wide, JPEG quality 60. Ceilings are 5 fps, 1280 px and quality 80, and larger
+  numbers are clamped. `view.started` reports what applied.
+- **Flow control.** browxai keeps one frame in flight until the daemon sends
+  `frame.ack` with the session and `seq`. A frame that arrives meanwhile, or
+  while the socket holds over 16 KiB unflushed, is dropped. Nothing queues. browxai also
+  holds back its own ack to Chromium so the browser sends the next frame no
+  sooner than the stream's frame interval, which keeps the encode cost at the
+  stream rate. Ack when the frame has been handed to the transport. If the path
+  behind the daemon is slow, acking late is how that slowness reaches browxai.
+- **Adaptive step-down.** A 2 s window that drops at least 40% of its frames moves
+  the stream one of four steps from the requested size toward 1 fps and 640 px.
+  Ten clean seconds with room in the ack round trip move it back. A step that
+  changes width restarts the screencast, so the next frame comes at once. No ack
+  for 30 s ends the stream (`reason: "stalled"`).
+- **Frame size.** A line over 64 KiB drops the connection, and a JPEG of a busy
+  page is often bigger. A frame therefore goes as `parts` lines of up to 30 KiB
+  of JPEG each (40,960 base64 characters), at most 16 parts, with `part`
+  counting from 0 and the same `seq`. A frame needing more than 16 parts is
+  dropped and counts as slowness. The alternative was a larger line limit for
+  frames only, which would make the limit a per-type rule every daemon has to
+  implement before it can read one byte.
+- **Lifetime.** The stream ends on `view.stop`, a closed session, a dropped or
+  closed channel, a stall or a CDP failure, each with a `view.stopped` reason.
+  A redial resumes nothing: the daemon sends `view.start` again.
 - **No disk.** browxai writes no frame to the workspace and creates no
-  artifact.
+  artifact. No frame is in a tool result, log, session report, HAR or recording.
+  `test/architecture/live-view-isolation.test.ts` pins the one reader of the
+  screencast and the code that may reach the stream.
 - **Secrets.** Pixels are outside `SecretRegistry` masking. A registered
   secret typed into a visible text field appears in frames. `screenshot`
-  has the same limit (`docs/threat-model.md`, `secrets`). The threat-model row
-  for `live-view` must say so.
+  has the same limit. The threat-model row for `live-view` says so, and so does
+  the startup warning.
+- **Untrusted.** A frame is page-sourced. The daemon renders it as an image and
+  does not log, store or interpret it.
 - **browxai-cloud.** Frames go to the local daemon only, then over remotxai's
   own encrypted channel. The design uses nothing from browxai-cloud.
 
 ```jsonc
-// daemon to browxai
+// daemon to browxai (every field but session is optional)
 { "v": 1, "type": "view.start", "session": "default", "maxFps": 2, "format": "jpeg", "quality": 60, "maxWidth": 800 }
 { "v": 1, "type": "view.stop", "session": "default" }
-{ "v": 1, "type": "frame.ack", "seq": 412 }
+{ "v": 1, "type": "frame.ack", "session": "default", "seq": 412 }
 
 // browxai to daemon
-{ "v": 1, "type": "frame", "session": "default", "seq": 412, "at": 1790000000000, "format": "jpeg", "width": 800, "height": 1422, "data": "<base64>" }
+{ "v": 1, "type": "view.started", "session": "default", "format": "jpeg", "maxFps": 2, "maxWidth": 800, "quality": 60 }
+{ "v": 1, "type": "frame", "session": "default", "seq": 412, "at": 1790000000000, "format": "jpeg", "width": 800, "height": 450, "part": 0, "parts": 2, "data": "<base64>" }
+{ "v": 1, "type": "view.stopped", "session": "default", "reason": "daemon" }
+{ "v": 1, "type": "error", "code": "unknown-session", "session": "default" }
 ```
 
-Engines, by the `capture` sub-interface each declares in
-`src/engine/capabilities.ts`:
+Limits of this first cut:
 
-| Engine                            | Frame source                                       |
-| --------------------------------- | -------------------------------------------------- |
-| `chromium`, `android`, `electron` | CDP `Page.startScreencast`; frames arrive on paint |
-| `firefox`, `webkit`               | Playwright screenshot, polled at `maxFps`          |
-| `safari`                          | safaridriver screenshot, polled                    |
-| `ios-app`                         | `simctl io screenshot`, polled                     |
-| `android-app`                     | `adb exec-out screencap`, polled                   |
-
-Frame rates on the polled engines are unmeasured. Expect the native engines
-to be the slowest.
+- **Chromium family only.** `chromium`, an attached Chrome, `android` and
+  `electron` stream, from CDP `Page.startScreencast` on the session's own CDP
+  handle. A session on another engine is refused with `view-unsupported`.
+  Polled screenshots for `firefox`, `webkit`, `safari` and the native engines
+  are not built, and their rates are unmeasured.
+- **One page.** The stream follows the session's own page, not tabs the agent
+  opens later. If that page closes the stream ends with `page-closed`.
+- **Open sessions only.** `view.start` for a session that is not open gets
+  `unknown-session`. A view never launches a browser, so the daemon retries once
+  the agent has made its first browser call.
+- **Extension rebuild.** A session whose browser was rebuilt for `extensions`
+  leaves a running stream with no source. The daemon restarts it with
+  `view.start`.
 
 A later option: stream the rrweb DOM events that `.browx` replay already
 captures (`src/replay/`). Registered secrets are masked at capture there, so
@@ -582,7 +616,7 @@ Options only. Pricing and packaging are Rowin's call.
 4. A bundled plan covering both.
 
 Whatever the choice: remotxai's encrypted channel does not terminate in
-browxai-cloud, and the live-view proposal above does not depend on it.
+browxai-cloud, and the live view in section 4 does not depend on it.
 
 ## 7. remotxai's own UI audits with browxai
 
@@ -624,7 +658,8 @@ flake hunts.
    remotxai: the per-session socket and the approval and elicit cards.
 6. browxai: `elicitation/create` for `await_human` and confirm hooks, for
    harnesses that forward it.
-7. browxai: `live-view` on the operator socket, CDP engines first.
+7. browxai: `live-view` on the operator socket, built for the Chromium family. Polled
+   screenshots for the other engines are open.
 8. browxai: `await_human({ secretName })`.
 9. Pick a shipping option and the browxai-cloud relationship.
 
