@@ -326,4 +326,5 @@ export const HARNESS_CAPABILITIES = [
   "self-approval",
   "human-gate-override",
   "operator-channel",
+  "live-view",
 ] as const;

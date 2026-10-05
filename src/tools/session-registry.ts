@@ -50,6 +50,7 @@ import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import { resolveCreationOptions } from "./session-creation-options.js";
 import { BrowxBridge } from "../helper/bridge.js";
 import type { OperatorChannel } from "../helper/operator-channel.js";
+import { cdpViewSource } from "../helper/operator-screencast.js";
 import type { ApprovalStore } from "../policy/confirm.js";
 import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
@@ -497,6 +498,12 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // second server in this process can never wire THIS session with its caps or
       // sandbox root.
       await engineEntry(sess.engine).postWire(entry, serverPostWireDeps);
+      // With live-view on, the daemon may ask for this session's frames. An
+      // engine with no CDP handle has no frame source and is refused by name.
+      operator?.liveView?.register(
+        id,
+        entry.session.cdp ? cdpViewSource(() => entry.session.cdp?.()) : null,
+      );
       return entry;
     },
     async (e): Promise<void> => {
@@ -527,6 +534,8 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // data on disk. `abort()` is a no-op when nothing is recording.
       await e.replay.abort().catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
+      // Stop the session's live view before its browser goes away.
+      await operator?.liveView?.unregister(e.id);
       approvals?.revokeSession(e.id);
       // Take the video flush BEFORE close, run it after. The engine handle the
       // flush needs has to be resolved while the session is live, but the bytes

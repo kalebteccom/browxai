@@ -41,6 +41,7 @@ This page is the working summary.
       <span class="browx-cap is-off">self-approval</span>
       <span class="browx-cap is-off">human-gate-override</span>
       <span class="browx-cap is-off">operator-channel</span>
+      <span class="browx-cap is-off">live-view</span>
     </div>
   </div>
 </div>
@@ -79,6 +80,11 @@ Off by default, each opted in deliberately:
   socket (`BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`), and only the
   daemon's answer counts while it is on. An unanswered prompt is denied at its
   timeout.
+- `live-view` lets the daemon on that socket start a screencast of a session's
+  browser, so the operator sees what the agent sees. It needs `operator-channel`,
+  and frames go to the daemon's socket only. The agent can't start, stop or read
+  it. Secret masking doesn't cover pixels: a secret that is visible on screen
+  reaches the daemon as drawn.
 - `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
   `diagnostics` gate the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and

@@ -10,6 +10,24 @@ surface" covers.
 
 ### Added
 
+- **`live-view` capability, off by default.** The host daemon on the
+  `operator-channel` socket can start a screencast of a Chromium session, so the
+  operator sees the agent's browser live. It sends `view.start` and `view.stop`
+  per session and acks each frame (`frame.ack`); frames come back as JPEG on
+  that socket only, 5 fps, 960 px wide and quality 60 by default, capped at 5
+  fps, 1280 px and quality 80. One frame is in flight per stream, a slow socket
+  or an unacked frame drops frames and never queues them, and browxai holds back
+  its own ack to Chromium so the browser encodes at the stream rate. A daemon
+  that falls behind steps the stream down to 1 fps and 640 px. A frame travels
+  as `part` / `parts` lines of 30 KiB of JPEG so no line passes the 64 KiB
+  limit. The stream ends on `view.stop`, a closed session or page, a dropped
+  connection, 30 s without an ack or a CDP failure. It needs `operator-channel`
+  (the server refuses to start without it), the agent has no tool to start,
+  stop or read it, and no frame reaches a tool result, log, artifact, report,
+  HAR or recording. With the capability off a `view.start` gets `view-disabled`.
+  **Secret masking does not cover frames**: a secret visible on screen reaches
+  the daemon as pixels. See [`docs/threat-model.md`](docs/threat-model.md)
+  section 7 and `docs/tool-reference.md`, "Live view (operator channel)".
 - **`operator-channel` capability, off by default.** A host daemon passes
   browxai a Unix socket (`BROWX_OPERATOR_SOCKET`) and a shared secret
   (`BROWX_OPERATOR_TOKEN`), and with the capability on, every confirm-hook
