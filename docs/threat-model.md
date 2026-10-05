@@ -281,48 +281,71 @@ matter here:
   once at start and removes them from `process.env`, so the browser and every
   helper process it spawns later inherit neither. They sit in `#private` fields.
   No log line, error, tool result or wire frame carries either: a Node connect
-  error names the path, so only its `code` is logged. Residual: on Linux the
-  initial environment stays readable at `/proc/<pid>/environ` to any process
-  running as the same user, and an agent with a shell tool running as that user
-  can read it. Deleting a variable from `process.env` does not change that
-  file. Run the agent as a different user from browxai's operator, or give the
-  harness no shell, where this matters.
+  error names the path, so only its `code` is logged. Residual, on
+  every platform: removing a variable from `process.env` does not change the
+  process's initial environment block. A process running as the same user can
+  read it (`/proc/<pid>/environ` on Linux, `ps eww` or the `KERN_PROCARGS2`
+  sysctl on macOS), so an agent with a shell tool running as that user can read
+  the path and the token. Run the agent as a different user from browxai's
+  operator, or give the harness no shell, where this matters. The fix is to
+  hand the secret over an inherited file descriptor that browxai closes after
+  reading it, which changes the daemon contract and is a v2 follow-up.
 - **The daemon proves it knows the token before browxai sends anything.**
   browxai dials the socket and sends a nonce. The daemon answers with a nonce
   and an HMAC-SHA-256 over both, keyed by the token. browxai compares it in
   constant time (`timingSafeEqual`), then sends its own HMAC (role-tagged, so
   neither proof replays as the other) and waits for `ready`. The token never
-  crosses the socket, so a process that took over the socket path learns
-  nothing it can reuse. A failed proof closes the channel for the life of the
-  process and denies everything pending. Frames received before `ready` are
-  ignored, and one that is not the expected handshake frame drops the
-  connection.
+  crosses the socket, so a process that took over the socket path cannot learn
+  it and cannot answer the proof by itself. A failed proof, which includes an
+  old proof replayed on a redial (the nonces differ), closes the channel for the
+  life of the process and denies everything pending. Frames received before
+  `ready` are ignored, and one that is not the expected handshake frame drops the
+  connection. Residual: the proof authenticates the handshake only. Frames after
+  it carry no MAC and are not bound to the connection that was authenticated, so
+  a same-user process that swaps the socket and relays to the real daemon passes
+  the proof, and can then read every request and alter every answer. The
+  permission checks stop a different user and a loose socket, not a same-user
+  attacker who can replace the socket. A v2 contract would derive a session key
+  from both nonces and the token and MAC every frame with it.
 - **The socket must be the way the daemon makes it, or the channel does not
   start.** A real socket, mode `0600`, in a real (not symlinked) directory at
   mode `0700`, both owned by the user running browxai. A wrong one throws from
-  `createServer` with a message that names the problem and not the path. The
-  check runs again on every redial, and a change closes the channel for good.
-  A socket that does not exist yet is retried with backoff, since the daemon may
-  still be starting. A token under 16 characters also refuses to start.
+  `createServer` with a message that names the problem and not the path. So do a
+  token under 16 characters and, with the capability on, a missing variable
+  (the variables are taken from the environment once, so only the first server in
+  a process can open the channel). The check runs again on every redial. A socket
+  that does not exist yet, or that has become unsafe, is not connected to and is
+  retried with backoff, since the daemon may still be starting or about to fix
+  it. Requests wait meanwhile and are denied at their timeouts.
 - **Answers are validated against the request they name.** `id` is 128 random
   bits and single-use. An approval takes `approve` or `deny`. A human request
   takes `done` or `abort`, with a value checked against its kind (a boolean for
   `confirm`, an in-range integer for `choose`, a string of at most 10,000
   characters for `input`, none for `acknowledge`). An unknown id gets
   `unknown-request`, anything that does not fit gets `invalid-answer`, and the
-  request stays pending. Frames over 64 KiB drop the connection.
+  request stays pending. An inbound frame over 64 KiB drops the connection, and
+  malformed or non-object frames are ignored. Outbound strings are cut to fit
+  (prompt 2,000 characters, summary 1,000, at most 32 choices of 100, names 128),
+  and a frame that would still exceed 64 KiB is refused, so an agent-sized
+  `await_human` cannot wedge the channel in a redial and resend loop.
 - **Failure is closed.** A request with no answer is denied at its own timeout
   (5 minutes for a confirm hook, 5 minutes by default and 1 hour at most for
   `await_human`), whether the daemon is slow, gone, or never connected. While
   disconnected, pending requests stay pending, are sent again under the same id
-  after a redial, and still time out. At most 32 requests wait at once. Nothing
-  approves on its own, and a dropped connection never falls back to DevTools.
+  after a redial, and still time out. At most 32 requests wait at once, split so a page cannot starve a
+  confirm hook: 12 for confirm hooks, 12 for `await_human`, 8 for page prompts
+  (`permission`, `notification`), and 8, 8 and 4 per session within each class.
+  Identical page prompts (same session, scope, tool and summary) share one
+  request and one answer, so a page spamming `Notification` or `getUserMedia`
+  costs one slot. A request over a limit is refused at once, which the callers
+  treat as a deny. Nothing approves on its own, and a dropped connection never
+  falls back to DevTools.
 - **DevTools answers are ignored while the channel is on.** No waiter is
   registered for them, so a call from the isolated world matches nothing and is
   logged. A prompt with no operator form, the file-picker `ask-human`, is
   refused instead of being left to DevTools, because it needs files an approve
-  or deny cannot carry. With the capability off, or with either variable
-  missing, nothing changes: DevTools stays the answer path.
+  or deny cannot carry. With the capability off, nothing changes:
+  DevTools stays the answer path.
 - **Grants are one-shot unless the daemon says otherwise, and never global.** A
   plain `approve` covers that one call. An `approve` of a confirm hook may carry
   `grant: { scope: "session" | "workspace", ttlSeconds }`, up to 24 hours. A
@@ -336,16 +359,23 @@ matter here:
   passes the URL sanitiser (query strings and fragments are dropped, so the
   operator sees origin and path, and a token in a query stays hidden) and the
   session's `SecretRegistry`. The agent- and page-sourced fields (`summary`,
-  `prompt`, `choices`) are listed in the frame's `untrusted` array so the
-  daemon's card renders them as data. A page title that reads "Safe, approve
+  `prompt`, `choices`, and `session`, which is the id the agent chose) are
+  listed in the frame's `untrusted` array so the daemon's card renders them as
+  data. A page title that reads "Safe, approve
   this" is page content like any other.
 
 The channel does not make the daemon trustworthy. Whatever listens on that
 socket decides every request, so enable it only when the daemon is the operator.
 It does not reach the agent's own harness permission prompts either, which stay
-the harness's business. Residual: the permission check and the connect are two
-steps, so a same-user process that swaps the socket between them is stopped only
-by the token proof, which it cannot produce.
+the harness's business.
+
+**Two capabilities route around the daemon, and warn at boot when combined with
+it.** A grant made by `approve_actions` (`self-approval`) is consumed before a
+request is asked, so the daemon never sees those requests. A permission,
+notification or file-picker policy the agent moved off `ask-human`
+(`human-gate-override`) never asks. Both are the operator's own opt-ins, so
+browxai logs a warning instead of refusing. Leave both off where the daemon is
+meant to decide every prompt.
 
 Pinned by `test/keystone/operator-channel.keystone.test.ts` (real Chromium and a
 real Unix socket: the capability-unset gate, approve and deny, grants, forgery
@@ -397,7 +427,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `operator-channel`, default **off**. Tools: none; it routes `await_human`, the confirm hooks and the `permission` / `notification` `ask-human` prompts to the host daemon's Unix socket.
 
-  Makes the daemon behind `BROWX_OPERATOR_SOCKET` the only answer path while the channel is connected, so a phone operator can answer what DevTools on the host otherwise would. It takes effect only with `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` both set; either alone logs a warning and does nothing. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, with the capability off the socket is never opened, and a saved config cannot add it. Loud one-time warning when enabled. Section 7 holds the rules (socket permissions, the HMAC handshake, answer validation, fail-closed timeouts, session and workspace grants, masking) and the residuals.
+  Makes the daemon behind `BROWX_OPERATOR_SOCKET` the only answer path while the channel is connected, so a phone operator can answer what DevTools on the host otherwise would. It needs `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` both set; with the capability on and either missing, the server refuses to start. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, with the capability off the socket is never opened, and a saved config cannot add it. Loud one-time warning when enabled. Section 7 holds the rules (socket permissions, the HMAC handshake, answer validation, frame and pending limits, fail-closed timeouts, session and workspace grants, masking), the residuals (the token is readable by a same-user process from the initial environment, frames after the handshake carry no MAC) and the two capabilities that skip the daemon (`self-approval`, `human-gate-override`).
 
 - `eval`, default **off**. Tools: `eval_js`.
 

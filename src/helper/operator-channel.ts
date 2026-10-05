@@ -84,15 +84,35 @@ export interface OperatorChannel {
 type State = "down" | "hello" | "auth" | "ready" | "closed";
 type Outcome = "approved" | "denied" | "done" | "aborted" | "timeout";
 
+/** Who a request is for. A page can raise `page` prompts as fast as it likes, an
+ *  agent can raise `human` ones, and a confirm hook is `hook`. Each class has its
+ *  own share of the pending cap, so one cannot starve another. */
+type PromptClass = "hook" | "human" | "page";
+
 interface Pending {
   id: string;
+  cls: PromptClass;
+  session: string;
   frame: Record<string, unknown>;
   rules: AnswerRules;
   timer: NodeJS.Timeout;
   settle: (r: { answer: OperatorAnswer } | { error: Error }) => void;
 }
 
+/** Pending requests: 32 in all, split so the three classes cannot crowd each
+ *  other out (12 + 12 + 8), and bounded per session within a class. */
 const MAX_PENDING = 32;
+const CLASS_LIMIT: Record<PromptClass, number> = { hook: 12, human: 12, page: 8 };
+const SESSION_LIMIT: Record<PromptClass, number> = { hook: 8, human: 8, page: 4 };
+
+/** Field caps, in characters. With 32 choices and the worst JSON escaping
+ *  (six bytes a character) the biggest frame stays near 40 KiB, under the
+ *  64 KiB the receiver accepts. A frame over the limit is refused as well. */
+const MAX_SUMMARY_CHARS = 1_000;
+const MAX_PROMPT_CHARS = 2_000;
+const MAX_CHOICES = 32;
+const MAX_CHOICE_CHARS = 100;
+const MAX_NAME_CHARS = 128;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const BACKOFF_START_MS = 250;
 const BACKOFF_MAX_MS = 5_000;
@@ -104,17 +124,22 @@ const OUTCOME: Record<OperatorDecision, Outcome> = {
   abort: "aborted",
 };
 
+function cut(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 function requestFrame(
   id: string,
   ask: OperatorAsk,
   createdAt: number,
 ): { frame: Record<string, unknown>; rules: AnswerRules } {
-  const clean = <T>(v: T): T => ask.mask(typeof v === "string" ? (sanitizeUrlsInText(v) as T) : v);
+  // URL strip and secret mask first, then the length cap on what is left.
+  const clean = (v: string, max: number): string => cut(ask.mask(sanitizeUrlsInText(v)), max);
   const base = {
     v: OPERATOR_PROTOCOL_VERSION,
     type: "request",
     id,
-    session: ask.session,
+    session: cut(ask.session, MAX_NAME_CHARS),
     createdAt,
     expiresAt: createdAt + ask.timeoutMs,
   };
@@ -125,10 +150,10 @@ function requestFrame(
       frame: {
         ...base,
         kind: "approval",
-        scope: p.scope,
-        tool: p.tool,
-        summary: clean(p.summary),
-        untrusted: ["summary"],
+        scope: cut(p.scope, MAX_NAME_CHARS),
+        tool: cut(p.tool, MAX_NAME_CHARS),
+        summary: clean(p.summary, MAX_SUMMARY_CHARS),
+        untrusted: ["summary", "session"],
         answers,
         ...(p.grantable ? { grantScopes: ["session", "workspace"] } : {}),
       },
@@ -136,19 +161,29 @@ function requestFrame(
     };
   }
   const answers = ["done", "abort"] as const;
-  const choices = p.choices?.map((c) => clean(c));
+  const choices = p.choices?.slice(0, MAX_CHOICES).map((c) => clean(c, MAX_CHOICE_CHARS));
   return {
     frame: {
       ...base,
       kind: "human",
       humanKind: p.humanKind,
-      prompt: clean(p.prompt),
+      prompt: clean(p.prompt, MAX_PROMPT_CHARS),
       ...(choices ? { choices } : {}),
-      untrusted: choices ? ["prompt", "choices"] : ["prompt"],
+      untrusted: choices ? ["prompt", "choices", "session"] : ["prompt", "session"],
       answers,
     },
     rules: { answers, humanKind: p.humanKind, choiceCount: choices?.length ?? 0 },
   };
+}
+
+const classOf = (p: OperatorPrompt): PromptClass =>
+  p.kind === "human" ? "human" : p.grantable ? "hook" : "page";
+
+/** What a page prompt is, for collapsing repeats. Hooks and human prompts are
+ *  never collapsed: each is a distinct decision. */
+function dedupeKey(cls: PromptClass, frame: Record<string, unknown>): string | null {
+  if (cls !== "page") return null;
+  return JSON.stringify([frame.session, frame.scope, frame.tool, frame.summary]);
 }
 
 class OperatorLink implements OperatorChannel {
@@ -162,7 +197,9 @@ class OperatorLink implements OperatorChannel {
   #retry: NodeJS.Timeout | null = null;
   #handshake: NodeJS.Timeout | null = null;
   #backoff = BACKOFF_START_MS;
+  #lastUnsafe = "";
   readonly #pending = new Map<string, Pending>();
+  readonly #pageAsks = new Map<string, Promise<OperatorAnswer>>();
 
   constructor(path: string, token: string) {
     this.#path = path;
@@ -177,11 +214,68 @@ class OperatorLink implements OperatorChannel {
     if (this.#state === "closed") {
       return Promise.reject(new Error("operator-channel: the channel is closed"));
     }
-    if (this.#pending.size >= MAX_PENDING) {
-      return Promise.reject(new Error("operator-channel: too many requests are waiting"));
-    }
     const id = `req_${randomBytes(16).toString("hex")}`;
     const { frame, rules } = requestFrame(id, req, Date.now());
+    if (Buffer.byteLength(JSON.stringify(frame)) > MAX_FRAME_BYTES) {
+      return Promise.reject(new Error("operator-channel: the request is too large to send"));
+    }
+    const cls = classOf(req.prompt);
+    const key = dedupeKey(cls, frame);
+    const same = key === null ? undefined : this.#pageAsks.get(key);
+    if (same) return this.#join(same, signal);
+    if (!this.#hasRoom(cls, String(frame.session))) {
+      return Promise.reject(new Error("operator-channel: too many requests are waiting"));
+    }
+    const answer = this.#enqueue(id, cls, frame, rules, req, signal);
+    if (key !== null) {
+      this.#pageAsks.set(key, answer);
+      const drop = (): void => void this.#pageAsks.delete(key);
+      answer.then(drop, drop);
+    }
+    return answer;
+  }
+
+  /** Room under the total cap, the class share and the per-session limit. */
+  #hasRoom(cls: PromptClass, session: string): boolean {
+    let total = 0;
+    let inClass = 0;
+    let inSession = 0;
+    for (const p of this.#pending.values()) {
+      total++;
+      if (p.cls !== cls) continue;
+      inClass++;
+      if (p.session === session) inSession++;
+    }
+    return total < MAX_PENDING && inClass < CLASS_LIMIT[cls] && inSession < SESSION_LIMIT[cls];
+  }
+
+  /** A repeat of a page prompt already out waits on the same answer. */
+  #join(first: Promise<OperatorAnswer>, signal?: AbortSignal): Promise<OperatorAnswer> {
+    return new Promise<OperatorAnswer>((resolve, reject) => {
+      const onAbort = (): void => reject(new Error("bridge detached"));
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener("abort", onAbort, { once: true });
+      first.then(
+        (a) => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve(a);
+        },
+        (e: Error) => {
+          signal?.removeEventListener("abort", onAbort);
+          reject(e);
+        },
+      );
+    });
+  }
+
+  #enqueue(
+    id: string,
+    cls: PromptClass,
+    frame: Record<string, unknown>,
+    rules: AnswerRules,
+    req: OperatorAsk,
+    signal?: AbortSignal,
+  ): Promise<OperatorAnswer> {
     return new Promise<OperatorAnswer>((resolve, reject) => {
       let done = false;
       const settle = (r: { answer: OperatorAnswer } | { error: Error }): void => {
@@ -207,7 +301,15 @@ class OperatorLink implements OperatorChannel {
           ),
         req.timeoutMs,
       );
-      this.#pending.set(id, { id, frame, rules, timer, settle });
+      this.#pending.set(id, {
+        id,
+        cls,
+        session: String(frame.session),
+        frame,
+        rules,
+        timer,
+        settle,
+      });
       if (signal?.aborted) return onAbort();
       signal?.addEventListener("abort", onAbort, { once: true });
       if (this.#state === "ready") this.#send(frame);
@@ -231,12 +333,16 @@ class OperatorLink implements OperatorChannel {
     if (this.#state === "closed") return;
     const check = checkOperatorSocket(this.#path);
     if (check.state === "unsafe") {
-      // The directory or socket changed under us. Stop for good: pending
-      // requests are denied now and nothing new is sent.
-      log.error(`browxai: operator channel closed: ${check.reason}`);
-      this.close();
-      return;
+      // The directory or socket is not what the daemon is expected to make. Do
+      // not connect to it. Pending requests keep waiting and are denied at their
+      // timeouts, and a later retry connects once the daemon has made it right.
+      if (this.#lastUnsafe !== check.reason) {
+        log.error(`browxai: operator channel is not connecting: ${check.reason}`);
+        this.#lastUnsafe = check.reason;
+      }
+      return this.#scheduleRetry();
     }
+    this.#lastUnsafe = "";
     if (check.state === "missing") return this.#scheduleRetry();
     const sock = createConnection(this.#path);
     sock.setEncoding("utf8");
@@ -294,7 +400,11 @@ class OperatorLink implements OperatorChannel {
   #send(frame: Record<string, unknown>): void {
     const sock = this.#sock;
     if (!sock || sock.destroyed) return;
-    sock.write(JSON.stringify({ v: OPERATOR_PROTOCOL_VERSION, ...frame }) + "\n");
+    const line = JSON.stringify({ v: OPERATOR_PROTOCOL_VERSION, ...frame });
+    // The receiver drops a connection on an oversized line, so one that big
+    // never goes out: it would loop through redial and resend.
+    if (Buffer.byteLength(line) > MAX_FRAME_BYTES) return;
+    sock.write(line + "\n");
   }
 
   // ---------- inbound ----------
@@ -375,13 +485,32 @@ class OperatorLink implements OperatorChannel {
   }
 }
 
+/** Capabilities that let a request skip the daemon when `operator-channel` is on.
+ *  A grant made by `approve_actions` is consumed before the ask, and a policy the
+ *  agent moved off `ask-human` never asks. Both are the operator's own opt-ins,
+ *  so this is a warning, not a refusal. */
+export function operatorCombinationWarnings(caps: CapabilityConfig): string[] {
+  const out: string[] = [];
+  if (!capabilityMissing("self-approval", caps)) {
+    out.push(
+      "operator-channel is on together with self-approval: a confirm scope the agent pre-approves with approve_actions is consumed BEFORE the daemon is asked, so the daemon never sees those requests. Drop self-approval if the daemon is meant to decide every confirm hook.",
+    );
+  }
+  if (!capabilityMissing("human-gate-override", caps)) {
+    out.push(
+      "operator-channel is on together with human-gate-override: the agent can move a permission, notification or file-picker policy off ask-human, and a request on a policy that no longer asks never reaches the daemon. Drop human-gate-override if the daemon is meant to decide every such prompt.",
+    );
+  }
+  return out;
+}
+
 /** Open the channel for this server, or return null when it is not wanted.
  *
  *  Reads and removes `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` from
- *  `env` in every case. With the capability off, or with either variable
- *  missing, nothing is opened and DevTools stays the answer path; the missing
- *  half or the off capability is logged by name, never by value. A token that is
- *  too short, or a socket directory or file with wrong ownership or mode, throws:
+ *  `env` in every case. With the capability off nothing is opened and DevTools
+ *  stays the answer path; the variables being set anyway is logged by name,
+ *  never by value. With the capability on, a missing variable, a token that is
+ *  too short, or a socket directory or file with wrong ownership or mode throws:
  *  the operator asked for the channel and gets a failed start instead of a
  *  channel that is not what they think it is. */
 export function openOperatorChannel(
@@ -398,10 +527,13 @@ export function openOperatorChannel(
     return null;
   }
   if (!socketPath || !token) {
-    log.warn(
-      "browxai: the operator-channel capability needs BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN together; the channel stays closed and DevTools stays the answer path.",
+    // The capability was asked for, so a channel that is not there would leave
+    // the operator believing prompts reach the daemon. Both variables are
+    // consumed by the first server in a process, so a second server in the same
+    // process lands here too.
+    throw new Error(
+      "operator-channel: refusing to start the channel: BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN must both be set (a server takes them from the environment once, so only the first server in a process can open the channel)",
     );
-    return null;
   }
   if (token.length < MIN_TOKEN_LENGTH) {
     throw new Error(
@@ -417,6 +549,7 @@ export function openOperatorChannel(
       "browxai: the operator channel socket does not exist yet; retrying until the daemon creates it",
     );
   }
+  for (const w of operatorCombinationWarnings(caps)) log.warn(`browxai: ${w}`);
   const link = new OperatorLink(socketPath, token);
   link.start();
   return link;

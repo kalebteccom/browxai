@@ -273,7 +273,7 @@ describe("operator channel — approvals, grants and await_human over the socket
         scope: "navigate_off_allowlist",
         tool: "navigate",
         session: "nav",
-        untrusted: ["summary"],
+        untrusted: ["summary", "session"],
         answers: ["approve", "deny"],
         grantScopes: ["session", "workspace"],
       });
@@ -398,7 +398,7 @@ describe("operator channel — approvals, grants and await_human over the socket
         humanKind: "choose",
         prompt: "Which account?",
         choices: ["alice", "bob"],
-        untrusted: ["prompt", "choices"],
+        untrusted: ["prompt", "choices", "session"],
         answers: ["done", "abort"],
       });
       daemon.answer(req.id, { decision: "done", value: 7 });
