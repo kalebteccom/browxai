@@ -8,7 +8,7 @@
 # Base image ships Chromium plus its system dependencies and a non-root `pwuser`.
 # Keep the tag's Playwright version aligned with the `playwright-core` range in
 # package.json — a mismatch means the bundled browser and the driver disagree.
-FROM mcr.microsoft.com/playwright:v1.62.0-noble
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
 
 ENV NODE_ENV=production \
     BROWX_WORKSPACE=/workspace
