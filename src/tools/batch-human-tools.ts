@@ -11,16 +11,17 @@ function buildAwaitHumanPrompt(
   kind: string,
   prompt: string,
   choices: string[] | undefined,
-  hint: string,
+  answerHint: (devtoolsCall: string) => string,
   ticket: string,
 ): string {
   if (kind === "choose" && choices) {
-    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ ${hint}, call __browx.choose(<index>, "${ticket}")`;
+    return `${prompt}\n${choices.map((c: string, i: number) => `    [${i}] ${c}`).join("\n")}\n→ ${answerHint(`__browx.choose(<index>, "${ticket}")`)}`;
   }
   if (kind === "confirm")
-    return `${prompt} → ${hint}, call __browx.confirm(true|false, "${ticket}")`;
-  if (kind === "input") return `${prompt} → ${hint}, call __browx.input('your text', "${ticket}")`;
-  return `${prompt} → ${hint}, call __browx.proceed("${ticket}")`;
+    return `${prompt} → ${answerHint(`__browx.confirm(true|false, "${ticket}")`)}`;
+  if (kind === "input")
+    return `${prompt} → ${answerHint(`__browx.input('your text', "${ticket}")`)}`;
+  return `${prompt} → ${answerHint(`__browx.proceed("${ticket}")`)}`;
 }
 
 /**
@@ -54,6 +55,7 @@ export function registerBatchHumanTools(
         "  - `choose`      → `__browx.choose(<index-into-choices>, ticket)`\n" +
         "  - `input`       → `__browx.input('typed text', ticket)`\n" +
         "The world name and the per-prompt `ticket` are printed with the prompt on stderr; an answer without the current ticket is dropped.\n" +
+        "When the operator started the server with the off-by-default `operator-channel` capability and a socket, the prompt goes to the host daemon on that socket instead, only the daemon's answer counts, and DevTools answers are ignored. An unanswered prompt is denied at its timeout, and an operator abort returns an `error` starting `operator-aborted`.\n" +
         "Returns `{ kind, value, timedOut }`. On an engine without CDP (firefox, webkit, safari, the native engines) there is no isolated world, so it returns at once with `error` starting `no-human-channel` instead of waiting.",
       inputSchema: {
         kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
@@ -89,11 +91,22 @@ export function registerBatchHumanTools(
       // action default — but never unbounded.
       const humanMs = Math.min(timeoutMs && timeoutMs > 0 ? timeoutMs : 300_000, 3_600_000);
       const ticket = e.bridge.newTicket();
-      const promptBody = buildAwaitHumanPrompt(kind, prompt, choices, e.bridge.humanHint(), ticket);
+      const promptBody = buildAwaitHumanPrompt(
+        kind,
+        prompt,
+        choices,
+        (call) => e.bridge.answerHint(call),
+        ticket,
+      );
       log.info(`await_human (${kind}): ${promptBody}`);
       const signalName = kind === "acknowledge" ? "proceed" : "respond";
       try {
-        const sig = await e.bridge.awaitSignal(signalName, humanMs, ticket);
+        const sig = await e.bridge.awaitSignal(signalName, humanMs, ticket, {
+          kind: "human",
+          humanKind: kind,
+          prompt,
+          ...(kind === "choose" && choices ? { choices } : {}),
+        });
         // For typed kinds the page sends `{ kind, value }`; for acknowledge it sends any/null.
         let value: unknown = sig.data;
         if (

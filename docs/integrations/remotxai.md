@@ -1,8 +1,9 @@
 # browxai in remotxai sessions: integration design
 
 Status: design, written against browxai v0.11.0. Everything under a
-**Proposed** heading is unbuilt. Everything under **Exists** names the file
-that implements it. Not published to browxai.com: the site syncs only the pages
+**Proposed** heading is unbuilt, except the operator socket (Path B in section
+3), which is built. Everything under **Exists** names the file that implements
+it. Not published to browxai.com: the site syncs only the pages
 listed in `website/scripts/doc-pipeline.mjs`.
 
 Use v0.11.0 or later. Earlier versions let page scripts and the agent answer
@@ -91,18 +92,18 @@ Per harness:
 
 ### Env vars and CLI args
 
-| Setting             | How                                                   | Default                              | State                              |
-| ------------------- | ----------------------------------------------------- | ------------------------------------ | ---------------------------------- |
-| Workspace root      | `BROWX_WORKSPACE=<path>`                              | `~/.browxai`                         | Exists, `src/util/workspace.ts`    |
-| Capabilities        | `BROWX_CAPABILITIES=read,navigation,action,human,...` | the four defaults                    | Exists, `src/util/capabilities.ts` |
-| Headless            | `BROWX_HEADLESS=1`                                    | headed                               | Exists, `src/cli.ts`               |
-| Engine              | `--engine <kind>` or `BROWX_ENGINE`                   | `chromium`                           | Exists, `src/engine/select.ts`     |
-| Origin policy       | `BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`      | unset                                | Exists, `src/policy/origin.ts`     |
-| Confirm hooks       | `BROWX_CONFIRM_REQUIRED`                              | `navigate_off_allowlist,byob_action` | Exists, `src/policy/confirm.ts`    |
-| Credentials backend | `BROWX_CREDENTIALS_PROVIDER`                          | `oathtool`                           | Exists, `src/util/credentials.ts`  |
-| Default profile dir | `BROWX_DEFAULT_PROFILE=<absolute dir>`                | `<ws>/profile`                       | Exists, `src/util/workspace.ts`    |
-| Read-only config    | `BROWX_CONFIG_READONLY=1`                             | unset                                | Exists, `src/util/config-store.ts` |
-| Operator channel    | `BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`       | n/a                                  | **Proposed**, section 3            |
+| Setting             | How                                                   | Default                              | State                                               |
+| ------------------- | ----------------------------------------------------- | ------------------------------------ | --------------------------------------------------- |
+| Workspace root      | `BROWX_WORKSPACE=<path>`                              | `~/.browxai`                         | Exists, `src/util/workspace.ts`                     |
+| Capabilities        | `BROWX_CAPABILITIES=read,navigation,action,human,...` | the four defaults                    | Exists, `src/util/capabilities.ts`                  |
+| Headless            | `BROWX_HEADLESS=1`                                    | headed                               | Exists, `src/cli.ts`                                |
+| Engine              | `--engine <kind>` or `BROWX_ENGINE`                   | `chromium`                           | Exists, `src/engine/select.ts`                      |
+| Origin policy       | `BROWX_ALLOWED_ORIGINS`, `BROWX_BLOCKED_ORIGINS`      | unset                                | Exists, `src/policy/origin.ts`                      |
+| Confirm hooks       | `BROWX_CONFIRM_REQUIRED`                              | `navigate_off_allowlist,byob_action` | Exists, `src/policy/confirm.ts`                     |
+| Credentials backend | `BROWX_CREDENTIALS_PROVIDER`                          | `oathtool`                           | Exists, `src/util/credentials.ts`                   |
+| Default profile dir | `BROWX_DEFAULT_PROFILE=<absolute dir>`                | `<ws>/profile`                       | Exists, `src/util/workspace.ts`                     |
+| Read-only config    | `BROWX_CONFIG_READONLY=1`                             | unset                                | Exists, `src/util/config-store.ts`                  |
+| Operator channel    | `BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`       | unset                                | Exists, `src/helper/operator-channel.ts`, section 3 |
 
 Leave `BROWX_ATTACH_CDP` unset. It switches sessions to attach mode, which
 drives the operator's own Chrome, needs `byob-attach`, and shares one cookie
@@ -265,7 +266,8 @@ Where that leaves an operator-only gate, in v0.11.0:
    prompt exists only on stderr of a process the harness spawned. Today a
    confirm hook on a remotxai session therefore ends in a refusal after 5
    minutes unless someone sits at the host. Unverified: whether a headless
-   session can be answered at all.
+   session can be answered at all. The operator socket (Path B below) closes
+   this gap in the release that adds it.
 
 What remotxai can do today: rely on harness permission prompts per browxai
 tool, set `BROWX_CONFIG_READONLY=1` so `set_config`, `reset_config` and
@@ -274,7 +276,7 @@ tool, set `BROWX_CONFIG_READONLY=1` so `set_config`, `reset_config` and
 unattended past a hook can drop that hook from `BROWX_CONFIRM_REQUIRED`, which
 is narrower than enabling `self-approval`.
 
-### Proposed: two answer paths
+### Two answer paths
 
 The gap these close is reach, not trust. The page and the agent are already
 locked out of the existing channel; the operator on a phone cannot get in
@@ -292,75 +294,153 @@ inside the `tools/call` that waits for the answer: Claude Code answers
 elicitation only while a call is pending and cancels it otherwise
 (`docs/threat-model.md`, section 7).
 
-**Path B, operator socket.** Operator-only on every harness.
+**Path B, operator socket.** Exists, behind the `operator-channel` capability
+(`src/helper/operator-channel.ts`, `src/helper/operator-protocol.ts`).
+Operator-only on every harness.
 
-- **Gate.** A new capability `operator-channel`, off by default, with a
-  startup warning. It takes effect only when `BROWX_OPERATOR_SOCKET` and
-  `BROWX_OPERATOR_TOKEN` are also set. Either half alone does nothing and logs
-  a warning.
+- **Gate.** The off-by-default capability `operator-channel`, with a startup
+  warning. It takes effect only when `BROWX_OPERATOR_SOCKET` and
+  `BROWX_OPERATOR_TOKEN` are also set. Either half alone does nothing and logs a
+  warning when the capability is off. With the capability on, a missing variable
+  stops the server from starting. The agent
+  cannot enable it: a saved `capabilities` list can only narrow
+  `BROWX_CAPABILITIES`. Both variables are read once at start and removed from
+  `process.env`.
 - **Direction.** The daemon listens on a Unix socket it creates per session
-  (mode 0600 inside a 0700 directory). browxai dials it once at startup and
-  redials with backoff. browxai opens no listener.
-- **Framing.** JSON lines, the framing browxai already uses for MCP over
-  stdio and sockets.
-- **Authority.** While the channel is connected it is the only answer path.
-  Answers from the DevTools world are ignored and logged. `self-approval`
+  (mode 0600 inside a 0700 directory, both owned by the user running browxai).
+  browxai dials it at start and redials with backoff from 250 ms up to 5 s.
+  browxai opens no listener. If the directory or the socket has the wrong owner
+  or mode when browxai starts, `createServer` throws and the server does not
+  start. The same check runs on every redial, and a failure closes the channel
+  for good. A socket that does not exist yet is retried.
+- **Framing.** JSON lines, one frame per line, at most 64 KiB, every frame
+  carrying `"v": 1`.
+- **Authority.** While the capability is on, the daemon is the only answer path.
+  Answers from the DevTools world match nothing and are logged. `self-approval`
   stays a separate operator opt-in and remotxai leaves it off.
   `list_approvals` keeps working. While disconnected, pending requests stay
-  pending and resolve as denied at their timeout. They never fall back to
-  DevTools.
+  pending, go out again after the redial under the same id, and resolve as
+  denied at their timeout. They never fall back to DevTools. A prompt with no
+  operator form, the file-picker `ask-human`, is refused at once.
+- **What is routed.** The confirm hooks (`navigate_off_allowlist`,
+  `byob_action`), `await_human`, and the `permission` and `notification`
+  `ask-human` prompts. Engines without CDP can use it too, since it needs no
+  isolated world.
+- **Limits.** Outbound strings are cut (prompt 2,000 characters, summary 1,000,
+  32 choices of 100, names 128) and no frame exceeds 64 KiB. Pending requests
+  are capped at 12 confirm hooks, 12 `await_human` and 8 page prompts, and at 8,
+  8 and 4 per session. Identical page prompts (compared after masking and cutting) share one request.
+  A frame with cut text or dropped choices carries `truncated: true` and
+  `omittedChoices`, so the card can say the text is partial. A request over
+  a limit is denied at once, so the daemon should expect refusals to be silent.
 - **Secrets.** Every string leaving on the channel passes the
   `SecretRegistry.applyMaskDeep` chokepoint (`src/util/secrets.ts`) and the URL
-  sanitiser (`src/util/url-sanitizer.ts`). A registered secret value never
-  appears on the channel.
-- **Untrusted text.** Page-sourced fields (URL, title, anything quoted from
-  the page) are listed in `untrusted`. The card renders them as data. A page
+  sanitiser (`src/util/url-sanitizer.ts`), which drops query strings and
+  fragments. A registered secret value never appears on the channel.
+- **Untrusted text.** Agent- and page-sourced fields (`summary`, `prompt`,
+  `choices`, and `session`, the id the agent chose) are listed in `untrusted`. The card renders them as data. A page
   title that reads "Safe, approve this" is page content like any other.
+
+Handshake. The token never crosses the socket. Each side proves it holds it with
+an HMAC-SHA-256 over both nonces, keyed by the token, and the role is in the
+message so one proof cannot replay as the other. Concretely, with `h` browxai's
+nonce and `d` the daemon's, both random hex:
+
+```
+proof(role) = hex(HMAC_SHA256(token, "browxai-operator/1\n" + role + "\n" + h + "\n" + d))
+```
+
+```jsonc
+// browxai to daemon, on connect
+{ "v": 1, "type": "hello", "nonce": "<h>", "browxai": "0.11.0", "pid": 48121 }
+// daemon to browxai. browxai compares proof in constant time and closes for good on a mismatch.
+{ "v": 1, "type": "welcome", "nonce": "<d>", "proof": "<proof('daemon')>" }
+// browxai to daemon
+{ "v": 1, "type": "auth", "proof": "<proof('browxai')>" }
+// daemon to browxai, after it checks proof('browxai') the same way. No request is sent before this.
+{ "v": 1, "type": "ready" }
+```
+
+The daemon must refuse any peer whose `auth` proof does not match, and should
+refuse a `hello` that is not the first frame. A frame that arrives out of order
+makes browxai drop the connection and redial.
 
 browxai to daemon:
 
 ```jsonc
-{ "v": 1, "type": "hello", "token": "<BROWX_OPERATOR_TOKEN>", "browxai": "0.11.0", "pid": 48121, "workspace": "/…/browxai/work/s-acc44b" }
-
 // confirm hook
 { "v": 1, "type": "request", "id": "req_4f1c9a…", "session": "default",
   "kind": "approval", "scope": "navigate_off_allowlist", "tool": "navigate",
   "summary": "navigate to https://pay.example.net/checkout (off the allowed-origins list)",
-  "page": { "url": "https://app.example.com/cart", "title": "Cart" },
-  "untrusted": ["page.url", "page.title"],
-  "answers": ["approve", "deny"], "createdAt": 1790000000000, "expiresAt": 1790000300000 }
+  "untrusted": ["summary", "session"],
+  "answers": ["approve", "deny"], "grantScopes": ["session", "workspace"],
+  "createdAt": 1790000000000, "expiresAt": 1790000300000 }
 
 // await_human
 { "v": 1, "type": "request", "id": "req_77b0e2…", "session": "default",
   "kind": "human", "humanKind": "choose", "prompt": "Which account should I use?",
   "choices": ["alice@example.com", "bob@example.com"],
+  "untrusted": ["prompt", "choices", "session"],
   "answers": ["done", "abort"], "createdAt": 1790000000000, "expiresAt": 1790000120000 }
 
 { "v": 1, "type": "resolved", "id": "req_4f1c9a…", "outcome": "denied", "by": "timeout" }
 ```
 
+`scope` is a confirm hook name for `kind: "approval"` requests that can carry a
+grant (`grantScopes` is present), and `permission` or `notification` for the
+page prompts, which cannot.
+
 daemon to browxai:
 
 ```jsonc
 { "v": 1, "type": "answer", "id": "req_4f1c9a…", "decision": "approve" }
-{ "v": 1, "type": "answer", "id": "req_4f1c9a…", "decision": "approve", "grant": { "ttlSeconds": 900 } }
+{ "v": 1, "type": "answer", "id": "req_4f1c9a…", "decision": "approve", "grant": { "scope": "session", "ttlSeconds": 900 } }
 { "v": 1, "type": "answer", "id": "req_77b0e2…", "decision": "done", "value": 0 }
 { "v": 1, "type": "answer", "id": "req_77b0e2…", "decision": "abort" }
 ```
 
 - `id` is 128 random bits and single-use. An answer to an unknown or resolved
   id gets `{ "type": "error", "id": …, "code": "unknown-request" }`.
-- `grant` maps to `ApprovalStore.grant` with the existing 86400 second cap.
-  It lets remotxai's session-scoped standing approvals cover later calls to
-  the same scope.
+- An answer that does not fit its request gets
+  `{ "type": "error", "id": …, "code": "invalid-answer" }` (or
+  `"grant-not-allowed"` for a grant on a `deny` or on a request with no
+  `grantScopes`), and the request stays pending. An approval takes `approve` or
+  `deny`. A human request takes `done` or `abort`. For `done`, `value` is a
+  boolean for `confirm`, an integer index into `choices` for `choose`, a string
+  of at most 10,000 characters for `input`, and absent for `acknowledge`.
+- A grant is `{ scope, ttlSeconds }` with `scope` either `session` or
+  `workspace` and `ttlSeconds` from 1 to 86400. `session` covers later calls of
+  that scope in the same session, until it closes. `workspace` covers every
+  session of this browxai process. Any other scope, `global` included, is
+  rejected with `invalid-answer`. A plain `approve` is one-shot. A grant is only
+  honoured on an `approve`.
 - `outcome` is one of `approved`, `denied`, `done`, `aborted`, `timeout`.
+  browxai sends `resolved` once a request ends, for any reason, so the card can
+  be cleared.
 - remotxai's `needs_input` push stays as its push doc defines it:
   `{ kind, session_id, label, at_ms }`. No browxai text goes into a push.
 
-Work on the browxai side: the capability and gate, a `docs/threat-model.md`
-row for `operator-channel`, a keystone test that a DevTools-world answer does
-not resolve a request while the channel is connected, a gate-blocked keystone,
-and `docs/tool-reference.md` changes for `await_human`.
+What the daemon has to do on its side: create the directory at 0700 and the
+socket at 0600 before it starts the harness, pass `BROWX_OPERATOR_SOCKET` and
+`BROWX_OPERATOR_TOKEN` (at least 16 characters, 128 random bits as hex is
+enough) in the per-session env, add `operator-channel` to `BROWX_CAPABILITIES`,
+check the handshake proof in constant time, and treat every `untrusted` field as
+data.
+
+Tests: `test/keystone/operator-channel.keystone.test.ts` (a real socket and real
+Chromium) and the unit tests beside `src/helper/operator-channel.ts`.
+
+Known limits, for a v2 of the daemon contract: the secret is handed over in the
+environment, which a same-user process can read from the initial environment
+block on Linux and macOS (an inherited descriptor that browxai closes after
+reading would fix it), and frames after the handshake carry no MAC, so a
+same-user process that swaps the socket and relays to the real daemon passes the
+proof. The fix is a session key derived from both nonces and the token, with a
+MAC on every frame.
+
+Not built: the `page` block (`url`, `title`) the first draft put on approval
+requests. The summary names the target, and the page fields would be one more
+untrusted string. Add them if the card needs them.
 
 ## 4. Live view from the phone
 
@@ -540,7 +620,7 @@ flake hunts.
    the adapter does not already.
 4. Set `BROWX_CREDENTIALS_PROVIDER` per remotxai profile, and enable
    `credentials,secrets` per session on request.
-5. browxai: `operator-channel` with its threat-model row and keystones.
+5. browxai: `operator-channel`, built, with its threat-model row and keystones.
    remotxai: the per-session socket and the approval and elicit cards.
 6. browxai: `elicitation/create` for `await_human` and confirm hooks, for
    harnesses that forward it.
@@ -559,8 +639,10 @@ flake hunts.
    today?
 5. Which directories under the daemon's runtime dir should hold browxai
    workspaces and per-session profile directories, and what deletes them?
-6. Which remotxai approval scopes (one-shot, session, workspace, global)
-   should map to a browxai `grant`? Global probably should not.
+6. Which remotxai approval scopes should map to a browxai `grant`? browxai
+   accepts one-shot (no `grant`), `session` and `workspace`, and rejects
+   `global`. A remotxai scope wider than a workspace has to be kept on the
+   daemon side, which would answer each request itself.
 7. What frame budget is acceptable on cellular: fps, width, quality?
 8. Until `operator-channel` exists, is a 5 minute refusal on a confirm hook
    acceptable for a phone-driven session, or should remotxai drop the hook

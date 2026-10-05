@@ -39,6 +39,7 @@ import { reapplyAll as reapplyEmulation } from "./emulation.js";
 import { attachDownloadCapture } from "../page/downloads.js";
 import { applyOverlayHide } from "../helper/overlay-hide.js";
 import { applyStealth } from "../helper/stealth.js";
+import { notificationPrompt, permissionPrompt } from "../helper/operator-prompts.js";
 import { requirePage } from "../engine/index.js";
 
 /** Attach the full Playwright post-creation bookkeeping to a freshly-built
@@ -73,10 +74,15 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   await attachPermissionPolicy(ctx, entry.permission, async (permission, origin) => {
     const ticket = br.newTicket();
     log.info(
-      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
+      `permission ask-human: ${permission}${origin ? ` (${origin})` : ""} → ${br.answerHint(`__browx.confirm(true|false, "${ticket}")`)}`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000, ticket);
+      const sig = await br.awaitSignal(
+        "respond",
+        300_000,
+        ticket,
+        permissionPrompt(permission, origin),
+      );
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";
@@ -91,10 +97,10 @@ export async function playwrightPostWire(entry: SessionEntry, deps: PostWireDeps
   await attachNotificationPolicy(ctx, entry.notification, async (n) => {
     const ticket = br.newTicket();
     log.info(
-      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.humanHint()}, call __browx.confirm(true|false, "${ticket}")`,
+      `notification ask-human: ${JSON.stringify({ title: n.title, origin: n.origin })} → ${br.answerHint(`__browx.confirm(true|false, "${ticket}")`)}`,
     );
     try {
-      const sig = await br.awaitSignal("respond", 300_000, ticket);
+      const sig = await br.awaitSignal("respond", 300_000, ticket, notificationPrompt(n));
       const data = sig.data as { kind?: string; value?: unknown } | null;
       if (data && data.kind === "confirm" && data.value === true) return "allow";
       return "deny";

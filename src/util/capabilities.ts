@@ -35,7 +35,8 @@ export type Capability =
   | "replay"
   | "native-device"
   | "self-approval"
-  | "human-gate-override";
+  | "human-gate-override"
+  | "operator-channel";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -59,6 +60,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "native-device",
   "self-approval",
   "human-gate-override",
+  "operator-channel",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -344,6 +346,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "human-gate-override",
     message:
       "human-gate-override capability is ENABLED — `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy` may move a session's policy away from `ask-human`, and `grant_permissions` may natively grant permissions held on it. Those policies exist to hold the page's permission requests, file-picker calls and notifications until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it the setters still accept every change that leaves `ask-human` in place. See docs/threat-model.md.",
+  },
+  {
+    capability: "operator-channel",
+    message:
+      "operator-channel capability is ENABLED — when BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN are both set, every confirm-hook request, permission and notification `ask-human` prompt and `await_human` is sent to the Unix socket the host daemon listens on, and the ONLY accepted answer is the daemon's (approve, deny, done, abort) on that authenticated connection. DevTools answers are ignored while it is on, a prompt with no daemon answer is denied at its timeout, and the file-picker `ask-human` prompt is refused outright because it needs files an approve or deny cannot carry. The daemon can also grant a confirm scope for one session or the whole workspace (never wider), up to 24 hours. The socket path and the token are read once from the environment and removed from it; they never appear in a log line, an error or a tool result. Enable it only when the daemon behind the socket is the operator. See docs/threat-model.md.",
   },
   {
     capability: "captcha",
