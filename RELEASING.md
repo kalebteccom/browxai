@@ -24,6 +24,12 @@ a version bump.
    publishing" below).
 5. Commit: `chore(release): vX.Y.Z`.
 6. Sign and push the tag: `git tag -s vX.Y.Z && git push origin main --tags`.
+   The release authority may instead have an agent push an annotated tag
+   (`git tag -a vX.Y.Z -m "browxai vX.Y.Z" && git push origin vX.Y.Z`) when the
+   signing key is unavailable. `release.yml` does not check the tag signature;
+   what ties a package to its source is the npm provenance statement signed by the
+   workflow run (`npm audit signatures`), so keep that check in step 8. v0.12.0
+   was released this way.
 7. Watch the Actions UI; approve the `release` environment when prompted.
    Publishing happens **only** through `release.yml` — never run
    `npm publish` / `pnpm publish` locally (see "OIDC trusted publishing").
