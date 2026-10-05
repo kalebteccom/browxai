@@ -25,7 +25,7 @@
 import { resolve as resolvePath } from "node:path";
 import { statSync } from "node:fs";
 import type { Page } from "playwright-core";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 import type {
   PdfFormat,
   PdfRefusal,
@@ -110,7 +110,7 @@ export async function pdfSave(
   }
 
   const relPath = args.path ?? defaultPdfPath(sessionId);
-  const resolved = resolveWorkspacePath(workspaceRoot, relPath, "pdf_save");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, relPath, "pdf_save");
   const fsMod = await import("node:fs");
   const pathMod = await import("node:path");
   // Ensure parent dir exists — `resolved` is rooted in BROWX_WORKSPACE by

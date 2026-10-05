@@ -18,6 +18,7 @@ import {
   type AuditReport,
   type AuditContext,
 } from "./perf-audit.js";
+import { assertWritableWorkspacePath } from "../util/workspace.js";
 
 const DEFAULT_DURATION_MS = 5_000;
 const MAX_DURATION_MS = 30_000;
@@ -62,6 +63,7 @@ function resolveAuditPath(workspaceRoot: string, p: string, tool: string): strin
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
+  assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }
 

@@ -199,10 +199,16 @@ BROWX_CAPABILITIES=read,navigation,action,human,file-io
 ```
 
 A gate-blocked call returns a structured `requiredCapability` error. That's
-the moment to ask for one specific grant, not a reason to start broad. And a
-`policy: …` block is a pre-approval issue, not a failure: call
-`approve_actions({scopes:[…]})` once and retry instead of marking the flow
-broken.
+the moment to ask for one specific grant, not a reason to start broad. A
+`policy: …` block means a confirm hook held the action, and the flow isn't
+broken. Ask the human to answer it from the DevTools console context the
+prompt names (or on the operator channel, when the operator enabled it), or ask the operator to drop that hook or enable `self-approval` for an
+unattended run. `approve_actions` refuses until the operator does, and a
+`set_config` patch can't add capabilities. The same goes for an `ask-human`
+permission or file-picker policy: `set_permission_policy` and
+`set_fs_picker_policy` refuse to move it to `allow` (or anything else) until the
+operator enables `human-gate-override`. Closing such a session and reopening the
+name with `allow` is refused the same way; leave the policy out to keep it.
 
 ## Two reflexes that hold everywhere
 

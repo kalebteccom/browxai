@@ -47,7 +47,7 @@
 //   on every result through `warnings[]`.
 
 import { resolve as resolvePath } from "node:path";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspaceWritePath } from "../session/storage.js";
 import {
   buildFetchScript,
   type DiscoveredResource,
@@ -248,7 +248,7 @@ export async function pageArchive(
   const maxBytes = Math.floor(maxSizeMb * 1024 * 1024);
 
   const relPath = args.path ?? defaultArchivePath(sessionId, format);
-  const resolved = resolveWorkspacePath(workspaceRoot, relPath, "page_archive");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, relPath, "page_archive");
 
   // 1. Run discovery inside the page — one round-trip, returns
   //    documentElement.outerHTML + the URL set.

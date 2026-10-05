@@ -49,11 +49,15 @@ import { newVideoRecorderState } from "../page/video.js";
 import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import { resolveCreationOptions } from "./session-creation-options.js";
 import { BrowxBridge } from "../helper/bridge.js";
+import type { OperatorChannel } from "../helper/operator-channel.js";
+import { cdpViewSource } from "../helper/operator-screencast.js";
+import type { ApprovalStore } from "../policy/confirm.js";
 import { Recorder } from "../page/recording.js";
 import { ReplaySession } from "../replay/session.js";
 import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
 import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
+import { refuseHeldProfile } from "./ask-human-gate.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -69,6 +73,11 @@ export interface SessionRegistryDeps {
   workspace: Workspace;
   serverEngine: EngineKind;
   serverDefaultMode: SessionMode;
+  /** The operator channel, when the capability is on and the channel opened.
+   *  Every session's bridge routes its human prompts through it. */
+  operator?: OperatorChannel | null;
+  /** Server-level grants. Closing a session drops the grants it held. */
+  approvals?: ApprovalStore;
 }
 
 /** Default launch mode for a session given its (effective, per-session) engine
@@ -95,8 +104,17 @@ export function defaultModeForEngine(
  * arrive through `deps`.
  */
 export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry {
-  const { opts, resolvedConfig, configStore, caps, workspace, serverEngine, serverDefaultMode } =
-    deps;
+  const {
+    opts,
+    resolvedConfig,
+    configStore,
+    caps,
+    workspace,
+    serverEngine,
+    serverDefaultMode,
+    operator,
+    approvals,
+  } = deps;
   // This server's OWN post-wire deps (caps / configStore / workspace) — threaded
   // explicitly into `engineEntry(...).postWire(entry, serverPostWireDeps)` per
   // session, never a module-global. A module-global would let a SECOND server in
@@ -123,7 +141,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
    *  land. (RFC 0009 P3.) */
   const captureFor = (e: SessionEntry): CaptureSubstrate =>
     engineEntry(e.session.engine).makeSubstrates(registrySubstrateDeps).capture(e);
-  return new SessionRegistry(
+  const registry: SessionRegistry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
       const headless = opts.headless ?? resolvedConfig.headless;
       // The engine for THIS session: an explicit `open_session({engine})`
@@ -266,12 +284,14 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         });
       } else {
         // persistent: the default session keeps the legacy single `profile`
-        // dir for back-compat; named/explicit profiles get their own dir so
-        // sessions don't share a cookie jar on disk.
+        // dir for back-compat (or BROWX_DEFAULT_PROFILE when the operator set
+        // one); named/explicit profiles get their own dir so sessions don't
+        // share a cookie jar on disk.
         const profileDir =
           id === DEFAULT_SESSION_ID && !spec?.profile
-            ? workspace.sub("profile")
+            ? workspace.defaultProfile()
             : workspace.sub(`profiles/${spec?.profile ?? id}`);
+        refuseHeldProfile(registry, caps, id, profileDir, spec);
         // first launch — no extensions registered yet (the registry is
         // mutated by the `extensions_*` tools post-creation, and a rebuild
         // path materialises the list into launch flags then).
@@ -369,7 +389,11 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       const secretsReg = new SecretRegistry();
       consoleBuf.setSecrets(secretsReg);
       networkSub.setSecrets(secretsReg);
-      const br = new BrowxBridge();
+      const br = new BrowxBridge({
+        operator,
+        sessionId: id,
+        mask: (v) => secretsReg.applyMaskDeep(v),
+      });
       // dialog / permission / notification / fs-picker policy STATES are built
       // here from the spec (the string parsing happened at the open_session tool
       // layer); their per-context ATTACH lives in the engine's `postWire`.
@@ -474,6 +498,12 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // second server in this process can never wire THIS session with its caps or
       // sandbox root.
       await engineEntry(sess.engine).postWire(entry, serverPostWireDeps);
+      // With live-view on, the daemon may ask for this session's frames. An
+      // engine with no CDP handle has no frame source and is refused by name.
+      operator?.liveView?.register(
+        id,
+        entry.session.cdp ? cdpViewSource(() => entry.session.cdp?.()) : null,
+      );
       return entry;
     },
     async (e): Promise<void> => {
@@ -504,6 +534,9 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       // data on disk. `abort()` is a no-op when nothing is recording.
       await e.replay.abort().catch(() => undefined);
       await e.bridge.detach().catch(() => undefined);
+      // Stop the session's live view before its browser goes away.
+      await operator?.liveView?.unregister(e.id);
+      approvals?.revokeSession(e.id);
       // Take the video flush BEFORE close, run it after. The engine handle the
       // flush needs has to be resolved while the session is live, but the bytes
       // only exist once `e.session.close()` has closed the underlying context —
@@ -529,4 +562,5 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       }
     },
   );
+  return registry;
 }

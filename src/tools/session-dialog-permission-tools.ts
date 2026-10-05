@@ -15,6 +15,8 @@ import {
   type FsPickerPolicy,
   type FsPickerFile,
 } from "../session/fs-picker.js";
+import type { PolicyShape } from "../policy/ask-human-guard.js";
+import { askHumanPolicyGate } from "./ask-human-gate.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
   RegisterHost,
@@ -36,6 +38,13 @@ export function registerSessionDialogPermissionTools(
   host: RegisterHost & GateHost & SessionHost & ConfigHost & ServerServicesHost,
 ): void {
   const { z, register, gateCheck, entryFor, workspace } = host;
+
+  const askHumanGate = (
+    tool: string,
+    current: PolicyShape,
+    next: PolicyShape,
+    supportedKeys: readonly string[],
+  ) => askHumanPolicyGate(gateCheck, tool, current, next, supportedKeys);
 
   register(
     "set_dialog_policy",
@@ -113,7 +122,7 @@ export function registerSessionDialogPermissionTools(
         '  - "allow"     — pre-grant via CDP `Browser.setPermission`; in-page wrappers call through. The app sees a granted permission.\n' +
         '  - "deny"      — pre-deny via CDP; in-page wrappers reject with `NotAllowedError`. The app sees a denied permission.\n' +
         '  - "raise"     — DEFAULT. Pre-deny + in-page wrappers reject AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled permission request — set permissionPolicy"}`. The page never deadlocks (the request is rejected), but a permission request can\'t silently change app state under a caller that didn\'t opt in.\n' +
-        '  - "ask-human" — server blocks on `__browx.confirm(true|false)` (the `await_human({kind:"confirm"})` mechanism), then resolves to allow/deny per the human\'s answer.\n' +
+        '  - "ask-human" — server blocks on `__browx.confirm(true|false)` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human({kind:"confirm"})` mechanism; page scripts cannot answer it), then resolves to allow/deny per the human\'s answer. Leaving `ask-human` (for any permission, through `mode` or `perPermission`) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability at server start; changes that keep `ask-human` in place are always accepted.\n' +
         'Per-permission overrides (`perPermission: { camera: "allow", notifications: "deny", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({permissionPolicy})`; this tool replaces it. Returns the resolved policy. Fired requests surface on `ActionResult.permissionRequests[]`. Supported permission names (v1): ' +
         SUPPORTED_PERMISSIONS.join(", ") +
         ". USB / Bluetooth / HID are out of scope for v1.\n" +
@@ -144,6 +153,14 @@ export function registerSessionDialogPermissionTools(
               }
             : {}),
         };
+        const cur = e.permission.current();
+        const refused = askHumanGate(
+          "set_permission_policy",
+          { mode: cur.mode, overrides: cur.perPermission },
+          { mode: next.mode, overrides: next.perPermission },
+          SUPPORTED_PERMISSIONS,
+        );
+        if (refused) return refused;
         const resolved = e.permission.set(next);
         // Re-apply the CDP baseline so the new mapping is in effect for the
         // very next page-side check (the wrapper script reads policy live; CDP
@@ -189,7 +206,7 @@ export function registerSessionDialogPermissionTools(
         '  - "allow"     — page-side stubs return synthetic FileSystem*Handle objects built from agent-supplied files (call `fs_picker_respond` BEFORE the action that triggers the picker, OR in parallel — the queue is drained per-API on the next matching call). For `showSaveFilePicker`, the agent supplies a workspace-rooted `path` and `createWritable()` writes from the page persist there. For `showOpenFilePicker`, the agent supplies inline `contents` (base64) or a workspace-rooted `path` (server inlines the bytes); the page reads via `getFile()`.\n' +
         '  - "deny"      — stubs throw `NotAllowedError`. The page sees the user-dismissed-picker branch.\n' +
         '  - "raise"     — DEFAULT. Stubs throw `NotAllowedError` AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled File System Access picker — set fsPickerPolicy"}`. The page never deadlocks (the picker rejects immediately), but a picker call can\'t silently change app state under a caller that didn\'t opt in.\n' +
-        '  - "ask-human" — server blocks on `__browx.respond({kind:"fs_picker_respond", value:{files:[…]}})` (the `await_human` mechanism), then resolves with the human-approved file list or denies.\n' +
+        '  - "ask-human" — server blocks on `__browx.respond({kind:"fs_picker_respond", value:{files:[…]}})` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human` mechanism; page scripts cannot answer it), then resolves with the human-approved file list or denies. This lets a person pick files. Leaving `ask-human` (for any API, through `mode` or `perAPI`) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability at server start, so the agent cannot switch the session to `allow` and answer with `fs_picker_respond` itself. Changes that keep `ask-human` in place are always accepted.\n' +
         'Per-API overrides (`perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({fsPickerPolicy})`; this tool replaces it. Returns the resolved policy. Fired pickers surface on `ActionResult.fsPickerRequests[]`. Supported APIs (v1): ' +
         SUPPORTED_FS_PICKER_APIS.join(", ") +
         ". Directory picker returns a minimal handle (`.name` set; iteration empty) — most editors will fall back to per-file pickers when iteration yields nothing.",
@@ -221,6 +238,14 @@ export function registerSessionDialogPermissionTools(
               }
             : {}),
         };
+        const cur = e.fsPicker.current();
+        const refused = askHumanGate(
+          "set_fs_picker_policy",
+          { mode: cur.mode, overrides: cur.perAPI },
+          { mode: next.mode, overrides: next.perAPI },
+          SUPPORTED_FS_PICKER_APIS,
+        );
+        if (refused) return refused;
         const resolved = e.fsPicker.set(next);
         const tokensEstimate = estimateTokens(JSON.stringify(resolved));
         return {

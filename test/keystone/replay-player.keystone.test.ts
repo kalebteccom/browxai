@@ -148,7 +148,7 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-replay-player-"));
   process.env.BROWX_WORKSPACE = workspace;
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,eval";
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,eval,self-approval";
 
   fixture = await startFixture();
   if (!chromePath || !existsSync(chromePath)) return;

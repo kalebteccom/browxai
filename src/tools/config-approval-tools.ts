@@ -1,4 +1,36 @@
 import type { ToolHost } from "./host.js";
+import { capabilityMissing, resolveConfirmHooks, type Capability } from "../util/capabilities.js";
+import { policyWidening } from "../util/config-ceiling.js";
+import { resolveOriginPolicy } from "../policy/origin.js";
+
+/** The first unparseable origin or unknown confirm hook in a patch, or null.
+ *  Each entry is checked on its own; a comma inside one is refused because the
+ *  start-time resolvers read these lists comma-joined. */
+function invalidPolicyValues(patch: {
+  allowedOrigins?: string[];
+  blockedOrigins?: string[];
+  confirmRequired?: string[];
+}): { key: string; value: string; reason: string } | null {
+  for (const key of ["allowedOrigins", "blockedOrigins"] as const) {
+    for (const value of patch[key] ?? []) {
+      if (value.includes(",")) return { key, value, reason: "an entry cannot contain a comma" };
+      try {
+        resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: value });
+      } catch (e) {
+        return { key, value, reason: e instanceof Error ? e.message : String(e) };
+      }
+    }
+  }
+  for (const value of patch.confirmRequired ?? []) {
+    try {
+      if (value.includes(",")) throw new Error("an entry cannot contain a comma");
+      resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: value });
+    } catch (e) {
+      return { key: "confirmRequired", value, reason: e instanceof Error ? e.message : String(e) };
+    }
+  }
+  return null;
+}
 
 /**
  * Config-store + pre-approval tools — the browxai-managed layered config store
@@ -12,9 +44,13 @@ export function registerConfigApprovalTools(host: ToolHost): void {
   // plugin runtime starts later). Destructuring would snapshot the empty
   // pre-load array, so get_config would always report `plugins: []`. Read it
   // live inside the handler instead.
-  const { z, register, caps, configStore, approvals } = host;
+  const { z, register, caps, configStore, approvals, gateCheck } = host;
 
   // ---------- config store ----------
+
+  const refusal = (body: Record<string, unknown>) => ({
+    content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
+  });
 
   const CONFIG_PATCH_SCHEMA = {
     testAttributes: z.array(z.string()).optional(),
@@ -93,106 +129,147 @@ export function registerConfigApprovalTools(host: ToolHost): void {
     },
   );
 
-  register(
-    "set_config",
-    {
-      description:
-        "Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). This is the ONLY supported way to set persistent config — no env vars, no hand-edited files. Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes.",
-      inputSchema: {
-        scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
-        patch: z
-          .object(CONFIG_PATCH_SCHEMA)
-          .describe("Partial config — only the keys you want to override."),
+  // `BROWX_CONFIG_READONLY=1` leaves the three tools that change policy
+  // unregistered, so they are absent from tools/list and no harness can offer
+  // them to the model: `set_config`, `reset_config` and `approve_actions`. An
+  // embedder that manages config itself sets it. `ConfigStore` also refuses
+  // writes in this mode, as a second layer.
+  if (!configStore.readonly) {
+    register(
+      "set_config",
+      {
+        description:
+          'Persist a config patch into the `user` or `project` layer of the browxai-managed config store (`<workspace>/config.json`). Arrays replace; `unstable.*` shallow-merges. Takes effect for sessions opened after this call (the default session re-resolves lazily). Refuses defaults/env/session scopes. Policy keys can only TIGHTEN against the server environment: `capabilities` must be a subset of the active set (else `error: "capabilities-not-widenable"`); `confirmRequired` add only, `allowedOrigins` narrow only, `blockedOrigins` add only, `disableWebSecurity` off only unless BROWX_DISABLE_WEB_SECURITY=1, `plugins` a subset of BROWX_PLUGINS (else `error: "policy-not-loosenable"`). Saved layers are clamped the same way at every start.',
+        inputSchema: {
+          scope: z.enum(["user", "project"]).describe("Which persistent layer to write."),
+          patch: z
+            .object(CONFIG_PATCH_SCHEMA)
+            .describe("Partial config — only the keys you want to override."),
+        },
       },
-    },
-    async ({ scope, patch }) => {
-      configStore.setLayer(scope, patch);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
-  );
-
-  register(
-    "reset_config",
-    {
-      description:
-        "Clear a persistent config layer (`user` or `project`) entirely. The built-in defaults + env layer remain.",
-      inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
-    },
-    async ({ scope }) => {
-      configStore.resetLayer(scope);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              { ok: true, cleared: scope, resolved: configStore.resolve() },
-              null,
-              2,
-            ),
-          },
-        ],
-      };
-    },
-  );
-
-  // ---------- session pre-approvals ----------
-
-  register(
-    "approve_actions",
-    {
-      batchable: true,
-      description:
-        'session-scoped pre-approval for one or more confirm-required scopes. Lets a non-Claude MCP client run without a human at DevTools to issue page-side `__browx.confirm(true)`. The client calls this once at session start with the scopes to pre-approve (e.g. `["byob_action"]`) and an optional TTL; confirm hooks for those scopes auto-approve within the window. Each grant + consume is logged for audit. Falls back to page-side confirm when no grant covers the scope. Pre-approval is **not** a security boundary — it\'s an unblock for headless flows; tighten by capping `ttlSeconds` per-session.',
-      inputSchema: {
-        scopes: z
-          .array(z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]))
-          .min(1)
-          .describe("Confirm scope names to grant. Same vocabulary as BROWX_CONFIRM_REQUIRED."),
-        ttlSeconds: z
-          .number()
-          .int()
-          .positive()
-          .max(24 * 60 * 60)
-          .optional()
-          .describe(
-            "Lifetime of the grant in seconds. Default 3600 (1 hour). Hard cap 86400 (24h).",
-          ),
+      async ({ scope, patch }) => {
+        // A saved `capabilities` list is clamped to BROWX_CAPABILITIES at every
+        // start, so it can only narrow. Refuse a widening patch outright, so the
+        // caller learns that now instead of at the next restart.
+        const widening = (patch.capabilities ?? []).filter((c) =>
+          capabilityMissing(c as Capability, caps),
+        );
+        if (widening.length) {
+          return refusal({
+            ok: false,
+            error: "capabilities-not-widenable",
+            widening,
+            activeCapabilities: [...caps.enabled].sort(),
+            hint: "`set_config` can only narrow `capabilities` to a subset of the active set. Enabling a capability is the operator's decision: add it to BROWX_CAPABILITIES and restart the server.",
+          });
+        }
+        // Values the next start parses. A bad one would crash that start
+        // (server.ts resolves the origin policy and confirm hooks from them).
+        const invalid = invalidPolicyValues(patch);
+        if (invalid) return refusal({ ok: false, error: "invalid-config-value", ...invalid });
+        // The other policy keys: the same rule against the env ceiling.
+        const loosening = policyWidening(patch, configStore.ceiling());
+        if (Object.keys(loosening).length) {
+          return refusal({
+            ok: false,
+            error: "policy-not-loosenable",
+            loosening,
+            hint: "`set_config` can only tighten policy keys: add confirm hooks and blocked origins, narrow allowed origins and plugins, turn disableWebSecurity off. Loosening one is the operator's decision, made in the server's environment (BROWX_CONFIRM_REQUIRED, BROWX_ALLOWED_ORIGINS, BROWX_BLOCKED_ORIGINS, BROWX_DISABLE_WEB_SECURITY, BROWX_PLUGINS).",
+          });
+        }
+        configStore.setLayer(scope, patch);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { ok: true, scope, written: Object.keys(patch), resolved: configStore.resolve() },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
       },
-    },
-    async ({ scopes, ttlSeconds }) => {
-      const ttl = ttlSeconds ?? 3600;
-      for (const scope of scopes) approvals.grant(scope, ttl);
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify(
-              {
-                ok: true,
-                granted: scopes,
-                ttlSeconds: ttl,
-                expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
-                note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
-              },
-              null,
-              2,
+    );
+
+    register(
+      "reset_config",
+      {
+        description:
+          "Clear a persistent config layer (`user` or `project`) entirely. The built-in defaults + env layer remain.",
+        inputSchema: { scope: z.enum(["user", "project"]).describe("Persistent layer to clear.") },
+      },
+      async ({ scope }) => {
+        configStore.resetLayer(scope);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                { ok: true, cleared: scope, resolved: configStore.resolve() },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+    );
+
+    // ---------- session pre-approvals ----------
+
+    register(
+      "approve_actions",
+      {
+        batchable: true,
+        capability: "self-approval",
+        description:
+          'Pre-approve one or more confirm-required scopes for a TTL window, so confirm hooks for those scopes pass without asking the human. Requires the off-by-default `self-approval` capability: the confirm hooks exist to stop the agent\'s own actions, and this tool lets the agent answer them itself, so the operator has to opt in at server start. Refused with `requiredCapability: "self-approval"` when the capability is not active. Each grant + consume is logged for audit. Falls back to asking the human when no grant covers the scope. Keep `ttlSeconds` short.',
+        inputSchema: {
+          scopes: z
+            .array(
+              z.enum(["navigate_off_allowlist", "byob_action", "file_download", "file_upload"]),
+            )
+            .min(1)
+            .describe("Confirm scope names to grant. Same vocabulary as BROWX_CONFIRM_REQUIRED."),
+          ttlSeconds: z
+            .number()
+            .int()
+            .positive()
+            .max(24 * 60 * 60)
+            .optional()
+            .describe(
+              "Lifetime of the grant in seconds. Default 3600 (1 hour). Hard cap 86400 (24h).",
             ),
-          },
-        ],
-      };
-    },
-  );
+        },
+      },
+      async ({ scopes, ttlSeconds }) => {
+        const g = gateCheck("approve_actions");
+        if (g) return g;
+        const ttl = ttlSeconds ?? 3600;
+        for (const scope of scopes) approvals.grant(scope, ttl);
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  ok: true,
+                  granted: scopes,
+                  ttlSeconds: ttl,
+                  expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+                  note: "Each call into a granted scope is logged. Subsequent approve_actions calls for the same scope reset the TTL.",
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+        };
+      },
+    );
+  }
 
   register(
     "list_approvals",

@@ -146,8 +146,14 @@ export interface GateHost {
    *  compound-arm handler requires when a specific argument is set (e.g.
    *  `start_recording({replay})` also demanding the `replay` capability);
    *  passing them here keeps the second capability's refusal on the same
-   *  centralised gate rather than hand-rolled in a tool file. */
-  gateCheck: (toolName: string, extra?: readonly Capability[]) => ToolResponse | null;
+   *  centralised gate rather than hand-rolled in a tool file. `reason` is
+   *  surfaced as `reason` on the `extra` arm's refusal so the caller learns
+   *  which part of the call needed the second capability. */
+  gateCheck: (
+    toolName: string,
+    extra?: readonly Capability[],
+    reason?: string,
+  ) => ToolResponse | null;
 
   /** Engine-dimension early return: unsupported-engine refusal content, or null
    *  when the engine supports the tool. */

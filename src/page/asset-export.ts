@@ -26,6 +26,7 @@ import type { CDPSession, Page } from "playwright-core";
 import type { SessionNetworkRing, NetworkEntry } from "./network.js";
 import { log } from "../util/logging.js";
 import { filenameFromUrl, resolveCollision, timestampForDir } from "./asset-export-naming.js";
+import { assertWritableWorkspacePath } from "../util/workspace.js";
 
 // Re-export the engine-blind naming helpers so the original import path stays
 // the public surface — colocated tests import these from here.
@@ -183,6 +184,7 @@ export function resolveAssetExportDir(
         `Use a workspace-relative path.`,
     );
   }
+  assertWritableWorkspacePath(workspaceRoot, resolved, "asset_export");
   return resolved;
 }
 
@@ -264,6 +266,7 @@ export interface AssetExportDeps {
 
 /** The mutable export accumulator threaded through the per-entry loop. */
 interface ExportState {
+  workspaceRoot: string;
   intoDir: string;
   maxCount: number;
   maxBytes: number;
@@ -298,6 +301,15 @@ function persistAssetBody(
   if (resolved !== st.intoDir && !resolved.startsWith(st.intoDir + sep)) {
     st.droppedCount += 1;
     st.warnings.push(`refused to write outside intoDir: ${entry.url}`);
+    return "continue";
+  }
+  // The filename comes from the page's URL, so it can name an operator file
+  // (`config.json` when `intoDir` is the workspace root).
+  try {
+    assertWritableWorkspacePath(st.workspaceRoot, resolved, "asset_export");
+  } catch (err) {
+    st.droppedCount += 1;
+    st.warnings.push(err instanceof Error ? err.message : String(err));
     return "continue";
   }
   try {
@@ -376,6 +388,7 @@ export async function assetExport(
   const all = deps.buffer.iter();
   const totalCount = all.length;
   const st: ExportState = {
+    workspaceRoot: deps.workspaceRoot,
     intoDir,
     maxCount: Math.min(
       Math.max(1, args.maxCount ?? ASSET_EXPORT_DEFAULT_MAX_COUNT),

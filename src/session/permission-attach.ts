@@ -12,6 +12,7 @@
 
 import type { BrowserContext, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { bindingGuard } from "./binding-guard.js";
 import {
   SUPPORTED_PERMISSIONS,
   type PermissionAskHandler,
@@ -46,7 +47,7 @@ export async function attachPermissionPolicy(
   // bubble back to the page as a rejected promise; the wrapper script catches
   // and falls back to "allow" (CDP backstop still enforces).
   try {
-    await context.exposeBinding("__browx_permission_check", async (_source, payload: string) => {
+    const checkHandler = async (_source: unknown, payload: string): Promise<string> => {
       try {
         const o = JSON.parse(payload) as { permission?: string; origin?: string };
         const name = o.permission;
@@ -85,12 +86,22 @@ export async function attachPermissionPolicy(
         });
         return "allow";
       }
-    });
-    await context.exposeBinding("__browx_permission_observe", (_source, _payload: string) => {
-      // Read-side breadcrumb only — no decision, no record (the page calling
-      // permissions.query() is too noisy to record per-call).
-      return undefined;
-    });
+    };
+    // Over budget a call answers "deny", or never settles; it is never an approval.
+    await context.exposeBinding(
+      "__browx_permission_check",
+      bindingGuard.wrap("permission_check", "decision", checkHandler, {
+        denyResult: () => "deny",
+      }),
+    );
+    await context.exposeBinding(
+      "__browx_permission_observe",
+      bindingGuard.wrap("permission_observe", "observe", (_source, _payload: string) => {
+        // Read-side breadcrumb only — no decision, no record (the page calling
+        // permissions.query() is too noisy to record per-call).
+        return undefined;
+      }),
+    );
   } catch (err) {
     log.warn("session.permission: exposeBinding install failed; CDP baseline still enforces", {
       error: err instanceof Error ? err.message : String(err),

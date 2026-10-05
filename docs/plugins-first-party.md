@@ -37,9 +37,9 @@ Enable both before starting the server:
 $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 ```
 
-(or persist via `set_config({scope:"user", patch:{capabilities:[...]}})`
-and restart: capabilities and plugins are both resolved once at server
-start.)
+(`set_config` can't add capabilities: a saved `capabilities` list only
+narrows `BROWX_CAPABILITIES`. Capabilities and plugins are both resolved once
+at server start.)
 
 The example plugin declares **no** capabilities. It runs on a server
 with the default set and exists to prove the runtime end-to-end.

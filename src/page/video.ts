@@ -36,7 +36,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Page } from "playwright-core";
-import { resolveWorkspacePath } from "../session/storage.js";
+import { resolveWorkspacePath, resolveWorkspaceWritePath } from "../session/storage.js";
 import type { VideoRecorderState, VideoRefusal, VideoStartConfig } from "./video-types.js";
 
 // The recorder STATE and its config/refusal shapes are plain data and live above
@@ -94,7 +94,7 @@ export function resolveVideoTargetPath(
   tool: string,
 ): string {
   const resolved = userPath
-    ? resolveWorkspacePath(workspaceRoot, userPath, tool)
+    ? resolveWorkspaceWritePath(workspaceRoot, userPath, tool)
     : resolveWorkspacePath(workspaceRoot, `videos/${defaultVideoFilename(sessionId)}`, tool);
   // `resolved` is workspace-rooted by construction (resolveWorkspacePath
   // rejects any escape from `workspaceRoot`); `dirname(resolved)` is

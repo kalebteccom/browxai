@@ -12,6 +12,7 @@
 import { isOriginAllowed, type OriginPolicy } from "./origin.js";
 import type { ConfirmHook } from "../util/capabilities.js";
 import type { BrowxBridge } from "../helper/bridge.js";
+import type { OperatorGrant, OperatorPrompt } from "../helper/operator-channel.js";
 import { log } from "../util/logging.js";
 
 export interface ConfirmContext {
@@ -20,11 +21,14 @@ export interface ConfirmContext {
   bridge: BrowxBridge | null;
   /** True iff the active session attached over CDP (BYOB). */
   isByob: boolean;
-  /** session-scoped pre-approvals. When a scope is granted, confirm
-   *  hooks for that scope auto-approve without the page-side `__browx.confirm`
-   *  round-trip. Lets non-Claude MCP clients run unattended without a human
-   *  at DevTools to issue confirms. */
+  /** Pre-approvals from `approve_actions`. When a scope is granted, confirm
+   *  hooks for that scope auto-approve without asking the human. Granting is
+   *  gated on the off-by-default `self-approval` capability, because the agent
+   *  whose actions the hook is meant to stop is the one calling the tool. */
   approvals?: ApprovalStore;
+  /** The session the call runs in. A session-scoped operator grant is stored
+   *  and matched under it. */
+  sessionId?: string;
 }
 
 /**
@@ -35,37 +39,81 @@ export interface ConfirmContext {
  * consume is logged for audit.
  *
  * Pre-approval is *not* an override; the confirm hook still runs, finds the
- * grant, and returns ok:true with `reason: "pre-approved"`. The page-side
- * channel is the fallback when no pre-approval covers the scope.
+ * grant, and returns ok:true with `reason: "pre-approved"`. The human channel
+ * is the fallback when no pre-approval covers the scope. The only writer is
+ * `approve_actions`, behind the `self-approval` capability.
  */
 export class ApprovalStore {
-  private grants = new Map<ConfirmHook, { expiresAt: number; grantedAt: number; uses: number }>();
+  /** Workspace grants (`approve_actions`, an operator `workspace` grant) cover
+   *  every session of this process. Session grants cover one session id. The
+   *  two never merge: a session grant is checked first and falls through to the
+   *  workspace grant. Nothing is wider than the process's one workspace. */
+  private grants = new Map<
+    string,
+    {
+      scope: ConfirmHook;
+      sessionId?: string;
+      expiresAt: number;
+      grantedAt: number;
+      uses: number;
+    }
+  >();
 
-  /** Grant a scope for `ttlSeconds`. Overwrites any prior grant for the same scope. */
-  grant(scope: ConfirmHook, ttlSeconds: number): void {
+  private static key(scope: ConfirmHook, sessionId?: string): string {
+    return sessionId === undefined ? `w:${scope}` : `s:${scope}:${sessionId}`;
+  }
+
+  /** Grant a scope for `ttlSeconds`. Overwrites any prior grant for the same
+   *  scope and session. With `sessionId` the grant covers that session only. */
+  grant(scope: ConfirmHook, ttlSeconds: number, sessionId?: string): void {
     const ttl = Math.max(1, Math.floor(ttlSeconds));
     const expiresAt = Date.now() + ttl * 1000;
-    this.grants.set(scope, { expiresAt, grantedAt: Date.now(), uses: 0 });
+    this.grants.set(ApprovalStore.key(scope, sessionId), {
+      scope,
+      ...(sessionId !== undefined ? { sessionId } : {}),
+      expiresAt,
+      grantedAt: Date.now(),
+      uses: 0,
+    });
     log.info(
-      `approve_actions: scope="${scope}" ttl=${ttl}s expires=${new Date(expiresAt).toISOString()}`,
+      `approve_actions: scope="${scope}"${sessionId !== undefined ? ` session="${sessionId}"` : ""} ttl=${ttl}s expires=${new Date(expiresAt).toISOString()}`,
     );
   }
 
-  /** Revoke a previously-granted scope. Returns true if a live grant existed. */
+  /** Revoke a previously-granted workspace scope. Returns true if a live grant existed. */
   revoke(scope: ConfirmHook): boolean {
-    const had = this.grants.delete(scope);
+    const had = this.grants.delete(ApprovalStore.key(scope));
     if (had) log.info(`approve_actions: revoked scope="${scope}"`);
     return had;
   }
 
+  /** Drop every grant held by one session. Run when the session closes, so a
+   *  later session that reuses the id does not inherit it. */
+  revokeSession(sessionId: string): number {
+    let n = 0;
+    for (const [key, g] of this.grants) {
+      if (g.sessionId !== sessionId) continue;
+      this.grants.delete(key);
+      n++;
+    }
+    return n;
+  }
+
   /** Check (and consume) a grant. Returns true when an unexpired grant covers
-   *  the scope — the call is counted toward audit. Returns false (and evicts
-   *  the grant) when the grant has expired. */
-  consume(scope: ConfirmHook): boolean {
-    const grant = this.grants.get(scope);
+   *  the scope for this session, or for the whole workspace — the call is counted
+   *  toward audit. Returns false (and evicts the grant) when the grant has expired. */
+  consume(scope: ConfirmHook, sessionId?: string): boolean {
+    if (sessionId !== undefined && this.take(ApprovalStore.key(scope, sessionId), scope)) {
+      return true;
+    }
+    return this.take(ApprovalStore.key(scope), scope);
+  }
+
+  private take(key: string, scope: ConfirmHook): boolean {
+    const grant = this.grants.get(key);
     if (!grant) return false;
     if (Date.now() > grant.expiresAt) {
-      this.grants.delete(scope);
+      this.grants.delete(key);
       log.info(`approve_actions: scope="${scope}" expired`);
       return false;
     }
@@ -76,23 +124,19 @@ export class ApprovalStore {
   /** Snapshot of live grants for audit / `list_approvals` style tooling. */
   list(): Array<{
     scope: ConfirmHook;
+    sessionId?: string;
     grantedAt: number;
     expiresAt: number;
     uses: number;
     remainingMs: number;
   }> {
     const now = Date.now();
-    const out: Array<{
-      scope: ConfirmHook;
-      grantedAt: number;
-      expiresAt: number;
-      uses: number;
-      remainingMs: number;
-    }> = [];
-    for (const [scope, grant] of this.grants) {
+    const out: ReturnType<ApprovalStore["list"]> = [];
+    for (const grant of this.grants.values()) {
       if (now > grant.expiresAt) continue;
       out.push({
-        scope,
+        scope: grant.scope,
+        ...(grant.sessionId !== undefined ? { sessionId: grant.sessionId } : {}),
         grantedAt: grant.grantedAt,
         expiresAt: grant.expiresAt,
         uses: grant.uses,
@@ -132,34 +176,16 @@ export async function confirmNavigation(
     log.warn(`navigate: ${url} is off the allowed-origins list; no confirm hook set, proceeding`);
     return { ok: true, reason: "off-allowlist; no hook", asked: false };
   }
-  if (ctx.approvals?.consume("navigate_off_allowlist")) {
+  if (ctx.approvals?.consume("navigate_off_allowlist", ctx.sessionId)) {
     return { ok: true, reason: "pre-approved", asked: false };
   }
-  if (!ctx.bridge) {
-    // No bridge means no way to confirm — fail closed.
-    return {
-      ok: false,
-      reason: "off-allowlist; no helper bridge to confirm; blocked",
-      asked: false,
-    };
-  }
-  log.info(`confirm navigate (off-allowlist): ${url} — call __browx.confirm(true) to proceed`);
-  try {
-    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
-    const value =
-      sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
-        ? (sig.data as { value: unknown }).value
-        : sig.data;
-    return value === true
-      ? { ok: true, reason: "human-approved", asked: true }
-      : { ok: false, reason: "human-declined", asked: true };
-  } catch (e) {
-    return {
-      ok: false,
-      reason: `confirm timed out / failed: ${e instanceof Error ? e.message : String(e)}`,
-      asked: true,
-    };
-  }
+  return askHuman(ctx, "off-allowlist", `confirm navigate (off-allowlist): ${url}`, {
+    kind: "approval",
+    scope: "navigate_off_allowlist",
+    tool: "navigate",
+    summary: `navigate to ${url} (off the allowed-origins list)`,
+    grantable: "navigate_off_allowlist",
+  });
 }
 
 /**
@@ -178,22 +204,56 @@ export async function confirmByobAction(
   if (!ctx.hooks.has("byob_action")) {
     return { ok: true, reason: "byob; no confirm hook", asked: false };
   }
-  if (ctx.approvals?.consume("byob_action")) {
+  if (ctx.approvals?.consume("byob_action", ctx.sessionId)) {
     return { ok: true, reason: "pre-approved", asked: false };
   }
-  if (!ctx.bridge) {
-    return { ok: false, reason: "byob; no helper bridge to confirm; blocked", asked: false };
+  return askHuman(ctx, "byob", `confirm byob ${toolName}`, {
+    kind: "approval",
+    scope: "byob_action",
+    tool: toolName,
+    summary: `${toolName} on an attached browser`,
+    grantable: "byob_action",
+  });
+}
+
+/** Extend the confirm scope the operator approved, when the answer carried a
+ *  grant. A session grant needs the session id; without one it is dropped, never
+ *  widened to the workspace. */
+function applyGrant(ctx: ConfirmContext, scope: ConfirmHook, grant: OperatorGrant): void {
+  if (!ctx.approvals) return;
+  if (grant.scope === "workspace") ctx.approvals.grant(scope, grant.ttlSeconds);
+  else if (ctx.sessionId !== undefined) ctx.approvals.grant(scope, grant.ttlSeconds, ctx.sessionId);
+}
+
+/** Block on the human channel for a yes/no. Fails closed when the session has
+ *  no bridge or no human channel (an engine without CDP and no operator
+ *  channel): nothing the page can reach may stand in for the human. */
+async function askHuman(
+  ctx: ConfirmContext,
+  label: string,
+  prompt: string,
+  operator: OperatorPrompt,
+): Promise<ConfirmDecision> {
+  if (!ctx.bridge || !ctx.bridge.humanChannelAvailable()) {
+    return {
+      ok: false,
+      reason: `${label}; no human channel on this session to confirm; blocked`,
+      asked: false,
+    };
   }
-  log.info(`confirm byob ${toolName} — call __browx.confirm(true) to proceed`);
+  const ticket = ctx.bridge.newTicket();
+  log.info(`${prompt} — ${ctx.bridge.answerHint(`__browx.confirm(true, "${ticket}")`)}`);
   try {
-    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000);
+    const sig = await ctx.bridge.awaitSignal("respond", 5 * 60_000, ticket, operator);
     const value =
       sig.data && typeof sig.data === "object" && "value" in (sig.data as Record<string, unknown>)
         ? (sig.data as { value: unknown }).value
         : sig.data;
-    return value === true
-      ? { ok: true, reason: "human-approved", asked: true }
-      : { ok: false, reason: "human-declined", asked: true };
+    if (value !== true) return { ok: false, reason: "human-declined", asked: true };
+    if (sig.grant && operator.kind === "approval" && operator.grantable) {
+      applyGrant(ctx, operator.grantable, sig.grant);
+    }
+    return { ok: true, reason: "human-approved", asked: true };
   } catch (e) {
     return {
       ok: false,

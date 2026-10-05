@@ -33,7 +33,11 @@ export type Capability =
   | "diagnostics"
   | "canvas"
   | "replay"
-  | "native-device";
+  | "native-device"
+  | "self-approval"
+  | "human-gate-override"
+  | "operator-channel"
+  | "live-view";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -55,6 +59,10 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "canvas",
   "replay",
   "native-device",
+  "self-approval",
+  "human-gate-override",
+  "operator-channel",
+  "live-view",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -330,6 +338,26 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "native-device",
     message:
       'native-device capability is ENABLED — it gates the two native ENGINES, `ios-app` (an iOS Simulator over `simctl` plus an operator-run WebDriverAgent) and `android-app` (an Android emulator over adb). They broaden posture more than any browser capability does: both INSTALL AND LAUNCH APPLICATIONS, drive an OS-LEVEL INPUT PIPELINE that every app on the device receives, boot and shut down simulators and emulators, and read the device\'s screen and its installed-app list. `open_session({browserType:"ios-app"})` and `open_session({browserType:"android-app"})` both refuse with `capability-required` without it, so the gate sits at session creation and no native tool can be reached around it. On a simulator or an emulator that reach ends at a sandbox; the SAME code path against a physical device reaches the operator\'s phone, and real devices are out of scope by policy, not by mechanism. Registered secrets do NOT materialise on either native engine (a `<NAME>` alias is typed literally), so a secret never reaches `adb shell input text` — the leak sink RFC 0008 §6 names. Recordings still carry real app content: a native screenshot photographs the screen, and the iOS keyboard draws a character-preview bubble above the pressed key that a recording catches even for a password field. Xcode with its Simulator runtimes, and the Android SDK, are OPERATOR-SUPPLIED — never bundled, never auto-installed, mirroring the credentials-provider posture. Same posture class as `replay` / `network-body` / `secrets`. See docs/threat-model.md.',
+  },
+  {
+    capability: "self-approval",
+    message:
+      "self-approval capability is ENABLED — `approve_actions` lets the agent pre-approve the confirm hooks (`byob_action`, `navigate_off_allowlist`, …) that exist to stop the agent's own actions until a human says yes. Every grant and every consume is logged. Enable it only for unattended runs where you accept that the agent answers its own confirmations; prefer removing a single hook from BROWX_CONFIRM_REQUIRED when that is what you mean. See docs/threat-model.md.",
+  },
+  {
+    capability: "human-gate-override",
+    message:
+      "human-gate-override capability is ENABLED — `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy` may move a session's policy away from `ask-human`, and `grant_permissions` may natively grant permissions held on it. Those policies exist to hold the page's permission requests, file-picker calls and notifications until a human answers; with this capability the agent can switch the policy to `allow` and (for pickers, with `fs_picker_respond`) answer the prompt itself. Enable it only for unattended runs where you accept that the agent decides these requests; prefer opening the session with the policy you mean (`allow` / `deny`) when that is what you want. Without it the setters still accept every change that leaves `ask-human` in place. See docs/threat-model.md.",
+  },
+  {
+    capability: "operator-channel",
+    message:
+      "operator-channel capability is ENABLED — when BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN are both set, every confirm-hook request, permission and notification `ask-human` prompt and `await_human` is sent to the Unix socket the host daemon listens on, and the ONLY accepted answer is the daemon's (approve, deny, done, abort) on that authenticated connection. DevTools answers are ignored while it is on, a prompt with no daemon answer is denied at its timeout, and the file-picker `ask-human` prompt is refused outright because it needs files an approve or deny cannot carry. The daemon can also grant a confirm scope for one session or the whole workspace (never wider), up to 24 hours. The socket path and the token are read once from the environment and removed from it; they never appear in a log line, an error or a tool result. Enable it only when the daemon behind the socket is the operator. See docs/threat-model.md.",
+  },
+  {
+    capability: "live-view",
+    message:
+      "live-view capability is ENABLED — the host daemon on the operator-channel socket can start a screencast of a session's browser (JPEG, up to 5 fps and 1280 px wide, stepping down to 1 fps and 640 px when it falls behind), and the frames go to that socket and nowhere else: not to a tool result, a log, an artifact, a report, a HAR or a recording. The agent can neither start nor read it, and the daemon starts and stops it per session. SECRET MASKING DOES NOT COVER PIXELS: a registered secret typed into a visible field, a password the page renders, and anything else on screen reaches the daemon (and so the operator's phone and the relay path behind it) exactly as drawn. It needs `operator-channel`; without it the server refuses to start. Enable it only when the daemon behind the socket is the operator and the path from it to the operator's screen is one you trust. See docs/threat-model.md.",
   },
   {
     capability: "captcha",

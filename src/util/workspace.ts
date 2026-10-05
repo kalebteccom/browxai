@@ -3,8 +3,18 @@
 // never at cwd. Resolved once at startup.
 
 import { homedir } from "node:os";
-import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve, sep } from "node:path";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fchmodSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  realpathSync,
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
+import { log } from "./logging.js";
 
 const DEFAULT_WORKSPACE = join(homedir(), ".browxai");
 
@@ -13,20 +23,92 @@ export interface Workspace {
   readonly root: string;
   /** Subdir helper — `workspace.sub("profile")` → `<root>/profile`, created if missing. */
   sub(name: string): string;
+  /** The default session's persistent profile directory: `BROWX_DEFAULT_PROFILE`
+   *  when set (validated, created 0700), else `<root>/profile`. */
+  defaultProfile(): string;
 }
 
 export function resolveWorkspace(env: NodeJS.ProcessEnv = process.env): Workspace {
   const raw = env.BROWX_WORKSPACE?.trim();
   const root = raw ? resolve(raw.replace(/^~(?=$|\/)/, homedir())) : DEFAULT_WORKSPACE;
   if (!existsSync(root)) mkdirSync(root, { recursive: true });
+  const sub = (name: string): string => {
+    const p = join(root, name);
+    if (!existsSync(p)) mkdirSync(p, { recursive: true });
+    return p;
+  };
   return {
     root,
-    sub(name) {
-      const p = join(root, name);
-      if (!existsSync(p)) mkdirSync(p, { recursive: true });
-      return p;
-    },
+    sub,
+    defaultProfile: () => resolveDefaultProfileDir(env) ?? sub("profile"),
   };
+}
+
+/**
+ * `BROWX_DEFAULT_PROFILE=<dir>`: the persistent profile directory the default
+ * session launches on, for an embedder that keeps browser profiles outside the
+ * workspace. Operator-set, like `BROWX_WORKSPACE`, so it may sit anywhere; the
+ * checks stop a typo or a planted link from pointing a browser profile, which
+ * holds cookies and saved logins, somewhere unintended.
+ *
+ * Refuses a relative path, the filesystem root, the home directory itself, a
+ * symlink, a non-directory, and a directory owned by another user. Creates a
+ * missing directory with mode 0700. Warns (does not refuse) when an existing
+ * directory is readable by group or others. Returns undefined when unset.
+ */
+export function resolveDefaultProfileDir(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const raw = env.BROWX_DEFAULT_PROFILE?.trim();
+  if (!raw) return undefined;
+  const fail = (why: string): never => {
+    throw new Error(`BROWX_DEFAULT_PROFILE: ${why} (got "${raw}")`);
+  };
+  if (raw.includes("\0")) fail("contains a NUL byte");
+  const expanded = raw.replace(/^~(?=$|\/)/, homedir());
+  if (!isAbsolute(expanded)) fail("must be an absolute path or start with ~/");
+  const dir = resolve(expanded);
+  if (dir === parse(dir).root) fail("refuses the filesystem root");
+  if (dir === resolve(homedir())) fail("refuses the home directory itself; name a subdirectory");
+  if (existsSync(dir) || isDanglingLink(dir)) {
+    const st = lstatSync(dir);
+    if (st.isSymbolicLink()) fail("is a symlink; point it at the real directory");
+    if (!st.isDirectory()) fail("exists and is not a directory");
+    if (typeof process.getuid === "function" && st.uid !== process.getuid())
+      fail("is owned by another user");
+    if ((st.mode & 0o077) !== 0) {
+      log.warn(
+        `BROWX_DEFAULT_PROFILE ${dir} is accessible to group or others ` +
+          `(mode ${(st.mode & 0o777).toString(8)}); a browser profile holds cookies and saved logins, chmod 700 it`,
+      );
+    }
+    return dir;
+  }
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  // Something could have swapped the path between the existence check and the
+  // mkdir. Check again, then chmod through a descriptor opened with O_NOFOLLOW,
+  // so the mode lands on the directory we checked and never on a link target.
+  const st = lstatSync(dir);
+  if (st.isSymbolicLink()) fail("became a symlink while it was being created");
+  if (!st.isDirectory()) fail("is not a directory after creation");
+  if (typeof process.getuid === "function" && st.uid !== process.getuid())
+    fail("is owned by another user after creation");
+  const fd = openSync(
+    dir,
+    fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (fsConstants.O_DIRECTORY ?? 0),
+  );
+  try {
+    fchmodSync(fd, 0o700);
+  } finally {
+    closeSync(fd);
+  }
+  return dir;
+}
+
+function isDanglingLink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 // ---- workspace path / name validators -------------------------------------
@@ -66,5 +148,117 @@ export function resolveWorkspacePath(workspaceRoot: string, p: string, tool: str
         `Use a workspace-relative path (or call \`auth_save\` for the named-state path).`,
     );
   }
+  return resolved;
+}
+
+// ---- protected workspace paths -------------------------------------------
+//
+// Some files under the workspace are the operator's, not the agent's: the
+// config store, the plugin declaration and install tree, and the browser
+// profiles and their snapshots. A tool that writes an agent-chosen path (`pdf_save`, `dom_export`,
+// `asset_export`, a heap snapshot, …) must never land on one. Overwriting
+// `config.json` would reset the operator's saved narrowing, and writing
+// `plugins.json` would declare code to load at the next start.
+
+const PROTECTED_FILES = [
+  "config.json",
+  "plugins.json",
+  "plugins-lock.json",
+  // The key profile_snapshot MACs its manifests with (session/profile-snapshot.ts).
+  ".browx-snapshot-key",
+];
+// `profile-snapshots` is restored over a profile; `chrome-profile` is the one
+// `browxai chrome start` launches, which an attached session drives.
+const PROTECTED_DIRS = ["plugins", "profile", "profiles", "profile-snapshots", "chrome-profile"];
+
+/** `p` with its longest existing ancestor replaced by that ancestor's real
+ *  path, so a symlink inside the workspace cannot route around the check. */
+function realish(p: string): string {
+  let head = p;
+  const tail: string[] = [];
+  // cap: one step per path segment; `dirname` reaches the root and returns.
+  while (!existsSync(head)) {
+    const parent = dirname(head);
+    if (parent === head) return p;
+    tail.unshift(basename(head));
+    head = parent;
+  }
+  try {
+    return join(realpathSync(head), ...tail);
+  } catch {
+    return p;
+  }
+}
+
+/** Directories whose contents the agent may not READ through a path-taking
+ *  tool either: browser profiles hold cookie stores and saved logins, and a
+ *  snapshot is a profile. (`plugins/` is readable; it is code, not secrets.) */
+const READ_PROTECTED_DIRS = ["profile", "profiles", "profile-snapshots", "chrome-profile"];
+
+/** What protected operator path `abs` is or sits in, or null. Compares
+ *  case-insensitively, because the default macOS filesystem is. */
+function protectedHit(
+  workspaceRoot: string,
+  abs: string,
+  dirs: readonly string[],
+  env: NodeJS.ProcessEnv,
+): string | null {
+  const rootReal = realish(resolve(workspaceRoot)).toLowerCase();
+  const target = realish(resolve(abs)).toLowerCase();
+  const under = (dir: string) => target === dir || target.startsWith(dir + sep);
+  for (const f of PROTECTED_FILES) if (target === join(rootReal, f)) return `the workspace ${f}`;
+  for (const d of dirs) if (under(join(rootReal, d))) return `under the workspace ${d}/`;
+  const dp = env.BROWX_DEFAULT_PROFILE?.trim();
+  if (dp) {
+    const expanded = dp.replace(/^~(?=$|\/)/, homedir());
+    if (isAbsolute(expanded) && under(realish(resolve(expanded)).toLowerCase()))
+      return "under BROWX_DEFAULT_PROFILE";
+  }
+  return null;
+}
+
+/** Throws when `abs` is, or is inside, a protected operator path. */
+export function assertWritableWorkspacePath(
+  workspaceRoot: string,
+  abs: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const hit = protectedHit(workspaceRoot, abs, PROTECTED_DIRS, env);
+  if (hit)
+    throw new Error(
+      `${tool}: refusing to write "${abs}" — it is ${hit}, which only the operator changes. ` +
+        "Pick another workspace path.",
+    );
+}
+
+/** Throws when `abs` is an operator file or inside a browser profile, for a
+ *  tool that READS an agent-chosen path (`upload_file` would otherwise hand the
+ *  snapshot key or a cookie store to the page, and so to the agent). */
+export function assertReadableWorkspacePath(
+  workspaceRoot: string,
+  abs: string,
+  tool: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const hit = protectedHit(workspaceRoot, abs, READ_PROTECTED_DIRS, env);
+  if (hit)
+    throw new Error(
+      `${tool}: refusing to read "${abs}" — it is ${hit}, which tools do not read. ` +
+        "Pick another workspace path.",
+    );
+}
+
+/** `resolveWorkspacePath` for a path the caller is about to READ. */
+export function resolveWorkspaceReadPath(workspaceRoot: string, p: string, tool: string): string {
+  const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
+  assertReadableWorkspacePath(workspaceRoot, resolved, tool);
+  return resolved;
+}
+
+/** `resolveWorkspacePath` for a path the caller is about to WRITE. */
+export function resolveWorkspaceWritePath(workspaceRoot: string, p: string, tool: string): string {
+  const resolved = resolveWorkspacePath(workspaceRoot, p, tool);
+  assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }

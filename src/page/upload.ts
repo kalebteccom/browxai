@@ -18,6 +18,7 @@ import { statSync } from "node:fs";
 import type { Page } from "playwright-core";
 import type { RefRegistry } from "./refs.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
+import { assertReadableWorkspacePath } from "../util/workspace.js";
 
 export interface UploadArgs {
   target: ActionTarget;
@@ -89,6 +90,7 @@ export async function uploadFile(
       "upload_file: `path` must resolve inside $BROWX_WORKSPACE — stage the file there, or use `content` (base64)",
     );
   }
+  assertReadableWorkspacePath(workspaceRoot, resolved, "upload_file");
   await loc.setInputFiles(resolved);
   let bytes = 0;
   try {

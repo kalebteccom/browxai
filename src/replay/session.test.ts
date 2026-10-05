@@ -47,6 +47,7 @@ function tempWorkspace(): { workspace: Workspace; dispose: () => void } {
       const p = join(root, name);
       return p;
     },
+    defaultProfile: () => join(root, "profile"),
   };
   return { workspace, dispose: () => rmSync(root, { recursive: true, force: true }) };
 }

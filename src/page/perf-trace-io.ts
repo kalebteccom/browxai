@@ -12,6 +12,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve, sep } from "node:path";
+import { assertWritableWorkspacePath } from "../util/workspace.js";
 
 /** Default trace categories — covers the cases DevTools' Performance panel
  *  uses for its core insights (frames, paint, layout, long tasks, user
@@ -49,6 +50,7 @@ export function resolvePerfTracePath(workspaceRoot: string, p: string, tool: str
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
+  assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }
 

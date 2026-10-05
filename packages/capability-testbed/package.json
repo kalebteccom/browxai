@@ -19,8 +19,8 @@
     "browxai": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.5.0",
-    "@types/node": "^20.14.0"
+    "@types/node": "^20.19.43"
   }
 }

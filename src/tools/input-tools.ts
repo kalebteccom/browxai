@@ -151,14 +151,14 @@ export function registerInputTools(host: ToolHost): void {
         description:
           action === "profile_snapshot"
             ? 'Copy a persistent session\'s profile directory into a named snapshot under `<workspace>/profile-snapshots/` — checkpoint a clean authenticated state before a destructive media-editor test. `profile` defaults to "default". ALL sessions must be closed first (copying a live profile dir corrupts it).'
-            : "Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first.",
+            : "Restore a named profile snapshot back over a session's profile directory — reset to a clean checkpoint between destructive test runs. ALL sessions must be closed first. Refuses a snapshot `profile_snapshot` did not write or whose files changed since (each snapshot carries a signed manifest).",
         inputSchema: {
           snapshot: z.string().describe("Snapshot name (letters/digits/._- only)."),
           profile: z
             .string()
             .optional()
             .describe(
-              'Profile to snapshot/restore. Default "default" (the legacy single-profile dir); else a named profile under <workspace>/profiles/.',
+              'Profile to snapshot/restore. Default "default" (the default session\'s profile: BROWX_DEFAULT_PROFILE when set, else <workspace>/profile); else a named profile under <workspace>/profiles/.',
             ),
         },
       },
@@ -186,8 +186,8 @@ export function registerInputTools(host: ToolHost): void {
         try {
           const r =
             action === "profile_snapshot"
-              ? snapshotProfile(workspace.root, profile, snapshot)
-              : restoreProfile(workspace.root, profile, snapshot);
+              ? snapshotProfile(workspace.root, profile, snapshot, workspace.defaultProfile())
+              : restoreProfile(workspace.root, profile, snapshot, workspace.defaultProfile());
           return { content: [{ type: "text" as const, text: JSON.stringify(r, null, 2) }] };
         } catch (err) {
           return {

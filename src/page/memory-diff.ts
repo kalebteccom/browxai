@@ -15,6 +15,7 @@
 import { resolve, sep } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { parseHeapSnapshot } from "./heap.js";
+import { assertReadableWorkspacePath } from "../util/workspace.js";
 
 /** One row in the retainer-growth report. */
 export interface RetainerGrowthRow {
@@ -49,6 +50,7 @@ export function resolveHeapPath(workspaceRoot: string, p: string, tool: string):
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(`${tool}: paths must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
+  assertReadableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }
 

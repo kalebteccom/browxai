@@ -16,6 +16,7 @@ import type { CDPSession } from "playwright-core";
 import { writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import type { TraceEvent } from "./perf.js";
+import { assertWritableWorkspacePath } from "../util/workspace.js";
 
 /** Default categories for the focused trace — same set DevTools uses when
  *  it highlights "Forced Reflow" + "Layout Shift" lanes. */
@@ -59,6 +60,7 @@ function resolveLayoutThrashPath(workspaceRoot: string, p: string, tool: string)
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
     throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
   }
+  assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
 }
 

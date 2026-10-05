@@ -180,6 +180,436 @@ Defenses:
   `force:true` has the same see-through-the-user property, and browxai applies it
   automatically as a recovery.
 
+### 7. Page content answering for the human
+
+`await_human`, the confirm hooks and every `ask-human` policy wait for a person.
+Page content is untrusted, so the page must not be able to give that answer, and
+neither may the agent the hooks exist to hold back. Defenses:
+
+- **The answer channel is outside the page's JS world.** browxai creates a CDP
+  isolated world named `browxai-<random>` (fresh per session) on every page a
+  session owns, evaluates the `__browx` helper there, and installs a per-session
+  CDP binding scoped to that world name. A binding call counts only when CDP
+  reports it came from one of that world's execution contexts. Page scripts
+  share the DOM with the world but not its globals, so they cannot see or call
+  the binding. The human reaches the world from DevTools by picking the name the
+  stderr prompt prints.
+- **The world name is unguessable, and extension contexts are refused.** CDP
+  scopes a binding by world _name_, and a Chrome extension's content-script
+  world is named after the extension. With a fixed name, an extension called
+  `browxai` received the binding and could answer. The random suffix keeps the
+  binding out of any other world, and a context whose origin is an extension
+  origin is refused even if the names match.
+- **Each answer carries its prompt's ticket.** The prompt prints a short ticket
+  (`__browx.confirm(true, "a1b2c3")`). An answer is accepted only while its
+  prompt is pending and only with that ticket; nothing is queued. A late answer
+  to a prompt that timed out cannot answer the next one.
+- **The page-visible `window.__browx` is display-only.** It logs where the real
+  channel lives and returns `false`. The `data-browx-signal` attribute is no
+  longer read.
+- **No fallback on engines without CDP.** firefox, webkit, safari and the native
+  engines cannot host the world, so they get no human channel: `await_human`
+  refuses at once with `no-human-channel`, and the confirm hooks and `ask-human`
+  policies fail closed.
+- **The agent can't approve itself by default.** `approve_actions` sits behind the
+  off-by-default `self-approval` capability, and `set_config` cannot add a
+  capability (see "Configuring").
+- **The agent can't turn an `ask-human` policy into `allow` by default.**
+  `set_permission_policy`, `set_fs_picker_policy` and `set_notification_policy`
+  are `action` tools, so before this gate the agent could switch a session's
+  `ask-human` policy to `allow` and answer the file-picker prompt itself with
+  `fs_picker_respond`. The three setters now compare the effective mode of every
+  key (the top-level mode and each `perPermission` / `perAPI` entry) before and
+  after the change, and refuse any change that moves a key off `ask-human`. The
+  refusal is the standard gate shape (a `requiredCapability` of
+  `"human-gate-override"`, plus a `reason` naming the keys) and runs before the
+  policy or the CDP permission baseline is touched. Changes that keep
+  `ask-human` in place, and every change on a policy that has no `ask-human`
+  key, are still accepted. `grant_permissions` is gated the same way for the
+  permissions the page-side wrappers don't intercept (`notifications`, `midi`,
+  `midi-sysex`, `payment-handler`, `background-sync`, the sensors): those resolve
+  from the browser's own grant state, so a native grant would skip the prompt.
+  For `notifications` only `Notification.requestPermission` is wrapped, while
+  `Notification.permission` reads the native state. Granting camera, microphone,
+  geolocation and clipboard is not refused, because the wrappers sit on their
+  main entry points (`getUserMedia`, `getCurrentPosition` / `watchPosition`, the
+  `navigator.clipboard` methods). Residual: those wrappers are the only guard on
+  those names. A page that calls legacy `webkitGetUserMedia` or reaches the
+  native method through its prototype gets the browser's grant state, so a
+  native grant of them can still skip the prompt.
+- **Closing an `ask-human` session and reopening the name doesn't end the hold.**
+  `open_session` takes `permissionPolicy` / `fsPickerPolicy` /
+  `notificationPolicy` from the agent, so without a record `close_session` then
+  `open_session` with `allow` would have replaced the policy the setters guard.
+  The session registry now remembers, per session name, which of the three
+  policies held `ask-human` (the top-level mode or any `perPermission` /
+  `perAPI` entry) when the session last closed through `close_session`,
+  `close_sessions` or an idle reap. It reads the live policy state at that
+  moment and is written only by the registry, so no tool argument sets or
+  clears it. A policy moved off `ask-human` under `human-gate-override` before
+  the close is not remembered. For a remembered name, `open_session` refuses
+  any policy that moves a held key off `ask-human`, with the same refusal as the
+  setters (`requiredCapability: "human-gate-override"`, plus a `reason` naming
+  the policies) and before anything launches. A policy the call leaves out is
+  inherited from the hold instead of falling back to its default (`raise` for
+  permissions and pickers, `allow` for notifications), and so is the policy of a
+  lazily re-created session such as `default`. A name that never held
+  `ask-human` opens with any policy, and moving onto `ask-human` is free.
+  The record also stores the persistent profile directory the session ran on.
+  A different name launched on that directory would reuse the held session's
+  cookies and login state, so a launch on it is refused with the same gate
+  refusal unless the policies it would run with (defaults included, since a
+  different name inherits nothing) keep every held key on `ask-human`. The check
+  runs in the session factory before the browser launches, and covers a lazily
+  created session too.
+  Residuals: the record lives for the server process, so a restart forgets it
+  (the operator restarting the server is the operator's call). An `attached`
+  session is not pinned: every attached session leases a tab of the same BYOB
+  browser, so the cookies of a held attached session are reachable from a new
+  name opened `allow`, and pinning by endpoint would refuse every attached open
+  after one held close. An incognito session holds no profile, so nothing
+  carries over from it. The record is keyed on the session name and the agent
+  chooses names, so it can open a different, never-`ask-human` name on a fresh
+  profile with `allow`: that session is new and carries none of the closed
+  session's state, but it runs without a human gate that the setters' gate
+  never covered either. The agent can also set `ask-human` on `default`, close
+  it, and every lazily created `default` session then inherits the hold until
+  the server restarts or the operator enables `human-gate-override`. That
+  only restricts the agent (a stricter-only denial of service), and so does
+  every record the agent causes. The map holds a few bytes per name, bounded by
+  the names the agent opens in one server process. Nothing records which party
+  chose `ask-human` for a name: the agent opening a session on it is recorded
+  the same.
+- **Attached sessions wire only their own tab.** A shared attached browser holds
+  other sessions' tabs, so a bridge wires its leased tab and popups opened from
+  it, never a neighbour's.
+
+Pinned by `test/keystone/human-channel.keystone.test.ts` (real Chromium, plus
+the firefox and webkit refusals), `test/keystone/approval-config-gate.keystone.test.ts`
+and `test/keystone/ask-human-gate.keystone.test.ts`.
+
+Anything that runs in the page's main world with the agent's authority, such as
+`eval_js` under the `eval` capability, still cannot reach the isolated world.
+
+**Extensions are the exception, and count as self-approval.** A loaded extension
+with the `debugger` permission, or anything else speaking CDP to the browser, can
+enumerate the session's worlds, evaluate in the human world and answer every
+prompt. So can a content script if it learns the world name some other way. Treat
+the `extensions` capability, and any extension with the `debugger` permission in
+a profile an attached session drives, as equivalent to granting `self-approval`.
+A different human channel would need the same property. An MCP-elicitation
+prompt, for instance, has to be sent from inside the `tools/call` that waits for
+the answer: Claude Code answers elicitation only while a call is pending and
+cancels it otherwise.
+
+**The operator channel is that different channel, behind `operator-channel`.**
+A host daemon (remotxai) cannot sit at DevTools, so it can pass browxai a Unix
+socket instead. With the off-by-default `operator-channel` capability on and both
+`BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` set, every confirm-hook
+request, `permission` and `notification` `ask-human` prompt and `await_human` is
+sent to that socket, and only the daemon's answer counts. Its design, in full,
+is in `docs/integrations/remotxai.md` in the repository. The rules that
+matter here:
+
+- **Operator-set at start, like `human-gate-override`.** The capability comes
+  from `BROWX_CAPABILITIES`. A saved `capabilities` list can only narrow it, and
+  `set_config` refuses a patch that adds it (`capabilities-not-widenable`).
+- **The path and the token never reach the agent.** browxai reads both variables
+  once at start and removes them from `process.env`, so the browser and every
+  helper process it spawns later inherit neither. They sit in `#private` fields.
+  No log line, error, tool result or wire frame carries either: a Node connect
+  error names the path, so only its `code` is logged. Residual, on
+  every platform: removing a variable from `process.env` does not change the
+  process's initial environment block. A process running as the same user can
+  read it (`/proc/<pid>/environ` on Linux, `ps eww` or the `KERN_PROCARGS2`
+  sysctl on macOS), so an agent with a shell tool running as that user can read
+  the path and the token. Run the agent as a different user from browxai's
+  operator, or give the harness no shell, where this matters. The fix is to
+  hand the secret over an inherited file descriptor that browxai closes after
+  reading it, which changes the daemon contract and is a v2 follow-up.
+- **The daemon proves it knows the token before browxai sends anything.**
+  browxai dials the socket and sends a nonce. The daemon answers with a nonce
+  and an HMAC-SHA-256 over both, keyed by the token. browxai compares it in
+  constant time (`timingSafeEqual`), then sends its own HMAC (role-tagged, so
+  neither proof replays as the other) and waits for `ready`. The token never
+  crosses the socket, so a process that took over the socket path cannot learn
+  it and cannot answer the proof by itself. A failed proof, which includes an
+  old proof replayed on a redial (the nonces differ), closes the channel for the
+  life of the process and denies everything pending. Frames received before
+  `ready` are ignored, and one that is not the expected handshake frame drops the
+  connection. Residual: the proof authenticates the handshake only. Frames after
+  it carry no MAC and are not bound to the connection that was authenticated, so
+  a same-user process that swaps the socket and relays to the real daemon passes
+  the proof, and can then read every request and alter every answer. The
+  permission checks stop a different user and a loose socket, not a same-user
+  attacker who can replace the socket. A v2 contract would derive a session key
+  from both nonces and the token and MAC every frame with it.
+- **The socket must be the way the daemon makes it, or the channel does not
+  start.** A real socket, mode `0600`, in a real (not symlinked) directory at
+  mode `0700`, both owned by the user running browxai. A wrong one throws from
+  `createServer` with a message that names the problem and not the path. So do a
+  token under 16 characters and, with the capability on, a missing variable
+  (the variables are taken from the environment once, so only the first server in
+  a process can open the channel). The check runs again on every redial. A socket
+  that does not exist yet, or that has become unsafe, is not connected to and is
+  retried with backoff, since the daemon may still be starting or about to fix
+  it. Requests wait meanwhile and are denied at their timeouts.
+- **Answers are validated against the request they name.** `id` is 128 random
+  bits and single-use. An approval takes `approve` or `deny`. A human request
+  takes `done` or `abort`, with a value checked against its kind (a boolean for
+  `confirm`, an in-range integer for `choose`, a string of at most 10,000
+  characters for `input`, none for `acknowledge`). An unknown id gets
+  `unknown-request`, anything that does not fit gets `invalid-answer`, and the
+  request stays pending. An inbound frame over 64 KiB drops the connection, and
+  malformed or non-object frames are ignored. Outbound strings are cut to fit
+  (prompt 2,000 characters, summary 1,000, at most 32 choices of 100, names 128),
+  a frame that had text cut or choices dropped carries `truncated: true` (and
+  `omittedChoices`), and a frame that would still exceed 64 KiB is refused, so an agent-sized
+  `await_human` cannot wedge the channel in a redial and resend loop.
+- **Failure is closed.** A request with no answer is denied at its own timeout
+  (5 minutes for a confirm hook, 5 minutes by default and 1 hour at most for
+  `await_human`), whether the daemon is slow, gone, or never connected. While
+  disconnected, pending requests stay pending, are sent again under the same id
+  after a redial, and still time out. At most 32 requests wait at once, split so a page cannot starve a
+  confirm hook: 12 for confirm hooks, 12 for `await_human`, 8 for page prompts
+  (`permission`, `notification`), and 8, 8 and 4 per session within each class.
+  Identical page prompts (same session, scope, tool and summary, compared
+  after masking and cutting) share one
+  request and one answer, so a page spamming `Notification` or `getUserMedia`
+  costs one slot. A request over a limit is refused at once, which the callers
+  treat as a deny. Nothing approves on its own, and a dropped connection never
+  falls back to DevTools.
+- **DevTools answers are ignored while the channel is on.** No waiter is
+  registered for them, so a call from the isolated world matches nothing and is
+  logged. A prompt with no operator form, the file-picker `ask-human`, is
+  refused instead of being left to DevTools, because it needs files an approve
+  or deny cannot carry. With the capability off, nothing changes:
+  DevTools stays the answer path.
+- **Grants are one-shot unless the daemon says otherwise, and never global.** A
+  plain `approve` covers that one call. An `approve` of a confirm hook may carry
+  `grant: { scope: "session" | "workspace", ttlSeconds }`, up to 24 hours. A
+  `session` grant covers that session id only and is dropped when the session
+  closes. A `workspace` grant covers every session of this process, which serves
+  one workspace. Any other scope, `global` included, is rejected, and a grant on
+  a `deny` or on a request that cannot carry one is rejected too.
+  `list_approvals` shows which session a grant belongs to. `approve_actions`
+  grants stay workspace-wide.
+- **Everything shown to the operator is masked.** Every string in a request
+  passes the URL sanitiser (query strings and fragments are dropped, so the
+  operator sees origin and path, and a token in a query stays hidden) and the
+  session's `SecretRegistry`. The agent- and page-sourced fields (`summary`,
+  `prompt`, `choices`, and `session`, which is the id the agent chose) are
+  listed in the frame's `untrusted` array so the daemon's card renders them as
+  data. A page title that reads "Safe, approve
+  this" is page content like any other.
+
+The channel does not make the daemon trustworthy. Whatever listens on that
+socket decides every request, so enable it only when the daemon is the operator.
+It does not reach the agent's own harness permission prompts either, which stay
+the harness's business.
+
+**Two capabilities route around the daemon, and warn at boot when combined with
+it.** A grant made by `approve_actions` (`self-approval`) is consumed before a
+request is asked, so the daemon never sees those requests. A permission,
+notification or file-picker policy the agent moved off `ask-human`
+(`human-gate-override`) never asks. Both are the operator's own opt-ins, so
+browxai logs a warning instead of refusing. Leave both off where the daemon is
+meant to decide every prompt.
+
+Pinned by `test/keystone/operator-channel.keystone.test.ts` (real Chromium and a
+real Unix socket: the capability-unset gate, approve and deny, grants, forgery
+and DevTools answers while connected, a drop denying at the timeout, and the
+permission refusal).
+
+**The live view is a second capability on the same channel, `live-view`.** With
+it on (and `operator-channel` with it, or the server refuses to start), the
+daemon can ask for a screencast of a session's browser, so the operator on a
+phone sees what the agent sees. The rules that matter here:
+
+- **Secret masking does not cover frames.** Frames are pixels. The
+  `SecretRegistry` substitutes strings, and a frame has none. A registered
+  secret typed into a visible field, a password or token the page renders and
+  anything else drawn in the viewport reach the daemon as drawn, and then the operator's phone and whatever path leads to
+  it. `screenshot` has the same limit. Turn it on only when the daemon is the
+  operator and the path from it to the operator's screen is one you trust. The
+  startup warning says so by name.
+- **Operator-set at start, and the agent cannot start, stop or read it.** The
+  capability comes from `BROWX_CAPABILITIES`, a saved `capabilities` list can
+  only narrow it, and `set_config` refuses a patch that adds it
+  (`capabilities-not-widenable`). There is no tool for it. The stream is
+  started and stopped per session by the daemon's `view.start` and `view.stop`
+  on the authenticated socket, and nothing the agent can call (a tool result,
+  `list_sessions`, `get_config`) reports whether one runs. The channel holds the
+  stream registry privately. Only the session registry registers a frame source
+  with it. `test/architecture/live-view-isolation.test.ts` is a source scan of
+  `src/` that fails if a tool, a page helper or the SDK module names the
+  registry, if a second file reads the CDP screencast, or if the view modules
+  gain a filesystem or log call that could carry a frame. It is a guard against
+  regressions in this repository, not a sandbox. Plugins are trusted in-process
+  code: they run in browxai's process and can reach a CDP handle themselves, so a
+  plugin you install can read what the screencast would. That is a documented
+  residual, as it is for every other capability.
+- **Frames go to the daemon socket and nowhere else.** Not to a tool result, a
+  log line, an artifact, a session report, a HAR, a recording, the workspace or
+  disk of any kind. A frame is held for the one call that sends it. The only
+  reader of the CDP screencast is `src/helper/operator-screencast.ts`, which the
+  isolation test pins. An error never carries frame content or the browser's own
+  message: a refusal is a code (`view-disabled`, `unknown-session`,
+  `view-unsupported`, `invalid-view`, `view-limit`, `view-failed`).
+- **Nothing queues.** One frame is in flight per stream until the daemon acks
+  it (`frame.ack` with the session and `seq`). A frame that arrives while the
+  last is unacked, or while the socket holds more than 16 KiB unflushed, is
+  dropped. browxai also holds back its own ack to Chromium, so the browser does
+  not encode frames nobody will take: the stream cannot run faster than its
+  frame rate, 5 fps at most. A frame unacked after 5 seconds is counted lost,
+  and a stream with no ack for 30 seconds ends (`stalled`). Approvals share the
+  socket and a request does not jump the queue. The most one can wait behind is
+  what a frame may leave queued: up to 16 KiB already unflushed, plus one frame of
+  up to 16 parts, about 640 KB of base64 (655,360 characters). A frame is sent
+  only when the socket holds 16 KiB or less, and at most one is unacked, so that
+  bound holds however slow the daemon reads.
+- **It steps down when the daemon is slow.** A window of 2 seconds with at
+  least 40% of its frames dropped (and at least two) moves the stream one of four
+  steps toward 1 fps and 640 px. Ten clean seconds with an ack round trip well
+  inside the faster step's frame interval move it one back. Starting values are
+  5 fps, 960 px wide and JPEG quality 60. The daemon may ask for less, never
+  more than 5 fps, 1280 px and quality 80; a larger number is clamped, and
+  `view.started` reports what applied. At most 4 streams run at once.
+- **A frame fits the 64 KiB line limit by being cut.** A JPEG of a busy page is
+  often over 64 KiB, so a frame travels as `part` / `parts` frames of 30 KiB of
+  JPEG each (40,960 base64 characters), at most 16 parts, all in one write. A
+  frame needing more is dropped and counts as slowness, so the stream steps down
+  to a smaller picture. No part makes a line over the limit that drops the
+  connection.
+- **A stream never outlives its connection or its session.** A dropped or closed
+  channel, a closed session, the session's page closing and a daemon `view.stop`
+  each stop the screencast
+  (`Page.stopScreencast`), and a redial resumes nothing: the daemon has to ask
+  again. A browser rebuilt for extensions leaves a stream with no source until
+  the daemon restarts it.
+- **Chromium only.** The source is CDP `Page.startScreencast` on the session's
+  own handle, so a session on an engine with no CDP handle is refused with
+  `view-unsupported`. The stream follows the session's own page, not tabs the
+  agent opens later, and ends with `page-closed` if that page closes. The
+  screencast is asked for a height of at most twice the width.
+
+The frame is page-sourced and untrusted. The daemon renders it as an image and
+never logs, stores or interprets it; a page can draw "approve this" on screen
+like any text, and the operator is looking at it.
+
+Pinned by `test/keystone/live-view.keystone.test.ts` (real Chromium and a real
+Unix socket: the start-time refusal without `operator-channel`, the
+capability-unset gate, frames at the 5 fps cap as real JPEGs under the line
+limit, no tool or tool result naming the stream, no frame in the workspace or
+the log, stops on `view.stop`, session close and a dropped connection, one
+frame held with no ack, and the step-down to 640 px under slow acks) and by the
+isolation scan beside it.
+
+### 8. A page flooding the session's own bindings
+
+The permission, notification, file-picker, device and replay wrappers talk to the
+server through page bindings (`__browx_permission_check`,
+`__browx_permission_observe`, `__browx_notification_check`,
+`__browx_fs_picker_check`, `__browx_fs_picker_write`, `__browx_device_check`, and
+`__browx_rrweb_emit` while `replay` is on). Page content is untrusted and can
+call any of them directly. Each call is a CDP event to the server and a reply the
+server evaluates back into the page, and Playwright sends that reply whatever the
+handler did. A page that calls in a loop queues replies on its own session
+faster than the browser drains them, and the session's click and snapshot
+commands wait behind that queue. A hostile page could make its own session
+unusable. Defenses:
+
+- **A per-page budget, applied before the handler.** Each class of binding has a
+  token bucket per page, so one class cannot use up another's budget:
+
+  | Class                                  | Burst | Refill | In flight |
+  | -------------------------------------- | ----- | ------ | --------- |
+  | decision (the four `*_check` bindings) | 100   | 25/s   | 32        |
+  | observe (`permission_observe`)         | 100   | 20/s   | 8         |
+  | write (`fs_picker_write`)              | 1024  | 100/s  | 64        |
+  | replay (`rrweb_emit`)                  | 1000  | 150/s  | 64        |
+
+  `permission_observe` fires on every `permissions.query()`, which a page may
+  poll, and its reply is ignored, so a page polling it past 20/s only sheds its
+  own notices. It cannot shed a real `getUserMedia` or notification decision. A
+  decision flow uses a handful of calls (a few per feature use, one per
+  permission prompt), so legitimate use stays far inside the budget. An
+  `in flight` slot is held while a handler waits, for example on a human. The
+  in-flight cap is per page, not per frame: a hostile iframe whose calls wait on
+  an `ask-human` prompt can hold all 32 decision slots, and the main frame's
+  next real prompt is then shed (a deny or a hang, never an allow) until one
+  of those prompts is answered or times out.
+
+- **Buckets are per page, with a per-frame share for decisions.** One tab's flood
+  leaves other tabs' budget alone. Inside a page, calls from one frame also
+  draw on a per-frame bucket (decision: burst 50, 12.5/s; observe: 50, 10/s)
+  that is taken first, so a hostile cross-origin iframe is stopped by its own
+  share and cannot use the whole page budget by itself. The page budget still
+  caps every frame together: several flooding frames can add up to it and shed
+  the main frame's decisions. File writes and replay events are not split per
+  frame.
+- **What a shed call sees.** A call over budget never reaches the handler: it is
+  not recorded in `permissionRequests` / `notifications` / `fsPickerRequests` /
+  `device_requests`, it does not open an `ask-human` prompt, and it does not
+  write a file. For decision bindings a small second bucket (10 calls, refilled
+  at 2 per second) answers the binding's deny-equivalent at once: `"deny"` for
+  permission and notification checks, `{decision:"deny"}` for file-picker checks
+  and `{decision:"refused",devices:[]}` for device checks. Every other shed call
+  never settles: no reply is sent, so the flood adds no CDP traffic, and the
+  only thing left behind is the flooding page's own pending promise. A page
+  that exceeds the budget sees its wrapped API (`getUserMedia`,
+  `showSaveFilePicker`, ...) fail or hang, which is the page's own doing.
+- **Nothing over budget is approved.** The deny-equivalent is the same answer a
+  `deny` policy gives, and an unanswered call leaves the wrapped API
+  unresolved. No path turns a shed call into an allow, so `ask-human` cannot be
+  flooded into an approval. Under `ask-human` a page can still queue up to 32
+  prompts for the human at once (the in-flight cap), and no more.
+- **A shed file write truncates the file, and never reads as success.** A
+  write's normal reply means "written", so a dropped chunk gets no reply and the
+  page's promise for that chunk never settles. The handle is marked and the file
+  keeps what was written before the first dropped chunk. A later `write()` or
+  `close()` on that handle that does get a token rejects with a
+  `NotAllowedError` (`close()` still finalises what arrived), so a saver that
+  fires chunks without awaiting them and then calls `close()` sees a rejection or
+  a hang, not success. A saver that awaits each chunk hangs on the first dropped
+  chunk and never reaches the later calls. Either way the page is not told the
+  save worked. The server logs one line for the handle, with its byte count, on
+  top of the counter below. The shed hook finds the handle by matching
+  `"handleId":"..."` in the first 200 bytes of the payload, which the page
+  script always writes first; a call that does not match marks nothing and is
+  still dropped.
+- **The write budget in numbers.** A burst of 1024 chunks, then 100 per second.
+  A saver that fires chunks without awaiting each one (`for (...) writer.write(c)`)
+  is affected once it passes 1024 chunks at once. A saver that awaits each chunk
+  spends one token per round trip: over loopback a round trip is a few
+  milliseconds, so it can go faster than the 100/s refill and drain the bucket
+  after about 1024 plus its surplus over 100 per second, which for a fast saver
+  is on the order of 1100 chunks, and it then hangs. The keystone covers 300
+  awaited chunks and 900 chunks fired at once, and both write the whole file; it
+  does not cover an awaited saver past 1100 chunks. A 64 KiB chunk size puts that
+  limit near 70 MiB. Write bigger chunks to stay under it.
+- **Replay events are dropped silently.** Over the replay budget a call is
+  dropped with no reply and nothing else changes: no state is closed or failed.
+  The DOM stream loses those events and the counter below records the loss. The
+  recorder's own sink is already capped (500,000 events or 64 MiB, whichever
+  comes first), so a flood cannot grow it without bound.
+- **Logging is a coalesced counter.** The first shed call logs
+  `binding calls shed over the per-page budget` with the count and a per-binding
+  breakdown (binding names only, nothing the page controls). After that, at most
+  one line every 5 seconds. There is no per-call logging.
+- **No capability is involved.** The budget applies to every session whatever
+  its capabilities, and the thresholds are not configurable.
+
+Pinned by `test/keystone/binding-flood.keystone.test.ts` (real Chromium: a
+bounded flood of about 400 calls/s for 3 seconds across every binding while a
+click and a snapshot complete, shed calls deny under an `allow` policy, the
+counter is logged a few times and not per call, a quiet page and a page after
+the flood still get the policy's real answer, and real file-saver loops write
+whole files or fail loudly) and `src/session/binding-guard.test.ts` and
+`src/session/binding-shed-never-allow.test.ts` (a shed call is never an approval
+for each decision binding, and observe traffic does not shed decisions). The
+human-answer channel (section 7) is not a page binding and is untouched.
+
 ## What browxai explicitly does NOT defend against
 
 | Concern                                                                                  | Why we don't defend                                                                                                                                                                                                                                                                                         | What to do instead                                                                              |
@@ -213,7 +643,23 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `human`, default **on**. Tools: `await_human`, `name_ref`.
 
-  Pure coordination primitives.
+  Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it.
+
+- `self-approval`, default **off**. Tools: `approve_actions`.
+
+  Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, `file_download`, `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
+
+- `human-gate-override`, default **off**. Tools: none; it gates one branch of `set_permission_policy`, `set_fs_picker_policy`, `set_notification_policy` and `grant_permissions`.
+
+  Lets the agent move a session's permission or file-picker policy away from `ask-human`. `ask-human` holds a page's permission request or picker call until a person answers on the human channel, and the setters are `action` tools, so without this gate the agent could switch the policy to `allow` and answer the prompt itself (for pickers, with `fs_picker_respond`). Without the capability the setters refuse any change that moves the top-level mode or a `perPermission` / `perAPI` entry off `ask-human`, with the standard gate refusal (`requiredCapability: "human-gate-override"`) and a `reason`, and leave the policy untouched. Changes that keep `ask-human` in place are accepted, as is everything on a policy with no `ask-human` key. Moving to `deny` or `raise` is refused too: it ends the human's say as surely as `allow` does. Open the session with the policy you mean when that is what you want; the capability is for unattended runs where the agent is meant to decide. Loud one-time warning at server boot. `grant_permissions` refuses a native grant of an unwrapped permission (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, or any name outside the supported list) whose policy is `ask-human`, since the browser would then answer it with no prompt; clearing grants and granting wrapped names stay open. `open_session` is gated the same way for a session name that held `ask-human` when it last closed: it refuses an explicit policy that moves a held key off `ask-human`, and inherits the held policy when the call names none, so close then reopen with `allow` needs the capability too. A name that never held `ask-human` opens with any policy, unless it launches on the persistent profile a held session used. Pinned by `test/keystone/ask-human-gate.keystone.test.ts`.
+
+- `operator-channel`, default **off**. Tools: none; it routes `await_human`, the confirm hooks and the `permission` / `notification` `ask-human` prompts to the host daemon's Unix socket.
+
+  Makes the daemon behind `BROWX_OPERATOR_SOCKET` the only answer path while the channel is connected, so a phone operator can answer what DevTools on the host otherwise would. It needs `BROWX_OPERATOR_SOCKET` and `BROWX_OPERATOR_TOKEN` both set; with the capability on and either missing, the server refuses to start. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, with the capability off the socket is never opened, and a saved config cannot add it. Loud one-time warning when enabled. Section 7 holds the rules (socket permissions, the HMAC handshake, answer validation, frame and pending limits, fail-closed timeouts, session and workspace grants, masking), the residuals (the token is readable by a same-user process from the initial environment, frames after the handshake carry no MAC) and the two capabilities that skip the daemon (`self-approval`, `human-gate-override`).
+
+- `live-view`, default **off**. Tools: none; it lets the host daemon on the operator-channel socket start a JPEG screencast of a session, up to 5 fps and 1280 px, defaulting to 5 fps, 960 px and quality 60 and stepping down to 1 fps and 640 px when the daemon is slow.
+
+  Needs `operator-channel`: with `live-view` on and `operator-channel` off the server refuses to start, because frames go only to the daemon. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, and with it off a daemon's `view.start` gets `view-disabled` and no screencast starts. The agent cannot start, stop or read the stream, and no tool result, log, artifact, report, HAR or recording carries a frame. **Secret masking does not cover frames: a registered secret that is visible on screen reaches the daemon as pixels, as it does in `screenshot`.** Loud one-time warning when enabled. Section 7 holds the rules (flow control, drops, step-down, frame parts, stop conditions) and the residuals.
 
 - `eval`, default **off**. Tools: `eval_js`.
 
@@ -230,7 +676,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
   **Attaching to a desktop Electron app (`engine: electron`) rides this same capability.** `BROWX_ATTACH_CDP` can point at any loopback CDP endpoint, and a running Electron application — VS Code, Slack, Discord, and others — exposes one when launched with `--remote-debugging-port`. browxai detects that case from `Browser.getVersion`'s user agent and reports the session as `engine: "electron"`; it does not ask you to declare it, and it does not refuse the attach. **This is the same hazard `byob-attach` already names, in a sharper form, so it is not a separate capability:** the endpoint is one env var, and an operator who set it to an app's port chose that app. A second toggle for a decision already made by choosing the port would read as a control without being one. What is genuinely different is written out below.
 
   - **One app, one identity, no URL bar.** An attached Chrome holds many origins and the origin allowlist can fence them. An attached Electron app is one signed-in application: its whole surface is the user's authenticated session, and the allowlist has nothing to constrain. Everything the signed-in user can reach — conversations, files, tokens in `localStorage` — is in scope of any tool call.
-  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window rather than acting. Use `approve_actions({ scopes: ["byob_action"] })` deliberately, with a short `ttlSeconds`.
+  - **The default confirm hook covers it.** An Electron session is `mode: "byob"`, so `byob_action` fires on every action tool, and it is in the default `BROWX_CONFIRM_REQUIRED` set. Measured: an un-approved `click` against an attached VS Code blocked for the full five-minute confirm window rather than acting. For an unattended run, enable `self-approval` and call `approve_actions({ scopes: ["byob_action"] })` with a short `ttlSeconds`.
   - **`navigate` is refused outright** on an Electron session (`EngineCapabilities.refusedTools`). It would run an arbitrary web page inside the application's own renderer, which on many Electron apps is privileged through a preload IPC bridge, and it discards everything that renderer held in memory. `reload` / `go_back` / `go_forward` stay available — they operate on the app's own document.
   - **Your EDR will flag the launch, and it should.** Starting a Chromium-family app with `--remote-debugging-port` alongside `--user-data-dir` matches prebuilt detection rules for infostealer cookie theft (MITRE **T1539**, Steal Web Session Cookie) — the Elastic Security ruleset ships one. That is a correct detection, not a false positive: the technique browxai uses here is the technique the rule looks for. Expect the alert, and tell your security team before they find it.
   - **The port is unauthenticated for the life of the app.** browxai does not hold it exclusively; any local process can attach to the same endpoint while the app runs. Prefer a throwaway instance with its own `--user-data-dir` where the work allows it, and quit the app when done.
@@ -264,7 +710,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `secrets`, default **off**. Tools: `register_secret`.
 
-  Per-session sensitive-data registry + egress masking. Once registered, `fill` / `press` materialise `<NAME>` → real value at Playwright dispatch; every other egress sink (network, console, ws, snapshot, find, text_search, network_body) substitutes the real value back to `<NAME>` before returning. **The load-bearing invariant: the agent NEVER receives the real value in any tool result.** Required for safely automating auth flows when transcripts are shareable (adoption reports, GitHub issues, eval datasets). Loud one-time warning at server boot + at first `register_secret` call. See `docs/tool-reference.md` for the per-sink masking matrix and limitations. Notably, `screenshot` is a partial sink (warning when page text reveals a registered value; pixel-level region-blur deferred), and base64 response bodies in `network_body` pass through unchanged.
+  Per-session sensitive-data registry + egress masking. Once registered, `fill` / `press` materialise `<NAME>` → real value at Playwright dispatch; every other egress sink (network, console, ws, snapshot, find, text_search, network_body) substitutes the real value back to `<NAME>` before returning. **The load-bearing invariant: the agent NEVER receives the real value in any tool result.** Required for safely automating auth flows when transcripts are shareable (adoption reports, GitHub issues, eval datasets). Loud one-time warning at server boot + at first `register_secret` call. See `docs/tool-reference.md` for the per-sink masking matrix and limitations. Notably, `screenshot` is a partial sink (warning when page text reveals a registered value; pixel-level region-blur deferred), base64 response bodies in `network_body` pass through unchanged, and the `live-view` frames are pixels that masking does not touch at all.
 
 - `credentials`, default **off**. Tools: `get_totp`, `get_credential`.
 
@@ -272,7 +718,7 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
 - `extensions`, default **off**. Tools: `extensions_install`, `extensions_list`, `extensions_reload`, `extensions_trigger`, `extensions_uninstall`.
 
-  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). Workspace-rooted path safety on `extensions_install`. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
+  Per-session unpacked-Chromium-extension management, which emits `--load-extension` + `--disable-extensions-except` at managed-profile launch. A loaded extension can read every page the session visits and make arbitrary network requests, so it is **trust-equivalent to the agent's own action surface**: the extension code is in-scope. **It is also effectively `self-approval`:** an extension with the `debugger` permission can reach the human world over CDP and answer `await_human` and every confirm hook (section 7). The same holds for such an extension already installed in a profile an attached session drives. Headed + persistent sessions only: `incognito` / `attached` sessions refuse (Chromium does not load unpacked extensions in incognito, and the attached/BYOB browser is not-owned). Workspace-rooted path safety on `extensions_install`. install/reload/uninstall **rebuild the underlying browser context** (refs and console/network/ws buffers reset; profile state on disk survives). Loud one-time warning at server boot. Same posture class as `eval` / `network-body` / `secrets`.
 
 - `stealth`, default **off**. Tools: none, this one is a behaviour gate.
 
@@ -319,9 +765,9 @@ capability off has zero runtime cost.
 Capabilities gate _tools_. One dangerous knob is a _launch option_, not a
 tool, so it's a gated **config key** with the same loud-warning treatment:
 
-| Config key           | Default | Effect / gating                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `disableWebSecurity` | **off** | `managed`/`incognito` launch with `--disable-web-security --disable-site-isolation-trials`, which turns SOP/CORS off browser-wide. **Not** mappable from any `BROWX_*` env var (can't be ambiently enabled); set only via `set_config` or the managed config file. Loud warning at server boot **and** per session launch. No effect on `attached`/BYOB. Same posture class as `eval`/`byob-attach`: explicit, auditable, off-by-default. |
+| Config key           | Default | Effect / gating                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| -------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `disableWebSecurity` | **off** | `managed`/`incognito` launch with `--disable-web-security --disable-site-isolation-trials`, which turns SOP/CORS off browser-wide. Turned on only by the operator, with `BROWX_DISABLE_WEB_SECURITY=1` in the server's environment; a saved or `set_config` value can only turn it off (up to v0.10.1 it was set through `set_config`, which the agent can call). Loud warning at server boot **and** per session launch. No effect on `attached`/BYOB. Same posture class as `eval`/`byob-attach`: explicit, auditable, off-by-default. |
 
 ### Configuring
 
@@ -331,6 +777,67 @@ BROWX_CAPABILITIES=read,navigation,action,human,eval
 
 Comma-separated, order-insensitive. Omitted = default set (no `eval`, no `byob-attach`,
 no `file-io`). `BROWX_CAPABILITIES=read` ships a read-only server.
+
+**The environment sets the ceiling; config can only tighten it.** `set_config` is
+an MCP tool, so the agent can call it, and what it saves outlives the session. Every
+policy key is therefore bounded by the server's environment (or the built-in
+default where the environment leaves a key unset):
+
+| Key                  | Ceiling from                 | A saved or session layer may                                                                                   |
+| -------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `capabilities`       | `BROWX_CAPABILITIES`         | drop capabilities, never add                                                                                   |
+| `confirmRequired`    | `BROWX_CONFIRM_REQUIRED`     | add hooks, never remove                                                                                        |
+| `allowedOrigins`     | `BROWX_ALLOWED_ORIGINS`      | narrow a set list (exact strings); an empty or disjoint list falls back to the env list, never to "any origin" |
+| `blockedOrigins`     | `BROWX_BLOCKED_ORIGINS`      | add origins, never remove                                                                                      |
+| `disableWebSecurity` | `BROWX_DISABLE_WEB_SECURITY` | turn it off, never on                                                                                          |
+| `plugins`            | `BROWX_PLUGINS`              | name a subset, never add                                                                                       |
+
+`set_config` refuses a loosening patch (`capabilities-not-widenable` or
+`policy-not-loosenable`, naming the keys), and at every start the saved layers are
+clamped the same way with a warning naming what was ignored. `reset_config` can
+only remove tightenings, back to the environment's values. Up to v0.10.1 a saved
+value replaced the environment's from the next start (or, for `disableWebSecurity`,
+the next `open_session`), so an agent could widen its own posture.
+
+**Operator files are write-protected.** Tools that write an agent-chosen workspace
+path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`,
+`screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
+`export_playwright_script`, the file-picker write target) refuse
+`<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the snapshot key,
+the `plugins/`, `profile/`, `profiles/`, `profile-snapshots/` and `chrome-profile/`
+trees and the `BROWX_DEFAULT_PROFILE` directory, case-insensitively and after
+resolving symlinks. `profile_restore` copies a snapshot over a profile, so it also
+checks provenance: each snapshot carries a manifest with a digest of its files,
+MACed with a key kept in the workspace, and a snapshot without a valid manifest,
+or whose files changed since, is refused. Restore copies into a fresh sibling
+directory, re-checks the copy against the signed digest, then swaps it in, so the
+profile becomes exactly the snapshot and nothing is written through a symlink left
+in it. Snapshots taken before this release have no manifest; take them again.
+
+**Operator files and profiles are read-protected too.** Tools that read an
+agent-chosen workspace path (`upload_file`, `drop_files`, the file-picker open
+path, `inject_storage_state` from a path, HAR replay, replay-artifact
+reads, heap and trace reads, `extensions_install`) refuse the same operator files,
+including the snapshot key, and every browser-profile tree (`profile/`,
+`profiles/`, `profile-snapshots/`, `chrome-profile/`, `BROWX_DEFAULT_PROFILE`).
+Otherwise `upload_file` could hand a cookie store or the key to the page, and so
+to the agent. `plugins/` stays readable. `set_config` also refuses an origin or confirm hook
+the next start could not parse. A `config.json` browxai cannot
+parse fails the server start, so corrupting the file cannot drop saved
+restrictions.
+
+`BROWX_CONFIG_READONLY=1` goes further for embedders that manage config
+themselves: `set_config`, `reset_config` and `approve_actions` are not registered,
+so no harness can offer them to the model, and the config store refuses writes.
+
+`BROWX_DEFAULT_PROFILE=<dir>` moves the default session's persistent profile out
+of `$BROWX_WORKSPACE/profile`. It is operator-set like `BROWX_WORKSPACE`, so it may
+sit outside the workspace; this is the one browser-profile path the no-trace
+contract doesn't cover. The start fails on a relative path, the filesystem root,
+the home directory itself, a symlink, a non-directory, or a directory owned by
+another user. A missing directory is created `0700`, re-checked after creation
+(a path that turned into a symlink in between is refused), and chmodded through a
+descriptor opened with `O_NOFOLLOW`.
 
 A `confirm_required` set lists actions that always block on `await_human` before
 executing, regardless of capability:

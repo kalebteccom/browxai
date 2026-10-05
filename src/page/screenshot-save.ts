@@ -22,7 +22,7 @@ import { statSync, mkdirSync, writeFileSync } from "node:fs";
 // `session/storage.ts` re-export: this module is reached from the
 // CaptureSubstrate port, and the storage barrel drags a Playwright
 // `BrowserContext`/`Page` import behind it. Same function, one hop shorter.
-import { resolveWorkspacePath } from "../util/workspace.js";
+import { resolveWorkspaceWritePath } from "../util/workspace.js";
 
 /** Image format the bytes were encoded as. Matches the existing tool surface
  *  (`png` / `jpeg`); kept narrow so the result is self-describing without
@@ -67,7 +67,7 @@ export function screenshotSave(
   workspaceRoot: string,
   args: ScreenshotSaveArgs,
 ): ScreenshotSaveResult {
-  const resolved = resolveWorkspacePath(workspaceRoot, args.path, "screenshot");
+  const resolved = resolveWorkspaceWritePath(workspaceRoot, args.path, "screenshot");
   // Ensure parent dir exists — `resolved` is rooted in BROWX_WORKSPACE by
   // construction (resolveWorkspacePath rejects escapes); `writeFileSync`
   // fails if the dir is missing. Same pattern as `pdfSave`.

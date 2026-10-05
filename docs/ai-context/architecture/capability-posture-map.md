@@ -6,32 +6,36 @@ Safe by default, with no auto-broadening. Every off-by-default capability carrie
 
 These are enabled. Withholding them reduces browxai to a read-only crawler.
 
-| Capability   | Tools                                                                                        | Rationale                                                              |
-| ------------ | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere. |
-| `navigation` | navigate, go_back, go_forward, reload                                                        | URL changes are visible to the agent and to the user.                  |
-| `action`     | click, fill, select, drag, scroll, hover, press, wait_for                                    | User-emulating actions; bounded by anti-wedge deadlines.               |
-| `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener.            |
+| Capability   | Tools                                                                                        | Rationale                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere.                                                   |
+| `navigation` | navigate, go_back, go_forward, reload                                                        | URL changes are visible to the agent and to the user.                                                                    |
+| `action`     | click, fill, select, drag, scroll, hover, press, wait_for                                    | User-emulating actions; bounded by anti-wedge deadlines.                                                                 |
+| `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener. The answer comes only from the `browxai` CDP isolated world. |
 
 ## Off-by-default capabilities
 
 Each requires explicit opt-in via `BROWX_CAPABILITIES` (env) or `createBrowxai({ capabilities })` (SDK). A loud warning is emitted on first activation.
 
-| Capability         | Tools                                                              | Why off by default                                                     |
-| ------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `eval`             | `eval_js`, `poll_eval`                                             | Arbitrary JS in page context bypasses curated handlers.                |
-| `network-body`     | full response bodies, network interception                         | Response bodies often contain PII / secrets.                           |
-| `byob-attach`      | attach to user's existing Chrome                                   | Skips managed-profile isolation; touches user data.                    |
-| `clipboard`        | OS clipboard read/write                                            | Cross-application data egress.                                         |
-| `file-io`          | `upload_file`, downloads to workspace                              | Filesystem touch via the workspace chokepoint.                         |
-| `secrets`          | `register_secret`, secret materialization at egress                | Secret values live in process memory; egress order matters.            |
-| `extensions`       | install/inspect Chrome extensions                                  | Extension code runs with elevated browser privileges.                  |
-| `stealth`          | anti-fingerprint posture tweaks                                    | Posture is operator-chosen, never a default.                           |
-| `captcha`          | captcha solver glue                                                | Third-party service integration.                                       |
-| `device-emulation` | viewport / UA / geolocation overrides beyond defaults              | Spoofing surface; the default profile is honest.                       |
-| `diagnostics`      | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff   | Captures session artifacts (workspace-scoped, but artifact-producing). |
-| `canvas`           | canvas-app eval routing (figma / tldraw / excalidraw plugins)      | Composes with `eval`; canvas-app plugins gate through this.            |
-| `replay`           | `.browx` session-replay artifact capture (DOM + network + console) | Archive carries real page content; as sensitive as the session was.    |
+| Capability            | Tools                                                                                                                  | Why off by default                                                                                                                                             |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `eval`                | `eval_js`, `poll_eval`                                                                                                 | Arbitrary JS in page context bypasses curated handlers.                                                                                                        |
+| `network-body`        | full response bodies, network interception                                                                             | Response bodies often contain PII / secrets.                                                                                                                   |
+| `byob-attach`         | attach to user's existing Chrome                                                                                       | Skips managed-profile isolation; touches user data.                                                                                                            |
+| `clipboard`           | OS clipboard read/write                                                                                                | Cross-application data egress.                                                                                                                                 |
+| `file-io`             | `upload_file`, downloads to workspace                                                                                  | Filesystem touch via the workspace chokepoint.                                                                                                                 |
+| `secrets`             | `register_secret`, secret materialization at egress                                                                    | Secret values live in process memory; egress order matters.                                                                                                    |
+| `extensions`          | install/inspect Chrome extensions                                                                                      | Extension code runs with elevated browser privileges.                                                                                                          |
+| `stealth`             | anti-fingerprint posture tweaks                                                                                        | Posture is operator-chosen, never a default.                                                                                                                   |
+| `captcha`             | captcha solver glue                                                                                                    | Third-party service integration.                                                                                                                               |
+| `device-emulation`    | viewport / UA / geolocation overrides beyond defaults                                                                  | Spoofing surface; the default profile is honest.                                                                                                               |
+| `diagnostics`         | recorder, perf_audit, coverage, layout_thrash_trace, memory_diff                                                       | Captures session artifacts (workspace-scoped, but artifact-producing).                                                                                         |
+| `canvas`              | canvas-app eval routing (figma / tldraw / excalidraw plugins)                                                          | Composes with `eval`; canvas-app plugins gate through this.                                                                                                    |
+| `replay`              | `.browx` session-replay artifact capture (DOM + network + console)                                                     | Archive carries real page content; as sensitive as the session was.                                                                                            |
+| `self-approval`       | `approve_actions`                                                                                                      | Lets the agent answer the confirm hooks meant to stop its own actions.                                                                                         |
+| `human-gate-override` | none (gates a branch of `set_permission_policy` / `set_fs_picker_policy` / `set_notification_policy` / `open_session`) | Lets the agent move a policy off `ask-human` and answer the prompt itself.                                                                                     |
+| `operator-channel`    | none (routes `await_human` and the confirm hooks to the daemon socket)                                                 | Makes the daemon behind an operator-set socket the only answer path. `self-approval` and `human-gate-override` skip it, so booting with either logs a warning. |
+| `live-view`           | none (the operator-socket daemon starts a screencast; frames go to that socket only)                                   | Needs `operator-channel`, or the server will not start. Masking does not cover pixels. The agent cannot start, stop or read it.                                |
 
 ## Composition rules
 

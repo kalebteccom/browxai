@@ -31,22 +31,18 @@ describe("ConfigStore precedence", () => {
     writeFileSync(
       join(dir, "config.json"),
       JSON.stringify({
-        user: { capabilities: ["read", "navigation"] },
-        project: { capabilities: ["read", "navigation", "action"] },
+        user: { testAttributes: ["data-u"] },
+        project: { testAttributes: ["data-p"] },
       }),
     );
-    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read" });
-    expect(s.resolve().capabilities).toEqual(["read", "navigation", "action"]); // project wins
-    expect(
-      s.resolve({ capabilities: ["read", "navigation", "action", "human", "eval"] }).capabilities,
-    ).toEqual(["read", "navigation", "action", "human", "eval"]); // session wins
+    const s = new ConfigStore(dir, { BROWX_TEST_ATTRIBUTES: "data-env" });
+    expect(s.resolve().testAttributes).toEqual(["data-p"]); // project wins
+    expect(s.resolve({ testAttributes: ["data-s"] }).testAttributes).toEqual(["data-s"]); // session wins
   });
 
   it("arrays replace (not merge) across layers", () => {
-    const s = new ConfigStore(dir, { BROWX_ALLOWED_ORIGINS: "https://a.com,https://b.com" });
-    expect(s.resolve({ allowedOrigins: ["https://c.com"] }).allowedOrigins).toEqual([
-      "https://c.com",
-    ]);
+    const s = new ConfigStore(dir, { BROWX_HIDE_OVERLAY_SELECTORS: "#a,#b" });
+    expect(s.resolve({ hideOverlaySelectors: ["#c"] }).hideOverlaySelectors).toEqual(["#c"]);
   });
 
   it("unstable.* shallow-merges across layers instead of replacing", () => {
@@ -88,10 +84,16 @@ describe("ConfigStore precedence", () => {
     expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf8")).user).toBeUndefined();
   });
 
-  it("a malformed config.json degrades to defaults + warn, never throws", () => {
+  it("a malformed config.json fails loudly instead of dropping saved restrictions", () => {
     writeFileSync(join(dir, "config.json"), "{ not valid json");
-    const s = new ConfigStore(dir, {});
-    expect(s.resolve()).toEqual(BUILTIN_DEFAULTS);
+    expect(() => new ConfigStore(dir, {})).toThrow(/config\.json is malformed/);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: ["x"] }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/"user" is not an object/);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { allowedOrigins: "x" } }));
+    expect(() => new ConfigStore(dir, {})).toThrow(/user\.allowedOrigins/);
+    // The metadata collector's lenient mode still degrades to defaults.
+    writeFileSync(join(dir, "config.json"), "{ not valid json");
+    expect(new ConfigStore(dir, {}, { onMalformed: "ignore" }).resolve()).toEqual(BUILTIN_DEFAULTS);
   });
 
   it("ignores unknown sections in config.json", () => {
@@ -130,15 +132,13 @@ describe("envLayer", () => {
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
   });
 
-  it("disableWebSecurity is NOT mappable from any env var (security invariant)", () => {
-    // Deliberately excluded from the legacy layer — must never be ambiently
-    // enabled via the environment. Any plausible env spelling stays undefined.
-    const l = envLayer({
-      BROWX_DISABLE_WEB_SECURITY: "1",
-      BROWX_DISABLEWEBSECURITY: "true",
-      BROWX_INSECURE: "1",
-    });
+  it("disableWebSecurity maps only from the exact BROWX_DISABLE_WEB_SECURITY opt-in", () => {
+    // The env is the operator's channel; `set_config` is the agent's. SOP-off is
+    // the operator's call, so only the env can turn it on, and only by this name.
+    expect(envLayer({ BROWX_DISABLE_WEB_SECURITY: "1" }).disableWebSecurity).toBe(true);
+    const l = envLayer({ BROWX_DISABLEWEBSECURITY: "true", BROWX_INSECURE: "1" });
     expect(l.disableWebSecurity).toBeUndefined();
+    expect(envLayer({ BROWX_DISABLE_WEB_SECURITY: "0" }).disableWebSecurity).toBeUndefined();
   });
 
   it("maps BROWX_CHANNEL onto `channel`, and omits it when blank", () => {
@@ -166,15 +166,19 @@ describe("actionTimeoutMs precedence", () => {
 });
 
 describe("disableWebSecurity precedence", () => {
-  it("defaults off; settable only via user/project/session layers", () => {
+  it("defaults off; only the env turns it on; a saved layer can only turn it off", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
     try {
-      const s = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
-      expect(s.resolve().disableWebSecurity).toBeUndefined(); // env can't enable it
-      s.setLayer("project", { disableWebSecurity: true });
-      expect(s.resolve().disableWebSecurity).toBe(true);
-      // session layer can still override back off
-      expect(s.resolve({ disableWebSecurity: false }).disableWebSecurity).toBe(false);
+      const off = new ConfigStore(dir, {});
+      off.setLayer("project", { disableWebSecurity: true });
+      expect(off.resolve().disableWebSecurity).toBeUndefined(); // config can't enable it
+      const on = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
+      expect(on.resolve().disableWebSecurity).toBe(true);
+      on.setLayer("project", { disableWebSecurity: false });
+      expect(on.resolve().disableWebSecurity).toBeUndefined();
+      expect(
+        new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" }).resolve({}).disableWebSecurity,
+      ).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -205,6 +209,62 @@ describe("hideOverlaySelectors precedence", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("ConfigStore capability ceiling", () => {
+  it("a saved list narrows the env set but never widens it", () => {
+    writeFileSync(
+      join(dir, "config.json"),
+      JSON.stringify({
+        user: { capabilities: ["read", "navigation", "eval", "self-approval"] },
+        project: { capabilities: ["read", "eval", "byob-attach"] },
+      }),
+    );
+    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read,navigation,eval" });
+    // project wins the precedence, then the ceiling drops byob-attach.
+    expect(s.resolve().capabilities).toEqual(["read", "eval"]);
+    expect(s.droppedCapabilities().sort()).toEqual(["byob-attach", "self-approval"]);
+  });
+
+  it("with no BROWX_CAPABILITIES the ceiling is the built-in default set", () => {
+    const s = new ConfigStore(dir, {});
+    s.setLayer("user", { capabilities: ["read", "eval", "network-body"] });
+    const fresh = new ConfigStore(dir, {});
+    expect(fresh.resolve().capabilities).toEqual(["read"]);
+    expect(fresh.capabilityCeiling()).toEqual(BUILTIN_DEFAULTS.capabilities);
+    expect(fresh.droppedCapabilities().sort()).toEqual(["eval", "network-body"]);
+  });
+
+  it("a session patch cannot widen either", () => {
+    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read" });
+    expect(s.resolve({ capabilities: ["read", "eval"] }).capabilities).toEqual(["read"]);
+  });
+
+  it("an unknown name in a saved list is dropped, so it cannot fail the next start", () => {
+    const s = new ConfigStore(dir, {});
+    s.setLayer("user", { capabilities: ["read", "not-a-capability"] });
+    expect(new ConfigStore(dir, {}).resolve().capabilities).toEqual(["read"]);
+  });
+});
+
+describe("ConfigStore BROWX_CONFIG_READONLY", () => {
+  it("refuses setLayer and resetLayer and leaves config.json untouched", () => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ user: { headless: true } }));
+    const before = readFileSync(join(dir, "config.json"), "utf8");
+    const s = new ConfigStore(dir, { BROWX_CONFIG_READONLY: "1" });
+    expect(s.readonly).toBe(true);
+    expect(() => s.setLayer("user", { headless: false })).toThrow(/^config-readonly/);
+    expect(() => s.resetLayer("user")).toThrow(/^config-readonly/);
+    expect(readFileSync(join(dir, "config.json"), "utf8")).toBe(before);
+    // Reads still resolve the persisted layers.
+    expect(s.resolve().headless).toBe(true);
+  });
+
+  it("is off unless the value is 1 or true", () => {
+    expect(new ConfigStore(dir, {}).readonly).toBe(false);
+    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "0" }).readonly).toBe(false);
+    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "TRUE" }).readonly).toBe(true);
   });
 });
 
