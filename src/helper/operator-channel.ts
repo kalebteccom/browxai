@@ -22,12 +22,17 @@ import { createConnection, type Socket } from "node:net";
 import { randomBytes } from "node:crypto";
 import { log } from "../util/logging.js";
 import { PACKAGE_VERSION } from "../util/version.js";
-import { sanitizeUrlsInText } from "../util/url-sanitizer.js";
+import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import {
-  capabilityMissing,
-  type CapabilityConfig,
-  type ConfirmHook,
-} from "../util/capabilities.js";
+  CLASS_LIMIT,
+  MAX_PENDING,
+  SESSION_LIMIT,
+  classOf,
+  dedupeKey,
+  requestFrame,
+  type OperatorAsk,
+  type PromptClass,
+} from "./operator-frames.js";
 import {
   MAX_FRAME_BYTES,
   MIN_TOKEN_LENGTH,
@@ -38,35 +43,12 @@ import {
   proofMatches,
   takeOperatorEnv,
   type AnswerRules,
-  type HumanKind,
   type OperatorDecision,
   type OperatorGrant,
 } from "./operator-protocol.js";
 
 export type { OperatorDecision, OperatorGrant, HumanKind } from "./operator-protocol.js";
-
-/** What a request asks. Strings here are agent- or page-sourced and are listed
- *  as `untrusted` on the wire. */
-export type OperatorPrompt =
-  | {
-      kind: "approval";
-      /** The confirm scope or policy name (`navigate_off_allowlist`, `permission`, ...). */
-      scope: string;
-      tool: string;
-      summary: string;
-      /** Set when an approve may carry a grant: the confirm scope it would extend. */
-      grantable?: ConfirmHook;
-    }
-  | { kind: "human"; humanKind: HumanKind; prompt: string; choices?: string[] };
-
-export interface OperatorAsk {
-  session: string;
-  /** How long the request may stay unanswered before it is denied. */
-  timeoutMs: number;
-  /** The session's secret masker, applied to every string that leaves. */
-  mask: <T>(value: T) => T;
-  prompt: OperatorPrompt;
-}
+export type { OperatorPrompt, OperatorAsk } from "./operator-frames.js";
 
 export interface OperatorAnswer {
   decision: OperatorDecision;
@@ -84,11 +66,6 @@ export interface OperatorChannel {
 type State = "down" | "hello" | "auth" | "ready" | "closed";
 type Outcome = "approved" | "denied" | "done" | "aborted" | "timeout";
 
-/** Who a request is for. A page can raise `page` prompts as fast as it likes, an
- *  agent can raise `human` ones, and a confirm hook is `hook`. Each class has its
- *  own share of the pending cap, so one cannot starve another. */
-type PromptClass = "hook" | "human" | "page";
-
 interface Pending {
   id: string;
   cls: PromptClass;
@@ -99,20 +76,6 @@ interface Pending {
   settle: (r: { answer: OperatorAnswer } | { error: Error }) => void;
 }
 
-/** Pending requests: 32 in all, split so the three classes cannot crowd each
- *  other out (12 + 12 + 8), and bounded per session within a class. */
-const MAX_PENDING = 32;
-const CLASS_LIMIT: Record<PromptClass, number> = { hook: 12, human: 12, page: 8 };
-const SESSION_LIMIT: Record<PromptClass, number> = { hook: 8, human: 8, page: 4 };
-
-/** Field caps, in characters. With 32 choices and the worst JSON escaping
- *  (six bytes a character) the biggest frame stays near 40 KiB, under the
- *  64 KiB the receiver accepts. A frame over the limit is refused as well. */
-const MAX_SUMMARY_CHARS = 1_000;
-const MAX_PROMPT_CHARS = 2_000;
-const MAX_CHOICES = 32;
-const MAX_CHOICE_CHARS = 100;
-const MAX_NAME_CHARS = 128;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 const BACKOFF_START_MS = 250;
 const BACKOFF_MAX_MS = 5_000;
@@ -123,68 +86,6 @@ const OUTCOME: Record<OperatorDecision, Outcome> = {
   done: "done",
   abort: "aborted",
 };
-
-function cut(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-function requestFrame(
-  id: string,
-  ask: OperatorAsk,
-  createdAt: number,
-): { frame: Record<string, unknown>; rules: AnswerRules } {
-  // URL strip and secret mask first, then the length cap on what is left.
-  const clean = (v: string, max: number): string => cut(ask.mask(sanitizeUrlsInText(v)), max);
-  const base = {
-    v: OPERATOR_PROTOCOL_VERSION,
-    type: "request",
-    id,
-    session: cut(ask.session, MAX_NAME_CHARS),
-    createdAt,
-    expiresAt: createdAt + ask.timeoutMs,
-  };
-  const p = ask.prompt;
-  if (p.kind === "approval") {
-    const answers = ["approve", "deny"] as const;
-    return {
-      frame: {
-        ...base,
-        kind: "approval",
-        scope: cut(p.scope, MAX_NAME_CHARS),
-        tool: cut(p.tool, MAX_NAME_CHARS),
-        summary: clean(p.summary, MAX_SUMMARY_CHARS),
-        untrusted: ["summary", "session"],
-        answers,
-        ...(p.grantable ? { grantScopes: ["session", "workspace"] } : {}),
-      },
-      rules: { answers, ...(p.grantable ? { grantable: p.grantable } : {}) },
-    };
-  }
-  const answers = ["done", "abort"] as const;
-  const choices = p.choices?.slice(0, MAX_CHOICES).map((c) => clean(c, MAX_CHOICE_CHARS));
-  return {
-    frame: {
-      ...base,
-      kind: "human",
-      humanKind: p.humanKind,
-      prompt: clean(p.prompt, MAX_PROMPT_CHARS),
-      ...(choices ? { choices } : {}),
-      untrusted: choices ? ["prompt", "choices", "session"] : ["prompt", "session"],
-      answers,
-    },
-    rules: { answers, humanKind: p.humanKind, choiceCount: choices?.length ?? 0 },
-  };
-}
-
-const classOf = (p: OperatorPrompt): PromptClass =>
-  p.kind === "human" ? "human" : p.grantable ? "hook" : "page";
-
-/** What a page prompt is, for collapsing repeats. Hooks and human prompts are
- *  never collapsed: each is a distinct decision. */
-function dedupeKey(cls: PromptClass, frame: Record<string, unknown>): string | null {
-  if (cls !== "page") return null;
-  return JSON.stringify([frame.session, frame.scope, frame.tool, frame.summary]);
-}
 
 class OperatorLink implements OperatorChannel {
   readonly #path: string;

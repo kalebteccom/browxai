@@ -6,12 +6,16 @@
 
 import type { OperatorPrompt } from "./operator-channel.js";
 
+function cap(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 export function permissionPrompt(permission: string, origin?: string): OperatorPrompt {
   return {
     kind: "approval",
     scope: "permission",
     tool: "permission_request",
-    summary: `grant ${origin ? `${origin} ` : "the page "}the ${permission} permission`,
+    summary: `grant ${origin ? `${cap(origin, 200)} ` : "the page "}the ${cap(permission, 100)} permission`,
   };
 }
 
@@ -20,6 +24,8 @@ export function notificationPrompt(n: { title: string; origin?: string }): Opera
     kind: "approval",
     scope: "notification",
     tool: "notification_construct",
-    summary: `show a notification titled ${JSON.stringify(n.title)} from ${n.origin ?? "the page"}`,
+    // Origin first, title capped: the title is the page's, and a long one must not
+    // push the origin past the length cut on the wire.
+    summary: `from ${cap(n.origin ?? "the page", 200)}, show a notification titled ${JSON.stringify(cap(n.title, 200))}`,
   };
 }

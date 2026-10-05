@@ -329,7 +329,9 @@ Operator-only on every harness.
 - **Limits.** Outbound strings are cut (prompt 2,000 characters, summary 1,000,
   32 choices of 100, names 128) and no frame exceeds 64 KiB. Pending requests
   are capped at 12 confirm hooks, 12 `await_human` and 8 page prompts, and at 8,
-  8 and 4 per session. Identical page prompts share one request. A request over
+  8 and 4 per session. Identical page prompts (compared after masking and cutting) share one request.
+  A frame with cut text or dropped choices carries `truncated: true` and
+  `omittedChoices`, so the card can say the text is partial. A request over
   a limit is denied at once, so the daemon should expect refusals to be silent.
 - **Secrets.** Every string leaving on the channel passes the
   `SecretRegistry.applyMaskDeep` chokepoint (`src/util/secrets.ts`) and the URL

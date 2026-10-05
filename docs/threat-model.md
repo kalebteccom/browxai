@@ -363,7 +363,8 @@ matter here:
   request stays pending. An inbound frame over 64 KiB drops the connection, and
   malformed or non-object frames are ignored. Outbound strings are cut to fit
   (prompt 2,000 characters, summary 1,000, at most 32 choices of 100, names 128),
-  and a frame that would still exceed 64 KiB is refused, so an agent-sized
+  a frame that had text cut or choices dropped carries `truncated: true` (and
+  `omittedChoices`), and a frame that would still exceed 64 KiB is refused, so an agent-sized
   `await_human` cannot wedge the channel in a redial and resend loop.
 - **Failure is closed.** A request with no answer is denied at its own timeout
   (5 minutes for a confirm hook, 5 minutes by default and 1 hour at most for
@@ -372,7 +373,8 @@ matter here:
   after a redial, and still time out. At most 32 requests wait at once, split so a page cannot starve a
   confirm hook: 12 for confirm hooks, 12 for `await_human`, 8 for page prompts
   (`permission`, `notification`), and 8, 8 and 4 per session within each class.
-  Identical page prompts (same session, scope, tool and summary) share one
+  Identical page prompts (same session, scope, tool and summary, compared
+  after masking and cutting) share one
   request and one answer, so a page spamming `Notification` or `getUserMedia`
   costs one slot. A request over a limit is refused at once, which the callers
   treat as a deny. Nothing approves on its own, and a dropped connection never

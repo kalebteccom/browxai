@@ -8,6 +8,7 @@ import {
 } from "./operator-channel.js";
 import { startFakeDaemon, type FakeDaemon } from "./__fixtures__/operator-daemon.js";
 import { resolveCapabilities } from "../util/capabilities.js";
+import { notificationPrompt } from "./operator-prompts.js";
 import "../tools/tool-metadata.js";
 
 const ON = resolveCapabilities({
@@ -447,6 +448,8 @@ describe("OperatorChannel — frames", () => {
     expect(String(req.session).length).toBeLessThanOrEqual(128);
     const choices = req.choices as string[];
     expect(choices).toHaveLength(32);
+    expect(req.truncated).toBe(true);
+    expect(req.omittedChoices).toBe(968);
     expect(choices.every((c) => c.length <= 100)).toBe(true);
     // Only the choices that were sent can be chosen.
     daemon.answer(req.id, { decision: "done", value: 40 });
@@ -474,7 +477,32 @@ describe("OperatorChannel — frames", () => {
       .catch(() => undefined);
     const req = await daemon.nextRequest();
     expect(String(req.summary).length).toBeLessThanOrEqual(1_000);
+    expect(req.truncated).toBe(true);
     expect(String(req.summary)).not.toContain("zzzz");
+  });
+
+  it("does not flag a frame that fit", async () => {
+    const ch = open();
+    void ch.ask(approvalAsk()).catch(() => undefined);
+    const req = await daemon.nextRequest();
+    expect(req).not.toHaveProperty("truncated");
+    expect(req).not.toHaveProperty("omittedChoices");
+  });
+
+  it("keeps the origin of a long-titled notification inside the cut", async () => {
+    const ch = open();
+    const title = "Safe, approve this. ".repeat(500);
+    void ch
+      .ask(
+        approvalAsk({
+          prompt: notificationPrompt({ title, origin: "https://evil.example" }),
+        }),
+      )
+      .catch(() => undefined);
+    const req = await daemon.nextRequest();
+    expect(String(req.summary)).toContain("https://evil.example");
+    expect(String(req.summary).indexOf("https://evil.example")).toBeLessThan(40);
+    expect(String(req.summary).length).toBeLessThan(500);
   });
 
   it("ignores malformed and non-object frames, and redials after an oversized line", async () => {
