@@ -36,7 +36,8 @@ export type Capability =
   | "native-device"
   | "self-approval"
   | "human-gate-override"
-  | "operator-channel";
+  | "operator-channel"
+  | "live-view";
 
 export const ALL_CAPABILITIES: readonly Capability[] = [
   "read",
@@ -61,6 +62,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = [
   "self-approval",
   "human-gate-override",
   "operator-channel",
+  "live-view",
 ];
 
 export const DEFAULT_CAPABILITIES: readonly Capability[] = [
@@ -351,6 +353,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
     capability: "operator-channel",
     message:
       "operator-channel capability is ENABLED — when BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN are both set, every confirm-hook request, permission and notification `ask-human` prompt and `await_human` is sent to the Unix socket the host daemon listens on, and the ONLY accepted answer is the daemon's (approve, deny, done, abort) on that authenticated connection. DevTools answers are ignored while it is on, a prompt with no daemon answer is denied at its timeout, and the file-picker `ask-human` prompt is refused outright because it needs files an approve or deny cannot carry. The daemon can also grant a confirm scope for one session or the whole workspace (never wider), up to 24 hours. The socket path and the token are read once from the environment and removed from it; they never appear in a log line, an error or a tool result. Enable it only when the daemon behind the socket is the operator. See docs/threat-model.md.",
+  },
+  {
+    capability: "live-view",
+    message:
+      "live-view capability is ENABLED — the host daemon on the operator-channel socket can start a screencast of a session's browser (JPEG, up to 5 fps and 1280 px wide, stepping down to 1 fps and 640 px when it falls behind), and the frames go to that socket and nowhere else: not to a tool result, a log, an artifact, a report, a HAR or a recording. The agent can neither start nor read it, and the daemon starts and stops it per session. SECRET MASKING DOES NOT COVER PIXELS: a registered secret typed into a visible field, a password the page renders, and anything else on screen reaches the daemon (and so the operator's phone and the relay path behind it) exactly as drawn. It needs `operator-channel`; without it the server refuses to start. Enable it only when the daemon behind the socket is the operator and the path from it to the operator's screen is one you trust. See docs/threat-model.md.",
   },
   {
     capability: "captcha",
