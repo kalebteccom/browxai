@@ -40,6 +40,7 @@ This page is the working summary.
       <span class="browx-cap is-off">diagnostics</span>
       <span class="browx-cap is-off">self-approval</span>
       <span class="browx-cap is-off">human-gate-override</span>
+      <span class="browx-cap is-off">operator-channel</span>
     </div>
   </div>
 </div>
@@ -73,6 +74,11 @@ Off by default, each opted in deliberately:
   `set_notification_policy` move a policy off `ask-human`, and lets
   `grant_permissions` natively grant what that policy holds. Without it they
   refuse, so the agent can't switch a held prompt to `allow` and answer it itself.
+- `operator-channel` sends `await_human`, the confirmation hooks and the
+  permission and notification `ask-human` prompts to the host daemon's Unix
+  socket (`BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`), and only the
+  daemon's answer counts while it is on. An unanswered prompt is denied at its
+  timeout.
 - `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
   `diagnostics` gate the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and

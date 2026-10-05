@@ -24,6 +24,7 @@ import {
 import type { PluginRecord } from "./plugin/types.js";
 import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
 import { ApprovalStore } from "./policy/confirm.js";
+import { openOperatorChannel } from "./helper/operator-channel.js";
 import { log } from "./util/logging.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import type { ToolResponse } from "./tools/host.js";
@@ -127,6 +128,9 @@ export async function createServer(opts: StartOptions = {}): Promise<{
   const approvals = new ApprovalStore();
   //  policy: capabilities, confirm-required hooks, origin allow/blocklist.
   const caps = resolveCapabilities(cfgEnv);
+  // The daemon's answer channel. Reads and removes its two environment
+  // variables, and throws on a socket the daemon did not make safely.
+  const operator = openOperatorChannel(caps);
   const confirmHooks = resolveConfirmHooks(cfgEnv);
   const originPolicy = resolveOriginPolicy(cfgEnv);
   const isByob = !!opts.attachCdp;
@@ -242,6 +246,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     workspace,
     serverEngine,
     serverDefaultMode,
+    operator,
+    approvals,
   });
 
   const server = new McpServer({ name: NAME, version: VERSION }, { capabilities: { tools: {} } });
@@ -336,6 +342,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     },
     shutdown: async () => {
       await registry.closeAll();
+      operator?.close();
       await server.close().catch(() => undefined);
     },
     handlers: toolHandlers,

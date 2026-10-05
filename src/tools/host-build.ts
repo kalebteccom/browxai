@@ -150,6 +150,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     bridge: e.bridge,
     isByob,
     approvals,
+    sessionId: e.id,
   });
 
   /** Structured refusal shape shared by `gateCheck`'s primary and compound
@@ -269,7 +270,7 @@ export function buildHost(deps: HostDeps): ToolHost {
             ok: false,
             action: { type: toolName },
             error: `policy: ${decision.reason}`,
-            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt; the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
+            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt (or, when the operator enabled `operator-channel`, the operator answers on that channel instead and DevTools answers are ignored); the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
           },
           null,
           2,

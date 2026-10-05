@@ -88,7 +88,9 @@ Reports against the following are in scope:
   agent without the `self-approval` capability, answer `await_human`, a
   confirm hook, or an `ask-human` policy in place of the human. The agent
   switching a permission or file-picker `ask-human` policy to `allow`
-  without the `human-gate-override` capability counts too.
+  without the `human-gate-override` capability counts too, and so does any
+  path that lets the agent or a page read the operator-channel socket path or
+  token, or answer on the socket.
 - **Self-widening** — any path that lets the agent loosen policy past
   what the server's environment set: enable a capability, drop a confirm
   hook, widen or clear the origin lists, turn on `disableWebSecurity`, or

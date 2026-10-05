@@ -10,6 +10,26 @@ surface" covers.
 
 ### Added
 
+- **`operator-channel` capability, off by default.** A host daemon passes
+  browxai a Unix socket (`BROWX_OPERATOR_SOCKET`) and a shared secret
+  (`BROWX_OPERATOR_TOKEN`), and with the capability on, every confirm-hook
+  request, `permission` and `notification` `ask-human` prompt and
+  `await_human` goes to that socket. Only the daemon's answer counts
+  (`approve`, `deny`, `done`, `abort`); DevTools answers are ignored while it is
+  on. An approve is one-shot unless the daemon attaches a `session` or
+  `workspace` grant of up to 24 hours. `global` is rejected. A request with no
+  answer is denied at its timeout, whether the daemon is slow, gone or never
+  connected, and nothing falls back to DevTools. The socket must be mode 0600 in
+  a 0700 directory owned by the browxai user, or the server refuses to start.
+  The daemon and browxai prove they hold the token with a constant-time HMAC
+  handshake, so the token never crosses the socket. Both variables are removed
+  from the environment at start and never reach a log, an error or a tool
+  result. Every string sent is masked and URL-sanitised. With the capability
+  off, or either variable missing, nothing changes. The file-picker `ask-human`
+  prompt has no approve or deny form and is refused while the channel is on.
+  `list_approvals` rows gain an optional `sessionId`. See
+  [`docs/threat-model.md`](docs/threat-model.md) section 7 and
+  `docs/integrations/remotxai.md`.
 - **`docs/integrations/remotxai.md`.** A design for running browxai inside
   remotxai sessions: one stdio server per session, workspace and profile layout
   with `BROWX_DEFAULT_PROFILE` and `BROWX_CONFIG_READONLY`, the human-prompt
