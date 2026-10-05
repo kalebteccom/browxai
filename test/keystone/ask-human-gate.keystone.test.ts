@@ -347,3 +347,181 @@ describe("grant_permissions on an ask-human policy", () => {
     KEYSTONE_TIMEOUT,
   );
 });
+
+describe("open_session reopening an ask-human session name", () => {
+  const reopen = (call: Call, session: string, extra: Record<string, unknown> = {}) =>
+    call<Refusal & { session?: string }>("open_session", { session, mode: "incognito", ...extra });
+  const liveSessions = async (call: Call) =>
+    (await call<{ sessions: Array<{ id: string }> }>("list_sessions", {})).sessions.map(
+      (s) => s.id,
+    );
+
+  it(
+    "refuses a close then reopen with allow, and a reopen with no policy keeps the hold",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const session = "ks-reopen-denied";
+      await openAskHuman(call, session);
+      await call("close_session", { session });
+
+      for (const policy of ["permissionPolicy", "fsPickerPolicy", "notificationPolicy"]) {
+        const refused = await reopen(call, session, { [policy]: "allow" });
+        expect(refused.ok).toBe(false);
+        expect(refused.requiredCapability).toBe("human-gate-override");
+        expect(refused.reason).toMatch(new RegExp(`${policy}.*off "ask-human"`));
+        expect(await liveSessions(call)).not.toContain(session);
+      }
+      // A per-key override is a way out too.
+      const viaOverride = await reopen(call, session, {
+        permissionPolicy: { mode: "ask-human", perPermission: { geolocation: "allow" } },
+      });
+      expect(viaOverride.requiredCapability).toBe("human-gate-override");
+      expect(await liveSessions(call)).not.toContain(session);
+
+      // Naming no policy inherits what the session held, so the default
+      // `raise` cannot replace it either.
+      const inherited = await reopen(call, session);
+      expect(inherited.ok).not.toBe(false);
+      await call("navigate", { session, url: `${fixture.url}/` });
+      expect(await geolocationState(call, session)).toBe("prompt");
+      const fsRefused = await call<Refusal>("set_fs_picker_policy", { session, mode: "allow" });
+      expect(fsRefused.requiredCapability).toBe("human-gate-override");
+      const notifRefused = await call<Refusal>("set_notification_policy", {
+        session,
+        mode: "allow",
+      });
+      expect(notifRefused.requiredCapability).toBe("human-gate-override");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "holds across close_sessions, and a lazily re-created default session keeps it",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      await openAskHuman(call, "default");
+      await call("close_sessions", { all: true });
+      const refused = await reopen(call, "default", { permissionPolicy: "allow" });
+      expect(refused.requiredCapability).toBe("human-gate-override");
+
+      // Any tool call re-creates the default session; it still holds the policy.
+      await call("navigate", { url: `${fixture.url}/` });
+      expect(await geolocationState(call, "default")).toBe("prompt");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "records the hold for close_sessions by prefix and by idleMs",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      await openAskHuman(call, "ks-pfx-a");
+      await openAskHuman(call, "ks-other-b");
+      await call("close_sessions", { prefix: "ks-pfx-" });
+      expect(
+        (await reopen(call, "ks-pfx-a", { permissionPolicy: "allow" })).requiredCapability,
+      ).toBe("human-gate-override");
+      // The session the prefix did not match is still open and untouched.
+      expect(await liveSessions(call)).toContain("ks-other-b");
+
+      await new Promise((r) => setTimeout(r, 50));
+      await call("close_sessions", { idleMs: 10 });
+      expect(
+        (await reopen(call, "ks-other-b", { fsPickerPolicy: "allow" })).requiredCapability,
+      ).toBe("human-gate-override");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "refuses another name on the held profile, and leaves a different profile alone",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const persistent = (session: string, extra: Record<string, unknown>) =>
+        call<Refusal>("open_session", { session, mode: "persistent", ...extra });
+      const opened = await persistent("ks-prof-held", {
+        profile: "ks-held-prof",
+        permissionPolicy: "ask-human",
+      });
+      expect(opened.ok).not.toBe(false);
+      await call("close_session", { session: "ks-prof-held" });
+
+      // A new name pointing at the held profile is the same reopen.
+      for (const extra of [{ permissionPolicy: "allow" }, {}]) {
+        const refused = await persistent("ks-prof-thief", { profile: "ks-held-prof", ...extra });
+        expect(refused.ok).toBe(false);
+        expect(refused.requiredCapability).toBe("human-gate-override");
+        expect(refused.reason).toMatch(/profile/);
+        expect(await liveSessions(call)).not.toContain("ks-prof-thief");
+      }
+      // Keeping ask-human on it is fine.
+      const kept = await persistent("ks-prof-thief", {
+        profile: "ks-held-prof",
+        permissionPolicy: "ask-human",
+      });
+      expect(kept.ok).not.toBe(false);
+      await call("close_session", { session: "ks-prof-thief" });
+
+      // A different name on a different profile is unaffected.
+      const free = await persistent("ks-prof-free", {
+        profile: "ks-free-prof",
+        permissionPolicy: "allow",
+      });
+      expect(free.ok).not.toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "lets another name use the held profile when the operator enabled human-gate-override",
+    async () => {
+      const call = await start(`${DEFAULT_CAPS},human-gate-override`);
+      const open = (session: string, extra: Record<string, unknown>) =>
+        call<Refusal>("open_session", {
+          session,
+          mode: "persistent",
+          profile: "ks-ovr-prof",
+          ...extra,
+        });
+      expect((await open("ks-ovr-a", { permissionPolicy: "ask-human" })).ok).not.toBe(false);
+      await call("close_session", { session: "ks-ovr-a" });
+      expect((await open("ks-ovr-b", { permissionPolicy: "allow" })).ok).not.toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "reopens with allow when the operator enabled human-gate-override",
+    async () => {
+      const call = await start(`${DEFAULT_CAPS},human-gate-override`);
+      const session = "ks-reopen-allowed";
+      await openAskHuman(call, session);
+      await call("close_session", { session });
+      const opened = await reopen(call, session, { permissionPolicy: "allow" });
+      expect(opened.ok).not.toBe(false);
+      await call("navigate", { session, url: `${fixture.url}/` });
+      expect(await geolocationState(call, session)).toBe("granted");
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a name that never held ask-human reopens with allow, and an ask-human reopen stays open",
+    async () => {
+      const call = await start(DEFAULT_CAPS);
+      const session = "ks-reopen-free";
+      expect((await reopen(call, session, { permissionPolicy: "allow" })).ok).not.toBe(false);
+      await call("close_session", { session });
+      const again = await reopen(call, session, { permissionPolicy: "allow" });
+      expect(again.ok).not.toBe(false);
+      await call("navigate", { session, url: `${fixture.url}/` });
+      expect(await geolocationState(call, session)).toBe("granted");
+
+      // Moving onto ask-human is the agent restricting itself, so it is free.
+      await call("close_session", { session });
+      const tightened = await reopen(call, session, { permissionPolicy: "ask-human" });
+      expect(tightened.ok).not.toBe(false);
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});

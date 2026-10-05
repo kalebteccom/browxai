@@ -1,11 +1,11 @@
+# ci-optimised: v1
 # Mirrors .github/workflows/ci.yml and quality.yml on the self-hosted box. The GitHub workflows stay in place.
 # Not mirrored: secret-scan (trufflehog) and zizmor, neither ships in a node image. release.yml and dependabot-auto-merge.yml wait on a secrets plan.
 # INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
 # INVARIANT: no step builds an image; images are pulled by exact tag.
+# The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push.
 when:
   - event: push
-    branch: main
-  - event: pull_request
 
 # WORKAROUND: Woodpecker steps share one workspace, so two steps that run `pnpm install` at once would race on node_modules.
 # The steps therefore form a single chain; the slot pool still caps what each step runs.

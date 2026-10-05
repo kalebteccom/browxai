@@ -33,8 +33,10 @@ function captureOpenSession(): { def: CapturedDef; handler: CapturedHandler } {
       defs[name] = def;
       handlers[name] = handler;
     },
+    gateCheck: () => null,
     registry: {
       has: () => false,
+      heldAskHuman: () => undefined,
       get: () => {
         throw new Error("registry.get must not be reached");
       },

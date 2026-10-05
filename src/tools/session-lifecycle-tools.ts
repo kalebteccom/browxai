@@ -1,7 +1,3 @@
-import { parseDialogPolicyArg, type DialogPolicy } from "../session/dialog.js";
-import { parsePermissionPolicyArg, type PermissionPolicy } from "../session/permission.js";
-import { parseNotificationPolicyArg, type NotificationPolicy } from "../session/notification.js";
-import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picker.js";
 import type { SessionEntry } from "../session/registry.js";
 import type { TargetSubstrate } from "../page/target-substrate.js";
 import {
@@ -10,7 +6,10 @@ import {
   requirePage,
   type EngineKind,
 } from "../engine/index.js";
+import { askHumanProfileRefusal } from "./ask-human-gate.js";
+import { resolveOpenSessionPolicies } from "./open-session-policies.js";
 import type {
+  GateHost,
   RegisterHost,
   SessionHost,
   ServerServicesHost,
@@ -28,37 +27,6 @@ function lifecycleJson(body: object): ToolResponse {
  *  lifted from an Error or stringified. */
 function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
-}
-
-/** The parsed policy bundle `open_session` threads into `registry.get`. Extracting
- *  the four parse ternaries into one pure helper keeps the handler under the
- *  complexity budget (RFC 0004 P3 / D3) — same logic, decomposed. */
-interface ParsedOpenSessionPolicies {
-  dialogPolicy?: DialogPolicy;
-  permissionPolicy?: PermissionPolicy;
-  notificationPolicy?: NotificationPolicy;
-  fsPickerPolicy?: FsPickerPolicy;
-}
-
-/** Parse the four optional policy args (throws on a malformed policy string — the
- *  handler's try/catch surfaces it as a structured `ok:false`). Byte-identical to
- *  the prior inline ternaries. */
-function parseOpenSessionPolicies(args: {
-  dialogPolicy?: string | DialogPolicy;
-  permissionPolicy?: string | PermissionPolicy;
-  notificationPolicy?: string | NotificationPolicy;
-  fsPickerPolicy?: string | FsPickerPolicy;
-}): ParsedOpenSessionPolicies {
-  return {
-    dialogPolicy: args.dialogPolicy ? parseDialogPolicyArg(args.dialogPolicy) : undefined,
-    permissionPolicy: args.permissionPolicy
-      ? parsePermissionPolicyArg(args.permissionPolicy)
-      : undefined,
-    notificationPolicy: args.notificationPolicy
-      ? parseNotificationPolicyArg(args.notificationPolicy)
-      : undefined,
-    fsPickerPolicy: args.fsPickerPolicy ? parseFsPickerPolicyArg(args.fsPickerPolicy) : undefined,
-  };
 }
 
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
@@ -132,15 +100,15 @@ function resolveOpenSessionEngine(
  * order. The host owns the closures (register / registry).
  */
 export function registerSessionLifecycleTools(
-  host: RegisterHost & SessionHost & ServerServicesHost & TargetHost,
+  host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
-  const { z, register, registry, targetFor } = host;
+  const { z, register, registry, targetFor, gateCheck } = host;
 
   register(
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). A name whose last session closed holding `ask-human` on `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` keeps it: a policy you leave out is inherited, and one that moves a held key off `ask-human` is refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it.Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir (default = the session id).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
       inputSchema: {
         session: z.string().describe('Session id to create (e.g. "agent-a", "user-2").'),
         mode: z
@@ -333,17 +301,19 @@ export function registerSessionLifecycleTools(
       }
       const engineResult = resolveOpenSessionEngine(engine);
       if (!engineResult.ok) return engineResult.response;
-      let policies: ParsedOpenSessionPolicies;
-      try {
-        policies = parseOpenSessionPolicies({
+      const resolved = resolveOpenSessionPolicies(
+        gateCheck,
+        session,
+        registry.heldAskHuman(session),
+        {
           dialogPolicy,
           permissionPolicy,
           notificationPolicy,
           fsPickerPolicy,
-        });
-      } catch (err) {
-        return lifecycleError(err);
-      }
+        },
+      );
+      if (!resolved.ok) return resolved.response;
+      const policies = resolved.policies;
       try {
         const e = await registry.get(session, {
           mode,
@@ -353,10 +323,7 @@ export function registerSessionLifecycleTools(
           backgroundThrottling,
           device,
           viewport,
-          dialogPolicy: policies.dialogPolicy,
-          permissionPolicy: policies.permissionPolicy,
-          notificationPolicy: policies.notificationPolicy,
-          fsPickerPolicy: policies.fsPickerPolicy,
+          ...policies,
           storageState,
           authState,
           har: har,
@@ -373,7 +340,7 @@ export function registerSessionLifecycleTools(
           ...buildOpenSessionResultFields(e, hars),
         });
       } catch (err) {
-        return lifecycleError(err);
+        return askHumanProfileRefusal(gateCheck, err) ?? lifecycleError(err);
       }
     },
   );
