@@ -133,7 +133,18 @@ describe("handshake proofs", () => {
 
   it("rejects non-strings, bad hex and wrong lengths without throwing", () => {
     const p = handshakeProof(token, "daemon", "aa", "bb");
-    for (const bad of [undefined, null, 5, {}, "", "zz", p.slice(2), p + "00"]) {
+    for (const bad of [
+      undefined,
+      null,
+      5,
+      {},
+      "",
+      "zz",
+      p.slice(2),
+      p + "00",
+      p.toUpperCase(),
+      ` ${p.slice(1)}`,
+    ]) {
       expect(proofMatches(p, bad)).toBe(false);
     }
   });

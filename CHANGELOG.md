@@ -25,7 +25,11 @@ surface" covers.
   handshake, so the token never crosses the socket. Both variables are removed
   from the environment at start and never reach a log, an error or a tool
   result. Every string sent is masked and URL-sanitised. With the capability
-  off, or either variable missing, nothing changes. The file-picker `ask-human`
+  off nothing changes; with it on, a missing variable stops the server from
+  starting. Outbound strings are cut and no frame exceeds 64 KiB, pending
+  requests are capped per class and per session with identical page prompts
+  collapsed, and booting with `self-approval` or `human-gate-override` logs a
+  warning, since both skip the daemon. The file-picker `ask-human`
   prompt has no approve or deny form and is refused while the channel is on.
   `list_approvals` rows gain an optional `sessionId`. See
   [`docs/threat-model.md`](docs/threat-model.md) section 7 and

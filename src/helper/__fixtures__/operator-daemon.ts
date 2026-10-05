@@ -20,6 +20,9 @@ export interface FakeDaemonOptions {
   /** Called on each hello, before the welcome goes out. Lets a test inject a
    *  frame ahead of authentication. */
   beforeWelcome?: (send: (frame: Frame) => void) => void;
+  /** On a second and later connection, send the first connection's welcome
+   *  instead of a fresh one: a replay of an old proof. */
+  replayFirstWelcome?: boolean;
 }
 
 export interface FakeDaemon {
@@ -35,6 +38,8 @@ export interface FakeDaemon {
   /** The next `request` frame not yet returned. */
   nextRequest(): Promise<Frame>;
   send(frame: Frame): void;
+  /** Write text to the connection as is, newline and all. */
+  sendRaw(text: string): void;
   answer(id: unknown, body: Frame): void;
   drop(): void;
   close(): Promise<void>;
@@ -50,6 +55,7 @@ export async function startFakeDaemon(opts: FakeDaemonOptions = {}): Promise<Fak
   let delivered = 0;
   const sockets = new Set<Socket>();
   let current: Socket | null = null;
+  let firstWelcome: string | null = null;
 
   const daemon: FakeDaemon = {
     dir,
@@ -73,6 +79,7 @@ export async function startFakeDaemon(opts: FakeDaemonOptions = {}): Promise<Fak
         }
       }),
     send: (frame) => void current?.write(JSON.stringify({ v: 1, ...frame }) + "\n"),
+    sendRaw: (text) => void current?.write(text),
     answer: (id, body) => daemon.send({ type: "answer", id, ...body }),
     drop: () => current?.destroy(),
     close: async () => {
@@ -106,14 +113,14 @@ export async function startFakeDaemon(opts: FakeDaemonOptions = {}): Promise<Fak
           opts.beforeWelcome?.(
             (frame) => void sock.write(JSON.stringify({ v: 1, ...frame }) + "\n"),
           );
-          sock.write(
-            JSON.stringify({
-              v: 1,
-              type: "welcome",
-              nonce: daemonNonce,
-              proof: handshakeProof(opts.proveWith ?? token, "daemon", helloNonce, daemonNonce),
-            }) + "\n",
-          );
+          const fresh = JSON.stringify({
+            v: 1,
+            type: "welcome",
+            nonce: daemonNonce,
+            proof: handshakeProof(opts.proveWith ?? token, "daemon", helloNonce, daemonNonce),
+          });
+          firstWelcome ??= fresh;
+          sock.write((opts.replayFirstWelcome ? firstWelcome : fresh) + "\n");
         } else if (f.type === "auth") {
           const expected = handshakeProof(token, "browxai", helloNonce, daemonNonce);
           if (proofMatches(expected, f.proof)) {

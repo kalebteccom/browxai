@@ -1,6 +1,11 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { chmodSync } from "node:fs";
-import { openOperatorChannel, type OperatorAsk, type OperatorChannel } from "./operator-channel.js";
+import {
+  openOperatorChannel,
+  operatorCombinationWarnings,
+  type OperatorAsk,
+  type OperatorChannel,
+} from "./operator-channel.js";
 import { startFakeDaemon, type FakeDaemon } from "./__fixtures__/operator-daemon.js";
 import { resolveCapabilities } from "../util/capabilities.js";
 import "../tools/tool-metadata.js";
@@ -99,19 +104,18 @@ describe("openOperatorChannel — the gate", () => {
     expect(logged.join("")).toBe("");
   });
 
-  it("opens nothing when only one half is set", async () => {
+  it("refuses to start when a variable is missing, naming the variable and not a value", async () => {
     for (const env of [
       { BROWX_OPERATOR_SOCKET: daemon.socketPath },
       { BROWX_OPERATOR_TOKEN: daemon.token },
       {},
     ]) {
-      expect(openOperatorChannel(ON, { ...env })).toBeNull();
+      expect(() => openOperatorChannel(ON, { ...env })).toThrow(
+        /BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN must both be set/,
+      );
     }
     await new Promise((r) => setTimeout(r, 150));
     expect(daemon.connections).toBe(0);
-    expect(logged.join("")).toContain(
-      "needs BROWX_OPERATOR_SOCKET and BROWX_OPERATOR_TOKEN together",
-    );
   });
 
   it("refuses to start on a directory that is not 0700, without naming it", () => {
@@ -161,7 +165,7 @@ describe("OperatorChannel — requests and answers", () => {
       session: "default",
       scope: "navigate_off_allowlist",
       tool: "navigate",
-      untrusted: ["summary"],
+      untrusted: ["summary", "session"],
       answers: ["approve", "deny"],
       grantScopes: ["session", "workspace"],
     });
@@ -205,7 +209,7 @@ describe("OperatorChannel — requests and answers", () => {
       humanKind: "choose",
       prompt: "Which account?",
       choices: ["alice", "bob"],
-      untrusted: ["prompt", "choices"],
+      untrusted: ["prompt", "choices", "session"],
       answers: ["done", "abort"],
     });
     expect(req.grantScopes).toBeUndefined();
@@ -401,26 +405,246 @@ describe("OperatorChannel — fails closed", () => {
     await expect(ch.ask(approvalAsk())).rejects.toThrow(/channel is closed/);
   });
 
-  it("refuses new requests past the pending limit", async () => {
+  it("does not connect while the socket is unsafe, denies at the timeout, and recovers when it is fixed", async () => {
     const ch = open();
-    const held = Array.from({ length: 32 }, () =>
-      ch.ask(approvalAsk({ timeoutMs: 10_000 })).catch(() => undefined),
+    await until(() => daemon.authenticated === 1);
+    const first = ch.ask(approvalAsk({ timeoutMs: 10_000 }));
+    const req = await daemon.nextRequest();
+    chmodSync(daemon.socketPath, 0o666);
+    daemon.drop();
+    await until(() => logged.join("").includes("is not connecting"));
+    expect(logged.join("")).not.toContain(daemon.dir);
+    // Nothing connects, so a short request just times out.
+    await expect(ch.ask(approvalAsk({ timeoutMs: 300 }))).rejects.toThrow(/timed out/);
+    expect(daemon.connections).toBe(1);
+    chmodSync(daemon.socketPath, 0o600);
+    await until(() => daemon.authenticated === 2, 8_000);
+    const again = await daemon.nextRequest();
+    expect(again.id).toBe(req.id);
+    daemon.answer(again.id, { decision: "approve" });
+    await expect(first).resolves.toMatchObject({ decision: "approve" });
+  });
+});
+
+describe("OperatorChannel — frames", () => {
+  it("truncates prompt, choices and summary on send, and stays under the frame limit", async () => {
+    const ch = open();
+    const control = "\u0001".repeat(300_000);
+    const answer = ch.ask({
+      session: "s".repeat(1_000),
+      timeoutMs: 10_000,
+      mask: identity,
+      prompt: {
+        kind: "human",
+        humanKind: "choose",
+        prompt: control,
+        choices: Array.from({ length: 1_000 }, () => control),
+      },
+    });
+    const req = await daemon.nextRequest();
+    expect(JSON.stringify(req).length).toBeLessThan(64 * 1024);
+    expect(String(req.prompt).length).toBeLessThanOrEqual(2_000);
+    expect(String(req.session).length).toBeLessThanOrEqual(128);
+    const choices = req.choices as string[];
+    expect(choices).toHaveLength(32);
+    expect(choices.every((c) => c.length <= 100)).toBe(true);
+    // Only the choices that were sent can be chosen.
+    daemon.answer(req.id, { decision: "done", value: 40 });
+    await until(() => daemon.frames.some((f) => f.type === "error"));
+    daemon.answer(req.id, { decision: "done", value: 31 });
+    await expect(answer).resolves.toMatchObject({ value: 31 });
+    // No redial and resend loop.
+    await new Promise((r) => setTimeout(r, 400));
+    expect(daemon.connections).toBe(1);
+  });
+
+  it("truncates a long summary after stripping URL queries", async () => {
+    const ch = open();
+    void ch
+      .ask(
+        approvalAsk({
+          prompt: {
+            kind: "approval",
+            scope: "navigate_off_allowlist",
+            tool: "navigate",
+            summary: `go to https://a.example/p?q=${"z".repeat(50_000)} ${"w".repeat(50_000)}`,
+          },
+        }),
+      )
+      .catch(() => undefined);
+    const req = await daemon.nextRequest();
+    expect(String(req.summary).length).toBeLessThanOrEqual(1_000);
+    expect(String(req.summary)).not.toContain("zzzz");
+  });
+
+  it("ignores malformed and non-object frames, and redials after an oversized line", async () => {
+    const ch = open();
+    await until(() => daemon.authenticated === 1);
+    const first = ch.ask(approvalAsk({ timeoutMs: 10_000 }));
+    const req = await daemon.nextRequest();
+    for (const junk of ["not json", "[1,2]", "null", "42", '"text"', '{"v":2,"type":"answer"}'])
+      daemon.sendRaw(`${junk}\n`);
+    daemon.answer("req_unrelated", { decision: "approve" });
+    await until(() => daemon.frames.some((f) => f.type === "error"));
+    expect(daemon.connections).toBe(1);
+    daemon.answer(req.id, { decision: "approve" });
+    await expect(first).resolves.toMatchObject({ decision: "approve" });
+
+    const second = ch.ask(approvalAsk({ timeoutMs: 10_000 }));
+    const req2 = await daemon.nextRequest();
+    daemon.sendRaw("x".repeat(70_000) + "\n");
+    await until(() => daemon.authenticated === 2, 5_000);
+    const resent = await daemon.nextRequest();
+    expect(resent.id).toBe(req2.id);
+    daemon.answer(resent.id, { decision: "deny" });
+    await expect(second).resolves.toMatchObject({ decision: "deny" });
+  });
+
+  it("closes for good when a redial is answered with an old proof", async () => {
+    const replaying = await startFakeDaemon({ replayFirstWelcome: true });
+    try {
+      const ch = open(replaying);
+      await until(() => replaying.authenticated === 1);
+      const answer = ch.ask(approvalAsk({ timeoutMs: 10_000 }));
+      await replaying.nextRequest();
+      replaying.drop();
+      await expect(answer).rejects.toThrow(/channel is closed/);
+      expect(replaying.authenticated).toBe(1);
+      expect(logged.join("")).toContain("failed authentication");
+    } finally {
+      await replaying.close();
+    }
+  });
+});
+
+describe("OperatorChannel — pending limits", () => {
+  const pageAsk = (session: string, n: number): OperatorAsk =>
+    approvalAsk({
+      session,
+      timeoutMs: 10_000,
+      prompt: {
+        kind: "approval",
+        scope: "notification",
+        tool: "notification_construct",
+        summary: `show a notification titled "spam ${n}"`,
+      },
+    });
+
+  /** "waiting" when the request was accepted, "refused" when it was turned away at once. */
+  async function admission(p: Promise<unknown>): Promise<"waiting" | "refused"> {
+    return Promise.race([
+      p.then(
+        () => "refused" as const,
+        () => "refused" as const,
+      ),
+      new Promise<"waiting">((r) => setTimeout(() => r("waiting"), 25)),
+    ]);
+  }
+
+  it("caps a page flood per session and per class, and leaves room for a confirm hook", async () => {
+    const ch = open();
+    const held: Array<Promise<unknown>> = [];
+    let accepted = 0;
+    for (const session of ["p1", "p2", "p3"]) {
+      for (let i = 0; i < 10; i++) {
+        const p = ch.ask(pageAsk(session, i));
+        held.push(p.catch(() => undefined));
+        if ((await admission(p)) === "waiting") accepted++;
+      }
+    }
+    // 4 per session, 8 for the class: p1 and p2 fill it, p3 gets nothing.
+    expect(accepted).toBe(8);
+    const hook = ch.ask(approvalAsk({ session: "real", timeoutMs: 10_000 }));
+    held.push(hook.catch(() => undefined));
+    expect(await admission(hook)).toBe("waiting");
+    const hookFrame = await vi.waitFor(
+      () => {
+        const f = daemon.frames.find((x) => x.type === "request" && x.session === "real");
+        if (!f) throw new Error("no hook request yet");
+        return f;
+      },
+      { timeout: 3_000 },
     );
-    await expect(ch.ask(approvalAsk())).rejects.toThrow(/too many requests/);
+    expect(hookFrame).toMatchObject({ scope: "navigate_off_allowlist" });
+    expect(
+      daemon.frames.filter((f) => f.type === "request" && f.scope === "notification"),
+    ).toHaveLength(8);
     ch.close();
     await Promise.all(held);
   });
 
-  it("stops for good, without naming the path, when the socket permissions change", async () => {
+  it("caps hooks and await_human per session and per class, apart from each other", async () => {
     const ch = open();
-    await until(() => daemon.authenticated === 1);
-    const answer = ch.ask(approvalAsk({ timeoutMs: 10_000 }));
-    await daemon.nextRequest();
-    chmodSync(daemon.socketPath, 0o666);
-    daemon.drop();
-    await expect(answer).rejects.toThrow(/channel is closed/);
-    const out = logged.join("");
-    expect(out).toContain("operator channel closed");
-    expect(out).not.toContain(daemon.dir);
+    const held: Array<Promise<unknown>> = [];
+    const take = async (p: Promise<unknown>) => {
+      held.push(p.catch(() => undefined));
+      return admission(p);
+    };
+    for (let i = 0; i < 8; i++)
+      expect(await take(ch.ask(approvalAsk({ session: "a" })))).toBe("waiting");
+    expect(await take(ch.ask(approvalAsk({ session: "a" })))).toBe("refused");
+    for (let i = 0; i < 4; i++)
+      expect(await take(ch.ask(approvalAsk({ session: "b" })))).toBe("waiting");
+    expect(await take(ch.ask(approvalAsk({ session: "c" })))).toBe("refused");
+    // A full hook class does not touch await_human.
+    expect(await take(ch.ask(humanAsk("acknowledge")))).toBe("waiting");
+    ch.close();
+    await Promise.all(held);
+  });
+
+  it("answers identical page prompts from one request", async () => {
+    const ch = open();
+    const same = Array.from({ length: 10 }, () => ch.ask(pageAsk("p", 1)));
+    const req = await daemon.nextRequest();
+    await new Promise((r) => setTimeout(r, 200));
+    expect(daemon.frames.filter((f) => f.type === "request")).toHaveLength(1);
+    daemon.answer(req.id, { decision: "approve" });
+    const results = await Promise.all(same);
+    expect(results.every((r) => r.decision === "approve")).toBe(true);
+    // Once answered, the same prompt is a new request.
+    const next = ch.ask(pageAsk("p", 1));
+    const req2 = await daemon.nextRequest();
+    expect(req2.id).not.toBe(req.id);
+    daemon.answer(req2.id, { decision: "deny" });
+    await expect(next).resolves.toMatchObject({ decision: "deny" });
+  });
+
+  it("does not collapse hook prompts, or prompts from different sessions", async () => {
+    const ch = open();
+    const asks = [
+      ch.ask(approvalAsk({ session: "a" })),
+      ch.ask(approvalAsk({ session: "a" })),
+      ch.ask(pageAsk("a", 1)),
+      ch.ask(pageAsk("b", 1)),
+    ];
+    await until(() => daemon.frames.filter((f) => f.type === "request").length === 4);
+    ch.close();
+    await Promise.allSettled(asks);
+  });
+});
+
+describe("operator-channel combined with self-approval or human-gate-override", () => {
+  const caps = (extra: string) =>
+    resolveCapabilities({
+      BROWX_CAPABILITIES: `read,navigation,action,human,operator-channel${extra}`,
+    });
+
+  it("warns about each, naming what the daemon would miss", () => {
+    const both = operatorCombinationWarnings(caps(",self-approval,human-gate-override"));
+    expect(both).toHaveLength(2);
+    expect(both[0]).toMatch(/self-approval.*approve_actions.*BEFORE the daemon is asked/);
+    expect(both[1]).toMatch(/human-gate-override.*never reaches the daemon/);
+  });
+
+  it("is quiet for operator-channel alone", () => {
+    expect(operatorCombinationWarnings(caps(""))).toEqual([]);
+  });
+
+  it("logs the warnings when the channel starts", () => {
+    channel = openOperatorChannel(caps(",self-approval"), {
+      BROWX_OPERATOR_SOCKET: daemon.socketPath,
+      BROWX_OPERATOR_TOKEN: daemon.token,
+    });
+    expect(logged.join("")).toContain("operator-channel is on together with self-approval");
   });
 });

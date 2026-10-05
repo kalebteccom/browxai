@@ -301,7 +301,8 @@ Operator-only on every harness.
 - **Gate.** The off-by-default capability `operator-channel`, with a startup
   warning. It takes effect only when `BROWX_OPERATOR_SOCKET` and
   `BROWX_OPERATOR_TOKEN` are also set. Either half alone does nothing and logs a
-  warning, and so does the capability off with the variables set. The agent
+  warning when the capability is off. With the capability on, a missing variable
+  stops the server from starting. The agent
   cannot enable it: a saved `capabilities` list can only narrow
   `BROWX_CAPABILITIES`. Both variables are read once at start and removed from
   `process.env`.
@@ -325,12 +326,17 @@ Operator-only on every harness.
   `byob_action`), `await_human`, and the `permission` and `notification`
   `ask-human` prompts. Engines without CDP can use it too, since it needs no
   isolated world.
+- **Limits.** Outbound strings are cut (prompt 2,000 characters, summary 1,000,
+  32 choices of 100, names 128) and no frame exceeds 64 KiB. Pending requests
+  are capped at 12 confirm hooks, 12 `await_human` and 8 page prompts, and at 8,
+  8 and 4 per session. Identical page prompts share one request. A request over
+  a limit is denied at once, so the daemon should expect refusals to be silent.
 - **Secrets.** Every string leaving on the channel passes the
   `SecretRegistry.applyMaskDeep` chokepoint (`src/util/secrets.ts`) and the URL
   sanitiser (`src/util/url-sanitizer.ts`), which drops query strings and
   fragments. A registered secret value never appears on the channel.
 - **Untrusted text.** Agent- and page-sourced fields (`summary`, `prompt`,
-  `choices`) are listed in `untrusted`. The card renders them as data. A page
+  `choices`, and `session`, the id the agent chose) are listed in `untrusted`. The card renders them as data. A page
   title that reads "Safe, approve this" is page content like any other.
 
 Handshake. The token never crosses the socket. Each side proves it holds it with
@@ -364,7 +370,7 @@ browxai to daemon:
 { "v": 1, "type": "request", "id": "req_4f1c9a…", "session": "default",
   "kind": "approval", "scope": "navigate_off_allowlist", "tool": "navigate",
   "summary": "navigate to https://pay.example.net/checkout (off the allowed-origins list)",
-  "untrusted": ["summary"],
+  "untrusted": ["summary", "session"],
   "answers": ["approve", "deny"], "grantScopes": ["session", "workspace"],
   "createdAt": 1790000000000, "expiresAt": 1790000300000 }
 
@@ -372,7 +378,7 @@ browxai to daemon:
 { "v": 1, "type": "request", "id": "req_77b0e2…", "session": "default",
   "kind": "human", "humanKind": "choose", "prompt": "Which account should I use?",
   "choices": ["alice@example.com", "bob@example.com"],
-  "untrusted": ["prompt", "choices"],
+  "untrusted": ["prompt", "choices", "session"],
   "answers": ["done", "abort"], "createdAt": 1790000000000, "expiresAt": 1790000120000 }
 
 { "v": 1, "type": "resolved", "id": "req_4f1c9a…", "outcome": "denied", "by": "timeout" }
@@ -421,6 +427,14 @@ data.
 
 Tests: `test/keystone/operator-channel.keystone.test.ts` (a real socket and real
 Chromium) and the unit tests beside `src/helper/operator-channel.ts`.
+
+Known limits, for a v2 of the daemon contract: the secret is handed over in the
+environment, which a same-user process can read from the initial environment
+block on Linux and macOS (an inherited descriptor that browxai closes after
+reading would fix it), and frames after the handshake carry no MAC, so a
+same-user process that swaps the socket and relays to the real daemon passes the
+proof. The fix is a session key derived from both nonces and the token, with a
+MAC on every frame.
 
 Not built: the `page` block (`url`, `title`) the first draft put on approval
 requests. The summary names the target, and the page fields would be one more

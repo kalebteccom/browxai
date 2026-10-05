@@ -131,7 +131,9 @@ export function handshakeProof(
 
 /** Constant-time comparison of a presented proof against the expected one. */
 export function proofMatches(expectedHex: string, presented: unknown): boolean {
-  if (typeof presented !== "string") return false;
+  // Exactly 64 lowercase hex digits, nothing for `Buffer.from` to truncate or
+  // quietly skip.
+  if (typeof presented !== "string" || !/^[0-9a-f]{64}$/.test(presented)) return false;
   const a = Buffer.from(expectedHex, "hex");
   const b = Buffer.from(presented, "hex");
   if (a.length !== b.length) return false;
