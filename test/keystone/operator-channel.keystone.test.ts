@@ -63,15 +63,18 @@ let http: Server;
 let http2: Server;
 let base: string;
 let base2: string;
-const savedEnv: Record<string, string | undefined> = {};
+// The BROWX_ variables found when this file loaded, and only those. Each suite
+// below sets its own (BROWX_ALLOWED_ORIGINS among them), and recording what a
+// later `isolateEnv` finds instead would hand this file's own settings to the
+// next file in the shared keystone process as if they were the original ones. A
+// leaked BROWX_ALLOWED_ORIGINS made element-substrate's navigate wait on a
+// confirm hook.
+const originalEnv = Object.fromEntries(
+  Object.entries(process.env).filter(([k]) => k.startsWith("BROWX_")),
+);
 
 function isolateEnv(prefix: string): string {
-  for (const k of Object.keys(process.env)) {
-    if (k.startsWith("BROWX_")) {
-      if (!(k in savedEnv)) savedEnv[k] = process.env[k];
-      delete process.env[k];
-    }
-  }
+  for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
   const ws = mkdtempSync(join(tmpdir(), prefix));
   process.env.BROWX_WORKSPACE = ws;
   return ws;
@@ -140,7 +143,7 @@ afterAll(async () => {
   await new Promise<void>((r) => http.close(() => r()));
   await new Promise<void>((r) => http2.close(() => r()));
   for (const k of Object.keys(process.env)) if (k.startsWith("BROWX_")) delete process.env[k];
-  for (const [k, v] of Object.entries(savedEnv)) if (v !== undefined) process.env[k] = v;
+  Object.assign(process.env, originalEnv);
 }, KEYSTONE_TIMEOUT);
 
 // ---------------------------------------------------------------------------
