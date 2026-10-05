@@ -77,6 +77,9 @@ const FORGERY = `
 // `Runtime.evaluate`, `Accessibility.enable`) then queue behind the flood for
 // minutes and the anti-wedge deadline fires. At 250ms the click takes about
 // 0.5s there, and the 3s hold still yields about 15 sweeps (the test wants >10).
+// The bindings now shed calls over a per-page budget (binding-flood keystone
+// pins that), so the tick is kept at 250ms for margin, not because it is the
+// only thing holding the click up.
 const FORGE_INTERVAL_MS = 250;
 
 const FORGING_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>forger</title></head>
