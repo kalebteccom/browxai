@@ -421,6 +421,62 @@ real Unix socket: the capability-unset gate, approve and deny, grants, forgery
 and DevTools answers while connected, a drop denying at the timeout, and the
 permission refusal).
 
+### 8. A page flooding the session's own bindings
+
+The permission, notification, file-picker and device wrappers talk to the server
+through page bindings (`__browx_permission_check`, `__browx_permission_observe`,
+`__browx_notification_check`, `__browx_fs_picker_check`, `__browx_fs_picker_write`,
+`__browx_device_check`). Page content is untrusted and can call any of them
+directly. Each call is a CDP event to the server and a reply the server
+evaluates back into the page, and Playwright sends that reply whatever the
+handler did. A page that calls in a loop queues replies on its own session
+faster than the browser drains them, and the session's click and snapshot
+commands wait behind that queue. A hostile page could make its own session
+unusable. Defenses:
+
+- **A per-page budget, applied before the handler.** Decision bindings share a
+  token bucket per page: a burst of 100 calls, refilled at 25 per second, and at
+  most 32 calls in flight at once (a call waiting on a human holds a slot).
+  `__browx_fs_picker_write` has its own bucket: a burst of 256, refilled at 100
+  per second, 64 in flight. Buckets are per page, so one tab's flood leaves the
+  others' budget alone. A permission, notification or file-picker flow uses a
+  handful of calls, so legitimate use stays far inside the budget.
+- **What a shed call sees.** A call over budget never reaches the handler: it is
+  not recorded in `permissionRequests` / `notifications` / `fsPickerRequests` /
+  `device_requests`, it does not open an `ask-human` prompt, and it does not
+  write a file. A small second bucket (10 calls, refilled at 2 per second) answers
+  the binding's deny-equivalent at once: `"deny"` for permission and
+  notification checks, `{decision:"deny"}` for file-picker checks and
+  `{decision:"refused",devices:[]}` for device checks. Calls beyond that never
+  settle: no reply is sent, so the flood adds no CDP traffic, and the only thing
+  left behind is the flooding page's own pending promise. A page that
+  exceeds the budget therefore sees its wrapped API (`getUserMedia`,
+  `showSaveFilePicker`, ...) fail or hang, which is the page's own doing.
+- **Nothing over budget is approved.** The deny-equivalent is the same answer a
+  `deny` policy gives, and an unanswered call leaves the wrapped API
+  unresolved. No path turns a shed call into an allow, so `ask-human` cannot be
+  flooded into an approval and the flood does not queue prompts for the human.
+- **A shed file write closes its handle.** A write's normal reply means
+  "written", so there is no safe answer to send and the call never settles. The
+  handle is closed as well, so a later chunk cannot land after the gap and leave
+  a file with a hole in it. The file keeps what was written before the first shed
+  chunk. A page streaming more than about 100 chunks per second to one granted
+  handle (after a 256-chunk burst) hits this; write larger chunks.
+- **Logging is a coalesced counter.** The first shed call logs
+  `binding calls shed over the per-page budget` with the count and a per-binding
+  breakdown (binding names only, nothing the page controls). After that, at most
+  one line every 5 seconds. There is no per-call logging.
+- **No capability is involved.** The budget applies to every session whatever
+  its capabilities, and the thresholds are not configurable.
+
+Pinned by `test/keystone/binding-flood.keystone.test.ts` (real Chromium: a
+bounded flood of about 400 calls/s for 3 seconds across every binding while a
+click and a snapshot complete, shed calls deny under an `allow` policy, the
+counter is logged a few times and not per call, and a quiet page and a page after
+the flood still get the policy's real answer) and
+`src/session/binding-guard.test.ts`. The human-answer channel (section 7) is not
+a page binding and is untouched.
+
 ## What browxai explicitly does NOT defend against
 
 | Concern                                                                                  | Why we don't defend                                                                                                                                                                                                                                                                                         | What to do instead                                                                              |

@@ -13,6 +13,7 @@ import type { BrowserContext } from "playwright-core";
 import { writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, basename } from "node:path";
 import { log } from "../util/logging.js";
+import { bindingGuard } from "./binding-guard.js";
 import {
   resolveWorkspaceFsPath,
   SUPPORTED_FS_PICKER_APIS,
@@ -73,153 +74,183 @@ export async function attachFsPickerPolicy(
   let handleCounter = 0;
 
   try {
-    await context.exposeBinding("__browx_fs_picker_check", async (_source, payload: string) => {
-      try {
-        const o = JSON.parse(payload) as { api?: string; suggestedName?: string };
-        const api = o.api as FsPickerApi;
-        if (!SUPPORTED_FS_PICKER_APIS.includes(api)) {
-          // Unknown API — safe-by-default deny.
-          return JSON.stringify({ decision: "deny" });
-        }
-        const suggestedName = o.suggestedName;
-        const mode = state.modeFor(api);
-        const ts = Date.now();
-        const baseRec: Omit<FsPickerRecord, "handledAs"> = {
-          api,
-          ts,
-          ...(suggestedName ? { suggestedName } : {}),
-        };
-        switch (mode) {
-          case "allow": {
-            const files = state.dequeueResponse(api) ?? [];
-            const prepared = prepareAllowResponse(
+    // Over budget a call answers deny, or never settles; it never hands out a handle.
+    await context.exposeBinding(
+      "__browx_fs_picker_check",
+      bindingGuard.wrap(
+        "fs_picker_check",
+        "decision",
+        async (_source, payload: string) => {
+          try {
+            const o = JSON.parse(payload) as { api?: string; suggestedName?: string };
+            const api = o.api as FsPickerApi;
+            if (!SUPPORTED_FS_PICKER_APIS.includes(api)) {
+              // Unknown API — safe-by-default deny.
+              return JSON.stringify({ decision: "deny" });
+            }
+            const suggestedName = o.suggestedName;
+            const mode = state.modeFor(api);
+            const ts = Date.now();
+            const baseRec: Omit<FsPickerRecord, "handledAs"> = {
               api,
-              files,
-              workspaceRoot,
-              handles,
-              () => `h${++handleCounter}`,
-            );
-            state.record({ ...baseRec, handledAs: "allowed" });
-            return JSON.stringify({ decision: "allow", files: prepared });
-          }
-          case "deny": {
-            state.record({ ...baseRec, handledAs: "denied" });
+              ts,
+              ...(suggestedName ? { suggestedName } : {}),
+            };
+            switch (mode) {
+              case "allow": {
+                const files = state.dequeueResponse(api) ?? [];
+                const prepared = prepareAllowResponse(
+                  api,
+                  files,
+                  workspaceRoot,
+                  handles,
+                  () => `h${++handleCounter}`,
+                );
+                state.record({ ...baseRec, handledAs: "allowed" });
+                return JSON.stringify({ decision: "allow", files: prepared });
+              }
+              case "deny": {
+                state.record({ ...baseRec, handledAs: "denied" });
+                return JSON.stringify({ decision: "deny" });
+              }
+              case "ask-human": {
+                const askResult = await askHandler(api, suggestedName).catch(() => null);
+                state.record({ ...baseRec, handledAs: "asked-human" });
+                if (!askResult) return JSON.stringify({ decision: "deny" });
+                const prepared = prepareAllowResponse(
+                  api,
+                  askResult,
+                  workspaceRoot,
+                  handles,
+                  () => `h${++handleCounter}`,
+                );
+                return JSON.stringify({ decision: "allow", files: prepared });
+              }
+              case "raise":
+              default: {
+                state.record({ ...baseRec, handledAs: "raised" });
+                return JSON.stringify({ decision: "deny" });
+              }
+            }
+          } catch (err) {
+            log.warn("session.fs-picker: check handler error", {
+              error: err instanceof Error ? err.message : String(err),
+            });
             return JSON.stringify({ decision: "deny" });
           }
-          case "ask-human": {
-            const askResult = await askHandler(api, suggestedName).catch(() => null);
-            state.record({ ...baseRec, handledAs: "asked-human" });
-            if (!askResult) return JSON.stringify({ decision: "deny" });
-            const prepared = prepareAllowResponse(
-              api,
-              askResult,
-              workspaceRoot,
-              handles,
-              () => `h${++handleCounter}`,
-            );
-            return JSON.stringify({ decision: "allow", files: prepared });
-          }
-          case "raise":
-          default: {
-            state.record({ ...baseRec, handledAs: "raised" });
-            return JSON.stringify({ decision: "deny" });
-          }
-        }
-      } catch (err) {
-        log.warn("session.fs-picker: check handler error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return JSON.stringify({ decision: "deny" });
-      }
-    });
+        },
+        { denyResult: () => JSON.stringify({ decision: "deny" }) },
+      ),
+    );
 
-    await context.exposeBinding("__browx_fs_picker_write", (_source, payload: string) => {
-      try {
-        const o = JSON.parse(payload) as { handleId?: string; op?: string; data?: string | null };
-        const id = o.handleId;
-        const op = o.op;
-        if (!id || !op) return undefined;
-        const target = handles.get(id);
-        if (!target) return undefined;
-        if (target.closed && op !== "close" && op !== "abort") return undefined;
-        if (target.path === null) {
-          // Open-picker read-side; the page is writing back to a virtual
-          // handle. Drop on the floor with a one-time warning so the page
-          // doesn't see an error mid-flight.
-          if (op === "write") {
-            log.warn(
-              "session.fs-picker: write to a read-only virtual handle dropped — open-picker responses don't carry a writable destination; use showSaveFilePicker for writes",
-            );
-          }
-          if (op === "close" || op === "abort") target.closed = true;
-          return undefined;
-        }
-        // `target.path` was validated against `workspace.root` (workspace-
-        // rooted; workspace-escape rejected at fs_picker_respond time via
-        // `resolveWorkspaceFsPath(workspaceRoot, …)` — see prepareAllow-
-        // Response). Every mutation below routes through this validated
-        // path, never cwd.
-        const path = target.path;
-        switch (op) {
-          case "write": {
-            const bytes = decodeChunk(o.data);
-            // workspace-rooted write — `path` came from workspace.root.
-            if (!target.truncated) {
-              const dir = dirname(path);
-              if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-              writeFileSync(path, bytes);
-              target.truncated = true;
-            } else {
-              // workspace-rooted append — `path` came from workspace.root.
-              appendFileSync(path, bytes);
+    // A write over budget never settles (its normal reply means "written", so
+    // there is no safe answer to send). The handle is closed so that a later
+    // chunk cannot land after the gap and leave a file with a hole in it.
+    await context.exposeBinding(
+      "__browx_fs_picker_write",
+      bindingGuard.wrap(
+        "fs_picker_write",
+        "write",
+        (_source, payload: string) => {
+          try {
+            const o = JSON.parse(payload) as {
+              handleId?: string;
+              op?: string;
+              data?: string | null;
+            };
+            const id = o.handleId;
+            const op = o.op;
+            if (!id || !op) return undefined;
+            const target = handles.get(id);
+            if (!target) return undefined;
+            if (target.closed && op !== "close" && op !== "abort") return undefined;
+            if (target.path === null) {
+              // Open-picker read-side; the page is writing back to a virtual
+              // handle. Drop on the floor with a one-time warning so the page
+              // doesn't see an error mid-flight.
+              if (op === "write") {
+                log.warn(
+                  "session.fs-picker: write to a read-only virtual handle dropped — open-picker responses don't carry a writable destination; use showSaveFilePicker for writes",
+                );
+              }
+              if (op === "close" || op === "abort") target.closed = true;
+              return undefined;
             }
-            target.bytesWritten += bytes.length;
-            return undefined;
-          }
-          case "truncate": {
-            // Best-effort: rewrite empty up to the requested size.
-            // workspace-rooted write — `path` came from workspace.root.
-            const size = Number(o.data ?? 0);
-            const dir = dirname(path);
-            if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-            writeFileSync(path, Buffer.alloc(Math.max(0, size)));
-            target.truncated = true;
-            target.bytesWritten = Math.max(0, size);
-            return undefined;
-          }
-          case "seek": {
-            // No-op in MVP: Node fs has no native seek-and-overwrite for
-            // append-mode; would need fd APIs. Most save-picker flows do
-            // a single write+close sequence, so seek is rare.
-            return undefined;
-          }
-          case "close": {
-            target.closed = true;
-            // If the page never wrote anything, ensure an empty file
-            // exists so callers see a deterministic artefact.
-            // workspace-rooted write — `path` came from workspace.root.
-            if (!target.truncated) {
-              const dir = dirname(path);
-              if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-              writeFileSync(path, Buffer.alloc(0));
-              target.truncated = true;
+            // `target.path` was validated against `workspace.root` (workspace-
+            // rooted; workspace-escape rejected at fs_picker_respond time via
+            // `resolveWorkspaceFsPath(workspaceRoot, …)` — see prepareAllow-
+            // Response). Every mutation below routes through this validated
+            // path, never cwd.
+            const path = target.path;
+            switch (op) {
+              case "write": {
+                const bytes = decodeChunk(o.data);
+                // workspace-rooted write — `path` came from workspace.root.
+                if (!target.truncated) {
+                  const dir = dirname(path);
+                  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+                  writeFileSync(path, bytes);
+                  target.truncated = true;
+                } else {
+                  // workspace-rooted append — `path` came from workspace.root.
+                  appendFileSync(path, bytes);
+                }
+                target.bytesWritten += bytes.length;
+                return undefined;
+              }
+              case "truncate": {
+                // Best-effort: rewrite empty up to the requested size.
+                // workspace-rooted write — `path` came from workspace.root.
+                const size = Number(o.data ?? 0);
+                const dir = dirname(path);
+                if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+                writeFileSync(path, Buffer.alloc(Math.max(0, size)));
+                target.truncated = true;
+                target.bytesWritten = Math.max(0, size);
+                return undefined;
+              }
+              case "seek": {
+                // No-op in MVP: Node fs has no native seek-and-overwrite for
+                // append-mode; would need fd APIs. Most save-picker flows do
+                // a single write+close sequence, so seek is rare.
+                return undefined;
+              }
+              case "close": {
+                target.closed = true;
+                // If the page never wrote anything, ensure an empty file
+                // exists so callers see a deterministic artefact.
+                // workspace-rooted write — `path` came from workspace.root.
+                if (!target.truncated) {
+                  const dir = dirname(path);
+                  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+                  writeFileSync(path, Buffer.alloc(0));
+                  target.truncated = true;
+                }
+                return undefined;
+              }
+              case "abort": {
+                target.closed = true;
+                return undefined;
+              }
+              default:
+                return undefined;
             }
+          } catch (err) {
+            log.warn("session.fs-picker: write handler error", {
+              error: err instanceof Error ? err.message : String(err),
+            });
             return undefined;
           }
-          case "abort": {
-            target.closed = true;
-            return undefined;
-          }
-          default:
-            return undefined;
-        }
-      } catch (err) {
-        log.warn("session.fs-picker: write handler error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return undefined;
-      }
-    });
+        },
+        {
+          onShed: (payload) => {
+            const id = /"handleId":"([^"]{1,64})"/.exec(payload.slice(0, 200))?.[1];
+            const target = id ? handles.get(id) : undefined;
+            if (target) target.closed = true;
+          },
+        },
+      ),
+    );
   } catch (err) {
     log.warn("session.fs-picker: exposeBinding install failed; page-side stub falls back to deny", {
       error: err instanceof Error ? err.message : String(err),

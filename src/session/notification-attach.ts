@@ -10,6 +10,7 @@
 
 import type { BrowserContext } from "playwright-core";
 import { log } from "../util/logging.js";
+import { bindingGuard } from "./binding-guard.js";
 import {
   type NotificationAskHandler,
   type NotificationPolicyMode,
@@ -43,57 +44,66 @@ export async function attachNotificationPolicy(
   state.markContext(context);
 
   try {
-    await context.exposeBinding("__browx_notification_check", async (_source, payload: string) => {
-      try {
-        const o = JSON.parse(payload) as {
-          title?: string;
-          body?: string;
-          icon?: string;
-          tag?: string;
-          origin?: string;
-        };
-        const title = String(o.title ?? "");
-        const origin = o.origin;
-        const mode = state.current().mode;
-        const ts = Date.now();
-        const baseRec: Omit<NotificationRecord, "handledAs"> = {
-          title,
-          timestamp: ts,
-          ...(o.body !== undefined ? { body: o.body } : {}),
-          ...(o.icon !== undefined ? { icon: o.icon } : {}),
-          ...(o.tag !== undefined ? { tag: o.tag } : {}),
-          ...(origin !== undefined ? { origin } : {}),
-        };
-        switch (mode) {
-          case "allow":
-            state.record({ ...baseRec, handledAs: "allowed" });
-            return "allow";
-          case "deny":
-            state.record({ ...baseRec, handledAs: "denied" });
-            return "deny";
-          case "ask-human": {
-            const decision = await askHandler({
+    // Over budget a call answers "deny", or never settles; it is never an approval.
+    await context.exposeBinding(
+      "__browx_notification_check",
+      bindingGuard.wrap(
+        "notification_check",
+        "decision",
+        async (_source, payload: string) => {
+          try {
+            const o = JSON.parse(payload) as {
+              title?: string;
+              body?: string;
+              icon?: string;
+              tag?: string;
+              origin?: string;
+            };
+            const title = String(o.title ?? "");
+            const origin = o.origin;
+            const mode = state.current().mode;
+            const ts = Date.now();
+            const baseRec: Omit<NotificationRecord, "handledAs"> = {
               title,
+              timestamp: ts,
               ...(o.body !== undefined ? { body: o.body } : {}),
               ...(o.icon !== undefined ? { icon: o.icon } : {}),
               ...(o.tag !== undefined ? { tag: o.tag } : {}),
               ...(origin !== undefined ? { origin } : {}),
-            }).catch(() => "deny" as const);
-            state.record({ ...baseRec, handledAs: "asked-human" });
-            return decision;
+            };
+            switch (mode) {
+              case "allow":
+                state.record({ ...baseRec, handledAs: "allowed" });
+                return "allow";
+              case "deny":
+                state.record({ ...baseRec, handledAs: "denied" });
+                return "deny";
+              case "ask-human": {
+                const decision = await askHandler({
+                  title,
+                  ...(o.body !== undefined ? { body: o.body } : {}),
+                  ...(o.icon !== undefined ? { icon: o.icon } : {}),
+                  ...(o.tag !== undefined ? { tag: o.tag } : {}),
+                  ...(origin !== undefined ? { origin } : {}),
+                }).catch(() => "deny" as const);
+                state.record({ ...baseRec, handledAs: "asked-human" });
+                return decision;
+              }
+              case "raise":
+              default:
+                state.record({ ...baseRec, handledAs: "raised" });
+                return "deny";
+            }
+          } catch (err) {
+            log.warn("session.notification: check handler error", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return "allow";
           }
-          case "raise":
-          default:
-            state.record({ ...baseRec, handledAs: "raised" });
-            return "deny";
-        }
-      } catch (err) {
-        log.warn("session.notification: check handler error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return "allow";
-      }
-    });
+        },
+        { denyResult: () => "deny" },
+      ),
+    );
   } catch (err) {
     log.warn(
       "session.notification: exposeBinding install failed; constructor falls back to call-through",

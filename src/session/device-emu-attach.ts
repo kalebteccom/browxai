@@ -10,6 +10,7 @@
 
 import type { BrowserContext, Page } from "playwright-core";
 import { log } from "../util/logging.js";
+import { bindingGuard } from "./binding-guard.js";
 import {
   SUPPORTED_DEVICE_APIS,
   type DeviceApi,
@@ -54,55 +55,64 @@ export async function attachDeviceEmulation(
   state.markContext(context);
 
   try {
-    await context.exposeBinding("__browx_device_check", (_source, payload: string) => {
-      try {
-        const o = JSON.parse(payload) as { api?: string; filters?: unknown };
-        const api = o.api as DeviceApi;
-        if (!SUPPORTED_DEVICE_APIS.includes(api)) {
-          return JSON.stringify({ decision: "refused", devices: [] });
-        }
-        const ts = Date.now();
-        const filters = safeFilters(o.filters ?? null);
-        // Capability is off → refuse: page-side wrapper still resolves
-        // to the user-dismissed shape (Bluetooth/USB reject; HID returns
-        // []), but we record the call so `device_requests` shows "the
-        // page asked for hardware and you didn't have the capability on".
-        if (!state.capabilityEnabled()) {
-          state.record({
-            api,
-            handledAs: "refused",
-            returned: 0,
-            ts,
-            ...(filters !== undefined && filters !== null ? { filters } : {}),
-          });
-          return JSON.stringify({ decision: "refused", devices: [] });
-        }
-        const cat = state.catalog(api);
-        const devices = cat.devices;
-        const handledAs: DeviceRequestRecord["handledAs"] =
-          devices.length > 0 ? "resolved" : api === "hid" ? "empty" : "rejected";
-        const returned = api === "hid" ? devices.length : devices.length > 0 ? 1 : 0;
-        state.record({
-          api,
-          handledAs,
-          returned,
-          ts,
-          ...(filters !== undefined && filters !== null ? { filters } : {}),
-        });
-        // Bluetooth/USB are single-result picker APIs: the page-side
-        // wrapper expects to find devices[0] in the response and rejects
-        // when the list is empty. HID is multi-result: empty resolves
-        // with []. We pass the catalog verbatim; the wrapper knows the
-        // shape.
-        const responseDevices = api === "hid" ? devices : devices.slice(0, 1);
-        return JSON.stringify({ decision: handledAs, devices: responseDevices });
-      } catch (err) {
-        log.warn("session.device-emu: check handler error", {
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return JSON.stringify({ decision: "refused", devices: [] });
-      }
-    });
+    // Over budget a call answers "refused", or never settles; it never hands out a device.
+    await context.exposeBinding(
+      "__browx_device_check",
+      bindingGuard.wrap(
+        "device_check",
+        "decision",
+        (_source, payload: string) => {
+          try {
+            const o = JSON.parse(payload) as { api?: string; filters?: unknown };
+            const api = o.api as DeviceApi;
+            if (!SUPPORTED_DEVICE_APIS.includes(api)) {
+              return JSON.stringify({ decision: "refused", devices: [] });
+            }
+            const ts = Date.now();
+            const filters = safeFilters(o.filters ?? null);
+            // Capability is off → refuse: page-side wrapper still resolves
+            // to the user-dismissed shape (Bluetooth/USB reject; HID returns
+            // []), but we record the call so `device_requests` shows "the
+            // page asked for hardware and you didn't have the capability on".
+            if (!state.capabilityEnabled()) {
+              state.record({
+                api,
+                handledAs: "refused",
+                returned: 0,
+                ts,
+                ...(filters !== undefined && filters !== null ? { filters } : {}),
+              });
+              return JSON.stringify({ decision: "refused", devices: [] });
+            }
+            const cat = state.catalog(api);
+            const devices = cat.devices;
+            const handledAs: DeviceRequestRecord["handledAs"] =
+              devices.length > 0 ? "resolved" : api === "hid" ? "empty" : "rejected";
+            const returned = api === "hid" ? devices.length : devices.length > 0 ? 1 : 0;
+            state.record({
+              api,
+              handledAs,
+              returned,
+              ts,
+              ...(filters !== undefined && filters !== null ? { filters } : {}),
+            });
+            // Bluetooth/USB are single-result picker APIs: the page-side
+            // wrapper expects to find devices[0] in the response and rejects
+            // when the list is empty. HID is multi-result: empty resolves
+            // with []. We pass the catalog verbatim; the wrapper knows the
+            // shape.
+            const responseDevices = api === "hid" ? devices : devices.slice(0, 1);
+            return JSON.stringify({ decision: handledAs, devices: responseDevices });
+          } catch (err) {
+            log.warn("session.device-emu: check handler error", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return JSON.stringify({ decision: "refused", devices: [] });
+          }
+        },
+        { denyResult: () => JSON.stringify({ decision: "refused", devices: [] }) },
+      ),
+    );
   } catch (err) {
     log.warn(
       "session.device-emu: exposeBinding install failed; page-side wrapper falls back to refused",

@@ -476,6 +476,23 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     ).toBeUndefined();
   });
 
+  it("a write shed over budget closes the handle, so no chunk lands after the gap", async () => {
+    const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
+    state.pushResponse("showSaveFilePicker", [{ path: "flood.txt" }]);
+    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
+    const handleId = (JSON.parse(String(raw)) as { files: Array<{ handleId: string }> }).files[0]!
+      .handleId;
+    const source = { page: {} };
+    const chunk = JSON.stringify({ handleId, op: "write", data: null });
+    // One real chunk, then empty writes to drain the budget.
+    await write(source, JSON.stringify({ handleId, op: "write", data: "b64:QQ==" }));
+    for (let i = 0; i < 400; i++) void write(source, chunk);
+    // Over budget by now: the shed call never settles and closed the handle.
+    await new Promise((r) => setTimeout(r, 120));
+    await write(source, JSON.stringify({ handleId, op: "write", data: "b64:Qg==" }));
+    expect(readFileSync(join(ws, "flood.txt"), "utf8")).toBe("A");
+  });
+
   it("nested dir is created on first write", async () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "deep/nested/dir/out.txt" }]);

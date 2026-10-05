@@ -71,6 +71,23 @@ surface" covers.
   carries its cookies and login state. The record lives for the server process
   and is keyed on the name; attached sessions are not pinned.
 
+### Security
+
+- **A page can no longer stall its own session by flooding the `__browx_*`
+  bindings.** Any script on a page can call the permission, notification,
+  file-picker and device bindings, and each call costs a CDP round trip that is
+  answered by evaluating back into the page. At about 120 calls/s that queue
+  starved the session's own click and snapshot commands (one click answered
+  after 164 s on a Linux container). Each page now has a token-bucket budget
+  shared by its decision bindings (a burst of 100, 25 per second, 32 in flight)
+  and a separate one for file-picker writes (256, 100 per second). A call over
+  budget never reaches the handler, so it is not recorded and never asks a
+  human. A few answer the binding's deny-equivalent at once (`deny`, or
+  `refused` for devices), and the rest never settle, which sends no reply and
+  adds no traffic. Nothing over budget is ever approved. A write over budget
+  closes its handle, so no later chunk can land after the gap. A flood logs one
+  coalesced counter at most every 5 seconds. See `docs/threat-model.md` section 8.
+
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 
 Security release: fixes GHSA-m8v2-5758-xw44 (approval prompts in 0.10.1 and earlier could be answered by page scripts, a browser extension or the agent itself). Upgrade notes: unattended flows that call `approve_actions` need `self-approval` in `BROWX_CAPABILITIES`; a capability enabled earlier through `set_config` must be added to `BROWX_CAPABILITIES`; profile snapshots taken before 0.11.0 must be taken again; human answers now go through the DevTools context named in the prompt, with the prompt's ticket.
