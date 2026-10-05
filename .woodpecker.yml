@@ -1,3 +1,4 @@
+# ci-optimised: v1
 # Mirrors .github/workflows/ci.yml and quality.yml on the self-hosted box. The GitHub workflows stay in place.
 # Not mirrored: secret-scan (trufflehog) and zizmor, neither ships in a node image. release.yml and dependabot-auto-merge.yml wait on a secrets plan.
 # INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
