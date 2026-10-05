@@ -17,10 +17,17 @@
 // isolated world browxai can create, so it gets no human channel at all:
 // `awaitSignal` refuses immediately and the callers fail closed. Nothing on
 // those engines falls back to a page-reachable path.
+//
+// With the operator-channel capability on, a bridge also carries the operator
+// channel. From then on `awaitSignal` sends the prompt to the daemon and waits
+// for its answer there, and DevTools answers match nothing. A prompt that has no
+// operator form (the file picker) is refused and never left to DevTools. The
+// channel decides who answers, so it also lifts the CDP requirement.
 
 import { randomBytes } from "node:crypto";
 import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import { BROWX_PAGE_STUB, HUMAN_WORLD, browxHumanScript } from "./browx-page.js";
+import type { OperatorChannel, OperatorGrant, OperatorPrompt } from "./operator-channel.js";
 import { log } from "../util/logging.js";
 
 export { HUMAN_WORLD } from "./browx-page.js";
@@ -37,6 +44,8 @@ export interface BrowxSignal {
   ts: number;
   /** URL of the page that emitted it (best-effort). */
   url?: string;
+  /** A grant the operator attached to an approval. Operator channel only. */
+  grant?: OperatorGrant;
 }
 
 interface Waiter {
@@ -73,6 +82,12 @@ const EXTENSION_ORIGIN = /^(chrome|moz|safari-web)-extension:\/\//i;
 export interface BrowxBridgeOptions {
   /** Fixed world name. Tests only: production worlds are random per bridge. */
   worldName?: string;
+  /** The operator channel, when the capability is on and the channel is wired. */
+  operator?: OperatorChannel | null;
+  /** The session this bridge belongs to. Named in operator requests. */
+  sessionId?: string;
+  /** The session's secret masker, applied to every string sent to the operator. */
+  mask?: <T>(value: T) => T;
 }
 
 export class BrowxBridge {
@@ -84,8 +99,34 @@ export class BrowxBridge {
   private readonly binding = `__browx_human_${randomBytes(12).toString("hex")}`;
   /** The isolated world's name, unguessable per bridge. */
   readonly world: string;
-  constructor(opts: BrowxBridgeOptions = {}) {
+  private readonly operator: OperatorChannel | null;
+  private readonly sessionId: string;
+  private readonly mask: <T>(value: T) => T;
+  /** Aborts every request this bridge sent to the operator. Fired by `detach`. */
+  private readonly operatorAbort = new AbortController();
+  constructor(private readonly opts: BrowxBridgeOptions = {}) {
     this.world = opts.worldName ?? `${HUMAN_WORLD}-${randomBytes(6).toString("hex")}`;
+    this.operator = opts.operator ?? null;
+    this.sessionId = opts.sessionId ?? "default";
+    this.mask = opts.mask ?? ((v) => v);
+  }
+
+  /** A new bridge with the same operator wiring, for a rebuilt browser context. */
+  successor(): BrowxBridge {
+    return new BrowxBridge({ ...this.opts, worldName: undefined });
+  }
+
+  /** True when prompts go to the operator channel and DevTools answers are ignored. */
+  usesOperatorChannel(): boolean {
+    return this.operator !== null;
+  }
+
+  /** The tail of a human prompt's log line: how it can be answered. */
+  answerHint(devtoolsCall: string): string {
+    if (this.operator) {
+      return "answer on the operator channel (DevTools answers are ignored while it is on)";
+    }
+    return `${this.humanHint()}, call ${devtoolsCall}`;
   }
 
   /** The operator-facing instruction every human prompt carries. */
@@ -218,14 +259,16 @@ export class BrowxBridge {
     }
   }
 
-  /** True when at least one page carries the isolated-world channel. */
+  /** True when a human can be asked: the operator channel is wired, or at least
+   *  one page carries the isolated-world channel. */
   humanChannelAvailable(): boolean {
-    return !this.detached && this.channels.size > 0;
+    return !this.detached && (this.operator !== null || this.channels.size > 0);
   }
 
   /** Stop listening, reject outstanding waiters, and drop the CDP sessions. */
   async detach(): Promise<void> {
     this.detached = true;
+    this.operatorAbort.abort();
     for (const w of this.waiters) {
       if (w.timeout) clearTimeout(w.timeout);
       w.reject(new Error("bridge detached"));
@@ -253,8 +296,20 @@ export class BrowxBridge {
    * its prompt ended is dropped instead of answering the next one.
    * `timeoutMs > 0` rejects with a timeout error; `0` waits indefinitely.
    * Rejects at once with `NO_HUMAN_CHANNEL` when no page carries the channel.
+   *
+   * With the operator channel wired the wait goes there instead. `operator`
+   * describes the prompt, and the daemon's answer comes back shaped like the
+   * DevTools signal the caller already parses. `timeoutMs` bounds it, so a
+   * request never waits unbounded. A call with no `operator` description is
+   * refused. No DevTools waiter is registered in either case.
    */
-  awaitSignal(name?: string, timeoutMs = 0, ticket?: string): Promise<BrowxSignal> {
+  awaitSignal(
+    name?: string,
+    timeoutMs = 0,
+    ticket?: string,
+    operator?: OperatorPrompt,
+  ): Promise<BrowxSignal> {
+    if (this.operator) return this.awaitOperator(this.operator, timeoutMs, operator);
     if (!this.humanChannelAvailable()) {
       return Promise.reject(
         new Error(
@@ -274,6 +329,42 @@ export class BrowxBridge {
       }
       this.waiters.push(w);
     });
+  }
+
+  private async awaitOperator(
+    channel: OperatorChannel,
+    timeoutMs: number,
+    prompt: OperatorPrompt | undefined,
+  ): Promise<BrowxSignal> {
+    if (this.detached) throw new Error("bridge detached");
+    if (!prompt) {
+      throw new Error(
+        "operator-channel: this prompt has no operator form, so it is refused while the channel is on",
+      );
+    }
+    const answer = await channel.ask(
+      {
+        session: this.sessionId,
+        timeoutMs: timeoutMs > 0 ? timeoutMs : 300_000,
+        mask: this.mask,
+        prompt,
+      },
+      this.operatorAbort.signal,
+    );
+    if (answer.decision === "abort") {
+      throw new Error("operator-aborted: the operator aborted the request");
+    }
+    const ts = Date.now();
+    if (prompt.kind === "approval") {
+      return {
+        name: "respond",
+        data: { kind: "confirm", value: answer.decision === "approve" },
+        ts,
+        ...(answer.grant ? { grant: answer.grant } : {}),
+      };
+    }
+    if (prompt.humanKind === "acknowledge") return { name: "proceed", data: null, ts };
+    return { name: "respond", data: { kind: prompt.humanKind, value: answer.value }, ts };
   }
 
   private onSignal(sig: BrowxSignal): void {

@@ -476,6 +476,48 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     ).toBeUndefined();
   });
 
+  it("a write shed over budget truncates the file, and every later op rejects", async () => {
+    const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
+    state.pushResponse("showSaveFilePicker", [{ path: "flood.txt" }]);
+    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
+    const handleId = (JSON.parse(String(raw)) as { files: Array<{ handleId: string }> }).files[0]!
+      .handleId;
+    const source = { page: {} };
+    const op = (name: string, data: string | null = null) =>
+      JSON.stringify({ handleId, op: name, data });
+    // A writer that does not await each chunk: 1100 one-byte chunks at once.
+    for (let i = 0; i < 1100; i++) {
+      try {
+        void write(source, op("write", "b64:QQ=="));
+      } catch {
+        // A chunk admitted after the first shed rejects; the loop does not await.
+      }
+    }
+    // Wait for a few tokens to refill: this chunk is admitted but follows a gap.
+    await new Promise((r) => setTimeout(r, 120));
+    const call = (o: string) => Promise.resolve().then(() => write(source, o));
+    await expect(call(op("write", "b64:Qg=="))).rejects.toThrow(/dropped/);
+    // close finalises the file with what arrived, and still reports the failure.
+    await expect(call(op("close"))).rejects.toThrow(/dropped/);
+    const body = readFileSync(join(ws, "flood.txt"), "utf8");
+    expect(body).toMatch(/^A+$/);
+    // The burst plus whatever refilled while the loop ran, and well short of 1100.
+    expect(body.length).toBeGreaterThanOrEqual(1024);
+    expect(body.length).toBeLessThan(1100);
+  });
+
+  it("a write on a handle that was never shed still succeeds", async () => {
+    const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
+    state.pushResponse("showSaveFilePicker", [{ path: "calm.txt" }]);
+    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
+    const handleId = (JSON.parse(String(raw)) as { files: Array<{ handleId: string }> }).files[0]!
+      .handleId;
+    const source = { page: {} };
+    await write(source, JSON.stringify({ handleId, op: "write", data: "b64:QQ==" }));
+    await write(source, JSON.stringify({ handleId, op: "close" }));
+    expect(readFileSync(join(ws, "calm.txt"), "utf8")).toBe("A");
+  });
+
   it("nested dir is created on first write", async () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "deep/nested/dir/out.txt" }]);

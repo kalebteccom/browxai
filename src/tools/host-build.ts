@@ -150,6 +150,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     bridge: e.bridge,
     isByob,
     approvals,
+    sessionId: e.id,
   });
 
   /** Structured refusal shape shared by `gateCheck`'s primary and compound
@@ -159,6 +160,7 @@ export function buildHost(deps: HostDeps): ToolHost {
     toolName: string,
     requiredCapability: Capability | null,
     active: Capability[],
+    reason?: string,
   ): ToolResponse => ({
     content: [
       {
@@ -169,6 +171,7 @@ export function buildHost(deps: HostDeps): ToolHost {
             error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
             requiredCapability,
             activeCapabilities: active,
+            ...(reason ? { reason } : {}),
             hint: "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES`, then RESTART the browxai server — capabilities are resolved ONCE at server start, so `set_config` alone won't enable it. Two gotchas if it still doesn't take after a restart: (1) a persisted `set_config({capabilities})` layer can only NARROW the start-time set, so a saved list that omits this capability keeps it off even when BROWX_CAPABILITIES names it; `reset_config` clears it; (2) `get_config({scope:\"resolved\"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.",
           },
           null,
@@ -192,13 +195,13 @@ export function buildHost(deps: HostDeps): ToolHost {
    *  without a second code path. Centralised here so tool files never touch
    *  `caps.enabled` themselves — one gate, one refusal shape, one audit
    *  surface. */
-  const gateCheck = (toolName: string, extra?: readonly Capability[]) => {
+  const gateCheck = (toolName: string, extra?: readonly Capability[], reason?: string) => {
     if (!isToolEnabled(toolName, caps)) {
       return gateRefusal(toolName, toolCapabilityMap().get(toolName) ?? null, [...caps.enabled]);
     }
     if (extra) {
       for (const cap of extra) {
-        if (!caps.enabled.has(cap)) return gateRefusal(toolName, cap, [...caps.enabled]);
+        if (!caps.enabled.has(cap)) return gateRefusal(toolName, cap, [...caps.enabled], reason);
       }
     }
     return null;
@@ -267,7 +270,7 @@ export function buildHost(deps: HostDeps): ToolHost {
             ok: false,
             action: { type: toolName },
             error: `policy: ${decision.reason}`,
-            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt; the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
+            hint: "A confirm hook held this action and it was not approved. It is a policy gate, not a selector failure, so don't mark the feature unverified. Ways through, all the operator's call: a human answers `__browx.confirm(true, ticket)` from the DevTools `browxai-…` console context named in the server's stderr prompt (or, when the operator enabled `operator-channel`, the operator answers on that channel instead and DevTools answers are ignored); the operator removes the hook from BROWX_CONFIRM_REQUIRED; or the operator enables the off-by-default `self-approval` capability, after which `approve_actions({ scopes:[…], ttlSeconds })` pre-approves the scope.",
           },
           null,
           2,

@@ -18,6 +18,8 @@ import { estimateTokens } from "../util/tokens.js";
 import type { EmulationResult } from "../page/emulation-substrate.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
+import { askHumanGrantGate } from "./ask-human-gate.js";
+import { WRAPPED_PERMISSIONS } from "../session/permission-policy.js";
 
 /**
  * Per-primitive live emulation — the seven sibling mutators that each set ONE
@@ -362,7 +364,7 @@ export function registerLiveEmulationTools(host: ToolHost): void {
       capability: "action",
       batchable: true,
       description:
-        "Grant browser permissions for the session — `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, etc. (Chromium permission names). Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. Pass `permissions: []` (or omit) to clear all grants for the session — Playwright does not expose per-origin revocation, so clearing is context-wide.",
+        "Grant browser permissions for the session — `geolocation`, `notifications`, `clipboard-read`, `clipboard-write`, `camera`, `microphone`, `midi`, `background-sync`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `payment-handler`, etc. (Chromium permission names). Mutates a live context via Playwright `context.grantPermissions`. Optionally scope to a specific `origin`; otherwise grants for the current page's origin. Pass `permissions: []` (or omit) to clear all grants for the session — Playwright does not expose per-origin revocation, so clearing is context-wide. Names the session's permission policy holds on `ask-human` and that the browser handles natively (`notifications`, `midi`, `midi-sysex`, `payment-handler`, `background-sync`, the sensors) are refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it: a native grant would let the page skip the human prompt.",
       inputSchema: {
         permissions: z
           .array(z.string())
@@ -392,6 +394,14 @@ export function registerLiveEmulationTools(host: ToolHost): void {
             : "Cleared ALL permission grants for the session context.";
           return emulationResult(e, { permissions: [], origin: origin ?? null }, { note });
         }
+        const refused = askHumanGrantGate(
+          gateCheck,
+          "grant_permissions",
+          permissions,
+          (n) => e.permission.modeFor(n),
+          WRAPPED_PERMISSIONS,
+        );
+        if (refused) return refused;
         await applyPermissions(
           requirePage(e.session).context(),
           e.deviceEmulation,

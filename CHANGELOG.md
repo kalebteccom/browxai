@@ -8,6 +8,109 @@ surface" covers.
 
 ## Unreleased
 
+### Added
+
+- **`live-view` capability, off by default.** The host daemon on the
+  `operator-channel` socket can start a screencast of a Chromium session, so the
+  operator sees the agent's browser live. It sends `view.start` and `view.stop`
+  per session and acks each frame (`frame.ack`); frames come back as JPEG on
+  that socket only, 5 fps, 960 px wide and quality 60 by default, capped at 5
+  fps, 1280 px and quality 80. One frame is in flight per stream, a slow socket
+  or an unacked frame drops frames and never queues them, and browxai holds back
+  its own ack to Chromium so the browser encodes at the stream rate. A daemon
+  that falls behind steps the stream down to 1 fps and 640 px. A frame travels
+  as `part` / `parts` lines of 30 KiB of JPEG so no line passes the 64 KiB
+  limit. The stream ends on `view.stop`, a closed session or page, a dropped
+  connection, 30 s without an ack or a CDP failure. It needs `operator-channel`
+  (the server refuses to start without it), the agent has no tool to start,
+  stop or read it, and no frame reaches a tool result, log, artifact, report,
+  HAR or recording. With the capability off a `view.start` gets `view-disabled`.
+  **Secret masking does not cover frames**: a secret visible on screen reaches
+  the daemon as pixels. See [`docs/threat-model.md`](docs/threat-model.md)
+  section 7 and `docs/tool-reference.md`, "Live view (operator channel)".
+- **`operator-channel` capability, off by default.** A host daemon passes
+  browxai a Unix socket (`BROWX_OPERATOR_SOCKET`) and a shared secret
+  (`BROWX_OPERATOR_TOKEN`), and with the capability on, every confirm-hook
+  request, `permission` and `notification` `ask-human` prompt and
+  `await_human` goes to that socket. Only the daemon's answer counts
+  (`approve`, `deny`, `done`, `abort`); DevTools answers are ignored while it is
+  on. An approve is one-shot unless the daemon attaches a `session` or
+  `workspace` grant of up to 24 hours. `global` is rejected. A request with no
+  answer is denied at its timeout, whether the daemon is slow, gone or never
+  connected, and nothing falls back to DevTools. The socket must be mode 0600 in
+  a 0700 directory owned by the browxai user, or the server refuses to start.
+  The daemon and browxai prove they hold the token with a constant-time HMAC
+  handshake, so the token never crosses the socket. Both variables are removed
+  from the environment at start and never reach a log, an error or a tool
+  result. Every string sent is masked and URL-sanitised. With the capability
+  off nothing changes; with it on, a missing variable stops the server from
+  starting. Outbound strings are cut and no frame exceeds 64 KiB, pending
+  requests are capped per class and per session with identical page prompts
+  collapsed, and booting with `self-approval` or `human-gate-override` logs a
+  warning, since both skip the daemon. The file-picker `ask-human`
+  prompt has no approve or deny form and is refused while the channel is on.
+  `list_approvals` rows gain an optional `sessionId`. See
+  [`docs/threat-model.md`](docs/threat-model.md) section 7 and
+  `docs/integrations/remotxai.md`.
+- **`docs/integrations/remotxai.md`.** A design for running browxai inside
+  remotxai sessions: one stdio server per session, workspace and profile layout
+  with `BROWX_DEFAULT_PROFILE` and `BROWX_CONFIG_READONLY`, the human-prompt
+  answer path as of v0.11.0, and a proposed operator channel. Not published to
+  the site.
+- **`human-gate-override` capability, off by default.** `set_permission_policy`
+  and `set_fs_picker_policy` now refuse to move a session's policy off
+  `ask-human` (the top-level mode or any `perPermission` / `perAPI` entry)
+  unless it is enabled, and so does `set_notification_policy`. All three are
+  `action` tools, so the agent could switch an `ask-human` policy to `allow`
+  and answer the file-picker prompt itself with `fs_picker_respond`. A refused call returns the standard gate refusal
+  (`requiredCapability: "human-gate-override"`, plus a `reason` naming the
+  keys) and changes nothing. Changes that keep `ask-human` in place, and every
+  change on a policy with no `ask-human` key, work as before. Loud warning at
+  boot when enabled. **Breaking for unattended flows that open a session on
+  `ask-human` and later switch it:** add `human-gate-override` to
+  `BROWX_CAPABILITIES`, or open the session on the policy you mean.
+  `grant_permissions` is refused for permissions the page-side wrappers don't
+  intercept (`notifications`, `midi`, `midi-sysex`, `payment-handler`,
+  `background-sync`, the sensors) while their policy is `ask-human`, since a
+  native grant skips the prompt. Camera, microphone, geolocation and clipboard
+  stay grantable: their wrappers cover the main entry points only, so legacy
+  `webkitGetUserMedia` and prototype calls remain a residual.
+- **`open_session` can't reopen an `ask-human` session name with a policy that
+  ends the hold.** The session registry now records, per name, which of
+  `permissionPolicy`, `fsPickerPolicy` and `notificationPolicy` held `ask-human`
+  when the session last closed. Reopening that name with a policy that moves a
+  held key off `ask-human` (to `allow`, `deny` or `raise`) is refused with
+  `requiredCapability: "human-gate-override"` before anything launches, unless
+  the operator enabled it. A policy the call leaves out is inherited from the
+  hold, so a reopen with no policy, and a lazily re-created `default` session,
+  keep `ask-human` too. A name that never held `ask-human` still opens with any
+  policy. A different name launched on the held session's persistent profile
+  (`open_session({ profile })`) is refused the same way, since the profile
+  carries its cookies and login state. The record lives for the server process
+  and is keyed on the name; attached sessions are not pinned.
+
+### Security
+
+- **A page can no longer stall its own session by flooding the `__browx_*`
+  bindings.** Any script on a page can call the permission, notification,
+  file-picker, device and replay bindings, and each call costs a CDP round trip
+  that is answered by evaluating back into the page. At about 120 calls/s that
+  queue starved the session's own click and snapshot commands (one click answered
+  after 164 s on a Linux container). Each page now has token-bucket budgets per
+  binding class: decisions (a burst of 100, 25 per second, 32 in flight, plus a
+  per-frame share so one iframe cannot spend the page's budget alone),
+  `permission_observe` (its own bucket, so `permissions.query()` polling cannot
+  shed a real decision), file-picker writes (1024, 100 per second) and replay
+  events (1000, 150 per second). A call over budget never reaches the handler, so
+  it is not recorded and never asks a human. A few decision calls answer the
+  binding's deny-equivalent at once (`deny`, or `refused` for devices), and the
+  rest never settle, which sends no reply and adds no traffic. Nothing over
+  budget is ever approved. A file write over budget truncates the file: every
+  later `write()` or `close()` on that handle rejects with `NotAllowedError`
+  instead of reporting success, and the server logs the truncation once per
+  handle. Replay events over budget are dropped silently. A flood logs one
+  coalesced counter at most every 5 seconds. See `docs/threat-model.md` section 8.
+
 ## v0.11.0 — 2026-09-23 — Native and desktop engines, and approval hardening
 
 Security release: fixes GHSA-m8v2-5758-xw44 (approval prompts in 0.10.1 and earlier could be answered by page scripts, a browser extension or the agent itself). Upgrade notes: unattended flows that call `approve_actions` need `self-approval` in `BROWX_CAPABILITIES`; a capability enabled earlier through `set_config` must be added to `BROWX_CAPABILITIES`; profile snapshots taken before 0.11.0 must be taken again; human answers now go through the DevTools context named in the prompt, with the prompt's ticket.

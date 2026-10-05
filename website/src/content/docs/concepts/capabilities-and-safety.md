@@ -10,7 +10,7 @@ that stay on are bounded.
 For the full trust analysis, read the [threat model](/security/threat-model/).
 This page is the working summary.
 
-<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, diagnostics, and self-approval, is off until you opt in at server start.">
+<div class="browx-posture not-content" role="img" aria-label="The safe-by-default capability posture. Four capabilities are on by default: read, navigation, action, and human. Every other capability, including eval, byob-attach, network-body, clipboard, file-io, secrets, extensions, credentials, stealth, captcha, device-emulation, canvas, diagnostics, self-approval, and human-gate-override, is off until you opt in at server start.">
   <div class="browx-posture-zone is-on">
     <span class="browx-posture-head"><span class="dot"></span>on by default</span>
     <span class="browx-posture-note">read-only or bounded, always safe to run</span>
@@ -39,6 +39,9 @@ This page is the working summary.
       <span class="browx-cap is-off">canvas</span>
       <span class="browx-cap is-off">diagnostics</span>
       <span class="browx-cap is-off">self-approval</span>
+      <span class="browx-cap is-off">human-gate-override</span>
+      <span class="browx-cap is-off">operator-channel</span>
+      <span class="browx-cap is-off">live-view</span>
     </div>
   </div>
 </div>
@@ -68,6 +71,20 @@ Off by default, each opted in deliberately:
   persistent only).
 - `self-approval` enables `approve_actions`, which lets the agent pre-approve
   the confirmation hooks meant to stop its own actions.
+- `human-gate-override` lets `set_permission_policy`, `set_fs_picker_policy` and
+  `set_notification_policy` move a policy off `ask-human`, and lets
+  `grant_permissions` natively grant what that policy holds. Without it they
+  refuse, so the agent can't switch a held prompt to `allow` and answer it itself.
+- `operator-channel` sends `await_human`, the confirmation hooks and the
+  permission and notification `ask-human` prompts to the host daemon's Unix
+  socket (`BROWX_OPERATOR_SOCKET`, `BROWX_OPERATOR_TOKEN`), and only the
+  daemon's answer counts while it is on. An unanswered prompt is denied at its
+  timeout.
+- `live-view` lets the daemon on that socket start a screencast of a session's
+  browser, so the operator sees what the agent sees. It needs `operator-channel`,
+  and frames go to the daemon's socket only. The agent can't start, stop or read
+  it. Secret masking doesn't cover pixels: a secret that is visible on screen
+  reaches the daemon as drawn.
 - `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
   `diagnostics` gate the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and

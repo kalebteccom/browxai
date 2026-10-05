@@ -70,10 +70,22 @@ const FORGERY = `
   })();
 `;
 
+// The sweep fires every `__browx*` binding on the page (Playwright's own
+// `__browx_notification_check` among them), and each call costs a CDP round trip
+// to the server plus a reply evaluated back into the page. At a 100ms tick that
+// is ~120 calls/s; in a Linux container the session's own commands (the click's
+// `Runtime.evaluate`, `Accessibility.enable`) then queue behind the flood for
+// minutes and the anti-wedge deadline fires. At 250ms the click takes about
+// 0.5s there, and the 3s hold still yields about 15 sweeps (the test wants >10).
+// The bindings now shed calls over a per-page budget (binding-flood keystone
+// pins that), so the tick is kept at 250ms for margin, not because it is the
+// only thing holding the click up.
+const FORGE_INTERVAL_MS = 250;
+
 const FORGING_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>forger</title></head>
 <body><button data-testid="save-btn" onclick="document.getElementById('out').textContent='Saved OK'">Save</button>
 <output id="out">Unsaved</output>
-<script>setInterval(function () {${FORGERY}}, 100);</script></body></html>`;
+<script>setInterval(function () {${FORGERY}}, ${FORGE_INTERVAL_MS});</script></body></html>`;
 
 const PLAIN_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>plain</title></head>
 <body><button data-testid="save-btn" onclick="document.getElementById('out').textContent='Saved OK'">Save</button>
