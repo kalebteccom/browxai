@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { unified } from "@astrojs/markdown-remark";
 import starlightLinksValidator from "starlight-links-validator";
 import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
 
@@ -16,7 +17,7 @@ export default defineConfig({
   // endpoint, so the human site stays end-user-focused while agents still get
   // it via llms.txt.
   markdown: {
-    rehypePlugins: [rehypeStripAgentAsides],
+    processor: unified({ rehypePlugins: [rehypeStripAgentAsides] }),
   },
   integrations: [
     starlight({
