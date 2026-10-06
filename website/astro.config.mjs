@@ -23,7 +23,6 @@ export default defineConfig({
       title: "browxai",
       description:
         "The same tools for a web page and a native app. MCP-native, model-agnostic control across Chromium, Firefox, WebKit, real Safari and Chrome on an Android device, plus gated native-app engines on an Android emulator and the iOS Simulator, a desktop Electron app attached over CDP, the OS clipboard, password managers and a workspace directory.",
-      tagline: "The same tools for a web page and a native app.",
       // Fail the build on broken internal links or heading anchors, so dead
       // links can never ship. This is the build-time "error boundary" for a
       // static docs site.
