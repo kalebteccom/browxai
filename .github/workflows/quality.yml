@@ -1,9 +1,14 @@
 name: quality
 
+# Gated to manual dispatch only: Rowin's standing order (2026-10-09) is that
+# nothing depends on GitHub Actions, and the org's Actions billing is blocked.
+# The merge gate is the Woodpecker pipeline (.woodpecker.yml, status
+# ci/woodpecker/push/woodpecker). Restore the triggers below only on his word.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
 
 permissions: {}
 
