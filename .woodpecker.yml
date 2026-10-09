@@ -1,6 +1,6 @@
 # ci-optimised: v1
 # Mirrors .github/workflows/ci.yml and quality.yml on the self-hosted box. The GitHub workflows stay in place.
-# Not mirrored: secret-scan (trufflehog) and zizmor, neither ships in a node image. release.yml and dependabot-auto-merge.yml wait on a secrets plan.
+# Mirrored from quality.yml's secret-scan and zizmor jobs: the secret-scan and zizmor steps, which download the pinned release binaries into a host cache (neither tool ships in a node image). Not mirrored: release.yml and dependabot-auto-merge.yml wait on a secrets plan.
 # INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
 # INVARIANT: no step builds an image; images are pulled by exact tag.
 # The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push.
@@ -48,7 +48,7 @@ steps:
       - bash scripts/gate-slot.sh pnpm typecheck
       - bash scripts/gate-slot.sh pnpm test
 
-  # quality.yml: lint, audit and package-contents (secret-scan and zizmor excluded, see header).
+  # quality.yml: lint, audit and package-contents (secret-scan and zizmor follow package-contents).
   - name: quality
     image: node:26-bookworm
     depends_on: [build-node26]
@@ -108,12 +108,86 @@ steps:
       - bash scripts/gate-slot.sh pnpm build
       - bash scripts/gate-slot.sh node scripts/audit-package-contents.mjs
 
+  # quality.yml secret-scan: trufflehog 3.97.9, the version quality.yml pins.
+  # SECURITY: the release asset is cached on the host, its sha256 is checked on every run and the binary is unpacked fresh from the verified file; a mismatch fails the step.
+  # Only this step and zizmor mount the tools cache. No secret is used.
+  - name: secret-scan
+    image: node:26-bookworm
+    depends_on: [package-contents]
+    volumes:
+      - /home/gitops/cache/browxai/tools:/tools
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    commands:
+      # NOTE: no brace-style variable references in this file, Woodpecker substitutes those in the YAML before the shell sees them.
+      - |
+        set -eu
+        ASSET=trufflehog_3.97.9_linux_amd64.tar.gz
+        SHA256=40377e6572495412fb9ba0bc21c9401f73b72f1d2afd11b9931bc4a5ed622866
+        DIR=/tools/trufflehog-3.97.9
+        mkdir -p $DIR
+        if [ ! -f $DIR/$ASSET ]; then
+          curl --fail --silent --show-error --location --retry 3 --output $DIR/$ASSET.part https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.9/$ASSET
+          mv $DIR/$ASSET.part $DIR/$ASSET
+        fi
+        if ! echo "$SHA256  $DIR/$ASSET" | sha256sum --check --strict; then
+          echo "secret-scan: sha256 of $DIR/$ASSET does not match the pinned value, refusing to run it" >&2
+          exit 1
+        fi
+        BIN=$(mktemp -d)
+        tar -xzf $DIR/$ASSET -C $BIN trufflehog
+        git config --global --add safe.directory $CI_WORKSPACE
+        # Same range as the Actions job: the pushed commits, or the whole history when the push has no usable base.
+        HEAD_SHA=$CI_COMMIT_SHA
+        # Woodpecker leaves CI_PREV_COMMIT_SHA unset on the first push of a branch; read it without tripping set -u.
+        BASE_SHA=$(printenv CI_PREV_COMMIT_SHA || true)
+        case "$BASE_SHA" in 0000000000000000000000000000000000000000) BASE_SHA="" ;; esac
+        if [ -n "$BASE_SHA" ] && [ "$BASE_SHA" = "$HEAD_SHA" ]; then
+          echo "secret-scan: push adds no commits, nothing to scan"
+          exit 0
+        fi
+        if [ -n "$BASE_SHA" ] && ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+          echo "secret-scan: base $BASE_SHA is not in the clone, scanning the whole history of $HEAD_SHA"
+          BASE_SHA=""
+        fi
+        if [ -n "$BASE_SHA" ]; then
+          bash scripts/gate-slot.sh $BIN/trufflehog git file://$CI_WORKSPACE --since-commit $BASE_SHA --branch $HEAD_SHA --fail --no-update --results=verified,unknown
+        else
+          bash scripts/gate-slot.sh $BIN/trufflehog git file://$CI_WORKSPACE --branch $HEAD_SHA --fail --no-update --results=verified,unknown
+        fi
+
+  # quality.yml zizmor: zizmor 1.16.3, persona auditor, min-severity low, gating.
+  # WORKAROUND: the Action runs online audits with the job's GitHub token; no secret is used here, so they are off (--no-online-audits).
+  - name: zizmor
+    image: node:26-bookworm
+    depends_on: [secret-scan]
+    volumes:
+      - /home/gitops/cache/browxai/tools:/tools
+      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
+    commands:
+      - |
+        set -eu
+        ASSET=zizmor-x86_64-unknown-linux-gnu.tar.gz
+        SHA256=f0070985e94dd7b29e30abe249f6c7b2f14078c35a8f2de78e2d6ce89de0c132
+        DIR=/tools/zizmor-1.16.3
+        mkdir -p $DIR
+        if [ ! -f $DIR/$ASSET ]; then
+          curl --fail --silent --show-error --location --retry 3 --output $DIR/$ASSET.part https://github.com/zizmorcore/zizmor/releases/download/v1.16.3/$ASSET
+          mv $DIR/$ASSET.part $DIR/$ASSET
+        fi
+        if ! echo "$SHA256  $DIR/$ASSET" | sha256sum --check --strict; then
+          echo "zizmor: sha256 of $DIR/$ASSET does not match the pinned value, refusing to run it" >&2
+          exit 1
+        fi
+        BIN=$(mktemp -d)
+        tar -xzf $DIR/$ASSET -C $BIN
+        bash scripts/gate-slot.sh $BIN/zizmor --persona=auditor --min-severity=low --no-online-audits --color=never -- .
+
   # ci.yml keystone: real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   - name: keystone
     # INVARIANT: runs strictly after every build step so the box never runs the browsers beside the unit suites.
     # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume, as ci.yml does.
     image: node:26-bookworm
-    depends_on: [build-node22, build-node26, quality, audit, package-contents]
+    depends_on: [build-node22, build-node26, quality, audit, package-contents, secret-scan, zizmor]
     volumes:
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
       - /home/gitops/cache/browxai/corepack:/corepack
