@@ -901,8 +901,12 @@ const UNSETTLED_PAGE = `<!doctype html>
   <script>
     const params = new URLSearchParams(location.search);
     const churnOn = params.get("churn") !== "0";
-    const burnMs = Number(params.get("burn") || 25);
-    const everyMs = Number(params.get("every") || 45);
+    // Wall-clock spin per frame, so the starvation does not depend on CPU speed:
+    // a slow box makes each frame cost more, never less. 40 ms leaves only a few
+    // ms of main-thread time between frames. The target is replaced on every
+    // frame (everyMs 0), far inside the 5 s click budget.
+    const burnMs = Number(params.get("burn") || 40);
+    const everyMs = Number(params.get("every") || 0);
 
     const state = { clicks: 0, trusted: null, seq: [] };
     window.__ksDispatch = state;

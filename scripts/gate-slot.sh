@@ -53,4 +53,15 @@ export GATE_TIMING_LOCK="$LOCK_DIR/perf.lock"
 # SECURITY: umask 000 is only for the shared lock files; the command gets the caller's umask so its files are not world-writable.
 umask "$CALLER_UMASK"
 
-"$@" 9>&-
+# BUDGET: a command over GATE_STEP_BUDGET_SECS (default 1200, 20 min) is stopped and fails the step, so a cold cache or a loaded box shows up as a red step with its time instead of a silent 60 min run.
+BUDGET="${GATE_STEP_BUDGET_SECS:-1200}"
+START="$(date +%s)"
+set +e
+timeout --signal=TERM --kill-after=30 "$BUDGET" "$@" 9>&-
+RC=$?
+set -e
+echo "==> gate-slot: command took $(( $(date +%s) - START ))s (budget ${BUDGET}s)"
+if [ "$RC" -eq 124 ]; then
+  echo "==> gate-slot: BUDGET EXCEEDED, stopped after ${BUDGET}s: $*" >&2
+fi
+exit "$RC"
