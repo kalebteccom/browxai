@@ -6,8 +6,8 @@ version: 2
 #   - Group dev-deps patches into a single PR.
 #   - Ignore semver-major across the board — every major bump is a human
 #     review (security regressions tend to ride along on major upgrades).
-#   - github-actions ecosystem included; auto-merge workflow refuses to
-#     merge these (they're code-execution changes).
+#   - github-actions ecosystem included; these are code-execution changes and
+#     always get a human review.
 #   - Cooldown on every ecosystem: a brand-new release is not proposed until
 #     it has been public for a week. This is the native mechanism for the
 #     weekly-schedule reasoning above — a compromised version published an

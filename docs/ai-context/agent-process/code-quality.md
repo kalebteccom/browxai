@@ -15,7 +15,7 @@ pnpm format:check
 pnpm build
 ```
 
-CI runs the same gate (see `.github/workflows/`). Pushing a diff that the local gate would reject is a self-inflicted CI failure. The zero-ignores discipline (no `// @ts-ignore`, no `eslint-disable` without justified comment) applies on top of this gate.
+CI runs the same gate (see `.woodpecker.yml`). Pushing a diff that the local gate would reject is a self-inflicted CI failure. The zero-ignores discipline (no `// @ts-ignore`, no `eslint-disable` without justified comment) applies on top of this gate.
 
 If a residual issue remains (e.g. an external dependency emits a warning you can't suppress), document the owner and reason in the PR. Don't leave unexplained global debt.
 

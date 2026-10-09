@@ -10,7 +10,7 @@ Ordered checklist for the v1.0 public flip. Open a tracking issue for each item;
 - [ ] `docs/plugin-governance.md`, `docs/security-best-practices-for-adopters.md`
 - [ ] Per-plugin `LICENSE` files + `"author"` fields in plugin `package.json`
 - [ ] `THIRD_PARTY_NOTICES.md` regenerated from current `pnpm-lock.yaml`
-- [ ] Prettier, ESLint, `.githooks/`, `quality.yml`, `release.yml`, CODEOWNERS, Dependabot config
+- [ ] Prettier, ESLint, `.githooks/`, `.woodpecker.yml`, `release.yml`, CODEOWNERS, Dependabot config
 
 ## Pre-flight: security baseline + lint convergence
 
