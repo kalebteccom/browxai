@@ -183,13 +183,13 @@ steps:
         tar -xzf $DIR/$ASSET -C $BIN
         bash scripts/gate-slot.sh $BIN/zizmor --persona=auditor --min-severity=low --no-online-audits --color=never -- .
 
-
   # Real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   - name: keystone
     # INVARIANT: runs strictly after every other gate step so the box never runs the browsers beside the unit suites.
     # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume.
     image: node:26-bookworm
-    depends_on: [install, build-node22, build-node26, quality, package-contents, secret-scan, zizmor]
+    depends_on:
+      [install, build-node22, build-node26, quality, package-contents, secret-scan, zizmor]
     when: *gate-when
     volumes:
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
