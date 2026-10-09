@@ -14,8 +14,8 @@
 //     exported — so this is the only sanctioned read of the set; never an import
 //     of the const.
 //
-// Both run in the fast lane (vitest.config.ts excludes only test/keystone/** and
-// test/investigation/**), statically, with no browser download or launch.
+// Both run in the fast lane (vitest.config.ts excludes test/keystone/** and the
+// capability-testbed), statically, with no browser download or launch.
 
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

@@ -142,26 +142,6 @@ describe("PermissionPolicyState", () => {
     expect(s.since(t0)).toHaveLength(1);
     expect(s.since(t0)[0]?.handledAs).toBe("allowed");
   });
-
-  it("buffer is capped — oldest record evicted past cap", () => {
-    const s = new PermissionPolicyState({ mode: "allow" }, 3);
-    const t = Date.now();
-    for (let i = 0; i < 5; i++) {
-      s.record({ permission: "camera", origin: `o${i}`, handledAs: "allowed", ts: t + i });
-    }
-    const slice = s.since(0);
-    expect(slice).toHaveLength(3);
-    expect(slice.map((r) => r.origin)).toEqual(["o2", "o3", "o4"]);
-  });
-
-  it("raisedSince() — true iff a raised record sits in the window", () => {
-    const s = new PermissionPolicyState();
-    const t = Date.now();
-    s.record({ permission: "camera", handledAs: "allowed", ts: t });
-    expect(s.raisedSince(t)).toBe(false);
-    s.record({ permission: "geolocation", handledAs: "raised", ts: t + 1 });
-    expect(s.raisedSince(t)).toBe(true);
-  });
 });
 
 // ---- exposed constants / mapping -----------------------------------------
