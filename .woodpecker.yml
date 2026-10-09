@@ -186,7 +186,7 @@ steps:
   # Real Chromium, Firefox and WebKit, in two shards. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   # The gate-slot pool bounds how many heavy commands run at once, so the shards do not wait for the unit steps. Browsers are installed once, in `browsers`, before the shards start: two shards installing into the shared cache volume would race.
   - name: browsers
-    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume.
+    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image downloads the matching browsers into the cache volume (the OS libraries are installed per container by each shard).
     image: node:26-bookworm
     depends_on: [install]
     when: *gate-when
@@ -203,7 +203,7 @@ steps:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm exec playwright-core install --with-deps chromium firefox webkit
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium firefox webkit
 
   # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it. dist comes from package-contents (it runs `pnpm build` in the shared workspace), so both shards depend on it.
   - name: keystone-1
@@ -216,6 +216,8 @@ steps:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
+      # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
       - bash scripts/gate-slot.sh pnpm test:keystone --shard=1/2
 
   - name: keystone-2
@@ -228,4 +230,6 @@ steps:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
+      # OS libraries live in the container, not in the browser cache, so each shard installs them itself.
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install-deps chromium firefox webkit
       - bash scripts/gate-slot.sh pnpm test:keystone --shard=2/2
