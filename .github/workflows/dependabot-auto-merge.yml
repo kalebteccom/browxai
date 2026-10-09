@@ -3,7 +3,13 @@ name: dependabot-auto-merge
 # Dev-deps patch only, 7-day cooldown via metadata. Every other
 # Dependabot PR is human-reviewed.
 
-on: pull_request
+# Gated to manual dispatch only: Rowin's standing order (2026-10-09) is that
+# nothing depends on GitHub Actions, and the org's Actions billing is blocked.
+# The merge gate is the Woodpecker pipeline (.woodpecker.yml, status
+# ci/woodpecker/push/woodpecker). Restore the triggers below only on his word.
+on:
+  workflow_dispatch:
+  # pull_request:
 
 permissions: {}
 
