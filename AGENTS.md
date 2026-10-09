@@ -53,7 +53,7 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 - `docs/` — public adopter contract (tool-reference, threat-model, plugin-authoring, plugins, sdk, getting-started, byo-vision, capabilities), published via the Astro + Starlight site in `website/` (Netlify).
 - `docs/ai-context/` — agent-facing routing layer. Discipline, architecture notes, lessons captured. **Never published to the docs site.** Read before touching the corresponding area.
 - `docs/rfcs/` — numbered design RFCs.
-- `test/` — keystone tests (real Chromium) and investigation tests.
+- `test/` — keystone tests (real Chromium), architecture fitness tests and SDK tests.
 - `dist/` — build output; the `browxai` bin is `dist/cli.js`. Built by `pnpm build`.
 
 ## Capability posture map

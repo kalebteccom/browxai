@@ -1,119 +1,119 @@
 # ci-optimised: v1
-# Mirrors .github/workflows/ci.yml and quality.yml on the self-hosted box. The GitHub workflows stay in place.
-# Mirrored from quality.yml's secret-scan and zizmor jobs: the secret-scan and zizmor steps, which download the pinned release binaries into a host cache (neither tool ships in a node image). Not mirrored: release.yml and dependabot-auto-merge.yml wait on a secrets plan.
+# Woodpecker is the only CI for this repo; the one GitHub workflow left is release.yml (OIDC publish), which has no equivalent here.
+# secret-scan and zizmor download pinned release binaries into a host cache (neither tool ships in a node image).
 # INVARIANT: every heavy command goes through scripts/gate-slot.sh, which draws from the slot pool shared with trackxai and remotxai.
 # INVARIANT: no step builds an image; images are pulled by exact tag.
 # The repo is public, so Woodpecker never runs pull_request events; a branch is gated by the pipeline of its push.
+# GATE vs MAIN: every gate step runs on pushes to any branch except main, once, before the merge. A push to main runs only `main-check`:
+# the squash merge landed a tree that was gated at the same head, so nothing is rebuilt.
 when:
   - event: push
 
 # WORKAROUND: Woodpecker steps share one workspace, so two steps that run `pnpm install` at once would race on node_modules.
-# The steps therefore form a single chain; the slot pool still caps what each step runs.
+# `install` therefore runs once, first, and every step that needs node_modules depends on it; those steps then run in parallel.
+# No installed dependency is bound to the Node ABI: install scripts are off (.npmrc) and the only native code, sharp, ships Node-API prebuilds as per-platform packages; so one install under Node 22 serves the Node 26 steps.
 steps:
-  # Node 22 is the declared floor in `engines` (the Safari BiDi client uses Node's global WebSocket); 26 is what development runs on.
-  - name: build-node22
+  - name: install
     # WORKAROUND: the trackxai-ci images carry pnpm 9.15.9 but package.json pins pnpm@9.0.0, so plain node images plus corepack honour `packageManager`.
     image: node:22-bookworm
     depends_on: []
-    volumes:
+    when: &gate-when
+      - event: push
+        branch:
+          exclude: [main]
+    volumes: &pnpm-volumes
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
       - /home/gitops/cache/browxai/corepack:/corepack
       - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment:
+    environment: &pnpm-env
       COREPACK_HOME: /corepack
       COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
     commands:
       - corepack enable
       - pnpm config set store-dir /pnpm-store
       - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
+
+  # Node 22 is the declared floor in `engines` (the Safari BiDi client uses Node's global WebSocket); 26 is what development runs on.
+  - name: build-node22
+    image: node:22-bookworm
+    depends_on: [install]
+    when: *gate-when
+    volumes: *pnpm-volumes
+    environment: *pnpm-env
+    commands:
+      - corepack enable
+      - pnpm config set store-dir /pnpm-store
       - bash scripts/gate-slot.sh pnpm typecheck
       - bash scripts/gate-slot.sh pnpm test
 
+  # Unit suite on the development Node. No typecheck here: it runs no code, build-node22 already does it.
   - name: build-node26
     # WORKAROUND: Node 25 and later stopped bundling corepack, so install it when the image lacks it.
     image: node:26-bookworm
-    depends_on: [build-node22]
-    volumes:
-      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
-      - /home/gitops/cache/browxai/corepack:/corepack
-      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment:
-      COREPACK_HOME: /corepack
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    depends_on: [install]
+    when: *gate-when
+    volumes: *pnpm-volumes
+    environment: *pnpm-env
     commands:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
-      - bash scripts/gate-slot.sh pnpm typecheck
       - bash scripts/gate-slot.sh pnpm test
 
-  # quality.yml: lint, audit and package-contents (secret-scan and zizmor follow package-contents).
+  # Lint, formatting, unused dependencies, layering (depcruise) and duplication (jscpd) budgets, then the supply-chain checks (audit, licenses, lockfile).
   - name: quality
     image: node:26-bookworm
-    depends_on: [build-node26]
-    volumes:
-      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
-      - /home/gitops/cache/browxai/corepack:/corepack
-      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment:
-      COREPACK_HOME: /corepack
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    depends_on: [install]
+    when: *gate-when
+    volumes: *pnpm-volumes
+    environment: *pnpm-env
     commands:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
       - bash scripts/gate-slot.sh pnpm lint
       - bash scripts/gate-slot.sh pnpm format:check
       - bash scripts/gate-slot.sh pnpm run depcheck
-      # depcruise and jscpd are reporting-only today (warn severity, no threshold), as in quality.yml.
+      # depcruise and jscpd are enforced: layering rules are errors, jscpd fails above its duplication threshold.
       - bash scripts/gate-slot.sh pnpm depcruise
       - bash scripts/gate-slot.sh pnpm jscpd:check
-
-  - name: audit
-    image: node:26-bookworm
-    depends_on: [quality]
-    volumes:
-      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
-      - /home/gitops/cache/browxai/corepack:/corepack
-      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment:
-      COREPACK_HOME: /corepack
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
-    commands:
-      - command -v corepack >/dev/null || npm install --global corepack
-      - corepack enable
-      - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
       - bash scripts/gate-slot.sh pnpm audit:prod
       - bash scripts/gate-slot.sh pnpm licenses:check
       - bash scripts/gate-slot.sh node scripts/lockfile-lint.mjs
 
   - name: package-contents
     image: node:26-bookworm
-    depends_on: [audit]
-    volumes:
-      - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
-      - /home/gitops/cache/browxai/corepack:/corepack
-      - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
-    environment:
-      COREPACK_HOME: /corepack
-      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    depends_on: [install]
+    when: *gate-when
+    volumes: *pnpm-volumes
+    environment: *pnpm-env
     commands:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
       - bash scripts/gate-slot.sh pnpm build
       - bash scripts/gate-slot.sh node scripts/audit-package-contents.mjs
 
-  # quality.yml secret-scan: trufflehog 3.97.9, the version quality.yml pins.
+  # Push to main: the head commit must be the squash merge of a gated PR.
+  - name: main-check
+    image: node:26-bookworm
+    depends_on: []
+    when:
+      - event: push
+        branch: main
+    commands:
+      - set -eu
+      - git log -1 --format='%H %s'
+      - 'git log -1 --format=%s | grep -Eq "\(#[0-9]+\)$" || { echo "main-check: the head commit is not a PR squash merge, nothing proves it was gated" >&2; exit 1; }'
+      - 'echo "main-check ok: tree gated before the merge, no rebuild"'
+
+  # secret-scan: trufflehog 3.97.9.
   # SECURITY: the release asset is cached on the host, its sha256 is checked on every run and the binary is unpacked fresh from the verified file; a mismatch fails the step.
   # Only this step and zizmor mount the tools cache. No secret is used.
   - name: secret-scan
     image: node:26-bookworm
-    depends_on: [package-contents]
+    depends_on: []
+    when: *gate-when
     volumes:
       - /home/gitops/cache/browxai/tools:/tools
       - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
@@ -136,7 +136,7 @@ steps:
         BIN=$(mktemp -d)
         tar -xzf $DIR/$ASSET -C $BIN trufflehog
         git config --global --add safe.directory $CI_WORKSPACE
-        # Same range as the Actions job: the pushed commits, or the whole history when the push has no usable base.
+        # Scan range: the pushed commits, or the whole history when the push has no usable base.
         HEAD_SHA=$CI_COMMIT_SHA
         # Woodpecker leaves CI_PREV_COMMIT_SHA unset on the first push of a branch; read it without tripping set -u.
         BASE_SHA=$(printenv CI_PREV_COMMIT_SHA || true)
@@ -155,11 +155,12 @@ steps:
           bash scripts/gate-slot.sh $BIN/trufflehog git file://$CI_WORKSPACE --branch $HEAD_SHA --fail --no-update --results=verified,unknown
         fi
 
-  # quality.yml zizmor: zizmor 1.16.3, persona auditor, min-severity low, gating.
-  # WORKAROUND: the Action runs online audits with the job's GitHub token; no secret is used here, so they are off (--no-online-audits).
+  # zizmor 1.16.3, persona auditor, min-severity low, gating.
+  # WORKAROUND: zizmor's online audits need a GitHub token; no secret is used here, so they are off (--no-online-audits).
   - name: zizmor
     image: node:26-bookworm
-    depends_on: [secret-scan]
+    depends_on: []
+    when: *gate-when
     volumes:
       - /home/gitops/cache/browxai/tools:/tools
       - /srv/trackxai-gate-locks:/srv/trackxai-gate-locks
@@ -182,12 +183,14 @@ steps:
         tar -xzf $DIR/$ASSET -C $BIN
         bash scripts/gate-slot.sh $BIN/zizmor --persona=auditor --min-severity=low --no-online-audits --color=never -- .
 
-  # ci.yml keystone: real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
+  # Real Chromium, Firefox and WebKit. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   - name: keystone
-    # INVARIANT: runs strictly after every build step so the box never runs the browsers beside the unit suites.
-    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume, as ci.yml does.
+    # INVARIANT: runs strictly after every other gate step so the box never runs the browsers beside the unit suites.
+    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image installs the matching browsers (and their OS deps) into the cache volume.
     image: node:26-bookworm
-    depends_on: [build-node22, build-node26, quality, audit, package-contents, secret-scan, zizmor]
+    depends_on:
+      [install, build-node22, build-node26, quality, package-contents, secret-scan, zizmor]
+    when: *gate-when
     volumes:
       - /home/gitops/cache/browxai/pnpm-store:/pnpm-store
       - /home/gitops/cache/browxai/corepack:/corepack
@@ -201,8 +204,6 @@ steps:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm install --frozen-lockfile
       - bash scripts/gate-slot.sh pnpm exec playwright-core install --with-deps chromium firefox webkit
-      # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it.
-      - bash scripts/gate-slot.sh pnpm build
+      # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it. dist comes from package-contents (it runs `pnpm build` in the shared workspace and keystone depends on it).
       - bash scripts/gate-slot.sh pnpm test:keystone

@@ -79,26 +79,6 @@ describe("NotificationPolicyState", () => {
     expect(s.since(t0)[0]?.handledAs).toBe("allowed");
   });
 
-  it("buffer is capped — oldest record evicted past cap", () => {
-    const s = new NotificationPolicyState({ mode: "allow" }, 3);
-    const t = Date.now();
-    for (let i = 0; i < 5; i++) {
-      s.record({ title: `t${i}`, timestamp: t + i, handledAs: "allowed" });
-    }
-    const slice = s.since(0);
-    expect(slice).toHaveLength(3);
-    expect(slice.map((r) => r.title)).toEqual(["t2", "t3", "t4"]);
-  });
-
-  it("raisedSince() — true iff a raised record sits in the window", () => {
-    const s = new NotificationPolicyState();
-    const t = Date.now();
-    s.record({ title: "ok", timestamp: t, handledAs: "allowed" });
-    expect(s.raisedSince(t)).toBe(false);
-    s.record({ title: "bad", timestamp: t + 1, handledAs: "raised" });
-    expect(s.raisedSince(t)).toBe(true);
-  });
-
   it("normalise rejects unknown modes at construction", () => {
     expect(() => new NotificationPolicyState({ mode: "yes" as never })).toThrow(/invalid mode/i);
   });

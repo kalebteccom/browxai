@@ -187,15 +187,9 @@ wrapping is what's forbidden_.
 - `src/page/set-of-marks.ts`: bare-ref fallback passes
   `timeoutMs: 1000`.
 - `CHANGELOG.md`: Unreleased ▸ Fixed entry.
-- `test/investigation/screenshot-marks.investigation.test.ts`: live
-  smoke for namespace sharing + edge cases (run via the dedicated
-  `vitest.investigation.config.ts`; excluded from `pnpm test`).
-- `test/investigation/perf-probe.test.ts`: wall-clock probe used to
-  surface the defect.
-- `test/investigation/trace-runner.ts`: standalone-CLI tracer.
-- `vitest.investigation.config.ts`: config for the live-network suite.
-- `vitest.config.ts`: exclude `test/investigation/**` from the unit
-  run so `pnpm test` stays hermetic.
+- `test/investigation/` (live smoke, wall-clock probe, standalone tracer),
+  `vitest.investigation.config.ts` and the `vitest.config.ts` exclude: removed
+  later; nothing ran them in CI and no package script called them.
 
 ## What I did NOT do
 

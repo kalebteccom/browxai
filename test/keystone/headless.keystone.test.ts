@@ -835,20 +835,6 @@ describe("headless-CI keystone — Shadow DOM deep piercing", () => {
   );
 });
 
-// Documented, deliberate gap — NOT a silent skip. Under headless there is no
-// human at a screen, so the `__browx` on-page banner is not visually present
-// and `await_human` (confirm/choose/input/pick_element/acknowledge) cannot be
-// satisfied. Everything else in the surface works headless; these are
-// human-in-the-loop primitives by definition. The runbook anticipates exactly
-// this and asks for it to be named, not hidden.
-describe("headless-CI keystone — known headless gap (await_human / __browx banner)", () => {
-  it.skip("await_human is unusable headless by design — no human at a screen", () => {
-    // Intentionally skipped: documents the boundary of the headless path.
-    // If a future change makes a non-blocking headless ack path exist, turn
-    // this into a real assertion.
-  });
-});
-
 // fs_picker_policy keystone lives in fs-picker.keystone.test.ts — it
 // needs the off-by-default `file-io` capability (for fs_picker_respond),
 // so it spins up its own server with the right env, same pattern as the

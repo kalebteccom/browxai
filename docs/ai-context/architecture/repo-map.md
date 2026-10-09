@@ -82,7 +82,7 @@ Workspace plugins:
 
 ## `test/`
 
-Keystone tests against real Chromium + investigation harness.
+Keystone tests against real Chromium, architecture fitness tests and SDK tests.
 
 ## `docs/`
 

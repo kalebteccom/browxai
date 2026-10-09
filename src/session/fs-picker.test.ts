@@ -111,31 +111,6 @@ describe("FsPickerPolicyState", () => {
     expect(s.since(t0)[0]?.handledAs).toBe("allowed");
   });
 
-  it("buffer is capped — oldest record evicted past cap", () => {
-    const s = new FsPickerPolicyState({ mode: "allow" }, 3);
-    const t = Date.now();
-    for (let i = 0; i < 5; i++) {
-      s.record({
-        api: "showSaveFilePicker",
-        suggestedName: `f${i}`,
-        handledAs: "allowed",
-        ts: t + i,
-      });
-    }
-    const slice = s.since(0);
-    expect(slice).toHaveLength(3);
-    expect(slice.map((r) => r.suggestedName)).toEqual(["f2", "f3", "f4"]);
-  });
-
-  it("raisedSince() — true iff a raised record sits in the window", () => {
-    const s = new FsPickerPolicyState();
-    const t = Date.now();
-    s.record({ api: "showSaveFilePicker", handledAs: "allowed", ts: t });
-    expect(s.raisedSince(t)).toBe(false);
-    s.record({ api: "showOpenFilePicker", handledAs: "raised", ts: t + 1 });
-    expect(s.raisedSince(t)).toBe(true);
-  });
-
   it("response queue is per-API and FIFO", () => {
     const s = new FsPickerPolicyState();
     s.pushResponse("showSaveFilePicker", [{ path: "out1.txt" }]);

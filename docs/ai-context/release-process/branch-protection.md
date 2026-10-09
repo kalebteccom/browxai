@@ -120,8 +120,7 @@ that point forward, only OIDC plus interactive 2FA can publish.
 ## Org-level Actions policy (apply once per org)
 
 - Allowed actions: "Allow `actions/*` + `github/*` + selected actions", an
-  explicit allowlist matching the SHA-pinned actions in `ci.yml`,
-  `quality.yml`, `release.yml`, `dependabot-auto-merge.yml`.
+  explicit allowlist matching the SHA-pinned actions in `release.yml`.
 - Require SHA-pinned actions: on (GitHub Aug 2025 changelog).
 - Default workflow permissions: read-only on `GITHUB_TOKEN`.
 - Fork PR workflows: require approval for all outside collaborators.
