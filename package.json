@@ -103,7 +103,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.31.0",
     "playwright-core": "^1.63.0",
-    "rrweb": "2.1.6",
+    "rrweb": "2.1.7",
     "zod": "^3.23.0"
   },
   "devDependencies": {
