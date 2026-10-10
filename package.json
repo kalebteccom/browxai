@@ -107,7 +107,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cyclonedx/cdxgen": "^12.8.4",
+    "@cyclonedx/cdxgen": "^12.8.5",
     "@eslint/js": "^9.39.5",
     "@types/node": "^20.19.43",
     "depcheck": "^1.4.7",
