@@ -1036,6 +1036,23 @@ function echoPage(cookie: string): string {
 </body></html>`;
 }
 
+/**
+ * Poll `predicate` until it returns true, then resolve. Throws once `timeoutMs`
+ * passes. Use it instead of a fixed sleep when a test waits for something to
+ * happen: the bound is only paid on failure, so it can be generous.
+ */
+export async function waitFor(
+  predicate: () => boolean | Promise<boolean>,
+  opts: { timeoutMs?: number; intervalMs?: number; what?: string } = {},
+): Promise<void> {
+  const { timeoutMs = 10_000, intervalMs = 50, what = "condition" } = opts;
+  const end = Date.now() + timeoutMs;
+  while (!(await predicate())) {
+    if (Date.now() > end) throw new Error(`${what} not met within ${timeoutMs}ms`);
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+}
+
 export interface Fixture {
   url: string;
   close: () => Promise<void>;

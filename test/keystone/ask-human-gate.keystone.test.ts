@@ -228,6 +228,7 @@ describe("set_fs_picker_policy leaving ask-human", () => {
         selector: '[data-testid="save-btn-fs"]',
       });
       expect(clicked.fsPickerRequests ?? []).toEqual([]);
+      // Fixed on purpose: proves the picker stays held, so no outcome may appear in this window.
       await new Promise((r) => setTimeout(r, 2_500));
       const text = await callText("snapshot", { session });
       expect(text).toContain("pending");
@@ -424,6 +425,7 @@ describe("open_session reopening an ask-human session name", () => {
       // The session the prefix did not match is still open and untouched.
       expect(await liveSessions(call)).toContain("ks-other-b");
 
+      // Fixed on purpose: lets the session sit idle past the 10 ms threshold.
       await new Promise((r) => setTimeout(r, 50));
       await call("close_sessions", { idleMs: 10 });
       expect(

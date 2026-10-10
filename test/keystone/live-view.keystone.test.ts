@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
 import { startFakeDaemon, type FakeDaemon } from "../../src/helper/__fixtures__/operator-daemon.js";
+import { waitFor } from "./fixture.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const CAPS_ON = "read,navigation,action,human,operator-channel,live-view";
@@ -98,14 +99,8 @@ function operatorEnv(d: FakeDaemon): NodeJS.ProcessEnv {
   return { BROWX_OPERATOR_SOCKET: d.socketPath, BROWX_OPERATOR_TOKEN: d.token };
 }
 
-async function waitFor(cond: () => boolean, ms = 10_000): Promise<void> {
-  const end = Date.now() + ms;
-  while (!cond()) {
-    if (Date.now() > end) throw new Error("condition not met in time");
-    await new Promise((r) => setTimeout(r, 40));
-  }
-}
-
+// Fixed windows below prove an event does NOT happen; waiting for something
+// that should happen goes through waitFor.
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Frame = Record<string, unknown>;
@@ -209,7 +204,7 @@ describe("live view — without operator-channel", () => {
       );
       expect(process.env.BROWX_OPERATOR_SOCKET).toBeUndefined();
       expect(process.env.BROWX_OPERATOR_TOKEN).toBeUndefined();
-      await sleep(300);
+      await sleep(300); // absence window: no dial may happen
       expect(daemon.connections).toBe(0);
     } finally {
       await daemon.close();
@@ -250,7 +245,7 @@ describe("live view — capability unset", () => {
     daemon.send({ type: "view.start", session: "off" });
     await waitFor(() => ofType(daemon, "error").length === 1);
     expect(ofType(daemon, "error")[0]).toMatchObject({ code: "view-disabled", session: "off" });
-    await sleep(1_500);
+    await sleep(1_500); // absence window: no frame may be sent
     expect(ofType(daemon, "frame")).toEqual([]);
     expect(ofType(daemon, "view.started")).toEqual([]);
   });
@@ -322,7 +317,8 @@ describe("live view — capability set, managed Chromium", () => {
         quality: 60,
       });
       await waitFor(() => completeFrames(daemon, "a").length >= 1);
-      await sleep(3_000);
+      // Ten paced frames at 5 fps, however long a loaded box takes to deliver them.
+      await waitFor(() => completeFrames(daemon, "a").length >= 10, { timeoutMs: 30_000 });
       // The send times browxai stamped on the frames. A mean gap under 200 ms
       // would mean frames are not paced to the cap. A mean gap near half a
       // second would mean the stream is not keeping up with a page that paints
@@ -382,9 +378,9 @@ describe("live view — capability set, managed Chromium", () => {
     daemon.send({ type: "view.stop", session: "a" });
     await waitFor(() => stopped("a").length === 1);
     expect(stopped("a")[0]).toMatchObject({ reason: "daemon" });
-    await sleep(400);
+    await sleep(400); // lets a frame already in flight land before counting
     const n = ofType(daemon, "frame").length;
-    await sleep(1_000);
+    await sleep(1_000); // absence window: no frame after stop
     expect(ofType(daemon, "frame").length).toBe(n);
     const again = await call<{ ok: boolean }>("navigate", { session: "a", url: base });
     expect(again.ok).toBe(true);
@@ -452,7 +448,7 @@ describe("live view — capability set, managed Chromium", () => {
     await openOn("c");
     daemon.send({ type: "view.start", session: "c" });
     await waitFor(() => completeFrames(daemon, "c").length === 1);
-    await sleep(3_000);
+    await sleep(3_000); // absence window, inside the 5 s ack timeout: no second frame
     expect(completeFrames(daemon, "c")).toHaveLength(1);
     daemon.send({ type: "view.stop", session: "c" });
     await waitFor(() => stopped("c").length === 1);
@@ -466,10 +462,13 @@ describe("live view — capability set, managed Chromium", () => {
       try {
         daemon.send({ type: "view.start", session: "d", maxFps: 5, maxWidth: 960 });
         await waitFor(() => completeFrames(daemon, "d").length >= 1);
-        await waitFor(() => {
-          const last = completeFrames(daemon, "d").at(-1);
-          return !!last && (last.width as number) <= 640;
-        }, 25_000);
+        await waitFor(
+          () => {
+            const last = completeFrames(daemon, "d").at(-1);
+            return !!last && (last.width as number) <= 640;
+          },
+          { timeoutMs: 25_000 },
+        );
         const frames = completeFrames(daemon, "d");
         expect(frames[0]!.width as number).toBeGreaterThan(640);
         // One in flight at a time: each frame went out after the one before it was acked.
@@ -499,9 +498,9 @@ describe("live view — capability set, managed Chromium", () => {
     const authed = daemon.authenticated;
     daemon.drop();
     await waitFor(() => daemon.authenticated === authed + 1);
-    await sleep(500);
+    await sleep(500); // lets a frame already in flight land before counting
     const n = ofType(daemon, "frame").length;
-    await sleep(1_500);
+    await sleep(1_500); // absence window: no frame after the redial
     expect(ofType(daemon, "frame").length).toBe(n);
   });
 });

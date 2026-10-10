@@ -357,7 +357,8 @@ async function captureSession(): Promise<Captured> {
     // into the log the way a future capture source or a plugin would.
     log.record(FUTURE_TYPE, { frames: [1, 2, 3] }, { v: 4 });
 
-    // rrweb's emit is async through the exposeBinding; give the tail a moment.
+    // rrweb's emit is async through the exposeBinding and it has no completion
+    // signal to poll, so this stays a fixed settle window.
     await new Promise((r) => setTimeout(r, 1500));
     await capture.detach();
     const stats = await log.close();

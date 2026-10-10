@@ -23,6 +23,7 @@ import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
+import { waitFor } from "./fixture.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const FLOOD_MS = 3_000;
@@ -232,7 +233,8 @@ describe("binding flood — managed Chromium", () => {
 
       const nav = await timed(() => json("navigate", { session, url: `${base}/flood` }));
       expect(nav.ms, "navigate under flood").toBeLessThan(ACTION_BUDGET_MS);
-      // Let the flood build up before measuring.
+      // Fixed on purpose: the flood must build up before the click is measured,
+      // and the flood's load is what the test measures.
       await new Promise((r) => setTimeout(r, 500));
 
       const click = await timed(() =>
@@ -267,6 +269,11 @@ describe("binding flood — managed Chromium", () => {
       expect(denied, "permission checks over the budget deny").toBeGreaterThan(0);
       expect(allowed, "permission checks inside the budget still allow").toBeGreaterThan(0);
 
+      // The coalesced counter is logged from the guard's own timing, so wait for it.
+      await waitFor(() => stderrLog.slice(logStart).some((l) => l.includes("binding calls shed")), {
+        timeoutMs: 15_000,
+        what: "shed counter log line",
+      });
       const shedLogs = stderrLog.slice(logStart).filter((l) => l.includes("binding calls shed"));
       expect(shedLogs.length, "a coalesced counter was logged").toBeGreaterThan(0);
       expect(shedLogs.length, "no per-call logging").toBeLessThan(10);
@@ -290,6 +297,7 @@ describe("binding flood — managed Chromium", () => {
       // After a flood the bucket refills; a single check is answered for real.
       await json("navigate", { session, url: `${base}/flood` });
       await pollSnapshot(() => text("snapshot", { session }), "FLOOD-DONE", ACTION_BUDGET_MS);
+      // Fixed on purpose: lets the token bucket refill, which is what is under test.
       await new Promise((r) => setTimeout(r, 3_000));
       await json("click", { session, selector: '[data-testid="ask-one-btn"]' });
       const after = await pollSnapshot(() => text("snapshot", { session }), "ASKED", 10_000);
@@ -352,10 +360,12 @@ describe("binding budget — file writer loops, real Chromium", () => {
       const over = await save("w-over", "over.bin");
       expect(over.title, "the page is not told the save worked").not.toBe("WRITE-ok");
       expect(over.bytes ?? 0).toBeLessThan(1500 * 1024);
-      expect(
-        stderrLog.some((l) => l.includes("file write dropped over the binding call budget")),
-        "the truncation is logged for the handle",
-      ).toBe(true);
+      // The drop is logged from the shed callback, which can land after the page
+      // title settles, so wait for the line instead of reading the buffer once.
+      await waitFor(
+        () => stderrLog.some((l) => l.includes("file write dropped over the binding call budget")),
+        { timeoutMs: 15_000, what: "file write dropped log line" },
+      );
     },
     KEYSTONE_TIMEOUT,
   );
