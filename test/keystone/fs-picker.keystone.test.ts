@@ -21,7 +21,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
-import { startFixture, type Fixture } from "./fixture.js";
+import { startFixture, waitFor, type Fixture } from "./fixture.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -98,11 +98,13 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
       // The page promise resolves to a picker-error; poll until the output
       // transitions.
       let raisedText = "";
-      for (let i = 0; i < 30 && !raisedText.includes("picker-error"); i++) {
-        raisedText = await callText("snapshot", { session });
-        if (raisedText.includes("picker-error")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          raisedText = await callText("snapshot", { session });
+          return raisedText.includes("picker-error");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(raisedText).toMatch(/picker-error name=NotAllowedError/);
 
       // (2) Flip to allow + stage a workspace-rooted destination.
@@ -133,11 +135,13 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
       // createWritable() → write(payload) → close() which round-trips
       // through the binding; needs a beat for the bytes to land on disk.
       let allowText = "";
-      for (let i = 0; i < 60 && !allowText.includes("wrote name="); i++) {
-        allowText = await callText("snapshot", { session });
-        if (allowText.includes("wrote name=")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          allowText = await callText("snapshot", { session });
+          return allowText.includes("wrote name=");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(allowText).toMatch(/wrote name=ks-fspicker-out\.txt bytes=\d+/);
 
       // The bytes the page wrote actually landed at the workspace path.
@@ -157,11 +161,13 @@ describe("fs-picker keystone — showSaveFilePicker against real Chromium", () =
       expect(denyReq, "save-picker request recorded under deny mode").toBeTruthy();
       expect(denyReq!.handledAs).toBe("denied");
       let denyText = "";
-      for (let i = 0; i < 30 && !denyText.includes("picker-error"); i++) {
-        denyText = await callText("snapshot", { session });
-        if (denyText.includes("picker-error")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          denyText = await callText("snapshot", { session });
+          return denyText.includes("picker-error");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(denyText).toMatch(/picker-error name=NotAllowedError/);
 
       await callJson("close_session", { session });

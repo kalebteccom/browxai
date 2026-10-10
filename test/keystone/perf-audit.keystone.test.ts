@@ -89,8 +89,14 @@ describe("perf module keystone — coverage_start/stop", () => {
       expect(startR.ok).toBe(true);
       // Navigate AFTER coverage starts so the dead-code load is captured.
       await callJson("navigate", { session, url: `${fixture.url}/perf-audit-page` });
-      // Give the page a tick to finish loading + executing the inline long task.
-      await new Promise((res) => setTimeout(res, 1500));
+      // The page is ready once its body renders; the inline long task blocks the
+      // main thread, so this wait only resolves after it has run.
+      const ready = await callJson<{ ok: boolean }>("wait_for", {
+        session,
+        text: "perf audit fixture",
+        timeoutMs: 30_000,
+      });
+      expect(ready.ok).toBe(true);
       const stopR = await callJson<{
         ok: boolean;
         jsCoverage: JsCovEntry[];

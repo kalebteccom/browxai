@@ -33,6 +33,7 @@ import { confirmByobAction } from "../../src/policy/confirm.js";
 import { openOperatorChannel } from "../../src/helper/operator-channel.js";
 import { resolveCapabilities } from "../../src/util/capabilities.js";
 import { startFakeDaemon, type FakeDaemon } from "../../src/helper/__fixtures__/operator-daemon.js";
+import { waitFor } from "./fixture.js";
 
 const KEYSTONE_TIMEOUT = 120_000;
 const WORLD_PREFIX = "browxai-";
@@ -101,14 +102,6 @@ async function stillPending<T>(p: Promise<T>, ms: number): Promise<"pending" | T
   return Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), ms))]);
 }
 
-async function waitFor(cond: () => boolean, ms = 5_000): Promise<void> {
-  const end = Date.now() + ms;
-  while (!cond()) {
-    if (Date.now() > end) throw new Error("condition not met in time");
-    await new Promise((r) => setTimeout(r, 50));
-  }
-}
-
 function requestCount(d: FakeDaemon): number {
   return d.frames.filter((f) => f.type === "request").length;
 }
@@ -170,7 +163,7 @@ describe("operator channel — capability unset", () => {
   }, KEYSTONE_TIMEOUT);
 
   it("never dials the socket, and removes both variables from the environment", async () => {
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 800)); // absence window: no dial may happen
     expect(daemon.connections).toBe(0);
     expect(process.env.BROWX_OPERATOR_SOCKET).toBeUndefined();
     expect(process.env.BROWX_OPERATOR_TOKEN).toBeUndefined();
@@ -493,7 +486,7 @@ describe("operator channel — DevTools answers", () => {
     );
     await cdp.send("Runtime.enable");
     // The bridge wires a new page asynchronously; wait for its world to appear.
-    await waitFor(() => worlds.length > 0, 5_000).catch(() => undefined);
+    await waitFor(() => worlds.length > 0, { timeoutMs: 5_000 }).catch(() => undefined);
     expect(worlds.length, "the browxai isolated world exists on the page").toBeGreaterThan(0);
     expect(bridge.world.startsWith(WORLD_PREFIX)).toBe(true);
     const res = await cdp.send("Runtime.evaluate", {

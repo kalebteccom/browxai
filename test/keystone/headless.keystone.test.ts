@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
-import { startFixture, type Fixture } from "./fixture.js";
+import { startFixture, waitFor, type Fixture } from "./fixture.js";
 
 type Handlers = Awaited<ReturnType<typeof createServer>>["handlers"];
 
@@ -499,11 +499,13 @@ describe("headless-CI keystone — permission_policy (geolocation, real Chromium
       // The page's async getCurrentPosition needs a beat to write the result;
       // poll the output until it transitions out of "pending".
       let resultText = "";
-      for (let i = 0; i < 30 && !resultText.includes("denied"); i++) {
-        resultText = await callText("snapshot", { session });
-        if (resultText.includes("denied code=")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          resultText = await callText("snapshot", { session });
+          return resultText.includes("denied code=");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(resultText).toMatch(/denied code=1/);
 
       // (2) Flip policy to allow + re-trigger. The CDP baseline re-applies
@@ -526,11 +528,13 @@ describe("headless-CI keystone — permission_policy (geolocation, real Chromium
       expect(allowReq, "geolocation request recorded under allow mode").toBeTruthy();
       expect(allowReq!.handledAs).toBe("allowed");
       let allowText = "";
-      for (let i = 0; i < 60 && !allowText.includes("allowed lat="); i++) {
-        allowText = await callText("snapshot", { session });
-        if (allowText.includes("allowed lat=")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          allowText = await callText("snapshot", { session });
+          return allowText.includes("allowed lat=");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(allowText).toMatch(/allowed lat=40\.7128 lng=-74\.006/);
 
       // (3) permission_state — CDP read-side reports "granted" now that the
@@ -588,11 +592,13 @@ describe("headless-CI keystone — notification_policy (Notification constructor
       // The page-side result text shows the stub's `title` property was
       // readable.
       let outText = "";
-      for (let i = 0; i < 30 && !outText.includes("constructed"); i++) {
-        outText = await callText("snapshot", { session });
-        if (outText.includes("constructed title=hello")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          outText = await callText("snapshot", { session });
+          return outText.includes("constructed title=hello");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(outText).toMatch(/constructed title=hello/);
 
       // (2) flip to deny — the constructor throws NotAllowedError.
@@ -613,11 +619,13 @@ describe("headless-CI keystone — notification_policy (Notification constructor
       const nDeny = clickDeny.notifications!.find((n) => n.title === "hello");
       expect(nDeny, "deny call captured").toBeTruthy();
       let denyText = "";
-      for (let i = 0; i < 30 && !denyText.includes("threw"); i++) {
-        denyText = await callText("snapshot", { session });
-        if (denyText.includes("threw name=NotAllowedError")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          denyText = await callText("snapshot", { session });
+          return denyText.includes("threw name=NotAllowedError");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(denyText).toMatch(/threw name=NotAllowedError/);
 
       // (3) flip to raise — the constructor throws + flips ok:false on the
@@ -667,18 +675,21 @@ describe("headless-CI keystone — frame-scoped observation", () => {
       expect(nav.ok).toBe(true);
 
       // (1) frames_list — main + 2 iframes (same-origin /child + srcdoc).
-      // Wait a moment for iframes to attach + load.
-      let listing:
+      // Poll until the iframes have attached and loaded. The cast keeps the
+      // closure assignment below from narrowing `listing` to `undefined`.
+      let listing = undefined as
         | {
             ok: boolean;
             frames: Array<{ frameId: string; url: string; name: string; isMainFrame: boolean }>;
           }
         | undefined;
-      for (let i = 0; i < 40; i++) {
-        listing = await callJson("frames_list", { session });
-        if ((listing!.frames ?? []).length >= 3) break;
-        await new Promise((r) => setTimeout(r, 100));
-      }
+      await waitFor(
+        async () => {
+          listing = await callJson("frames_list", { session });
+          return (listing!.frames ?? []).length >= 3;
+        },
+        { timeoutMs: 15_000, intervalMs: 100 },
+      ).catch(() => undefined);
       expect(listing!.ok).toBe(true);
       expect(listing!.frames.length).toBeGreaterThanOrEqual(3);
       const main = listing!.frames.find((f) => f.isMainFrame)!;
@@ -718,11 +729,13 @@ describe("headless-CI keystone — frame-scoped observation", () => {
       });
       expect(clicked.ok).toBe(true);
       let post = "";
-      for (let i = 0; i < 60; i++) {
-        post = await callText("snapshot", { session, frame: sameOrigin!.frameId });
-        if (post.includes("child-saved")) break;
-        await new Promise((r) => setTimeout(r, 50));
-      }
+      await waitFor(
+        async () => {
+          post = await callText("snapshot", { session, frame: sameOrigin!.frameId });
+          return post.includes("child-saved");
+        },
+        { timeoutMs: 15_000 },
+      ).catch(() => undefined);
       expect(post).toContain("child-saved");
 
       // (5) Cross-origin-ish (srcdoc) frame — read works via the DOM-walk path.
