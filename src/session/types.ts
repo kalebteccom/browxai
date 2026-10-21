@@ -69,11 +69,12 @@ export interface SessionOptions {
    *  internal pipe. Refused on incognito / attached at the tool layer. */
   extensionPaths?: readonly string[];
   /** Playwright browser `channel` for the chromium launch — `"chrome"`,
-   *  `"msedge"`, `"chrome-beta"`, … Launches the operator's installed browser
-   *  instead of Playwright's bundled Chrome for Testing build. Unset (default)
-   *  keeps the bundled build, so the option is inert until asked for. Read only
-   *  by the chromium engine module: firefox resolves its own channel from
-   *  `BROWX_FIREFOX_CHANNEL`, and webkit / safari / android have none. */
+   *  `"msedge"`, … Unset launches the operator's installed Google Chrome and
+   *  falls back to Playwright's bundled Chromium when Chrome is not installed;
+   *  `"chromium"` forces the bundled build. A launch with extension paths and no
+   *  channel stays on the bundled build. Read only by the chromium engine module:
+   *  firefox resolves its own channel from `BROWX_FIREFOX_CHANNEL`, and webkit /
+   *  safari / android have none. */
   channel?: string;
   /** Chrome pauses `requestAnimationFrame`, throttles timers to once a minute
    *  after five minutes, and can freeze a hidden+occluded tab. `"disabled"`

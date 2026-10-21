@@ -108,14 +108,15 @@ Leave `BROWX_ATTACH_CDP` unset. It switches sessions to attach mode, which
 drives the operator's own Chrome, needs `byob-attach`, and shares one cookie
 jar across sessions.
 
-`BROWX_DEFAULT_PROFILE` sets the persistent profile directory of the `default`
-session only. The path must be absolute or start with `~/`. The start fails
+`BROWX_DEFAULT_PROFILE` sets the workspace default profile directory, which every
+persistent session with no `profile` uses, whatever its id. The path must be absolute or start with `~/`. The start fails
 on the filesystem root, the home directory itself, a symlink, a non-directory
 and a directory owned by another user. A missing directory is created with
-mode `0700`. Any other session id, or an explicit `open_session({ profile })`,
-still uses `<ws>/profiles/<profile or id>` (`src/tools/session-registry.ts`).
-Since remotxai runs one browxai process per session, the `default` session is
-the one the agent uses.
+mode `0700`. An explicit `open_session({ profile })` still uses
+`<ws>/profiles/<profile>` (`src/tools/session-registry.ts`). A second live
+persistent session on the same profile is refused with `profile-in-use`. Since
+remotxai runs one browxai process per session, the `default` session is the one
+the agent uses.
 
 `BROWX_CONFIG_READONLY=1` leaves `set_config`, `reset_config` and
 `approve_actions` unregistered. They are absent from `tools/list` and from
@@ -153,7 +154,7 @@ Example Claude Code entry:
 - Under one workspace: `config.json` (the `user` / `project` config layers),
   `profile/` and `profiles/<name>/` (browser profiles), `.auth-states/<name>.json`,
   plugin installs, `diagnostics/`, `screenshots/`, `videos/`, and
-  `chrome-profile/` plus `chrome.pid` for `browxai chrome start`.
+  `chrome.pid` for `browxai chrome start` (which runs on `profile/` or `profiles/<name>/`).
 - Names follow `^[A-Za-z0-9._-]+$` (`assertSafeName`). remotxai profile ids use
   the same character set, so a remotxai profile id is a valid browxai profile
   or directory name as is.

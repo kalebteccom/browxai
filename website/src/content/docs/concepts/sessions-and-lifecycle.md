@@ -6,7 +6,9 @@ description: Managed, incognito, and attached browsers, the per-session isolatio
 Every browser-touching tool accepts an optional `session` argument (default
 `"default"`). Each session id is a fully isolated browser context: its own
 cookie jar and storage, its own ref registry, its own console and network
-buffers. That isolation is the whole concurrency model.
+buffers. That isolation is the whole concurrency model. For `persistent`
+sessions the cookie jar is the profile, so concurrent persistent sessions need
+distinct `profile` names (see Session modes below), or use `incognito`.
 
 <div class="browx-iso not-content" role="img" aria-label="One browxai server holds several isolated session contexts. Each session has its own cookie jar, ref registry, and console plus network buffers, so sessions driven by different agents or logged in as different users never bleed into each other.">
   <div class="browx-iso-server">
@@ -63,15 +65,20 @@ single-session callers need to know none of this.
 
 ## Session modes
 
-| Mode         | Isolation                                  | Persistence                                     | Use it for                                   |
-| ------------ | ------------------------------------------ | ----------------------------------------------- | -------------------------------------------- |
-| `persistent` | own profile dir under the workspace        | cookies and storage survive across runs         | logged-in flows you want to resume           |
-| `incognito`  | own ephemeral context and browser          | nothing persisted, all state discarded on close | one-off driving with no profile trace        |
-| `attached`   | the externally launched Chrome (not owned) | the user's real profile                         | BYOB, attach to a Chrome you already control |
+| Mode         | Isolation                                   | Persistence                                     | Use it for                                   |
+| ------------ | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
+| `persistent` | the workspace default profile, or `profile` | cookies and storage survive across runs         | logged-in flows you want to resume           |
+| `incognito`  | own ephemeral context and browser           | nothing persisted, all state discarded on close | one-off driving with no profile trace        |
+| `attached`   | the externally launched Chrome (not owned)  | the user's real profile                         | BYOB, attach to a Chrome you already control |
 
-Different ids are always isolated contexts regardless of mode. With
-`persistent`, the `profile` argument lets two ids share a profile dir or pin a
-stable name.
+`incognito` ids are always isolated contexts. With `persistent`, a session that
+names no `profile` runs on the workspace's default profile, whatever its id, and
+`profile: "name"` uses `<workspace>/profiles/name`. A profile is open in one
+browser at a time, so a second live session on the same profile is refused with
+`profile-in-use`, naming the profile and the session that holds it. Give each
+session its own `profile`, or use `incognito`, when two sessions need two
+identities. (Before this default, an id other than `default` got its own
+`profiles/<id>` directory.)
 
 ## The MCP-restart gotcha
 
@@ -99,14 +106,16 @@ it survives browxai restarts cleanly.
 
 ## Browser channel and background throttling
 
-Two launch-time knobs on a chromium session, both off by default:
+Two launch-time knobs on a chromium session:
 
-- `open_session({ channel: "chrome" })` launches the operator's installed
-  Chrome or Edge instead of Playwright's bundled Chrome for Testing. Reach for
-  it when the app needs something the testing build lacks, or when a site
-  treats that build as automation. The binary must already be installed, and
-  the browser version then follows that install. Server-wide default via the
-  `channel` config key.
+- A chromium session with no `channel` launches the installed Google Chrome,
+  without Playwright's `--enable-automation` switch, and falls back to the
+  bundled Chromium with a logged warning when Chrome is not installed.
+  `open_session({ channel: "chromium" })` pins the bundled build, and any other
+  channel (`"msedge"`, `"chrome-beta"`) launches that installed browser. The
+  browser version follows the install. Server-wide default via the `channel`
+  config key or `BROWX_CHANNEL`. See
+  [Sites behind bot protection](/guides/sites-behind-bot-protection/).
 - `open_session({ backgroundThrottling: "disabled" })` launches with Chrome's
   three background-lifecycle flags off, so a backgrounded session keeps timers
   and `requestAnimationFrame` running at full rate. Worth turning on for pooled

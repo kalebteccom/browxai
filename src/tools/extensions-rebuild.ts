@@ -10,6 +10,7 @@
 
 import type { SessionEntry } from "../session/registry.js";
 import { openManagedSession } from "../session/managed.js";
+import { resolveProfileDir } from "../session/profile-guard.js";
 import { resolveDevice } from "../session/device.js";
 import { reapplyAll as reapplyEmulation } from "../session/emulation.js";
 import { attachDialogPolicy } from "../session/dialog.js";
@@ -60,11 +61,10 @@ export async function rebuildPersistentForExtensions(
   const { caps, configStore, workspace, opts, resolvedConfig } = deps;
   const headless = opts.headless ?? resolvedConfig.headless;
   const disableWebSecurity = configStore.resolve().disableWebSecurity === true;
-  // Relaunch on the directory the session actually launched on. Recomputing it
-  // from the id and profile name cannot tell `open_session()` (the default
-  // profile, maybe BROWX_DEFAULT_PROFILE) from `open_session({profile:"default"})`
-  // (`profiles/default`), since both record `launchProfile: "default"`.
-  const profileDir = e.session.profileDir ?? workspace.sub(`profiles/${e.launchProfile ?? e.id}`);
+  // Relaunch on the directory the session actually launched on. `launchProfile`
+  // is set only for an explicit name, so a session on the workspace default
+  // profile (maybe BROWX_DEFAULT_PROFILE) still resolves to it.
+  const profileDir = e.session.profileDir ?? resolveProfileDir(workspace, e.launchProfile);
   const extensionPaths = e.extensions.loaded.filter((x) => x.enabled).map((x) => x.path);
   // Preserve the engine across the rebuild (extensions are Chromium-only, so
   // this is chromium today; reading it before close keeps the rebuild engine-

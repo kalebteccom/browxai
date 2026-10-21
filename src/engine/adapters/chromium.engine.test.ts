@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { engineEntry } from "../registry.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
+import { log } from "../../util/logging.js";
 import "./chromium.engine.js";
 
 // The launch itself is the keystone lane's job (real Chromium). Here the two
@@ -53,20 +54,83 @@ async function captureEphemeralLaunchOptions(
   return spy.mock.calls[0]![0].launchOptions as unknown as Record<string, unknown>;
 }
 
-describe("chromium engine — channel passthrough", () => {
-  it("threads `channel` into the persistent launch when set", async () => {
-    const options = await capturePersistentOptions({ channel: "chrome" });
-    expect(options.channel).toBe("chrome");
+describe("chromium engine — channel resolution", () => {
+  it("defaults to the installed Chrome on the persistent and ephemeral launches", async () => {
+    expect((await capturePersistentOptions({})).channel).toBe("chrome");
+    expect((await captureEphemeralLaunchOptions({})).channel).toBe("chrome");
   });
 
-  it("threads `channel` into the ephemeral launch when set", async () => {
-    const launchOptions = await captureEphemeralLaunchOptions({ channel: "msedge" });
-    expect(launchOptions.channel).toBe("msedge");
+  it("threads an explicit `channel` into both launches", async () => {
+    expect((await capturePersistentOptions({ channel: "chrome-beta" })).channel).toBe(
+      "chrome-beta",
+    );
+    expect((await captureEphemeralLaunchOptions({ channel: "msedge" })).channel).toBe("msedge");
   });
 
-  it("omits `channel` entirely when unset, so the bundled build launches", async () => {
-    expect(await capturePersistentOptions({})).not.toHaveProperty("channel");
-    expect(await captureEphemeralLaunchOptions({})).not.toHaveProperty("channel");
+  it('omits `channel` for "chromium", so the bundled build launches', async () => {
+    expect(await capturePersistentOptions({ channel: "chromium" })).not.toHaveProperty("channel");
+    expect(await captureEphemeralLaunchOptions({ channel: "chromium" })).not.toHaveProperty(
+      "channel",
+    );
+  });
+
+  it("keeps an extension launch with no channel on the bundled build", async () => {
+    const options = await capturePersistentOptions({ extensionPaths: ["/tmp/ext-a"] });
+    expect(options).not.toHaveProperty("channel");
+  });
+
+  it("retries on the bundled build when the default Chrome is not installed", async () => {
+    const notFound = new Error(
+      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
+    );
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const spy = vi
+      .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
+      .mockRejectedValueOnce(notFound)
+      .mockRejectedValueOnce(LAUNCH_STUBBED);
+    await expect(engineEntry("chromium").makeAdapter({})).rejects.toThrow(LAUNCH_STUBBED);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[0]![0].options).toHaveProperty("channel", "chrome");
+    expect(spy.mock.calls[1]![0].options).not.toHaveProperty("channel");
+  });
+
+  it("does not retry when the channel was named", async () => {
+    const notFound = new Error(
+      "Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome",
+    );
+    const spy = vi
+      .spyOn(PlaywrightChromiumAdapter.prototype, "launchPersistent")
+      .mockRejectedValue(notFound);
+    await expect(engineEntry("chromium").makeAdapter({ channel: "chrome" })).rejects.toThrow(
+      notFound,
+    );
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("chromium engine — automation switch", () => {
+  afterEach(() => {
+    delete process.env.BROWX_AUTOMATION_SWITCH;
+  });
+
+  it("drops --enable-automation on the persistent and ephemeral launches", async () => {
+    expect((await capturePersistentOptions({})).ignoreDefaultArgs).toEqual(["--enable-automation"]);
+    expect((await captureEphemeralLaunchOptions({})).ignoreDefaultArgs).toEqual([
+      "--enable-automation",
+    ]);
+  });
+
+  it("adds no other fingerprint-shaping flag", async () => {
+    const options = await capturePersistentOptions({});
+    expect(options).not.toHaveProperty("args");
+    expect(options).not.toHaveProperty("userAgent");
+    expect(JSON.stringify(options)).not.toContain("AutomationControlled");
+  });
+
+  it("keeps Playwright's default switch for BROWX_AUTOMATION_SWITCH=1", async () => {
+    process.env.BROWX_AUTOMATION_SWITCH = "1";
+    expect(await capturePersistentOptions({})).not.toHaveProperty("ignoreDefaultArgs");
+    expect(await captureEphemeralLaunchOptions({})).not.toHaveProperty("ignoreDefaultArgs");
   });
 });
 

@@ -8,6 +8,56 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **A persistent session with no `profile` now runs on the workspace default
+  profile, whatever its id.** Before, only the `default` session id used
+  `<workspace>/profile` (or `BROWX_DEFAULT_PROFILE`) and any other id got
+  `<workspace>/profiles/<id>`. Migration: a session id other than `default` that
+  relied on its own `profiles/<id>` directory must pass `profile: "<id>"` to keep
+  it (existing `profiles/<id>` directories are untouched). One browser holds a
+  profile at a time, so a second live session on the default profile is now
+  refused with `profile-in-use`, which names the profile and the session that
+  holds it, and the same refusal covers a profile held by a Chrome outside the
+  server (judged from Chrome's own `SingletonLock`). Use an explicit `profile`
+  name or `mode: "incognito"` for a second session. `extensions_*` relaunches
+  now resolve the profile the same way.
+- **Chromium sessions launch the installed Google Chrome by default.** With no
+  `channel` in `open_session`, config `channel` or `BROWX_CHANNEL`, browxai
+  launches Playwright channel `chrome` and, when Chrome is not installed, falls
+  back to the bundled Chromium with a logged warning (one browser is started:
+  Playwright refuses the missing channel before spawning). `channel: "chromium"`
+  pins the bundled build, and an explicit channel such as `msedge` is taken as
+  given. A launch with extensions and no channel stays on the bundled build,
+  because branded Chrome ignores `--load-extension`. The browser version now
+  follows the operator's install.
+- **Chromium persistent and incognito launches drop Playwright's
+  `--enable-automation` switch**, so Chrome does not run in its
+  automation-controlled mode. Set `BROWX_AUTOMATION_SWITCH=1` to restore it. No
+  other flag, navigator property, script or user agent is changed, and the
+  sandbox stays on.
+- **`browxai chrome start` launches the installed Google Chrome on the workspace
+  default profile** instead of the bundled Chromium on
+  `<workspace>/chrome-profile`. Migration: logins kept in `chrome-profile/` are
+  not carried over; sign in again, or point `BROWX_DEFAULT_PROFILE` elsewhere.
+  It refuses when Chrome is not installed or the profile is already held;
+  `--force` launches anyway and `--profile NAME` picks `profiles/NAME`.
+
+### Added
+
+- **`browxai chrome login [--url URL] [--profile NAME] [--force]`.** Opens the
+  installed Chrome on the workspace profile with no remote debugging port and no
+  automation flags, so a person can clear a bot-protection challenge and sign in
+  with nothing attached. Quit it when done and automated sessions on the same
+  profile reuse the cookies. browxai still does not defeat or spoof bot
+  detection and cannot guarantee access to any site. See the new guide, Sites
+  behind bot protection.
+- `BROWX_AUTOMATION_SWITCH` env var and a `channel: "chromium"` value (see
+  Changed). The existing config key `channel` and `BROWX_CHANNEL` env var carry
+  the server-wide default; no separate `defaultChannel` key was added.
+- Threat-model rows for the shared default profile and for the installed-Chrome
+  launch without the automation switch.
+
 ## [0.12.0] - 2026-10-05
 
 Operator channel and live view, and a gate on leaving `ask-human`.
