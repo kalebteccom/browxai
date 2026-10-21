@@ -6,7 +6,9 @@ description: Managed, incognito, and attached browsers, the per-session isolatio
 Every browser-touching tool accepts an optional `session` argument (default
 `"default"`). Each session id is a fully isolated browser context: its own
 cookie jar and storage, its own ref registry, its own console and network
-buffers. That isolation is the whole concurrency model.
+buffers. That isolation is the whole concurrency model. For `persistent`
+sessions the cookie jar is the profile, so concurrent persistent sessions need
+distinct `profile` names (see Session modes below), or use `incognito`.
 
 <div class="browx-iso not-content" role="img" aria-label="One browxai server holds several isolated session contexts. Each session has its own cookie jar, ref registry, and console plus network buffers, so sessions driven by different agents or logged in as different users never bleed into each other.">
   <div class="browx-iso-server">

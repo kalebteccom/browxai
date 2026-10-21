@@ -52,7 +52,7 @@ beforeAll(async () => {
   fixture = await startFixture();
   server = await createServer({ headless: true });
   handlers = server.handlers;
-  await handlers.open_session!({ session: "element-substrate" });
+  await handlers.open_session!({ session: "default" });
   await handlers.navigate!({
     url: `data:text/html;base64,${Buffer.from(AMBIGUOUS).toString("base64")}`,
   });
