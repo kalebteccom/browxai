@@ -203,7 +203,7 @@ steps:
       - command -v corepack >/dev/null || npm install --global corepack
       - corepack enable
       - pnpm config set store-dir /pnpm-store
-      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium firefox webkit
+      - bash scripts/gate-slot.sh pnpm exec playwright-core install chromium chromium-headless-shell firefox webkit
 
   # plugin-runtime.keystone.test.ts copies packages/plugins/example/dist/ into a staged workspace and fails with ENOENT without it. dist comes from package-contents (it runs `pnpm build` in the shared workspace), so both shards depend on it.
   - name: keystone-1
