@@ -14,12 +14,7 @@ import { openIncognitoSession } from "../session/incognito.js";
 import { resolveDevice } from "../session/device.js";
 import { newEmulationState } from "../session/emulation.js";
 import type { BrowserSession } from "../session/types.js";
-import {
-  SessionRegistry,
-  DEFAULT_SESSION_ID,
-  type SessionEntry,
-  type SessionMode,
-} from "../session/registry.js";
+import { SessionRegistry, type SessionEntry, type SessionMode } from "../session/registry.js";
 import { hostFreeSubstrateDeps } from "../session/substrate-deps.js";
 import { newExtensionRegistry } from "../session/extensions.js";
 import { WedgeTracker } from "../session/wedge.js";
@@ -58,6 +53,11 @@ import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
 import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import { refuseHeldProfile } from "./ask-human-gate.js";
+import {
+  refuseLiveProfile,
+  refuseLockedProfile,
+  resolveProfileDir,
+} from "../session/profile-guard.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
@@ -181,8 +181,9 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           : serverDefaultMode);
       // resolve the gated launch knobs *fresh* per session so a `set_config`
       // takes effect on the next open_session without a server restart.
-      // `disableWebSecurity` is off by default; `channel` unset keeps the
-      // bundled Chrome for Testing build, and the per-session spec wins.
+      // `disableWebSecurity` is off by default; `channel` unset launches the
+      // installed Chrome (bundled Chromium when it is absent), and the per-session
+      // spec wins.
       const launchConfig = configStore.resolve();
       const disableWebSecurity = launchConfig.disableWebSecurity === true;
       const channel = spec?.channel ?? launchConfig.channel;
@@ -283,14 +284,13 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
           sessionId: id,
         });
       } else {
-        // persistent: the default session keeps the legacy single `profile`
-        // dir for back-compat (or BROWX_DEFAULT_PROFILE when the operator set
-        // one); named/explicit profiles get their own dir so sessions don't
-        // share a cookie jar on disk.
-        const profileDir =
-          id === DEFAULT_SESSION_ID && !spec?.profile
-            ? workspace.defaultProfile()
-            : workspace.sub(`profiles/${spec?.profile ?? id}`);
+        // persistent: an explicit `profile` names `<workspace>/profiles/<name>`;
+        // otherwise every session of the workspace shares its default profile
+        // (BROWX_DEFAULT_PROFILE when the operator set one). Two live sessions
+        // cannot hold one profile, so the second is refused by name.
+        const profileDir = resolveProfileDir(workspace, spec?.profile);
+        refuseLiveProfile(registry, id, profileDir, spec?.profile);
+        refuseLockedProfile(profileDir, id);
         refuseHeldProfile(registry, caps, id, profileDir, spec);
         // first launch — no extensions registered yet (the registry is
         // mutated by the `extensions_*` tools post-creation, and a rebuild
@@ -480,7 +480,7 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         extensions: newExtensionRegistry(),
         downloads: downloadsReg,
         artifacts: artifactsReg,
-        ...(mode === "persistent" ? { launchProfile: spec?.profile ?? id } : {}),
+        ...(mode === "persistent" && spec?.profile ? { launchProfile: spec.profile } : {}),
         openedAt: Date.now(),
         lastActivityAt: Date.now(),
         // Fresh replay orchestrator per session (capability `replay`). Inactive

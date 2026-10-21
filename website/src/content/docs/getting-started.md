@@ -32,7 +32,7 @@ Add browxai to your client's MCP server config. For example, an `.mcp.json`:
 }
 ```
 
-By default the server launches a **managed** Chromium with its own profile,
+By default the server launches a **managed** Chrome (the installed Google Chrome, or the bundled Chromium when Chrome is absent) on the workspace's default profile,
 headed, with the default capability set (`read`, `navigation`, `action`,
 `human`). Everything dangerous is opt-in.
 

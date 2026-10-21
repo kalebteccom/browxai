@@ -147,6 +147,7 @@ export default defineConfig({
           items: [
             { label: "Configuration", slug: "guides/configuration" },
             { label: "Recipes", slug: "guides/recipes" },
+            { label: "Sites behind bot protection", slug: "guides/sites-behind-bot-protection" },
           ],
         },
         {

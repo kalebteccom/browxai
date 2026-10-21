@@ -69,10 +69,11 @@ export interface SessionCore {
   /** epoch ms of the last `get()` for this id — drives idle-age
    *  reaping (`close_sessions({ idleMs })`) at multi-agent scale. */
   lastActivityAt: number;
-  /** Profile-name component used at launch (persistent mode only). Recorded
+  /** Explicit profile name used at launch (persistent mode only). Recorded
    *  so the rebuild path used by `extensions_*` can recompute the same
    *  profileDir without re-deriving the spec. Undefined for incognito /
-   *  attached sessions. */
+   *  attached sessions and for a persistent session on the workspace's
+   *  default profile. */
   launchProfile?: string;
 }
 
@@ -324,13 +325,15 @@ export interface OpenSpec {
    *  unimplemented engine fails with a structured error, never a silent
    *  fallback. */
   engine?: EngineKind;
-  /** Persistent mode only: named profile dir under the workspace. */
+  /** Persistent mode only: named profile dir under `<workspace>/profiles/`.
+   *  Unset ⇒ the workspace's default profile (`defaultProfile()`). */
   profile?: string;
   /** Playwright browser `channel` for a chromium session (`"chrome"`,
-   *  `"msedge"`, …) — launches the operator's installed browser instead of the
-   *  bundled Chrome for Testing. Falls back to config `channel` /
-   *  `BROWX_CHANNEL`; unset everywhere ⇒ the bundled build. Ignored on
-   *  `attached` (externally launched) and on the non-chromium engines. */
+   *  `"msedge"`, …). Falls back to config `channel` / `BROWX_CHANNEL`; unset
+   *  everywhere launches the installed Google Chrome, or the bundled Chromium
+   *  when Chrome is not installed. `"chromium"` forces the bundled build.
+   *  Ignored on `attached` (externally launched) and on the non-chromium
+   *  engines. */
   channel?: string;
   /** `"disabled"` launches chromium with the three background-lifecycle flags
    *  off, so a backgrounded tab keeps timers and rAF running. Default

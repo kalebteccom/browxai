@@ -36,19 +36,19 @@ persisted layers for that session only.
 
 ## Config keys
 
-| Key                                 | What it does                                                                                                             |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.                     |
-| `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.  |
-| `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                     |
-| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                   |
-| `headless`                          | Launch managed Chromium headless.                                                                                        |
-| `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, …). Unset launches the bundled Chrome for Testing. |
-| `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                       |
-| `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                |
-| `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                  |
-| `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                        |
-| `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                |
+| Key                                 | What it does                                                                                                                                                          |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.                                                                  |
+| `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.                                               |
+| `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                                                                  |
+| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                                                                |
+| `headless`                          | Launch managed Chromium headless.                                                                                                                                     |
+| `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, `chromium`, …). Unset launches the installed Chrome, or the bundled Chromium when it is absent. |
+| `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                                                                    |
+| `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                                                             |
+| `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                                                               |
+| `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                                                                     |
+| `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                                                             |
 
 ### A few keys worth understanding
 
@@ -64,15 +64,15 @@ ceiling.
 it off and never on, because the agent can call `set_config`. It applies to managed and incognito sessions; an attached
 Chrome keeps whatever flags it was launched with.
 
-**`channel`** picks which browser binary a chromium session launches. Unset,
-you get Playwright's bundled Chrome for Testing. Set it to `chrome` or `msedge`
-and you get the operator's installed browser instead — useful when the app
-depends on something the testing build lacks, and when a site treats Chrome for
-Testing as automation. The binary must already be installed; browxai does not
-download it, and the browser version then follows that install rather than the
-version browxai pins. Firefox has its own `BROWX_FIREFOX_CHANNEL`; WebKit,
-Safari and Android ignore the key. Override per session with
-`open_session({ channel })`.
+**`channel`** picks which browser binary a chromium session launches. Unset, you
+get the installed Google Chrome, and the bundled Chromium with a logged warning
+when Chrome is not installed. Set it to `chromium` to pin the bundled build, or
+to `msedge` or `chrome-beta` for that installed browser, which then must exist:
+browxai does not download it. The browser version follows the install rather
+than the version browxai pins. Chrome runs without Playwright's
+`--enable-automation` switch; `BROWX_AUTOMATION_SWITCH=1` restores it. Firefox
+has its own `BROWX_FIREFOX_CHANNEL`; WebKit, Safari and Android ignore the key.
+Override per session with `open_session({ channel })`.
 
 **`hideOverlaySelectors`** injects a CSS-only init script that applies
 `pointer-events: none; display: none` to matches on every navigation. It is

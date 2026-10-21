@@ -153,7 +153,7 @@ Example Claude Code entry:
 - Under one workspace: `config.json` (the `user` / `project` config layers),
   `profile/` and `profiles/<name>/` (browser profiles), `.auth-states/<name>.json`,
   plugin installs, `diagnostics/`, `screenshots/`, `videos/`, and
-  `chrome-profile/` plus `chrome.pid` for `browxai chrome start`.
+  `chrome.pid` for `browxai chrome start` (which runs on `profile/` or `profiles/<name>/`).
 - Names follow `^[A-Za-z0-9._-]+$` (`assertSafeName`). remotxai profile ids use
   the same character set, so a remotxai profile id is a valid browxai profile
   or directory name as is.

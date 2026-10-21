@@ -35,13 +35,6 @@ export function backgroundThrottlingArgs(opts: SessionOptions): string[] {
   return opts.backgroundThrottling === "disabled" ? [...BACKGROUND_THROTTLING_OFF_ARGS] : [];
 }
 
-/** The optional Playwright `channel` splice for a chromium launch. Kept out of
- *  the shared options bag below because firefox resolves its own channel and the
- *  other engines have none. */
-export function chromiumChannelOption(opts: SessionOptions): { channel?: string } {
-  return opts.channel ? { channel: opts.channel } : {};
-}
-
 /** Resolve the managed-launch profile dir + the shared context options, building
  *  the `--disable-web-security` + extension launch args exactly as the managed
  *  factory did. The chromium-only `args` splice (insecure + extension flags) is

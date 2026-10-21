@@ -15,10 +15,14 @@ import {
   buildManagedLaunch,
   buildIncognitoContextOptions,
   buildIncognitoLaunchOptions,
-  chromiumChannelOption,
   finalizeManagedSession,
   finalizeIncognitoSession,
 } from "../../session/launch-options.js";
+import {
+  automationSwitchOptions,
+  launchWithChannelPlan,
+  planChromiumChannel,
+} from "../../session/chromium-launch-posture.js";
 import { PlaywrightChromiumAdapter } from "./playwright-chromium.js";
 import { attachByobDesktop } from "../../session/byob-attach.js";
 
@@ -32,27 +36,34 @@ async function makeChromiumAdapter(opts: SessionOptions): Promise<BrowserSession
   if (mode === "byob") {
     return attachByobDesktop(opts);
   }
+  const plan = planChromiumChannel(opts);
   if (mode === "incognito") {
     const adapter = new PlaywrightChromiumAdapter();
-    const { browser, context, page, cdp } = await adapter.launchEphemeral({
-      launchOptions: {
-        ...buildIncognitoLaunchOptions("chromium", opts),
-        ...chromiumChannelOption(opts),
-      },
-      contextOptions: buildIncognitoContextOptions(opts),
-    });
+    const { browser, context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
+      adapter.launchEphemeral({
+        launchOptions: {
+          ...buildIncognitoLaunchOptions("chromium", opts),
+          ...automationSwitchOptions(),
+          ...channelOption,
+        },
+        contextOptions: buildIncognitoContextOptions(opts),
+      }),
+    );
     return finalizeIncognitoSession("chromium", { browser, context, page, cdp });
   }
   const { profileDir, options, chromiumArgs } = buildManagedLaunch("chromium", opts);
   const adapter = new PlaywrightChromiumAdapter();
-  const { context, page, cdp } = await adapter.launchPersistent({
-    profileDir,
-    options: {
-      ...options,
-      ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
-      ...chromiumChannelOption(opts),
-    },
-  });
+  const { context, page, cdp } = await launchWithChannelPlan(plan, (channelOption) =>
+    adapter.launchPersistent({
+      profileDir,
+      options: {
+        ...options,
+        ...(chromiumArgs.length ? { args: chromiumArgs } : {}),
+        ...automationSwitchOptions(),
+        ...channelOption,
+      },
+    }),
+  );
   return finalizeManagedSession("chromium", opts, profileDir, { context, page, cdp });
 }
 

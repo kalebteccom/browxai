@@ -6,7 +6,6 @@ import {
   backgroundThrottlingArgs,
   buildIncognitoLaunchOptions,
   buildManagedLaunch,
-  chromiumChannelOption,
 } from "./launch-options.js";
 
 // buildManagedLaunch resolves the workspace (and creates it) to derive the
@@ -94,21 +93,5 @@ describe("buildIncognitoLaunchOptions — background-throttling flags", () => {
     expect(
       buildIncognitoLaunchOptions("chromium", { backgroundThrottling: "default" }),
     ).not.toHaveProperty("args");
-  });
-});
-
-describe("chromiumChannelOption", () => {
-  it("threads the channel through when set", () => {
-    expect(chromiumChannelOption({ channel: "chrome" })).toEqual({ channel: "chrome" });
-    expect(chromiumChannelOption({ channel: "msedge" })).toEqual({ channel: "msedge" });
-  });
-
-  it("is absent when unset, so the launch keeps the bundled build", () => {
-    expect(chromiumChannelOption({})).not.toHaveProperty("channel");
-    expect(chromiumChannelOption({})).toEqual({});
-  });
-
-  it('is absent for an empty string (no `channel: ""` reaching Playwright)', () => {
-    expect(chromiumChannelOption({ channel: "" })).not.toHaveProperty("channel");
   });
 });

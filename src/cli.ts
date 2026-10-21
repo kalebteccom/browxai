@@ -26,10 +26,16 @@ const USAGE = `Usage: browxai [subcommand]
 
   browxai                       start the MCP server (stdio)            — default
   browxai doctor                env + connectivity health-check
-  browxai chrome start [opts]   launch an attachable Chrome (BYOB host).
-                                --port N, --insecure,
+  browxai chrome start [opts]   launch an attachable Chrome (BYOB host) on the
+                                installed Google Chrome and the workspace
+                                profile. --port N, --profile NAME, --force,
+                                --insecure,
                                 --disable-background-throttling (keep timers and
                                 rAF running while a tab is backgrounded)
+  browxai chrome login [opts]   open the same Chrome and profile with NO debug
+                                port, for a person to clear a bot-protection
+                                challenge and sign in. --url URL, --profile NAME,
+                                --force. Quit that Chrome when done.
   browxai chrome stop           kill the Chrome that \`chrome start\` launched
   browxai init <workspace>      bootstrap a per-app workspace (.mcp.json + sniff)
   browxai serve --socket <p>    long-running server on a Unix socket / named pipe
