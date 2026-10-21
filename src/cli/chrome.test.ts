@@ -7,7 +7,9 @@ const spawnMock = vi.hoisted(() =>
   vi.fn((..._a: unknown[]) => ({ pid: 4242, unref: () => undefined })),
 );
 vi.mock("node:child_process", () => ({ spawn: spawnMock }));
-const installed = vi.hoisted(() => ({ path: "/fake/google-chrome" as string | undefined }));
+const installed: { path: string | undefined } = vi.hoisted(() => ({
+  path: "/fake/google-chrome",
+}));
 vi.mock("./chrome-launch.js", async (orig) => ({
   ...(await orig<typeof import("./chrome-launch.js")>()),
   findInstalledChrome: () => installed.path,

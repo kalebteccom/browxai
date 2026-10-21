@@ -45,10 +45,10 @@ beforeAll(async () => {
   workspace = mkdtempSync(join(tmpdir(), "browx-realchrome-ks-"));
   process.env.BROWX_WORKSPACE = workspace;
   const realWrite = process.stderr.write.bind(process.stderr);
-  vi.spyOn(process.stderr, "write").mockImplementation(((chunk: string | Uint8Array) => {
+  vi.spyOn(process.stderr, "write").mockImplementation((chunk: string | Uint8Array) => {
     stderr += String(chunk);
     return realWrite(chunk);
-  }) as typeof process.stderr.write);
+  });
   fixture = await startFixture();
   server = await createServer({ headless: true });
 }, KEYSTONE_TIMEOUT);
