@@ -107,7 +107,7 @@
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "@cyclonedx/cdxgen": "^12.8.5",
+    "@cyclonedx/cdxgen": "^12.8.6",
     "@eslint/js": "^9.39.5",
     "@types/node": "^20.19.43",
     "depcheck": "^1.4.7",
@@ -116,13 +116,13 @@
     "eslint": "^9.12.0",
     "eslint-plugin-import-x": "^4.3.0",
     "globals": "^15.11.0",
-    "jscpd": "^5.4.0",
+    "jscpd": "^5.4.1",
     "license-checker-rseidelsohn": "^4.4.2",
     "lint-staged": "^15.2.10",
-    "prettier": "^3.9.9",
+    "prettier": "^3.9.10",
     "tsx": "^4.23.15",
     "typescript": "^5.5.0",
-    "typescript-eslint": "^8.71.0",
+    "typescript-eslint": "^8.71.2",
     "vitest": "^2.0.0"
   }
 }
