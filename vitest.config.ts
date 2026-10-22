@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     exclude: [
       ...configDefaults.exclude,
+      "**/dist/**",
       "test/keystone/**",
       // The agentic capability-testbed is NOT part of CI — it is driven on
       // demand by the special test-suite workflow (Full Report > Diagnose >
