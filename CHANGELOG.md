@@ -6,7 +6,37 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
-## Unreleased
+## [0.13.0] - 2026-10-22
+
+Installed Chrome on one default profile per workspace.
+
+**Behaviour change for existing setups.** A persistent session with no
+`profile` now uses the workspace default profile whatever its session id, and
+Chromium sessions launch the installed Google Chrome when there is one. Session
+ids other than `default` that relied on `profiles/<id>` need `profile: "<id>"`;
+see Changed for the migration notes.
+
+### Added
+
+- **`browxai chrome login [--url URL] [--profile NAME] [--force]`.** Opens the
+  installed Chrome on the workspace profile with no remote debugging port and no
+  automation flags, so a person can clear a bot-protection challenge and sign in
+  with nothing attached. Quit it when done and automated sessions on the same
+  profile reuse the cookies. browxai still does not defeat or spoof bot
+  detection and cannot guarantee access to any site. See the new guide, Sites
+  behind bot protection.
+- **Installed Chrome by default, with a fallback.** See Changed. The new
+  `channel: "chromium"` value (in `open_session`, config `channel` and
+  `BROWX_CHANNEL`) pins the bundled Chromium. The existing config key `channel`
+  and `BROWX_CHANNEL` env var carry the server-wide default; no separate
+  `defaultChannel` key was added.
+- **`BROWX_AUTOMATION_SWITCH=1`** restores Playwright's `--enable-automation`
+  switch on Chromium launches (see Changed).
+- **`browxai chrome start` on the installed Chrome**, with a refusal when the
+  profile is already held and `--force` / `--profile NAME` to override (see
+  Changed).
+- Threat-model rows for the shared default profile and for the installed-Chrome
+  launch without the automation switch.
 
 ### Changed
 
@@ -43,20 +73,26 @@ surface" covers.
   It refuses when Chrome is not installed or the profile is already held;
   `--force` launches anyway and `--profile NAME` picks `profiles/NAME`.
 
-### Added
+### Dependencies
 
-- **`browxai chrome login [--url URL] [--profile NAME] [--force]`.** Opens the
-  installed Chrome on the workspace profile with no remote debugging port and no
-  automation flags, so a person can clear a bot-protection challenge and sign in
-  with nothing attached. Quit it when done and automated sessions on the same
-  profile reuse the cookies. browxai still does not defeat or spoof bot
-  detection and cannot guarantee access to any site. See the new guide, Sites
-  behind bot protection.
-- `BROWX_AUTOMATION_SWITCH` env var and a `channel: "chromium"` value (see
-  Changed). The existing config key `channel` and `BROWX_CHANNEL` env var carry
-  the server-wide default; no separate `defaultChannel` key was added.
-- Threat-model rows for the shared default profile and for the installed-Chrome
-  launch without the automation switch.
+- `playwright-core` 1.63.0 to 1.64.0 (range `^1.64.0`). The reference
+  `deploy/Dockerfile` base image moves to `playwright:v1.64.0-noble` to match.
+- `@modelcontextprotocol/sdk` `^1.30.0` to `^1.32.1`.
+- `rrweb` 2.1.6 to 2.1.7.
+- Development tooling: `@cyclonedx/cdxgen` 12.8.6, `jscpd` 5.4.1 (the duplication
+  check), `prettier` 3.9.10 and `typescript-eslint` 8.71.2.
+- Documentation site: Astro 7, Starlight 0.42, `starlight-links-validator`
+  0.26 and `sharp` 0.35.5.
+
+### Maintenance
+
+- Pull-request CI runs on a Woodpecker pipeline: install once, steps in
+  parallel, keystone in two shards and a per-step time budget. The GitHub
+  Actions `ci`, `quality` and `dependabot-auto-merge` workflows are removed;
+  `release.yml` (the OIDC publish) is unchanged.
+- Keystone waits poll for the condition instead of sleeping, and the
+  direct-dispatch control test judges the report instead of page clicks, which
+  removes two flaky tests.
 
 ## [0.12.0] - 2026-10-05
 
