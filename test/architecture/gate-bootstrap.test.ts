@@ -21,7 +21,7 @@
 // load error: importing the bootstrap first makes the SAME reads succeed and gate
 // correctly (eval_js disabled under read-only; perf_start refused on firefox).
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +34,10 @@ const CAPS = join(REPO_ROOT, "src", "util", "capabilities.ts").replace(/\\/g, "/
 const GATE = join(REPO_ROOT, "src", "engine", "tool-gate.ts").replace(/\\/g, "/");
 const BOOTSTRAP = join(REPO_ROOT, "src", "tools", "tool-metadata.ts").replace(/\\/g, "/");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
+
+// Each test blocks on a cold `tsx` child, well over the 5 s default on a loaded
+// CI box. The budget covers the child's own 60 s timeout.
+vi.setConfig({ testTimeout: 90_000 });
 
 /** Run `source` as a fresh `tsx` child and return its trimmed stdout. The child
  *  is a brand-new module registry — the gate modules load with NO bootstrap

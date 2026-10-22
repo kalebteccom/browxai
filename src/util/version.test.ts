@@ -23,7 +23,7 @@ describe("PACKAGE_VERSION", () => {
   });
 
   // The dynamic import loads the whole server module graph; a cold transform on a loaded CI box took over the 5 s default.
-  it("is re-exported as the server VERSION", { timeout: 30_000 }, async () => {
+  it("is re-exported as the server VERSION", { timeout: 60_000 }, async () => {
     const { VERSION } = await import("../server.js");
     expect(VERSION).toBe(pkg.version);
   });
