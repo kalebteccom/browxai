@@ -92,6 +92,9 @@ export function runInit(args: string[]): Promise<number> {
   process.stdout.write(
     `\n.mcp.json snippet (workspace-scope; pair with \`claude mcp add-json -s user\` for user-scope):\n\n${mcpJsonText}\n\n`,
   );
+  process.stdout.write(
+    'Portable alternative to the absolute path above, which breaks when node or the global prefix moves: { "command": "npx", "args": ["-y", "browxai"] }\n\n',
+  );
   if (/[\\/]_npx[\\/]/.test(distCli)) {
     process.stdout.write(
       `⚠  the snippet points at ${distCli}, inside the npx cache, which npm can delete. ` +

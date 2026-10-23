@@ -29,6 +29,10 @@ surface" covers.
 - **Running `browxai` in a terminal prints a one-time note on stderr** saying it
   is an MCP server that waits for a client, and pointing at `browxai doctor`.
 - **`browxai --help` lists `chrome status` and the `safari` engine.**
+- **`browxai init` suggests the npx entry.** The snippet still uses `node` and
+  the absolute `dist/cli.js` path, and init now prints one line pointing at
+  `{ "command": "npx", "args": ["-y", "browxai"] }`, which survives a move of node
+  or the global prefix.
 - **`browxai init` next steps** now cover the `byob-attach` capability the
   `browxai-attached` entry needs, and warn when the written path sits in the npx
   cache.
