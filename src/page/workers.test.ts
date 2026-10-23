@@ -15,6 +15,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { WorkersRegistry, WORKERS_PAGE_SCRIPT } from "./workers.js";
+import { resolveOriginPolicy } from "../policy/origin.js";
 
 // --- WORKERS_PAGE_SCRIPT shape ------------------------------------------------
 
@@ -322,6 +323,23 @@ describe("WorkersRegistry.readMessages", () => {
     ]);
   });
 
+  it("lists at most 64 distinct service worker script URLs", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    for (let i = 0; i < 70; i++) f.serviceWorkers.push(fakeSw(`https://x/sw-${i}.js`));
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    expect(listed).toHaveLength(64);
+    expect(listed[63]).toEqual({
+      workerId: "sw-64",
+      type: "service",
+      url: "https://x/sw-63.js",
+      state: "running",
+    });
+    // A worker past the cap has no id, so it cannot be messaged either.
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-65", message: "x" });
+    expect(r.ok).toBe(false);
+  });
+
   it("trims SW payloads past the 4 KiB cap", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
@@ -388,5 +406,71 @@ describe("WorkersRegistry fetch intercepts", () => {
     const r = await reg.removeFetchIntercept(c.cdp, {});
     expect(r.removed.sort()).toEqual(["a", "b"]);
     expect(r.active).toEqual([]);
+  });
+});
+
+// --- origin policy ------------------------------------------------------------
+
+describe("service workers and the origin policy", () => {
+  const blocked = {
+    ...CHROMIUM,
+    originPolicy: resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://blocked.example" }),
+  };
+
+  it("omits a service worker on a blocked origin from the listing", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(
+      fakeSw("https://blocked.example/sw.js"),
+      fakeSw("https://ok.example/sw.js"),
+    );
+    const out = await reg.list(f.page, blocked, "service");
+    expect(out).toEqual([
+      { workerId: "sw-1", type: "service", url: "https://ok.example/sw.js", state: "running" },
+    ]);
+  });
+
+  it("omits a service worker off the allowlist, like navigate does", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(
+      fakeSw("https://ok.example/sw.js"),
+      fakeSw("https://other.example/sw.js"),
+    );
+    const allowOnly = {
+      ...CHROMIUM,
+      originPolicy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://ok.example" }),
+    };
+    const out = await reg.list(f.page, allowOnly, "service");
+    expect(out.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
+  });
+
+  it("refuses a send to a service worker on a blocked origin", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://blocked.example/sw.js");
+    f.serviceWorkers.push(sw);
+    const r = await reg.sendMessage(f.page, blocked, { workerId: "sw-1", message: "x" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/^origin-blocked: /);
+    expect(sw.evaluate).not.toHaveBeenCalled();
+  });
+
+  it("still messages a service worker on an allowed origin", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://ok.example/sw.js");
+    f.serviceWorkers.push(sw);
+    const r = await reg.sendMessage(f.page, blocked, { workerId: "sw-1", message: "x" });
+    expect(r).toEqual({ ok: true, workerId: "sw-1" });
+    expect(sw.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies no filter when the access carries no policy", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(fakeSw("https://blocked.example/sw.js"));
+    const out = await reg.list(f.page, CHROMIUM, "service");
+    expect(out).toHaveLength(1);
   });
 });

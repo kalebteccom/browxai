@@ -72,6 +72,18 @@ export const DEFAULT_CAPABILITIES: readonly Capability[] = [
   "human",
 ];
 
+/** The default capability list plus `extra`, comma-joined. `BROWX_CAPABILITIES`
+ *  replaces the default set, so a list that opts in to one more capability has
+ *  to repeat the defaults. */
+export function capabilitiesWith(extra: string): string {
+  return [...DEFAULT_CAPABILITIES, extra].join(",");
+}
+
+/** The `BROWX_CAPABILITIES=...` assignment text for the defaults plus `extra`. */
+export function capabilitiesAssignment(extra: string): string {
+  return `BROWX_CAPABILITIES=${capabilitiesWith(extra)}`;
+}
+
 /**
  * Capabilities that USED to be valid and have since been retired. A retired
  * capability is still ACCEPTED in `BROWX_CAPABILITIES` (and the `capabilities`

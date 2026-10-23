@@ -5,6 +5,8 @@
 // cycle. The barrel re-exports the public members so importers keep reading
 // them from `./workers.js`.
 
+import type { OriginPolicy } from "../policy/origin.js";
+
 export type WorkerType = "web" | "service";
 export type WorkerFilter = WorkerType | "all";
 
@@ -14,6 +16,10 @@ export type WorkerFilter = WorkerType | "all";
 export interface ServiceWorkerAccess {
   engine: string;
   supported: boolean;
+  /** The server's origin allow/block policy. A service worker whose script URL
+   *  it does not allow is left out of the listing and refused for a send, the
+   *  same policy `navigate` checks. Unset means no restriction. */
+  originPolicy?: OriginPolicy;
 }
 
 export interface WorkerListing {

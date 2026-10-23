@@ -106,7 +106,7 @@ export class WorkersRegistry {
       out.push(...(await this.page.list(page)));
     }
     if ((filter === "all" || filter === "service") && sw.supported) {
-      out.push(...this.sw.list(page.context()));
+      out.push(...this.sw.list(page.context(), sw.originPolicy));
     }
     return out;
   }
@@ -122,7 +122,7 @@ export class WorkersRegistry {
     }
     if (args.workerId.startsWith("sw-")) {
       if (!sw.supported) return { ok: false, workerId: args.workerId, error: swRefusal(sw) };
-      return this.sw.sendMessage(page.context(), args);
+      return this.sw.sendMessage(page.context(), args, sw.originPolicy);
     }
     return {
       ok: false,

@@ -10,6 +10,16 @@ surface" covers.
 
 ### Changed
 
+- **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
+  naming the variable for a base that is not `https`. Plain `http` still works
+  for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
+- **Service-worker tools follow the origin policy.** `workers_list` leaves out a
+  service worker on an origin `BROWX_BLOCKED_ORIGINS` blocks or
+  `BROWX_ALLOWED_ORIGINS` does not list, and `worker_message_send` refuses it
+  with an `origin-blocked` error.
+- **`worker_messages_read` says its data is untrusted.** The tool description and
+  the tool reference now state that service-worker and web-worker message data
+  is reported by the page and is untrusted, like any page text.
 - **`solve_captcha` keeps the provider API key out of URLs.** The poll request
   is now a POST with the key in the form body, as the submit already was. It
   used to put the key in the query string.

@@ -1043,15 +1043,15 @@ Two completely different transport stories under one façade:
 
 #### `workers_list({ type?, session? })`
 
-Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / `"all"` (default). Returns `[{ workerId, type, url, state? }]`. On an engine that cannot reach service workers (anything but Chromium-based), `type: "service"` returns an error naming the engine, and `"all"` lists the Web Workers only. Capability: `read`.
+Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / `"all"` (default). Returns `[{ workerId, type, url, state? }]`. On an engine that cannot reach service workers (anything but Chromium-based), `type: "service"` returns an error naming the engine, and `"all"` lists the Web Workers only. A Service Worker on an origin `BROWX_BLOCKED_ORIGINS` blocks, or that `BROWX_ALLOWED_ORIGINS` does not list, is left out. Capability: `read`.
 
 #### `worker_message_send({ workerId, message, session? })`
 
-`postMessage` to a worker: `ww-N` for Web Workers, `sw-N` for Service Workers. `message` is a string; structured-clone / `MessagePort` transfer is not in MVP. A Service Worker receives a synthetic `MessageEvent` (no `source`). Sending to an `sw-N` returns `ok: false` with an error naming the engine when the engine cannot reach service workers, and when no live service worker has that id. Capability: `action`.
+`postMessage` to a worker: `ww-N` for Web Workers, `sw-N` for Service Workers. `message` is a string; structured-clone / `MessagePort` transfer is not in MVP. A Service Worker receives a synthetic `MessageEvent` (no `source`). Sending to an `sw-N` returns `ok: false` with an error naming the engine when the engine cannot reach service workers, and when no live service worker has that id. It also returns `ok: false` with an `origin-blocked` error, and sends nothing, when the service worker is on an origin the origin policy does not allow. Capability: `action`.
 
 #### `worker_messages_read({ workerId?, session? })`
 
-Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Service Worker messages are the ones the SW sends to this page; they use the same shape, with a `sw-N` `workerId`. A SW that messaged the page and has since stopped still has its `sw-N` id, which `workers_list` then does not show; sending to it fails. Each call drains (removes) what it returned; re-reads see only what arrived since. Capability: `read`.
+Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Service Worker messages are the ones the SW sends to this page; they use the same shape, with a `sw-N` `workerId`. A SW that messaged the page and has since stopped still has its `sw-N` id, which `workers_list` then does not show; sending to it fails. Each call drains (removes) what it returned; re-reads see only what arrived since. Message data is reported by the page and is untrusted, like any page text. Capability: `read`.
 
 #### `sw_intercept_fetch({ pattern, response, session? })`
 
@@ -2984,7 +2984,10 @@ provider, funds the account, and sets the env vars:
   (case-insensitive).
 - `BROWX_CAPTCHA_API_KEY` (required): the provider account API key.
 - `BROWX_CAPTCHA_API_BASE` (optional): override the canonical base URL
-  (useful for self-hosted CapMonster-compatible proxies / testing).
+  (useful for self-hosted CapMonster-compatible proxies / testing). It must be
+  an `https` URL, because the API key and the challenge go to it. Plain `http`
+  is accepted only for `127.0.0.1`, `::1` and `localhost`; any other base makes
+  the tool return an error that names the variable.
 - `BROWX_CAPTCHA_TIMEOUT_MS` (optional, default `120000`): per-attempt
   deadline.
 - `BROWX_CAPTCHA_POLL_MS` (optional, default `5000`): poll interval.

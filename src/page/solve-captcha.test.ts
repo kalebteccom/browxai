@@ -62,6 +62,44 @@ describe("resolveCaptchaProvider", () => {
     }
   });
 
+  it("refuses a plain-http BROWX_CAPTCHA_API_BASE on a non-loopback host", () => {
+    const r = resolveCaptchaProvider({
+      BROWX_CAPTCHA_PROVIDER: "2captcha",
+      BROWX_CAPTCHA_API_KEY: "k",
+      BROWX_CAPTCHA_API_BASE: "http://captcha.example.test",
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toBe("partial");
+      expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE must be an https URL/);
+    }
+  });
+
+  it("refuses a non-http(s) BROWX_CAPTCHA_API_BASE and an unparseable one", () => {
+    for (const base of ["ftp://127.0.0.1", "not a url"]) {
+      const r = resolveCaptchaProvider({
+        BROWX_CAPTCHA_PROVIDER: "2captcha",
+        BROWX_CAPTCHA_API_KEY: "k",
+        BROWX_CAPTCHA_API_BASE: base,
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE/);
+    }
+  });
+
+  it.each(["http://127.0.0.1:8080", "http://localhost:8080/", "http://[::1]:8080"])(
+    "accepts plain http for the loopback base %s",
+    (base) => {
+      const r = resolveCaptchaProvider({
+        BROWX_CAPTCHA_PROVIDER: "2captcha",
+        BROWX_CAPTCHA_API_KEY: "k",
+        BROWX_CAPTCHA_API_BASE: base,
+      });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.config.apiBase).toBe(base.replace(/\/+$/, ""));
+    },
+  );
+
   it("rejects a non-positive timeoutMs", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "2captcha",

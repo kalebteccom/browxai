@@ -180,6 +180,10 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
         (spec?.engine !== undefined
           ? defaultModeForEngine(effectiveEngine, opts.attachCdp)
           : serverDefaultMode);
+      // Every attach joins a browser browxai does not own, so `byob-attach` is
+      // checked before anything else runs, including the creation-option
+      // resolution below, which creates directories.
+      if (mode === "attached") refuseAttachWithoutCapability(caps, id, effectiveEngine);
       // resolve the gated launch knobs *fresh* per session so a `set_config`
       // takes effect on the next open_session without a server restart.
       // `disableWebSecurity` is off by default; `channel` unset launches the
@@ -214,9 +218,6 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       let creationRecordHarResolved = creationOptions.creationRecordHarResolved;
       let sess: BrowserSession;
       if (mode === "attached") {
-        // Every attach joins a browser browxai does not own, so `byob-attach`
-        // is checked first, before the endpoint or any connection.
-        refuseAttachWithoutCapability(caps, id, effectiveEngine);
         // android attach is endpoint-DISCOVERED over adb — it does NOT need
         // BROWX_ATTACH_CDP; the desktop CDP-attach lane still requires it. The
         // android-specific fact lives in the engine layer (`byobAttachNeedsEndpoint`),

@@ -106,10 +106,10 @@ export function resolveCaptchaProvider(
         `Other providers can be supported by extending src/page/solve-captcha.ts.`,
     };
   }
-  const apiBase = (env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider]).replace(
-    /\/+$/,
-    "",
-  );
+  const rawBase = env.BROWX_CAPTCHA_API_BASE?.trim() || DEFAULT_BASE_FOR[provider];
+  const baseError = apiBaseError(rawBase);
+  if (baseError) return { ok: false, reason: "partial", error: baseError };
+  const apiBase = rawBase.replace(/\/+$/, "");
   const timeout = parsePositiveIntEnv(
     env.BROWX_CAPTCHA_TIMEOUT_MS,
     120_000,
@@ -122,6 +122,29 @@ export function resolveCaptchaProvider(
     ok: true,
     config: { provider, apiKey: rawKey, apiBase, timeoutMs: timeout.value, pollMs: poll.value },
   };
+}
+
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]", "localhost"]);
+
+/** An error message when `BROWX_CAPTCHA_API_BASE` is not usable: the API key and
+ *  the challenge go to this base, so it must be https. Plain http is accepted
+ *  only for a loopback host (a local proxy or a test double). Returns null when
+ *  the base is fine. The message names the variable and the scheme and host it
+ *  refused, never the full value. */
+function apiBaseError(base: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    return 'BROWX_CAPTCHA_API_BASE is not a valid URL. Use an https URL such as "https://api.capmonster.cloud".';
+  }
+  if (url.protocol === "https:") return null;
+  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return null;
+  return (
+    `BROWX_CAPTCHA_API_BASE must be an https URL, but it is ${url.protocol}//${url.host}. ` +
+    "The API key and the challenge are sent to this base. Plain http is accepted only for " +
+    "127.0.0.1, ::1 or localhost."
+  );
 }
 
 /** Parse a positive-integer env var (ms), falling back to `fallback` when unset.
