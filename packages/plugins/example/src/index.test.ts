@@ -33,4 +33,3 @@ describe("@browxai/plugin-example handlers", () => {
     expect(typeof parsed.epochMs).toBe("number");
   });
 });
-
