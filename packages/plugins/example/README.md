@@ -30,7 +30,7 @@ Copy this directory, then change:
 | `src/index.test.ts` | Test your handlers.                                                                                                                                                                        |
 | `schema.d.ts`       | Rename `ExamplePluginSchema` and list your tools for SDK users.                                                                                                                            |
 
-Leave `tsconfig.json` and `LICENSE` as they are (set your own license holder). Build with `pnpm build`, install from the directory with an absolute path, restart, and check:
+Leave `tsconfig.json` and `LICENSE` as they are (set your own license holder). Build with `pnpm build`, install from the directory (a relative or absolute path), restart, and check:
 
 ```sh
 pnpm build

@@ -23,7 +23,8 @@ The tier is **derived from the package identity**, never asserted by the plugin.
   under the `@browxai/*` scope and not installed from a local path.
 
 - **`local`**: installed from a `file:` path. Used during plugin development
-  (`browxai plugin install file:/abs/path/to/my-plugin`).
+  (`browxai plugin install file:./my-plugin`; a relative path resolves from
+  your shell's working directory, an absolute path works too).
 
 An operator can override the tier per entry in `plugins.json`:
 

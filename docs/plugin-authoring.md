@@ -240,20 +240,19 @@ path:
 
 ```sh
 $ pnpm build                                          # inside my-plugin/
-$ browxai plugin install file:/abs/path/to/my-plugin
-$ browxai plugin list                                 # the key must be the package name
+$ browxai plugin install file:./my-plugin             # a relative or an absolute path
+$ browxai plugin list
 $ browxai doctor                                      # plugins section: manifest, lock, drift
 ```
 
-This shells out to `pnpm add file:/abs/path/to/my-plugin` (or `npm
-install`, when pnpm isn't on PATH) in the workspace's plugin install dir
-(`<workspace>/plugins/`), writes the entry to `plugins.json`, pins the
-content hash in `plugins-lock.json`, and tags the plugin's trust
-tier as `local`. Use an absolute path: a relative `file:` path resolves
-from the install dir, not from your shell's working directory. The
-entry in `plugins.json` must be the `name` from your `package.json`
-(`my-plugin` or `@me/my-plugin`); if `plugin list` shows anything else,
-fix the key by hand.
+A relative path resolves from your shell's working directory. The CLI
+reads the plugin's `name` from `<dir>/package.json` (`my-plugin` or
+`@me/my-plugin`), then shells out to `pnpm add file:<absolute dir>` (or
+`npm install`, when pnpm isn't on PATH) in the workspace's plugin install
+dir (`<workspace>/plugins/`). It writes that name to `plugins.json`,
+pins the content hash in `plugins-lock.json`, and tags the plugin's trust
+tier as `local`. A directory with no `package.json`, or one without a
+`name`, is refused before anything is installed.
 
 **Restart the browxai server** for the change to
 take effect: plugin lifecycle is resolved-once-at-server-start. Then

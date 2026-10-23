@@ -39,15 +39,16 @@ $ browxai plugin install @browxai/plugin-figma
 
 During plugin development (or from a checkout of this repo), install
 from a local working directory instead, over the same CLI with a `file:`
-source and the `local` trust tag. Use an absolute path: the package
-manager runs inside `<workspace>/plugins/`, so a relative path resolves
-from there.
+source and the `local` trust tag. The path can be relative (it resolves
+from your shell's working directory) or absolute. The CLI records the
+`name` from the directory's `package.json`, for example
+`@browxai/plugin-figma`.
 
 ```sh
 # Dev-loop: build the plugin, then install its directory by path.
 $ pnpm build                                            # in the browxai repo
-$ browxai plugin install file:$PWD/packages/plugins/figma
-$ browxai plugin list                                   # the key must be the package name
+$ browxai plugin install file:./packages/plugins/figma
+$ browxai plugin list
 ```
 
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):

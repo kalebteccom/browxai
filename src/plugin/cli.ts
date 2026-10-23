@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
 import { pluginPaths, type PluginPaths } from "./resolver.js";
 import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
+import { parseFileSpec } from "./file-spec.js";
 import { type LockEntry, readLock, writeLock, sha256OfPackage } from "./lock-store.js";
 import { runPm } from "./pm-runner.js";
 import { inferTrustFromInstallIdentity } from "./trust.js";
@@ -92,21 +93,11 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
   }
 }
 
-/** Resolve the plugin name a `pnpm add` spec installs.
- *  Heuristic: drop a leading `file:` (the dir name is what npm uses);
- *  otherwise strip a trailing `@<version>` range. The CLI logs the
- *  resolved name before writing it to plugins.json so an operator can
- *  see what was added. */
+/** Resolve the plugin name a registry `add` spec installs: strip a trailing
+ *  `@<version>` range. (`file:` specs read the name from the directory's own
+ *  package.json, see `parseFileSpec`.) The CLI logs the resolved name before
+ *  writing it to plugins.json so an operator can see what was added. */
 function resolveInstalledName(source: string): string {
-  if (source.startsWith("file:")) {
-    const rel = source.slice("file:".length).replace(/\/+$/, "");
-    const base = rel.split("/").pop() ?? rel;
-    // For file: installs, the actual installed name in node_modules is
-    // the package's `name` field — not the directory base. Walk
-    // node_modules afterward and find the match. Best-effort fallback:
-    // use the dir base if the package.json isn't reachable yet.
-    return base;
-  }
   // Strip trailing `@version` (but tolerate scoped names that start with `@`).
   const at = source.lastIndexOf("@");
   if (at <= 0) return source;
@@ -156,17 +147,25 @@ function findActualPackageName(paths: PluginPaths, hint: string): string {
   return hint;
 }
 
-async function cmdInstall(spec: string): Promise<number> {
+async function cmdInstall(requested: string): Promise<number> {
   const ws = resolveWorkspace();
   const paths = pluginPaths(ws.root);
+  // A `file:` spec resolves against the current directory and is made absolute
+  // here: the package manager runs inside the install dir and would resolve a
+  // relative path from there.
+  const file = parseFileSpec(requested);
+  if (file && !file.ok) {
+    process.stderr.write(`browxai plugin: cannot install "${requested}": ${file.error}\n`);
+    return 1;
+  }
+  const spec = file ? file.spec : requested;
   process.stderr.write(`browxai plugin: installing "${spec}" into ${paths.installDir}\n`);
   const code = await runPm(paths, "add", spec);
   if (code !== 0) {
     process.stderr.write(`browxai plugin: install failed (exit ${code})\n`);
     return code;
   }
-  const hintName = resolveInstalledName(spec);
-  const name = findActualPackageName(paths, hintName);
+  const name = file ? file.name : findActualPackageName(paths, resolveInstalledName(spec));
   // Persist into plugins.json.
   const data = readPluginsJson(paths);
   const trust = inferTrustFromInstallIdentity(spec.startsWith("file:") ? spec : name);

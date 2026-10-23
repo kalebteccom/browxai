@@ -126,6 +126,13 @@ surface" covers.
   narrow the set. They now say to set `BROWX_CAPABILITIES` (for example
   `read,navigation,action,human,canvas`, since the variable replaces the default
   set) and restart.
+- **`browxai plugin install file:<dir>` records the package name and accepts
+  relative paths.** It wrote the directory name, so
+  `file:/abs/packages/plugins/figma` was recorded as `figma` instead of
+  `@browxai/plugin-figma`, and a relative path resolved from
+  `<workspace>/plugins/`. The name now comes from `<dir>/package.json`, a
+  relative path resolves from your shell's working directory, and a directory
+  without a `package.json` name is refused before anything is installed.
 
 ## [0.13.0] - 2026-10-22
 
