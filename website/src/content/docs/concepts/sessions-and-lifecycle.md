@@ -104,8 +104,9 @@ BROWX_ATTACH_CDP=http://127.0.0.1:9222
 BROWX_CAPABILITIES=read,navigation,action,human,byob-attach
 ```
 
-`browxai init <workspace>` writes an MCP config with a `browxai-attached` entry
-that already sets the endpoint. A profile is open in one Chrome at a time, so
+Without `byob-attach` every attached session is refused, naming the
+capability. `browxai init <workspace>` writes an MCP config with a
+`browxai-attached` entry that already sets both. A profile is open in one Chrome at a time, so
 quit any other Chrome on it first, or pass `--profile NAME`. Stop the Chrome
 with `browxai chrome stop`.
 

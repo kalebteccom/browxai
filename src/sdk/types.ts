@@ -181,7 +181,8 @@ export interface BrowxaiSdkOptions {
 
   /**
    * Attach-to-an-existing-Chrome endpoint, passed through to the in-process
-   * server. Requires the `byob-attach` capability.
+   * server. Requires `byob-attach` in the server's `BROWX_CAPABILITIES`; the
+   * server refuses every attached session without it.
    */
   readonly attachCdp?: string;
 }

@@ -90,7 +90,7 @@ not config.
 | Env var                  | Default                                 | What                                                                                                       |
 | ------------------------ | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `BROWX_WORKSPACE`        | `~/.browxai/`                           | Workspace root. All transient state lives here. Never `cwd`.                                               |
-| `BROWX_ATTACH_CDP`       | unset                                   | Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only.                          |
+| `BROWX_ATTACH_CDP`       | unset                                   | Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. Needs `byob-attach`.     |
 | `BROWX_HEADLESS`         | `0`                                     | Managed mode only. `1` launches headless.                                                                  |
 | `BROWX_TEST_ATTRIBUTES`  | `data-testid,data-test,data-cy,data-qa` | Selector-anchor attributes, order-sensitive.                                                               |
 | `BROWX_CAPABILITIES`     | `read,navigation,action,human`          | The full capability set at server start. It replaces the default set, so list the defaults too.            |

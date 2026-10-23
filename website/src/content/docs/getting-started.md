@@ -70,7 +70,7 @@ opt-in. On a machine with no display, such as a Linux server or a container, set
 | `BROWX_HEADLESS`     | `1` launches headless.                                                                                                                                                                      |
 | `BROWX_CAPABILITIES` | The full comma-separated capability set. It replaces the default, so keep `read,navigation,action,human` and add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
 | `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. All eight are in the [FAQ](/reference/faq/).                                                                                 |
-| `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB).                                                                                                                               |
+| `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB). Needs `byob-attach` in `BROWX_CAPABILITIES` too: `read,navigation,action,human,byob-attach`.                                  |
 
 See the [tool reference](/reference/tool-reference/) for the full configuration
 surface, and note that **capabilities are resolved once at server start**:

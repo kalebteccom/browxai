@@ -7,6 +7,7 @@ import {
   type EngineKind,
 } from "../engine/index.js";
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
+import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
 import type {
   GateHost,
@@ -103,12 +104,16 @@ export function registerSessionLifecycleTools(
   host: RegisterHost & GateHost & SessionHost & ServerServicesHost & TargetHost,
 ): void {
   const { z, register, registry, targetFor, gateCheck } = host;
+  // Session creation throws these two gate errors; open_session reports them
+  // in the standard capability-refusal shape.
+  const gateRefusalFor = (err: unknown) =>
+    askHumanProfileRefusal(gateCheck, err) ?? byobAttachRefusal(gateCheck, err);
 
   register(
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). A name whose last session closed holding `ask-human` on `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` keeps it: a policy you leave out is inherited, and one that moves a held key off `ask-human` is refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it.Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir under `<workspace>/profiles/`; omit it and the session runs on the workspace's default profile, shared by every session of that workspace. A profile can be open in one browser at a time, so a second live session on it is refused with `profile-in-use` (pass a `profile` name or use `incognito`).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP.\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
+        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). A name whose last session closed holding `ask-human` on `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` keeps it: a policy you leave out is inherited, and one that moves a held key off `ask-human` is refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it.Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir under `<workspace>/profiles/`; omit it and the session runs on the workspace's default profile, shared by every session of that workspace. A profile can be open in one browser at a time, so a second live session on it is refused with `profile-in-use` (pass a `profile` name or use `incognito`).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP and the off-by-default `byob-attach` capability (refused with `requiredCapability: \"byob-attach\"` without it).\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
       inputSchema: {
         session: z.string().describe('Session id to create (e.g. "agent-a", "user-2").'),
         mode: z
@@ -130,7 +135,7 @@ export function registerSessionLifecycleTools(
           ])
           .optional()
           .describe(
-            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. `ios-app` and `android-app` are NATIVE engines, not browsers: both REQUIRE the off-by-default `native-device` capability and neither has `incognito`. `ios-app` drives an app on the iOS Simulator over XCUITest, taking its device and app from BROWX_IOS_DEVICE / BROWX_IOS_APP_ID / BROWX_IOS_APP_PATH and needing an operator-supplied WebDriverAgent at BROWX_IOS_WDA_URL; it has no attach. `android-app` drives an app on an Android emulator over adb and leases one device per session, picked by BROWX_ANDROID_APP_SERIAL when more than one is ready. `electron` is a running desktop Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port` — attach-only, and it REFUSES `navigate` because loading a URL replaces the application's own document. You rarely need to name `electron`: the desktop attach lane detects it from the CDP protocol and reports it on the session either way. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
+            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP; it needs `byob-attach`); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. `ios-app` and `android-app` are NATIVE engines, not browsers: both REQUIRE the off-by-default `native-device` capability and neither has `incognito`. `ios-app` drives an app on the iOS Simulator over XCUITest, taking its device and app from BROWX_IOS_DEVICE / BROWX_IOS_APP_ID / BROWX_IOS_APP_PATH and needing an operator-supplied WebDriverAgent at BROWX_IOS_WDA_URL; it has no attach. `android-app` drives an app on an Android emulator over adb and leases one device per session, picked by BROWX_ANDROID_APP_SERIAL when more than one is ready. `electron` is a running desktop Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port` — attach-only, needs `byob-attach`, and it REFUSES `navigate` because loading a URL replaces the application's own document. You rarely need to name `electron`: the desktop attach lane detects it from the CDP protocol and reports it on the session either way. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
           ),
         profile: z
           .string()
@@ -340,7 +345,7 @@ export function registerSessionLifecycleTools(
           ...buildOpenSessionResultFields(e, hars),
         });
       } catch (err) {
-        return askHumanProfileRefusal(gateCheck, err) ?? lifecycleError(err);
+        return gateRefusalFor(err) ?? lifecycleError(err);
       }
     },
   );
