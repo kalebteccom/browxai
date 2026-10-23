@@ -84,6 +84,45 @@ describe("open_session — per-session engine surface + validation", () => {
   });
 });
 
+describe("open_session — session id and profile names", () => {
+  const bad = ["../x", "a/../b", "/tmp/x", "a\\b", "", "a\0b", "..", "x".repeat(129)];
+
+  it("refuses a profile that is not a plain name before reaching the registry", async () => {
+    const { handler } = captureOpenSession();
+    for (const profile of bad) {
+      const body = bodyOf(await handler({ session: "x", profile }));
+      expect(body.ok, JSON.stringify(profile)).toBe(false);
+      expect(body.code).toBe("invalid-name");
+      expect(String(body.error)).toMatch(/^invalid-name: profile /);
+    }
+  });
+
+  it("refuses a session id that is not a plain name before reaching the registry", async () => {
+    const { handler } = captureOpenSession();
+    for (const session of bad) {
+      const body = bodyOf(await handler({ session }));
+      expect(body.code, JSON.stringify(session)).toBe("invalid-name");
+      expect(String(body.error)).toMatch(/^invalid-name: session id /);
+    }
+  });
+
+  it("rejects the same names at the schema, and accepts plain ones", () => {
+    const { def } = captureOpenSession();
+    const schema = z.object(def.inputSchema ?? {});
+    for (const name of bad) {
+      expect(schema.safeParse({ session: "x", profile: name }).success).toBe(false);
+      expect(schema.safeParse({ session: name }).success).toBe(false);
+    }
+    expect(schema.safeParse({ session: "agent-a", profile: "work_2.0" }).success).toBe(true);
+  });
+
+  it("lets a plain profile name through to the registry", async () => {
+    const { handler } = captureOpenSession();
+    const body = bodyOf(await handler({ session: "x", profile: "work" }));
+    expect(String(body.error)).toContain("registry.get must not be reached");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // list_sessions — one dead target must not take out the listing.
 //

@@ -27,6 +27,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { assertValidProfileName } from "../util/profile-name.js";
+import { assertSafeName } from "../util/workspace.js";
 
 // Provenance. `profile_restore` copies a snapshot over a browser profile, and a
 // browser profile holds cookies and saved logins, so a snapshot must be one
@@ -104,17 +106,6 @@ function mac(key: Buffer, snapshot: string, digest: string): string {
   return createHmac("sha256", key).update(`browx-snapshot\0${snapshot}\0${digest}`).digest("hex");
 }
 
-// mnemonic / profile names — no path separators or traversal.
-const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
-
-function checkName(kind: string, name: string): void {
-  if (!SAFE_NAME.test(name)) {
-    throw new Error(
-      `${kind} "${name}" invalid — use only letters, digits, '.', '_', '-' (no path separators)`,
-    );
-  }
-}
-
 /** The on-disk dir for a session profile. `default`/undefined → the default
  *  session's profile (`defaultProfileDir`, i.e. BROWX_DEFAULT_PROFILE when set,
  *  else `<root>/profile`); a name → `<root>/profiles/<name>`. */
@@ -124,12 +115,14 @@ function profileDir(
   defaultProfileDir?: string,
 ): string {
   if (!profile || profile === "default") return defaultProfileDir ?? join(workspaceRoot, "profile");
-  checkName("profile", profile);
+  assertValidProfileName("profile", profile);
   return join(workspaceRoot, "profiles", profile);
 }
 
 function snapshotDir(workspaceRoot: string, snapshot: string): string {
-  checkName("snapshot", snapshot);
+  // One plain segment, never `.` or `..`: a snapshot is replaced with a
+  // recursive delete, so its directory must sit inside `profile-snapshots/`.
+  assertSafeName("snapshot", snapshot);
   return join(workspaceRoot, "profile-snapshots", snapshot);
 }
 

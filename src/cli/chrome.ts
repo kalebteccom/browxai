@@ -25,9 +25,9 @@ import {
   buildLoginArgs,
   buildStartArgs,
   findInstalledChrome,
-  isValidProfileName,
   parseHttpUrl,
 } from "./chrome-launch.js";
+import { isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 
 const DEFAULT_PORT = 9222;
 
@@ -51,9 +51,7 @@ function resolveLaunchTarget(
 ): { chromePath: string; profileDir: string } | undefined {
   const profile = parseFlagStr(opts, "--profile");
   if (opts.includes("--profile") && (profile === undefined || !isValidProfileName(profile))) {
-    process.stderr.write(
-      `invalid --profile "${profile ?? ""}": use a plain name (letters, digits, ., _, -), no path separators\n`,
-    );
+    process.stderr.write(`invalid --profile "${profile ?? ""}": ${PROFILE_NAME_RULE}\n`);
     return undefined;
   }
   const chromePath = findInstalledChrome();

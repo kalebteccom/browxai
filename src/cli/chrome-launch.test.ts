@@ -4,7 +4,6 @@ import {
   buildStartArgs,
   chromeCandidates,
   findInstalledChrome,
-  isValidProfileName,
 } from "./chrome-launch.js";
 
 describe("chromeCandidates / findInstalledChrome", () => {
@@ -42,15 +41,5 @@ describe("buildLoginArgs", () => {
     expect(args.some((a) => a.includes("automation"))).toBe(false);
     expect(args).toContain("--user-data-dir=/ws/profile");
     expect(args[args.length - 1]).toBe("https://example.com/");
-  });
-});
-
-describe("isValidProfileName", () => {
-  it("accepts plain names and rejects anything that could leave profiles/", () => {
-    expect(isValidProfileName("work")).toBe(true);
-    expect(isValidProfileName("job-search_2.0")).toBe(true);
-    for (const bad of ["", "../x", "a/b", "a\\b", "..", ".hidden", "a..b"]) {
-      expect(isValidProfileName(bad)).toBe(false);
-    }
   });
 });

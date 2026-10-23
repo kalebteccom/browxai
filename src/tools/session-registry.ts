@@ -60,6 +60,7 @@ import {
   resolveProfileDir,
 } from "../session/profile-guard.js";
 import type { ConfigStore, ResolvedConfig } from "../util/config-store.js";
+import { assertValidProfileName } from "../util/profile-name.js";
 import type { Workspace } from "../util/workspace.js";
 import type { StartOptions } from "../server.js";
 
@@ -144,6 +145,10 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
     engineEntry(e.session.engine).makeSubstrates(registrySubstrateDeps).capture(e);
   const registry: SessionRegistry = new SessionRegistry(
     async (id, spec): Promise<SessionEntry> => {
+      // The id names the session's `.downloads/<id>` and `.artifacts/<id>`
+      // directories, so it must be one plain name. Checked here because any tool
+      // with a `session` argument creates its session lazily through this factory.
+      assertValidProfileName("session id", id);
       const headless = opts.headless ?? resolvedConfig.headless;
       // The engine for THIS session: an explicit `open_session({engine})`
       // overrides the server default; omitted ⇒ the server engine (legacy). One
