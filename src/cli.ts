@@ -45,8 +45,9 @@ const USAGE = `Usage: browxai [subcommand]
   browxai plugin <sub>          install / remove / list / info / upgrade / sync
                                 plugins. All ops are workspace-rooted.
 
-  --engine <kind>               browser engine for the MCP server: chromium
-                                (default) | firefox | webkit | android. Overrides
+  --engine <kind>               engine for the MCP server: chromium (default) |
+                                firefox | webkit | android | safari | ios-app |
+                                android-app | electron. Overrides
                                 BROWX_ENGINE. android implies attach-mode (real
                                 Chrome-on-Android over adb — no BROWX_ATTACH_CDP).
   --version, -v                 print the browxai version
