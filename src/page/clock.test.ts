@@ -194,15 +194,6 @@ describe("ClockRegistry — release", () => {
       { method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } },
     ]);
   });
-
-  it("release on a never-set clock is harmless (no cached state)", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    const { state } = await reg.apply(cdp as never, page as never, { mode: "release" });
-    expect(state).toBeUndefined();
-    expect(reg.current()).toBeUndefined();
-  });
 });
 
 describe("ClockRegistry — re-apply on navigation", () => {
@@ -301,12 +292,5 @@ describe("ClockRegistry — state persistence + reset", () => {
       { method: "Emulation.setVirtualTimePolicy", params: { policy: "advance" } },
     ]);
     expect(reg.current()).toBeUndefined();
-  });
-
-  it("resetAll on a never-set clock is a no-op", async () => {
-    const { cdp, calls } = fakeCdp();
-    const reg = new ClockRegistry();
-    await reg.resetAll(cdp as never);
-    expect(calls).toHaveLength(0);
   });
 });

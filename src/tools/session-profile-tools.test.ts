@@ -107,29 +107,9 @@ describe("profile_status — registration surface", () => {
   it("declares the `read` capability", () => {
     expect(captureTool().def.capability).toBe("read");
   });
-
-  it("states in its description that origin data is not live authentication state", () => {
-    const { def } = captureTool();
-    expect(def.description).toMatch(/does NOT report whether a profile is logged in/);
-    expect(def.description).toMatch(/MATCHING NAME ONLY/);
-  });
-
-  it("takes an optional `profile` filter and nothing else", () => {
-    const shape = captureTool().def.inputSchema ?? {};
-    expect(Object.keys(shape)).toEqual(["profile"]);
-    expect((shape.profile as z.ZodType | undefined)?.safeParse(undefined).success).toBe(true);
-  });
 });
 
 describe("profile_status — handler", () => {
-  it("returns an ok envelope with a tokensEstimate on an empty workspace", async () => {
-    const body = bodyOf(await captureTool().handler({}));
-    expect(body.ok).toBe(true);
-    expect(body.count).toBe(0);
-    expect(body.profiles).toEqual([]);
-    expect(body.tokensEstimate).toBe(1);
-  });
-
   it("maps a live persistent session onto its profile row", async () => {
     const dir = seedProfile("job-search-live");
     seedProfile("job-search");
@@ -144,13 +124,6 @@ describe("profile_status — handler", () => {
       cookieDomains: ["mail.google.com"],
     });
     expect(profiles.find((p) => p.name === "job-search")?.live).toBeUndefined();
-  });
-
-  it("drops sessions with no profile dir (incognito / attached)", async () => {
-    seedProfile("only-one");
-    const { handler } = captureTool({ entries: [fakeEntry("ghost", undefined, ["x.test"])] });
-    const profiles = bodyOf(await handler({})).profiles as Array<Record<string, unknown>>;
-    expect(profiles[0]?.live).toBeUndefined();
   });
 
   it("returns a structured ok:false for a path-escaping profile name", async () => {

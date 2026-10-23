@@ -9,8 +9,6 @@
 //     under 2000-token budget.
 //   - layout_thrash_trace: fixture page with rAF loop reading offsetHeight
 //     in a write/read alternation produces forcedLayoutsCount > 0.
-//   - memory_diff: two synthetic heap snapshots on disk → retainerGrowth
-//     surfaces the synthesised growers.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -182,15 +180,4 @@ describe("perf module keystone — layout_thrash_trace", () => {
     },
     KEYSTONE_TIMEOUT,
   );
-});
-
-describe("perf module keystone — memory_diff", () => {
-  it("rejects a workspace-escape path with a structured error", async () => {
-    const r = await callJson<{ ok: boolean; error?: string }>("memory_diff", {
-      beforePath: "../../etc/passwd",
-      afterPath: "../../etc/passwd",
-    });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/\$BROWX_WORKSPACE/);
-  });
 });

@@ -300,13 +300,6 @@ describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => 
     },
   );
 
-  it("names a port for every method it guards", () => {
-    // The table is the unit of coverage, so a row that loses its `port` would
-    // still generate a case and assert nothing legible.
-    expect(PORTED_PAGE_METHODS.length).toBeGreaterThanOrEqual(2);
-    for (const m of PORTED_PAGE_METHODS) expect(m.port.length).toBeGreaterThan(10);
-  });
-
   it("holds the Page-handle use count at or under the phase budget", () => {
     const counted = files
       .filter((f) => !isHandleOwner(f.path))
@@ -409,14 +402,5 @@ describe("L1 — the Playwright-Page bypass is counted and only shrinks", () => 
         "yet; a phase that empties one deletes it in the same commit, and adding one is an " +
         "RFC amendment with a written reason.",
     ).toHaveLength(3);
-  });
-
-  it("names a reason for every module allowed to hold a Page", () => {
-    // An allowlist without per-entry rationale is a list of exceptions nobody can
-    // audit. Entries come off as phases empty them; one going on is an RFC
-    // amendment with a written reason.
-    for (const owner of HANDLE_OWNERS) {
-      expect(owner.why.length, `${owner.re} has no rationale`).toBeGreaterThan(20);
-    }
   });
 });

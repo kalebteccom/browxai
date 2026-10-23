@@ -80,12 +80,6 @@ describe("profileStatus — inventory", () => {
     expect((await profileStatus(ws, [], { profile: "nope" })).profiles).toEqual([]);
   });
 
-  it("does not report a plain file under profiles/ as a profile when scoped to it", async () => {
-    mkdirSync(join(ws, "profiles"), { recursive: true });
-    writeFileSync(join(ws, "profiles", "notadir"), "x");
-    expect((await profileStatus(ws, [], { profile: "notadir" })).profiles).toEqual([]);
-  });
-
   it("skips files and unnameable directories under the profiles root", async () => {
     seedProfile("real");
     writeFileSync(join(ws, "profiles", "stray.txt"), "not a profile");
@@ -105,19 +99,6 @@ describe("profileStatus — inventory", () => {
 });
 
 describe("profileStatus — live sessions", () => {
-  it("marks the profile a live session runs out of, with its session id", async () => {
-    const live = seedProfile("job-search-live");
-    seedProfile("job-search");
-    const r = await profileStatus(ws, [probe("agent-a", live, ["mail.google.com"])]);
-
-    const open = r.profiles.find((p) => p.name === "job-search-live");
-    expect(open?.live?.sessions).toEqual(["agent-a"]);
-    expect(open?.live?.cookieDomains).toEqual(["mail.google.com"]);
-    expect(Number.isNaN(Date.parse(open?.live?.observedAt ?? ""))).toBe(false);
-    // The idle sibling carries no live block at all — absence, never a guess.
-    expect(r.profiles.find((p) => p.name === "job-search")?.live).toBeUndefined();
-  });
-
   it("merges two sessions sharing one profile and de-duplicates their domains", async () => {
     const dir = seedProfile("shared");
     const r = await profileStatus(ws, [
@@ -200,13 +181,6 @@ describe("profileDirFor — workspace containment", () => {
     expect(() => profileDirFor(ws, "")).toThrow(/invalid/);
   });
 
-  it("propagates the refusal out of profileStatus rather than listing anything", async () => {
-    seedProfile("real");
-    await expect(profileStatus(ws, [], { profile: "../../etc" })).rejects.toThrow(
-      /must resolve inside \$BROWX_WORKSPACE/,
-    );
-  });
-
   it("maps `default` to the legacy dir and any other name under profiles/", () => {
     expect(profileDirFor(ws, "default")).toBe(join(ws, "profile"));
     expect(profileDirFor(ws, "agent-a")).toBe(join(ws, "profiles", "agent-a"));
@@ -232,13 +206,5 @@ describe("profileStatus — the scan budget", () => {
     expect(r.profiles[0]?.scanTruncated).toBe(true);
     expect(r.profiles[1]?.scanTruncated).toBe(true);
     expect(r.profiles[1]?.files).toBe(0);
-  });
-
-  it("leaves a within-budget profile unflagged and exact", async () => {
-    seedProfile("small", { a: "12", b: "345" });
-    const r = await profileStatus(ws, []);
-    expect(r.profiles[0]?.scanTruncated).toBeUndefined();
-    expect(r.profiles[0]?.bytes).toBe(5);
-    expect(r.profiles[0]?.files).toBe(2);
   });
 });

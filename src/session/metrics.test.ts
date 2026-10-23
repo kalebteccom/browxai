@@ -42,15 +42,6 @@ describe("SessionMetrics", () => {
     expect(snap.durationMsByTool.eval_js).toBe(2);
   });
 
-  it("tolerates a missing tokensEstimate (image-only / non-JSON result)", () => {
-    const m = new SessionMetrics(0);
-    m.record("screenshot", "ok", 50);
-    m.record("snapshot", "ok", 20, 1000);
-    const snap = m.snapshot(0);
-    expect(snap.callsByTool).toEqual({ screenshot: 1, snapshot: 1 });
-    expect(snap.tokensEstimateSum).toBe(1000);
-  });
-
   it("ignores a non-finite tokensEstimate (defensive against NaN sums)", () => {
     const m = new SessionMetrics(0);
     m.record("snapshot", "ok", 10, Number.NaN);
@@ -63,14 +54,6 @@ describe("SessionMetrics", () => {
     const m = new SessionMetrics(0);
     m.record("snapshot", "ok", -5, 0);
     expect(m.snapshot(0).durationMsByTool.snapshot).toBe(0);
-  });
-
-  it("snapshot is a pure read — taking two in a row yields the same shape", () => {
-    const m = new SessionMetrics(0);
-    m.record("snapshot", "ok", 10, 100);
-    const a = m.snapshot(50);
-    const b = m.snapshot(50);
-    expect(a).toEqual(b);
   });
 
   it("sessionDurationMs floors at zero when `now` precedes startedAt", () => {

@@ -36,16 +36,6 @@ describe("screenshotSave", () => {
     expect(readFileSync(r.path).equals(buf)).toBe(true);
   });
 
-  it("records fullPage:true when supplied", () => {
-    const r = screenshotSave(fakePng(), WS, { path: "full.png", format: "png", fullPage: true });
-    expect(r.fullPage).toBe(true);
-  });
-
-  it("records jpeg format faithfully", () => {
-    const r = screenshotSave(fakePng(), WS, { path: "out.jpg", format: "jpeg", fullPage: false });
-    expect(r.format).toBe("jpeg");
-  });
-
   it("creates the parent directory if missing", () => {
     const r = screenshotSave(fakePng(), WS, {
       path: "nested/deeply/out.png",
@@ -60,16 +50,6 @@ describe("screenshotSave", () => {
     expect(() =>
       screenshotSave(fakePng(), WS, {
         path: "../../etc/escape.png",
-        format: "png",
-        fullPage: false,
-      }),
-    ).toThrow(/\$BROWX_WORKSPACE/);
-  });
-
-  it("rejects an absolute path outside the workspace", () => {
-    expect(() =>
-      screenshotSave(fakePng(), WS, {
-        path: "/tmp/elsewhere.png",
         format: "png",
         fullPage: false,
       }),

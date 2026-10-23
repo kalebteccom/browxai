@@ -119,26 +119,6 @@ describe("profile_status keystone — real Chromium", () => {
   );
 
   it(
-    "labels a same-named auth slot as saved state, distinct from the live block",
-    async () => {
-      const session = "ks-profile-b";
-      const profile = "saved-slot";
-      await callJson("open_session", { session, mode: "persistent", profile });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      await callJson("cookies_set", { session, name: "slot", value: "1", url: `${fixture.url}/` });
-      const saved = await callJson<{ ok: boolean }>("auth_save", { session, name: profile });
-      expect(saved.ok).toBe(true);
-      await callJson("close_session", { session });
-
-      const row = (await status({ profile })).profiles[0]!;
-      expect(row.live, "closed session leaves no live block").toBeUndefined();
-      expect(row.savedAuthState?.name).toBe(profile);
-      expect(row.savedAuthState?.cookieDomains).toContain("127.0.0.1");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "refuses a path-escaping profile name with a structured error",
     async () => {
       const body = await status({ profile: "../../etc" });

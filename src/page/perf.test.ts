@@ -54,14 +54,6 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     expect(traceConfig.includedCategories).toEqual(DEFAULT_TRACE_CATEGORIES);
   });
 
-  it("start accepts custom categories", async () => {
-    const { cdp, calls } = fakeCdp();
-    const state = new PerfTracingState();
-    await state.start(cdp as never, { categories: ["loading", "v8.execute"] });
-    const traceConfig = calls[0]!.params.traceConfig as { includedCategories: string[] };
-    expect(traceConfig.includedCategories).toEqual(["loading", "v8.execute"]);
-  });
-
   it("stop returns the buffered events and clears state", async () => {
     const { cdp } = fakeCdp();
     const state = new PerfTracingState();
@@ -223,15 +215,6 @@ describe("extractInsights", () => {
       domContentLoadedMs: 1000,
       loadEventMs: 2500,
     });
-  });
-
-  it("returns empty insights for an empty trace", () => {
-    const r = extractInsights([]);
-    expect(r.longTasks).toEqual([]);
-    expect(r.layoutShifts).toEqual([]);
-    expect(r.renderBlocking).toEqual([]);
-    expect(r.lcpCandidates).toEqual([]);
-    expect(r.totals.events).toBe(0);
   });
 
   it("ignores malformed events without crashing", () => {

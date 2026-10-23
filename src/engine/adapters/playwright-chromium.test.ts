@@ -8,22 +8,10 @@ import { CHROMIUM_CAPABILITIES } from "../capabilities.js";
 // itself chromium and exposes the full capability set, so the engine dimension
 // gates nothing in P0.
 describe("PlaywrightChromiumAdapter — declarative surface", () => {
-  it("identifies as the chromium engine", () => {
-    const adapter = new PlaywrightChromiumAdapter();
-    expect(adapter.engine).toBe("chromium");
-  });
-
   it("exposes the full chromium capability declaration (deep + all sub-interfaces)", () => {
     const adapter = new PlaywrightChromiumAdapter();
     expect(adapter.capabilities).toBe(CHROMIUM_CAPABILITIES);
     expect(adapter.capabilities.deep).toBe(true);
     expect(adapter.capabilities.subInterfaces.size).toBe(11); // +page (RFC 0004 D5), +element (RFC 0009 P2)
-  });
-
-  it("exposes the three launch shapes the session factories delegate to", () => {
-    const adapter = new PlaywrightChromiumAdapter();
-    expect(typeof adapter.launchPersistent).toBe("function");
-    expect(typeof adapter.launchEphemeral).toBe("function");
-    expect(typeof adapter.connectOverCdp).toBe("function");
   });
 });

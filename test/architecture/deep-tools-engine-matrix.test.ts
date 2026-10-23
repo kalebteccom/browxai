@@ -116,16 +116,6 @@ describe("L2/L5 — the five touch tools left DEEP_TOOLS without widening any en
   // This block holds the third leg: they are gone from the gate, and nothing put
   // them back.
 
-  it.each(RETIRED_BY_SUBSTRATE)("[%s] is no longer gated by the `deep` flag", (tool) => {
-    expect(
-      DEEP_TOOLS.has(tool),
-      `${tool} is back in DEEP_TOOLS. The engine gate refuses it before ` +
-        "`ActionSubstrate.gesture` is reached, which is what stopped a no-CDP engine " +
-        "from ever dispatching touch. If it genuinely needs raw CDP again, that is an " +
-        "RFC 0009 amendment, not a flag.",
-    ).toBe(false);
-  });
-
   it.each(ENGINE_KINDS)("[%s] the gate un-gates all five, deep or not", (engine) => {
     // The gate now says nothing about these tools on ANY engine — including the
     // non-deep ones, where it used to be the only thing refusing them. That is

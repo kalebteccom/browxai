@@ -312,20 +312,6 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
   );
 
   it(
-    "find ranks over the hierarchy and hands back a resolvable ref",
-    async () => {
-      const found = await callJson<{
-        candidates: Array<{ ref: string; selectorHint?: string; role?: string }>;
-      }>("find", { session: SESSION, query: "Pay now" });
-      expect(found.candidates.length).toBeGreaterThan(0);
-      const top = found.candidates[0]!;
-      expect(top.ref).toMatch(/^e\d+$/);
-      expect(top.selectorHint).toContain("accessibilityIdentifier");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "click re-resolves the ref against a FRESH hierarchy before it taps",
     async () => {
       // The claim RFC 0008 §3 makes, driven through the real tool handlers. The

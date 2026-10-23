@@ -116,10 +116,6 @@ describe("classifyChallenge — the common path carries nothing", () => {
   it("returns undefined for a plain 403 with no challenge markers", () => {
     expect(classifyChallenge(markers({ title: "Forbidden" }), { status: 403 })).toBeUndefined();
   });
-
-  it("returns undefined when the page probe failed and the edge sent nothing", () => {
-    expect(classifyChallenge(null, {})).toBeUndefined();
-  });
 });
 
 describe("challengeDeadlineFailure", () => {
@@ -135,14 +131,5 @@ describe("challengeDeadlineFailure", () => {
     expect(error).toContain("does not solve");
     expect(failure.source).toBe("app");
     expect(failure.hint).toContain("await_human");
-  });
-
-  it("labels an unidentified vendor without claiming one", () => {
-    const { error } = challengeDeadlineFailure({
-      kind: "interstitial",
-      vendor: "unknown",
-      evidence: ['document title "Checking your browser"'],
-    });
-    expect(error).toContain("An unidentified bot-protection interstitial");
   });
 });

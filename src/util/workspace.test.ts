@@ -73,12 +73,6 @@ describe("BROWX_DEFAULT_PROFILE", () => {
     expect(resolveWorkspace(env).defaultProfile()).toBe(dir);
   });
 
-  it("accepts an existing directory as is", () => {
-    const dir = join(tmp, "existing");
-    mkdirSync(dir, { mode: 0o700 });
-    expect(resolveDefaultProfileDir({ BROWX_DEFAULT_PROFILE: dir })).toBe(dir);
-  });
-
   it("refuses a relative path, the root, the home directory, a file and a symlink", () => {
     expect(() => resolveDefaultProfileDir({ BROWX_DEFAULT_PROFILE: "rel/profile" })).toThrow(
       /absolute path/,

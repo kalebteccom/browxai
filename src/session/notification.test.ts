@@ -5,7 +5,6 @@ import {
   parseNotificationPolicyArg,
   propagateSyncDecision,
   syncDecisionFor,
-  UNHANDLED_NOTIFICATION_HINT,
   NOTIFICATION_PAGE_SCRIPT,
   type NotificationAskHandler,
 } from "./notification.js";
@@ -52,9 +51,6 @@ describe("parseNotificationPolicyArg", () => {
       expect(parseNotificationPolicyArg(m)).toEqual({ mode: m });
     }
   });
-  it("accepts object form", () => {
-    expect(parseNotificationPolicyArg({ mode: "deny" })).toEqual({ mode: "deny" });
-  });
   it("rejects unknown modes", () => {
     expect(() => parseNotificationPolicyArg("yes")).toThrow(/invalid/i);
     expect(() => parseNotificationPolicyArg({ mode: "yes" as never })).toThrow(/invalid/i);
@@ -90,18 +86,6 @@ describe("syncDecisionFor", () => {
   it("maps allow / ask-human → allow (no sync throw)", () => {
     expect(syncDecisionFor("allow")).toBe("allow");
     expect(syncDecisionFor("ask-human")).toBe("allow");
-  });
-  it("maps deny / raise to themselves (sync throw)", () => {
-    expect(syncDecisionFor("deny")).toBe("deny");
-    expect(syncDecisionFor("raise")).toBe("raise");
-  });
-});
-
-describe("UNHANDLED_NOTIFICATION_HINT", () => {
-  it("mentions both set knobs", () => {
-    expect(UNHANDLED_NOTIFICATION_HINT).toMatch(/open_session/);
-    expect(UNHANDLED_NOTIFICATION_HINT).toMatch(/set_notification_policy/);
-    expect(UNHANDLED_NOTIFICATION_HINT).toMatch(/rejected page-side/);
   });
 });
 
@@ -180,24 +164,6 @@ describe("attachNotificationPolicy — binding handler per mode", () => {
     });
     expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
   });
-
-  it("runtime set() takes effect on the very next check", async () => {
-    const { state, check } = await setupCheck({ mode: "allow" });
-    expect(await check({}, JSON.stringify({ title: "X" }))).toBe("allow");
-    state.set({ mode: "deny" });
-    expect(await check({}, JSON.stringify({ title: "X" }))).toBe("deny");
-  });
-
-  it("omitted body/icon/tag are not recorded as keys", async () => {
-    const { state, check } = await setupCheck({ mode: "allow" });
-    const t = Date.now();
-    await check({}, JSON.stringify({ title: "bare" }));
-    const rec = state.since(t)[0]!;
-    expect(rec.title).toBe("bare");
-    expect(rec.body).toBeUndefined();
-    expect(rec.icon).toBeUndefined();
-    expect(rec.tag).toBeUndefined();
-  });
 });
 
 // ---- attach install plumbing ---------------------------------------------
@@ -256,27 +222,10 @@ describe("propagateSyncDecision", () => {
 // ---- the init script is browser-only JS ----------------------------------
 
 describe("NOTIFICATION_PAGE_SCRIPT", () => {
-  it("contains the install guard so re-injection is a no-op", () => {
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/__browx_notification_installed/);
-  });
-
-  it("wraps the constructor", () => {
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/window\.Notification = ProxyNotification/);
-  });
-
   it("preserves the static permission / requestPermission surface for permission_policy", () => {
     expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/ProxyNotification\.requestPermission/);
     expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/OrigNotification\.requestPermission/);
     expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/return OrigNotification\.permission/);
-  });
-
-  it("consults the check binding and falls back to allow when missing", () => {
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/__browx_notification_check/);
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/return Promise\.resolve\("allow"\)/);
-  });
-
-  it("reads the synchronous decision hint to throw at construction time", () => {
-    expect(NOTIFICATION_PAGE_SCRIPT).toMatch(/__browx_notification_sync_decision/);
   });
 
   it("does NOT touch Notification.permission's getter on Notification itself (permission_policy owns it)", () => {

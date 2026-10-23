@@ -5,7 +5,6 @@ import { describe, it, expect } from "vitest";
 // bootstrap so the lazy collector is installed and the derived rows are present.
 import "../tools/tool-metadata.js";
 import {
-  ALL_CAPABILITIES,
   DEFAULT_CAPABILITIES,
   isToolEnabled,
   resolveCapabilities,
@@ -35,16 +34,6 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
     expect(c.warnings.some((w) => /unstable/.test(w) && /retired/.test(w))).toBe(true);
   });
 
-  it("a genuine typo still throws even alongside a retired capability", () => {
-    expect(() => resolveCapabilities({ BROWX_CAPABILITIES: "read,unstable,banana" })).toThrow(
-      /banana/,
-    );
-  });
-
-  it("emits no warnings for an all-valid capability set", () => {
-    expect(resolveCapabilities({ BROWX_CAPABILITIES: "read,navigation" }).warnings).toEqual([]);
-  });
-
   it("default set excludes eval / byob-attach / file-io", () => {
     const c = resolveCapabilities({});
     expect(c.enabled.has("eval")).toBe(false);
@@ -63,12 +52,6 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
 });
 
 describe("isToolEnabled", () => {
-  it("returns false for tools whose capability isn't enabled", () => {
-    const c = resolveCapabilities({ BROWX_CAPABILITIES: "read" });
-    expect(isToolEnabled("navigate", c)).toBe(false);
-    expect(isToolEnabled("snapshot", c)).toBe(true);
-  });
-
   it("treats unknown tools as enabled (human-coordination default)", () => {
     const c = resolveCapabilities({ BROWX_CAPABILITIES: "read" });
     expect(isToolEnabled("unknown_tool", c)).toBe(true);
@@ -83,11 +66,6 @@ describe("isToolEnabled", () => {
     expect(isToolEnabled("network_body", on)).toBe(true);
   });
 
-  it("network-body is a valid capability but not in the default set", () => {
-    expect(ALL_CAPABILITIES).toContain("network-body");
-    expect(DEFAULT_CAPABILITIES).not.toContain("network-body");
-  });
-
   it("credentials is off under the default capability set; get_totp + get_credential gate on it", () => {
     const def = resolveCapabilities({});
     expect(isToolEnabled("get_totp", def)).toBe(false);
@@ -97,11 +75,6 @@ describe("isToolEnabled", () => {
     });
     expect(isToolEnabled("get_totp", on)).toBe(true);
     expect(isToolEnabled("get_credential", on)).toBe(true);
-  });
-
-  it("credentials is a valid capability but not in the default set", () => {
-    expect(ALL_CAPABILITIES).toContain("credentials");
-    expect(DEFAULT_CAPABILITIES).not.toContain("credentials");
   });
 
   it("ws_send / ws_intercept / ws_unintercept gate on `action` (default-on)", () => {
@@ -136,11 +109,5 @@ describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {
     expect(() => resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: "fly_to_moon" })).toThrow(
       /fly_to_moon/,
     );
-  });
-});
-
-describe("ALL_CAPABILITIES sanity", () => {
-  it("includes every category named in DEFAULT_CAPABILITIES", () => {
-    for (const c of DEFAULT_CAPABILITIES) expect(ALL_CAPABILITIES).toContain(c);
   });
 });

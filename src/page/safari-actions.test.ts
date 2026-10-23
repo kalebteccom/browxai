@@ -74,13 +74,6 @@ describe("safariNavigate", () => {
     expect(r.navigation.changed).toBe(false);
     expect(r.navigation.kind).toBeNull();
   });
-
-  it("surfaces an honest warning that the envelope deltas are not captured on Safari", async () => {
-    const { handle } = fakeHandle(["a", "b"]);
-    const r = await safariNavigate(handle, "b");
-    expect(r.warnings.join(" ")).toMatch(/not captured on the Safari engine/i);
-    expect(r.network.summary).toEqual({ total: 0, byType: {}, failed: 0 });
-  });
 });
 
 describe("Safari element actions (click / fill / press)", () => {

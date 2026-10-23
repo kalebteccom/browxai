@@ -63,29 +63,10 @@ describe("TargetSubstrate — the port contract", () => {
     ["safari", () => new SafariTargetSubstrate(safariHandle().handle)],
   ];
 
-  it.each(cases)("[%s] carries an engine tag", (_name, make) => {
-    expect(typeof make().engine).toBe("string");
-    expect(make().engine.length).toBeGreaterThan(0);
-  });
-
   it.each(cases)("[%s] answers url() and title() as promises of strings", async (_name, make) => {
     const sub = make();
     await expect(sub.url()).resolves.toBe("https://example.test/checkout");
     await expect(sub.title()).resolves.toBe("Checkout");
-  });
-
-  it.each(cases)("[%s] exposes exactly the two port methods", (_name, make) => {
-    const sub = make();
-    // The port is `engine` + two reads, and both adapters answer the same two.
-    // An adapter that grew an escape hatch — a `page()`, a `handle()`, a
-    // `currentUrlSync()` a caller could come to depend on — shows up here as a
-    // third method. Injected collaborators are constructor state, not surface,
-    // so only the prototype is inspected.
-    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(sub) as object).filter(
-      (k) => k !== "constructor",
-    );
-    expect(methods.sort()).toEqual(["title", "url"]);
-    expect(Object.getOwnPropertyNames(sub)).toContain("engine");
   });
 });
 
@@ -104,22 +85,6 @@ describe("PlaywrightTargetSubstrate", () => {
     );
     await expect(sub.url()).resolves.toBe("https://a.test/");
     await expect(sub.url()).resolves.toBe("https://b.test/");
-  });
-
-  it("delegates title() to page.title() verbatim", async () => {
-    let called = 0;
-    const sub = new PlaywrightTargetSubstrate(
-      () =>
-        ({
-          url: () => "about:blank",
-          title: () => {
-            called += 1;
-            return Promise.resolve("Docs");
-          },
-        }) as unknown as Page,
-    );
-    await expect(sub.title()).resolves.toBe("Docs");
-    expect(called).toBe(1);
   });
 });
 

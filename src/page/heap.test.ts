@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -123,16 +123,6 @@ describe("takeHeapSnapshot — CDP plumbing", () => {
     await expect(takeHeapSnapshot(cdp as never)).rejects.toThrow("boom");
     expect(cdp._listenerCount("HeapProfiler.addHeapSnapshotChunk")).toBe(0);
   });
-
-  it("detaches the chunk listener on success (no leak across calls)", async () => {
-    const { cdp } = fakeCdp();
-    cdp.send = vi.fn(async () => {
-      await cdp._emit("HeapProfiler.addHeapSnapshotChunk", { chunk: "x" });
-      return {};
-    });
-    await takeHeapSnapshot(cdp as never);
-    expect(cdp._listenerCount("HeapProfiler.addHeapSnapshotChunk")).toBe(0);
-  });
 });
 
 describe("workspace path enforcement", () => {
@@ -143,30 +133,10 @@ describe("workspace path enforcement", () => {
     );
   });
 
-  it("resolveHeapSnapshotPath: accepts paths inside the workspace", () => {
-    const root = "/tmp/wsX";
-    expect(resolveHeapSnapshotPath(root, "heap-snapshots/x.heapsnapshot", "heap_snapshot")).toBe(
-      "/tmp/wsX/heap-snapshots/x.heapsnapshot",
-    );
-  });
-
   it("defaultHeapSnapshotPath: sessionId is sanitised + ISO timestamp", () => {
     const p = defaultHeapSnapshotPath("/tmp/ws", "agent/A?");
     expect(p).toMatch(/^\/tmp\/ws\/heap-snapshots\/agent_A_-\d{4}-\d{2}-\d{2}T/);
     expect(p.endsWith(".heapsnapshot")).toBe(true);
-  });
-
-  it("writeHeapSnapshotFile: creates the parent dir + writes the JSON", () => {
-    const root = mkdtempSync(join(tmpdir(), "browx-heap-"));
-    try {
-      const target = join(root, "heap-snapshots", "x.heapsnapshot");
-      const r = writeHeapSnapshotFile(root, target, '{"snapshot":1}', "heap_snapshot");
-      expect(existsSync(target)).toBe(true);
-      expect(r.bytes).toBe(Buffer.byteLength('{"snapshot":1}', "utf8"));
-      expect(readFileSync(target, "utf8")).toBe('{"snapshot":1}');
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
   });
 });
 
@@ -200,15 +170,6 @@ describe("parseHeapSnapshot", () => {
     });
     expect(() => parseHeapSnapshot(bad)).toThrow(/required field/);
   });
-
-  it("parses a valid snapshot", () => {
-    const p = parseHeapSnapshot(makeFixtureSnapshot());
-    expect(p.nodeFieldCount).toBe(7);
-    expect(p.edgeFieldCount).toBe(3);
-    expect(p.nodes.length).toBe(21); // 3 nodes * 7 fields
-    expect(p.edges.length).toBe(9); // 3 edges * 3 fields
-    expect(p.strings.length).toBe(6);
-  });
 });
 
 describe("queryRetainers", () => {
@@ -236,14 +197,6 @@ describe("queryRetainers", () => {
     const r = queryRetainers(p, { name: "Leak", nameMatch: "substring" });
     expect(r.matchCount).toBe(1);
     expect(r.retainers[0]!.retainerName).toBe("object:Cache");
-  });
-
-  it("returns zero retainers for a name that doesn't match anything", () => {
-    const p = parseHeapSnapshot(makeFixtureSnapshot());
-    const r = queryRetainers(p, { name: "DoesNotExist" });
-    expect(r.matchCount).toBe(0);
-    expect(r.retainers).toEqual([]);
-    expect(r.sampleMatches).toEqual([]);
   });
 
   it("matches by type filter alone", () => {

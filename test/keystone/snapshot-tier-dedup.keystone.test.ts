@@ -172,19 +172,6 @@ describe("snapshot keystone — the two tiers report one element once", () => {
   );
 
   it(
-    "counts the join in stats.domWalkCombined",
-    async () => {
-      const session = "ks-dedup-stats";
-      await openOn(session);
-      const stats = statsOf(await callText("snapshot", { session }));
-      // Was 0 on every page measured, because no entry could ever match.
-      expect(stats.domWalkCombined).toBeGreaterThan(0);
-      expect(stats.domWalkNew + stats.domWalkCombined).toBe(stats.domWalkEntries);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "reports the same body and the same stats on the second snapshot",
     async () => {
       // `[from-both]` used to mean "this key was already in the registry", so

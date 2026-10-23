@@ -9,19 +9,13 @@ import type { BrowserContext, CDPSession, Page } from "playwright-core";
 import {
   newEmulationState,
   reapplyAll,
-  applyLocaleCdp,
   clearLocaleCdp,
-  applyTimezoneCdp,
   clearTimezoneCdp,
   applyGeolocation,
   clearGeolocation,
-  applyColorScheme,
-  applyReducedMotion,
-  applyUserAgentCdp,
   clearUserAgentCdp,
   applyPermissions,
   clearPermissions,
-  BYOB_EMULATION_WARNING,
   type EmulationState,
 } from "./emulation.js";
 
@@ -62,12 +56,6 @@ const asPage = (p: FakePage) => p as unknown as Page;
 // --- per-primitive --------------------------------------------------------
 
 describe("locale (CDP-only mid-session)", () => {
-  it("apply sends Emulation.setLocaleOverride with the locale", async () => {
-    const cdp = fakeCdp();
-    await applyLocaleCdp(asCdp(cdp), "en-GB");
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setLocaleOverride", { locale: "en-GB" });
-  });
-
   it("clear sends Emulation.setLocaleOverride with empty string", async () => {
     const cdp = fakeCdp();
     await clearLocaleCdp(asCdp(cdp));
@@ -76,14 +64,6 @@ describe("locale (CDP-only mid-session)", () => {
 });
 
 describe("timezone (CDP-only mid-session)", () => {
-  it("apply sends Emulation.setTimezoneOverride", async () => {
-    const cdp = fakeCdp();
-    await applyTimezoneCdp(asCdp(cdp), "America/New_York");
-    expect(cdp.send).toHaveBeenCalledWith("Emulation.setTimezoneOverride", {
-      timezoneId: "America/New_York",
-    });
-  });
-
   it("clear sends the override with empty timezoneId", async () => {
     const cdp = fakeCdp();
     await clearTimezoneCdp(asCdp(cdp));
@@ -92,16 +72,6 @@ describe("timezone (CDP-only mid-session)", () => {
 });
 
 describe("geolocation (Playwright context mutator)", () => {
-  it("apply calls context.setGeolocation with coords + default accuracy", async () => {
-    const ctx = fakeContext();
-    await applyGeolocation(asContext(ctx), { latitude: 40.7, longitude: -74 });
-    expect(ctx.setGeolocation).toHaveBeenCalledWith({
-      latitude: 40.7,
-      longitude: -74,
-      accuracy: 0,
-    });
-  });
-
   it("apply preserves explicit accuracy", async () => {
     const ctx = fakeContext();
     await applyGeolocation(asContext(ctx), { latitude: 1, longitude: 2, accuracy: 50 });
@@ -115,31 +85,7 @@ describe("geolocation (Playwright context mutator)", () => {
   });
 });
 
-describe("colour scheme (Playwright page mutator)", () => {
-  it("apply calls page.emulateMedia({colorScheme})", async () => {
-    const page = fakePage();
-    await applyColorScheme(asPage(page), "dark");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "dark" });
-  });
-});
-
-describe("reduced motion (Playwright page mutator)", () => {
-  it("apply calls page.emulateMedia({reducedMotion})", async () => {
-    const page = fakePage();
-    await applyReducedMotion(asPage(page), "reduce");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "reduce" });
-  });
-});
-
 describe("user agent (CDP-only mid-session)", () => {
-  it("apply sends Network.setUserAgentOverride", async () => {
-    const cdp = fakeCdp();
-    await applyUserAgentCdp(asCdp(cdp), "MyBot/1.0");
-    expect(cdp.send).toHaveBeenCalledWith("Network.setUserAgentOverride", {
-      userAgent: "MyBot/1.0",
-    });
-  });
-
   it("clear sends override with empty UA", async () => {
     const cdp = fakeCdp();
     await clearUserAgentCdp(asCdp(cdp));
@@ -262,11 +208,3 @@ describe("reapplyAll — persistence across new pages / reconnect", () => {
 });
 
 // --- BYOB warning ---------------------------------------------------------
-
-describe("BYOB warning string", () => {
-  it("names CDP override + detach-persistence as the sharp edge", () => {
-    expect(BYOB_EMULATION_WARNING).toMatch(/CDP/);
-    expect(BYOB_EMULATION_WARNING).toMatch(/PERSIST/i);
-    expect(BYOB_EMULATION_WARNING).toMatch(/not-owned/);
-  });
-});

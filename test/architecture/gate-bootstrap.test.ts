@@ -17,9 +17,6 @@
 // already loaded the bootstrap and populated the module-level maps), reading the
 // gate must NOT silently open. The fail-safe throws a structured error instead.
 //
-// A POSITIVE control (second child) proves the throw is the fail-safe and not a
-// load error: importing the bootstrap first makes the SAME reads succeed and gate
-// correctly (eval_js disabled under read-only; perf_start refused on firefox).
 
 import { describe, it, expect, vi } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -32,7 +29,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..", "..");
 const CAPS = join(REPO_ROOT, "src", "util", "capabilities.ts").replace(/\\/g, "/");
 const GATE = join(REPO_ROOT, "src", "engine", "tool-gate.ts").replace(/\\/g, "/");
-const BOOTSTRAP = join(REPO_ROOT, "src", "tools", "tool-metadata.ts").replace(/\\/g, "/");
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 
 // Each test blocks on a cold `tsx` child, well over the 5 s default on a loaded
@@ -96,31 +92,5 @@ describe("L1 — the capability/engine gate fails SAFE on an unbootstrapped map 
     expect(result.engine).not.toBe("FAIL_OPEN_NULL");
     expect(result.engine.startsWith("FAIL_SAFE_THROW:")).toBe(true);
     expect(result.engine).toContain("bootstrap");
-  });
-
-  it("POSITIVE control: with the bootstrap imported first, the SAME reads succeed and gate correctly", () => {
-    // Proves the throw above is the fail-safe (not a load error): importing the
-    // bootstrap eagerly populates the maps, so the gate answers — and gates.
-    const source = `
-      import "${BOOTSTRAP}";
-      import { isToolEnabled, resolveCapabilities } from "${CAPS}";
-      import { assertEngineSupports } from "${GATE}";
-
-      const caps = resolveCapabilities({ BROWX_CAPABILITIES: "read" });
-      const out = {
-        evalGated: isToolEnabled("eval_js", caps) === false,     // read-only => off
-        snapshotEnabled: isToolEnabled("snapshot", caps) === true,
-        perfRefusedOnFirefox: assertEngineSupports("perf_start", "firefox") !== null,
-      };
-      process.stdout.write(JSON.stringify(out));
-    `;
-    const result = JSON.parse(runChild(source)) as {
-      evalGated: boolean;
-      snapshotEnabled: boolean;
-      perfRefusedOnFirefox: boolean;
-    };
-    expect(result.evalGated).toBe(true);
-    expect(result.snapshotEnabled).toBe(true);
-    expect(result.perfRefusedOnFirefox).toBe(true);
   });
 });

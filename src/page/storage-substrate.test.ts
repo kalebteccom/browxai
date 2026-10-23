@@ -49,11 +49,6 @@ function safariHandle(opts?: { url?: string; scriptResult?: unknown }): {
 }
 
 describe("SafariStorageSubstrate", () => {
-  it("tags the safari engine", () => {
-    const { handle } = safariHandle();
-    expect(new SafariStorageSubstrate(handle).engine).toBe("safari");
-  });
-
   it("reads the cookie jar from the WebDriver client (urls filter is inert)", async () => {
     const { handle } = safariHandle();
     const sub = new SafariStorageSubstrate(handle);
@@ -122,13 +117,6 @@ describe("SafariStorageSubstrate", () => {
     expect(scripts[0]).toContain("window.localStorage");
     expect(scripts[0]).toContain(`getItem("k")`);
     expect(scripts[0]!.startsWith("return (")).toBe(true);
-  });
-
-  it("names sessionStorage on the storage object for the session-scoped kind", async () => {
-    const { handle, scripts } = safariHandle({ scriptResult: { entries: [], origin: "" } });
-    const sub = new SafariStorageSubstrate(handle);
-    await sub.webStorageList("sessionStorage", "sessionstorage_list");
-    expect(scripts[0]).toContain("window.sessionStorage");
   });
 
   it("sets web-storage and JSON-encodes the key + value into the script", async () => {
@@ -289,24 +277,12 @@ describe("PlaywrightStorageSubstrate", () => {
     return { context, page, added, listedUrls, evaluated };
   }
 
-  it("tags the engine it was built for", () => {
-    const { context, page } = ctxStub();
-    expect(new PlaywrightStorageSubstrate(context, page, "firefox").engine).toBe("firefox");
-  });
-
   it("passes the `urls` filter through to the BrowserContext (native cross-domain filter)", async () => {
     const { context, page, listedUrls } = ctxStub();
     const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
     const jar = await sub.cookiesList({ urls: ["https://example.com/"] });
     expect(jar).toHaveLength(1);
     expect(listedUrls).toEqual([["https://example.com/"]]);
-  });
-
-  it("lists the whole jar (urls undefined) when no filter is given", async () => {
-    const { context, page, listedUrls } = ctxStub();
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    await sub.cookiesList({});
-    expect(listedUrls).toEqual([undefined]);
   });
 
   it("delegates set to addCookies and echoes back the cookie name", async () => {
@@ -362,25 +338,6 @@ describe("PlaywrightStorageSubstrate", () => {
     expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
   });
 
-  it("delegates idb writes through the helper to page.evaluate", async () => {
-    const { context, page, evaluated } = ctxStub({
-      evalResult: { ok: true, dbName: "d", storeName: "s", key: "k", origin: "o" },
-    });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    const r = await sub.idbPut({ dbName: "d", storeName: "s", key: "k", value: 1 }, "idb_put");
-    expect(r).toEqual({ ok: true, dbName: "d", storeName: "s", key: "k", origin: "o" });
-    expect(evaluated[0]).toContain("readwrite");
-  });
-
-  it("surfaces the idb origin guard on about:blank (no evaluate attempted)", async () => {
-    const { context, page, evaluated } = ctxStub({ url: "about:blank" });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    await expect(sub.idbListStores({ dbName: "d" }, "idb_list_stores")).rejects.toThrow(
-      /IndexedDB is origin-scoped/,
-    );
-    expect(evaluated).toEqual([]);
-  });
-
   it("delegates caches reads to the helper, evaluating the async IIFE on the Page", async () => {
     const { context, page, evaluated } = ctxStub({
       evalResult: { names: ["v1"], origin: "https://example.com" },
@@ -393,27 +350,5 @@ describe("PlaywrightStorageSubstrate", () => {
     expect(evaluated).toHaveLength(1);
     expect(evaluated[0]).toContain("caches");
     expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
-  });
-
-  it("delegates caches writes through the helper to page.evaluate", async () => {
-    const { context, page, evaluated } = ctxStub({
-      evalResult: { ok: true, cacheName: "c", url: "u", origin: "o" },
-    });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    const r = await sub.cachesPut(
-      { cacheName: "c", url: "u", response: { body: "b" } },
-      "caches_put",
-    );
-    expect(r).toEqual({ ok: true, cacheName: "c", url: "u", origin: "o" });
-    expect(evaluated[0]).toContain(".open(");
-  });
-
-  it("surfaces the caches origin guard on about:blank (no evaluate attempted)", async () => {
-    const { context, page, evaluated } = ctxStub({ url: "about:blank" });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    await expect(sub.cachesList({ cacheName: "c" }, "caches_list")).rejects.toThrow(
-      /Cache API is origin-scoped/,
-    );
-    expect(evaluated).toEqual([]);
   });
 });

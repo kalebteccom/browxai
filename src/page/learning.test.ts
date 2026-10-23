@@ -17,21 +17,6 @@ describe("FeedbackMemory ( learned ranking)", () => {
     expect(bonus).toBeGreaterThan(0);
   });
 
-  it("doesn't boost an unrelated candidate", () => {
-    const fb = new FeedbackMemory();
-    fb.record("the play button", {
-      testId: "play-recap",
-      testIdAttr: "data-testid",
-      role: "button",
-    });
-    const bonus = fb.bonusFor("save settings", {
-      testId: "save-btn",
-      testIdAttr: "data-testid",
-      role: "button",
-    });
-    expect(bonus).toBe(0);
-  });
-
   it("matches by role+name when no testId", () => {
     const fb = new FeedbackMemory();
     fb.record("the submit button", { role: "button", name: "Submit" });

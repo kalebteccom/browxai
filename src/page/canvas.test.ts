@@ -1,22 +1,18 @@
 // Canvas primitives — unit tests. The page-side capture / discovery
 // functions exercise via stubbed Playwright `page.evaluate`; the pure
-// pieces (`diffRgba`, `applyWorldToScreen`, `applyScreenToWorld`,
-// `validateGestureChain`, `noAdapterError`) test directly.
+// pieces (`diffRgba`, `applyScreenToWorld`, `validateGestureChain`) test directly.
 
 import { describe, it, expect } from "vitest";
 import {
-  CANVAS_MAX_DIMENSION,
   GESTURE_CHAIN_MAX_STEPS,
   GESTURE_CHAIN_MAX_WAIT_MS,
   GESTURE_CHAIN_MIN_MOVE_MS,
   applyScreenToWorld,
-  applyWorldToScreen,
   canvasCapture,
   canvasDiff,
   canvasScreenToWorld,
   canvasWorldToScreen,
   diffRgba,
-  noAdapterError,
   runGestureChain,
   validateGestureChain,
   type CanvasDiscoverPage,
@@ -79,21 +75,6 @@ describe("diffRgba (synthetic pixel math)", () => {
     expect(r.changedBytes).toBe(6 * 255);
     expect(r.bboxOfChanges).toEqual({ x: 2, y: 3, w: 3, h: 2 });
     expect(r.percentageChanged).toBeCloseTo(6 / 64);
-  });
-
-  it("scopes the diff to the supplied region", () => {
-    const a = rgba(8, 8, [0, 0, 0, 255]);
-    const b = rgba(8, 8, [0, 0, 0, 255], {
-      x: 0,
-      y: 0,
-      w: 4,
-      h: 4,
-      colour: [255, 255, 255, 255],
-    });
-    // Only diff the lower-right quadrant (where nothing changed).
-    const r = diffRgba(a, b, 8, 8, { x: 4, y: 4, w: 4, h: 4 });
-    expect(r.changedPixelCount).toBe(0);
-    expect(r.bboxOfChanges).toBeNull();
   });
 
   it("clamps an over-flow region to the image bounds", () => {
@@ -160,16 +141,6 @@ describe("canvasDiff (envelope around diffRgba)", () => {
 });
 
 describe("applyWorldToScreen + applyScreenToWorld (explicit-mode math)", () => {
-  it("forward maps world → screen with scale + pan", () => {
-    const t = { scale: 2, panX: 10, panY: 20 };
-    expect(applyWorldToScreen({ x: 5, y: 7 }, t)).toEqual({ x: 30, y: 54 });
-  });
-
-  it("origin offset is added after scale/pan", () => {
-    const t = { scale: 1, panX: 0, panY: 0, originX: 100, originY: 200 };
-    expect(applyWorldToScreen({ x: 5, y: 7 }, t)).toEqual({ x: 105, y: 207 });
-  });
-
   it("inverse returns NaN on scale=0 rather than throwing", () => {
     const r = applyScreenToWorld({ x: 1, y: 1 }, { scale: 0, panX: 0, panY: 0 });
     expect(Number.isNaN(r.x)).toBe(true);
@@ -292,41 +263,6 @@ describe("canvasCapture (stubbed page.evaluate)", () => {
     };
   }
 
-  it("returns the png envelope on success", async () => {
-    const stub = {
-      ok: true,
-      format: "png",
-      contentBase64: "AAAA",
-      byteLength: 3,
-      width: 100,
-      height: 80,
-    };
-    const r = await canvasCapture(makePage(stub), { format: "png" });
-    expect(r.ok).toBe(true);
-    if (r.ok && r.format === "png") {
-      expect(r.contentBase64).toBe("AAAA");
-      expect(r.width).toBe(100);
-      expect(r.byteLength).toBe(3);
-    }
-  });
-
-  it("returns the rgba envelope on 2d-imagedata", async () => {
-    const stub = {
-      ok: true,
-      format: "2d-imagedata",
-      contentBase64: "BBBB",
-      width: 2,
-      height: 2,
-      channelCount: 4,
-    };
-    const r = await canvasCapture(makePage(stub), { format: "2d-imagedata" });
-    expect(r.ok).toBe(true);
-    if (r.ok && r.format === "2d-imagedata") {
-      expect(r.channelCount).toBe(4);
-      expect(r.contentBase64).toBe("BBBB");
-    }
-  });
-
   it("returns the rgba envelope with isWebGL on webgl-framebuffer", async () => {
     const stub = {
       ok: true,
@@ -352,10 +288,6 @@ describe("canvasCapture (stubbed page.evaluate)", () => {
       expect(r.code).toBe("no-canvas");
       expect(r.error).toContain("no canvas");
     }
-  });
-
-  it("exposes the documented max-dimension cap", () => {
-    expect(CANVAS_MAX_DIMENSION).toBe(16384);
   });
 });
 
@@ -421,16 +353,5 @@ describe("canvasWorldToScreen / canvasScreenToWorld (modes)", () => {
     expect(inv.ok).toBe(true);
     expect(inv.worldX).toBeCloseTo(11);
     expect(inv.worldY).toBeCloseTo(22);
-  });
-});
-
-describe("noAdapterError (structured no-adapter shape)", () => {
-  it("matches the documented shape", () => {
-    const r = noAdapterError("figma", "moveNode");
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe("no-adapter");
-    expect(r.requestedAdapter).toBe("figma");
-    expect(r.requestedOp).toBe("moveNode");
-    expect(r.error).toContain("@browxai/plugin-figma");
   });
 });

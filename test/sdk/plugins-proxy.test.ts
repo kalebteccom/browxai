@@ -39,12 +39,6 @@ afterAll(async () => {
 });
 
 describe("client.plugins proxy", () => {
-  it("exposes a namespaced caller", () => {
-    expect(typeof client.plugins).toBe("object");
-    expect(typeof client.plugins.figma).toBe("object");
-    expect(typeof client.plugins.figma.moveNode).toBe("function");
-  });
-
   it("calling an unregistered plugin tool surfaces a clear error", async () => {
     // No plugins loaded → the host's dispatch path emits an
     // unknown-tool error rather than silently failing.

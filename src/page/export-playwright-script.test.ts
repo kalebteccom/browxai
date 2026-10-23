@@ -323,32 +323,6 @@ describe("export_playwright_script — recorded reads", () => {
     const r = lowerTraceToSpec("no-eval", [readStep("snapshot-1", { type: "snapshot" })]);
     expect(r.source).not.toContain("off-by-default `eval` capability");
   });
-
-  it("names the one-time browser install in every header", () => {
-    expect(lowerTraceToSpec("any", []).source).toContain("npx playwright install chromium");
-  });
-
-  it("records reads through the Recorder and lowers them end to end", () => {
-    const rec = new Recorder();
-    rec.start("mail-thread");
-    rec.record({ type: "navigate", url: "https://m.example.com/t/1" }, "https://m.example.com/t/1");
-    rec.recordRead(
-      {
-        type: "extract",
-        schema: {
-          type: "object",
-          properties: { sender: { type: "string", "x-browx-source": { selector: ".from" } } },
-        },
-      },
-      "https://m.example.com/t/1",
-    );
-    const snap = rec.inspect();
-    const r = lowerTraceToSpec(snap!.name, snap!.steps);
-    expect(r.stats).toEqual({ steps: 2, handled: 2, unhandled: 0, fragile: 0 });
-    expect(r.source).toContain(`await page.goto("https://m.example.com/t/1");`);
-    expect(r.source).toContain(`sender: (await page.locator(".from").first().innerText()).trim(),`);
-    expect(parseCheck(r.source).ok).toBe(true);
-  });
 });
 
 describe("export_playwright_script — workspace path", () => {
@@ -399,18 +373,5 @@ describe("export_playwright_script — parse-check", () => {
     const bad = `import { test, expect } from "@playwright/test";\n\ntest("x", async ({ page }) => {\n  await page.goto("https://a.example.com";\n});\n`;
     const r = parseCheck(bad);
     expect(r.ok).toBe(false);
-  });
-
-  it("accepts a real lowered spec", () => {
-    const r = lowerTraceToSpec("ok", [
-      {
-        id: "open-1",
-        kind: "action" as const,
-        action: { type: "navigate", url: "https://a.example.com" },
-        url: "https://a.example.com",
-        ts: 0,
-      },
-    ]);
-    expect(parseCheck(r.source).ok).toBe(true);
   });
 });

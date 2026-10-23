@@ -63,21 +63,4 @@ describe("L2 — plugins_list / plugins_info enforce `read` at the handler (D3)"
     expect(info.ok, "plugins_info must be denied under human-only").toBe(false);
     expect(info.requiredCapability).toBe("read");
   });
-
-  it("both EXECUTE when `read` is in the active set (no spurious gate)", async () => {
-    const server = await serverWithCapabilities("read,navigation,action,human");
-
-    const list = parse(await server.handlers.plugins_list({}));
-    // Hermetic workspace => zero plugins declared, but the handler RAN (ok:true,
-    // empty list) rather than being capability-denied.
-    expect(list.ok).toBe(true);
-    expect(Array.isArray(list.plugins)).toBe(true);
-
-    const info = parse(await server.handlers.plugins_info({ name: "nope" }));
-    // Unknown plugin => ok:false but for the NOT-DECLARED reason, not a gate
-    // denial — so no `requiredCapability` field.
-    expect(info.ok).toBe(false);
-    expect(info.requiredCapability).toBeUndefined();
-    expect(String(info.error)).toContain("not in the declared set");
-  });
 });

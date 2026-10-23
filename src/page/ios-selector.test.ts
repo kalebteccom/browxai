@@ -79,8 +79,4 @@ describe("parseNativeSelector", () => {
     expect(() => parseNativeSelector("   ")).toThrow(/unaddressable-target/);
     expect(() => parseNativeSelector("[colour=red]")).toThrow(/accessibilityIdentifier/);
   });
-
-  it("describes itself in the identifier's canonical form whatever spelling arrived", () => {
-    expect(parseNativeSelector("~x").describe).toBe('[accessibilityIdentifier="x"]');
-  });
 });

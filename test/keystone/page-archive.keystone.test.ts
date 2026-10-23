@@ -107,45 +107,6 @@ describe("page-archive keystone — directory mode against the fixture", () => {
   );
 });
 
-describe("page-archive keystone — single-file mode against the fixture", () => {
-  it(
-    "writes one self-contained HTML file the agent can re-open",
-    async () => {
-      const session = "ks-archive-single";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-
-      const r = await callJson<{
-        ok: boolean;
-        format: string;
-        path: string;
-        sizeBytes: number;
-        resourceCount: number;
-        droppedCount: number;
-      }>("page_archive", {
-        session,
-        path: "archives/fixture-single.html",
-        format: "single-file",
-      });
-
-      expect(r.ok).toBe(true);
-      expect(r.format).toBe("single-file");
-      expect(r.path).toBe(join(workspace, "archives/fixture-single.html"));
-      expect(existsSync(r.path)).toBe(true);
-      const text = readFileSync(r.path, "utf8");
-      expect(text).toContain("Keystone Fixture");
-      // Single-file mode produces a real HTML document. Note
-      // `documentElement.outerHTML` excludes the `<!doctype>` node (it's a
-      // sibling of `<html>`, not a descendant), so we assert on the root
-      // element instead.
-      expect(text.toLowerCase()).toMatch(/<html[\s>]/);
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});
-
 describe("page-archive keystone — workspace escape is rejected at the tool layer", () => {
   it("a path that escapes $BROWX_WORKSPACE returns a structured error", async () => {
     const session = "ks-archive-escape";

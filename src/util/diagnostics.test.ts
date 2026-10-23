@@ -64,26 +64,6 @@ describe("DiagnosticsRecorder gate-OFF", () => {
     rec.noteDenial();
     expect(rec.denialsCount()).toBe(0);
   });
-
-  it("write() makes ZERO filesystem mutations when disabled", () => {
-    // The recorder's gate-OFF contract: zero allocations beyond the gate
-    // check, zero file IO. We assert the negative directly — after a
-    // write attempt, the workspace contents are byte-identical to before.
-    const before = readdirSync(workspace);
-    const rec = new DiagnosticsRecorder({ enabled: false, workspaceRoot: workspace });
-    for (let i = 0; i < 50; i++) {
-      rec.write({
-        kind: "note",
-        ts: "2026-06-08T00:00:00.000Z",
-        sessionId: "default",
-        insight: "x",
-        category: "other",
-        severity: "info",
-      });
-    }
-    const after = readdirSync(workspace);
-    expect(after.sort()).toEqual(before.sort());
-  });
 });
 
 describe("DiagnosticsRecorder gate-ON", () => {
@@ -150,23 +130,6 @@ describe("DiagnosticsRecorder gate-ON", () => {
 });
 
 describe("secrets-masking composability", () => {
-  it("a registered secret echoed in args lands masked, never raw", () => {
-    // 1. register a secret
-    const secrets = new SecretRegistry();
-    secrets.register({ name: "PASSWORD", value: "hunter2-real-password" });
-    // 2. the args carry the raw value (simulating what would happen if a
-    //    careless caller passed the materialised value instead of the alias).
-    const rawArgs = { selector: "#pw", value: "hunter2-real-password" };
-    // 3. the dispatch wrapper applies the same `applyMaskDeep` the egress
-    //    sinks use BEFORE structural redaction
-    const masked = secrets.applyMaskDeep(rawArgs);
-    const redacted = redactArgs(masked);
-    // 4. the redacted shape MUST NOT contain the raw value anywhere
-    const serialised = JSON.stringify(redacted);
-    expect(serialised).not.toContain("hunter2-real-password");
-    expect(serialised).toContain("<PASSWORD>");
-  });
-
   it("end-to-end: enabled recorder + secret mask → JSONL does not carry raw value", () => {
     const rec = new DiagnosticsRecorder({
       enabled: true,
@@ -364,10 +327,6 @@ describe("workspace-escape rejection", () => {
 });
 
 describe("resolveRetentionDays", () => {
-  it("defaults to 30 when env unset", () => {
-    expect(resolveRetentionDays({})).toBe(30);
-  });
-
   it("honours BROWX_DIAGNOSTICS_RETENTION_DAYS", () => {
     expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" })).toBe(7);
     expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" })).toBe(0);

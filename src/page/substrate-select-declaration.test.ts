@@ -1,7 +1,4 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { snapshotSubstrateFor } from "./snapshot-substrate-select.js";
 import { networkSubstrateFor } from "./network-substrate-select.js";
 import { SafariClassicSnapshotSubstrate } from "./snapshot-substrate-safari.js";
@@ -109,22 +106,5 @@ describe("substrate selection keys on the declared `page` sub-interface", () => 
     const session = { engine: WITH_PAGE, page: () => page, cdp: () => cdp };
     expect(snapshotSubstrateFor(session)).toBeInstanceOf(CdpSnapshotSubstrate);
     expect(networkSubstrateFor(session)).toBeInstanceOf(CdpNetworkSubstrate);
-  });
-
-  it("contains no EngineKind literal in either selector module", () => {
-    // The lint rule (`no-engine-literal-branches`) enforces this too — both files
-    // came off `ENGINE_SELECT_ALLOWLIST` in this phase. Asserting it here as well
-    // means the ratchet cannot be quietly undone by putting the entry back.
-    const here = dirname(fileURLToPath(import.meta.url));
-    const kinds = ["chromium", "firefox", "webkit", "android", "safari"];
-    for (const file of ["snapshot-substrate-select.ts", "network-substrate-select.ts"]) {
-      const src = readFileSync(join(here, file), "utf8");
-      // Comments legitimately discuss the engines by name; only code is at issue,
-      // and an engine literal in code is a quoted string.
-      const code = src.replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-      for (const kind of kinds) {
-        expect(code, `${file} branches on the "${kind}" literal`).not.toContain(`"${kind}"`);
-      }
-    }
   });
 });

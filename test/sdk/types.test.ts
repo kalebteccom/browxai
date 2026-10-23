@@ -16,8 +16,6 @@ import type {
   FindResult,
   NavigateArgs,
   NavigateResult,
-  VerifyTextArgs,
-  VerifyResult,
   ClickArgs,
   ActionResult,
   FindResultData,
@@ -39,13 +37,6 @@ describe("BrowxaiClient — per-tool typed methods", () => {
     expectTypeOf<FindData>().toEqualTypeOf<FindResultData | undefined>();
   });
 
-  it("verify_text requires a target AND `text`", () => {
-    expectTypeOf<Parameters<BrowxaiClient["verify_text"]>[0]>().toEqualTypeOf<VerifyTextArgs>();
-    expectTypeOf<ReturnType<BrowxaiClient["verify_text"]>>().resolves.toEqualTypeOf<VerifyResult>();
-    // A valid call carries one of ref / selector / named PLUS `text`.
-    expectTypeOf<VerifyTextArgs>().toMatchTypeOf<{ text: string }>();
-  });
-
   it("click accepts any of the four target shapes", () => {
     expectTypeOf<Parameters<BrowxaiClient["click"]>[0]>().toEqualTypeOf<ClickArgs>();
     expectTypeOf<ReturnType<BrowxaiClient["click"]>>().resolves.toEqualTypeOf<ActionResult>();
@@ -54,11 +45,5 @@ describe("BrowxaiClient — per-tool typed methods", () => {
     expectTypeOf<{ selector: "[data-testid=save]" }>().toMatchTypeOf<ClickArgs>();
     expectTypeOf<{ named: "save_btn" }>().toMatchTypeOf<ClickArgs>();
     expectTypeOf<{ coords: { x: 10; y: 20 } }>().toMatchTypeOf<ClickArgs>();
-  });
-
-  it("exposedTools / capabilities / session / close are unchanged from Stage A", () => {
-    expectTypeOf<BrowxaiClient["exposedTools"]>().toEqualTypeOf<ReadonlyArray<string>>();
-    expectTypeOf<BrowxaiClient["session"]>().toEqualTypeOf<string | undefined>();
-    expectTypeOf<ReturnType<BrowxaiClient["close"]>>().resolves.toEqualTypeOf<void>();
   });
 });

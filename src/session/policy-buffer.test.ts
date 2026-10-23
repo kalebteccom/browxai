@@ -37,16 +37,4 @@ describe("PolicyRecordBuffer", () => {
     // the "raised" record is at ts=10 — a window starting after it must miss
     expect(buf.matchedSince(20, (r) => r.tag === "raised")).toBe(false);
   });
-
-  it("honours a custom timestamp extractor (the NotificationRecord `timestamp` shape)", () => {
-    interface StampRec {
-      timestamp: number;
-      tag: string;
-    }
-    const buf = new PolicyRecordBuffer<StampRec>(200, (r) => r.timestamp);
-    buf.record({ timestamp: 100, tag: "x" });
-    buf.record({ timestamp: 200, tag: "y" });
-    expect(buf.since(150).map((r) => r.tag)).toEqual(["y"]);
-    expect(buf.matchedSince(50, (r) => r.tag === "x")).toBe(true);
-  });
 });

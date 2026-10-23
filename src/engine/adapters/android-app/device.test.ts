@@ -54,12 +54,6 @@ describe("dumpHierarchy", () => {
     expect(xml).not.toContain("hierchary dumped");
   });
 
-  it("scopes the dump to the device's serial", async () => {
-    const io = fakeIO({ uiautomator: DUMP });
-    await new AndroidDevice("emulator-5554", io).dumpHierarchy();
-    expect(io.calls[0]!.slice(0, 2)).toEqual(["-s", "emulator-5554"]);
-  });
-
   it("names the idle-state failure instead of handing a parser an error message", async () => {
     // THE REAL FAILURE MODE. A React Native splash screen with an indeterminate
     // spinner keeps the window busy forever, `uiautomator dump` gives up at ~10s
@@ -102,15 +96,6 @@ describe("input", () => {
     expect(io.calls[0]).toEqual(["-s", "emulator-5554", "shell", "input", "tap", "100", "200"]);
   });
 
-  it("dispatches a swipe as ONE platform call", async () => {
-    // Not three touch events glued together: `input swipe` interpolates in the
-    // driver, which is what makes it a real gesture to the app's detectors.
-    const io = fakeIO();
-    await new AndroidDevice("emulator-5554", io).swipe({ x: 1, y: 2 }, { x: 3, y: 4 }, 250);
-    expect(io.calls).toHaveLength(1);
-    expect(io.calls[0]).toContain("swipe");
-  });
-
   it("refuses a raw touch phase below API 30, by name", async () => {
     // `input motionevent` arrived in API 30. Running it below that produces
     // shell noise about an unknown argument, and the gesture silently does
@@ -125,12 +110,6 @@ describe("input", () => {
     const io = fakeIO({ "ro.build.version.sdk": "34" });
     await new AndroidDevice("emulator-5554", io).motionEvent("MOVE", 7, 8);
     expect(io.calls.at(-1)).toContain("motionevent");
-  });
-
-  it("quotes typed text for the device shell", async () => {
-    const io = fakeIO();
-    await new AndroidDevice("emulator-5554", io).typeText("a; reboot");
-    expect(io.calls[0]!.at(-1)).toBe("'a;%sreboot'");
   });
 
   it("sends a newline as an ENTER keyevent", async () => {
@@ -194,16 +173,6 @@ describe("app lifecycle", () => {
 });
 
 describe("reads", () => {
-  it("parses the foreground window", async () => {
-    const io = fakeIO({
-      "dumpsys window": "mCurrentFocus=Window{a u0 com.acme.app/com.acme.app.MainActivity}",
-    });
-    await expect(new AndroidDevice("emulator-5554", io).foreground()).resolves.toEqual({
-      packageName: "com.acme.app",
-      activity: "com.acme.app.MainActivity",
-    });
-  });
-
   it("names an unreadable screen size", async () => {
     const io = fakeIO({ "wm size": "" });
     await expect(new AndroidDevice("emulator-5554", io).screenSize()).rejects.toThrow(

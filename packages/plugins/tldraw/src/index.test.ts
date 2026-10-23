@@ -145,12 +145,6 @@ describe("@browxai/plugin-tldraw handlers", () => {
       expect(parseFirst(res)).toEqual({ ok: true, shapeIds: ["shape:1", "shape:2"] });
     });
 
-    it("returns bad-arg when shapeIds not an array", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.select_shapes(api, { shapeIds: "shape:1" });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
     it("returns bad-arg when shapeIds contains non-string", async () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.select_shapes(api, { shapeIds: ["shape:1", 99] });

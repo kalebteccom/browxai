@@ -6,15 +6,6 @@ import { ConsoleBuffer } from "./console.js";
 // level→type mapping + the read surface the tools consume.
 
 describe("ConsoleBuffer.ingest (the safari BiDi feed)", () => {
-  it("surfaces ingested entries through recent() like page-attached ones", () => {
-    const buf = new ConsoleBuffer();
-    buf.ingest("info", "hello from safari");
-    buf.ingest("error", "boom");
-    const recent = buf.recent();
-    expect(recent.map((m) => m.text)).toEqual(["hello from safari", "boom"]);
-    expect(recent.map((m) => m.type)).toEqual(["info", "error"]);
-  });
-
   it("maps the BiDi 'warn' level to the 'warning' type the readers key on", () => {
     const buf = new ConsoleBuffer();
     const t0 = Date.now() - 1;

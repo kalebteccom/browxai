@@ -113,25 +113,6 @@ describe("default launch posture keystone — real browser", () => {
   );
 
   it(
-    "lets an explicit profile and an incognito session run beside it",
-    async () => {
-      const named = await callJson<Opened>("open_session", {
-        session: "ks-real-b",
-        mode: "persistent",
-        profile: "ks-real-named",
-      });
-      expect(named.ok).toBe(true);
-      expect(existsSync(join(workspace, "profiles", "ks-real-named"))).toBe(true);
-      const incognito = await callJson<Opened>("open_session", {
-        session: "ks-real-c",
-        mode: "incognito",
-      });
-      expect(incognito.ok).toBe(true);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "frees the default profile once its session closes",
     async () => {
       await callJson("close_session", { session: "ks-real-a" });

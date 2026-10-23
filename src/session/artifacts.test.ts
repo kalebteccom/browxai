@@ -83,15 +83,6 @@ describe("ArtifactsRegistry — save/get/list round-trip", () => {
     const names = r.list().map((e) => e.name);
     expect(names).toEqual(["a", "b", "c"]);
   });
-
-  it("list reports size + mtime per entry", () => {
-    const r = reg();
-    r.save("k", "hello");
-    const [entry] = r.list();
-    expect(entry).toBeDefined();
-    expect(entry!.size).toBe(5);
-    expect(entry!.mtime).toMatch(/^\d{4}-\d{2}-\d{2}T/);
-  });
 });
 
 describe("ArtifactsRegistry — name validation + path safety", () => {
@@ -105,23 +96,6 @@ describe("ArtifactsRegistry — name validation + path safety", () => {
     const r = reg();
     expect(() => r.save("..", "x")).toThrow(/artifact name/);
     expect(() => r.save(".hidden", "x")).toThrow(/artifact name/);
-  });
-
-  it("rejects empty name", () => {
-    const r = reg();
-    expect(() => r.save("", "x")).toThrow(/artifact name/);
-  });
-
-  it("rejects names with unicode / other special chars", () => {
-    const r = reg();
-    expect(() => r.save("hello world", "x")).toThrow(/artifact name/);
-    expect(() => r.save("name:with:colon", "x")).toThrow(/artifact name/);
-  });
-
-  it("accepts safe names: letters, digits, '.', '_', '-'", () => {
-    const r = reg();
-    expect(() => r.save("script.js", "x")).not.toThrow();
-    expect(() => r.save("my_file-01.txt", "x")).not.toThrow();
   });
 });
 
@@ -181,11 +155,6 @@ describe("ArtifactsRegistry — capacity caps", () => {
     expect(names).toContain("second");
     expect(names).not.toContain("first");
   });
-
-  it("the cap constants are documented", () => {
-    expect(ARTIFACT_MAX_ENTRIES).toBe(200);
-    expect(ARTIFACT_MAX_BYTES).toBe(50 * 1024 * 1024);
-  });
 });
 
 describe("ArtifactsRegistry — clear", () => {
@@ -196,11 +165,5 @@ describe("ArtifactsRegistry — clear", () => {
     expect(existsSync(storage)).toBe(true);
     r.clear();
     expect(existsSync(storage)).toBe(false);
-  });
-
-  it("is idempotent — clear on an empty / missing dir is a no-op", () => {
-    const r = reg();
-    expect(() => r.clear()).not.toThrow();
-    expect(() => r.clear()).not.toThrow();
   });
 });

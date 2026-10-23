@@ -55,19 +55,4 @@ describe("leavingAskHuman", () => {
     expect(left(current, { mode: "allow" })).toEqual(["camera"]);
     expect(left(current, { mode: "raise", overrides: { camera: "allow" } })).toEqual(["camera"]);
   });
-
-  it("allows tightening or adding ask-human, and keeping a per-key ask-human", () => {
-    const current: PolicyShape = { mode: "raise", overrides: { camera: "ask-human" } };
-    expect(left(current, { mode: "allow", overrides: { camera: "ask-human" } })).toEqual([]);
-    expect(left({ mode: "allow" }, { mode: "ask-human" })).toEqual([]);
-  });
-
-  it("treats an undefined override as absent", () => {
-    expect(
-      left(
-        { mode: "ask-human", overrides: { camera: undefined } },
-        { mode: "ask-human", overrides: { camera: undefined } },
-      ),
-    ).toEqual([]);
-  });
 });

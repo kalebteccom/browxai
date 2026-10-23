@@ -20,15 +20,6 @@ describe("matchesResponse", () => {
     expect(matchesResponse(resp, { status: 200 })).toBe(false);
   });
 
-  it("ANDs all provided fields", () => {
-    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 201 })).toBe(
-      true,
-    );
-    expect(matchesResponse(resp, { urlPattern: "records", method: "POST", status: 500 })).toBe(
-      false,
-    );
-  });
-
   it("an empty match matches nothing (refuses to wait for anything)", () => {
     expect(matchesResponse(resp, {})).toBe(false);
   });

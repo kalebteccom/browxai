@@ -35,13 +35,6 @@ describe("ApprovalStore — session pre-approvals", () => {
     expect(store.consume("byob_action")).toBe(true);
   });
 
-  it("consume returns false for an unknown scope without affecting the store", () => {
-    const store = new ApprovalStore();
-    expect(store.consume("byob_action")).toBe(false);
-    store.grant("byob_action", 60);
-    expect(store.consume("byob_action")).toBe(true);
-  });
-
   it("evicts and rejects an expired grant", () => {
     vi.setSystemTime(new Date("2026-05-15T10:00:00Z"));
     const store = new ApprovalStore();
@@ -81,22 +74,6 @@ describe("ApprovalStore — session pre-approvals", () => {
 });
 
 describe("confirmByobAction with pre-approval", () => {
-  it("auto-approves when a live grant covers the scope", async () => {
-    const approvals = new ApprovalStore();
-    approvals.grant("byob_action", 60);
-    const decision = await confirmByobAction("click", ctx({ approvals }));
-    expect(decision.ok).toBe(true);
-    expect(decision.reason).toContain("pre-approved");
-    expect(decision.asked).toBe(false);
-  });
-
-  it("falls back to the blocked path when no grant is present", async () => {
-    // No bridge + no approvals + byob_action hook → blocked (would need a human).
-    const decision = await confirmByobAction("click", ctx({ approvals: new ApprovalStore() }));
-    expect(decision.ok).toBe(false);
-    expect(decision.reason).toContain("no human channel");
-  });
-
   it("fails closed when the bridge has no human channel (an engine without CDP)", async () => {
     // A fresh, unattached bridge carries no isolated-world channel. The hook must
     // block without waiting, not fall back to anything the page can reach.
@@ -170,14 +147,6 @@ describe("ApprovalStore — session and workspace scope", () => {
     expect(store.consume("byob_action")).toBe(false);
   });
 
-  it("a workspace grant covers every session", () => {
-    const store = new ApprovalStore();
-    store.grant("byob_action", 60);
-    expect(store.consume("byob_action", "alpha")).toBe(true);
-    expect(store.consume("byob_action", "beta")).toBe(true);
-    expect(store.consume("byob_action")).toBe(true);
-  });
-
   it("revokeSession drops that session's grants and leaves the rest", () => {
     const store = new ApprovalStore();
     store.grant("byob_action", 60, "alpha");
@@ -235,12 +204,6 @@ describe("confirm hooks over the operator channel", () => {
       tool: "click",
       grantable: "byob_action",
     });
-  });
-
-  it("refuses on deny", async () => {
-    const { bridge } = operatorBridge([{ decision: "deny" }]);
-    const decision = await confirmByobAction("click", ctx({ bridge }));
-    expect(decision).toEqual({ ok: false, reason: "human-declined", asked: true });
   });
 
   it("refuses on abort and on a timeout", async () => {

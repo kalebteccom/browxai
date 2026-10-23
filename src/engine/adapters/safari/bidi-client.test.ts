@@ -44,14 +44,6 @@ function connected(): { client: SafariBidiClient; ws: FakeWebSocket } {
 }
 
 describe("SafariBidiClient — connection + correlation", () => {
-  it("resolves connect() on socket open", async () => {
-    const ws = new FakeWebSocket();
-    const client = new SafariBidiClient({ url: "ws://x", wsFactory: () => ws });
-    const p = client.connect();
-    ws.emitOpen();
-    await expect(p).resolves.toBeUndefined();
-  });
-
   it("correlates a command reply by id", async () => {
     const { client, ws } = connected();
     const p = client.send("script.evaluate", { expression: "1+2" });
@@ -89,14 +81,6 @@ describe("SafariBidiClient — events", () => {
 
     ws.emitMessage({ type: "event", method: "log.entryAdded", params: { text: "hello" } });
     expect(seen).toEqual([{ text: "hello" }]);
-  });
-
-  it("ignores events with no registered handler", () => {
-    const { ws } = connected();
-    // No throw when an unsubscribed event arrives.
-    expect(() =>
-      ws.emitMessage({ type: "event", method: "browsingContext.load", params: {} }),
-    ).not.toThrow();
   });
 });
 

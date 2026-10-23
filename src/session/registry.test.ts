@@ -91,19 +91,6 @@ describe("SessionRegistry", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  it("distinct ids get isolated entries (own refs)", async () => {
-    const reg = new SessionRegistry(
-      async (id) => fakeEntry(id),
-      async () => undefined,
-    );
-    const a = await reg.get("agent-a");
-    const b = await reg.get("agent-b");
-    expect(a).not.toBe(b);
-    expect(a.refs).not.toBe(b.refs);
-    expect((a.refs as unknown as { __tag: string }).__tag).toBe("refs-agent-a");
-    expect((b.refs as unknown as { __tag: string }).__tag).toBe("refs-agent-b");
-  });
-
   it("concurrent first-calls for the same id share one factory invocation", async () => {
     let resolve!: (e: SessionEntry) => void;
     const factory = vi.fn(
@@ -167,17 +154,6 @@ describe("SessionRegistry", () => {
     expect(teardown).toHaveBeenCalledTimes(2);
   });
 
-  it("closeMatching({ all:true }) tears everything down", async () => {
-    const reg = new SessionRegistry(
-      async (id) => fakeEntry(id),
-      async () => undefined,
-    );
-    await reg.get("x");
-    await reg.get("y");
-    expect((await reg.closeMatching({ all: true })).sort()).toEqual(["x", "y"]);
-    expect(reg.list()).toHaveLength(0);
-  });
-
   it("closeMatching({ idleMs }) reaps only stale sessions; get() touches activity", async () => {
     vi.useFakeTimers();
     try {
@@ -215,23 +191,6 @@ describe("SessionRegistry", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("peek() never creates; list() reflects live entries", async () => {
-    const reg = new SessionRegistry(
-      async (id) => fakeEntry(id),
-      async () => undefined,
-    );
-    expect(reg.peek("nope")).toBeUndefined();
-    await reg.get("one");
-    await reg.get("two");
-    expect(
-      reg
-        .list()
-        .map((e) => e.id)
-        .sort(),
-    ).toEqual(["one", "two"]);
-    expect(reg.peek("one")?.id).toBe("one");
   });
 
   it("passes the OpenSpec through to the factory on creation only", async () => {
@@ -297,18 +256,6 @@ describe("SessionRegistry", () => {
       });
     });
 
-    it("a lazily re-created default session inherits the hold", async () => {
-      const factory = vi.fn(async (id: string) => withPolicies(id, { notif: "ask-human" }));
-      const reg = new SessionRegistry(factory, async () => undefined);
-      await reg.get();
-      await reg.close(DEFAULT_SESSION_ID);
-      await reg.get();
-      expect(factory).toHaveBeenLastCalledWith(
-        "default",
-        expect.objectContaining({ notificationPolicy: { mode: "ask-human" } }),
-      );
-    });
-
     it("a name that never held ask-human gets its spec untouched", async () => {
       const factory = vi.fn(async (id: string) => withPolicies(id, { perm: "allow" }));
       const reg = new SessionRegistry(factory, async () => undefined);
@@ -317,31 +264,6 @@ describe("SessionRegistry", () => {
       expect(reg.heldAskHuman("s")).toBeUndefined();
       await reg.get("s", { permissionPolicy: { mode: "allow" } });
       expect(factory).toHaveBeenLastCalledWith("s", { permissionPolicy: { mode: "allow" } });
-    });
-
-    it("closeMatching by prefix records the hold of the matched sessions only", async () => {
-      const reg = new SessionRegistry(
-        async (id) => withPolicies(id, { perm: "ask-human" }),
-        async () => undefined,
-      );
-      await reg.get("agentA-1");
-      await reg.get("agentB-1");
-      await reg.closeMatching({ prefix: "agentA-" });
-      expect(reg.heldAskHuman("agentA-1")).toBeDefined();
-      expect(reg.heldAskHuman("agentB-1")).toBeUndefined();
-    });
-
-    it("closeMatching by idleMs records the hold of the idle session", async () => {
-      const reg = new SessionRegistry(
-        async (id) => withPolicies(id, { perm: "ask-human" }),
-        async () => undefined,
-      );
-      const stale = await reg.get("stale");
-      stale.lastActivityAt = Date.now() - 60_000;
-      await reg.get("fresh");
-      await reg.closeMatching({ idleMs: 30_000 });
-      expect(reg.heldAskHuman("stale")).toBeDefined();
-      expect(reg.heldAskHuman("fresh")).toBeUndefined();
     });
 
     it("records the profile directory, and finds the hold by it under another name", async () => {

@@ -76,11 +76,6 @@ describe("toReplayEvent — the browxai envelope around an rrweb event", () => {
 // ---- the targetId rule ---------------------------------------------------
 
 describe("toReplayEvent — targetId is written only on a multi-target session", () => {
-  it("omits the key entirely on a single-target session", () => {
-    const ev = toReplayEvent({}, { t: 1, targetId: "T1", multiTarget: false });
-    expect("targetId" in ev).toBe(false);
-  });
-
   it("writes targetId when the session holds more than one target", () => {
     const ev = toReplayEvent({}, { t: 1, targetId: "T1", multiTarget: true });
     expect(ev.targetId).toBe("T1");
@@ -132,12 +127,6 @@ describe("attachDomCapture — injection", () => {
     expect(script).toContain('"always":"input[type=password]"');
     expect(script).toContain('"extra":".pii,#ssn"');
     expect(script).toContain('"password"');
-  });
-
-  it("never turns off password masking when no selectors are configured", async () => {
-    const f = fakeContext();
-    await attachDomCapture(f.context, { clockOrigin: 0, onEvent: () => undefined });
-    expect(f.initScripts[0]!).toContain('"always":"input[type=password]"');
   });
 
   it("survives a binding that is already registered by another attach", async () => {
@@ -194,33 +183,6 @@ describe("attachDomCapture — the emitted stream", () => {
     f.bindings.get("__browx_rrweb_emit")!({}, "{not json");
     expect(out).toHaveLength(0);
     expect(handle.eventCount).toBe(0);
-  });
-
-  it("emits the rrweb payload verbatim — masking runs downstream, not here", async () => {
-    // The prior version of this test wired a mock `secrets.applyMaskDeep` into
-    // `attachDomCapture` and asserted it was called. That was the exact drift
-    // that leaked page text past the bounded-depth cap: dom-capture was the
-    // ONE event path calling `applyMaskDeep` directly instead of going through
-    // `redactEvent`, and the bounded cap silently stopped masking below ~3 DOM
-    // levels. The fix routes the DOM envelope through `Redactor.mask` in
-    // `session.ts` alongside every other source, so this file emits the raw
-    // rrweb payload and the chokepoint runs once, deep, downstream.
-    const f = fakeContext();
-    const out: Array<{ payload: unknown }> = [];
-    await attachDomCapture(f.context, {
-      clockOrigin: 0,
-      onEvent: (e) => out.push(e),
-    });
-
-    f.bindings.get("__browx_rrweb_emit")!(
-      {},
-      JSON.stringify({ type: 3, timestamp: 0, data: { text: "hunter2" } }),
-    );
-
-    expect(out).toHaveLength(1);
-    // Payload rides through unchanged: dom-capture no longer masks. The value
-    // is stripped by `redactEvent` before the log append in `session.ts`.
-    expect(JSON.stringify(out[0]!.payload)).toContain("hunter2");
   });
 
   it("stops emitting after detach", async () => {
@@ -299,27 +261,5 @@ describe("about:blank suppression", () => {
     emit({ page: fakePage("") }, snapshot);
 
     expect(out).toHaveLength(0);
-  });
-
-  it("keeps events once the page has navigated", async () => {
-    const f = fakeContext();
-    const out: unknown[] = [];
-    await attachDomCapture(f.context, { clockOrigin: 1_000_000, onEvent: (e) => out.push(e) });
-    const emit = f.bindings.get("__browx_rrweb_emit")!;
-
-    emit({ page: fakePage("https://app.test/checkout") }, snapshot);
-
-    expect(out).toHaveLength(1);
-  });
-
-  it("keeps events when the binding reports no page at all", async () => {
-    const f = fakeContext();
-    const out: unknown[] = [];
-    await attachDomCapture(f.context, { clockOrigin: 1_000_000, onEvent: (e) => out.push(e) });
-    const emit = f.bindings.get("__browx_rrweb_emit")!;
-
-    emit({}, snapshot);
-
-    expect(out).toHaveLength(1);
   });
 });

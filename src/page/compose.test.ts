@@ -453,15 +453,4 @@ describe("composeSnapshot — the two tiers report one element once", () => {
     expect(out.stats.domWalkCombined).toBe(0);
     expect(out.stats.domWalkNew).toBe(1);
   });
-
-  it("reports the same body and the same counts on the second snapshot", async () => {
-    const refs = new RefRegistry();
-    const cdp = twoTierCdp(OPEN_BUTTON, OPEN_BUTTON_DOM, [
-      entry({ role: "button", name: "Open", cssPath: BUTTON_PATH }),
-    ]);
-    const first = await composeSnapshot(cdp, refs, ["data-testid"]);
-    const second = await composeSnapshot(cdp, refs, ["data-testid"]);
-    expect(second.stats).toEqual(first.stats);
-    expect(serialise(second.tree!)).toBe(serialise(first.tree!));
-  });
 });

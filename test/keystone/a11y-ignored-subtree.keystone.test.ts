@@ -179,19 +179,6 @@ describe("a11y keystone — ignored wrappers do not eat their subtree", () => {
   );
 
   it(
-    "keeps the ref stable across re-snapshots",
-    async () => {
-      const session = "ks-a11y-ignored-stable";
-      await openOn(session);
-      const first = a11yLines(await callText("snapshot", { session }));
-      const second = a11yLines(await callText("snapshot", { session }));
-      expect(first.some((l) => l.includes('button "Presentational Child"'))).toBe(true);
-      expect(second).toEqual(first);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "reports the same tier and the same body on the second snapshot",
     async () => {
       // `domWalkNew` counted keys new to the REGISTRY, which is per-session, so

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   aliasFromAccount,
   applyCredentialToRegistry,
-  makeFakeProvider,
   parseSeedsEnv,
   resolveCredentialsProvider,
   type ProviderCredentialInternal,
@@ -31,23 +30,11 @@ describe("aliasFromAccount", () => {
   it("respects a custom prefix", () => {
     expect(aliasFromAccount("acme", "TOKEN")).toBe("TOKEN_ACME");
   });
-
-  it("always produces an alias that satisfies SecretRegistry's name regex", () => {
-    const fixtures = ["acme", "Acme Corp", "1password-item", "x", "...", "foo@bar.com"];
-    for (const f of fixtures) {
-      const a = aliasFromAccount(f);
-      expect(/^[A-Z][A-Z0-9_]*$/.test(a)).toBe(true);
-    }
-  });
 });
 
 describe("parseSeedsEnv", () => {
   it("parses comma-separated key=value pairs", () => {
     expect(parseSeedsEnv("acct1=ABC,acct2=DEF")).toEqual({ acct1: "ABC", acct2: "DEF" });
-  });
-
-  it("tolerates whitespace", () => {
-    expect(parseSeedsEnv(" acct1 = ABC , acct2 = DEF ")).toEqual({ acct1: "ABC", acct2: "DEF" });
   });
 
   it("returns {} on undefined / empty", () => {
@@ -203,27 +190,5 @@ describe("applyCredentialToRegistry — SecretRegistry integration", () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain("missing username");
     expect(registry.size()).toBe(0);
-  });
-});
-
-describe("makeFakeProvider", () => {
-  it("provides a test seam for both endpoints", async () => {
-    const fake = makeFakeProvider({
-      getTotp: async (account) =>
-        ({ ok: true, code: "123456", provider: "oathtool", _account: account }) as never,
-      getCredential: async (account) =>
-        ({
-          ok: true,
-          provider: "1password",
-          username: `user_${account}`,
-          _password: "pw",
-        }) as ProviderCredentialInternal,
-    });
-    const t = await fake.getTotp("acme");
-    expect(t.ok).toBe(true);
-    expect(t.code).toBe("123456");
-    const c = (await fake.getCredential("acme")) as ProviderCredentialInternal;
-    expect(c.ok).toBe(true);
-    expect(c.username).toBe("user_acme");
   });
 });

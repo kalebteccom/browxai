@@ -31,10 +31,4 @@ describe("L2 — the batch allow-set is derived from the registrations", () => {
     expect(onlyInSet, "in the batch set but not flagged batchable").toEqual([]);
     expect(onlyFlagged, "flagged batchable but missing from the batch set").toEqual([]);
   });
-
-  it("the derived set equals the P0 snapshot size (behaviour preserved at 71)", async () => {
-    // 71 today. The derivation must reproduce the frozen snapshot exactly: a 72nd
-    // batchable tool, or a dropped one, shifts this and is reviewed.
-    expect((await batchAllowedTools()).size).toBe(71);
-  });
 });

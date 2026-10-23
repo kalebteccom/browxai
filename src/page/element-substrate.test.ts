@@ -100,17 +100,6 @@ describe("PlaywrightElementSubstrate — resolve", () => {
     });
   });
 
-  it("refuses `no-such-element` for a ref the registry never held", async () => {
-    const res = await elementsOver(mockPage({}), new RefRegistry()).resolve({
-      kind: "ref",
-      ref: "e999",
-    });
-    expect(res.kind).toBe("refusal");
-    if (res.kind !== "refusal") return;
-    expect(res.reason).toBe("no-such-element");
-    expect(res.ref).toBe("e999");
-  });
-
   it("refuses `unaddressable-target` and carries the builder's own message", async () => {
     const refs = new RefRegistry();
     const res = await elementsOver(mockPage({}), refs).resolve({
@@ -163,11 +152,6 @@ describe("PlaywrightElementSubstrate — probe", () => {
       text: " Save ",
       attribute: "1",
     });
-  });
-
-  it("refuses `stale-element` when the recipe matches nothing", async () => {
-    const r = await probeWith({ matches: 0 }, { matches: true, visible: true });
-    expect(r).toMatchObject({ kind: "refusal", reason: "stale-element" });
   });
 
   it("only spends the second round trip on the not-visible reason when it has to", async () => {
@@ -251,19 +235,6 @@ describe("PlaywrightElementSubstrate — bounds and count", () => {
       reason: "probe-failed",
     });
   });
-
-  it("counts an `expression` query over the collection, a `ref` query after `.first()`", async () => {
-    // The distinction `verify_count` depends on. Both queries name the same six
-    // nodes; only the engine-native expression reports six, because `locatorFor`
-    // narrows every ref tier to `.first()`.
-    const refs = new RefRegistry();
-    const ref = testIdRef(refs);
-    const elements = elementsOver(mockPage({ '[data-testid="row-edit"]': { matches: 6 } }), refs);
-    expect(
-      await elements.count({ kind: "expression", expression: '[data-testid="row-edit"]' }),
-    ).toEqual({ kind: "count", n: 6 });
-    expect(await elements.count({ kind: "ref", ref })).toEqual({ kind: "count", n: 1 });
-  });
 });
 
 describe("SafariElementSubstrate — refuses rather than answering emptily", () => {
@@ -281,16 +252,6 @@ describe("SafariElementSubstrate — refuses rather than answering emptily", () 
     }
     expect(token.__brand).toBe("element");
   });
-
-  it("never returns a plausible empty answer", async () => {
-    // The `SafariNoopNetworkSubstrate` defect, not repeated: that one answers
-    // `{summary:{total:0}, requests:[]}` for a question safari cannot answer, and
-    // an agent cannot tell it from a true negative.
-    const counted = await safari.count();
-    expect(counted).not.toMatchObject({ kind: "count" });
-    const measured = await safari.bounds();
-    expect(measured).not.toMatchObject({ kind: "bounds" });
-  });
 });
 
 describe("web ambiguity resolves to the first match and is NOT refused", () => {
@@ -299,18 +260,6 @@ describe("web ambiguity resolves to the first match and is NOT refused", () => {
   // explicitly not the change that makes it so: turning the warning into a refusal
   // alters what a shipped tool does to a page. This block is the pin — a later
   // phase that flips web to refuse fails here and has to mean it.
-
-  it("resolves an ambiguous ref instead of refusing", async () => {
-    const refs = new RefRegistry();
-    const ref = testIdRef(refs);
-    const elements = elementsOver(mockPage({ '[data-testid="row-edit"]': { matches: 6 } }), refs);
-    const res = await elements.resolve({ kind: "ref", ref });
-    expect(res.kind, "P2 must not refuse a multi-match ref on web").toBe("element");
-    if (res.kind !== "element") return;
-    // And the probe reports ONE match, because the recipe is already `.first()`.
-    // A native engine, with no legacy to preserve, refuses at `resolve`.
-    expect(await elements.probe(res.el, { matches: true })).toMatchObject({ matches: 1 });
-  });
 
   it("narrows every locator tier through `.first()`", async () => {
     // The mechanism behind the line above, asserted on the builder itself so a

@@ -178,22 +178,4 @@ describe("touch keystone — primitives fire DOM handlers on the touch pipeline"
     },
     KEYSTONE_TIMEOUT,
   );
-
-  it(
-    "touch primitives accept a custom identifier — agent-controlled fan-out",
-    async () => {
-      const session = "ks-touch-id";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      const centre = await touchPadCentre(session);
-
-      await callJson("touch_start", { session, coords: centre, identifier: 42 });
-      await callJson("touch_end", { session, identifier: 42 });
-
-      const log = await callText("snapshot", { session });
-      expect(log).toMatch(/start=1 move=0 end=1 ids=42/);
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
 });

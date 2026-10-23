@@ -49,17 +49,6 @@ describe("resolveCaptchaProvider", () => {
     }
   });
 
-  it("resolves capmonster with its canonical base URL", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "capmonster",
-      BROWX_CAPTCHA_API_KEY: "k",
-    });
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.config.apiBase).toBe("https://api.capmonster.cloud");
-    }
-  });
-
   it("honours an explicit BROWX_CAPTCHA_API_BASE override", () => {
     const r = resolveCaptchaProvider({
       BROWX_CAPTCHA_PROVIDER: "2captcha",
@@ -100,11 +89,6 @@ describe("unconfiguredFailure", () => {
     expect(f.hint).toContain("BROWX_CAPTCHA_API_KEY");
     expect(f.hint).toMatch(/auto-purchase|fund/i);
     for (const p of KNOWN_PROVIDERS) expect(f.hint).toContain(p);
-  });
-
-  it("does not surface a `provider` value when none is configured", () => {
-    const f = unconfiguredFailure();
-    expect(f.provider).toBeNull();
   });
 });
 

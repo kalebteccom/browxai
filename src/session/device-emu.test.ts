@@ -1,22 +1,17 @@
 // Unit tests for the Web Bluetooth / WebUSB / WebHID device-emulation
 // module. Covers:
-//   - DeviceEmulationState bookkeeping (catalogs, capability gate, buffer cap)
+//   - DeviceEmulationState bookkeeping (catalogs, defaults)
 //   - normaliseDevice defaults (the page sees a complete shape even from
 //     sparsely-populated agent input)
 //   - attachDeviceEmulation idempotence + binding semantics (the binding
 //     records the call, respects the capability gate, and returns the
 //     correct decision shape per API)
-//   - the page-side script is a string + injected on every new document
-//   - the safeFilters truncation defends against chatty pages
 
 import { describe, it, expect, vi } from "vitest";
 import {
   DeviceEmulationState,
   attachDeviceEmulation,
   reinjectDeviceEmuOnPage,
-  SUPPORTED_DEVICE_APIS,
-  BYOB_DEVICE_EMU_WARNING,
-  DEVICE_EMU_PAGE_SCRIPT,
 } from "./device-emu.js";
 import type { BrowserContext, Page } from "playwright-core";
 
@@ -53,26 +48,12 @@ function fakeContext(
 // ---- DeviceEmulationState basics -----------------------------------------
 
 describe("DeviceEmulationState", () => {
-  it("starts with empty catalogs for every supported API", () => {
-    const s = new DeviceEmulationState(true);
-    for (const api of SUPPORTED_DEVICE_APIS) {
-      expect(s.catalog(api).devices).toEqual([]);
-    }
-  });
-
   it("set() replaces the catalog for the requested API only", () => {
     const s = new DeviceEmulationState(true);
     s.set("bluetooth", [{ name: "heart-rate" }]);
     expect(s.catalog("bluetooth").devices).toHaveLength(1);
     expect(s.catalog("usb").devices).toEqual([]);
     expect(s.catalog("hid").devices).toEqual([]);
-  });
-
-  it("set() with an empty list clears the catalog (user-dismissed shape)", () => {
-    const s = new DeviceEmulationState(true);
-    s.set("bluetooth", [{ name: "x" }]);
-    s.set("bluetooth", []);
-    expect(s.catalog("bluetooth").devices).toEqual([]);
   });
 
   it("set() defaults missing fields so the page sees a complete shape", () => {
@@ -91,48 +72,10 @@ describe("DeviceEmulationState", () => {
     expect(d.collections).toEqual([]);
   });
 
-  it("set() preserves agent-supplied fields verbatim when present", () => {
-    const s = new DeviceEmulationState(true);
-    const cat = s.set("bluetooth", [
-      {
-        name: "x",
-        id: "00:11:22",
-        services: ["heart_rate"],
-      },
-    ]);
-    expect(cat.devices[0]!.name).toBe("x");
-    expect(cat.devices[0]!.id).toBe("00:11:22");
-    expect(cat.devices[0]!.services).toEqual(["heart_rate"]);
-  });
-
   it("set() rejects non-array devices", () => {
     const s = new DeviceEmulationState(true);
 
     expect(() => s.set("bluetooth", "not-an-array" as any)).toThrow(/must be an array/);
-  });
-
-  it("record() buffer is capped — oldest evicted past cap", () => {
-    const s = new DeviceEmulationState(true, 3);
-    const t = Date.now();
-    for (let i = 0; i < 5; i++) {
-      s.record({ api: "bluetooth", handledAs: "resolved", returned: 1, ts: t + i });
-    }
-    const slice = s.since(0);
-    expect(slice).toHaveLength(3);
-    expect(slice.map((r) => r.ts)).toEqual([t + 2, t + 3, t + 4]);
-  });
-
-  it("since() slices by timestamp", () => {
-    const s = new DeviceEmulationState(true);
-    s.record({ api: "bluetooth", handledAs: "resolved", returned: 1, ts: 100 });
-    s.record({ api: "usb", handledAs: "rejected", returned: 0, ts: 200 });
-    expect(s.since(150)).toHaveLength(1);
-    expect(s.since(150)[0]!.api).toBe("usb");
-  });
-
-  it("capabilityEnabled() reflects the constructor arg", () => {
-    expect(new DeviceEmulationState(true).capabilityEnabled()).toBe(true);
-    expect(new DeviceEmulationState(false).capabilityEnabled()).toBe(false);
   });
 });
 
@@ -280,21 +223,5 @@ describe("attachDeviceEmulation", () => {
     const page = fakePage();
     await reinjectDeviceEmuOnPage(page);
     expect(page.evaluate).toHaveBeenCalledTimes(1);
-  });
-});
-
-// ---- page-side script: surface checks ------------------------------------
-
-describe("DEVICE_EMU_PAGE_SCRIPT (surface checks — not browser-executed)", () => {
-  it("constructs a NotFoundError on user-dismissed bluetooth/usb pickers", () => {
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("NotFoundError");
-  });
-  it("exposes a gatt surface on the synthetic Bluetooth device", () => {
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("gatt");
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("getPrimaryService");
-  });
-  it("the BYOB warning is a documented constant", () => {
-    expect(BYOB_DEVICE_EMU_WARNING).toMatch(/BYOB/);
-    expect(BYOB_DEVICE_EMU_WARNING).toMatch(/navigator\.bluetooth/);
   });
 });

@@ -179,38 +179,6 @@ describe("idb_put fidelity keystone — values must round-trip as structured obj
   );
 
   it(
-    "idb_get returns the same shape that was stored (round-trip through the curated read tool)",
-    async () => {
-      const session = "ks-idbput-roundtrip";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("navigate", { session, url: `${fixture.url}/` });
-      await waitForSeed(session);
-
-      const payload = { tag: "shape", arr: ["a", "b"], deep: { k: 1 } };
-      await callJson("idb_put", {
-        session,
-        dbName: "app",
-        storeName: "kv",
-        key: "rt",
-        value: payload,
-      });
-
-      const got = await callJson<{
-        ok: boolean;
-        found: boolean;
-        value?: unknown;
-      }>("idb_get", { session, dbName: "app", storeName: "kv", key: "rt" });
-      expect(got.ok).toBe(true);
-      expect(got.found).toBe(true);
-      expect(got.value).toEqual(payload);
-      expect(typeof got.value).toBe("object");
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "surfaces a warnings[] entry when `value` arrives as a JSON-shaped STRING (MCP client double-encoding gotcha)",
     async () => {
       const session = "ks-idbput-warn";

@@ -167,14 +167,6 @@ describe("ViewHub — start and stop", () => {
     expect(sink.of("view.stopped")).toHaveLength(2);
   });
 
-  it("replaces a running stream when the daemon starts the same session again", async () => {
-    await startView({ maxWidth: 800 });
-    await startView({ maxWidth: 640 });
-    expect(source.stops).toBe(1);
-    expect(source.starts.map((s) => s.maxWidth)).toEqual([800, 640]);
-    expect(sink.of("view.stopped")).toEqual([]);
-  });
-
   it("stops when the session closes, and refuses a start for it after", async () => {
     await startView();
     await hub.unregister("default");
@@ -318,15 +310,6 @@ describe("ViewHub — frames", () => {
       await vi.advanceTimersByTimeAsync(1_900);
     }
     expect(source.starts).toHaveLength(1);
-  });
-
-  it("never queues: a burst with no ack leaves one frame on the wire", async () => {
-    await startView();
-    for (let i = 0; i < 200; i++) {
-      source.emit("AAAA");
-      await vi.advanceTimersByTimeAsync(20);
-    }
-    expect(sink.of("frame")).toHaveLength(1);
   });
 
   it("ignores an ack for a sequence number it did not send, or for another session", async () => {

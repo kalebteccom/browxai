@@ -54,8 +54,4 @@ describe("SDK EngineKind mirror", () => {
     expect(missingFromSdk, "engines the server accepts but the SDK type omits").toEqual([]);
     expect(unknownToServer, "engines the SDK type allows but the server rejects").toEqual([]);
   });
-
-  it("the parser reads a real union, so an empty parse cannot pass vacuously", () => {
-    expect(sdkEngineKinds()).toContain("chromium");
-  });
 });

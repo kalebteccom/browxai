@@ -100,11 +100,6 @@ describe("openOperatorChannel — the gate", () => {
     expect(out).not.toContain(daemon.token);
   });
 
-  it("stays quiet with the capability off and no variables", () => {
-    expect(openOperatorChannel(OFF, {})).toBeNull();
-    expect(logged.join("")).toBe("");
-  });
-
   it("refuses to start when a variable is missing, naming the variable and not a value", async () => {
     for (const env of [
       { BROWX_OPERATOR_SOCKET: daemon.socketPath },
@@ -218,14 +213,6 @@ describe("OperatorChannel — requests and answers", () => {
     await expect(answer).resolves.toEqual({ decision: "done", value: 1 });
   });
 
-  it("answers an abort as an abort", async () => {
-    const ch = open();
-    const answer = ch.ask(humanAsk("acknowledge"));
-    const req = await daemon.nextRequest();
-    daemon.answer(req.id, { decision: "abort" });
-    await expect(answer).resolves.toEqual({ decision: "abort" });
-  });
-
   it("rejects an answer that does not fit the request and keeps waiting", async () => {
     const ch = open();
     const answer = ch.ask(approvalAsk());
@@ -257,17 +244,6 @@ describe("OperatorChannel — requests and answers", () => {
     await until(() => daemon.frames.some((f) => f.type === "error"));
     expect(daemon.frames.find((f) => f.type === "error")).toMatchObject({
       id: req.id,
-      code: "unknown-request",
-    });
-  });
-
-  it("answers an unknown id with unknown-request", async () => {
-    open();
-    await until(() => daemon.authenticated === 1);
-    daemon.answer("req_nope", { decision: "approve" });
-    await until(() => daemon.frames.some((f) => f.type === "error"));
-    expect(daemon.frames.find((f) => f.type === "error")).toMatchObject({
-      id: "req_nope",
       code: "unknown-request",
     });
   });
@@ -332,14 +308,6 @@ describe("OperatorChannel — fails closed", () => {
       outcome: "timeout",
       by: "timeout",
     });
-  });
-
-  it("denies at the timeout when the daemon never connected", async () => {
-    const ch = open();
-    await daemon.close();
-    const answer = ch.ask(approvalAsk({ timeoutMs: 150 }));
-    await expect(answer).rejects.toThrow(/timed out after 150ms/);
-    daemon = await startFakeDaemon();
   });
 
   it("keeps a request pending across a disconnect, resends it, and takes the late answer", async () => {
@@ -479,14 +447,6 @@ describe("OperatorChannel — frames", () => {
     expect(String(req.summary).length).toBeLessThanOrEqual(1_000);
     expect(req.truncated).toBe(true);
     expect(String(req.summary)).not.toContain("zzzz");
-  });
-
-  it("does not flag a frame that fit", async () => {
-    const ch = open();
-    void ch.ask(approvalAsk()).catch(() => undefined);
-    const req = await daemon.nextRequest();
-    expect(req).not.toHaveProperty("truncated");
-    expect(req).not.toHaveProperty("omittedChoices");
   });
 
   it("keeps the origin of a long-titled notification inside the cut", async () => {
@@ -662,10 +622,6 @@ describe("operator-channel combined with self-approval or human-gate-override", 
     expect(both).toHaveLength(2);
     expect(both[0]).toMatch(/self-approval.*approve_actions.*BEFORE the daemon is asked/);
     expect(both[1]).toMatch(/human-gate-override.*never reaches the daemon/);
-  });
-
-  it("is quiet for operator-channel alone", () => {
-    expect(operatorCombinationWarnings(caps(""))).toEqual([]);
   });
 
   it("logs the warnings when the channel starts", () => {

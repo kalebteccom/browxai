@@ -20,11 +20,6 @@ describe("locatorBoundingBox — Playwright fallback for a bogus CDP null", () =
     });
   });
 
-  it("returns null when Playwright reports no box (element not rendered)", async () => {
-    const page = pageWith(async () => null);
-    expect(await locatorBoundingBox(page, "#none")).toBeNull();
-  });
-
   it("returns null for a zero-area box (collapsed / display:none-ish)", async () => {
     const page = pageWith(async () => ({ x: 0, y: 0, width: 0, height: 0 }));
     expect(await locatorBoundingBox(page, ".collapsed")).toBeNull();

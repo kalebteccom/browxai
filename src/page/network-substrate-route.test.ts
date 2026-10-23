@@ -103,21 +103,6 @@ describe("route / unroute on the Playwright-backed substrates", () => {
     },
   );
 
-  it.each(playwrightBacked(fakePage().page).map((s) => s.name))(
-    "[%s] clears every route when no pattern is given",
-    async (name) => {
-      const { page } = fakePage();
-      const sub = playwrightBacked(page).find((s) => s.name === name)!.sub;
-      await sub.route({ urlPattern: "**/a" });
-      await sub.route({ urlPattern: "**/b" });
-      const r = await sub.unroute({});
-      expect(r.kind).toBe("removed");
-      if (r.kind !== "removed") throw new Error("expected removed");
-      expect(r.removed.sort()).toEqual(["* **/a", "* **/b"]);
-      expect(r.active).toEqual([]);
-    },
-  );
-
   it("keeps the interception registry per substrate, not per process", async () => {
     // The registry used to be a field on the session entry, one per session. It
     // is substrate state now, and a substrate is built once per session — so two

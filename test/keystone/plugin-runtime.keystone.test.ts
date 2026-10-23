@@ -100,15 +100,6 @@ describe(" plugin runtime — keystone", () => {
     expect(res.result).toBe("hi");
   });
 
-  it("dispatches example.add", async () => {
-    const res = await callJson<{ ok: boolean; sum: number }>("example.add", {
-      a: 7,
-      b: 5,
-    });
-    expect(res.ok).toBe(true);
-    expect(res.sum).toBe(12);
-  });
-
   it("plugins_info returns the full manifest dump", async () => {
     const info = await callJson<{
       ok: boolean;

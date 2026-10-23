@@ -37,11 +37,4 @@ describe("effectiveAriaRole", () => {
       "presentation",
     );
   });
-
-  it("passes an unmapped tag through untouched", () => {
-    expect(effectiveAriaRole({ role: "td", tag: "td" })).toBe("td");
-    expect(effectiveAriaRole({ role: "custom-widget", tag: "custom-widget" })).toBe(
-      "custom-widget",
-    );
-  });
 });

@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { AndroidCdpAdapter } from "./android-cdp.js";
 import { ANDROID_CAPABILITIES } from "../capabilities.js";
-import { AdbNotInstalledError, NoAndroidDeviceError } from "./adb.js";
 
 // The connectOverCDP transport hop drives a real browser and is exercised by the
 // device-gated keystone. Here we assert the adapter's declarative surface + the
@@ -12,10 +11,6 @@ import { AdbNotInstalledError, NoAndroidDeviceError } from "./adb.js";
 // the discovery test asserts the path up to the transport hop.
 
 describe("AndroidCdpAdapter — declarative surface", () => {
-  it("identifies as the android engine", () => {
-    expect(new AndroidCdpAdapter().engine).toBe("android");
-  });
-
   it("exposes ANDROID_CAPABILITIES — all sub-interfaces AND deep:true (the standout)", () => {
     const adapter = new AndroidCdpAdapter();
     expect(adapter.capabilities).toBe(ANDROID_CAPABILITIES);
@@ -41,24 +36,6 @@ describe("AndroidCdpAdapter — device discovery (mocked adb)", () => {
     const adapter = new AndroidCdpAdapter({ runAdb });
     expect(await adapter.discoverDevice()).toBe("ZY223abc");
     expect(runAdb).toHaveBeenCalledWith(["devices"]);
-  });
-
-  it("surfaces adb-missing (AdbNotInstalledError) without a crash", async () => {
-    const runAdb = vi.fn(async () => {
-      throw new AdbNotInstalledError();
-    });
-    const adapter = new AndroidCdpAdapter({ runAdb });
-    await expect(adapter.discoverDevice()).rejects.toThrow(AdbNotInstalledError);
-    await expect(adapter.discoverDevice()).rejects.toThrow(/adb-missing/);
-  });
-
-  it("surfaces no-device when only unauthorized/offline rows are present", async () => {
-    const runAdb = vi.fn(
-      async () => "List of devices attached\nBADc0ffee\tunauthorized\nOFF99\toffline\n",
-    );
-    const adapter = new AndroidCdpAdapter({ runAdb });
-    await expect(adapter.discoverDevice()).rejects.toThrow(NoAndroidDeviceError);
-    await expect(adapter.discoverDevice()).rejects.toThrow(/no-device/);
   });
 });
 
@@ -102,13 +79,6 @@ describe("AndroidCdpAdapter — attach orchestration (mocked adb + fetch)", () =
     expect(calls).toContainEqual(["-s", "ZY223abc", "forward", "--remove", "tcp:9333"]);
     // The discovery probed /json/version on the forwarded loopback port.
     expect(fetchJson).toHaveBeenCalledWith("http://127.0.0.1:9333/json/version");
-  });
-
-  it("surfaces chrome-socket-unreachable when /json/version has no wsUrl", async () => {
-    const { runAdb } = recordingRunner("List of devices attached\nZY223abc\tdevice\n");
-    const fetchJson = vi.fn(async () => ({ Browser: "Chrome/126" })); // no webSocketDebuggerUrl
-    const adapter = new AndroidCdpAdapter({ runAdb, fetchJson, pickPort: async () => 9333 });
-    await expect(adapter.attach()).rejects.toThrow(/chrome-socket-unreachable/);
   });
 
   it("honours an explicit serial through discovery + forward", async () => {

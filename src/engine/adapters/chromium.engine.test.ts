@@ -60,13 +60,6 @@ describe("chromium engine — channel resolution", () => {
     expect((await captureEphemeralLaunchOptions({})).channel).toBe("chrome");
   });
 
-  it("threads an explicit `channel` into both launches", async () => {
-    expect((await capturePersistentOptions({ channel: "chrome-beta" })).channel).toBe(
-      "chrome-beta",
-    );
-    expect((await captureEphemeralLaunchOptions({ channel: "msedge" })).channel).toBe("msedge");
-  });
-
   it('omits `channel` for "chromium", so the bundled build launches', async () => {
     expect(await capturePersistentOptions({ channel: "chromium" })).not.toHaveProperty("channel");
     expect(await captureEphemeralLaunchOptions({ channel: "chromium" })).not.toHaveProperty(

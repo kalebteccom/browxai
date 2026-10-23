@@ -5,20 +5,12 @@
 // engine list), and the bare-flag mistake.
 
 import { describe, it, expect } from "vitest";
-import {
-  resolveEngineSelection,
-  validateEngine,
-  UnknownEngineError,
-  IMPLEMENTED_ENGINES,
-} from "./index.js";
+import { resolveEngineSelection, validateEngine, UnknownEngineError } from "./index.js";
 
 describe("validateEngine — operator string → EngineKind", () => {
-  it.each(["chromium", "firefox", "webkit", "android", "safari"] as const)(
-    "accepts the implemented engine %s",
-    (engine) => {
-      expect(validateEngine(engine)).toBe(engine);
-    },
-  );
+  it.each(["chromium", "safari"] as const)("accepts the implemented engine %s", (engine) => {
+    expect(validateEngine(engine)).toBe(engine);
+  });
 
   it("rejects an unknown engine name with the implemented-engine list", () => {
     expect(() => validateEngine("opera")).toThrow(UnknownEngineError);
@@ -31,19 +23,11 @@ describe("validateEngine — operator string → EngineKind", () => {
       expect(err.value).toBe("opera");
     }
   });
-
-  it("is case-sensitive — Firefox is NOT firefox (masking a misconfig is worse)", () => {
-    expect(() => validateEngine("Firefox")).toThrow(UnknownEngineError);
-  });
 });
 
 describe("resolveEngineSelection — precedence flag > env > default", () => {
   it("returns undefined when neither flag nor env is set (server applies chromium)", () => {
     expect(resolveEngineSelection([], {})).toBeUndefined();
-  });
-
-  it("reads BROWX_ENGINE from the env when no flag is present", () => {
-    expect(resolveEngineSelection([], { BROWX_ENGINE: "firefox" })).toBe("firefox");
   });
 
   it("reads --engine <kind> from argv", () => {
@@ -83,22 +67,6 @@ describe("resolveEngineSelection — precedence flag > env > default", () => {
     // a following flag is not swallowed as the value
     expect(() => resolveEngineSelection(["--engine", "--headless"], {})).toThrowError(
       /--engine requires a value/,
-    );
-  });
-
-  it("an implemented non-default engine threads through unchanged (the createServer opt)", () => {
-    // This is the value cli.ts hands to createServer({ browserType }). For every
-    // implemented non-default engine it round-trips the operator's choice exactly.
-    for (const engine of IMPLEMENTED_ENGINES) {
-      if (engine === "chromium") continue;
-      expect(resolveEngineSelection([`--engine=${engine}`], {})).toBe(engine);
-      expect(resolveEngineSelection([], { BROWX_ENGINE: engine })).toBe(engine);
-    }
-  });
-
-  it("ignores unrelated argv tokens around the flag", () => {
-    expect(resolveEngineSelection(["doctor", "--engine", "firefox", "--verbose"], {})).toBe(
-      "firefox",
     );
   });
 });

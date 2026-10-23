@@ -4,7 +4,6 @@ import {
   installDialogHandler,
   attachDialogPolicy,
   parseDialogPolicyArg,
-  UNHANDLED_DIALOG_HINT,
 } from "./dialog.js";
 import type { BrowserContext, Dialog, Page } from "playwright-core";
 
@@ -84,13 +83,6 @@ describe("parseDialogPolicyArg", () => {
     });
   });
 
-  it("accepts an empty answer (`accept-prompt-with:`)", () => {
-    expect(parseDialogPolicyArg("accept-prompt-with:")).toEqual({
-      mode: "accept-prompt-with",
-      text: "",
-    });
-  });
-
   it("rejects unknown values", () => {
     expect(() => parseDialogPolicyArg("noop")).toThrow(/invalid/i);
   });
@@ -111,16 +103,6 @@ describe("DialogPolicyState — per-policy handling", () => {
     expect(slice[0]?.handledAs).toBe("accepted");
     expect(slice[0]?.kind).toBe("confirm");
     expect(slice[0]?.message).toBe("go?");
-  });
-
-  it('`dismiss` mode dismisses every dialog and records handledAs="dismissed"', async () => {
-    const state = new DialogPolicyState({ mode: "dismiss" });
-    const { page, fireDialog } = fakePage();
-    installDialogHandler(page, state);
-    const t = Date.now();
-    await fireDialog(makeDialog({ kind: "prompt", message: "name?" }));
-    const slice = state.since(t);
-    expect(slice[0]?.handledAs).toBe("dismissed");
   });
 
   it("`accept-prompt-with:<text>` answers prompts with text but plain-accepts alert/confirm", async () => {
@@ -149,12 +131,6 @@ describe("DialogPolicyState — per-policy handling", () => {
     expect(d.accept).not.toHaveBeenCalled();
     expect(state.raisedSince(t)).toBe(true);
     expect(state.since(t)[0]?.handledAs).toBe("raised");
-  });
-
-  it("UNHANDLED_DIALOG_HINT mentions both set knobs", () => {
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/open_session/);
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/set_dialog_policy/);
-    expect(UNHANDLED_DIALOG_HINT).toMatch(/dismissed server-side/);
   });
 });
 

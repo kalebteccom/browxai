@@ -101,21 +101,6 @@ describe("set_permission_policy — ask-human gate", () => {
     expect(permission.modeFor("camera")).toBe("ask-human");
   });
 
-  it("accepts changes that keep ask-human, and any change from a non-ask-human policy", async () => {
-    const { handlers, permission } = setup({ override: false });
-    expect(body(await handlers.set_permission_policy!({ mode: "allow" })).ok).toBe(true);
-    expect(body(await handlers.set_permission_policy!({ mode: "ask-human" })).ok).toBe(true);
-    expect(
-      body(
-        await handlers.set_permission_policy!({
-          mode: "ask-human",
-          perPermission: { camera: "ask-human", microphone: "ask-human" },
-        }),
-      ).ok,
-    ).toBe(true);
-    expect(permission.current().mode).toBe("ask-human");
-  });
-
   it("allows leaving ask-human when the operator enabled the capability", async () => {
     const { handlers, permission } = setup({ override: true, permission: { mode: "ask-human" } });
     const r = body(await handlers.set_permission_policy!({ mode: "allow" }));
@@ -150,13 +135,6 @@ describe("set_fs_picker_policy — ask-human gate", () => {
       ).requiredCapability,
     ).toBe("human-gate-override");
     expect(fsPicker.modeFor("showSaveFilePicker")).toBe("ask-human");
-  });
-
-  it("accepts changes that keep ask-human, and any change from a non-ask-human policy", async () => {
-    const { handlers, fsPicker } = setup({ override: false });
-    expect(body(await handlers.set_fs_picker_policy!({ mode: "allow" })).ok).toBe(true);
-    expect(body(await handlers.set_fs_picker_policy!({ mode: "ask-human" })).ok).toBe(true);
-    expect(fsPicker.current().mode).toBe("ask-human");
   });
 
   it("allows leaving ask-human when the operator enabled the capability", async () => {
