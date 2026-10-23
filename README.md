@@ -75,10 +75,14 @@ Chromium's own sandbox still isolates _page_ content the whole time, which is th
 
 ## Install
 
+Needs Node 22 or later.
+
 ```bash
 npm install -g browxai
-npx playwright-core install chromium    # one-time, ~150 MB
+browxai doctor    # checks Node, a browser, the workspace and your config
 ```
+
+browxai launches the Google Chrome already installed on the machine. Without Chrome it falls back to Playwright's bundled Chromium, which you fetch once (about 150 MB) with `npx playwright-core install chromium`. `browxai doctor` fails only when neither exists.
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
@@ -90,7 +94,11 @@ Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 }
 ```
 
-That's it. Your agent now has a browser. For drop-in setup per harness, see [Harness setup](#harness-setup) below.
+No global install? Use `{ "command": "npx", "args": ["-y", "browxai"] }` as the entry instead.
+
+Restart the client, then ask your agent to open a page and describe it. A Chrome window opens (set `BROWX_HEADLESS=1` for none) and the agent works through `navigate`, `snapshot`, `find` and `click`. Tools that need an off-by-default capability, such as `eval_js`, answer with an error that names the capability until you enable it. `BROWX_CAPABILITIES` replaces the default set, so list the defaults too: `read,navigation,action,human,eval`.
+
+For a site that blocks automation behind a challenge, `browxai chrome login` opens the same Chrome profile for you to sign in by hand: see [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/). For drop-in setup per harness, see [Harness setup](#harness-setup) below.
 
 ## SDK (programmatic surface)
 

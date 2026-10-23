@@ -27,10 +27,10 @@ Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
 
 ## What is BYOB?
 
-Bring your own browser. Instead of letting browxai launch Chromium, you launch
-Chrome yourself with a remote debugging port and point browxai at it with
-`BROWX_ATTACH_CDP`. The attached browser is not owned by browxai: it is never
-closed on shutdown and it survives browxai restarts cleanly. Attaching requires
+Bring your own browser. Instead of letting browxai launch a browser, you launch
+Chrome yourself with a remote debugging port (`browxai chrome start` does it) and
+point browxai at it with `BROWX_ATTACH_CDP`. The attached browser is not owned
+by browxai: it is never closed on shutdown and it survives browxai restarts cleanly. Attaching requires
 the `byob-attach` capability.
 
 ## Why does my page state disappear sometimes?

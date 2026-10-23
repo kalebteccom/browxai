@@ -8,8 +8,8 @@ Pi (pi.dev) has no native MCP support — it is added with the community
 
 - Pi: `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`
   (installs the `pi` CLI).
-- Node.js 20+.
-- One-time Chromium download: `npx playwright-core install chromium`.
+- Node.js 22+.
+- Google Chrome installed. Without it, download the bundled Chromium once with `npx playwright-core install chromium`.
 
 ## 1. Install browxai
 

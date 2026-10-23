@@ -89,17 +89,26 @@ it and any live page state is gone. A stored ref that pointed at a now-dead
 page resolves to `about:blank` or a fresh document.
 
 If you need page state to survive server restarts, run Chrome yourself and
-attach to it:
+attach to it. `browxai chrome start` opens the installed Chrome on the
+workspace's default profile with a debugging port (9222 unless `--port` says
+otherwise):
 
 ```bash
-google-chrome \
-  --remote-debugging-port=9222 \
-  --user-data-dir="$BROWX_WORKSPACE/byob-profile"
+browxai chrome start
 ```
+
+Then start the browxai server with the endpoint set, and `byob-attach` added to
+the capability list next to the defaults:
 
 ```bash
 BROWX_ATTACH_CDP=http://127.0.0.1:9222
+BROWX_CAPABILITIES=read,navigation,action,human,byob-attach
 ```
+
+`browxai init <workspace>` writes an MCP config with a `browxai-attached` entry
+that already sets the endpoint. A profile is open in one Chrome at a time, so
+quit any other Chrome on it first, or pass `--profile NAME`. Stop the Chrome
+with `browxai chrome stop`.
 
 An attached Chrome is not owned by browxai: it is never closed on shutdown and
 it survives browxai restarts cleanly.
