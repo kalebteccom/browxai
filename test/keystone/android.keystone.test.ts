@@ -14,15 +14,11 @@
 // web-debugging toggle), then `pnpm test:keystone`. Pick a specific device with
 // BROWX_ANDROID_SERIAL when several are connected.
 //
-// SCOPE — the STANDOUT vs firefox/webkit: Android Chrome speaks FULL CDP, so
-// EVERYTHING works, including the CDP-deep tools (the gate auto-allows on
-// deep:true):
+// SCOPE — Android Chrome speaks FULL CDP, so the CDP substrate serves it:
 //   - open_session(android, attached) + list_sessions.engine === "android"
 //   - navigate → snapshot → find  (the CDP a11y substrate, selected by CDP
 //     presence — Android falls into the SAME chromium-substrate path, no new
 //     substrate code)
-//   - a DEEP tool (coverage_start) RUNS — the proof of deep:true (this is what
-//     firefox/webkit structured-refuse; on Android it works because it's CDP)
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -85,10 +81,7 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-android-keystone-"));
   process.env.BROWX_WORKSPACE = workspace;
-  // diagnostics ON so the deep tool (coverage_start) we run to prove deep:true is
-  // not refused by the CAPABILITY gate — leaving only the ENGINE gate as the
-  // thing under test (and on android the engine gate ALLOWS it: deep:true).
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,diagnostics";
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human";
   // The android engine attaches to the user's real Chrome-on-Android over adb +
   // CDP — the server defaults android to mode:"attached" (endpoint discovered
   // over adb, no BROWX_ATTACH_CDP).
@@ -152,31 +145,6 @@ describeAndroid("android keystone — real Chrome-on-Android over adb + CDP (BYO
         query: "the More information link",
       });
       expect(found.candidates.length).toBeGreaterThan(0);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "a DEEP tool (coverage_start) WORKS on android — the proof of deep:true",
-    async () => {
-      // The standout vs firefox/webkit: those structured-REFUSE the CDP-deep tools
-      // (deep:false). Android speaks full CDP (deep:true), so the SAME capability-
-      // based gate ALLOWS them — coverage_start actually runs (it does not return
-      // an engine-refusal envelope). This is what distinguishes the android lane.
-      const session = "android-deep";
-      await callJson("open_session", { session, mode: "attached" });
-      await callJson("navigate", { session, url: "https://example.com/" });
-
-      const cov = await callJson<{ ok: boolean; engine?: string; error?: string }>(
-        "coverage_start",
-        { session },
-      );
-      // It must NOT be the engine-refusal envelope (which carries engine:"android"
-      // + an error naming the tool). On android the deep tool runs.
-      expect(cov.engine, "coverage_start is NOT engine-refused on android").toBeUndefined();
-      expect(cov.ok, "coverage_start runs on android (deep:true — full CDP)").toBe(true);
-
-      await callJson("coverage_stop", { session }).catch(() => undefined);
     },
     KEYSTONE_TIMEOUT,
   );

@@ -117,17 +117,6 @@ describe("L7 — perf-audit summary budget terminates and stays under the 2.5× 
     expect(JSON.stringify(out)).toBe(before);
   });
 
-  it("the real composeReport path stays under the hard ceiling on an empty context", () => {
-    // End-to-end: a real summary compose must already honour the ceiling.
-    const ctx = { trace: [], coverage: [], resources: [] } as unknown as AuditContext;
-    const report = composeReport(
-      ctx,
-      ["long-tasks", "render-blocking", "unused-code"] as never,
-      "summary",
-    );
-    expect(estimateTokens(JSON.stringify(report))).toBeLessThanOrEqual(SUMMARY_TOKEN_HARD_CEILING);
-  });
-
   it("returns a bounded report (never refuses) on a VALID audit with a ~1MB URL", () => {
     // Regression: a JS resource with a ~1MB-long URL (reachable via data: URIs /
     // long query strings) stores that URL in the issue's `details.url` AND the

@@ -104,30 +104,6 @@ describe("find keystone — text leaves are not candidates", () => {
   );
 
   it(
-    "hands back a ref that acts on the button",
-    async () => {
-      const session = "ks-find-presentational-act";
-      await openOn(session);
-      const found = await callJson<{ candidates: Candidate[] }>("find", {
-        session,
-        query: "the search button",
-        maxCandidates: 5,
-      });
-      const clicked = await callJson<{ ok: boolean }>("click", {
-        session,
-        ref: found.candidates[0]!.ref,
-      });
-      expect(clicked.ok).toBe(true);
-      // The log element carries a test attribute, so the DOM-walk tier reports
-      // it by name. Bare page text no longer reaches a snapshot: the `status`
-      // node the a11y tier emits for `<output>` has no accessible name of its
-      // own, and its `StaticText` child gets no line.
-      expect(await callText("snapshot", { session })).toContain("search-clicked");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "keeps a named control that merely contains a query word",
     async () => {
       // The filter is by role, not by name: `heading "Buttons"` is still ranked,

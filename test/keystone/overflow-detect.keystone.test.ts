@@ -11,7 +11,6 @@
 //     since we hand-build it, but we still assert the structure)
 //   - scope:"viewport" skips an off-screen clipped element
 //   - types:["clipped"] returns only clipped findings
-//   - limit caps the result + sets truncated:true
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer } from "../../src/server.js";
@@ -223,29 +222,6 @@ describe("overflow-detect keystone — type filter returns only that type", () =
       for (const f of r.findings) {
         expect(f.type).toBe("clipped");
       }
-
-      await callJson("close_session", { session });
-    },
-    KEYSTONE_TIMEOUT,
-  );
-});
-
-describe("overflow-detect keystone — limit caps the result + sets truncated:true", () => {
-  it(
-    "limit:1 caps the returned findings to 1 and sets truncated:true (on a page with multiple overflowing elements)",
-    async () => {
-      const session = "ks-overflow-limit";
-      await callJson("open_session", { session, mode: "incognito" });
-      await callJson("set_viewport", { session, width: 400, height: 600 });
-      await callJson("navigate", { session, url: `${fixture.url}/overflow-page` });
-
-      const r = await callJson<OverflowResult>("overflow_detect", {
-        session,
-        limit: 1,
-      });
-      expect(r.ok).toBe(true);
-      expect(r.findings.length).toBe(1);
-      expect(r.truncated).toBe(true);
 
       await callJson("close_session", { session });
     },

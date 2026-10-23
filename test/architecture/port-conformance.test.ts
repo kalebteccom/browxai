@@ -51,9 +51,9 @@ function stubTarget(): AcquiredTarget {
 }
 
 /** One buildable session per engine, through the engine's OWN session
- *  constructor — the function its `makeAdapter` actually returns from. Asserted
- *  exhaustive over `ENGINE_KINDS` below, so a ninth engine fails this file on the
- *  day it registers rather than sliding in unchecked. */
+ *  constructor — the function its `makeAdapter` actually returns from. Typed
+ *  exhaustive over `EngineKind`, so a new engine fails the compile on the day it
+ *  registers rather than sliding in unchecked. */
 const SESSION_BUILDERS: Record<EngineKind, () => Promise<BrowserSession>> = {
   chromium: () => finalizeManagedSession("chromium", {}, "/tmp/p", stubHandles()),
   firefox: () => finalizeManagedSession("firefox", {}, "/tmp/p", stubHandles()),
@@ -106,23 +106,6 @@ describe("L5 — every adapter honors its declared port contract", () => {
     },
   );
 
-  it("no deep engine omits a sub-interface a deep tool needs (declaration coherence)", () => {
-    // A deep engine drives the full Playwright surface; it must declare every
-    // sub-interface, so a deep tool never reaches a missing port mid-call. This
-    // is the upstream-declaration guarantee that replaces downstream throws.
-    for (const engine of ENGINE_KINDS) {
-      const caps = capabilitiesFor(engine);
-      if (caps?.deep) {
-        for (const sub of ["lifecycle", "navigation", "snapshot", "input"] as const) {
-          expect(
-            caps.subInterfaces.has(sub),
-            `deep engine ${engine} must declare the "${sub}" sub-interface`,
-          ).toBe(true);
-        }
-      }
-    }
-  });
-
   // D5 (RFC 0004 P1): page-availability is now a DECLARED capability — the `"page"`
   // sub-interface is present iff the engine backs a real Playwright Page. This is
   // the seam that closes the Safari LSP leak: a no-Page engine omits `"page"`, its
@@ -151,16 +134,9 @@ describe("L5 — every adapter honors its declared port contract", () => {
     // disagreed, the whole suite stayed green, and `requirePage`'s structured
     // engine-naming refusal was unreachable code on the one engine it exists for.
     //
-    // Data-driven over the engine registry: the builder map is asserted exhaustive
-    // over `ENGINE_KINDS`, so an eighth engine is covered the day it lands.
-    it("every engine has a session builder — the map is exhaustive over the registry", () => {
-      expect(
-        [...ENGINE_KINDS].sort(),
-        "a newly registered engine must add its session builder to SESSION_BUILDERS " +
-          "so the declaration≡handle assertion below covers it",
-      ).toEqual(Object.keys(SESSION_BUILDERS).sort());
-    });
-
+    // Data-driven over the engine registry: the builder map is typed
+    // `Record<EngineKind, …>`, so an engine added to the registry fails the
+    // compile until it names its session builder.
     it.each(ENGINE_KINDS)(
       "[%s] the session it builds carries the page handle iff it declares it",
       async (engine) => {

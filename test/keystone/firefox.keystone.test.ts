@@ -32,11 +32,10 @@
 //     - network_read   (PlaywrightNetworkBuffer — context request/response ring)
 //     - network_body   (body captured at response time into the bounded LRU)
 //     - ws_read        (PlaywrightWsBuffer — page.on('websocket') frames)
-//   ASSERTS-REFUSAL on Firefox (CDP-deep — audit class B + live-CDP class C):
-//     - perf_start / coverage_start / heap_snapshot / cpu_emulate
-//     - pdf_save / set_user_agent / network_emulate
-//     - shadow_trees  (closed-shadow pierce is CDP-only)
-//     - sw_intercept_fetch  (Fetch.* on the SW target — CDP-only, stays gated)
+//   ASSERTS-REFUSAL on Firefox: the five touch/gesture tools. The CDP-deep tools
+//   (perf_start, coverage_start, heap_snapshot, pdf_save, ...) refuse through the
+//   engine gate, which test/architecture/deep-tools-engine-matrix.test.ts walks
+//   for every engine.
 //
 // The per-engine expectation matrix lives in
 // docs/ai-context/architecture/engine-adapters.md (the capability matrix table).
@@ -100,11 +99,6 @@ beforeAll(async () => {
   }
   workspace = mkdtempSync(join(tmpdir(), "browx-ff-keystone-"));
   process.env.BROWX_WORKSPACE = workspace;
-  // file-io + diagnostics off; turn ON the capabilities the gated tools need so
-  // the REFUSAL we observe is the ENGINE gate, not the capability gate. perf /
-  // coverage / heap / cpu / pdf are `action`/`read` (on by default); pdf_save is
-  // `action`; network_emulate is `action`; set_user_agent is `action`. All in
-  // the default set, so the engine gate is what fires.
   fixture = await startFixture();
   // The browserType knob threads through createServer → the session factories
   // (StartOptions.browserType). This is the Firefox keystone lane.
@@ -183,43 +177,6 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
       expect(imageItem, "screenshot returns an image item on firefox").toBeTruthy();
       expect(imageItem!.data.length).toBeGreaterThan(0);
       expect(imageItem!.mimeType).toContain("image/");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "structured-refuses the CDP-deep tools on Firefox with engine:firefox + a hint",
-    async () => {
-      const session = "ff-refuse";
-      await callJson("open_session", { session, mode: "incognito" });
-
-      // A representative sample across the audit class-B families + the three
-      // D6-reclassified tools. Each must refuse with the ENGINE gate (carries
-      // `engine:"firefox"` + a hint), NOT crash and NOT a capability denial.
-      const deepSample = [
-        "perf_start",
-        "coverage_start",
-        "heap_snapshot",
-        "cpu_emulate",
-        "pdf_save",
-        "set_user_agent",
-        "network_emulate",
-      ];
-      for (const tool of deepSample) {
-        const res = await callJson<{
-          ok: boolean;
-          engine?: string;
-          error?: string;
-          hint?: string;
-          requiredCapability?: unknown;
-        }>(tool, { session });
-        expect(res.ok, `${tool} should refuse on firefox`).toBe(false);
-        // The engine gate, not the capability gate (no requiredCapability key).
-        expect(res.engine, `${tool} refusal carries engine`).toBe("firefox");
-        expect(res.requiredCapability, `${tool} is NOT a capability denial`).toBeUndefined();
-        expect(res.error).toContain(tool);
-        expect(res.hint).toContain("chromium");
-      }
     },
     KEYSTONE_TIMEOUT,
   );

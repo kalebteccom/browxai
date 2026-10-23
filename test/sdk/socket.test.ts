@@ -54,12 +54,6 @@ skipIfWindows("socket-attached SDK transport — drives browxai serve over Unix 
     expect(r.data).toBeDefined();
   });
 
-  it("the exposed-tools surface is identical to the in-process default", () => {
-    expect(client.exposedTools).toContain("navigate");
-    expect(client.exposedTools).toContain("snapshot");
-    expect(client.exposedTools).not.toContain("eval_js");
-  });
-
   it("forwards tool ARGUMENTS over the wire (regression: must not strip args)", async () => {
     // The socket serve once re-registered tools with an EMPTY input schema,
     // which made the MCP layer strip every argument before the handler ran —

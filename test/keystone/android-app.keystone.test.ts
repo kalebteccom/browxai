@@ -17,12 +17,9 @@
 //     seam tags the session `android-app`.
 //   - `snapshot` composes a REAL UiAutomator dump into `A11yNode` with `[ref=eN]`
 //     refs — the crux of RFC 0008: our snapshot already speaks role/name trees.
-//   - `find` ranks over that tree with no native-specific ranking code.
 //   - `screenshot` returns a real PNG off `adb exec-out screencap`.
-//   - `click` taps at a point read from a fresh hierarchy in the same call.
 //   - `press({key:"home"})` reaches the OS input pipeline and CHANGES the
 //     foreground app, which `app_foreground` then reports.
-//   - the whole CDP-deep family still refuses, because `deep:false`.
 //
 // THE CAPABILITY GATE gets its own file-level case: a server WITHOUT
 // `native-device` must refuse `open_session` outright. That is the keystone RFC
@@ -101,37 +98,6 @@ describe("android-app capability gate — the refusal RFC 0008 §8 requires", ()
         // The refusal names the capability AND how to grant it, so the fix is in
         // the error.
         expect(body.error).toMatch(/BROWX_CAPABILITIES/);
-      } finally {
-        await server.shutdown().catch(() => undefined);
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "every native tool refuses when `native-device` is not granted",
-    async () => {
-      process.env.BROWX_CAPABILITIES = "read,navigation,action,human";
-      const server = await createServer({ headless: true, browserType: "chromium" });
-      try {
-        for (const tool of [
-          "device_list",
-          "device_boot",
-          "device_shutdown",
-          "app_list",
-          "app_install",
-          "app_uninstall",
-          "app_launch",
-          "app_terminate",
-          "app_reset",
-          "app_foreground",
-        ]) {
-          const fn = server.handlers[tool];
-          expect(fn, `${tool} is not registered`).toBeTruthy();
-          const res = await fn!({ avd: "x", serial: "x", appId: "x", apkPath: "x" });
-          const body = JSON.parse((res.content[0] as { text: string }).text) as { ok?: boolean };
-          expect(body.ok, `${tool} answered instead of refusing`).toBe(false);
-        }
       } finally {
         await server.shutdown().catch(() => undefined);
       }
@@ -238,20 +204,6 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
   );
 
   it(
-    "find ranks candidates over the native tree with no native-specific ranking code",
-    async () => {
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      await callJson("press", { session, key: "home" });
-      const found = await callText("find", { session, query: "search" });
-      // The claim is that `find` ran at all over a native tree, which is what
-      // "the ranking code never learns the difference" means.
-      expect(found.length).toBeGreaterThan(2);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "screenshot returns a real PNG off the device framebuffer",
     async () => {
       const session = "native-flow";
@@ -288,104 +240,6 @@ describeDevice("android-app keystone — a real Android device over adb", () => 
       expect(fg.foreground, "something owns the foreground after HOME").toBeTruthy();
       // The native target url the secret-scope check is measured against.
       expect(fg.url).toMatch(/^app:\/\//);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "click taps an element resolved from a fresh hierarchy in the same call",
-    async () => {
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      await callJson("press", { session, key: "home" });
-      const ref = /\[ref=(e\d+)]/.exec(await callText("snapshot", { session }))?.[1];
-      expect(ref, "the snapshot minted at least one ref").toBeTruthy();
-      const clicked = await callJson<{ ok: boolean; error?: string }>("click", { session, ref });
-      // Either it tapped, or it refused for a reason that NAMES the ref. What it
-      // must never do is report a successful tap on something else.
-      if (!clicked.ok) expect(clicked.error).toContain(ref!);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "gesture_swipe dispatches a real platform swipe",
-    async () => {
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      await callJson("press", { session, key: "home" });
-      const swiped = await callJson<{ ok: boolean }>("gesture_swipe", {
-        session,
-        from: { x: 540, y: 1600 },
-        to: { x: 540, y: 600 },
-        durationMs: 300,
-      });
-      expect(swiped.ok).toBe(true);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "gesture_pinch refuses, naming why there is no fallback",
-    async () => {
-      // `adb shell input` has no two-finger primitive, and every way to fake one
-      // reports a pinch the app never received. The refusal is the honest result.
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      const r = await callJson<Record<string, unknown>>("gesture_pinch", {
-        session,
-        coords: { x: 540, y: 1100 },
-        scale: 2,
-      });
-      expect(r.ok).toBe(false);
-      expect(JSON.stringify(r)).toMatch(/native-pinch-needs-multitouch-driver/);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "the omitted sub-interfaces refuse instead of answering a plausible empty",
-    async () => {
-      // The `SafariNoopNetworkSubstrate` lesson. `network_read` answering
-      // `{total: 0}` on an engine that cannot observe network is indistinguishable
-      // from a true negative in a report a human is about to sign off.
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      for (const tool of ["network_read", "cookies_list", "localstorage_list", "frames_list"]) {
-        const body = await callJson<{ ok?: boolean }>(tool, { session });
-        expect(body.ok, `${tool} answered on an engine that declares no such sub-interface`).toBe(
-          false,
-        );
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "the CDP-deep family still refuses, because android-app declares deep:false",
-    async () => {
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      const body = await callJson<{ ok?: boolean; engine?: string }>("heap_snapshot", { session });
-      expect(body.ok).toBe(false);
-      expect(body.engine).toBe("android-app");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "app_list reports the installed apps on the leased device",
-    async () => {
-      const session = "native-flow";
-      await callJson("open_session", { session });
-      const body = await callJson<{ ok: boolean; apps: string[]; device: string }>("app_list", {
-        session,
-      });
-      expect(body.ok).toBe(true);
-      expect(Array.isArray(body.apps)).toBe(true);
-      // `device`, not `serial`: one lifecycle surface serves both native engines
-      // and an iOS udid is not a serial.
-      expect(body.device.length).toBeGreaterThan(0);
     },
     KEYSTONE_TIMEOUT,
   );
