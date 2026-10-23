@@ -133,7 +133,9 @@ function startChrome(opts: string[]): Promise<number> {
   const child = spawn(chromePath, args, { detached: true, stdio: "ignore" });
   child.unref();
   if (!child.pid) {
-    process.stderr.write("failed to spawn Chrome\n");
+    process.stderr.write(
+      `could not start Chrome at ${chromePath}. Check that the file is executable, or run \`browxai doctor\`.\n`,
+    );
     return Promise.resolve(1);
   }
   writeFileSync(pidFile, String(child.pid), "utf8");
@@ -161,7 +163,9 @@ function loginChrome(opts: string[]): Promise<number> {
   });
   child.unref();
   if (!child.pid) {
-    process.stderr.write("failed to spawn Chrome\n");
+    process.stderr.write(
+      `could not start Chrome at ${chromePath}. Check that the file is executable, or run \`browxai doctor\`.\n`,
+    );
     return Promise.resolve(1);
   }
   process.stdout.write(
@@ -220,7 +224,7 @@ async function stopChrome(): Promise<number> {
     return 0;
   } catch (e) {
     process.stderr.write(
-      `failed to stop pid ${pid}: ${e instanceof Error ? e.message : String(e)}\n`,
+      `could not stop Chrome (pid ${pid}): ${e instanceof Error ? e.message : String(e)}. Quit it by hand, then delete chrome.pid in the workspace.\n`,
     );
     return 1;
   }
