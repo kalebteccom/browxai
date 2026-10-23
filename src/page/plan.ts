@@ -309,9 +309,6 @@ export type ExecuteOutcome =
       tokensEstimate: number;
     };
 
-/** Reasons we may refuse to dispatch a descriptor without ever running it. */
-export type ExecuteRefusal = Exclude<ExecuteOutcome, { ok: true }>;
-
 export interface ExecuteOptions {
   /** Optional dispatch-window overrides (mode/maxResultTokens/timeoutMs/
    *  recordingHint flow through to the underlying action). Mirrors

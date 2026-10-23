@@ -11,20 +11,6 @@ import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiResult } from "./types.js";
 
 /**
- * When passed to {@link createInProcessTransport}, suppresses the server's MCP
- * stdio binding — the SDK never wants the server.start() side-effect (which
- * would attach to process.stdin/out). We only need the `handlers` map.
- */
-export type InProcessOptions = StartOptions;
-
-export interface InProcessTransportHandle {
-  /** Map of tool-name → wrapped handler that returns MCP content. */
-  readonly handlers: Awaited<ReturnType<typeof createServer>>["handlers"];
-  /** Underlying server's shutdown — closes every live session. */
-  readonly shutdown: () => Promise<void>;
-}
-
-/**
  * Construct an in-process transport. The factory `await`s the underlying
  * `createServer()` (which does NOT start the MCP stdio loop — `server.start()`
  * is what does that, and the SDK never calls it) so the returned transport

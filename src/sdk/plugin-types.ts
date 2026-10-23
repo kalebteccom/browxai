@@ -20,7 +20,7 @@
 // `Record<string, Record<string, (args?) => Promise<BrowxaiResult>>>`
 // from {@link BrowxaiClient.plugins}.
 
-import type { BrowxaiArgs, BrowxaiClient, BrowxaiResult } from "./types.js";
+import type { BrowxaiClient, BrowxaiResult } from "./types.js";
 
 /**
  * The lattice plugin authors implement. Each top-level key is a
@@ -33,10 +33,6 @@ export type PluginSchema = Record<
   string,
   Record<string, (...args: never[]) => Promise<BrowxaiResult>>
 >;
-
-// Suppress unused import (BrowxaiArgs kept for forward-compat consumers
-// who want to widen the function-arg type).
-export type _PluginSchemaArgs = BrowxaiArgs;
 
 /**
  * A {@link BrowxaiClient} typed against a composition of one or more
