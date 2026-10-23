@@ -121,7 +121,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. Each call drains (removes) the returned messages — re-reads return only what arrived since. The page-side ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Capability: `read`.",
+        "Drain buffered messages FROM workers since the last read. Returns `[{workerId, data, at}]`. `workerId` filters: omit to drain ALL workers; pass `ww-N` for one Web Worker, `sw-N` for one Service Worker. A Service Worker's messages are the ones it posts to this page with `client.postMessage`, recorded from the page's `navigator.serviceWorker` `message` events; they carry the `sw-N` id `workers_list` gives that script URL, and are only seen for a page that has this tool's wrapper installed before the message arrives. Each call drains (removes) the returned messages — re-reads return only what arrived since. Each ring is capped at 500 entries / 4 KiB per payload; entries past the cap are evicted oldest-first. Capability: `read`.",
       inputSchema: {
         workerId: z
           .string()

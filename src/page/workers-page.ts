@@ -10,6 +10,14 @@
 //   • Exposes `__browxWorkers.post(id, msg)` which calls the underlying
 //     `Worker.prototype.postMessage` — the worker's `onmessage` sees a real
 //     event, not a synthetic one.
+// Service Workers talk back to the page through `navigator.serviceWorker`
+// `message` events (`client.postMessage` in the SW). The same init script
+// listens for those and keeps them in a second page-side ring
+// (`__browxWorkers.drainSw()`), tagged with the SW's script URL. The page ring
+// is the only buffer a flooding page can fill: no binding is involved, so there
+// is no per-call CDP traffic for `binding-guard` to meter, and the ring is
+// capped at 500 entries of 4 KiB each.
+//
 // This is the same trade-off `ws-interactive.ts` made: CDP attach-to-worker
 // adds a separate session per worker for a feature (postMessage IPC) that's
 // fundamentally page-side. The in-page proxy keeps the message ring naturally
@@ -35,20 +43,39 @@ export const WORKERS_PAGE_SCRIPT = `(() => {
   var nativePost = NativeWorker.prototype.postMessage;
   var workers = new Map(); // wwId -> Worker
   var messages = []; // {workerId, data, at} ring (capped at 500)
+  var swMessages = []; // {url, data, at} ring of service-worker -> page messages
   var MAX = 500;
   var nextId = 1;
 
-  function recordMessage(id, payload) {
+  function serialise(payload) {
     var data;
     try {
       data = typeof payload === "string" ? payload : JSON.stringify(payload);
     } catch (_) {
       data = "[unserialisable]";
     }
-    if (data && data.length > 4000) data = data.slice(0, 4000) + "…";
-    messages.push({ workerId: id, data: data, at: Date.now() });
+    if (typeof data !== "string") data = "[unserialisable]";
+    if (data.length > 4000) data = data.slice(0, 4000) + "…";
+    return data;
+  }
+
+  function recordMessage(id, payload) {
+    messages.push({ workerId: id, data: serialise(payload), at: Date.now() });
     if (messages.length > MAX) messages.splice(0, messages.length - MAX);
   }
+
+  // Service workers are not constructed by the page, so there is no wrapper to
+  // install: listen for what they post back to this window instead.
+  try {
+    if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+      navigator.serviceWorker.addEventListener("message", function (ev) {
+        var url = "";
+        try { url = String(ev.source && ev.source.scriptURL ? ev.source.scriptURL : ""); } catch (_) {}
+        swMessages.push({ url: url, data: serialise(ev.data), at: Date.now() });
+        if (swMessages.length > MAX) swMessages.splice(0, swMessages.length - MAX);
+      });
+    }
+  } catch (_) {}
 
   function Wrapped(scriptURL, opts) {
     var w = arguments.length > 1 ? new NativeWorker(scriptURL, opts) : new NativeWorker(scriptURL);
@@ -107,6 +134,11 @@ export const WORKERS_PAGE_SCRIPT = `(() => {
       }
       return out;
     },
+    drainSw: function () {
+      var out = swMessages.slice();
+      swMessages.length = 0;
+      return out;
+    },
   };
 
   // Track scriptURL at construction. We can't get it post-hoc on most engines.
@@ -134,6 +166,7 @@ interface BrowxWorkersApi {
   list(): Array<{ workerId: string; url: string }>;
   post(id: string, msg: string): { ok: boolean; error?: string };
   drain(id?: string): Array<{ workerId: string; data: string; at: number }>;
+  drainSw(): Array<{ url: string; data: string; at: number }>;
 }
 
 // The page-side wrapper (`WORKERS_PAGE_SCRIPT`) installs `__browxWorkers` on
@@ -214,5 +247,19 @@ export class WorkersPageChannel {
       /* race — empty is fine */
     }
     return out;
+  }
+
+  /** Drain the page-side ring of service-worker -> page messages. Returned as
+   *  `unknown`: the page owns `__browxWorkers`, so the server validates and
+   *  bounds the result before it keeps anything (see `WorkersSwChannel`). */
+  async drainSw(page: Page): Promise<unknown> {
+    try {
+      return await page.evaluate(() => {
+        const w = globalThis.__browxWorkers;
+        return w ? w.drainSw() : [];
+      });
+    } catch {
+      return []; // navigation race — empty is fine
+    }
   }
 }
