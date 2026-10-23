@@ -1,9 +1,15 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import { readFileSync } from "node:fs";
 import { unified } from "@astrojs/markdown-remark";
 import starlightLinksValidator from "starlight-links-validator";
 import rehypeStripAgentAsides from "./plugins/rehype-strip-agent-asides.mjs";
+
+// The published version comes from the repo root package.json, so the
+// structured data never drifts from a release.
+const pkgUrl = new URL("../package.json", import.meta.url);
+const { version } = JSON.parse(readFileSync(pkgUrl, "utf8"));
 
 // The browxai documentation site, served at browxai.com.
 // Static Astro + Starlight. The published content lives in
@@ -79,13 +85,17 @@ export default defineConfig({
             name: "browxai",
             description:
               "MCP-native, model-agnostic control server across eight engines in three families, over CDP, WebDriver BiDi, safaridriver, UiAutomator and XCUITest, with off-by-default access to native apps on an Android emulator and the iOS Simulator, a running desktop Electron app, the OS clipboard, password managers, and a workspace directory.",
+            softwareVersion: version,
             applicationCategory: "DeveloperApplication",
             operatingSystem: "Node.js (>=22)",
             url: "https://browxai.com",
             license: "https://opensource.org/licenses/MIT",
             offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
             author: { "@type": "Organization", name: "Kalebtec", url: "https://kalebtec.com" },
-            sameAs: ["https://github.com/kalebteccom/browxai"],
+            sameAs: [
+              "https://github.com/kalebteccom/browxai",
+              "https://www.npmjs.com/package/browxai",
+            ],
           }),
         },
         { tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "any" } },

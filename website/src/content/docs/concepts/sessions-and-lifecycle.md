@@ -77,12 +77,11 @@ names no `profile` runs on the workspace's default profile, whatever its id, and
 browser at a time, so a second live session on the same profile is refused with
 `profile-in-use`, naming the profile and the session that holds it. Give each
 session its own `profile`, or use `incognito`, when two sessions need two
-identities. (Before this default, an id other than `default` got its own
-`profiles/<id>` directory.)
+identities.
 
 ## The MCP-restart gotcha
 
-In `persistent` and `incognito` modes, browxai spawns Chromium as a child
+In `persistent` and `incognito` modes, browxai spawns Chrome as a child
 process of the MCP server. When the MCP client restarts the server, for a
 config edit, a code reload, or any other reason, that Chrome child dies with
 it and any live page state is gone. A stored ref that pointed at a now-dead
@@ -133,7 +132,7 @@ Two launch-time knobs on a chromium session:
   Chrome's own throttling, because reproducing a background-lifecycle bug needs
   a genuinely throttled tab.
 
-Both are launch-time, so an attached session ignores them — pass
+Both are launch-time, so an attached session ignores them. Pass
 `--disable-background-throttling` to `browxai chrome start` instead.
 
 ## Device and viewport
@@ -155,5 +154,5 @@ otherwise deadlock a headless context or silently change app state: dialogs
 (`alert` / `confirm` / `prompt`), permissions (camera, geolocation, and more),
 the `Notification` constructor, and File System Access pickers. Each defaults
 to a `raise` posture, meaning the event is handled so the page does not hang,
-but the next result reports it rather than letting it pass silently. The
+and the next result reports it. The
 [tool reference](/reference/tool-reference/) documents every policy mode.

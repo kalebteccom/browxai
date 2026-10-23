@@ -23,7 +23,7 @@ import Default from "@astrojs/starlight/components/Sidebar.astro";
     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
     <path d="M14 2v6h6"></path>
   </svg>
-  <span class="lbl">llms.txt</span>
+  <span class="lbl">llms.txt<span class="browx-sr-only"> (plain text, opens in a new tab)</span></span>
   <svg
     class="ext"
     width="12"
@@ -39,3 +39,12 @@ import Default from "@astrojs/starlight/components/Sidebar.astro";
     <path d="M7 17 17 7M7 7h10v10"></path>
   </svg>
 </a>
+
+<script>
+  // The groups are always open (see brand.css). pointer-events stops the mouse,
+  // so take the summaries out of the tab order and swallow the click too.
+  document.querySelectorAll("#starlight__sidebar summary").forEach((s) => {
+    s.setAttribute("tabindex", "-1");
+    s.addEventListener("click", (e) => e.preventDefault());
+  });
+</script>

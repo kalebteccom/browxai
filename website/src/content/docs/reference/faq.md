@@ -6,8 +6,7 @@ description: "Short answers to the questions people ask first about browxai: wha
 ## Which MCP clients work with browxai?
 
 Any MCP client that speaks stdio. It is model-agnostic on purpose: use it from
-Claude, from Codex, or from anything else that speaks the protocol. It is not
-tied to one model or one vendor.
+Claude, from Codex, or from anything else that speaks the protocol.
 
 ## How is this different from a Playwright MCP wrapper?
 
@@ -20,22 +19,37 @@ A wrapper inherits whatever the wrapped tool exposes; browxai does not.
 
 ## Does it run headless, and in CI?
 
-Yes. Managed Chromium runs headed or headless (`BROWX_HEADLESS=1`, or the
+Yes. A managed Chrome (or Chromium) runs headed or headless (`BROWX_HEADLESS=1`, or the
 `headless` config key), and the surface is built to run unattended. State that
 must survive an MCP-server restart should attach to a separately launched
 Chrome; see [Sessions and lifecycle](/concepts/sessions-and-lifecycle/).
 
 ## What is BYOB?
 
-Bring your own browser. Instead of letting browxai launch a browser, you launch
-Chrome yourself with a remote debugging port (`browxai chrome start` does it) and
-point browxai at it with `BROWX_ATTACH_CDP`. The attached browser is not owned
-by browxai: it is never closed on shutdown and it survives browxai restarts cleanly. Attaching requires
+Bring your own browser. You launch Chrome yourself with a remote debugging port
+(`browxai chrome start` does it on the workspace profile) and point browxai at
+it with `BROWX_ATTACH_CDP`. The attached browser is not owned by browxai: it is never
+closed on shutdown and it survives browxai restarts cleanly. Attaching requires
 the `byob-attach` capability.
+
+## Which engines does it drive?
+
+Eight, in three families. Five browsers: Chromium, Firefox, WebKit, real Safari
+and real Chrome on an Android device. Two native-app engines, `android-app` on an
+emulator and `ios-app` on the iOS Simulator, both behind the `native-device`
+capability. One desktop-app engine, `electron`, which attaches to a running
+Electron app. Pick the engine per session with `open_session({ engine })`.
+
+## Does it get past bot protection?
+
+No. browxai does not defeat or spoof bot detection and cannot guarantee access
+to any site. For a challenge that needs a person, `browxai chrome login` opens
+the installed Chrome with nothing attached so you can clear it by hand. See
+[Sites behind bot protection](/guides/sites-behind-bot-protection/).
 
 ## Why does my page state disappear sometimes?
 
-In managed and incognito modes, Chromium is a child process of the MCP server.
+In managed and incognito modes, Chrome is a child process of the MCP server.
 If the client restarts the server, that Chrome dies with it and live page state
 is gone. This is the single most common surprise. The fix, when you need
 durable state, is BYOB. See
