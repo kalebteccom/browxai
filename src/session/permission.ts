@@ -8,8 +8,8 @@
 // sibling file and is re-exported here so every original import path keeps
 // working:
 //   - `permission-policy.ts`      — Node-side policy state (the
-//     `PermissionPolicyState` class, the policy/record types, the validators,
-//     and the pure CDP-name mappings `cdpPermissionName` / `cdpSettingFor`).
+//     `PermissionPolicyState` class, the policy/record types and the
+//     validators).
 //   - `permission-page-script.ts` — the browser-realm page-script constant
 //     `PERMISSION_PAGE_SCRIPT` (browser-only JS run in the page; exact text is
 //     the serialization contract).
@@ -27,8 +27,6 @@ export {
   BYOB_PERMISSION_WARNING,
   PermissionPolicyState,
   parsePermissionPolicyArg,
-  cdpPermissionName,
-  cdpSettingFor,
   type PermissionAskHandler,
 } from "./permission-policy.js";
 
