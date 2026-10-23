@@ -8,6 +8,7 @@ import {
 } from "./chromium-launch-posture.js";
 import { log } from "../util/logging.js";
 import { envLayer } from "../util/config-store.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 
 const NOT_FOUND = new Error(
   "browserType.launchPersistentContext: Chromium distribution 'chrome' is not found at /opt/google/chrome/chrome\n" +
@@ -143,7 +144,8 @@ describe("a launch that finds no browser", () => {
     expect(err).toBeInstanceOf(Error);
     expect((err as Error).message).toContain("Executable doesn't exist");
     expect((err as Error).message).toMatch(/Install Google Chrome/);
-    expect((err as Error).message).toMatch(/npx playwright-core install chromium/);
+    expect((err as Error).message).toContain(`\`${playwrightInstallCommand("chromium")}\``);
+    expect((err as Error).message).toMatch(/npx playwright-core@\d+\.\d+\.\d+ install chromium/);
     expect((err as Error).cause).toBe(NO_BUNDLED);
   });
 

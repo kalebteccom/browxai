@@ -82,7 +82,7 @@ npm install -g browxai
 browxai doctor    # checks Node, a browser, the workspace and your config
 ```
 
-browxai launches the Google Chrome already installed on the machine. Without Chrome it falls back to Playwright's bundled Chromium, which you fetch once (about 150 MB) with `npx playwright-core install chromium`. `browxai doctor` fails only when neither exists.
+browxai launches the Google Chrome already installed on the machine. Without Chrome it falls back to Playwright's bundled Chromium, which you fetch once (about 150 MB) with `npx playwright-core@1.64.1 install chromium`. `browxai doctor` fails only when neither exists.
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 

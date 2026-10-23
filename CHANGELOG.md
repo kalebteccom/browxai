@@ -17,6 +17,12 @@ surface" covers.
 - **A launch with no Chrome and no bundled Chromium names the fix.** The
   Playwright "Executable doesn't exist" error keeps its text and gains a line
   pointing at Google Chrome or `npx playwright-core install chromium`.
+- **Browser install hints name the playwright-core version browxai runs.** Doctor and
+  the launch error now print `npx playwright-core@<version> install chromium`
+  (and the same for firefox and webkit), with the version read from the
+  installed package. A bare `npx playwright-core install chromium` fetches the
+  newest release, whose Chromium build can differ from the one browxai launches.
+  The docs show the current version, 1.64.1.
 - **Running `browxai` in a terminal prints a one-time note on stderr** saying it
   is an MCP server that waits for a client, and pointing at `browxai doctor`.
 - **`browxai --help` lists `chrome status` and the `safari` engine.**

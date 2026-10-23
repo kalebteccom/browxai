@@ -16,6 +16,7 @@
 import { existsSync } from "node:fs";
 import type { Check } from "./doctor.js";
 import { findInstalledChrome } from "./chrome-launch.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 import {
   AndroidCdpAdapter,
   defaultAdbRunner,
@@ -47,7 +48,7 @@ export function chromeCheck(find: () => string | undefined = findInstalledChrome
 // requirement only when `chromeInstalled` is false. Lazy import so doctor
 // doesn't pay the playwright-core cost on bare invocation.
 export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
-  const install = "npx playwright-core install chromium";
+  const install = playwrightInstallCommand("chromium");
   try {
     const { chromium } = await import("playwright-core");
     const path = chromium.executablePath();
@@ -95,7 +96,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in second engine — browserType:"firefox")',
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
+      fix: `run \`${playwrightInstallCommand("firefox")}\` to enable the firefox engine`,
     };
   } catch (e) {
     return {
@@ -103,7 +104,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install firefox` to enable the firefox engine",
+      fix: `run \`${playwrightInstallCommand("firefox")}\` to enable the firefox engine`,
     };
   }
 }
@@ -125,7 +126,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in third engine — browserType:"webkit")',
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
+      fix: `run \`${playwrightInstallCommand("webkit")}\` to enable the webkit engine`,
     };
   } catch (e) {
     return {
@@ -133,7 +134,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `npx playwright install webkit` to enable the webkit engine",
+      fix: `run \`${playwrightInstallCommand("webkit")}\` to enable the webkit engine`,
     };
   }
 }

@@ -15,11 +15,11 @@ installed, so no browser download is required on a machine with Chrome.
 ```bash
 npm install -g browxai
 browxai doctor                          # checks the environment and your setup
-npx playwright-core install chromium    # optional, ~150 MB: the fallback when Chrome is missing
+npx playwright-core@1.64.1 install chromium    # optional, ~150 MB: the fallback when Chrome is missing
 ```
 
 Firefox and WebKit sessions use their own Playwright builds
-(`npx playwright-core install firefox webkit`).
+(`npx playwright-core@1.64.1 install firefox webkit`).
 
 A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the
@@ -33,7 +33,7 @@ is no Chrome it falls back to Playwright's bundled Chromium, which you download
 once (about 150 MB):
 
 ```bash
-npx playwright-core install chromium
+npx playwright-core@1.64.1 install chromium
 ```
 
 `browxai doctor` fails only when neither browser is present.

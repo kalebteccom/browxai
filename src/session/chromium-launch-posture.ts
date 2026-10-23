@@ -14,6 +14,7 @@
 // patching, no injected scripts, no user-agent rewriting.
 
 import { log } from "../util/logging.js";
+import { playwrightInstallCommand } from "../util/playwright-version.js";
 import type { SessionOptions } from "./types.js";
 
 /** `channel` value that forces Playwright's bundled Chromium build. */
@@ -78,7 +79,7 @@ function withNoBrowserHint(err: unknown): unknown {
   if (!isBundledBrowserMissing(err) || !(err instanceof Error)) return err;
   return new Error(
     `${err.message}\n\nbrowxai: no browser to launch. Install Google Chrome (the default), ` +
-      "or download the bundled Chromium with `npx playwright-core install chromium`. " +
+      `or download the bundled Chromium with \`${playwrightInstallCommand("chromium")}\`. ` +
       "`browxai doctor` shows which of the two is present.",
     { cause: err },
   );
