@@ -222,7 +222,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       description:
         "Drive an action in one session and sample a metric in ANOTHER over the same window, in one call — for realtime-propagation assertions (an action in session A should reflect in session B within a freshness budget). `action` is `{tool,args}` from the batch whitelist, dispatched in `actionSession`; the document-scroller `metric` is traced in `sampleSession`. Returns `{ action: <inner result>, sample }`.",
       inputSchema: {
-        action: z.object({ tool: z.string(), args: z.record(z.unknown()).optional() }),
+        action: z.object({ tool: z.string(), args: z.record(z.string(), z.unknown()).optional() }),
         actionSession: z.string().describe("Session the action runs in."),
         sampleSession: z.string().describe("Session whose page is sampled."),
         metric: z

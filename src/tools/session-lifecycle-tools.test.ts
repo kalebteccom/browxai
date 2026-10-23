@@ -57,7 +57,7 @@ function bodyOf(res: ToolResponse): Record<string, unknown> {
 describe("open_session — per-session engine surface + validation", () => {
   it("exposes an `engine` enum matching the implemented engines (drift guard)", () => {
     const { def } = captureOpenSession();
-    const engineSchema = def.inputSchema?.engine as z.ZodOptional<z.ZodEnum<[string, ...string[]]>>;
+    const engineSchema = def.inputSchema?.engine as z.ZodOptional<z.ZodEnum>;
     expect(engineSchema).toBeDefined();
     expect(engineSchema.unwrap().options).toEqual([...ENGINE_KINDS]);
   });

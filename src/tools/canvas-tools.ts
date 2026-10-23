@@ -417,7 +417,10 @@ export function registerCanvasTools(host: ToolHost): void {
           .describe(
             "Operation name under the plugin's namespace — combined as `<adapter>.<op>` for the registry lookup.",
           ),
-        args: z.record(z.unknown()).optional().describe("Forwarded as the inner tool's args."),
+        args: z
+          .record(z.string(), z.unknown())
+          .optional()
+          .describe("Forwarded as the inner tool's args."),
         ...SESSION_ARG,
       },
     },

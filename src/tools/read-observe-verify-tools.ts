@@ -439,7 +439,7 @@ export function registerReadObserveVerifyTools(host: ToolHost): void {
           "The predicate to evaluate. Recursive shape — and/or/not nest leaf predicates.",
         ),
         data: z
-          .record(z.unknown())
+          .record(z.string(), z.unknown())
           .describe(
             "Bag the predicate reads from. Typically `{ actionResult: <prior result>, snapshot?: <prior snapshot output>, element?: {...} }`. Accessor keys are resolved against this object; only allow-listed root segments are honoured.",
           ),

@@ -132,7 +132,7 @@ export function registerSessionDialogPermissionTools(
           .enum(["allow", "deny", "raise", "ask-human"])
           .describe("Top-level policy mode — see tool description."),
         perPermission: z
-          .record(z.enum(["allow", "deny", "raise", "ask-human"]))
+          .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
           .optional()
           .describe(
             "Per-permission overrides. Keys: one of the supported permission names (see tool description). Each value overrides the top-level `mode` for that permission. Unknown names are rejected.",
@@ -215,7 +215,7 @@ export function registerSessionDialogPermissionTools(
           .enum(["allow", "deny", "raise", "ask-human"])
           .describe("Top-level policy mode — see tool description."),
         perAPI: z
-          .record(z.enum(["allow", "deny", "raise", "ask-human"]))
+          .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
           .optional()
           .describe(
             "Per-API overrides. Keys: one of " +

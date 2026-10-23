@@ -482,7 +482,7 @@ describe("sink: verify_* — failure.actual masking (CRITICAL — direct value d
 describe("sink: verify_predicate — deep failure.actual masking (the unbounded-depth sink)", () => {
   // Every other fixture in this file is shallow (the deepest, act_and_diff,
   // reaches 5). verify_predicate is the one shipped sink with no depth
-  // ceiling: `data` is `z.record(z.unknown())` and `failure.actual` is a
+  // ceiling: `data` is `z.record(z.string(), z.unknown())` and `failure.actual` is a
   // subtree lifted straight out of it, so the caller controls how deep the
   // masker has to walk. Piping a prior snapshot or ActionResult back into
   // `data` is the documented use, which is exactly how a pre-masking value

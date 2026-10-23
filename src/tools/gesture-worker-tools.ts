@@ -172,7 +172,7 @@ export function registerGestureWorkerTools(
             status: z.number().int().min(100).max(599).optional(),
             body: z.string().optional(),
             contentType: z.string().optional(),
-            headers: z.record(z.string()).optional(),
+            headers: z.record(z.string(), z.string()).optional(),
           })
           .describe(
             'Canned response. Defaults: status 200, body "", contentType application/json.',

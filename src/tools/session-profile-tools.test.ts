@@ -117,7 +117,7 @@ describe("profile_status — registration surface", () => {
   it("takes an optional `profile` filter and nothing else", () => {
     const shape = captureTool().def.inputSchema ?? {};
     expect(Object.keys(shape)).toEqual(["profile"]);
-    expect(shape.profile?.isOptional()).toBe(true);
+    expect((shape.profile as z.ZodType | undefined)?.safeParse(undefined).success).toBe(true);
   });
 });
 

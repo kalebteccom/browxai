@@ -160,8 +160,8 @@ export function registerFormsPlanTools(
             id: z.string(),
             ref: z.string(),
             verb: z.enum(PLAN_VERBS),
-            args: z.record(z.unknown()).optional(),
-            evidence: z.record(z.unknown()).optional(),
+            args: z.record(z.string(), z.unknown()).optional(),
+            evidence: z.record(z.string(), z.unknown()).optional(),
             expiresAt: z.number(),
           })
           .passthrough()

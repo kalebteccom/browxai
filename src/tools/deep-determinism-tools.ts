@@ -175,7 +175,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       inputSchema: {
         action: z.object({
           tool: z.string().describe("Inner tool name (batch whitelist)."),
-          args: z.record(z.unknown()).optional(),
+          args: z.record(z.string(), z.unknown()).optional(),
         }),
         match: z
           .object({

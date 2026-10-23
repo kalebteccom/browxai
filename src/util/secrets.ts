@@ -182,7 +182,7 @@ export class SecretRegistry {
    *  sub-tree VERBATIM, so a registered value sitting deeper than 8 reached
    *  the sink in cleartext — the exact inverse of what register_secret
    *  promises. It is reachable: `verify_predicate` lifts `failure.actual`
-   *  out of a caller-supplied `data` bag typed `z.record(z.unknown())`, and
+   *  out of a caller-supplied `data` bag typed `z.record(z.string(), z.unknown())`, and
    *  the documented use is piping a prior snapshot or ActionResult back in.
    *
    *  What the cap was supposed to buy — no unbounded walk, no stack

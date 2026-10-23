@@ -173,7 +173,9 @@ export function registerSessionLifecycleTools(
             z.string(),
             z.object({
               mode: z.enum(["allow", "deny", "raise", "ask-human"]),
-              perPermission: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional(),
+              perPermission: z
+                .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
+                .optional(),
             }),
           ])
           .optional()
@@ -191,7 +193,9 @@ export function registerSessionLifecycleTools(
             z.string(),
             z.object({
               mode: z.enum(["allow", "deny", "raise", "ask-human"]),
-              perAPI: z.record(z.enum(["allow", "deny", "raise", "ask-human"])).optional(),
+              perAPI: z
+                .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
+                .optional(),
             }),
           ])
           .optional()
