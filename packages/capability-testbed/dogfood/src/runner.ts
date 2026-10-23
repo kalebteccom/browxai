@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { DogfoodRunConfig } from "./config.js";
@@ -364,10 +364,4 @@ export async function runDogfood(config: DogfoodRunConfig): Promise<DogfoodRunRe
   } finally {
     if (!config.keepOpen) await stopProcesses(processes);
   }
-}
-
-export async function readReportSummary(path: string): Promise<string> {
-  const raw = await readFile(path, "utf8");
-  const parsed = JSON.parse(raw) as { aggregateSummary?: unknown };
-  return JSON.stringify(parsed.aggregateSummary ?? {}, null, 2);
 }
