@@ -10,6 +10,9 @@ surface" covers.
 
 ### Changed
 
+- **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
+  naming the variable for a base that is not `https`. Plain `http` still works
+  for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
 - **Service-worker tools follow the origin policy.** `workers_list` leaves out a
   service worker on an origin `BROWX_BLOCKED_ORIGINS` blocks or
   `BROWX_ALLOWED_ORIGINS` does not list, and `worker_message_send` refuses it

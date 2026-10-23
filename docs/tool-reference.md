@@ -2984,7 +2984,10 @@ provider, funds the account, and sets the env vars:
   (case-insensitive).
 - `BROWX_CAPTCHA_API_KEY` (required): the provider account API key.
 - `BROWX_CAPTCHA_API_BASE` (optional): override the canonical base URL
-  (useful for self-hosted CapMonster-compatible proxies / testing).
+  (useful for self-hosted CapMonster-compatible proxies / testing). It must be
+  an `https` URL, because the API key and the challenge go to it. Plain `http`
+  is accepted only for `127.0.0.1`, `::1` and `localhost`; any other base makes
+  the tool return an error that names the variable.
 - `BROWX_CAPTCHA_TIMEOUT_MS` (optional, default `120000`): per-attempt
   deadline.
 - `BROWX_CAPTCHA_POLL_MS` (optional, default `5000`): poll interval.
