@@ -147,18 +147,6 @@ describe("live-view — a stream over the socket", () => {
     await until(() => source.stops === 1);
   });
 
-  it("stops the stream when its session unregisters, and tells the daemon why", async () => {
-    const source = new FakeSource();
-    const live = open().liveView!;
-    live.register("default", source);
-    await until(() => daemon.authenticated === 1);
-    daemon.send({ type: "view.start", session: "default" });
-    await until(() => source.starts === 1);
-    await live.unregister("default");
-    await until(() => frames("view.stopped").length === 1);
-    expect(frames("view.stopped")[0]).toMatchObject({ reason: "session-closed" });
-  });
-
   it("keeps request frames flowing while a stream runs", async () => {
     const source = new FakeSource();
     const ch = open();

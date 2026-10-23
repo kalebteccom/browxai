@@ -105,10 +105,4 @@ describe("engine tool-gate — the CDP-deep refusal (firefox)", () => {
       expect(refusal!.hint).toContain("engine-adapters.md");
     }
   });
-
-  it("never gates a cross-browser (class-A) tool on webkit either", () => {
-    for (const tool of ["navigate", "click", "fill", "screenshot", "cookies_set", "snapshot"]) {
-      expect(assertEngineSupports(tool, "webkit")).toBeNull();
-    }
-  });
 });

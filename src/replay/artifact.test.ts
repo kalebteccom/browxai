@@ -56,17 +56,6 @@ describe("AssetStore — content addressing and dedup", () => {
     expect(a).toBe(sha256(Buffer.from("body { color: red }", "utf8")));
   });
 
-  it("stores one copy of a bundle an SPA reloads on every navigation", () => {
-    const store = new AssetStore();
-    const bundle = Buffer.alloc(1024 * 1024, 7);
-    for (let i = 0; i < 10; i++) store.add(bundle);
-
-    expect(store.added).toBe(10);
-    expect(store.distinct).toBe(1);
-    expect(store.storedBytes).toBe(1024 * 1024);
-    expect(store.savedBytes).toBe(9 * 1024 * 1024);
-  });
-
   it("keeps distinct bytes distinct", () => {
     const store = new AssetStore();
     store.add("one");

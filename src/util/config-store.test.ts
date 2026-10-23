@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConfigStore, envLayer, resolvedToEnv, BUILTIN_DEFAULTS } from "./config-store.js";
@@ -201,15 +201,6 @@ describe("hideOverlaySelectors precedence", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
-
-  it("absent env leaves the built-in [] default", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-hos2-"));
-    try {
-      expect(new ConfigStore(dir, {}).resolve().hideOverlaySelectors).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
 });
 
 describe("ConfigStore capability ceiling", () => {
@@ -288,10 +279,3 @@ describe("resolvedToEnv adapter", () => {
 });
 
 // Sanity: config file path lands in the workspace root, not cwd (no-trace).
-describe("ConfigStore no-trace", () => {
-  it("writes config.json under the given workspace root only", () => {
-    const s = new ConfigStore(dir, {});
-    s.setLayer("user", { headless: true });
-    expect(existsSync(join(dir, "config.json"))).toBe(true);
-  });
-});

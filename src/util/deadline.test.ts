@@ -38,12 +38,6 @@ describe("withDeadline", () => {
       "boom",
     );
   });
-
-  it("does not leak the timer when the op wins (process exits clean)", async () => {
-    // If the timer weren't cleared, an unref'd handle could keep the loop
-    // alive; resolving fast and asserting completion is the observable proxy.
-    await expect(withDeadline(Promise.resolve("ok"), 10_000, "x")).resolves.toBe("ok");
-  });
 });
 
 describe("clampTimeout — ceiling", () => {

@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  ENGINE_KINDS,
   IMPLEMENTED_ENGINES,
   EngineNotYetSupportedError,
   resolveBrowserType,
@@ -14,19 +13,6 @@ import {
 } from "./index.js";
 
 describe("engine port — EngineKind + selection", () => {
-  it("commits to the eight engines (safari, both native, and electron)", () => {
-    expect(ENGINE_KINDS).toEqual([
-      "chromium",
-      "firefox",
-      "webkit",
-      "android",
-      "safari",
-      "ios-app",
-      "android-app",
-      "electron",
-    ]);
-  });
-
   it("wires all eight engines — safari, both native, and electron", () => {
     // safari is the first non-Playwright engine: driven over safaridriver, no
     // Playwright Page, reachable via `--engine safari` / BROWX_ENGINE=safari

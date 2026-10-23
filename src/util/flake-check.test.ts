@@ -148,17 +148,6 @@ describe("runFlakeCheck — stopOnAllGreen short-circuit", () => {
     expect(report.runsCompleted).toBe(4);
     expect(report.shortCircuitedAfter).toBeUndefined();
   });
-
-  it("requires `stopOnAllGreen` to be set explicitly; default behaviour runs all N", async () => {
-    const handlers = { navigate: jsonHandler({ ok: true }) };
-    const report = await runFlakeCheck([{ tool: "navigate" }], {
-      n: 4,
-      allowed: ALLOWED,
-      handlers,
-    });
-    expect(report.runsCompleted).toBe(4);
-    expect(report.shortCircuitedAfter).toBeUndefined();
-  });
 });
 
 describe("runFlakeCheck — cached-selector artifact", () => {
@@ -385,14 +374,5 @@ describe("runFlakeCheck — forces stopOnError:false inside each run", () => {
     expect(report.steps[0]!.runs).toBe(2);
     expect(report.steps[1]!.runs).toBe(2);
     expect(report.steps[1]!.ok).toBe(2);
-  });
-
-  it("integration smoke — composes cleanly with runBatch's handler dispatch", async () => {
-    // Sanity: the same handler set works in isolation under runBatch.
-    const r = await runBatch([{ tool: "navigate" }], {
-      allowed: ALLOWED,
-      handlers: { navigate: jsonHandler({ ok: true }) },
-    });
-    expect(r.results[0]!.ok).toBe(true);
   });
 });

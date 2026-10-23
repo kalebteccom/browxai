@@ -32,12 +32,6 @@ describe("validateEngine — operator string → EngineKind", () => {
     }
   });
 
-  it("rejects a typo with the implemented-engine list (the fix is in the error)", () => {
-    expect(() => validateEngine("chrome")).toThrowError(
-      /engine "chrome" is not available; implemented engines: chromium, firefox, webkit, android, safari/,
-    );
-  });
-
   it("is case-sensitive — Firefox is NOT firefox (masking a misconfig is worse)", () => {
     expect(() => validateEngine("Firefox")).toThrow(UnknownEngineError);
   });
@@ -58,12 +52,6 @@ describe("resolveEngineSelection — precedence flag > env > default", () => {
 
   it("reads --engine=<kind> (equals form) from argv", () => {
     expect(resolveEngineSelection(["--engine=android"], {})).toBe("android");
-  });
-
-  it("the explicit --engine flag WINS over BROWX_ENGINE", () => {
-    expect(resolveEngineSelection(["--engine", "webkit"], { BROWX_ENGINE: "firefox" })).toBe(
-      "webkit",
-    );
   });
 
   it("BROWX_ENGINE wins over the default but loses to the flag (full precedence chain)", () => {

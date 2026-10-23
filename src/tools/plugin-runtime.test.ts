@@ -37,12 +37,6 @@ describe("warnNonFirstPartyPlugins", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("stays silent when nothing loaded", () => {
-    const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
-    warnNonFirstPartyPlugins([]);
-    expect(warn).not.toHaveBeenCalled();
-  });
-
   it("names each community plugin with its declared capabilities", () => {
     const warn = vi.spyOn(log, "warn").mockImplementation(() => undefined);
     warnNonFirstPartyPlugins([

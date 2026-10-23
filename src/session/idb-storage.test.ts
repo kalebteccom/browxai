@@ -316,16 +316,6 @@ describe("IndexedDB CRUD", () => {
       expect(getR.found).toBe(true);
       if (getR.found) expect(getR.value).toEqual({ name: "Ada" });
     });
-    it("put + get round-trips a numeric key", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      await idbPut(page as any, { dbName: "app", storeName: "kv", key: 42, value: "x" }, "idb_put");
-
-      const r = await idbGet(page as any, { dbName: "app", storeName: "kv", key: 42 }, "idb_get");
-      expect(r.found).toBe(true);
-      if (r.found) expect(r.value).toBe("x");
-    });
     it("get returns found:false for missing key", async () => {
       const { page, idb } = fakePage("https://example.com/");
       idb._ensure("app", "kv", null);

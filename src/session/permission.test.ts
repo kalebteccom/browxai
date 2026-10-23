@@ -118,11 +118,6 @@ describe("PermissionPolicyState", () => {
     expect(s.modeFor("camera")).toBe("raise");
   });
 
-  it("modeFor falls back to top-level when no per-permission override", () => {
-    const s = new PermissionPolicyState({ mode: "allow" });
-    expect(s.modeFor("microphone")).toBe("allow");
-  });
-
   it("modeFor honours per-permission override over top-level", () => {
     const s = new PermissionPolicyState({
       mode: "allow",

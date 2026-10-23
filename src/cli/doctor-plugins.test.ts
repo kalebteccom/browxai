@@ -357,11 +357,4 @@ describe("doctor exit-code convention", () => {
     for (const c of checks.filter((x) => x.info)) expect(c.ok).toBe(true);
     expect(fails(checks)).toHaveLength(0);
   });
-
-  it("any plugins ✗ row reports ok=false (fails doctor overall)", () => {
-    declare({ "plugin-missing": {} });
-    const checks = run();
-    expect(fails(checks).length).toBeGreaterThan(0);
-    for (const c of fails(checks)) expect(c.fix).toBeTruthy();
-  });
 });

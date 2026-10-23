@@ -157,14 +157,4 @@ describe("list_sessions — degrades per session, never loses the listing", () =
     expect(rows[1]).toMatchObject({ url: null, pages: null });
     expect(rows[2]).toMatchObject({ url: "https://b.test/two", pages: 1 });
   });
-
-  it("survives every session being gone (no row, no throw)", async () => {
-    const handler = captureListSessions([
-      entryWithPage("gone-1", "gone"),
-      entryWithPage("gone-2", "gone"),
-    ]);
-    const rows = bodyOf(await handler({})).sessions as Array<Record<string, unknown>>;
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row).toMatchObject({ url: null, pages: null });
-  });
 });

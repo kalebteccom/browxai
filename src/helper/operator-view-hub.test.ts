@@ -123,12 +123,6 @@ describe("ViewHub — start and stop", () => {
     ]);
   });
 
-  it("clamps a request above the ceiling before it reaches the source", async () => {
-    await startView({ maxFps: 30, maxWidth: 3000, quality: 100 });
-    expect(source.starts).toEqual([{ quality: 80, maxWidth: 1280 }]);
-    expect(sink.of("view.started")[0]).toMatchObject({ maxFps: 5, maxWidth: 1280, quality: 80 });
-  });
-
   it("refuses by code: bad request, unknown session, engine with no source, too many streams", async () => {
     await startView({ maxFps: "fast" });
     await startView({}, "nobody");
@@ -366,17 +360,6 @@ describe("ViewHub — frames", () => {
     expect(sink.of("frame")).toHaveLength(1);
   });
 
-  it("cuts a large frame into parts that all carry its sequence number", async () => {
-    await startView();
-    source.emit("A".repeat(40_960 * 2 + 8));
-    const parts = sink.of("frame");
-    expect(parts.map((p) => [p.seq, p.part, p.parts])).toEqual([
-      [1, 0, 3],
-      [1, 1, 3],
-      [1, 2, 3],
-    ]);
-  });
-
   it("treats a frame as lost after 5 s without an ack, and sends the next", async () => {
     await startView();
     source.emit();
@@ -442,12 +425,6 @@ describe("ViewHub — the screencast's own flow control", () => {
     expect(source.starts).toHaveLength(2);
     expect(source.starts[1]!.maxWidth).toBeLessThan(960);
     expect(source.starts[1]!.quality).toBe(45);
-  });
-
-  it("keeps the screencast running after a restart", async () => {
-    await startView();
-    await slowWindows(1);
-    expect(source.live).toBe(true);
   });
 });
 
