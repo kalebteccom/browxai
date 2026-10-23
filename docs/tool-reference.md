@@ -1051,7 +1051,7 @@ Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / 
 
 #### `worker_messages_read({ workerId?, session? })`
 
-Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Service Worker messages are the ones the SW sends to this page; they use the same shape, with a `sw-N` `workerId`. A SW that messaged the page and has since stopped still has its `sw-N` id, which `workers_list` then does not show; sending to it fails. Each call drains (removes) what it returned; re-reads see only what arrived since. Capability: `read`.
+Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Service Worker messages are the ones the SW sends to this page; they use the same shape, with a `sw-N` `workerId`. A SW that messaged the page and has since stopped still has its `sw-N` id, which `workers_list` then does not show; sending to it fails. Each call drains (removes) what it returned; re-reads see only what arrived since. Message data is reported by the page and is untrusted, like any page text. Capability: `read`.
 
 #### `sw_intercept_fetch({ pattern, response, session? })`
 

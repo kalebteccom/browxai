@@ -10,6 +10,9 @@ surface" covers.
 
 ### Changed
 
+- **`worker_messages_read` says its data is untrusted.** The tool description and
+  the tool reference now state that service-worker and web-worker message data
+  is reported by the page and is untrusted, like any page text.
 - **`solve_captcha` keeps the provider API key out of URLs.** The poll request
   is now a POST with the key in the form body, as the submit already was. It
   used to put the key in the query string.
