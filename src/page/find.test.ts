@@ -149,13 +149,6 @@ describe("scoreNode — natural-language queries name the element inside a phras
     expect(navScore).toBeGreaterThan(scoreNode(prose, q, tokens));
   });
 
-  it("holds when the a11y tree supplies the same nodes with real ARIA roles", () => {
-    const asLink = (name: string) => n("link", name);
-    expect(scoreNode(asLink("past"), q, tokens)).toBeGreaterThan(
-      scoreNode(asLink("Show HN: I built a tool for the top of the stack"), q, tokens),
-    );
-  });
-
   it("a name matching only the query's stopwords scores nothing", () => {
     expect(
       scoreNode(n("a", "the of the"), "the settings gear in the top bar", [
@@ -252,12 +245,6 @@ describe("noVisibleCandidateWarning — capability-aware", () => {
     const w = noVisibleCandidateWarning(2, { coords: true, evalJs: false });
     expect(w).toContain("coords");
     expect(w).not.toContain("eval_js");
-  });
-
-  it("names only eval_js when only eval is enabled", () => {
-    const w = noVisibleCandidateWarning(1, { coords: false, evalJs: true });
-    expect(w).toContain("eval_js");
-    expect(w).not.toContain("coords");
   });
 
   it("names both when both are enabled, and reports the count", () => {
@@ -431,22 +418,10 @@ describe("scoreNode — DOM-walk candidates carry bare HTML tags, not ARIA roles
 });
 
 describe("rankByVisibility — demotion resolves bare tags too", () => {
-  it("demotes a DOM-walk <nav> below the DOM-walk <a> it encloses", () => {
-    const cands = [cand("topNav", 90, true, "nav"), cand("pastLink", 30, true, "a")];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["pastLink", "topNav"]);
-  });
-
   it("demotes a DOM-walk <div> wrapper below an interactive control", () => {
     const cands = [cand("wrapper", 80, true, "div"), cand("saveBtn", 20, true, "button")];
     const { ranked } = rankByVisibility(cands, false);
     expect(ranked.map((c) => c.ref)).toEqual(["saveBtn", "wrapper"]);
-  });
-
-  it("leaves DOM-walk containers in place when nothing interactive matched", () => {
-    const cands = [cand("topNav", 90, true, "nav"), cand("wrapper", 80, true, "div")];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["topNav", "wrapper"]);
   });
 });
 

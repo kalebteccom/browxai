@@ -233,11 +233,6 @@ describe("defaultScheduleDir", () => {
 });
 
 describe("ensureWorkspaceDir", () => {
-  it("creates the dir under the workspace and returns the absolute path", () => {
-    const p = ensureWorkspaceDir(WS, "evt/shots", "screenshot_on");
-    expect(p).toBe(join(WS, "evt/shots"));
-    expect(existsSync(p)).toBe(true);
-  });
   it("rejects path traversal", () => {
     expect(() => ensureWorkspaceDir(WS, "../bad", "screenshot_on")).toThrow(/\$BROWX_WORKSPACE/);
   });

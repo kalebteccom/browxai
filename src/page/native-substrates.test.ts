@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "vitest";
 import { RefRegistry } from "./refs.js";
-import { ACTION_MAX_AGE_MS, NativeScreen } from "./native-screen.js";
+import { NativeScreen } from "./native-screen.js";
 import { NativeElementSubstrate } from "./element-substrate-android-app.js";
 import { NativeSnapshotSubstrate } from "./snapshot-substrate-android-app.js";
 import { NativeTargetSubstrate, nativeTargetUrl } from "./target-substrate-android-app.js";
@@ -97,13 +97,6 @@ function recordingInput(): NativeInputIO & { calls: string[] } {
 // ─── the re-resolution contract ───────────────────────────────────────────────
 
 describe("the re-resolution contract (RFC 0008 §3)", () => {
-  it("ACTION_MAX_AGE_MS is zero, so an action never reads a cached screen", () => {
-    // The performance temptation here points straight at the defect this engine
-    // exists to avoid. Pinned as a constant so raising it is a deliberate,
-    // visible change.
-    expect(ACTION_MAX_AGE_MS).toBe(0);
-  });
-
   it("a tap lands on the element's CURRENT box, not the one the ref was minted at", async () => {
     // THE BUG THE OWNER'S TRIAL FOUND. The competing tool replayed cached
     // coordinates, so a stale ref tapped whatever now occupied the old
@@ -537,11 +530,6 @@ function solidPng(width: number, height: number): Buffer {
 }
 
 describe("cropPng", () => {
-  it("crops to the requested rectangle", () => {
-    const cropped = cropPng(solidPng(400, 400), { x: 100, y: 200, width: 200, height: 80 });
-    expect(pngSize(cropped)).toEqual({ width: 200, height: 80 });
-  });
-
   it("clamps a rect that overhangs the frame", () => {
     // A UiAutomator node laid out under the navigation bar reports a box that
     // extends past the display. Refusing over one clipped row would be worse

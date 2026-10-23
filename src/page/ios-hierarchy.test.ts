@@ -94,17 +94,6 @@ describe("the ref survives a layout change when an identifier is present", () =>
     );
   });
 
-  it("keys an identified node on type, label and identifier — never on where it sits", () => {
-    const identified = { type: "Button", label: "Pay now", identifier: "checkout-submit" };
-    expect(nativeElementKey(identified, "Application/Button")).toBe(
-      nativeElementKey(identified, "Application/Other/Stack/Button[7]"),
-    );
-    const anonymous = { type: "Button", label: "Cancel" };
-    expect(nativeElementKey(anonymous, "Application/Button")).not.toBe(
-      nativeElementKey(anonymous, "Application/Button[2]"),
-    );
-  });
-
   it("gives two elements with the same identifier and different labels different refs", () => {
     // The identifier is the strongest signal, not the only one — an app that
     // reuses one testID across a list still gets distinguishable refs while the

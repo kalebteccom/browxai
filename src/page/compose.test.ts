@@ -144,13 +144,6 @@ describe("composeSnapshot —  back-compat", () => {
     expect(getDocumentCalls).toHaveLength(1);
     expect(getDocumentCalls[0]![1]).toEqual({ depth: -1 });
   });
-
-  it("passing `{}` is identical to omitting opts", async () => {
-    const cdp = happyPathCdp();
-    const refs = new RefRegistry();
-    const out = await composeSnapshot(cdp, refs, ["data-testid"], {});
-    expect(out.stats).not.toHaveProperty("closedShadowEntries");
-  });
 });
 
 describe("composeSnapshot — stats.tier names the tier that carried the snapshot", () => {

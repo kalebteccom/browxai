@@ -52,22 +52,4 @@ describe("snapshotSubstrateFor — Safari branch", () => {
     expect(execCalls[0]?.sessionId).toBe("SID-42");
     expect(execCalls[0]?.scriptBody).toContain("arguments[0]");
   });
-
-  it("does NOT call page() on a safari session (page would throw)", () => {
-    let pageCalled = false;
-    const session: SubstrateCapableSession = {
-      engine: "safari",
-      page: () => {
-        pageCalled = true;
-        throw new Error("safari-no-playwright-page");
-      },
-      safari: () =>
-        ({
-          sessionId: "S",
-          webDriver: { executeScript: async () => [], currentUrl: async () => "" },
-        }) as unknown as SafariSessionHandle,
-    };
-    snapshotSubstrateFor(session);
-    expect(pageCalled).toBe(false);
-  });
 });

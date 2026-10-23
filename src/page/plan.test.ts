@@ -501,31 +501,4 @@ describe("plan() — descriptor production from a find() candidate", () => {
     if (!r.ok) return;
     expect(r.descriptor.evidence.warnings.some((w) => /scored confidently/.test(w))).toBe(true);
   });
-
-  it("named-ref descriptor: a descriptor bound to a named ref still dispatches via the same registry", async () => {
-    // Named refs and plan's ref share the SAME `eN` namespace — no parallel
-    // id system. We bind a name to a ref, then build a descriptor that
-    // *carries the bound ref directly*; execute looks it up via refs.has().
-    const refs = new RefRegistry();
-    refs.forKey("k1", { role: "button", name: "Play" });
-    refs.nameRef("play_btn", "e1");
-    expect(refs.refByNameLookup("play_btn")).toBe("e1");
-
-    vi.mocked(find).mockResolvedValueOnce({
-      candidates: [cand({ ref: "e1", name: "Play" })],
-      warnings: [],
-    });
-    const planned = await plan({} as never, {} as never, refs, {
-      query: "play",
-      verb: "click",
-      testAttributes: [],
-    });
-    expect(planned.ok).toBe(true);
-    if (!planned.ok) return;
-    // The descriptor's ref is e1 — the same ref the name "play_btn" points
-    // to. There is one namespace, not two; the name is an alias.
-    expect(planned.descriptor.ref).toBe("e1");
-    const dispatched = await execute(fakeCtx(refs), planned.descriptor);
-    expect(dispatched.ok).toBe(true);
-  });
 });

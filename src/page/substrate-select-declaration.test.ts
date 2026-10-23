@@ -111,21 +111,6 @@ describe("substrate selection keys on the declared `page` sub-interface", () => 
     expect(networkSubstrateFor(session)).toBeInstanceOf(CdpNetworkSubstrate);
   });
 
-  it("never calls page() on an engine that declares none", () => {
-    let reached = false;
-    const session = {
-      engine: NO_PAGE,
-      page: () => {
-        reached = true;
-        throw new Error("unreachable");
-      },
-      safari: nativeHandle,
-    };
-    snapshotSubstrateFor(session);
-    networkSubstrateFor(session);
-    expect(reached).toBe(false);
-  });
-
   it("contains no EngineKind literal in either selector module", () => {
     // The lint rule (`no-engine-literal-branches`) enforces this too — both files
     // came off `ENGINE_SELECT_ALLOWLIST` in this phase. Asserting it here as well

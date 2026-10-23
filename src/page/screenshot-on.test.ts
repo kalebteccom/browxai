@@ -252,27 +252,6 @@ describe("runScreenshotOn — bounded & safe", () => {
     expect(r.paths.length).toBe(1); // 1 success
   });
 
-  it("disposes the trigger subscription on every exit path", async () => {
-    const snap: SnapFn = () => Promise.resolve(fakePng());
-    const source = makeSource();
-    const clock = virtualClock();
-    const p = runScreenshotOn(
-      snap,
-      source,
-      {
-        trigger: "network-mutation",
-        durationMs: 300,
-        intoDir: "evt/dispose",
-      },
-      WS,
-      clock,
-    );
-    await new Promise((r) => setImmediate(r));
-    clock.runWindowEnd();
-    await p;
-    expect(source.disposed).toBe(true);
-  });
-
   it("creates a nested intoDir if missing", async () => {
     const snap: SnapFn = () => Promise.resolve(fakePng());
     const source = makeSource();

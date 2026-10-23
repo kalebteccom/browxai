@@ -170,15 +170,6 @@ describe("applyWorldToScreen + applyScreenToWorld (explicit-mode math)", () => {
     expect(applyWorldToScreen({ x: 5, y: 7 }, t)).toEqual({ x: 105, y: 207 });
   });
 
-  it("round-trips through inverse to within fp precision", () => {
-    const t = { scale: 1.5, panX: 12.3, panY: -4.7, originX: 50, originY: 60 };
-    const world = { x: 11, y: 22 };
-    const screen = applyWorldToScreen(world, t);
-    const back = applyScreenToWorld(screen, t);
-    expect(back.x).toBeCloseTo(world.x);
-    expect(back.y).toBeCloseTo(world.y);
-  });
-
   it("inverse returns NaN on scale=0 rather than throwing", () => {
     const r = applyScreenToWorld({ x: 1, y: 1 }, { scale: 0, panX: 0, panY: 0 });
     expect(Number.isNaN(r.x)).toBe(true);

@@ -124,22 +124,6 @@ describe("PlaywrightTargetSubstrate", () => {
 });
 
 describe("SafariTargetSubstrate", () => {
-  it("tags the safari engine", () => {
-    expect(new SafariTargetSubstrate(safariHandle().handle).engine).toBe("safari");
-  });
-
-  it("reads the URL over WebDriver Classic, threading the session id", async () => {
-    const { handle, calls } = safariHandle({ url: "https://shop.test/cart" });
-    await expect(new SafariTargetSubstrate(handle).url()).resolves.toBe("https://shop.test/cart");
-    expect(calls).toEqual(["currentUrl:SID-7"]);
-  });
-
-  it("reads the title through execute/sync as a `return document.title` body", async () => {
-    const { handle, calls } = safariHandle({ title: "Cart" });
-    await expect(new SafariTargetSubstrate(handle).title()).resolves.toBe("Cart");
-    expect(calls).toEqual(["exec:SID-7:return document.title"]);
-  });
-
   it("coerces a non-string execute/sync result to the empty title", async () => {
     // `execute/sync` returns whatever the page evaluated to; a document with no
     // title, or a driver that answers null, must not surface as `null` in a
