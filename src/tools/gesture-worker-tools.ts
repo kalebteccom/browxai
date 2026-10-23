@@ -8,7 +8,20 @@ import type {
   ActionHost,
   ServerServicesHost,
 } from "./host.js";
-import { requirePage } from "../engine/index.js";
+import { engineDeclaration, requirePage } from "../engine/index.js";
+import type { ServiceWorkerAccess } from "../page/workers.js";
+import type { SessionEntry } from "../session/registry.js";
+
+/** Whether this session's engine can reach service workers. Playwright exposes
+ *  them (`context.serviceWorkers()`) on the engines that declare the raw-CDP
+ *  `deep` escape hatch, which is every Chromium-based one. Read from the engine's
+ *  declaration, so a new Chromium-based engine needs no edit here. */
+function swAccessFor(e: SessionEntry): ServiceWorkerAccess {
+  return {
+    engine: e.session.engine,
+    supported: engineDeclaration(e.session.engine)?.deep === true,
+  };
+}
 
 /**
  * Worker-visibility tools: workers_list / worker_message_send /
@@ -32,7 +45,9 @@ export function registerGestureWorkerTools(
   //   • `worker_messages_read`     — drain FROM-worker messages (read)
   //   • `sw_intercept_fetch`       — fulfil SW-handled requests (action)
   // Web Worker discovery uses a page-side `Worker` constructor wrapper (same
-  // shape as the WS family); SW discovery uses CDP `Target.setAutoAttach` +
+  // shape as the WS family); SW listing and messaging use Playwright's
+  // `context.serviceWorkers()` and `Worker.evaluate` (Chromium-based engines
+  // only), while SW fetch interception uses CDP `Target.setAutoAttach` +
   // `ServiceWorker.enable` on the session's top-level CDP. See
   // src/page/workers.ts for the full design.
 
@@ -41,7 +56,7 @@ export function registerGestureWorkerTools(
     {
       capability: "read",
       description:
-        'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Worker `state` is one of `stopped`/`starting`/`running`/`stopping`. Capability: `read`.',
+        'Enumerate live workers in this session. Returns `[{workerId, type, url, state?}]` where `workerId` is a stable per-session id (`ww-N` for Web Workers, `sw-N` for Service Workers) the agent passes back to `worker_message_send` / `worker_messages_read`. `type` filters the list (`"web"`, `"service"`, or `"all"` — the default). Web Worker discovery requires the page-side wrapper to have been installed BEFORE the worker was constructed (eagerly done at session creation when `read` is on). Service Workers come from `context.serviceWorkers()` in Playwright (Chromium-based engines only), so only live ones are listed and `state` is `running`; on another engine `type:"service"` returns an error naming the engine and `"all"` lists Web Workers only. Capability: `read`.',
       inputSchema: {
         type: z
           .enum(["web", "service", "all"])
@@ -55,11 +70,7 @@ export function registerGestureWorkerTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const list = await e.workers.list(
-          requirePage(e.session),
-          requireCdp(e.session),
-          type ?? "all",
-        );
+        const list = await e.workers.list(requirePage(e.session), swAccessFor(e), type ?? "all");
         const body = { ok: true, workers: list, tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
@@ -80,7 +91,7 @@ export function registerGestureWorkerTools(
     {
       capability: "action",
       description:
-        "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate` on the SW's attached session. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
+        "`postMessage` to a worker. `workerId` is the id from `workers_list` (`ww-N` for Web Workers, `sw-N` for Service Workers). For Web Workers, calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event — not a synthetic one. For Service Workers, dispatches a `MessageEvent` into the SW global with Playwright's `Worker.evaluate`, so `self.onmessage` and `message` listeners fire; the event is synthetic and has no `source`, so a worker that answers should do it through `clients.matchAll({includeUncontrolled:true})`, and the reply comes back through `worker_messages_read`. Service Workers are reachable on Chromium-based engines only; elsewhere the call returns an error naming the engine. Binary `MessagePort` transfer is not supported — `message` is a string. Capability: `action`.",
       inputSchema: {
         workerId: z.string().describe("Worker id from `workers_list`, e.g. `ww-1` or `sw-1`."),
         message: z
@@ -96,7 +107,7 @@ export function registerGestureWorkerTools(
       if (g) return g;
       const e = await entryFor(session);
       try {
-        const r = await e.workers.sendMessage(requirePage(e.session), requireCdp(e.session), {
+        const r = await e.workers.sendMessage(requirePage(e.session), swAccessFor(e), {
           workerId,
           message,
         });

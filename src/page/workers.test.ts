@@ -1,10 +1,12 @@
 // Unit coverage for the workers registry. The full end-to-end story (page-side
-// Worker wrapper survives a real init-script injection; SW CDP auto-attach
-// fires under a real browser) is driven by the keystone — here we cover the
-// pieces that don't need a browser:
+// Worker wrapper survives a real init-script injection; a real service worker
+// is listed and receives a message) is driven by the keystone — here we cover
+// the pieces that don't need a browser:
 //
-//   - `list` against a faked Page returns the page-side __browxWorkers list
-//   - `sendMessage` routes ww-* to the page and sw-* through the CDP path
+//   - `list` against a faked Page returns the page-side __browxWorkers list,
+//     plus the service workers the faked context holds
+//   - `sendMessage` routes ww-* to the page and sw-* to `Worker.evaluate`, and
+//     refuses sw-* naming the engine when it can't reach service workers
 //   - `readMessages` drains the page-side Web Worker ring, and moves the
 //     page-side service-worker ring (`drainSw`) into the server-side SW ring
 //   - `addFetchIntercept` / `removeFetchIntercept` server-side bookkeeping
@@ -25,7 +27,19 @@ describe("WORKERS_PAGE_SCRIPT", () => {
 
 // --- Page / CDP fakes ---------------------------------------------------------
 
+/** A service-worker handle as Playwright's `context.serviceWorkers()` returns it. */
+function fakeSw(url: string, evaluate?: (fn: unknown, arg: unknown) => unknown) {
+  return {
+    url: () => url,
+    evaluate: vi.fn(async (fn: unknown, arg: unknown) => (evaluate ? evaluate(fn, arg) : true)),
+  };
+}
+
+const CHROMIUM = { engine: "chromium", supported: true };
+const FIREFOX = { engine: "firefox", supported: false };
+
 function fakePage() {
+  const serviceWorkers: Array<ReturnType<typeof fakeSw>> = [];
   const evaluates: Array<{ arg: unknown; result: unknown }> = [];
   const initScripts: string[] = [];
   const handlers: Array<(arg: unknown) => unknown> = [];
@@ -40,6 +54,7 @@ function fakePage() {
       initScripts.push(content);
     }),
     pages: () => [page],
+    serviceWorkers: () => serviceWorkers,
   };
   const page = {
     context: () => ctx,
@@ -49,6 +64,7 @@ function fakePage() {
     page: page as unknown as Parameters<WorkersRegistry["list"]>[0],
     evaluates,
     initScripts,
+    serviceWorkers,
     enqueueResponse: (fn: (arg: unknown) => unknown) => handlers.push(fn),
   };
 }
@@ -62,7 +78,7 @@ function fakeCdp() {
   const on = vi.fn();
   const off = vi.fn();
   return {
-    cdp: { send, on, off } as unknown as Parameters<WorkersRegistry["list"]>[1],
+    cdp: { send, on, off } as unknown as Parameters<WorkersRegistry["addFetchIntercept"]>[0],
     sends,
     on,
     off,
@@ -98,23 +114,49 @@ describe("WorkersRegistry.list", () => {
   it("filter:all combines both halves", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    const c = fakeCdp();
-    // Seed a fake SW attachment server-side.
-
-    (reg as any).swAttached.set("sess-A", {
-      targetId: "tgt-A",
-      sessionId: "sess-A",
-      url: "https://x/sw.js",
-      status: "running",
-      fetchEnabled: false,
-    });
+    f.serviceWorkers.push(fakeSw("https://x/sw.js"));
     f.enqueueResponse(() => undefined);
     f.enqueueResponse(() => [{ workerId: "ww-1", url: "https://x/w.js" }]);
-    const out = await reg.list(f.page, c.cdp, "all");
+    const out = await reg.list(f.page, CHROMIUM, "all");
     expect(out).toEqual([
       { workerId: "ww-1", type: "web", url: "https://x/w.js" },
       { workerId: "sw-1", type: "service", url: "https://x/sw.js", state: "running" },
     ]);
+  });
+
+  it("needs no CDP session: it reads the context's service workers", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(fakeSw("https://x/a.js"), fakeSw("https://x/b.js"));
+    const out = await reg.list(f.page, CHROMIUM, "service");
+    expect(out.map((w) => [w.workerId, w.url])).toEqual([
+      ["sw-1", "https://x/a.js"],
+      ["sw-2", "https://x/b.js"],
+    ]);
+  });
+
+  it("lists two live workers of one script URL once", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(fakeSw("https://x/sw.js"), fakeSw("https://x/sw.js"));
+    const out = await reg.list(f.page, CHROMIUM, "service");
+    expect(out).toHaveLength(1);
+  });
+
+  it("filter:service on an engine without service workers refuses, naming the engine", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    await expect(reg.list(f.page, FIREFOX, "service")).rejects.toThrow(/"firefox" engine/);
+  });
+
+  it("filter:all on an engine without service workers still lists the Web Workers", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(fakeSw("https://x/sw.js"));
+    f.enqueueResponse(() => undefined);
+    f.enqueueResponse(() => [{ workerId: "ww-1", url: "https://x/w.js" }]);
+    const out = await reg.list(f.page, FIREFOX, "all");
+    expect(out).toEqual([{ workerId: "ww-1", type: "web", url: "https://x/w.js" }]);
   });
 });
 
@@ -124,27 +166,76 @@ describe("WorkersRegistry.sendMessage", () => {
   it("ww-* routes through the page-side __browxWorkers.post", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    const c = fakeCdp();
     f.enqueueResponse(() => undefined); // installPageWrapper re-inject
     f.enqueueResponse(() => ({ ok: true }));
-    const r = await reg.sendMessage(f.page, c.cdp, { workerId: "ww-1", message: "hello" });
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "ww-1", message: "hello" });
     expect(r).toEqual({ ok: true, workerId: "ww-1" });
   });
 
-  it("sw-* with no known SW returns an error", async () => {
+  it("sw-* runs the dispatch function in the matching worker with the message", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    const c = fakeCdp();
-    const r = await reg.sendMessage(f.page, c.cdp, { workerId: "sw-1", message: "x" });
+    const other = fakeSw("https://x/other.js");
+    const target = fakeSw("https://x/sw.js");
+    f.serviceWorkers.push(other, target);
+    await reg.list(f.page, CHROMIUM, "service"); // other = sw-1, target = sw-2
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-2", message: "hi" });
+    expect(r).toEqual({ ok: true, workerId: "sw-2" });
+    expect(other.evaluate).not.toHaveBeenCalled();
+    expect(target.evaluate).toHaveBeenCalledTimes(1);
+    const [fn, arg] = target.evaluate.mock.calls[0]!;
+    expect(arg).toBe("hi");
+    // The function is serialised into the worker, so it must stay self-contained
+    // and dispatch a real `message` event.
+    expect(String(fn)).toContain("MessageEvent");
+    expect(String(fn)).toContain("dispatchEvent");
+  });
+
+  it("sw-* finds a worker without a prior list call", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://x/sw.js");
+    f.serviceWorkers.push(sw);
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
+    expect(r.ok).toBe(true);
+    expect(sw.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("sw-* reports the evaluate failure", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    f.serviceWorkers.push(
+      fakeSw("https://x/sw.js", () => {
+        throw new Error("Target closed");
+      }),
+    );
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
+    expect(r).toEqual({ ok: false, workerId: "sw-1", error: "Target closed" });
+  });
+
+  it("sw-* with no live SW returns an error", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/no service worker/);
+  });
+
+  it("sw-* on an engine without service workers is refused, naming the engine", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    const sw = fakeSw("https://x/sw.js");
+    f.serviceWorkers.push(sw);
+    const r = await reg.sendMessage(f.page, FIREFOX, { workerId: "sw-1", message: "x" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/"firefox" engine/);
+    expect(sw.evaluate).not.toHaveBeenCalled();
   });
 
   it("rejects unknown workerId prefixes", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    const c = fakeCdp();
-    const r = await reg.sendMessage(f.page, c.cdp, { workerId: "garbage-7", message: "x" });
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "garbage-7", message: "x" });
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/unknown workerId prefix/);
   });
@@ -209,10 +300,9 @@ describe("WorkersRegistry.readMessages", () => {
     expect(rest.map((m) => m.data)).toEqual(["a"]);
   });
 
-  it("a message and a CDP attachment of the same script URL share one sw-* id", async () => {
+  it("a message and a live service worker of the same script URL share one sw-* id", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    const c = fakeCdp();
     f.enqueueResponse(() => undefined);
     f.enqueueResponse(() => []); // drain (Web Workers)
     f.enqueueResponse(() => [
@@ -225,14 +315,8 @@ describe("WorkersRegistry.readMessages", () => {
       ["sw-2", "s"],
     ]);
 
-    (reg as any).swAttached.set("sess-A", {
-      targetId: "tgt-A",
-      sessionId: "sess-A",
-      url: "https://x/sw.js",
-      status: "running",
-      fetchEnabled: false,
-    });
-    const listed = await reg.list(f.page, c.cdp, "service");
+    f.serviceWorkers.push(fakeSw("https://x/sw.js"));
+    const listed = await reg.list(f.page, CHROMIUM, "service");
     expect(listed).toEqual([
       { workerId: "sw-2", type: "service", url: "https://x/sw.js", state: "running" },
     ]);
