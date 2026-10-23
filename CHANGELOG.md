@@ -133,6 +133,10 @@ surface" covers.
   `<workspace>/plugins/`. The name now comes from `<dir>/package.json`, a
   relative path resolves from your shell's working directory, and a directory
   without a `package.json` name is refused before anything is installed.
+- **`BrowxaiClientWithPlugins` is now exported from `browxai`.** The first-party
+  plugins' `schema.d.ts` files tell consumers to write
+  `import type { BrowxaiClientWithPlugins } from "browxai"`, which failed
+  because only the SDK module defined it.
 
 ## [0.13.0] - 2026-10-22
 
