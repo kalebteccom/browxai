@@ -291,8 +291,7 @@ class OperatorLink implements OperatorChannel {
     sock.on("data", (chunk: string) => this.#onData(sock, chunk));
     // Node's connect errors name the socket path in their message. Log the code only.
     sock.on("error", (e: NodeJS.ErrnoException) => {
-      if (this.#sock === sock)
-        log.warn("operator channel connection error", { code: e.code });
+      if (this.#sock === sock) log.warn("operator channel connection error", { code: e.code });
     });
     sock.on("close", () => {
       if (this.#sock !== sock) return;

@@ -48,9 +48,7 @@ interface WritableTarget {
  *  rejects: a write that was dropped must never read as a success. */
 class ShedWriteError extends Error {
   constructor() {
-    super(
-      "file write dropped, the page sent chunks faster than the binding call budget allows",
-    );
+    super("file write dropped, the page sent chunks faster than the binding call budget allows");
     this.name = "NotAllowedError";
   }
 }
