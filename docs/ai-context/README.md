@@ -1,6 +1,6 @@
 # `docs/ai-context/`: the agent-facing routing layer
 
-This subtree is the agent-facing companion to the public `docs/` site. It is **not** part of the published VitePress documentation (excluded via `srcExclude`). It lives in the repo so every harness gets the same context, and so the discipline stays version-controlled with the code it governs.
+This subtree is the agent-facing companion to the public `docs/` site. It is **not** published: the site sync takes an allowlist of `docs/*.md` files and this subtree is not on it. It lives in the repo so every harness gets the same context, and so the discipline stays version-controlled with the code it governs.
 
 ## Read this before touching the relevant area
 
@@ -37,6 +37,6 @@ This subtree is the agent-facing companion to the public `docs/` site. It is **n
 | -------------- | ------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Audience       | adopters integrating browxai                                              | agents and contributors working _on_ browxai             |
 | Promise        | public API contract (tool names, ActionResult shape, capability defaults) | working discipline + design rationale + captured lessons |
-| Published      | yes, via VitePress to GitHub Pages                                        | no, repo-only                                            |
+| Published      | yes, via the Astro site in `website/` to Netlify                          | no, repo-only                                            |
 | Versioned with | semver-frozen surface                                                     | code                                                     |
 | Read when      | integrating, debugging adopter-side                                       | making changes here                                      |

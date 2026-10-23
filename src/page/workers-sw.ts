@@ -329,9 +329,8 @@ export class WorkersSwChannel {
     return [...this.fetchInterceptors.keys()];
   }
 
-  /** Append a FROM-SW message to the server-side ring. Currently unused by
-   *  the production path (the SW side message-relay is left as a future
-   *  follow-up — see report); kept for symmetry + future use. */
+  /** Append a FROM-SW message to the server-side ring. Only the unit tests
+   *  call it: the production path does not relay service-worker messages yet. */
   recordSwMessage(workerId: string, data: string): void {
     let trimmed = data;
     if (trimmed.length > SW_PAYLOAD_MAX) trimmed = trimmed.slice(0, SW_PAYLOAD_MAX) + "…";

@@ -143,9 +143,8 @@ export class WorkersRegistry {
     return this.sw.listFetchIntercepts();
   }
 
-  /** Append a FROM-SW message to the server-side ring. Currently unused by
-   *  the production path (the SW side message-relay is left as a future
-   *  follow-up — see report); kept for symmetry + future use. */
+  /** Append a FROM-SW message to the server-side ring. Only the unit tests
+   *  call it: the production path does not relay service-worker messages yet. */
   recordSwMessage(workerId: string, data: string): void {
     this.sw.recordSwMessage(workerId, data);
   }

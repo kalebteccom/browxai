@@ -22,7 +22,7 @@ When `diagnostics`, `network-body` and `secrets` are all active, the egress pipe
 2. **The secrets-masking sink applies first.** Every registered secret value is replaced.
 3. The recorder writes second, and sees only the masked payload.
 
-Reverse that and the recorder file gets raw secrets. `src/util/secrets-sinks.ts` enforces the composition, and `src/util/secrets-sinks.test.ts` verifies the order.
+Reverse that and the recorder file gets raw secrets. Masking is `SecretRegistry.applyMaskInText` in `src/util/secrets.ts`, and `src/util/secrets-sinks.test.ts` holds one masking test per egress sink.
 
 ## Adding a new egress path
 
@@ -31,16 +31,15 @@ Any new code path that emits user-visible text (a new recorder, a new diagnostic
 - Route the payload through the secrets-masking sink before writing.
 - Honor the `network-body` gate. Never include response bodies unless granted.
 - Use `resolveWorkspacePath` for filesystem touch (`src/util/workspace.ts`).
-- Honor the no-trace contract (`src/util/no-trace.ts`) when `diagnostics` is not active.
+- Honor the no-trace contract (enforced by `src/util/no-trace.test.ts`) when `diagnostics` is not active.
 
 ## Adding a new sink
 
-A sink is a value-mask transformer, and sinks live in `src/util/secrets-sinks.ts`. To add one:
+A sink is any output path that can carry a registered value. To add one:
 
-1. Implement the transformer.
-2. Register it in the sink list.
-3. Add a test asserting it masks registered values in the new output shape.
-4. Verify the composition order, mask before recorder, still holds.
+1. Call `SecretRegistry.applyMaskInText` on the payload before it leaves the process.
+2. Add a describe block to `src/util/secrets-sinks.test.ts` asserting it masks registered values in the new output shape.
+3. Verify the composition order, mask before recorder, still holds.
 
 ## Related
 

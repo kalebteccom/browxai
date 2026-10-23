@@ -41,7 +41,7 @@
 //     and `unintercept({})` clears the whole set.
 //
 // Server-side this file mints the init script (one constant — same shape as
-// `BROWX_PAGE_SCRIPT`) and exposes a registry the MCP handlers can call.
+// `BROWX_PAGE_STUB`) and exposes a registry the MCP handlers can call.
 
 import type { Page } from "playwright-core";
 

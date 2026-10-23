@@ -88,7 +88,7 @@ browxai's architecture leans on SOLID with TypeScript-idiomatic interpretations.
 
 ### Single responsibility: one tool, one file
 
-- Per-tool handler files: `src/page/click.ts`, `src/page/dom-export.ts`, `src/page/archive.ts`, etc. One tool = one file. Pages-side function + handler wrapper + types live together.
+- Per-tool handler files: `src/page/actions.ts`, `src/page/dom-export.ts`, `src/page/archive.ts`, etc. One tool = one file. Pages-side function + handler wrapper + types live together.
 - Capability gating is separated from tool logic: `src/util/capabilities.ts` owns the gate; the handler owns dispatch. A tool handler MUST NOT inline its own capability check beyond calling the shared gate.
 - `src/server.ts` is registry composition only, with no business logic. It wires the tool registry, composes gates, and exposes the MCP surface.
 

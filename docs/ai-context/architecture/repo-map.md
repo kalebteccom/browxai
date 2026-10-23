@@ -45,9 +45,9 @@ Cross-cutting utilities:
 
 - `capabilities.ts`: the gate. Source of truth for default-on / off-by-default. `RETIRED_CAPABILITIES` is the reference deprecation pattern.
 - `workspace.ts`: `resolveWorkspacePath` chokepoint. **All filesystem IO goes through this.**
-- `secrets.ts` + `secrets-sinks.ts`: secrets registration + masking at egress.
+- `secrets.ts`: secrets registration + masking at egress. `secrets-sinks.test.ts` holds the per-sink masking matrix.
 - `url-sanitizer.ts`: origin allow/blocklist.
-- `no-trace.ts`: the no-trace contract (recorded session artifacts leave no trace outside the workspace).
+- `no-trace.test.ts`: enforces the no-trace contract (recorded session artifacts leave no trace outside the workspace).
 - `deadline.ts`: anti-wedge deadlines on every tool call.
 - `config.ts`, `config-store.ts`: config parsing + persistence.
 - `diagnostics.ts`, `flake-check.ts`: diagnostics capability surface.
@@ -86,7 +86,7 @@ Keystone tests against real Chromium, architecture fitness tests and SDK tests.
 
 ## `docs/`
 
-Public VitePress-published documentation. Source of truth for the adopter contract.
+Public documentation, published by the Astro + Starlight site in `website/`. Source of truth for the adopter contract.
 
 ## `dist/`
 

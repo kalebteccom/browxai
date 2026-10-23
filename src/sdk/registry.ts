@@ -67,8 +67,6 @@ export const SDK_TOOLS = [
   "list_sessions",
 ] as const;
 
-export type SdkToolName = (typeof SDK_TOOLS)[number];
-
 /**
  * Tool → capability lookup the SDK's gate uses. Reads the SAME `TOOL_CAPABILITY`
  * map the server's `gateCheck` consults, so the two paths cannot drift.

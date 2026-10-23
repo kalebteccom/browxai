@@ -14,14 +14,6 @@
 // thin seam that actually spawns adb. Every parser here takes a string and
 // returns data — no IO, no clock, no environment.
 
-/** A rectangle in device pixels, as UiAutomator reports node bounds. */
-export interface DeviceRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
 /** What is on screen right now: the package and the activity that owns focus. */
 export interface ForegroundApp {
   packageName: string;
