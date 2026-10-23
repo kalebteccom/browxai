@@ -56,14 +56,10 @@ function notExposedMessage(
 ): string {
   return (
     `${NOT_EXPOSED_ERROR}: tool "${name}"${via === undefined ? "" : ` (dispatched by "${via}")`} ` +
-    `requires the "${cap}" capability, which is not ` +
-    `active on this SDK client. Active capabilities: [${[...capabilities].join(", ")}]. ` +
-    `Pass it in \`createBrowxai({ capabilities: ["${cap}"] })\` to opt in — and enable it on ` +
-    `the server too (BROWX_CAPABILITIES), which gates the same tool independently. ` +
-    `Posture-broadening capabilities (eval / network-body / secrets / file-io / canvas / ` +
-    `extensions / stealth / captcha / credentials / clipboard / device-emulation / ` +
-    `diagnostics / byob-attach / replay) are OFF-by-default by design — same posture as the ` +
-    `MCP server's capability gates.`
+    `requires the "${cap}" capability, which this SDK client does not have. ` +
+    `Active capabilities: [${[...capabilities].join(", ")}]. ` +
+    `Add it with \`createBrowxai({ capabilities: ["${cap}"] })\`, and enable it on ` +
+    `the server too (BROWX_CAPABILITIES), which checks the same tool on its own.`
   );
 }
 
@@ -107,7 +103,10 @@ export function buildClient(opts: BuildClientOptions): BrowxaiClient {
 
   /** Apply the session default + dispatch. */
   const dispatch = async (toolName: string, args?: BrowxaiArgs): Promise<BrowxaiResult> => {
-    if (closed) throw new Error(`browxai-sdk: ${toolName} called on a closed client`);
+    if (closed)
+      throw new Error(
+        `browxai-sdk: cannot call ${toolName}, the client is closed. Create a new one.`,
+      );
     const merged: Record<string, unknown> = { ...(args ?? {}) };
     if (session !== undefined && merged.session === undefined) {
       merged.session = session;

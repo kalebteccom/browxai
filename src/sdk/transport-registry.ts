@@ -43,7 +43,9 @@ export function registerTransport(mode: TransportMode, factory: TransportFactory
 export function openTransport(mode: TransportMode, opts: BrowxaiSdkOptions): Promise<SdkTransport> {
   const factory = TRANSPORTS.get(mode);
   if (!factory) {
-    throw new Error(`browxai-sdk: unknown transport "${String(mode)}"`);
+    throw new Error(
+      `browxai-sdk: unknown transport "${String(mode)}". Registered transports: ${[...TRANSPORTS.keys()].join(", ")}.`,
+    );
   }
   return factory.open(opts);
 }

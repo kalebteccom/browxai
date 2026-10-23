@@ -25,12 +25,15 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<BrowxaiResult> => {
-    if (closed) throw new Error(`browxai-sdk: dispatch on a closed transport (tool=${toolName})`);
+    if (closed)
+      throw new Error(
+        `browxai-sdk: cannot call ${toolName}, the transport is closed. Create a new client.`,
+      );
     const fn = handlers[toolName];
     if (!fn) {
       throw new Error(
-        `browxai-sdk: unknown tool "${toolName}" — not registered on the in-process server. ` +
-          `Either the tool name is wrong or the SDK's tool registry is out of sync with server.ts.`,
+        `browxai-sdk: unknown tool "${toolName}", it is not registered on the in-process server. ` +
+          `Check the name against docs/tool-reference.md. If it is listed there, this SDK build is older than the server's tool list.`,
       );
     }
     const result = await fn(args);

@@ -37,7 +37,7 @@ export function resolveEndpointPath(endpoint: string): string {
   }
   throw new Error(
     `browxai-sdk: unsupported endpoint scheme in "${endpoint}". ` +
-      `Supported: unix:///path/to/sock, pipe://./pipe/name. Other schemes are rejected so a typo fails loudly.`,
+      `Use unix:///path/to/sock, or pipe://./pipe/name on Windows.`,
   );
 }
 
@@ -61,7 +61,10 @@ export async function openSocketTransport(opts: SocketTransportOptions): Promise
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<BrowxaiResult> => {
-    if (closed) throw new Error(`browxai-sdk: dispatch on a closed transport (tool=${toolName})`);
+    if (closed)
+      throw new Error(
+        `browxai-sdk: cannot call ${toolName}, the transport is closed. Create a new client.`,
+      );
     const res = await client.callTool({ name: toolName, arguments: args });
     const content = (res.content as BrowxaiContentItem[]) ?? [];
     return parseEnvelope(content);
