@@ -39,9 +39,9 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 - `src/cli.ts`, `src/cli/` — the `browxai` bin and subcommands.
 - `src/server.ts` — MCP server, tool registry composition, capability gates wired in here.
-- `src/tools/` — the `host.register` call for every MCP tool, grouped by area (`*-tools.ts`), plus the `ToolHost` seam.
-- `src/engine/` — engine registry, per-engine capability declarations (`capabilities.ts`) and adapters.
-- `src/replay/` — `.browx` session-replay capture and player.
+- `src/tools/`: the `host.register` call for every MCP tool, grouped by area (`*-tools.ts`), plus the `ToolHost` seam.
+- `src/engine/`: engine registry, per-engine capability declarations (`capabilities.ts`) and adapters.
+- `src/replay/`: `.browx` session-replay capture and player.
 - `src/page/` — per-tool handlers and page-side functions (`actions.ts`, `dom-export.ts`, `bbox.ts`, `compose.ts`, `archive.ts`, `coverage.ts`, …). One tool = one file. Page-side functions run inside the browser context.
 - `src/session/` — session lifecycle, managed profiles, BYOB attach, persistent vs. incognito modes.
 - `src/util/` — capability gate (`capabilities.ts`), workspace path resolution (`workspace.ts`), secrets masking (`secrets.ts`), config store, deadlines, url sanitizer, no-trace contract.

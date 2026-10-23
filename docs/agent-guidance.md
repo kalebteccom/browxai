@@ -14,7 +14,7 @@ and bite later. Check this map before reaching for them.
 ## `eval_js` vs the curated surface
 
 **The temptation.** You know JavaScript. One `eval_js` expression can click,
-read, and mutate anything, so why learn forty tools?
+read, and mutate anything, so why learn the curated tools?
 
 **Why it bites.** Three separate ways:
 
