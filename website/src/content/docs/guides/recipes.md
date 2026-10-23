@@ -78,8 +78,8 @@ const res = await extract({
 // res.evidence.partialMisses names anything the schema asked for but missed.
 ```
 
-Pair it with the `verify_*` family when you want an assertion, not a
-value, for example `verify_text` or `verify_count`.
+Pair it with the `verify_*` family when you want an assertion, for example
+`verify_text` or `verify_count`.
 
 ## Handle flaky or transient UI
 
