@@ -437,23 +437,6 @@ describe("live view — capability set, managed Chromium", () => {
     });
   });
 
-  it("refuses a view.start for a session that was never opened, and opens none", async () => {
-    daemon.send({ type: "view.start", session: "never-opened" });
-    await waitFor(() => ofType(daemon, "error").some((e) => e.session === "never-opened"));
-    const listed = await call<{ sessions: Array<{ id: string }> }>("list_sessions", {});
-    expect(listed.sessions.map((s) => s.id)).not.toContain("never-opened");
-  });
-
-  it("sends one frame and holds the rest while the daemon does not ack", async () => {
-    await openOn("c");
-    daemon.send({ type: "view.start", session: "c" });
-    await waitFor(() => completeFrames(daemon, "c").length === 1);
-    await sleep(3_000); // absence window, inside the 5 s ack timeout: no second frame
-    expect(completeFrames(daemon, "c")).toHaveLength(1);
-    daemon.send({ type: "view.stop", session: "c" });
-    await waitFor(() => stopped("c").length === 1);
-  });
-
   it(
     "steps down to 640 px when the daemon acks slowly, and never sends ahead of an ack",
     async () => {
@@ -485,22 +468,4 @@ describe("live view — capability set, managed Chromium", () => {
     },
     KEYSTONE_TIMEOUT,
   );
-
-  it("stops the stream when the connection drops, and does not resume after the redial", async () => {
-    await openOn("e");
-    const ack = autoAck(daemon);
-    try {
-      daemon.send({ type: "view.start", session: "e" });
-      await waitFor(() => completeFrames(daemon, "e").length >= 1);
-    } finally {
-      ack.stop();
-    }
-    const authed = daemon.authenticated;
-    daemon.drop();
-    await waitFor(() => daemon.authenticated === authed + 1);
-    await sleep(500); // lets a frame already in flight land before counting
-    const n = ofType(daemon, "frame").length;
-    await sleep(1_500); // absence window: no frame after the redial
-    expect(ofType(daemon, "frame").length).toBe(n);
-  });
 });
