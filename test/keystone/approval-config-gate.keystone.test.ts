@@ -277,6 +277,20 @@ describe("other policy keys cannot be loosened through config", () => {
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "a saved blockedOrigins: [] does not unblock an env-blocked origin",
+    async () => {
+      process.env.BROWX_BLOCKED_ORIGINS = B;
+      writeFileSync(
+        join(workspace, "config.json"),
+        JSON.stringify({ user: { blockedOrigins: [], confirmRequired: [] } }),
+      );
+      const call = caller(await start());
+      expect(await heldByHook(call, B)).toBe(true);
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });
 
 describe("operator files cannot be overwritten by write tools", () => {
@@ -408,6 +422,15 @@ describe("operator files cannot be overwritten by write tools", () => {
     },
     KEYSTONE_TIMEOUT,
   );
+
+  it(
+    "a malformed config.json fails the server start",
+    async () => {
+      writeFileSync(join(workspace, "config.json"), "%PDF-1.7 not json");
+      await expect(createServer({ headless: true })).rejects.toThrow(/config\.json is malformed/);
+    },
+    KEYSTONE_TIMEOUT,
+  );
 });
 
 describe("BROWX_CONFIG_READONLY", () => {
@@ -488,6 +511,17 @@ describe("BROWX_DEFAULT_PROFILE", () => {
         for (const s of servers.splice(0)) await s.shutdown().catch(() => undefined);
         rmSync(outside, { recursive: true, force: true });
       }
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "a bad value fails the server start",
+    async () => {
+      process.env.BROWX_DEFAULT_PROFILE = "relative/profile";
+      await expect(createServer({ headless: true })).rejects.toThrow(
+        /BROWX_DEFAULT_PROFILE: must be an absolute path/,
+      );
     },
     KEYSTONE_TIMEOUT,
   );

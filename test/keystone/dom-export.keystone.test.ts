@@ -1,5 +1,5 @@
-// dom-export keystone — drive `dom_export` against real headless Chromium.
-// Regression gate for the second instance of the
+// dom-export keystone — drive `dom_export` against real headless Chromium
+// in both formats. Regression gate for the second instance of the
 // stringified-arrow-function bug (PAGE_WALK_FN): the function was authored
 // as `(args) => {...}` passed to `page.evaluate(stringExpr, arg)`, which
 // evaluates the string in page context and returns the function value
@@ -9,7 +9,7 @@
 // element-export.keystone.test.ts (same fix shape).
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
@@ -163,6 +163,27 @@ describe("dom-export keystone — default path under dom-dumps/", () => {
     expect(r.path.startsWith(join(workspace, "dom-dumps", `${session}-`))).toBe(true);
     expect(r.path.endsWith(".html")).toBe(true);
     expect(existsSync(r.path)).toBe(true);
+
+    await callJson("close_session", { session });
+  });
+});
+
+describe("dom-export keystone — workspace escape is rejected at the tool layer", () => {
+  it("a path that escapes $BROWX_WORKSPACE returns a structured error", async () => {
+    const session = "ks-dom-escape";
+    await callJson("open_session", { session, mode: "incognito" });
+    await callJson("navigate", { session, url: `${fixture.url}/` });
+
+    const r = await callJson<{ ok: boolean; error?: string }>("dom_export", {
+      session,
+      path: "../escape-dom.html",
+      format: "html",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/\$BROWX_WORKSPACE/);
+
+    const sibling = readdirSync(workspace);
+    expect(sibling.every((n) => !n.includes("escape"))).toBe(true);
 
     await callJson("close_session", { session });
   });

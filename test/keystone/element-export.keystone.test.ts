@@ -1,5 +1,5 @@
 // Element-export keystone — drives `element_export` against real headless
-// Chromium. This is the regression gate for a real
+// Chromium across both formats. This is the regression gate for a real
 // adopter bug: `SUBTREE_DISCOVERY_FN` was authored as a stringified arrow
 // expression and passed to `locator.evaluate(stringExpr)`, which returns
 // the function value uncalled — CDP can't serialize a function, so the
@@ -15,7 +15,7 @@
 // the server is spun up with that capability enabled.
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "../../src/server.js";
@@ -143,6 +143,49 @@ describe("element-export keystone — directory mode against the fixture", () =>
   );
 });
 
+describe("element-export keystone — single-file mode against the fixture", () => {
+  it(
+    "writes one self-contained HTML file with the element subtree + inline styles",
+    async () => {
+      const session = "ks-elexp-single";
+      await callJson("open_session", { session, mode: "incognito" });
+      await callJson("navigate", { session, url: `${fixture.url}/` });
+
+      const ref = await findRefByTestId(session, "the Save button", "save-btn");
+
+      const r = await callJson<{
+        ok: boolean;
+        format: string;
+        ref: string;
+        path: string;
+        sizeBytes: number;
+        warnings: string[];
+      }>("element_export", {
+        session,
+        ref,
+        intoDir: "elements/save-btn-single.html",
+        format: "single-file",
+      });
+
+      expect(r.ok).toBe(true);
+      expect(r.format).toBe("single-file");
+      expect(r.path).toBe(join(workspace, "elements/save-btn-single.html"));
+      expect(existsSync(r.path)).toBe(true);
+
+      const text = readFileSync(r.path, "utf8");
+      expect(text.toLowerCase()).toMatch(/<html[\s>]/);
+      // Both the element markup and the inlined stylesheet block survived
+      // the single-file roundtrip — proves the discovery function returned
+      // a real { html, css, ... } object rather than undefined.
+      expect(text.toLowerCase()).toContain("save");
+      expect(text.toLowerCase()).toMatch(/<style[\s>][\s\S]*<\/style>/);
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+});
+
 describe("element-export keystone — default path under elements/", () => {
   it("omitting intoDir lands under workspace/elements/<sessionId>-<ISO>-<ref>", async () => {
     const session = "ks-elexp-default";
@@ -159,6 +202,30 @@ describe("element-export keystone — default path under elements/", () => {
     expect(r.ok).toBe(true);
     expect(r.path.startsWith(join(workspace, "elements", `${session}-`))).toBe(true);
     expect(existsSync(join(r.path, "element.html"))).toBe(true);
+
+    await callJson("close_session", { session });
+  });
+});
+
+describe("element-export keystone — workspace escape is rejected at the tool layer", () => {
+  it("an intoDir that escapes $BROWX_WORKSPACE returns a structured error", async () => {
+    const session = "ks-elexp-escape";
+    await callJson("open_session", { session, mode: "incognito" });
+    await callJson("navigate", { session, url: `${fixture.url}/` });
+
+    const ref = await findRefByTestId(session, "the Save button", "save-btn");
+
+    const r = await callJson<{ ok: boolean; error?: string }>("element_export", {
+      session,
+      ref,
+      intoDir: "../escape-export",
+      format: "directory",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/\$BROWX_WORKSPACE/);
+
+    const sibling = readdirSync(workspace);
+    expect(sibling.every((n) => !n.includes("escape"))).toBe(true);
 
     await callJson("close_session", { session });
   });
