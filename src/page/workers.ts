@@ -4,7 +4,8 @@
 //
 //   • `workers_list({type})`             — enumerate live workers (Web + SW).
 //   • `worker_message_send({workerId, message})` — `postMessage` to a worker.
-//   • `worker_messages_read({workerId?})` — drain the FROM-worker ring.
+//   • `worker_messages_read({workerId?})` — drain the FROM-worker rings (Web
+//     Workers, and Service Workers via `navigator.serviceWorker` messages).
 //   • `sw_intercept_fetch({pattern, response})` — fulfil a SW-handled fetch.
 //
 // Two completely different transport stories under one façade, split into two
@@ -118,8 +119,10 @@ export class WorkersRegistry {
     if (!args.workerId || args.workerId.startsWith("ww-")) {
       out.push(...(await this.page.drain(page, args.workerId)));
     }
-    // Service Worker messages — drain from the server-side ring.
+    // Service Worker messages — move what the page received into the
+    // server-side ring, then drain that.
     if (!args.workerId || args.workerId.startsWith("sw-")) {
+      this.sw.ingestPageMessages(await this.page.drainSw(page));
       out.push(...this.sw.drainMessages(args.workerId));
     }
     return out;
@@ -141,12 +144,6 @@ export class WorkersRegistry {
 
   listFetchIntercepts(): string[] {
     return this.sw.listFetchIntercepts();
-  }
-
-  /** Append a FROM-SW message to the server-side ring. Only the unit tests
-   *  call it: the production path does not relay service-worker messages yet. */
-  recordSwMessage(workerId: string, data: string): void {
-    this.sw.recordSwMessage(workerId, data);
   }
 
   /** Release all CDP listeners. Called from the session teardown. */

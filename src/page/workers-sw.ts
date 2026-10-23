@@ -11,8 +11,10 @@
 //     ONLY when the SW's fetch handler actually runs — i.e. the SW chose to
 //     intercept this URL — which is the right semantic.
 //   • For postMessage to a SW, the SW target has `Runtime.evaluate` so we
-//     dispatch a `MessageEvent` into the SW global; FROM-SW messages come back
-//     via a `Runtime.bindingCalled` shuttle installed on the SW session.
+//     dispatch a `MessageEvent` into the SW global. FROM-SW messages are the
+//     ones the SW posts to its clients; the page-side script
+//     (`workers-page.ts`) records them from `navigator.serviceWorker`, and
+//     `ingestPageMessages` moves them into the ring here.
 //
 // `WorkersSwChannel` owns the SW attachment map, the stable `sw-*` id index,
 // the active fetch-interceptor patterns, the server-side FROM-SW ring, and the
@@ -44,6 +46,7 @@ interface ActiveFetchIntercept {
 
 const SW_RING_MAX = 500;
 const SW_PAYLOAD_MAX = 4000;
+const SW_URL_MAX = 64;
 
 export class WorkersSwChannel {
   /** SW attachments keyed by CDP sessionId. */
@@ -51,11 +54,15 @@ export class WorkersSwChannel {
   /** Stable monotonic id for the SW listing — `sw-1`, `sw-2`, …. Keyed by
    *  CDP sessionId so the id survives status transitions on the same SW. */
   private swIdBySession = new Map<string, string>();
+  /** The same ids keyed by SW script URL. A message the page received from a SW
+   *  names only that URL, and an attachment of the same URL reuses the id, so
+   *  `worker_messages_read` and `workers_list` agree on which SW is `sw-N`. */
+  private swIdByUrl = new Map<string, string>();
   private nextSwId = 1;
   /** Active fetch interceptors. Re-add of the same pattern replaces. */
   private fetchInterceptors = new Map<string, ActiveFetchIntercept>();
-  /** Server-side ring of FROM-SW messages (we relay these via a CDP
-   *  `Runtime.bindingCalled` shuttle on each SW session). */
+  /** Server-side ring of FROM-SW messages, filled from the page-side ring
+   *  (`navigator.serviceWorker` `message` events) on each read. */
   swMessages: WorkerMessage[] = [];
   /** True once we've called `ServiceWorker.enable` + wired the auto-attach
    *  on the top-level CDP session. */
@@ -118,7 +125,7 @@ export class WorkersSwChannel {
         fetchEnabled: false,
       };
       this.swAttached.set(e.sessionId, att);
-      this.swIdBySession.set(e.sessionId, `sw-${this.nextSwId++}`);
+      this.idForSession(e.sessionId, att.url);
       if (this.fetchInterceptors.size > 0)
         void this.applyFetchEnable(cdp, att).catch(() => undefined);
     });
@@ -217,12 +224,30 @@ export class WorkersSwChannel {
   // -------------------------------------------------------------------------
   // Tool surface.
 
+  /** Stable `sw-N` id for a SW script URL. */
+  private idForUrl(url: string): string {
+    let id = this.swIdByUrl.get(url);
+    if (!id) {
+      id = `sw-${this.nextSwId++}`;
+      this.swIdByUrl.set(url, id);
+    }
+    return id;
+  }
+
+  private idForSession(sessionId: string, url: string): string {
+    let id = this.swIdBySession.get(sessionId);
+    if (!id) {
+      id = this.idForUrl(url);
+      this.swIdBySession.set(sessionId, id);
+    }
+    return id;
+  }
+
   /** Listings for the currently-attached SWs (the `sw-*` family). */
   list(): WorkerListing[] {
     const out: WorkerListing[] = [];
     for (const [sessionId, att] of this.swAttached) {
-      const id = this.swIdBySession.get(sessionId) ?? `sw-${this.nextSwId++}`;
-      this.swIdBySession.set(sessionId, id);
+      const id = this.idForSession(sessionId, att.url);
       out.push({ workerId: id, type: "service", url: att.url, state: att.status });
     }
     return out;
@@ -329,14 +354,35 @@ export class WorkersSwChannel {
     return [...this.fetchInterceptors.keys()];
   }
 
-  /** Append a FROM-SW message to the server-side ring. Only the unit tests
-   *  call it: the production path does not relay service-worker messages yet. */
-  recordSwMessage(workerId: string, data: string): void {
+  /** Append a FROM-SW message to the server-side ring. */
+  recordSwMessage(workerId: string, data: string, at: number = Date.now()): void {
     let trimmed = data;
     if (trimmed.length > SW_PAYLOAD_MAX) trimmed = trimmed.slice(0, SW_PAYLOAD_MAX) + "…";
-    this.swMessages.push({ workerId, data: trimmed, at: Date.now() });
+    this.swMessages.push({ workerId, data: trimmed, at });
     if (this.swMessages.length > SW_RING_MAX) {
       this.swMessages.splice(0, this.swMessages.length - SW_RING_MAX);
+    }
+  }
+
+  /** Take the messages the page-side ring drained (`{url, data, at}` per
+   *  message) into the server ring, under the `sw-N` id of the posting SW's
+   *  script URL. The page owns that ring and can return anything, so the input
+   *  is untyped: only the last `SW_RING_MAX` well-formed entries are kept, and
+   *  every field is coerced and bounded. */
+  ingestPageMessages(drained: unknown): void {
+    if (!Array.isArray(drained)) return;
+    for (const m of drained.slice(-SW_RING_MAX)) {
+      if (typeof m !== "object" || m === null) continue;
+      const { url, data, at } = m as { url?: unknown; data?: unknown; at?: unknown };
+      const scriptUrl = typeof url === "string" ? url.slice(0, 2048) : "";
+      // A page can name any URL it likes; past SW_URL_MAX distinct ones the
+      // unknown URLs are dropped so the id index stays bounded.
+      if (!this.swIdByUrl.has(scriptUrl) && this.swIdByUrl.size >= SW_URL_MAX) continue;
+      this.recordSwMessage(
+        this.idForUrl(scriptUrl),
+        typeof data === "string" ? data : "",
+        typeof at === "number" && Number.isFinite(at) ? at : Date.now(),
+      );
     }
   }
 

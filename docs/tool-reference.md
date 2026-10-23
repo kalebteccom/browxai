@@ -1039,7 +1039,7 @@ Web Workers + Service Workers are otherwise invisible to the surface: `network_r
 Two completely different transport stories under one façade:
 
 - **Web Workers.** A page-side wrapper of `window.Worker` is installed eagerly at session creation (`Page.addInitScript`, same posture as the WS family), so a worker constructed during initial document parse is captured. Each `new Worker(...)` gets a stable per-session id `ww-1`, `ww-2`, …. The wrapper mirrors every message-from-worker into a 500-entry ring (4 KiB payload cap, oldest evicted first); `worker_message_send` calls the real (unwrapped) `Worker.prototype.postMessage` so the worker's `onmessage` sees a real event, not a synthetic one.
-- **Service Workers.** SWs are independent CDP targets. Discovery uses CDP `ServiceWorker.enable` + `Target.setAutoAttach({autoAttach:true, waitForDebuggerOnStart:false, flatten:true})` on the session's top-level CDP, so newly-registered SWs auto-attach as child sessions. SW listings carry `state` (one of `stopped`, `starting`, `running`, `stopping`). `worker_message_send` to an `sw-N` dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate`. `sw_intercept_fetch` arms CDP `Fetch.enable` on the SW session so requests the SW's `fetch` handler chose to intercept are paused, and the canned response is returned.
+- **Service Workers.** SWs are independent CDP targets. Discovery uses CDP `ServiceWorker.enable` + `Target.setAutoAttach({autoAttach:true, waitForDebuggerOnStart:false, flatten:true})` on the session's top-level CDP, so newly-registered SWs auto-attach as child sessions. SW listings carry `state` (one of `stopped`, `starting`, `running`, `stopping`). Messages a SW posts back to the page (`client.postMessage`) are recorded from the page's `navigator.serviceWorker` `message` events by the same init script, in a second 500-entry / 4 KiB ring, and surface in `worker_messages_read` under the `sw-N` id of the posting script's URL. That capture is page-side, so it does not need CDP and works on any engine the page-side wrapper installs on; listing and sending to a SW need CDP (Chromium). `worker_message_send` to an `sw-N` dispatches a `MessageEvent` into the SW global via CDP `Runtime.evaluate`. `sw_intercept_fetch` arms CDP `Fetch.enable` on the SW session so requests the SW's `fetch` handler chose to intercept are paused, and the canned response is returned.
 
 #### `workers_list({ type?, session? })`
 
@@ -1051,7 +1051,7 @@ Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / 
 
 #### `worker_messages_read({ workerId?, session? })`
 
-Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Each call drains (removes) what it returned; re-reads see only what arrived since. Capability: `read`.
+Drain buffered messages FROM workers since the last read. Returns `[{ workerId, data, at }]`. Omit `workerId` to drain ALL workers; pass one to drain that worker only. Service Worker messages are the ones the SW sends to this page; they use the same shape, with a `sw-N` `workerId`. A SW that messaged the page but never attached over CDP still gets an `sw-N` id, which `workers_list` then does not show; sending to it fails. Each call drains (removes) what it returned; re-reads see only what arrived since. Capability: `read`.
 
 #### `sw_intercept_fetch({ pattern, response, session? })`
 

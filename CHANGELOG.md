@@ -28,6 +28,10 @@ surface" covers.
 
 ### Fixed
 
+- **`worker_messages_read` now returns service-worker messages.** It only ever
+  returned Web Worker messages. Messages a service worker posts to the page with
+  `client.postMessage` are now recorded and come back with an `sw-N` `workerId`,
+  in the same shape as Web Worker messages.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.
