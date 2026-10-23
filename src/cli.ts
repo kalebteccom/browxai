@@ -18,6 +18,7 @@ import "./cli/register-commands.js";
 import { commandFor, registeredCommands } from "./cli/command-registry.js";
 import { log } from "./util/logging.js";
 import { resolveConfig } from "./util/config.js";
+import { isHeadlessEnv } from "./util/config-store.js";
 import { resolveWorkspace } from "./util/workspace.js";
 import { PACKAGE_VERSION } from "./util/version.js";
 import { resolveEngineSelection, UnknownEngineError } from "./engine/index.js";
@@ -105,7 +106,7 @@ async function main(): Promise<void> {
   const workspace = resolveWorkspace();
   const config = resolveConfig();
   const attachCdp = process.env.BROWX_ATTACH_CDP?.trim() || undefined;
-  const headless = process.env.BROWX_HEADLESS === "1";
+  const headless = isHeadlessEnv(process.env.BROWX_HEADLESS);
   // Engine selection: explicit `--engine <kind>` > `BROWX_ENGINE` env > default
   // chromium (left to server.ts when this resolves undefined — byte-identical to
   // never passing browserType). An unknown engine fails loudly here, before the

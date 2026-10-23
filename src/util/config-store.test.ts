@@ -2,7 +2,13 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigStore, envLayer, resolvedToEnv, BUILTIN_DEFAULTS } from "./config-store.js";
+import {
+  ConfigStore,
+  envLayer,
+  isHeadlessEnv,
+  resolvedToEnv,
+  BUILTIN_DEFAULTS,
+} from "./config-store.js";
 
 let dir: string;
 beforeEach(() => {
@@ -116,6 +122,12 @@ describe("envLayer", () => {
   it("treats only '1'/'true' as headless-on", () => {
     expect(envLayer({ BROWX_HEADLESS: "0" }).headless).toBe(false);
     expect(envLayer({ BROWX_HEADLESS: "true" }).headless).toBe(true);
+  });
+  it("isHeadlessEnv accepts '1' and 'true' in any case, nothing else", () => {
+    for (const v of ["1", "true", "TRUE", "True", " 1 "]) expect(isHeadlessEnv(v)).toBe(true);
+    for (const v of [undefined, "", "0", "false", "yes", "on"])
+      expect(isHeadlessEnv(v)).toBe(false);
+    expect(envLayer({ BROWX_HEADLESS: "TRUE" }).headless).toBe(true);
   });
 
   it("disableWebSecurity maps only from the exact BROWX_DISABLE_WEB_SECURITY opt-in", () => {

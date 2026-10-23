@@ -46,6 +46,9 @@ surface" covers.
 
 ### Fixed
 
+- **`BROWX_HEADLESS=true` now launches headless from the CLI.** `browxai` and
+  `browxai serve` only honoured `1`, while the config layer accepted `1` and
+  `true`. Both now accept `1` and `true`, in any case.
 - **`browxai chrome start --port abc` is refused.** A port that is not a whole
   number from 1 to 65535 now prints a message and exits with code 2. It used to
   fall back to 9222 without saying so.
