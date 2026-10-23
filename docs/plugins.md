@@ -5,10 +5,29 @@ a plugin**, see [`docs/plugin-authoring.md`](./plugin-authoring.md).
 For the per-tool reference on the shipped first-party plugins, see
 [`docs/plugins-first-party.md`](./plugins-first-party.md).
 
-The plugin runtime ships as part of browxai's v1.0 foundations.
-The first wave of plugins (the reference plugin plus the three
-canvas-app adapters) consumes the runtime today; this index grows as
-further plugins (e.g. the diagnostics-report plugin) land.
+Four plugins exist today: the reference plugin and three canvas-app
+adapters. All four ship from this repo.
+
+## Quick start
+
+```sh
+# 1. Install by package name (workspace-rooted, see below).
+$ browxai plugin install @browxai/plugin-figma
+
+# 2. Start the server. Keep the four default capabilities in the list and add
+#    what the plugin declares (figma needs eval and canvas).
+$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
+
+# Optional: check the declaration, install and manifests without running plugin code.
+# Doctor reads BROWX_CAPABILITIES too, so pass the same value.
+$ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai doctor
+```
+
+Then call `plugins_list()` from your agent and look for
+`status: "loaded"`. A plugin whose capabilities are missing from
+`BROWX_CAPABILITIES` shows `disabled-by-capability-mismatch` and the
+reason. Every first-party plugin README says which capabilities it
+needs.
 
 ## How to install a plugin
 
@@ -18,15 +37,17 @@ The happy path is an npm install by package name:
 $ browxai plugin install @browxai/plugin-figma
 ```
 
-During plugin development (or pre-publish, e.g. working from a checkout
-of this repo before the public flip), install from a local working
-directory instead, over the same CLI with a `file:` source and the
-`local` trust tag:
+During plugin development (or from a checkout of this repo), install
+from a local working directory instead, over the same CLI with a `file:`
+source and the `local` trust tag. Use an absolute path: the package
+manager runs inside `<workspace>/plugins/`, so a relative path resolves
+from there.
 
 ```sh
 # Dev-loop: build the plugin, then install its directory by path.
 $ pnpm build                                            # in the browxai repo
-$ browxai plugin install file:./packages/plugins/figma/
+$ browxai plugin install file:$PWD/packages/plugins/figma
+$ browxai plugin list                                   # the key must be the package name
 ```
 
 Every install writes under the workspace root (`$BROWX_WORKSPACE`, default `~/.browxai/`):
@@ -62,8 +83,9 @@ example plugin plus all three canvas adapters:
 
 - `enabled: false` means "declared but skipped at server start", a
   way to switch a plugin off without uninstalling it.
-- A `trust` field per entry overrides the trust tier (the CLI writes
-  `"trust": "local"` on `file:` installs automatically).
+- A `trust` field per entry overrides the trust tier. The CLI writes
+  `"trust": "local"` on `file:` installs automatically. There is no
+  `trust` subcommand, so any other override is a hand edit.
 - A shorthand array form (`"plugins": ["@browxai/plugin-example", …]`)
   is also accepted; every entry is treated as enabled.
 
@@ -128,10 +150,8 @@ envelopes, and a usage walkthrough.** The one-line summary:
 | [`@browxai/plugin-tldraw`](../packages/plugins/tldraw/)         | `kalebtec` | Tldraw canvas-app adapter: shapes/viewport/create/delete/select (`tldraw.get_selected_shapes`, `tldraw.get_viewport`, `tldraw.create_shape`, `tldraw.delete_shape`, `tldraw.select_shapes`). Capabilities `eval` + `canvas`.                                |
 | [`@browxai/plugin-excalidraw`](../packages/plugins/excalidraw/) | `kalebtec` | Excalidraw canvas-app adapter: scene state, viewport, element add/delete, scroll (`excalidraw.get_scene_state`, `excalidraw.get_viewport`, `excalidraw.add_element`, `excalidraw.delete_element`, `excalidraw.set_scroll`). Capabilities `eval` + `canvas`. |
 
-The three canvas-app adapter plugins are the v1.0 proof that the plugin
-runtime + canvas substrate compose into a real ecosystem story. The
-reference plugin remains the starting point for new plugin authors and
-the keystone fodder for the runtime itself.
+The reference plugin is the starting point for new plugin authors and
+the fixture the runtime keystone test loads.
 
 ## Trust tiers
 
@@ -140,17 +160,8 @@ the keystone fodder for the runtime itself.
 - `community`: third-party npm plugins
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
 - `local`: installed from a file path during development
-  (`browxai plugin install file:./path/`).
+  (`browxai plugin install file:/abs/path/to/plugin`).
 
 Trust is advisory: the runtime gates all three tiers identically at
 capability + call-graph time. Surfaced on `plugins_list` so the
 operator can audit.
-
-## Why plugins?
-
-The plugin runtime turns browxai from "the best curated agentic-
-browser substrate" into "the ecosystem substrate". The runtime is
-the generic primitive; the canvas adapter plugins are the first real
-consumers, and the diagnostics-report plugin will follow as the first
-demonstration of the inter-plugin composition model
-(`dependsOn`-declared, call-graph-enforced).

@@ -23,7 +23,7 @@ The tier is **derived from the package identity**, never asserted by the plugin.
   under the `@browxai/*` scope and not installed from a local path.
 
 - **`local`**: installed from a `file:` path. Used during plugin development
-  (`browxai plugin install file:./my-plugin/`).
+  (`browxai plugin install file:/abs/path/to/my-plugin`).
 
 An operator can override the tier per entry in `plugins.json`:
 
@@ -75,6 +75,8 @@ Because plugins run with full Node access in the host process:
 - Prefer `@browxai/*` first-party plugins.
 - Read what a third-party plugin declares before enabling it:
   `browxai plugin info <pkg>`, and audit the live set with `plugins_list`.
+  `browxai doctor` flags a `plugins-lock.json` hash mismatch and installs that
+  were not declared.
 - Grant only the capabilities the plugin actually needs. The capability gate
   narrows what the plugin's **tools** can reach through the host; it does not
   constrain what the plugin's own code can do.
@@ -85,6 +87,8 @@ Because plugins run with full Node access in the host process:
 ## Revocation
 
 Removal from a curated registry is not available, since there is no registry.
-What an operator can do today is remove the entry from `plugins.json` and
-re-run `browxai plugin sync`. Security reports against a first-party plugin
+What an operator can do today is run `browxai plugin remove <pkg>`, which
+uninstalls the package and deletes its entries in `plugins.json` and
+`plugins-lock.json`, then restart the server. To keep the install but stop
+loading it, set `"enabled": false` on its `plugins.json` entry. Security reports against a first-party plugin
 follow the disclosure policy in [`SECURITY.md`](../SECURITY.md).
