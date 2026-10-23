@@ -28,6 +28,7 @@
 // so a session that only lists or messages SWs pays zero CDP overhead.
 
 import type { BrowserContext, CDPSession, Worker } from "playwright-core";
+import { invariant } from "../util/invariant.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
 
@@ -235,24 +236,33 @@ export class WorkersSwChannel {
   // -------------------------------------------------------------------------
   // Tool surface.
 
-  /** Stable `sw-N` id for a SW script URL. */
-  private idForUrl(url: string): string {
+  /** Stable `sw-N` id for a SW script URL, or undefined once `SW_URL_MAX`
+   *  distinct URLs hold an id and this one is not among them. Every path that
+   *  mints an id goes through here, so the index stays bounded. A caller drops
+   *  the SW or message that has no id. */
+  private idForUrl(url: string): string | undefined {
     let id = this.swIdByUrl.get(url);
-    if (!id) {
-      id = `sw-${this.nextSwId++}`;
-      this.swIdByUrl.set(url, id);
-    }
+    if (id) return id;
+    if (this.swIdByUrl.size >= SW_URL_MAX) return undefined;
+    id = `sw-${this.nextSwId++}`;
+    this.swIdByUrl.set(url, id);
+    invariant(
+      this.swIdByUrl.size <= SW_URL_MAX,
+      `sw id index holds ${this.swIdByUrl.size} entries, cap is ${SW_URL_MAX}`,
+    );
     return id;
   }
 
   /** The live SWs of a context as `{id, url, worker}`, one per `sw-N` id. Two
    *  live workers can share a script URL (two scopes, or a version swap); they
-   *  share the id too, and the newest one stands for it. */
+   *  share the id too, and the newest one stands for it. A worker whose URL
+   *  cannot get an id (the index is full) is left out. */
   private liveWorkers(context: BrowserContext): Array<{ id: string; url: string; worker: Worker }> {
     const byId = new Map<string, { id: string; url: string; worker: Worker }>();
     for (const worker of context.serviceWorkers()) {
       const url = worker.url();
       const id = this.idForUrl(url);
+      if (!id) continue;
       byId.delete(id);
       byId.set(id, { id, url, worker });
     }
@@ -381,9 +391,10 @@ export class WorkersSwChannel {
       const scriptUrl = typeof url === "string" ? url.slice(0, 2048) : "";
       // A page can name any URL it likes; past SW_URL_MAX distinct ones the
       // unknown URLs are dropped so the id index stays bounded.
-      if (!this.swIdByUrl.has(scriptUrl) && this.swIdByUrl.size >= SW_URL_MAX) continue;
+      const id = this.idForUrl(scriptUrl);
+      if (!id) continue;
       this.recordSwMessage(
-        this.idForUrl(scriptUrl),
+        id,
         typeof data === "string" ? data : "",
         typeof at === "number" && Number.isFinite(at) ? at : Date.now(),
       );

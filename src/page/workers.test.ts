@@ -322,6 +322,23 @@ describe("WorkersRegistry.readMessages", () => {
     ]);
   });
 
+  it("lists at most 64 distinct service worker script URLs", async () => {
+    const reg = new WorkersRegistry();
+    const f = fakePage();
+    for (let i = 0; i < 70; i++) f.serviceWorkers.push(fakeSw(`https://x/sw-${i}.js`));
+    const listed = await reg.list(f.page, CHROMIUM, "service");
+    expect(listed).toHaveLength(64);
+    expect(listed[63]).toEqual({
+      workerId: "sw-64",
+      type: "service",
+      url: "https://x/sw-63.js",
+      state: "running",
+    });
+    // A worker past the cap has no id, so it cannot be messaged either.
+    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-65", message: "x" });
+    expect(r.ok).toBe(false);
+  });
+
   it("trims SW payloads past the 4 KiB cap", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
