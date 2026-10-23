@@ -1,7 +1,7 @@
 {
   "name": "@browxai/plugin-tldraw",
   "version": "0.1.1",
-  "description": "Tldraw canvas-app adapter plugin for browxai — surfaces shapes/viewport/create/delete/select over the `window.editor` page-side global.",
+  "description": "Tldraw canvas-app adapter plugin for browxai: shapes, viewport, create, delete and select over the `window.editor` page-side global.",
   "author": "Kalebtec",
   "license": "MIT",
   "type": "module",
@@ -41,7 +41,7 @@
   },
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.7.0",
+    "browxaiVersion": ">=0.13.0",
     "namespace": "tldraw",
     "register": "dist/index.js",
     "capabilities": [
