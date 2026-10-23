@@ -91,7 +91,7 @@ function electronAttachWarning(app: string, electron: string): string {
     "    for as long as the app runs — browxai does not hold it exclusively.",
     "  - `navigate` is REFUSED on this session: it would run a web page inside",
     "    the app's own privileged renderer and wipe its in-memory state. Drive",
-    "    the app by clicking. `reload` / `go_back` / `go_forward` still work.",
+    "    the app by clicking. `go_back` / `go_forward` still work.",
     "",
     "  Detection note: running an app with --remote-debugging-port alongside",
     "  --user-data-dir matches published EDR rules for infostealer cookie",

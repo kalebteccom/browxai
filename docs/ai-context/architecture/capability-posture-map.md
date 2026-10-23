@@ -9,7 +9,7 @@ These are enabled. Withholding them reduces browxai to a read-only crawler.
 | Capability   | Tools                                                                                        | Rationale                                                                                                                |
 | ------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `read`       | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot | Observation has no side effect on the page; safe to enable everywhere.                                                   |
-| `navigation` | navigate, go_back, go_forward, reload                                                        | URL changes are visible to the agent and to the user.                                                                    |
+| `navigation` | navigate, go_back, go_forward                                                                | URL changes are visible to the agent and to the user.                                                                    |
 | `action`     | click, fill, select, drag, scroll, hover, press, wait_for                                    | User-emulating actions; bounded by anti-wedge deadlines.                                                                 |
 | `human`      | confirmation hooks, await_human                                                              | Pause-for-human is a safety lever, not a posture broadener. The answer comes only from the `browxai` CDP isolated world. |
 

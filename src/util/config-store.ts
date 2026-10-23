@@ -44,7 +44,8 @@ export interface ResolvedConfig {
   disableWebSecurity?: boolean;
   /** Playwright browser `channel` for chromium sessions (`"chrome"`,
    *  `"msedge"`, `"chrome-beta"`, …) — launches the operator's installed
-   *  browser instead of the bundled Chrome for Testing. Unset ⇒ bundled.
+   *  browser instead of the default. Unset ⇒ the installed Chrome when present,
+   *  else the bundled Chromium.
    *  Overridable per `open_session({channel})`. Firefox has its own
    *  `BROWX_FIREFOX_CHANNEL` and is unaffected. */
   channel?: string;

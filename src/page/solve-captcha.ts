@@ -178,7 +178,7 @@ export interface CaptchaFailure {
 
 /**
  * Submit a challenge to the configured provider and poll for the solution.
- * Uses native `fetch` (Node 18+ ships it; Node 20 is the project's floor).
+ * Uses native `fetch` (Node 18+ ships it; Node 22 is the project's floor).
  * The provider may return a transient busy state (`CAPCHA_NOT_READY`) — we
  * poll until the deadline.
  *

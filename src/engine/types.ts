@@ -133,8 +133,8 @@ export interface EngineCapabilities {
    *  is privileged (a preload script exposes IPC to the main process) — and it
    *  discards every scrap of the app's in-memory renderer state on the way.
    *  The mechanism is present (electron declares `navigation`; `go_back` /
-   *  `go_forward` / `reload` all work on it), so omitting the sub-interface would
-   *  refuse three working tools to gate one, and the sub-interface-conformance
+   *  `go_forward` both work on it), so omitting the sub-interface would
+   *  refuse two working tools to gate one, and the sub-interface-conformance
    *  gate forbids omitting `navigation` at all — it is one of the four an engine
    *  cannot be an engine without.
    *
