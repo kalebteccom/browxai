@@ -108,6 +108,11 @@ surface" covers.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.
+- **First-party plugins no longer log an "untested combination" warning.** Their
+  `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
+  now `>=0.13.0` and reaches npm with the next plugin release. The plugin
+  READMEs also gained the capabilities each needs, an enable example and an
+  example prompt.
 
 ## [0.13.0] - 2026-10-22
 
