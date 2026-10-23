@@ -2,7 +2,13 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { z } from "zod";
 
 import { startPluginRuntime } from "../plugin/runtime.js";
-import type { PluginRecord, PluginToolHandler, PluginToolResponse } from "../plugin/types.js";
+import { toToolInput } from "../plugin/input-schema.js";
+import type {
+  PluginInputSchema,
+  PluginRecord,
+  PluginToolHandler,
+  PluginToolResponse,
+} from "../plugin/types.js";
 import { RUNTIME_API_VERSION } from "../plugin/manifest.js";
 import type { Capability } from "../util/capabilities.js";
 import { log } from "../util/logging.js";
@@ -84,12 +90,9 @@ export async function wirePluginRuntime(
    *  hook can answer "who owns tool X" without crossing the runtime
    *  boundary. */
   const pluginToolOwner = new Map<string, string>();
-  /** Per-plugin-tool def cache — keeps the description + input schema
-   *  so `plugins_info` can dump the registered shape. */
-  const pluginToolDef = new Map<
-    string,
-    { description: string; inputSchema?: Record<string, z.ZodTypeAny> | undefined }
-  >();
+  /** Per-plugin-tool def cache — keeps the description + the converted input
+   *  shape so `plugins_info` can dump the registered fields. */
+  const pluginToolDef = new Map<string, { description: string; inputSchema?: z.ZodRawShape }>();
   // Snapshot of core tool names at this point — anything registered
   // BEFORE plugin loading is a core tool from the plugin runtime's point
   // of view.
@@ -129,18 +132,24 @@ export async function wirePluginRuntime(
 
   const registerPluginTool = (
     name: string,
-    def: { description: string; inputSchema?: Record<string, z.ZodTypeAny> | undefined },
+    def: { description: string; inputSchema?: PluginInputSchema | undefined },
     handler: PluginToolHandler,
     capability: string | undefined,
     ownerPlugin: string,
   ): void => {
+    // Convert before recording anything: a malformed declaration throws here
+    // and fails the plugin's load, leaving no half-registered tool behind.
+    const input = toToolInput(name, def.inputSchema);
     if (capability !== undefined) {
       pluginToolCapability.set(name, capability as Capability);
     } else {
       pluginToolCapability.set(name, undefined);
     }
     pluginToolOwner.set(name, ownerPlugin);
-    pluginToolDef.set(name, def);
+    pluginToolDef.set(name, {
+      description: def.description,
+      ...(input !== undefined ? { inputSchema: input.shape } : {}),
+    });
     // Plugin tool handler envelope: capability gate → handler → standard
     // metrics + diagnostics wrap. We don't apply the wedge tracker —
     // plugin tools aren't core page-exercising primitives, so the
@@ -178,12 +187,26 @@ export async function wirePluginRuntime(
       return out;
     };
     toolHandlers[name] = wrapped;
-    // The SDK's `registerTool` generic cannot relate its conditional-typed
-    // callback to the plugin def's `Record<string, z.ZodTypeAny>` schema;
-    // widening the config's schema to a concrete `z.ZodRawShape` lets that
-    // conditional resolve, so `wrapped` (args narrowed to `unknown`, result a
-    // `CallToolResult`) matches with no assertion. Mirrors `host-build.ts`.
-    const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = def;
+    // The SDK builds its object schema from `inputSchema` and strips every key
+    // the schema does not name, so the declared fields are what let arguments
+    // reach `wrapped`. The config's schema is a concrete `z.ZodRawShape` so the
+    // SDK's conditional callback type resolves and `wrapped` (args narrowed to
+    // `unknown`, result a `CallToolResult`) matches with no assertion. Mirrors
+    // `host-build.ts`.
+    if (input?.passthrough) {
+      // `additionalProperties: true`: a raw shape would drop the extra keys, so
+      // register a loose object that keeps them.
+      server.registerTool(
+        name,
+        { description: def.description, inputSchema: z.object(input.shape).passthrough() },
+        wrapped,
+      );
+      return;
+    }
+    const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = {
+      description: def.description,
+      ...(input !== undefined ? { inputSchema: input.shape } : {}),
+    };
     server.registerTool(name, sdkConfig, wrapped);
   };
 

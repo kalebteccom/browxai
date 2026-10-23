@@ -113,14 +113,21 @@ The `api` argument exposes:
     synchronously.
   - `def.description`: what the tool does, surfaced in MCP
     `tools/list`.
-  - `def.inputSchema` (optional): a `Record<string, ZodTypeAny>`
-    object. Same shape as core browxai tools use. Pass an empty
-    object (or omit) for argless tools. The host validates every call
-    against this schema, and keys the schema does not declare are dropped
-    before your handler runs, so declare every argument the tool reads.
-    If you import `zod`, use `zod@^4` (what the host ships) and list it
-    under `peerDependencies` (`"zod": "^4.0.0"`) so you share the host's
-    copy.
+  - `def.inputSchema` (optional): the arguments the tool accepts, in
+    one of two forms. A zod raw shape (`{ msg: z.string() }`, a
+    `Record<string, ZodTypeAny>`) is the form core browxai tools use. A
+    JSON Schema object needs no `zod` import:
+    `{ type: "object", properties: { msg: { type: "string" } }, required: ["msg"] }`.
+    The JSON Schema form covers `string`, `number`, `integer`, `boolean`,
+    `array` (with `items`), nested `object`, string `enum`, `description`,
+    `minLength`/`maxLength` and `minimum`/`maximum`. Any other keyword
+    accepts every value. Add `additionalProperties: true` to the top-level
+    object to keep keys you did not list. Pass an empty object (or omit)
+    for argless tools. The host validates every call against this schema,
+    and keys the schema does not declare are dropped before your handler
+    runs, so declare every argument the tool reads. If you import `zod`,
+    use `zod@^4` (what the host ships) and list it under
+    `peerDependencies` (`"zod": "^4.0.0"`) so you share the host's copy.
   - `handler(args)` returns the MCP envelope `{content:[...]}`.
     Handlers should produce `{ok:true,...}` or `{ok:false, error,...}`
     JSON in the first text item, which matches the convention every
@@ -367,11 +374,10 @@ the `file:` flow above. The example's `devDependencies` are `typescript`
 and `vitest`. The comment in `tsconfig.json` about source maps refers to a package-contents
 check this repo's CI runs, so you can ignore it elsewhere.
 
-The example gives every tool `inputSchema: {}` so the file needs no
-`zod` import. That is fine for `example.now`. For tools that read
-arguments, declare the fields (`{ msg: z.string() }`) as in the
-`register(api)` section above, or the host drops them before your
-handler runs.
+The example declares its arguments as JSON Schema objects, so the file
+needs no `zod` import. `example.now` takes none and declares `{}`. A
+tool that reads arguments has to declare them, as `example.echo` and
+`example.add` do, or the host drops them before your handler runs.
 
 ## Real-world plugins
 

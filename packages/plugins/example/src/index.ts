@@ -89,16 +89,20 @@ export function register(api: PluginApi): void {
 
   // Tool names MUST be prefixed with the plugin's namespace. The
   // runtime throws synchronously if a registration violates this.
-  // The Zod schema is the same shape host tools use; the plugin
-  // doesn't have to import Zod itself if the inputSchema is an
-  // empty object — the schema is consulted by MCP's `tools/list` and
-  // is purely informational at the plugin layer.
+  // `inputSchema` lists the arguments the tool accepts. The host builds the
+  // MCP schema from it and drops every argument it does not name, so declare
+  // each one the handler reads. A JSON Schema object like these needs no
+  // `zod` import; a zod raw shape (`{ msg: z.string() }`) works too.
   api.registerTool(
     `${api.namespace}.echo`,
     {
       description:
         "Round-trip primitive — returns whatever `msg` was passed. Useful for proving the plugin runtime is reachable end-to-end (keystone uses this).",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: { msg: { type: "string", description: "Text to return." } },
+        required: ["msg"],
+      },
     },
     handlers.echo,
   );
@@ -108,7 +112,14 @@ export function register(api: PluginApi): void {
     {
       description:
         "Sums two numeric args. Trivial demonstration of the handler's typed-arg pattern.",
-      inputSchema: {},
+      inputSchema: {
+        type: "object",
+        properties: {
+          a: { type: "number", description: "First addend." },
+          b: { type: "number", description: "Second addend." },
+        },
+        required: ["a", "b"],
+      },
     },
     handlers.add,
   );

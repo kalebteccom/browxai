@@ -113,6 +113,13 @@ surface" covers.
   now `>=0.13.0` and reaches npm with the next plugin release. The plugin
   READMEs also gained the capabilities each needs, an enable example and an
   example prompt.
+- **Plugin tool parameters now reach the handler over MCP.** Every plugin tool
+  registered an empty input schema, and the MCP SDK drops each argument a schema
+  does not declare, so `example.echo({ msg })` and the canvas tools ran with `{}`
+  and agents saw no parameters. A plugin can now declare its arguments as a JSON
+  Schema object (no `zod` needed) or a zod shape, and the declared parameters show
+  up on `tools/list`. The four first-party plugins declare theirs. A tool that
+  declares nothing behaves as before.
 
 ## [0.13.0] - 2026-10-22
 

@@ -23,12 +23,12 @@ BROWX_CAPABILITIES=read,navigation,action,human browxai
 
 Copy this directory, then change:
 
-| File                | Change                                                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `package.json`      | `name`, `version`, `description`, `repository`, `homepage`, `browxai.namespace` and `browxai.capabilities`. Delete `browxai.trust` unless you publish under `@browxai/*`. |
-| `src/index.ts`      | Replace the three tools. Keep `handlers` exported so tests can call them. Give a tool that reads arguments real `zod` fields in `inputSchema`.                            |
-| `src/index.test.ts` | Test your handlers.                                                                                                                                                       |
-| `schema.d.ts`       | Rename `ExamplePluginSchema` and list your tools for SDK users.                                                                                                           |
+| File                | Change                                                                                                                                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `package.json`      | `name`, `version`, `description`, `repository`, `homepage`, `browxai.namespace` and `browxai.capabilities`. Delete `browxai.trust` unless you publish under `@browxai/*`.                  |
+| `src/index.ts`      | Replace the three tools. Keep `handlers` exported so tests can call them. Declare every argument a tool reads in `inputSchema` (a JSON Schema object or zod fields), or the host drops it. |
+| `src/index.test.ts` | Test your handlers.                                                                                                                                                                        |
+| `schema.d.ts`       | Rename `ExamplePluginSchema` and list your tools for SDK users.                                                                                                                            |
 
 Leave `tsconfig.json` and `LICENSE` as they are (set your own license holder). Build with `pnpm build`, install from the directory with an absolute path, restart, and check:
 
