@@ -1,6 +1,6 @@
 # RFCs
 
-Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md` with sequential numbering. Not VitePress-published (excluded via `srcExclude`); they live in the repo as design archive.
+Numbered RFCs for substantive design proposals. Each RFC is `NNNN-short-slug.md` with sequential numbering. Not published to the site (the sync takes an allowlist of `docs/*.md` files); they live in the repo as design archive.
 
 ## Status
 
