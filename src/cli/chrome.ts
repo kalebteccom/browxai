@@ -20,6 +20,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveWorkspace } from "../util/workspace.js";
+import { capabilitiesAssignment } from "../util/capabilities.js";
 import { profileLockHolder, resolveProfileDir } from "../session/profile-guard.js";
 import {
   buildLoginArgs,
@@ -119,7 +120,7 @@ function startChrome(opts: string[]): Promise<number> {
   }
   writeFileSync(pidFile, String(child.pid), "utf8");
   process.stdout.write(
-    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    BROWX_CAPABILITIES=read,navigation,action,human,byob-attach\n\nstop with: browxai chrome stop\n`,
+    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    ${capabilitiesAssignment("byob-attach")}\n\nstop with: browxai chrome stop\n`,
   );
   return Promise.resolve(0);
 }

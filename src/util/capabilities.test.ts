@@ -5,6 +5,8 @@ import { describe, it, expect } from "vitest";
 // bootstrap so the lazy collector is installed and the derived rows are present.
 import "../tools/tool-metadata.js";
 import {
+  capabilitiesAssignment,
+  capabilitiesWith,
   DEFAULT_CAPABILITIES,
   isToolEnabled,
   resolveCapabilities,
@@ -108,6 +110,21 @@ describe("resolveConfirmHooks (BROWX_CONFIRM_REQUIRED)", () => {
   it("rejects unknown hooks", () => {
     expect(() => resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: "fly_to_moon" })).toThrow(
       /fly_to_moon/,
+    );
+  });
+});
+
+describe("capabilitiesWith / capabilitiesAssignment", () => {
+  it("is the defaults plus the extra capability, comma-joined", () => {
+    expect(capabilitiesWith("byob-attach")).toBe(
+      [...DEFAULT_CAPABILITIES, "byob-attach"].join(","),
+    );
+    expect(capabilitiesWith("byob-attach")).toBe("read,navigation,action,human,byob-attach");
+  });
+
+  it("renders the BROWX_CAPABILITIES assignment", () => {
+    expect(capabilitiesAssignment("byob-attach")).toBe(
+      "BROWX_CAPABILITIES=read,navigation,action,human,byob-attach",
     );
   });
 });

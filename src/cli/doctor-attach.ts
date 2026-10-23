@@ -5,7 +5,7 @@
 // names that here, as a warning row: the environment is not broken, but the
 // attach the operator configured will not happen until the capability is added.
 
-import { DEFAULT_CAPABILITIES, type Capability } from "../util/capabilities.js";
+import { capabilitiesAssignment, type Capability } from "../util/capabilities.js";
 import type { Check } from "./doctor.js";
 
 /** A warn row when `BROWX_ATTACH_CDP` is set and `byob-attach` is not enabled,
@@ -23,6 +23,6 @@ export function attachCapabilityCheck(
       "BROWX_ATTACH_CDP is set but the `byob-attach` capability is off, so attaching is refused",
     fix:
       "add `byob-attach` to BROWX_CAPABILITIES and keep the defaults in the list " +
-      `(BROWX_CAPABILITIES=${[...DEFAULT_CAPABILITIES, "byob-attach"].join(",")}), then restart the server`,
+      `(${capabilitiesAssignment("byob-attach")}), then restart the server`,
   };
 }

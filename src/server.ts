@@ -20,6 +20,7 @@ import {
   resolveCapabilities,
   resolveConfirmHooks,
   CAPABILITY_WARNINGS,
+  capabilitiesAssignment,
 } from "./util/capabilities.js";
 import type { PluginRecord } from "./plugin/types.js";
 import { resolveOriginPolicy, describePolicy } from "./policy/origin.js";
@@ -215,7 +216,8 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     );
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn(
-      "BROWX_ATTACH_CDP is set but the `byob-attach` capability is disabled, so every attached session will be refused. Add `byob-attach` to BROWX_CAPABILITIES, keeping the defaults in the list (BROWX_CAPABILITIES=read,navigation,action,human,byob-attach).",
+      "BROWX_ATTACH_CDP is set but the `byob-attach` capability is disabled, so every attached session will be refused. Add `byob-attach` to BROWX_CAPABILITIES, keeping the defaults in the list " +
+        `(${capabilitiesAssignment("byob-attach")}).`,
     );
   }
 
