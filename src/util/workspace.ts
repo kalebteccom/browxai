@@ -167,8 +167,9 @@ const PROTECTED_FILES = [
   // The key profile_snapshot MACs its manifests with (session/profile-snapshot.ts).
   ".browx-snapshot-key",
 ];
-// `profile-snapshots` is restored over a profile; `chrome-profile` is the one
-// `browxai chrome start` launches, which an attached session drives.
+// `profile-snapshots` is restored over a profile. `browxai chrome start` now runs
+// on `profile` or `profiles/<name>`; `chrome-profile` is where releases before
+// 0.13.0 put it, and workspaces that still hold one keep it protected.
 const PROTECTED_DIRS = ["plugins", "profile", "profiles", "profile-snapshots", "chrome-profile"];
 
 /** `p` with its longest existing ancestor replaced by that ancestor's real

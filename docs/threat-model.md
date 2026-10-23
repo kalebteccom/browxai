@@ -806,9 +806,11 @@ path (`pdf_save`, `dom_export`, `element_export`, `page_archive`, `asset_export`
 `screenshot`, heap snapshots, traces, HAR, video, replay, `dump_storage_state`,
 `export_playwright_script`, the file-picker write target) refuse
 `<workspace>/config.json`, `plugins.json`, `plugins-lock.json`, the snapshot key,
-the `plugins/`, `profile/`, `profiles/`, `profile-snapshots/` and `chrome-profile/`
-trees and the `BROWX_DEFAULT_PROFILE` directory, case-insensitively and after
-resolving symlinks. `profile_restore` copies a snapshot over a profile, so it also
+the `plugins/`, `profile/`, `profiles/` and `profile-snapshots/` trees, the
+`BROWX_DEFAULT_PROFILE` directory and the `chrome-profile/` directory that
+releases before 0.13.0 used for `chrome start`, case-insensitively and after
+resolving symlinks. `chrome start` and `chrome login` now run Chrome on
+`profile/`, or `profiles/<name>` with `--profile`. `profile_restore` copies a snapshot over a profile, so it also
 checks provenance: each snapshot carries a manifest with a digest of its files,
 MACed with a key kept in the workspace, and a snapshot without a valid manifest,
 or whose files changed since, is refused. Restore copies into a fresh sibling
@@ -821,7 +823,8 @@ agent-chosen workspace path (`upload_file`, `drop_files`, the file-picker open
 path, `inject_storage_state` from a path, HAR replay, replay-artifact
 reads, heap and trace reads, `extensions_install`) refuse the same operator files,
 including the snapshot key, and every browser-profile tree (`profile/`,
-`profiles/`, `profile-snapshots/`, `chrome-profile/`, `BROWX_DEFAULT_PROFILE`).
+`profiles/`, `profile-snapshots/`, `BROWX_DEFAULT_PROFILE`, and the old
+`chrome-profile/`).
 Otherwise `upload_file` could hand a cookie store or the key to the page, and so
 to the agent. `plugins/` stays readable. `set_config` also refuses an origin or confirm hook
 the next start could not parse. A `config.json` browxai cannot
