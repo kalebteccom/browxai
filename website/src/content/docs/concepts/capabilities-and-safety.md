@@ -92,8 +92,11 @@ Off by default, each opted in deliberately:
   input. `open_session` checks it before anything boots.
 - `replay` enables `.browx` session-replay capture: a DOM stream plus network and
   console.
-- `credentials`, `stealth`, `captcha`, `device-emulation`, `canvas`, and
-  `diagnostics` gate the remaining posture-broadening lanes. The
+- `captcha` enables `solve_captcha`, which sends a captcha to a third-party
+  solving service you configure (2Captcha or CapMonster). The API key, page URL
+  and site key leave the machine. browxai bundles no solver.
+- `credentials`, `stealth`, `device-emulation`, `canvas`, and `diagnostics` gate
+  the remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and
   trade-offs.
 

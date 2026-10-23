@@ -1190,7 +1190,7 @@ All action tools return an `ActionResult` (text content; JSON-encoded), the same
 
 **Challenge detection.** When an anti-bot gate is on the page, the result carries `challenge: { kind, vendor, evidence[] }`. `kind` is `"interstitial"` (the document IS the gate; the page you asked for was never served) or `"widget"` (a real page carrying a gated control, e.g. a Turnstile on a login form); `vendor` is `"cloudflare"`, `"anubis"`, or `"unknown"`; `evidence[]` lists the markers that matched (a `cdn-cgi/challenge-platform` script, a `cf-mitigated: challenge` response header, a 403/503 on the document, the document title, a `.cf-turnstile[data-sitekey]` element, an Anubis asset path). The block is **absent** when nothing matched, so a clean page costs no tokens. It does **not** change `ok`: a challenge on a completed action is reported, not failed. When an action's deadline expires and markers are present, the error names the gate and points at `await_human` in place of the generic anti-wedge timeout.
 
-> **Detection is not solving.** browxai reports the gate; it does not clear one. There is no solver, token service, or fingerprint patch behind this block. The supported path is `await_human`: a person clears the challenge in the live browser, then the run continues. An interstitial that a real browser clears on its own (an Anubis proof-of-work gate typically resolves in about a second) needs nothing from you beyond a re-check.
+> **Detection is not solving.** browxai reports the gate; it does not clear one. No solver, token service, or fingerprint patch reads this block. The default path is `await_human`: a person clears the challenge in the live browser, then the run continues. The optional [`solve_captcha`](#captcha-solver-delegation-capability-captcha) tool is a separate seam behind the off-by-default `captcha` capability: it forwards a captcha to a third-party solving service you configure, and it does not read `challenge`. An interstitial that a real browser clears on its own (an Anubis proof-of-work gate typically resolves in about a second) needs nothing from you beyond a re-check.
 
 ### Common per-call inputs (`ACTION_OPTS`)
 
@@ -2964,9 +2964,17 @@ library; only the four well-known patches above. Mirrors the `eval` /
 
 Delegate a captcha challenge to a configured external provider and
 return the provider's solution token / text. browxai is a **delegation
-seam, not a solver**: the tool POSTs the challenge to the provider's
-HTTP API and polls for the answer; the solver runs entirely on the
-provider's infrastructure.
+seam**: the tool POSTs the challenge to the provider's HTTP API and polls
+for the answer, and the solver runs entirely on the provider's
+infrastructure. Off by default (capability `captcha`).
+
+**What leaves the machine.** On each call: `BROWX_CAPTCHA_API_KEY` (in
+the submit body and in the query string of every poll request), the URL
+of the current page (`pageurl`), and the widget site-key, or the base64
+image bytes for `type:"image"`. They go to the provider's API,
+`https://2captcha.com` or `https://api.capmonster.cloud` unless
+`BROWX_CAPTCHA_API_BASE` overrides it. Cookies, DOM, snapshots and
+screenshots are not sent. With no provider configured nothing is sent.
 
 **Provider config (per-deployment, env-driven).** browxai does NOT
 bundle a solver and does NOT auto-purchase credits. Operator chooses a
@@ -2983,7 +2991,9 @@ provider, funds the account, and sets the env vars:
 
 When the capability is on but no provider is configured, the tool
 returns a structured `{ok:false, error:"no captcha provider
-configured", hint:…}`; it never guesses.
+configured — …", hint:…}` and sends nothing. Setting only one of
+`BROWX_CAPTCHA_PROVIDER` / `BROWX_CAPTCHA_API_KEY`, or an unknown provider
+name, returns an `ok:false` that names the missing piece.
 
 **Protocol target.** v0.2.0 targets the **2Captcha-compatible REST API**
 (`POST /in.php` submit + `GET /res.php` poll). CapMonster Cloud
