@@ -10,12 +10,13 @@ Full Report (Codex)  ->  Diagnose (Claude + Codex)  ->  Fix (Claude)  ->  loop
 
 It is **NOT part of CI** (`pnpm test`, the quality gates, and the keystone job
 all exclude it). It is heavy by design — real browsers, every off-by-default
-capability enabled, all 198 tools driven — and is run on demand.
+capability enabled, every tool in its manifest driven — and is run on demand.
 
 ## Why it exists
 
-browxai exposes **198 MCP tools** across **16 capabilities** plus a 10-tool
-control plane. After the RFC 0004 architecture hardening we want a single place
+browxai exposes **209 MCP tools** across **23 capabilities** (four on by default).
+The manifest lists 198 of them; the ten native-device tools (`device_*`,
+`app_*`) and `profile_status` have no row yet. After the RFC 0004 architecture hardening we want a single place
 that drives _every_ tool against a page surface built to trigger it, so a full
 report tells us — empirically, against real engines — what is release-ready and
 what regressed.
@@ -36,7 +37,7 @@ src/
                          workers, storage, media-files, permissions, canvas,
                          gestures, devices, perf, console, ...
   harness/
-    manifest.ts          THE authoritative tool->exercise registry (all 198 rows)
+    manifest.ts          THE tool->exercise registry (198 rows)
     types.ts             Exercise / ExerciseCtx / ExerciseResult contracts
     driver.ts            createBrowxai(ALL caps) wrapper + per-exercise session helpers
     run-report.ts        entry: serve in-proc, run every exercise, write reports/

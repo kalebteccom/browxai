@@ -42,10 +42,18 @@ Electron app. Pick the engine per session with `open_session({ engine })`.
 
 ## Does it get past bot protection?
 
-No. browxai does not defeat or spoof bot detection and cannot guarantee access
-to any site. For a challenge that needs a person, `browxai chrome login` opens
-the installed Chrome with nothing attached so you can clear it by hand. See
-[Sites behind bot protection](/guides/sites-behind-bot-protection/).
+Not by default. browxai does not defeat or spoof bot detection and cannot
+guarantee access to any site. For a challenge that needs a person,
+`browxai chrome login` opens the installed Chrome with nothing attached so you
+can clear it by hand.
+
+Two optional capabilities go further, and both are off until you enable them.
+`stealth` patches `navigator.webdriver`, `navigator.plugins`,
+`navigator.languages` and `window.chrome` in every session. `captcha` enables
+`solve_captcha`, which sends a captcha to a third-party solving service you
+configure (2Captcha or CapMonster) and returns the token. Your API key, the page
+URL and the widget's site key go to that service. browxai bundles no solver and
+buys no credits. See [Sites behind bot protection](/guides/sites-behind-bot-protection/).
 
 ## Why does my page state disappear sometimes?
 

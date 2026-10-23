@@ -1,4 +1,4 @@
-# browxai tool reference (v0.1.0)
+# browxai tool reference
 
 > The MCP tools the canonical `browxai` server exposes (`pnpm browxai` /
 > `browxai` bin). Stdio transport. All page text is **untrusted**. Agents must
@@ -21,7 +21,7 @@ The `browxai` bin dispatches sub-commands; with no args it starts the MCP server
 - `browxai chrome start [--port N] [--profile NAME] [--force] [--insecure] [--disable-background-throttling]`: launch an attachable **installed Google Chrome** (not the bundled Chromium; it refuses when Chrome is not installed) on the workspace's default profile (`<workspace>/profile`, or `BROWX_DEFAULT_PROFILE`), the same profile persistent sessions use, or `<workspace>/profiles/NAME` with `--profile`. It refuses a profile another Chrome already holds (Chrome's `SingletonLock`), and `--force` launches anyway. PID stored at `$BROWX_WORKSPACE/chrome.pid`. `--insecure` opts into `--disable-web-security` (use only against test/dev targets). `--disable-background-throttling` launches with `--disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding`, so agents driving a backgrounded tab on this attach target keep full timer / `requestAnimationFrame` rate, the same knob as `open_session({ backgroundThrottling:"disabled" })`, applied at the launcher because an attached Chrome's flags are fixed at launch.
 - `browxai chrome login [--url URL] [--profile NAME] [--force]`: open the installed Chrome on the same profile with **no remote debugging port** and no automation flags, so a person can clear a bot-protection challenge and sign in with nothing attached to the browser. The cookies stay in the profile. Quit that Chrome when done (it is released only on quit), then browxai sessions on the profile reuse them. Same held-profile refusal and `--force` as `start`. See [Sites behind bot protection](https://browxai.com/guides/sites-behind-bot-protection/).
 - `browxai chrome stop` / `browxai chrome status`: clean teardown / liveness check.
-- `browxai init <workspace> [--test-attrs...]`: bootstrap a per-app workspace. Creates `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed + attached MCP entries, sniffs the consumer codebase for the dominant test-attribute convention and orders `BROWX_TEST_ATTRIBUTES` accordingly.
+- `browxai init <workspace> [--test-attrs a,b,...] [--no-write]`: bootstrap a per-app workspace. Creates `<workspace>/.browxai/`, writes a workspace-scope `.mcp.json` with both managed + attached MCP entries, sniffs the consumer codebase for the dominant test-attribute convention and orders `BROWX_TEST_ATTRIBUTES` accordingly.
 - `browxai plugin <sub>`: manage browxai plugins. Subcommands: `install <pkg>` / `remove <pkg>` / `list` / `info <pkg>` / `upgrade [<pkg>]` / `sync`. All ops write under the workspace root (the declarative `plugins.json`, the install dir at `plugins/`, and the auto-generated `plugins-lock.json` pin). Every command emits a "Server restart required" notice: plugin lifecycle is resolved-once-at-server-start. See `docs/plugins.md` and `docs/plugin-authoring.md`.
 
 ## Plugins
@@ -64,7 +64,7 @@ built-in defaults  <  env (legacy BROWX_*)  <  user  <  project  <  session (ope
 
 **`BROWX_CONFIG_READONLY=1`** leaves `set_config`, `reset_config` and `approve_actions` unregistered: they are absent from `tools/list`, `batch` cannot reach them, and the config store refuses writes as a second layer. `get_config` and `list_approvals` stay. For embedders that manage config outside the agent session.
 
-Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, `channel`, `defaultDevice`, `defaultViewport`, `actionTimeoutMs`, `disableWebSecurity`, `hideOverlaySelectors`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
+Config keys: `testAttributes`, `capabilities`, `confirmRequired`, `allowedOrigins`, `blockedOrigins`, `headless`, `channel`, `defaultDevice`, `defaultViewport`, `actionTimeoutMs`, `disableWebSecurity`, `hideOverlaySelectors`, `plugins`, and a free-form `unstable` namespace for experimental / feature-flag knobs (not stable across versions).
 
 **`channel`** (`string`, default unset): the Playwright browser channel chromium sessions launch: `"chrome"`, `"msedge"`, `"chrome-beta"`, `"chrome-dev"`, `"msedge-beta"`, or `"chromium"` for Playwright's bundled build. **Unset launches the operator's installed Google Chrome** and falls back to the bundled Chromium, with a logged warning naming why, when Chrome is not installed. A named channel is taken as given and fails when its browser is missing (browxai does not download it). A launch with extensions and no channel stays on the bundled build, because branded Chrome no longer honours `--load-extension`. The browser version tracks the operator's install rather than the version browxai pins, so a Chrome session runs a browser browxai's own keystone lane (bundled Chromium) never ran. Layering is the usual one: `open_session({ channel })` over config `channel` over the `BROWX_CHANNEL` env. Chromium only: Firefox resolves its own channel from `BROWX_FIREFOX_CHANNEL`, and WebKit / Safari / Android ignore it.
 
@@ -155,7 +155,7 @@ Three things behave differently from an ordinary Chrome attach, all of them meas
 
 | what                             | behaviour                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `navigate`                       | **Refused** (`{ok:false, engine:"electron", hint}`). It would run a web page inside the app's own renderer — privileged on many Electron apps through a preload IPC bridge — and discard everything that renderer held. `reload` / `go_back` / `go_forward` work normally; they stay on the app's own document.                                                            |
+| `navigate`                       | **Refused** (`{ok:false, engine:"electron", hint}`). It would run a web page inside the app's own renderer — privileged on many Electron apps through a preload IPC bridge — and discard everything that renderer held. `go_back` / `go_forward` work normally; they stay on the app's own document.                                                                       |
 | a second session on the same app | **Refused** with `attach-target-creation-unavailable`, naming the session holding the target. Electron answers `Target.createTarget` with `"Not supported"`, so browxai claims pre-existing renderer targets and cannot mint one. One window means one session; open another window in the app to get a second.                                                            |
 | `click` on animated app chrome   | Works, and costs more. Playwright's actionability check never settles against a perpetually-animating desktop UI, so the shipped auto-recovery fires: measured **4967 ms** (with the `force: true` recovery warning) versus **528 ms** for the same click passed `force: true` up front. Pass `force: true` on targets you have already confirmed via `snapshot` / `find`. |
 
@@ -1190,7 +1190,7 @@ All action tools return an `ActionResult` (text content; JSON-encoded), the same
 
 **Challenge detection.** When an anti-bot gate is on the page, the result carries `challenge: { kind, vendor, evidence[] }`. `kind` is `"interstitial"` (the document IS the gate; the page you asked for was never served) or `"widget"` (a real page carrying a gated control, e.g. a Turnstile on a login form); `vendor` is `"cloudflare"`, `"anubis"`, or `"unknown"`; `evidence[]` lists the markers that matched (a `cdn-cgi/challenge-platform` script, a `cf-mitigated: challenge` response header, a 403/503 on the document, the document title, a `.cf-turnstile[data-sitekey]` element, an Anubis asset path). The block is **absent** when nothing matched, so a clean page costs no tokens. It does **not** change `ok`: a challenge on a completed action is reported, not failed. When an action's deadline expires and markers are present, the error names the gate and points at `await_human` in place of the generic anti-wedge timeout.
 
-> **Detection is not solving.** browxai reports the gate; it does not clear one. There is no solver, token service, or fingerprint patch behind this block. The supported path is `await_human`: a person clears the challenge in the live browser, then the run continues. An interstitial that a real browser clears on its own (an Anubis proof-of-work gate typically resolves in about a second) needs nothing from you beyond a re-check.
+> **Detection is not solving.** browxai reports the gate; it does not clear one. Nothing reads this block to clear a gate. The default path is `await_human`: a person clears the challenge in the live browser, then the run continues. Two off-by-default capabilities are separate seams that do not read `challenge`: [`stealth`](#stealth-fingerprint-patches-capability-stealth) patches four fingerprint properties, and [`solve_captcha`](#captcha-solver-delegation-capability-captcha) under `captcha` forwards a captcha to a third-party solving service you configure. An interstitial that a real browser clears on its own (an Anubis proof-of-work gate typically resolves in about a second) needs nothing from you beyond a re-check.
 
 ### Common per-call inputs (`ACTION_OPTS`)
 
@@ -2964,9 +2964,17 @@ library; only the four well-known patches above. Mirrors the `eval` /
 
 Delegate a captcha challenge to a configured external provider and
 return the provider's solution token / text. browxai is a **delegation
-seam, not a solver**: the tool POSTs the challenge to the provider's
-HTTP API and polls for the answer; the solver runs entirely on the
-provider's infrastructure.
+seam**: the tool POSTs the challenge to the provider's HTTP API and polls
+for the answer, and the solver runs entirely on the provider's
+infrastructure. Off by default (capability `captcha`).
+
+**What leaves the machine.** On each call: `BROWX_CAPTCHA_API_KEY` (in
+the submit body and in the query string of every poll request), the URL
+of the current page (`pageurl`), and the widget site-key, or the base64
+image bytes for `type:"image"`. They go to the provider's API,
+`https://2captcha.com` or `https://api.capmonster.cloud` unless
+`BROWX_CAPTCHA_API_BASE` overrides it. Cookies, DOM, snapshots and
+screenshots are not sent. With no provider configured nothing is sent.
 
 **Provider config (per-deployment, env-driven).** browxai does NOT
 bundle a solver and does NOT auto-purchase credits. Operator chooses a
@@ -2983,7 +2991,9 @@ provider, funds the account, and sets the env vars:
 
 When the capability is on but no provider is configured, the tool
 returns a structured `{ok:false, error:"no captcha provider
-configured", hint:…}`; it never guesses.
+configured — …", hint:…}` and sends nothing. Setting only one of
+`BROWX_CAPTCHA_PROVIDER` / `BROWX_CAPTCHA_API_KEY`, or an unknown provider
+name, returns an `ok:false` that names the missing piece.
 
 **Protocol target.** v0.2.0 targets the **2Captcha-compatible REST API**
 (`POST /in.php` submit + `GET /res.php` poll). CapMonster Cloud
