@@ -63,31 +63,31 @@ Enforcement is idiomatic per harness: hard-blocks in [`.codex/rules/default.rule
 
 Safe by default — no auto-broadening. Every off-by-default capability has a per-tool keystone test asserting the gate blocks when the capability is not granted.
 
-| State           | Capability            | Notes                                                                                                 |
-| --------------- | --------------------- | ----------------------------------------------------------------------------------------------------- |
-| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot          |
-| ON by default   | `navigation`          | navigate, go_back, go_forward, scroll, set_viewport                                                   |
-| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route, set_* emulation                             |
-| ON by default   | `human`               | confirmation hooks, await_human                                                                       |
-| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval` — arbitrary JS in page context                                                 |
-| OFF + loud-warn | `network-body`        | `network_body`: full response bodies                                                                  |
-| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome, or a running desktop Electron app (no managed profile)              |
-| OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                       |
-| OFF             | `file-io`             | `upload_file`, downloads, `screenshot({path})`, page and element exports, video, all workspace-rooted |
-| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                   |
-| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                     |
-| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                       |
-| OFF + loud-warn | `credentials`         | `get_totp`, `get_credential` against a password manager CLI                                           |
-| OFF + loud-warn | `captcha`             | `solve_captcha`: forwards a captcha to a third-party solving service (2Captcha, CapMonster)           |
-| OFF + loud-warn | `device-emulation`    | `emulate_bluetooth` / `emulate_usb` / `emulate_hid`, `device_requests`: synthetic Web device catalogs |
-| OFF + loud-warn | `diagnostics`         | recorder, `diagnostics_note` (the read-side queries ride `read`)                                      |
-| OFF + loud-warn | `canvas`              | `canvas_*` tools and `gesture_chain` (figma / tldraw / excalidraw plugins)                            |
-| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                             |
-| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input         |
-| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions                |
-| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds         |
-| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts   |
-| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)              |
+| State           | Capability            | Notes                                                                                                         |
+| --------------- | --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| ON by default   | `read`                | snapshot, find, text_search, inspect, console_read, network_read (metadata only), screenshot                  |
+| ON by default   | `navigation`          | navigate, go_back, go_forward, scroll, set_viewport                                                           |
+| ON by default   | `action`              | click, fill, select, drag, hover, press, wait_for, route, set_* emulation                                     |
+| ON by default   | `human`               | confirmation hooks, await_human                                                                               |
+| OFF + loud-warn | `eval`                | `eval_js`, `poll_eval` — arbitrary JS in page context                                                         |
+| OFF + loud-warn | `network-body`        | `network_body`: full response bodies                                                                          |
+| OFF + loud-warn | `byob-attach`         | attach to user's existing Chrome (desktop or Android), or a running desktop Electron app (no managed profile) |
+| OFF             | `clipboard`           | `shortcut` copy/cut/paste writes the OS clipboard (write-only, never read back)                               |
+| OFF             | `file-io`             | `upload_file`, downloads, `screenshot({path})`, page and element exports, video, all workspace-rooted         |
+| OFF + loud-warn | `secrets`             | `register_secret`, secret materialization at egress                                                           |
+| OFF + loud-warn | `extensions`          | install/inspect Chrome extensions                                                                             |
+| OFF + loud-warn | `stealth`             | anti-fingerprint posture tweaks                                                                               |
+| OFF + loud-warn | `credentials`         | `get_totp`, `get_credential` against a password manager CLI                                                   |
+| OFF + loud-warn | `captcha`             | `solve_captcha`: forwards a captcha to a third-party solving service (2Captcha, CapMonster)                   |
+| OFF + loud-warn | `device-emulation`    | `emulate_bluetooth` / `emulate_usb` / `emulate_hid`, `device_requests`: synthetic Web device catalogs         |
+| OFF + loud-warn | `diagnostics`         | recorder, `diagnostics_note` (the read-side queries ride `read`)                                              |
+| OFF + loud-warn | `canvas`              | `canvas_*` tools and `gesture_chain` (figma / tldraw / excalidraw plugins)                                    |
+| OFF + loud-warn | `replay`              | `.browx` session-replay artifact capture (DOM stream + network + console)                                     |
+| OFF + loud-warn | `native-device`       | gates two ENGINES: `ios-app` / `android-app` install and launch apps and drive OS-level input                 |
+| OFF + loud-warn | `self-approval`       | `approve_actions` — the agent pre-approves the confirm hooks that hold its own actions                        |
+| OFF + loud-warn | `human-gate-override` | `set_*_policy` may move a policy off `ask-human`; `grant_permissions` may grant what it holds                 |
+| OFF + loud-warn | `operator-channel`    | `await_human` and the confirm hooks go to the host daemon's Unix socket, and only its answer counts           |
+| OFF + loud-warn | `live-view`           | the socket's daemon can stream browser pixels to the operator (needs `operator-channel`)                      |
 
 Per-capability rationale, ActionResult shape, and threat-model rows live in [`docs/threat-model.md`](docs/threat-model.md) and [`docs/ai-context/architecture/capability-posture-map.md`](docs/ai-context/architecture/capability-posture-map.md).
 

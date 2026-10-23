@@ -88,7 +88,9 @@ beforeAll(async () => {
   // diagnostics ON so the deep tool (coverage_start) we run to prove deep:true is
   // not refused by the CAPABILITY gate — leaving only the ENGINE gate as the
   // thing under test (and on android the engine gate ALLOWS it: deep:true).
-  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,diagnostics";
+  // byob-attach because every android session is an attach to the phone's
+  // real Chrome.
+  process.env.BROWX_CAPABILITIES = "read,navigation,action,human,byob-attach,diagnostics";
   // The android engine attaches to the user's real Chrome-on-Android over adb +
   // CDP — the server defaults android to mode:"attached" (endpoint discovered
   // over adb, no BROWX_ATTACH_CDP).

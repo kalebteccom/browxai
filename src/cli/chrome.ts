@@ -119,7 +119,7 @@ function startChrome(opts: string[]): Promise<number> {
   }
   writeFileSync(pidFile, String(child.pid), "utf8");
   process.stdout.write(
-    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n\nstop with: browxai chrome stop\n`,
+    `browxai chrome started\n  pid:     ${child.pid}\n  port:    ${port}\n  profile: ${profileDir}\n  attach:  BROWX_ATTACH_CDP=http://127.0.0.1:${port}\n  caps:    BROWX_CAPABILITIES=read,navigation,action,human,byob-attach\n\nstop with: browxai chrome stop\n`,
   );
   return Promise.resolve(0);
 }

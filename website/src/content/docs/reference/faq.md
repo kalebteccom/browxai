@@ -30,7 +30,10 @@ Bring your own browser. You launch Chrome yourself with a remote debugging port
 (`browxai chrome start` does it on the workspace profile) and point browxai at
 it with `BROWX_ATTACH_CDP`. The attached browser is not owned by browxai: it is never
 closed on shutdown and it survives browxai restarts cleanly. Attaching requires
-the `byob-attach` capability.
+the `byob-attach` capability: set
+`BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`, keeping the four
+defaults, or every attach is refused. The `browxai-attached` entry that
+`browxai init` writes already sets it.
 
 ## Which engines does it drive?
 

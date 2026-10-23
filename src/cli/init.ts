@@ -60,6 +60,9 @@ export function runInit(args: string[]): Promise<number> {
         env: {
           BROWX_WORKSPACE: browxDir,
           BROWX_ATTACH_CDP: "http://127.0.0.1:9222",
+          // Attaching needs `byob-attach`. The list replaces the default set,
+          // so the four defaults stay in it.
+          BROWX_CAPABILITIES: "read,navigation,action,human,byob-attach",
           BROWX_TEST_ATTRIBUTES: testAttrs,
         },
       },
@@ -105,7 +108,7 @@ export function runInit(args: string[]): Promise<number> {
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
       `  3) (BYOB) run \`browxai chrome start\` to launch the attachable Chrome, then use \`browxai-attached\`.\n` +
-      `     Add BROWX_CAPABILITIES=read,navigation,action,human,byob-attach to that entry's env first; without byob-attach the server logs a warning at start.\n` +
+      `     That entry's env sets BROWX_CAPABILITIES=read,navigation,action,human,byob-attach; without byob-attach every attach is refused.\n` +
       `  4) run \`browxai doctor\` if a session fails to open\n`,
   );
   return Promise.resolve(0);

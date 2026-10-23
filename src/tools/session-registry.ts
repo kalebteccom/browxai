@@ -53,6 +53,7 @@ import { FeedbackMemory } from "../page/learning.js";
 import { log } from "../util/logging.js";
 import { capabilityMissing, type CapabilityConfig } from "../util/capabilities.js";
 import { refuseHeldProfile } from "./ask-human-gate.js";
+import { refuseAttachWithoutCapability } from "./byob-attach-gate.js";
 import {
   refuseLiveProfile,
   refuseLockedProfile,
@@ -213,6 +214,9 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       let creationRecordHarResolved = creationOptions.creationRecordHarResolved;
       let sess: BrowserSession;
       if (mode === "attached") {
+        // Every attach joins a browser browxai does not own, so `byob-attach`
+        // is checked first, before the endpoint or any connection.
+        refuseAttachWithoutCapability(caps, id, effectiveEngine);
         // android attach is endpoint-DISCOVERED over adb — it does NOT need
         // BROWX_ATTACH_CDP; the desktop CDP-attach lane still requires it. The
         // android-specific fact lives in the engine layer (`byobAttachNeedsEndpoint`),

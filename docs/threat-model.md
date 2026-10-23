@@ -667,9 +667,9 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Arbitrary page-side JS execution. Off by default; loud warning when enabled.
 
-- `byob-attach`, default **off**. Tools: session via `BROWX_ATTACH_CDP`.
+- `byob-attach`, default **off**. Tools: none; it gates every `attached` session: `open_session({mode:"attached"})`, the default session of a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines. Without it, session creation refuses with `capability-required` before any connection is made, and `open_session` returns the standard refusal with `requiredCapability: "byob-attach"`.
 
-  Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning.
+  Lowered-security CDP-attach against the operator's Chrome. Loud one-time warning when enabled, and a start-time warning when `BROWX_ATTACH_CDP` is set without it. The check reads the start-time capability set, so a saved config or `set_config` cannot add it. `browxai chrome start` only launches Chrome and attaches nothing, so it needs no capability; the `browxai-attached` entry that `browxai init` writes sets `byob-attach` in its env.
 
   **Pooled sessions share one identity.** Each attached session leases its own CDP page target, so two sessions never write to the same tab. What they do share is the browser: one Chrome means one cookie jar, so every session in the pool acts as the same logged-in user. That is fine for one operator driving their own accounts and wrong for multi-tenant testing, so use separate `persistent` profiles when sessions must be different identities. Context-level surfaces are shared too: dialogs, downloads, permission grants and file pickers are per-context, so two sessions downloading at once land in one directory. Web apps that elect a leader across tabs (Slack, Figma, Gmail) will still contend.
 

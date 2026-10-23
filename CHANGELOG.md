@@ -36,6 +36,8 @@ surface" covers.
 - **`browxai init` next steps** now cover the `byob-attach` capability the
   `browxai-attached` entry needs, and warn when the written path sits in the npx
   cache.
+  `browxai chrome start` prints the same capability line next to the attach
+  endpoint.
 - **The disabled-tool hint says `BROWX_CAPABILITIES` replaces the default set**,
   so a newcomer who sets it to one capability keeps `read,navigation,action,human`.
 - **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
@@ -49,6 +51,15 @@ surface" covers.
   fall back to 9222 without saying so.
 - **Server log lines no longer read `browxai: browxai: ...`.** The logger adds the
   prefix, so the message text drops its own.
+- **Attaching to an existing Chrome now requires the `byob-attach` capability,
+  as documented.** Before, a server started with `BROWX_ATTACH_CDP` and without
+  the capability only logged a warning and attached anyway. Every `attached`
+  session is now refused at creation without it: `open_session({ mode:
+  "attached" })` returns the standard refusal with `requiredCapability:
+  "byob-attach"`, and the default session of a `BROWX_ATTACH_CDP` server, the
+  `android` engine and the `electron` engine are refused the same way. To keep
+  attaching, set `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`
+  and restart the server; a saved config or `set_config` cannot add it.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.
