@@ -171,14 +171,14 @@ export function buildHost(deps: HostDeps): ToolHost {
         text: JSON.stringify(
           {
             ok: false,
-            error: `tool "${toolName}" is disabled — its capability is not in the server's ACTIVE set`,
+            error: `tool "${toolName}" is disabled: its capability${requiredCapability ? ` "${requiredCapability}"` : ""} is not enabled on this server`,
             requiredCapability,
             activeCapabilities: active,
             ...(reason ? { reason } : {}),
             hint:
-              "This tool's capability (`requiredCapability` above) is not in the server's active set. Fix: add it to `BROWX_CAPABILITIES` (that variable REPLACES the default set, so keep the defaults in the list, e.g. `" +
+              "Add the capability to `BROWX_CAPABILITIES` and restart the browxai server. The variable replaces the default set, so keep the defaults in it, e.g. `" +
               capabilitiesWith("<capability>") +
-              '`), then RESTART the browxai server. Capabilities are resolved ONCE at server start and `set_config` can only narrow them, so it cannot enable one. Two gotchas if it still doesn\'t take after a restart: (1) a persisted `set_config({capabilities})` layer narrows the start-time set, so a saved list that omits this capability keeps it off even when BROWX_CAPABILITIES names it; `reset_config` clears it; (2) `get_config({scope:"resolved"}).capabilities` is the *live enforced* set (what this gate checks). See docs/threat-model.md.',
+              '`. `set_config` cannot enable it: capabilities are read once at server start, and a saved list can only narrow them. If it stays off after a restart, run `reset_config` to clear a saved list that omits it, then check `get_config({scope:"resolved"}).capabilities`, which is the set this gate enforces. See docs/threat-model.md.',
           },
           null,
           2,

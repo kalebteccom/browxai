@@ -183,10 +183,9 @@ function assertGateBootstrapped(): void {
   if (TOOL_CAPABILITY_MAP.size > 0 || toolMetadataCollecting) return;
   throw new Error(
     "browxai capability gate read before the tool-metadata bootstrap ran: the derived " +
-      "TOOL_CAPABILITY map is empty and no collector was installed. Refusing to fail OPEN " +
-      "(which would un-gate eval_js / register_secret / network_body). Import the package " +
-      'entry ("browxai") or call createServer before reading the capability gate. ' +
-      "(RFC 0004 P2 / D1.)",
+      "TOOL_CAPABILITY map is empty and no collector was installed. Refusing to continue, " +
+      "because an empty map would leave eval_js / register_secret / network_body ungated. " +
+      'Import the package entry ("browxai") or call createServer before reading the capability gate.',
   );
 }
 
@@ -424,8 +423,8 @@ export function resolveCapabilities(env: NodeJS.ProcessEnv = process.env): Capab
   }
   if (unknown.length) {
     throw new Error(
-      `BROWX_CAPABILITIES: unknown capability/capabilities ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
-        `Valid: ${ALL_CAPABILITIES.join(", ")}.`,
+      `BROWX_CAPABILITIES: unknown ${unknown.length === 1 ? "capability" : "capabilities"} ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
+        `Valid: ${ALL_CAPABILITIES.join(", ")}. Fix the spelling or remove the entry, then restart the server.`,
     );
   }
   const enabled = new Set(live as Capability[]);
@@ -481,8 +480,8 @@ export function resolveConfirmHooks(
   const unknown = list.filter((h) => !ALL_CONFIRM_HOOKS.includes(h as ConfirmHook));
   if (unknown.length) {
     throw new Error(
-      `BROWX_CONFIRM_REQUIRED: unknown hook(s) ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
-        `Valid: ${ALL_CONFIRM_HOOKS.join(", ")}.`,
+      `BROWX_CONFIRM_REQUIRED: unknown ${unknown.length === 1 ? "hook" : "hooks"} ${unknown.map((u) => JSON.stringify(u)).join(", ")}. ` +
+        `Valid: ${ALL_CONFIRM_HOOKS.join(", ")}. Fix the spelling or remove the entry, then restart the server.`,
     );
   }
   return new Set(list as ConfirmHook[]);

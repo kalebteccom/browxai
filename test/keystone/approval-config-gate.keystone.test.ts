@@ -88,7 +88,7 @@ describe("self-approval gate", () => {
       );
       expect(denied.ok).toBe(false);
       expect(denied.requiredCapability).toBe("self-approval");
-      expect(denied.error).toMatch(/capability is not in the server's ACTIVE set/);
+      expect(denied.error).toMatch(/capability "self-approval" is not enabled on this server/);
       const listed = await call<{ approvals: unknown[] }>("list_approvals", {});
       expect(listed.approvals).toEqual([]);
       // The batch path reaches the same gate.

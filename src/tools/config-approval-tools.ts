@@ -13,9 +13,18 @@ function invalidPolicyValues(patch: {
 }): { key: string; value: string; reason: string } | null {
   for (const key of ["allowedOrigins", "blockedOrigins"] as const) {
     for (const value of patch[key] ?? []) {
-      if (value.includes(",")) return { key, value, reason: "an entry cannot contain a comma" };
+      if (value.includes(","))
+        return {
+          key,
+          value,
+          reason: "an entry cannot contain a comma; pass one origin per array item",
+        };
       try {
-        resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: value });
+        resolveOriginPolicy(
+          key === "allowedOrigins"
+            ? { BROWX_ALLOWED_ORIGINS: value }
+            : { BROWX_BLOCKED_ORIGINS: value },
+        );
       } catch (e) {
         return { key, value, reason: e instanceof Error ? e.message : String(e) };
       }
@@ -23,7 +32,8 @@ function invalidPolicyValues(patch: {
   }
   for (const value of patch.confirmRequired ?? []) {
     try {
-      if (value.includes(",")) throw new Error("an entry cannot contain a comma");
+      if (value.includes(","))
+        throw new Error("an entry cannot contain a comma; pass one hook per array item");
       resolveConfirmHooks({ BROWX_CONFIRM_REQUIRED: value });
     } catch (e) {
       return { key: "confirmRequired", value, reason: e instanceof Error ? e.message : String(e) };

@@ -162,7 +162,7 @@ describePool("byob-attach capability gate — real Chrome, capability unset", ()
         ) as { ok: boolean; requiredCapability?: string; error?: string; reason?: string };
         expect(opened.ok).toBe(false);
         expect(opened.requiredCapability).toBe("byob-attach");
-        expect(opened.error).toMatch(/capability is not in the server's ACTIVE set/);
+        expect(opened.error).toMatch(/capability "byob-attach" is not enabled on this server/);
         expect(opened.reason).toMatch(/capability-required/);
 
         // The default session a BROWX_ATTACH_CDP server creates lazily is

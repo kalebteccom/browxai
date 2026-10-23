@@ -59,7 +59,7 @@ function captureTool(opts: { enabled?: boolean; entries?: SessionEntry[] } = {})
                 type: "text" as const,
                 text: JSON.stringify({
                   ok: false,
-                  error: `tool "${tool}" is disabled — its capability is not in the server's ACTIVE set`,
+                  error: `tool "${tool}" is disabled: its capability "read" is not enabled on this server`,
                   requiredCapability: "read",
                 }),
               },
