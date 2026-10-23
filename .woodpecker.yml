@@ -186,7 +186,7 @@ steps:
   # Real Chromium, Firefox and WebKit, in two shards. Android needs a USB device and Safari needs macOS, so those keystones still skip and run manually.
   # The gate-slot pool bounds how many heavy commands run at once, so the shards do not wait for the unit steps. Browsers are installed once, in `browsers`, before the shards start: two shards installing into the shared cache volume would race.
   - name: browsers
-    # WORKAROUND: the only playwright image on the box is v1.60.0-noble while the lockfile pins playwright-core 1.63.0, so a plain node image downloads the matching browsers into the cache volume (the OS libraries are installed per container by each shard).
+    # WORKAROUND: the only playwright image on the box is older than the playwright-core the lockfile pins (see package.json), so a plain node image downloads the matching browsers into the cache volume (the OS libraries are installed per container by each shard).
     image: node:26-bookworm
     depends_on: [install]
     when: *gate-when
