@@ -61,7 +61,9 @@ function clampDuration(d?: number): number {
 function resolveAuditPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(`${tool}: \`path\` must resolve inside $BROWX_WORKSPACE — got "${p}".`);
+    throw new Error(
+      `${tool}: \`path\` must resolve inside $BROWX_WORKSPACE, got "${p}". Use a path relative to the workspace root.`,
+    );
   }
   assertWritableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;

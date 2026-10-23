@@ -48,7 +48,9 @@ const MAX_GROWTH_ROWS = 100;
 export function resolveHeapPath(workspaceRoot: string, p: string, tool: string): string {
   const resolved = resolve(workspaceRoot, p);
   if (resolved !== workspaceRoot && !resolved.startsWith(workspaceRoot + sep)) {
-    throw new Error(`${tool}: paths must resolve inside $BROWX_WORKSPACE — got "${p}".`);
+    throw new Error(
+      `${tool}: paths must resolve inside $BROWX_WORKSPACE, got "${p}". Use a path relative to the workspace root.`,
+    );
   }
   assertReadableWorkspacePath(workspaceRoot, resolved, tool);
   return resolved;
