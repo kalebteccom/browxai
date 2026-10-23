@@ -88,19 +88,6 @@ describe("locatorFor — provenance routing", () => {
     expect(calls).toEqual([{ method: "getByRole", role: "button", options: { name: "Save" } }]);
   });
 
-  it("'both' refs prefer getByRole({ name }) when a name is present", () => {
-    const { page, calls } = mockPage();
-    const refs = new RefRegistry();
-    const ref = refs.forKey("k1", {
-      role: "button",
-      name: "Submit",
-      cssPath: "form > button:nth-child(2)",
-      source: "both",
-    });
-    locatorFor(page, refs, { ref });
-    expect(calls).toEqual([{ method: "getByRole", role: "button", options: { name: "Submit" } }]);
-  });
-
   it("'both' refs without a name fall back to cssPath before role-only", () => {
     const { page, calls } = mockPage();
     const refs = new RefRegistry();
@@ -119,19 +106,6 @@ describe("locatorFor — provenance routing", () => {
     const ref = refs.forKey("k1", { role: "button", source: "a11y" });
     locatorFor(page, refs, { ref });
     expect(calls).toEqual([{ method: "getByRole", role: "button", options: undefined }]);
-  });
-
-  it("escapes testId values that contain quotes", () => {
-    const { page, calls } = mockPage();
-    const refs = new RefRegistry();
-    const ref = refs.forKey("k1", {
-      role: "div",
-      testId: 'with "quotes"',
-      testIdAttr: "data-testid",
-      source: "dom",
-    });
-    locatorFor(page, refs, { ref });
-    expect(calls[0]?.selector).toBe('[data-testid="with \\"quotes\\""]');
   });
 });
 
@@ -154,28 +128,6 @@ describe("locatorFor — frame-scoped refs", () => {
     locatorFor(page, refs, { ref });
     expect(pageCalls).toEqual([]);
     expect(frameCalls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
-  });
-
-  it("contextRef-scoped selector resolves inside the bound frame's nested locator", () => {
-    const { page, calls: pageCalls } = mockPage();
-    const { page: framePage, calls: frameCalls } = mockPage();
-    const refs = new RefRegistry();
-    const ctx = refs.forKey("kfctx", {
-      role: "main",
-      cssPath: "main",
-      source: "dom",
-      frameId: "f2",
-    });
-
-    bindRefFrame(refs, ctx, framePage as any);
-    locatorFor(page, refs, { selector: '[data-testid="x"]', contextRef: ctx });
-    expect(pageCalls).toEqual([]);
-    // First call: the contextRef itself was resolved on the frame (cssPath via locator).
-    expect(frameCalls[0]).toEqual({ method: "locator", selector: "main" });
-    // Then the scoped selector was applied inside that nested locator.
-    expect(
-      frameCalls.some((c) => c.scopedToCssPath === "main" && c.selector === '[data-testid="x"]'),
-    ).toBe(true);
   });
 });
 

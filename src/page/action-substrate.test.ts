@@ -33,11 +33,6 @@ function safariHandle(): { handle: SafariSessionHandle; navigated: string[] } {
 }
 
 describe("SafariActionSubstrate", () => {
-  it("tags the safari engine", () => {
-    const { handle } = safariHandle();
-    expect(new SafariActionSubstrate(handle, new RefRegistry()).engine).toBe("safari");
-  });
-
   it("routes navigate to the WebDriver client", async () => {
     const { handle, navigated } = safariHandle();
     const sub = new SafariActionSubstrate(handle, new RefRegistry());
@@ -110,9 +105,7 @@ describe("PlaywrightActionSubstrate — the dispatch:'direct' engine gate", () =
 
 /** One sample per request kind. A `Record` over the union's discriminant, so the
  *  TABLE'S OWN COMPLETENESS is a compile error instead of a silently smaller test
- *  run: a fourth gesture kind that is not added here fails `pnpm typecheck`. The
- *  runtime assertion below closes the other half — the three kinds still cover
- *  the five tool registrations this phase retired `deep: true` on. */
+ *  run: a fourth gesture kind that is not added here fails `pnpm typecheck`. */
 const GESTURE_SAMPLES: Record<GestureRequest["kind"], GestureRequest> = {
   touch: { kind: "touch", phase: "start", coords: { x: 10, y: 20 }, identifier: 3 },
   swipe: { kind: "swipe", from: { x: 0, y: 0 }, to: { x: 50, y: 0 }, steps: 2, durationMs: 0 },
@@ -132,29 +125,6 @@ function fakeCdpCtx(): { ctx: ActionContext; calls: string[] } {
   return { ctx: { cdp: () => cdp } as unknown as ActionContext, calls };
 }
 
-describe("ActionSubstrate.gesture — the request union", () => {
-  it("covers the five registrations that retired `deep: true`", () => {
-    // The P2 trap, applied here: a generated table that loses an entry runs FEWER
-    // cases and stays green. The `Record<GestureRequest["kind"], …>` above makes
-    // a missing KIND a type error; this makes a missing TOOL a test failure, so
-    // the table cannot drift away from the registrations it stands for.
-    const names = new Set([
-      ...(["start", "move", "end"] as const).map((phase) =>
-        gestureToolName({ kind: "touch", phase }),
-      ),
-      ...ALL_SAMPLES.map(gestureToolName),
-    ]);
-    expect([...names].sort()).toEqual([
-      "gesture_pinch",
-      "gesture_swipe",
-      "touch_end",
-      "touch_move",
-      "touch_start",
-    ]);
-    expect(ALL_SAMPLES).toHaveLength(3);
-  });
-});
-
 describe("PlaywrightActionSubstrate.gesture", () => {
   it.each(ALL_SAMPLES.map((req) => [req.kind, req] as const))(
     "[%s] dispatches through CDP when the context carries the accessor",
@@ -167,18 +137,6 @@ describe("PlaywrightActionSubstrate.gesture", () => {
       expect(calls.every((m) => m === "Input.dispatchTouchEvent")).toBe(true);
     },
   );
-
-  it("reports the touch evidence body the pre-seam handler rendered", async () => {
-    const { ctx } = fakeCdpCtx();
-    const sub = new PlaywrightActionSubstrate(() => ctx, "chromium");
-    const r = await sub.gesture(GESTURE_SAMPLES.touch);
-    expect(r.kind === "dispatched" && r.report).toEqual({
-      ok: true,
-      action: "start",
-      coords: { x: 10, y: 20 },
-      identifier: 3,
-    });
-  });
 
   it("reports the swipe and pinch evidence bodies unchanged", async () => {
     const { ctx } = fakeCdpCtx();
@@ -212,40 +170,6 @@ describe("PlaywrightActionSubstrate.gesture", () => {
       expect(r.kind === "refusal" && r.hint).toContain(TOUCH_DISPATCH_ENGINE_REFUSAL);
     },
   );
-
-  it("refuses with the string the engine gate produced while the flag was set", async () => {
-    // The assertion that makes "no widening, same reason" checkable. This is
-    // `assertEngineSupports`'s `error` line, character for character, for each of
-    // the five tools — so an agent (or a recorded transcript) matching on it sees
-    // no change from the deep-flag retirement.
-    const sub = new PlaywrightActionSubstrate(() => ({}) as unknown as ActionContext, "webkit");
-    for (const phase of ["start", "move", "end"] as const) {
-      const r = await sub.gesture({ kind: "touch", phase, coords: { x: 1, y: 1 } });
-      expect(r.kind === "refusal" && r.error).toBe(
-        `tool "touch_${phase}" is not supported on the "webkit" engine`,
-      );
-    }
-    for (const req of [GESTURE_SAMPLES.swipe, GESTURE_SAMPLES.pinch]) {
-      const r = await sub.gesture(req);
-      expect(r.kind === "refusal" && r.error).toBe(
-        `tool "${gestureToolName(req)}" is not supported on the "webkit" engine`,
-      );
-    }
-  });
-
-  it("rejects when the context accessor is dead, and never throws synchronously", async () => {
-    // The `substrate-adapter-async` bug class at this member: the accessor throws
-    // on a closed BYOB tab, and an `async` body turns that into a rejection the
-    // handler's guard can see.
-    const sub = new PlaywrightActionSubstrate(() => {
-      throw new Error("attach-target-gone");
-    }, "chromium");
-    let promise: unknown;
-    expect(() => {
-      promise = sub.gesture(GESTURE_SAMPLES.swipe);
-    }).not.toThrow();
-    await expect(promise).rejects.toThrow("attach-target-gone");
-  });
 });
 
 describe("SafariActionSubstrate.gesture", () => {

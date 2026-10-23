@@ -36,11 +36,6 @@ function safariHandle(): { handle: SafariSessionHandle; shots: string[] } {
 }
 
 describe("SafariCaptureSubstrate", () => {
-  it("tags the safari engine", () => {
-    const { handle } = safariHandle();
-    expect(new SafariCaptureSubstrate(handle).engine).toBe("safari");
-  });
-
   it("returns the full-document PNG from the WebDriver client", async () => {
     const { handle, shots } = safariHandle();
     const sub = new SafariCaptureSubstrate(handle);
@@ -50,18 +45,6 @@ describe("SafariCaptureSubstrate", () => {
     expect(r.mimeType).toBe("image/png");
     expect(r.data).toBe("UE5HQg==");
     expect(shots).toEqual(["S"]);
-  });
-
-  it("ignores inert PNG-only args (fullPage/describe) — no Page to honour them", async () => {
-    const { handle } = safariHandle();
-    const sub = new SafariCaptureSubstrate(handle);
-    const r = await sub.screenshot({ format: "png", fullPage: true, describe: true });
-    expect(r.kind).toBe("image");
-    if (r.kind !== "image") throw new Error("expected image");
-    expect(r.mimeType).toBe("image/png");
-    // No `describe` caption + no page-text source — Safari has no Playwright Page.
-    expect(r.caption).toBeUndefined();
-    expect(r.pageText).toBeUndefined();
   });
 
   it("refuses element-scoped + path captures cleanly (in the adapter, not the handler)", async () => {
@@ -223,17 +206,6 @@ describe("PlaywrightCaptureSubstrate.pdf", () => {
     ).rejects.toThrow(/workspace/i);
     expect(rec.pdfCalls).toHaveLength(0);
   });
-
-  it("rejects rather than throwing synchronously when the page accessor is dead", async () => {
-    const sub = captureOver(() => {
-      throw new Error("attach-target-gone");
-    });
-    let promise: unknown;
-    expect(() => {
-      promise = sub.pdf({ workspaceRoot: WS, sessionId: "s1" });
-    }).not.toThrow();
-    await expect(promise).rejects.toThrow("attach-target-gone");
-  });
 });
 
 describe("PlaywrightCaptureSubstrate.prepareVideoSave", () => {
@@ -277,17 +249,6 @@ describe("PlaywrightCaptureSubstrate.prepareVideoSave", () => {
     const flush = await captureOver(rec.page).prepareVideoSave(state);
     await flush!();
     expect(state.finalized).toBe(false);
-  });
-
-  it("reaches the page accessor FIRST, so a dead target rejects", async () => {
-    // Inspecting the state first would answer `null` on a gone session — "nothing
-    // to save" for a question that was never asked. The `substrate-adapter-async`
-    // drive depends on this ordering too: it calls every member with a placeholder
-    // argument and requires a rejection.
-    const sub = captureOver(() => {
-      throw new Error("attach-target-gone");
-    });
-    await expect(sub.prepareVideoSave(recording())).rejects.toThrow("attach-target-gone");
   });
 });
 

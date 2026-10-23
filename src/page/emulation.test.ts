@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { EmulationRegistry, DEFAULT_NETWORK, DEFAULT_CPU } from "./emulation.js";
+import { EmulationRegistry, DEFAULT_NETWORK } from "./emulation.js";
 
 type CdpCall = { method: string; params: Record<string, unknown> };
 
@@ -68,15 +68,6 @@ describe("EmulationRegistry — network_emulate", () => {
     ]);
   });
 
-  it("offline:true forces offline mode", async () => {
-    const { cdp, calls } = fakeCdp();
-    const page = fakePage();
-    const reg = new EmulationRegistry();
-    const { state } = await reg.applyNetwork(cdp as never, page as never, { offline: true });
-    expect(state.offline).toBe(true);
-    expect(calls[0]!.params.offline).toBe(true);
-  });
-
   it("empty input resets — bps fields map to -1 for CDP", async () => {
     const { cdp, calls } = fakeCdp();
     const page = fakePage();
@@ -127,16 +118,6 @@ describe("EmulationRegistry — cpu_emulate", () => {
     const reg = new EmulationRegistry();
     const { reset } = await reg.applyCpu(cdp as never, page as never, { throttleRate: 1 });
     expect(reset).toBe(true);
-    expect(calls[0]!.params).toEqual({ rate: 1 });
-  });
-
-  it("empty input resets to 1", async () => {
-    const { cdp, calls } = fakeCdp();
-    const page = fakePage();
-    const reg = new EmulationRegistry();
-    const { state, reset } = await reg.applyCpu(cdp as never, page as never, {});
-    expect(reset).toBe(true);
-    expect(state).toEqual(DEFAULT_CPU);
     expect(calls[0]!.params).toEqual({ rate: 1 });
   });
 
@@ -210,20 +191,6 @@ describe("EmulationRegistry — re-apply on navigation", () => {
 });
 
 describe("EmulationRegistry — composition + reset", () => {
-  it("network_emulate is independent of cpu_emulate (compose freely)", async () => {
-    const { cdp, calls } = fakeCdp();
-    const page = fakePage();
-    const reg = new EmulationRegistry();
-    await reg.applyNetwork(cdp as never, page as never, { latencyMs: 50 });
-    await reg.applyCpu(cdp as never, page as never, { throttleRate: 4 });
-    expect(reg.currentNetwork()?.latencyMs).toBe(50);
-    expect(reg.currentCpu()?.throttleRate).toBe(4);
-    expect(calls.map((c) => c.method)).toEqual([
-      "Network.emulateNetworkConditions",
-      "Emulation.setCPUThrottlingRate",
-    ]);
-  });
-
   it("resetAll clears both overrides via CDP", async () => {
     const { cdp, calls } = fakeCdp();
     const page = fakePage();

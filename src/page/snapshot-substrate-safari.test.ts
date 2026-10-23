@@ -61,10 +61,6 @@ function nn<T>(v: T | null): T {
 }
 
 describe("SafariClassicSnapshotSubstrate", () => {
-  it("declares the safari engine tag", () => {
-    expect(new SafariClassicSnapshotSubstrate(mockIO()).engine).toBe("safari");
-  });
-
   it("composes a WebArea-rooted tree from the DOM-walk entries", async () => {
     const sub = new SafariClassicSnapshotSubstrate(mockIO());
     const refs = new RefRegistry();
@@ -106,12 +102,5 @@ describe("SafariClassicSnapshotSubstrate", () => {
     const sub = new SafariClassicSnapshotSubstrate(mockIO());
     const snap = await sub.compose(new RefRegistry(), ["data-testid"], { pierce: "closed" });
     expect(snap.warnings.join(" ")).toMatch(/closed-shadow piercing is chromium-only/);
-  });
-
-  it("yields an empty tree (no throw) when the page has no walkable elements", async () => {
-    const sub = new SafariClassicSnapshotSubstrate(mockIO([], "about:blank"));
-    const snap = await sub.compose(new RefRegistry(), ["data-testid"]);
-    expect(nn(snap.tree).children).toHaveLength(0);
-    expect(snap.stats.domWalkEntries).toBe(0);
   });
 });

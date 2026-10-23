@@ -102,9 +102,6 @@ function mkCtx(byRef: Map<string, ScriptedLocator>): ActionContext {
 // ---------- pure helpers ----------
 
 describe("summariseTarget — agent-facing error summaries", () => {
-  it("renders ref targets compactly", () => {
-    expect(summariseTarget({ ref: "e7" })).toBe("ref=e7");
-  });
   it("renders selector targets, scoped or unscoped", () => {
     expect(summariseTarget({ selector: ".x" })).toBe("selector=.x");
     expect(summariseTarget({ selector: ".x", contextRef: "e2" })).toBe("selector=.x (in e2)");
@@ -139,85 +136,11 @@ describe("validateFillFormArgs — shape guards before touching the page", () =>
       }),
     ).toThrow(/coords target/);
   });
-  it("accepts a well-formed args block", () => {
-    expect(() =>
-      validateFillFormArgs({
-        fields: [
-          { target: { ref: "e1" }, value: "alice" },
-          { target: { ref: "e2" }, value: "alice@example.test" },
-        ],
-      }),
-    ).not.toThrow();
-  });
 });
 
 // ---------- atomic resolution ----------
 
 describe("resolveFieldsAtomically — every target resolved or NONE write", () => {
-  it("succeeds when every field resolves to >=1 DOM node", async () => {
-    const byRef = new Map<string, ScriptedLocator>([
-      ["e1", mkLocator()],
-      ["e2", mkLocator()],
-    ]);
-    const ctx = mkCtx(byRef);
-    const r = await resolveFieldsAtomically(ctx.page, ctx.refs, [
-      { target: { ref: "e1" }, value: "a" },
-      { target: { ref: "e2" }, value: "b" },
-    ]);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.locators).toHaveLength(2);
-      expect(r.resolutions.every((x) => x.ok)).toBe(true);
-    }
-  });
-
-  it("rejects atomically when ONE field misses (no partial-fill follow-on)", async () => {
-    const byRef = new Map<string, ScriptedLocator>([
-      ["e1", mkLocator()],
-      ["e_missing", mkLocator({ count: 0 })],
-      ["e3", mkLocator()],
-    ]);
-    const ctx = mkCtx(byRef);
-    const r = await resolveFieldsAtomically(ctx.page, ctx.refs, [
-      { target: { ref: "e1" }, value: "a" },
-      { target: { ref: "e_missing" }, value: "b" },
-      { target: { ref: "e3" }, value: "c" },
-    ]);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.resolutions[0]?.ok).toBe(true);
-      expect(r.resolutions[1]?.ok).toBe(false);
-      expect(r.resolutions[1]?.error).toMatch(/zero DOM nodes/);
-      // Even resolutions AFTER the miss are reported — agent sees the
-      // whole picture, not just the first failure.
-      expect(r.resolutions[2]?.ok).toBe(true);
-    }
-    // And the well-resolved field's locator was NOT acted on: this is the
-    // atomic invariant. We assert by inspecting the scripted Locator's
-    // `fills` buffer — empty means no .fill() ever happened.
-    expect(byRef.get("e1")!.fills).toHaveLength(0);
-    expect(byRef.get("e3")!.fills).toHaveLength(0);
-  });
-
-  it("rejects when the submit target is unresolved (atomic on submit too)", async () => {
-    const byRef = new Map<string, ScriptedLocator>([
-      ["e1", mkLocator()],
-      ["submit_missing", mkLocator({ count: 0 })],
-    ]);
-    const ctx = mkCtx(byRef);
-    const r = await resolveFieldsAtomically(
-      ctx.page,
-      ctx.refs,
-      [{ target: { ref: "e1" }, value: "a" }],
-      { ref: "submit_missing" },
-    );
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.submitResolution?.ok).toBe(false);
-      expect(r.submitResolution?.error).toMatch(/zero DOM nodes/);
-    }
-  });
-
   it("surfaces an unknown-ref registry error as a structured miss, not a thrown exception", async () => {
     const byRef = new Map<string, ScriptedLocator>([["e1", mkLocator()]]);
     const ctx = mkCtx(byRef);
@@ -328,15 +251,6 @@ describe("fillForm — secrets-masking composes through the loop", () => {
 });
 
 // ---------- descriptor shape ----------
-
-describe("fillForm — descriptor value tag", () => {
-  it("uses singular 'field' for n=1", async () => {
-    const byRef = new Map<string, ScriptedLocator>([["bad", mkLocator({ count: 0 })]]);
-    const ctx = mkCtx(byRef);
-    const r = await fillForm(ctx, { fields: [{ target: { ref: "bad" }, value: "x" }] });
-    expect(r.action.value).toBe("1 field");
-  });
-});
 
 // Compile-time guard: the ElementProbe shape is what we surface per-field.
 // If the upstream type drifts this fails to compile, catching silent

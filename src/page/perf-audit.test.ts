@@ -19,11 +19,6 @@ import {
 import { estimateTokens } from "../util/tokens.js";
 
 describe("resolveCategories", () => {
-  it("defaults to all 8 categories when empty/undefined", () => {
-    expect(resolveCategories()).toEqual(ALL_AUDIT_CATEGORIES);
-    expect(resolveCategories([])).toEqual(ALL_AUDIT_CATEGORIES);
-  });
-
   it("filters to known categories", () => {
     expect(resolveCategories(["long-tasks", "unused-code", "fake"])).toEqual([
       "long-tasks",

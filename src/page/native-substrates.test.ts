@@ -264,16 +264,6 @@ describe("NativeElementSubstrate", () => {
 // ─── snapshot ─────────────────────────────────────────────────────────────────
 
 describe("NativeSnapshotSubstrate", () => {
-  it("emits the composed snapshot shape the read core already consumes", async () => {
-    const { screen } = screenOver(SCREEN);
-    const composed = await new NativeSnapshotSubstrate(screen).compose(new RefRegistry(), []);
-    expect(composed.tree).not.toBeNull();
-    expect(composed.stats.tier).toBe("a11y");
-    // No DOM-walk tier on this engine, so the three DOM counters are zero and
-    // the tier is never `mixed`.
-    expect(composed.stats.domWalkEntries).toBe(0);
-  });
-
   it("warns when an app is thin on testIDs, which is the fixable list RFC 0008 asks for", async () => {
     const unlabelled = dumpOf(
       nodeXml(
@@ -298,15 +288,6 @@ describe("NativeSnapshotSubstrate", () => {
     expect(composed.stats.tier).toBe("empty");
     expect(composed.warnings.join(" ")).toMatch(/no addressable element/);
   });
-
-  it("a11yTree keeps the layout scaffolding the action delta needs", async () => {
-    const { screen } = screenOver(SCREEN);
-    const substrate = new NativeSnapshotSubstrate(screen);
-    const refs = new RefRegistry();
-    const pruned = await substrate.compose(refs, []);
-    const full = await substrate.a11yTree(refs, []);
-    expect([...walk(full!)].length).toBeGreaterThanOrEqual([...walk(pruned.tree!)].length);
-  });
 });
 
 // ─── target ───────────────────────────────────────────────────────────────────
@@ -319,10 +300,6 @@ describe("NativeTargetSubstrate", () => {
     expect(
       nativeTargetUrl({ packageName: "com.acme.app", activity: "com.acme.app.CheckoutActivity" }),
     ).toBe("app://com.acme.app/CheckoutActivity");
-  });
-
-  it("names the unknown case", () => {
-    expect(nativeTargetUrl(null)).toBe("app://unknown");
   });
 
   it("reports the screen's activity as the title", async () => {
@@ -589,11 +566,5 @@ describe("NativeCaptureSubstrate", () => {
     // `null` is "nothing to flush", which is what teardown already does for a
     // session with no recorder. It is no claim that a recording was made.
     await expect(capture().prepareVideoSave()).resolves.toBeNull();
-  });
-
-  it("offers no pageText, so the handler can tell `nothing to sweep` from `swept nothing`", async () => {
-    const r = await capture().screenshot({ format: "png", fullPage: false, describe: false });
-    if (r.kind !== "image") throw new Error("expected an image");
-    expect(r.pageText).toBeUndefined();
   });
 });

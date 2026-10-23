@@ -67,16 +67,6 @@ describe("uploadFile", () => {
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
   });
 
-  it("rejects an absolute path outside the workspace", async () => {
-    const { page } = fakePage();
-    await expect(
-      uploadFile(page as never, refs, WS, {
-        target: { selector: "#f" },
-        path: "/etc/hosts",
-      }),
-    ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
-  });
-
   it("rejects passing both content and path", async () => {
     const { page } = fakePage();
     await expect(

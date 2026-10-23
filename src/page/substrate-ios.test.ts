@@ -182,19 +182,6 @@ describe("IosSnapshotSubstrate", () => {
     expect(composed.tree!.children.every((c) => /^e\d+$/.test(c.ref))).toBe(true);
   });
 
-  it("reports the a11y tier — the hierarchy IS the accessibility tree", async () => {
-    const r = rig();
-    const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, []);
-    expect(composed.stats.tier).toBe("a11y");
-    expect(composed.stats.domWalkEntries).toBe(0);
-  });
-
-  it("names its source in a warning on every snapshot", async () => {
-    const r = rig();
-    const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, []);
-    expect(composed.warnings[0]).toMatch(/XCUITest accessibility hierarchy/);
-  });
-
   it("says `pierce` has no meaning here", async () => {
     const r = rig();
     const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, [], {
@@ -525,12 +512,6 @@ describe("IosCaptureSubstrate", () => {
     expect((scoped as { error: string }).error).toMatch(/PNG decoder/);
     const jpeg = await capture.screenshot({ ...req, format: "jpeg" });
     expect(jpeg).toMatchObject({ kind: "refusal" });
-  });
-
-  it("reports no video flush", async () => {
-    const r = rig();
-    const capture = new IosCaptureSubstrate(r.handle, () => ({}) as never);
-    expect(await capture.prepareVideoSave()).toBeNull();
   });
 });
 

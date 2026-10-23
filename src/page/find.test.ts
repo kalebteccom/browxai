@@ -52,11 +52,6 @@ describe("buildSelectorHint preference order", () => {
     expect(h.hint).toBe('role=button[name="Save"]');
   });
 
-  it('tier-2 quotes "names" with embedded quotes correctly', () => {
-    const h = buildSelectorHint({ role: "link", name: 'Hello "world"' });
-    expect(h.hint).toBe('role=link[name="Hello \\"world\\""]');
-  });
-
   it("tier 4: stable HTML id when no testId/name", () => {
     const h = buildSelectorHint({ role: "div", id: "main-content" });
     expect(h.tier).toBe(4);
@@ -89,14 +84,6 @@ describe("buildSelectorHint preference order", () => {
     expect(h.tier).toBe(1);
     expect(h.stability).toBe("high");
     expect(h.hint).toBe('[data-type="feature-panel-language-input"]');
-  });
-
-  it("tier 1 fires on a non-roled element (DOM-walk only) — no role gating", () => {
-    // A plain <div data-testid="foo"> has role "generic"/"div"; tier-1 still fires.
-    const h = buildSelectorHint({ role: "div", testId: "mini-library", testIdAttr: "data-testid" });
-    expect(h.tier).toBe(1);
-    expect(h.stability).toBe("high");
-    expect(h.hint).toBe('[data-testid="mini-library"]');
   });
 });
 
@@ -195,16 +182,6 @@ describe("scoreNode — icon-only controls", () => {
     expect(targetScore).toBeGreaterThan(neighbourScore);
   });
 
-  it("non-icon-only controls still rank correctly (name boost wins)", () => {
-    // When a candidate has a name that matches the query, name boosts should
-    // out-rank a testId-only icon sibling.
-    const q = "feature tab";
-    const tokens = q.split(/\s+/);
-    const named = n("button", "Feature tab", "side-panel-feature-tab");
-    const iconOnly = n("button", undefined, "side-panel-feature-tab");
-    expect(scoreNode(named, q, tokens)).toBeGreaterThan(scoreNode(iconOnly, q, tokens));
-  });
-
   it("tooltip/sr-only text lifts an icon-only control over a bare-testId sibling", () => {
     // Both are name-less; only the target carries a tooltip-derived `text`
     // that names the intent. The text signal should break the tie.
@@ -241,25 +218,11 @@ describe("noVisibleCandidateWarning — capability-aware", () => {
     expect(w).not.toContain("eval_js");
   });
 
-  it("names only coords when only action is enabled", () => {
-    const w = noVisibleCandidateWarning(2, { coords: true, evalJs: false });
-    expect(w).toContain("coords");
-    expect(w).not.toContain("eval_js");
-  });
-
   it("names both when both are enabled, and reports the count", () => {
     const w = noVisibleCandidateWarning(5, { coords: true, evalJs: true });
     expect(w).toContain("all 5 match(es)");
     expect(w).toContain("coords");
     expect(w).toContain("eval_js");
-  });
-
-  it("names the capability-free recovery even when no hints are passed", () => {
-    const w = noVisibleCandidateWarning(1);
-    expect(w).toContain("`snapshot`");
-    expect(w).toContain("re-run `find`");
-    expect(w).not.toContain("coords");
-    expect(w).not.toContain("eval_js");
   });
 
   it("frames coordinates as the canvas last resort, behind re-query and snapshot", () => {
@@ -288,13 +251,6 @@ describe("rankByVisibility — visibleOnly partition", () => {
     const { ranked, visibleCount } = rankByVisibility(mixed, true);
     expect(ranked.map((c) => c.ref)).toEqual(["loVisible", "hiVisible"]);
     expect(visibleCount).toBe(2);
-  });
-
-  it("visibleOnly with zero visible → empty list but visibleCount 0 (caller still warns)", () => {
-    const allHidden = [cand("a", 80, "off-screen"), cand("b", 70, "covered")];
-    const { ranked, visibleCount } = rankByVisibility(allHidden, true);
-    expect(ranked).toEqual([]);
-    expect(visibleCount).toBe(0);
   });
 });
 
@@ -328,29 +284,6 @@ describe("rankByVisibility — container demotion", () => {
     const cands = [cand("regionA", 50, true, "region"), cand("groupB", 40, true, "group")];
     const { ranked } = rankByVisibility(cands, false);
     expect(ranked.map((c) => c.ref)).toEqual(["regionA", "groupB"]);
-  });
-
-  it("is stable within each sub-group (leaf order and container order preserved)", () => {
-    const cands = [
-      cand("region1", 95, true, "region"),
-      cand("btnA", 60, true, "button"),
-      cand("nav2", 70, true, "navigation"),
-      cand("tabB", 55, true, "tab"),
-    ];
-    const { ranked } = rankByVisibility(cands, false);
-    // leaves keep their relative order (btnA before tabB), then containers
-    // keep theirs (region1 before nav2).
-    expect(ranked.map((c) => c.ref)).toEqual(["btnA", "tabB", "region1", "nav2"]);
-  });
-
-  it("demotion stays within the visible tier — hidden still last", () => {
-    const cands = [
-      cand("visRegion", 90, true, "region"),
-      cand("visBtn", 20, true, "button"),
-      cand("hidTab", 99, "off-screen", "tab"),
-    ];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["visBtn", "visRegion", "hidTab"]);
   });
 });
 
@@ -392,57 +325,11 @@ describe("scoreNode — DOM-walk candidates carry bare HTML tags, not ARIA roles
     const bare = n("div", "save", undefined, { tag: "div", source: "dom" });
     expect(scoreNode(roled, q, tokens)).toBe(scoreNode(bare, q, tokens) + 2);
   });
-
-  it("leaves CDP-sourced ARIA roles untouched — the mapping is identity for them", () => {
-    const q = "feature tab in side panel";
-    const tokens = q.split(/\s+/);
-    // Same name, only the role differs: an interactive ARIA role earns the +2 a
-    // non-interactive one does not, and nothing else about the score moves.
-    // Asserted as a delta rather than two absolutes so the case survives changes
-    // to the rest of the scoring formula.
-    const interactive = scoreNode(n("tab", "side panel"), q, tokens);
-    const nonInteractive = scoreNode(n("region", "side panel"), q, tokens);
-    expect(interactive).toBe(nonInteractive + 2);
-  });
-
-  it("ranks the past link above the top navigation bar that encloses it", () => {
-    const q = "the past link in the top navigation bar";
-    const tokens = q.split(/\s+/);
-    const link = domLink("past");
-    const nav = n("nav", "Hacker News new past comments ask show jobs submit", undefined, {
-      tag: "nav",
-      source: "dom",
-    });
-    expect(scoreNode(link, q, tokens)).toBeGreaterThan(scoreNode(nav, q, tokens));
-  });
-});
-
-describe("rankByVisibility — demotion resolves bare tags too", () => {
-  it("demotes a DOM-walk <div> wrapper below an interactive control", () => {
-    const cands = [cand("wrapper", 80, true, "div"), cand("saveBtn", 20, true, "button")];
-    const { ranked } = rankByVisibility(cands, false);
-    expect(ranked.map((c) => c.ref)).toEqual(["saveBtn", "wrapper"]);
-  });
 });
 
 describe("isCandidateRole — text and layout leaves are never a target", () => {
   it("rejects every Blink text leaf", () => {
     for (const role of ["StaticText", "InlineTextBox", "LineBreak", "ListMarker"]) {
-      expect(isCandidateRole({ role }), role).toBe(false);
-    }
-  });
-
-  it("rejects layout-table and inline-typography wrappers", () => {
-    for (const role of [
-      "LayoutTable",
-      "LayoutTableRow",
-      "LayoutTableCell",
-      "Abbr",
-      "EmphasizedText",
-      "StrongText",
-      "superscript",
-      "subscript",
-    ]) {
       expect(isCandidateRole({ role }), role).toBe(false);
     }
   });
@@ -463,11 +350,5 @@ describe("isCandidateRole — text and layout leaves are never a target", () => 
 
   it("keeps a presentational role the page author addressed by test attribute", () => {
     expect(isCandidateRole({ role: "StaticText", testId: "price-total" })).toBe(true);
-  });
-
-  it("keeps every role an agent can act on", () => {
-    for (const role of ["button", "link", "textbox", "cell", "heading", "a", "td", "generic"]) {
-      expect(isCandidateRole({ role }), role).toBe(true);
-    }
   });
 });

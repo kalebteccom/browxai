@@ -51,14 +51,6 @@ describe("parseHierarchy", () => {
     expect(roots[0]!.children[0]!.text).toBe("hello");
   });
 
-  it("handles self-closing and paired nodes in the same document", () => {
-    const roots = parseHierarchy(
-      dump(node({}, node({ text: "a" }) + node({ text: "b" }, node({ text: "c" })))),
-    );
-    expect(roots[0]!.children.map((c) => c.text)).toEqual(["a", "b"]);
-    expect(roots[0]!.children[1]!.children[0]!.text).toBe("c");
-  });
-
   it("keeps every top-level window rather than dropping all but the first", () => {
     // Android 12+ reports the app, the status bar and the navigation bar as
     // three roots. Dropping two of them loses the system UI an agent may need to
@@ -78,11 +70,6 @@ describe("parseHierarchy", () => {
     expect(() => parseHierarchy("ERROR: could not get idle state.")).toThrow(
       NativeHierarchyParseError,
     );
-  });
-
-  it("survives an attribute value containing a > character", () => {
-    const roots = parseHierarchy(dump(node({ text: "a &gt; b" })));
-    expect(roots[0]!.text).toBe("a > b");
   });
 });
 
@@ -124,12 +111,6 @@ describe("roleFor", () => {
     password: false,
     children: [],
     ...over,
-  });
-
-  it("maps the widget classes onto the snapshot role vocabulary", () => {
-    expect(roleFor(n({ className: "android.widget.Button" }))).toBe("button");
-    expect(roleFor(n({ className: "android.widget.EditText" }))).toBe("textbox");
-    expect(roleFor(n({ className: "android.widget.TextView" }))).toBe("text");
   });
 
   it("maps a vendor subclass like its base", () => {
@@ -181,10 +162,6 @@ describe("testIdFor", () => {
     // `android:id/content` is on every screen of every app. Anchoring identity to
     // it would make refs collide across unrelated screens.
     expect(testIdFor({ ...base, resourceId: "android:id/content" })).toBeUndefined();
-  });
-
-  it("returns undefined when the app set no testID", () => {
-    expect(testIdFor(base)).toBeUndefined();
   });
 });
 

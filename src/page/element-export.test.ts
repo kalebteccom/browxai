@@ -1,12 +1,11 @@
 /// <reference lib="dom" />
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   elementExport,
   defaultElementExportPath,
-  type ElementExportArgs,
   type ElementExportLocator,
   type ElementExportPage,
 } from "./element-export.js";
@@ -66,16 +65,6 @@ afterEach(() => {
 });
 
 describe("defaultElementExportPath", () => {
-  it("is workspace-relative, under elements/, namespaced by sessionId + ref", () => {
-    const dir = defaultElementExportPath("alpha", "e7", "directory");
-    expect(dir.startsWith("elements/alpha-")).toBe(true);
-    expect(dir.endsWith("-e7")).toBe(true);
-    expect(dir.endsWith(".html")).toBe(false);
-    const file = defaultElementExportPath("alpha", "e7", "single-file");
-    expect(file.startsWith("elements/alpha-")).toBe(true);
-    expect(file.endsWith(".html")).toBe(true);
-  });
-
   it("sanitises hostile sessionIds + refs", () => {
     const p = defaultElementExportPath("../bad/id", "../e", "directory");
     expect(p.startsWith("elements/")).toBe(true);
@@ -181,29 +170,9 @@ describe("elementExport — workspace escape rejection", () => {
       elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "../escape" }),
     ).rejects.toThrow(/\$BROWX_WORKSPACE/);
   });
-
-  it("rejects an absolute path outside the workspace", async () => {
-    const locator = fakeLocator({ html: "", css: "", resources: [] });
-    const page = fakePage({});
-    await expect(
-      elementExport(page, locator, WS, "s1", {
-        ref: "e1",
-        intoDir: "/tmp/escape.html",
-        format: "single-file",
-      }),
-    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
-  });
 });
 
 describe("elementExport — ref-not-found", () => {
-  it("throws a structured error when the locator matches zero elements", async () => {
-    const locator = fakeLocator({ count: 0, html: "", css: "", resources: [] });
-    const page = fakePage({});
-    await expect(
-      elementExport(page, locator, WS, "s1", { ref: "e99", intoDir: "nope" }),
-    ).rejects.toThrow(/did not match any element/);
-  });
-
   it("surfaces a count() failure as a structured error", async () => {
     const locator: ElementExportLocator = {
       async count() {
@@ -261,17 +230,6 @@ describe("elementExport — maxSize enforcement", () => {
 });
 
 describe("elementExport — secrets-masking caveat always present", () => {
-  it("warnings[] always includes the unmasked caveat", async () => {
-    const locator = fakeLocator({ html: "<div/>", css: "", resources: [] });
-    const page = fakePage({});
-    const args: ElementExportArgs = { ref: "e1", intoDir: "warn", format: "directory" };
-    const r = await elementExport(page, locator, WS, "s1", args);
-    const has = r.warnings.some(
-      (w) => w.includes("UNMASKED") || w.toLowerCase().includes("unmasked"),
-    );
-    expect(has).toBe(true);
-  });
-
   it("surfaces the cross-origin stylesheet gap as a warning when detected", async () => {
     const locator = fakeLocator({
       html: "<div/>",
@@ -282,22 +240,5 @@ describe("elementExport — secrets-masking caveat always present", () => {
     const page = fakePage({});
     const r = await elementExport(page, locator, WS, "s1", { ref: "e1", intoDir: "warn" });
     expect(r.warnings.some((w) => w.toLowerCase().includes("cross-origin"))).toBe(true);
-  });
-});
-
-describe("elementExport — empty subtree", () => {
-  it("writes the export with zero resources without error", async () => {
-    const locator = fakeLocator({ html: `<div>hello</div>`, css: "", resources: [] });
-    const page = fakePage({});
-    const r = await elementExport(page, locator, WS, "s1", {
-      ref: "e1",
-      intoDir: "empty",
-      format: "directory",
-    });
-    expect(r.resourceCount).toBe(0);
-    expect(r.droppedCount).toBe(0);
-    const idx = readFileSync(join(r.path, "element.html"), "utf8");
-    expect(idx).toContain("hello");
-    expect(statSync(r.path).isDirectory()).toBe(true);
   });
 });

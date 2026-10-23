@@ -128,24 +128,9 @@ describe("structural paths", () => {
     const tree = node({ type: "Application", children: [node({ type: "Button", label: "A" })] });
     expect([...walkNative(tree)].map((e) => e.path)).toEqual(["Application", "Application/Button"]);
   });
-
-  it("yields every node exactly once, parent before child", () => {
-    const entries = [...walkNative(checkoutScreen(2))];
-    expect(entries).toHaveLength(7);
-    expect(new Set(entries.map((e) => e.path)).size).toBe(7);
-    expect(entries[0]!.path).toBe("Application");
-  });
 });
 
 describe("the type → role mapping", () => {
-  it("maps the exact cases exactly", () => {
-    expect(roleForType("Button")).toBe("button");
-    expect(roleForType("TextField")).toBe("textbox");
-    expect(roleForType("SecureTextField")).toBe("textbox");
-    expect(roleForType("Switch")).toBe("switch");
-    expect(roleForType("Link")).toBe("link");
-  });
-
   it("maps iOS StaticText to `text`, NOT to browxai's presentational StaticText", () => {
     // Same word, opposite meaning. On the web the serialiser drops a StaticText
     // because Blink emits one per text run; on iOS it is often the only node

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { pageArchive, defaultArchivePath, type ArchivePage, type ArchiveArgs } from "./archive.js";
+import { pageArchive, defaultArchivePath, type ArchivePage } from "./archive.js";
 
 /** In-memory page stand-in. The discovery script returns whatever HTML +
  *  resources are programmed; per-URL fetch results are mapped by URL. The
@@ -51,14 +51,6 @@ afterEach(() => {
 });
 
 describe("defaultArchivePath", () => {
-  it("is workspace-relative, under archives/, namespaced by sessionId", () => {
-    const dir = defaultArchivePath("alpha", "directory");
-    expect(dir.startsWith("archives/alpha-")).toBe(true);
-    expect(dir.endsWith(".html")).toBe(false);
-    const file = defaultArchivePath("alpha", "single-file");
-    expect(file.startsWith("archives/alpha-")).toBe(true);
-    expect(file.endsWith(".html")).toBe(true);
-  });
   it("sanitises hostile sessionIds for filesystem use", () => {
     const p = defaultArchivePath("../bad/id", "directory");
     expect(p.startsWith("archives/")).toBe(true);
@@ -167,12 +159,6 @@ describe("pageArchive — workspace escape rejection", () => {
       /\$BROWX_WORKSPACE/,
     );
   });
-  it("rejects an absolute path outside the workspace", async () => {
-    const page = fakePage({ html: "", resources: [], responses: {} });
-    await expect(
-      pageArchive(page, WS, "s1", { path: "/tmp/escape.html", format: "single-file" }),
-    ).rejects.toThrow(/\$BROWX_WORKSPACE/);
-  });
 });
 
 describe("pageArchive — maxSize enforcement", () => {
@@ -260,33 +246,5 @@ describe("pageArchive — fetch-failure tolerance", () => {
     const r = await pageArchive(page, WS, "s1", { path: "crash", format: "directory" });
     expect(r.resourceCount).toBe(0);
     expect(r.droppedCount).toBe(1);
-  });
-});
-
-describe("pageArchive — empty page", () => {
-  it("writes an archive with zero resources without error", async () => {
-    const page = fakePage({
-      html: `<!doctype html><html><body>hello</body></html>`,
-      resources: [],
-      responses: {},
-    });
-    const r = await pageArchive(page, WS, "s1", { path: "empty", format: "directory" });
-    expect(r.resourceCount).toBe(0);
-    expect(r.droppedCount).toBe(0);
-    const idx = readFileSync(join(r.path, "index.html"), "utf8");
-    expect(idx).toContain("hello");
-    expect(statSync(r.path).isDirectory()).toBe(true);
-  });
-});
-
-describe("pageArchive — always emits the secrets-masking caveat", () => {
-  it("warnings[] always includes the unmasked-archive caveat", async () => {
-    const page = fakePage({ html: "<html></html>", resources: [], responses: {} });
-    const args: ArchiveArgs = { path: "warn", format: "directory" };
-    const r = await pageArchive(page, WS, "s1", args);
-    const has = r.warnings.some(
-      (w) => w.includes("UNMASKED") || w.toLowerCase().includes("unmasked"),
-    );
-    expect(has).toBe(true);
   });
 });

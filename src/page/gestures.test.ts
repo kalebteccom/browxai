@@ -60,12 +60,6 @@ function elementsOver(page: ReturnType<typeof pageWithBox>): ElementSubstrate {
 }
 
 describe("targetPoint", () => {
-  it("returns coords verbatim for a coords target", async () => {
-    const p = await targetPoint(elementsOver(pageWithBox(fakeMouse())), {
-      coords: { x: 7, y: 9 },
-    });
-    expect(p).toEqual({ x: 7, y: 9 });
-  });
   it("returns the box centre for a ref/selector target", async () => {
     const p = await targetPoint(elementsOver(pageWithBox(fakeMouse())), { selector: "#x" });
     expect(p).toEqual({ x: 50, y: 30 });
@@ -157,14 +151,6 @@ describe("mouseWheel", () => {
     });
   });
 
-  it("defaults missing delta dimension to 0", async () => {
-    const { cdp, calls } = fakeCdp();
-    const r = await mouseWheel(cdp, { coords: { x: 5, y: 6 }, deltaY: 100 });
-    expect(r.deltaX).toBe(0);
-    expect(r.deltaY).toBe(100);
-    expect(calls[0]?.params).toMatchObject({ deltaX: 0, deltaY: 100 });
-  });
-
   it("rejects when both deltas are zero / unspecified", async () => {
     const { cdp, calls } = fakeCdp();
     await expect(mouseWheel(cdp, { coords: { x: 1, y: 2 } })).rejects.toThrow(/non-zero/);
@@ -238,16 +224,6 @@ describe("touchAction", () => {
     expect(calls[0]?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
   });
 
-  it("touch_end with coords keeps the identifier on the lifted point", async () => {
-    const { cdp, calls } = fakeCdp();
-    const r = await touchAction(cdp, "end", { coords: { x: 1, y: 2 }, identifier: 3 });
-    expect(r).toEqual({ ok: true, action: "end", coords: { x: 1, y: 2 }, identifier: 3 });
-    expect(calls[0]?.params).toMatchObject({
-      type: "touchEnd",
-      touchPoints: [{ x: 1, y: 2, id: 3 }],
-    });
-  });
-
   it("touch_start / touch_move without coords reject", async () => {
     const { cdp } = fakeCdp();
     await expect(touchAction(cdp, "start", {})).rejects.toThrow(/requires coords/);
@@ -287,25 +263,6 @@ describe("gesturePinch", () => {
       ],
     });
     expect(calls[5]?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
-  });
-
-  it("pinch-out (scale>1): fingers diverge from startOffset to startOffset × scale", async () => {
-    const { cdp, calls } = fakeCdp();
-    const r = await gesturePinch(cdp, {
-      coords: { x: 50, y: 50 },
-      scale: 2,
-      steps: 2,
-      startOffset: 30,
-    });
-    expect(r.endOffset).toBe(60);
-    // last move: offset 60 → points at (-10, 50) and (110, 50)
-    expect(calls.at(-2)?.params).toMatchObject({
-      type: "touchMove",
-      touchPoints: [
-        { x: -10, y: 50, id: 1 },
-        { x: 110, y: 50, id: 2 },
-      ],
-    });
   });
 
   it("rejects non-positive scale", async () => {

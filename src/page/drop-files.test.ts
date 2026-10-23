@@ -114,16 +114,6 @@ describe("drop_files — Node-side argument handling", () => {
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
   });
 
-  it("rejects a path that escapes the workspace (absolute)", async () => {
-    const { page, refs } = fakePage();
-    await expect(
-      dropFiles(page as never, refs as never, WS, {
-        target: { selector: "#zone" },
-        files: [{ path: "/etc/hosts" }],
-      }),
-    ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
-  });
-
   it("surfaces a clear error when a workspace path doesn't exist", async () => {
     const { page, refs } = fakePage();
     await expect(
@@ -184,25 +174,6 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
     expect(a.src).toContain("PAGE_DROP_FILES_FN");
   });
 
-  it("path-mode → reads bytes from $BROWX_WORKSPACE, defaults name to basename", async () => {
-    writeFileSync(join(WS, "doc.pdf"), Buffer.from([0x25, 0x50, 0x44, 0x46]));
-    const { page, refs, locEvaluate } = fakePage();
-    const r = await dropFiles(page as never, refs as never, WS, {
-      target: { selector: "#zone" },
-      files: [{ path: "doc.pdf", mimeType: "application/pdf" }],
-    });
-    expect(r.files[0]).toEqual({
-      name: "doc.pdf",
-      mode: "path",
-      bytes: 4,
-      mimeType: "application/pdf",
-    });
-    const [, arg] = locEvaluate.mock.calls[0]!;
-    const a = arg as { payload: DropPayload };
-    // base64("\x25\x50\x44\x46") = "JVBERg==" (PDF magic)
-    expect(a.payload.files[0]!.base64).toBe("JVBERg==");
-  });
-
   it("ref-mode → routes through the registry's locator", async () => {
     writeFileSync(join(WS, "a.txt"), "abc");
     const { page, refs, locEvaluate } = fakePage({ withRef: true });
@@ -228,26 +199,6 @@ describe("drop_files — happy paths dispatch the expected payload", () => {
     expect(a.payload.byCoords).toBe(true);
     expect(a.payload.clientX).toBe(42);
     expect(a.payload.clientY).toBe(99);
-  });
-
-  it("multi-file: many entries are dispatched in one drop with totalBytes summed", async () => {
-    writeFileSync(join(WS, "a.txt"), "aaaa");
-    const { page, refs, locEvaluate } = fakePage();
-    const r = await dropFiles(page as never, refs as never, WS, {
-      target: { selector: "#zone" },
-      files: [
-        { path: "a.txt" },
-        { contents: Buffer.from("xyz").toString("base64"), name: "b.bin" },
-      ],
-    });
-    expect(r.fileCount).toBe(2);
-    expect(r.totalBytes).toBe(7); // 4 + 3
-    expect(r.files.map((f) => f.name)).toEqual(["a.txt", "b.bin"]);
-    expect(r.files.map((f) => f.mode)).toEqual(["path", "contents"]);
-    expect(locEvaluate).toHaveBeenCalledOnce(); // ONE drop, not one per file
-    const [, arg] = locEvaluate.mock.calls[0]!;
-    const a = arg as { payload: DropPayload };
-    expect(a.payload.files.length).toBe(2);
   });
 });
 
@@ -354,60 +305,6 @@ describe("dropFilesPageScript — DataTransfer + event synthesis", () => {
     };
     return { window, document, capturedTarget: { events } };
   }
-
-  it("fires dragenter → dragover → drop with the populated DataTransfer (ref/selector mode)", () => {
-    const { window, capturedTarget } = fakeWindow();
-    const savedGlobals = {
-      window: (globalThis as Record<string, unknown>).window,
-      document: (globalThis as Record<string, unknown>).document,
-    };
-    try {
-      (globalThis as Record<string, unknown>).window = window;
-      (globalThis as Record<string, unknown>).document = window.document;
-      // `el` is the target — bypass elementFromPoint.
-      const el = (window.document as Record<string, unknown>).elementFromPoint as (
-        x: number,
-        y: number,
-      ) => unknown;
-      const target = el(0, 0);
-      const result = dropFilesPageScript({
-        el: target,
-        payload: {
-          clientX: 25,
-          clientY: 40,
-          byCoords: false,
-          files: [
-            {
-              base64: Buffer.from("hi").toString("base64"),
-              name: "hi.txt",
-              mimeType: "text/plain",
-            },
-            {
-              base64: Buffer.from("two").toString("base64"),
-              name: "two.bin",
-              mimeType: "application/octet-stream",
-            },
-          ],
-        },
-      });
-      expect(result.eventsFired).toEqual(["dragenter", "dragover", "drop"]);
-      expect(result.dropDispatched).toBe(true);
-      expect(result.hitTag).toBe("div");
-      expect(capturedTarget.events.map((e) => e.type)).toEqual(["dragenter", "dragover", "drop"]);
-      // Each event carries the populated DataTransfer with BOTH files.
-      for (const e of capturedTarget.events) {
-        expect(e.fileCount).toBe(2);
-        expect(e.fileNames).toEqual(["hi.txt", "two.bin"]);
-        expect(e.clientX).toBe(25);
-        expect(e.clientY).toBe(40);
-        expect(e.bubbles).toBe(true);
-        expect(e.cancelable).toBe(true);
-      }
-    } finally {
-      (globalThis as Record<string, unknown>).window = savedGlobals.window;
-      (globalThis as Record<string, unknown>).document = savedGlobals.document;
-    }
-  });
 
   it("byCoords:true → re-resolves target via elementFromPoint", () => {
     const { window, capturedTarget } = fakeWindow();

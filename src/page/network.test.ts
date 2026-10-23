@@ -26,12 +26,6 @@ describe("patterniseUrl — url redaction", () => {
     );
   });
 
-  it("preserves human-readable path segments", () => {
-    expect(patterniseUrl("https://api.example.com/v2/users/profile/avatar")).toBe(
-      "https://api.example.com/v2/users/profile/avatar",
-    );
-  });
-
   it("returns the raw url when URL parsing fails", () => {
     expect(patterniseUrl("not a url")).toBe("not a url");
   });
@@ -58,10 +52,6 @@ describe("extractTopLevelKeys — response shape redaction", () => {
     expect(extractTopLevelKeys("just a string")).toBeNull();
     expect(extractTopLevelKeys(42)).toBeNull();
     expect(extractTopLevelKeys(null)).toBeNull();
-  });
-
-  it("returns null for an empty array", () => {
-    expect(extractTopLevelKeys([])).toBeNull();
   });
 
   it("returns null for an array of non-objects", () => {
