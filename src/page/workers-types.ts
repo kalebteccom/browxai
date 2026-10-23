@@ -8,13 +8,21 @@
 export type WorkerType = "web" | "service";
 export type WorkerFilter = WorkerType | "all";
 
+/** Whether the session's engine can reach service workers. Playwright exposes
+ *  them on Chromium-based engines only (`context.serviceWorkers()`), so the
+ *  façade refuses the `sw-*` family by this declaration, naming the engine. */
+export interface ServiceWorkerAccess {
+  engine: string;
+  supported: boolean;
+}
+
 export interface WorkerListing {
   workerId: string;
   type: WorkerType;
   url: string;
-  /** Best-effort state. Web workers: always `"running"` (browser doesn't
-   *  expose lifecycle once they're constructed). Service workers: the CDP
-   *  `running_status` (`stopped` / `starting` / `running` / `stopping`). */
+  /** Best-effort state. Web workers and service workers: always `"running"`
+   *  (the browser doesn't expose Web Worker lifecycle, and Playwright only holds
+   *  a service worker while its target is alive). */
   state?: string;
 }
 

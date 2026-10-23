@@ -55,6 +55,17 @@ surface" covers.
 - **`BROWX_HEADLESS=true` now launches headless from the CLI.** `browxai` and
   `browxai serve` only honoured `1`, while the config layer accepted `1` and
   `true`. Both now accept `1` and `true`, in any case.
+- **`worker_message_send` now reaches a service worker, and `workers_list` lists
+  them.** Both went through a CDP `sessionId` that Playwright does not route to a
+  child session, so the message never arrived and the list could come back empty.
+  They now use Playwright's own service worker handles (`context.serviceWorkers()`
+  and `Worker.evaluate`), and a worker's `message` listener fires. The `sw-N` ids
+  are unchanged and still match the ids `worker_messages_read` returns. Service
+  workers are only reachable on Chromium-based engines. `worker_message_send` to
+  an `sw-N` and `workers_list({ type: "service" })` return an error naming the
+  engine elsewhere, and `workers_list` with the default `all` lists Web Workers
+  only. A listed service worker's `state` is now always `running`, since
+  Playwright only holds one while it is alive.
 - **`browxai chrome start --port abc` is refused.** A port that is not a whole
   number from 1 to 65535 now prints a message and exits with code 2. It used to
   fall back to 9222 without saying so.

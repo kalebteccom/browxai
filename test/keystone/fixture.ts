@@ -518,7 +518,10 @@ const WORKERS_PAGE = `<!doctype html>
 // the worker is active posts it "ping". The worker answers the sender with
 // "pong:ping" through `client.postMessage`; the page's own `message` listener
 // writes the reply into `#sw-state`, and `worker_messages_read` returns it from
-// the page-side service-worker ring. `/sw.js` is served from the same loopback
+// the page-side service-worker ring. A message `worker_message_send` dispatches
+// into the worker has no `source`, so the worker answers every window client it
+// can see instead (the page is not controlled by the worker it just registered,
+// hence `includeUncontrolled`). `/sw.js` is served from the same loopback
 // origin (a secure context), as the registration requires.
 const SW_PAGE = `<!doctype html>
 <html lang="en">
@@ -540,7 +543,14 @@ const SW_PAGE = `<!doctype html>
 </html>`;
 
 const SW_SCRIPT = `self.addEventListener("message", function (ev) {
-  if (ev.source) ev.source.postMessage("pong:" + ev.data);
+  var reply = "pong:" + ev.data;
+  if (ev.source) {
+    ev.source.postMessage(reply);
+    return;
+  }
+  self.clients.matchAll({ includeUncontrolled: true, type: "window" }).then(function (list) {
+    list.forEach(function (client) { client.postMessage(reply); });
+  });
 });
 `;
 

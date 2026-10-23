@@ -14,8 +14,9 @@
 //   • `workers-page.ts` — the page-side Web-Worker wrapper (`__browxWorkers`
 //     installed via `Page.addInitScript`; CDP can't `postMessage` a worker we
 //     didn't construct, so the IPC + message ring live in-page).
-//   • `workers-sw.ts`   — the CDP ServiceWorker attach + Fetch-intercept path
-//     (SWs are independent CDP targets `addInitScript` can't reach).
+//   • `workers-sw.ts`   — Service Workers: Playwright's `context.serviceWorkers()`
+//     for listing and `postMessage`, and the CDP attach + Fetch-intercept path
+//     (SWs are independent targets `addInitScript` can't reach).
 //
 // This file keeps the shared DOMAIN types (re-exported from `workers-types.ts`)
 // and a thin `WorkersRegistry` façade that owns one channel of each kind and
@@ -27,6 +28,7 @@ import type { CDPSession, Page } from "playwright-core";
 import { WORKERS_PAGE_SCRIPT, WorkersPageChannel } from "./workers-page.js";
 import { WorkersSwChannel } from "./workers-sw.js";
 import type {
+  ServiceWorkerAccess,
   WorkerFilter,
   WorkerListing,
   WorkerMessage,
@@ -37,6 +39,7 @@ export { WORKERS_PAGE_SCRIPT };
 export type { SwAttachment } from "./workers-sw.js";
 export type {
   WorkerType,
+  ServiceWorkerAccess,
   WorkerFilter,
   WorkerListing,
   WorkerMessage,
@@ -45,8 +48,17 @@ export type {
 
 // ---------------------------------------------------------------------------
 // Per-session façade. Composes the page-side Web-Worker channel and the
-// CDP-side Service-Worker channel; each tool primitive dispatches by the
-// `ww-*` / `sw-*` id prefix to the channel that owns the transport.
+// Service-Worker channel; each tool primitive dispatches by the `ww-*` / `sw-*`
+// id prefix to the channel that owns the transport.
+
+/** The refusal text for a `sw-*` operation on an engine Playwright can't reach
+ *  service workers on. */
+function swRefusal(sw: ServiceWorkerAccess): string {
+  return (
+    `service workers are not reachable on the "${sw.engine}" engine: Playwright exposes them ` +
+    "(context.serviceWorkers()) on Chromium-based engines only. Use a chromium session."
+  );
+}
 
 export class WorkersRegistry {
   private page = new WorkersPageChannel();
@@ -80,22 +92,28 @@ export class WorkersRegistry {
   // -------------------------------------------------------------------------
   // Tool surface.
 
-  async list(page: Page, cdp: CDPSession, filter: WorkerFilter = "all"): Promise<WorkerListing[]> {
+  async list(
+    page: Page,
+    sw: ServiceWorkerAccess,
+    filter: WorkerFilter = "all",
+  ): Promise<WorkerListing[]> {
+    // Only a `service` listing is refused: an `all` listing on an engine without
+    // service workers still answers for the Web Workers it can see.
+    if (filter === "service" && !sw.supported) throw new Error(swRefusal(sw));
     await this.installPageWrapper(page);
-    await this.installSwListener(cdp);
     const out: WorkerListing[] = [];
     if (filter === "all" || filter === "web") {
       out.push(...(await this.page.list(page)));
     }
-    if (filter === "all" || filter === "service") {
-      out.push(...this.sw.list());
+    if ((filter === "all" || filter === "service") && sw.supported) {
+      out.push(...this.sw.list(page.context()));
     }
     return out;
   }
 
   async sendMessage(
     page: Page,
-    cdp: CDPSession,
+    sw: ServiceWorkerAccess,
     args: { workerId: string; message: string },
   ): Promise<{ ok: boolean; workerId: string; error?: string }> {
     if (args.workerId.startsWith("ww-")) {
@@ -103,7 +121,8 @@ export class WorkersRegistry {
       return this.page.post(page, args.workerId, args.message);
     }
     if (args.workerId.startsWith("sw-")) {
-      return this.sw.sendMessage(cdp, args);
+      if (!sw.supported) return { ok: false, workerId: args.workerId, error: swRefusal(sw) };
+      return this.sw.sendMessage(page.context(), args);
     }
     return {
       ok: false,
