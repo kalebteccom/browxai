@@ -20,6 +20,17 @@ surface" covers.
 - **`worker_messages_read` says its data is untrusted.** The tool description and
   the tool reference now state that service-worker and web-worker message data
   is reported by the page and is untrusted, like any page text.
+- `open_session` now rejects profile names that are not plain names (no path
+  separators, no `..`). The refusal is `invalid-name` and gives the rule:
+  letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most
+  128 characters. Session ids follow the same rule, on `open_session` and on any
+  tool that creates a session on first use, because a session id names its
+  `.downloads/` and `.artifacts/` directories. `profile_snapshot` and
+  `profile_restore` apply the rule to `profile` and reject `.` and `..` as a
+  snapshot name.
+- `worker_messages_read` now masks registered secrets in message data, as
+  `ws_read` does. `workers_list` masks them in worker URLs, and
+  `worker_message_send` in an error it echoes from the page.
 - **`solve_captcha` keeps the provider API key out of URLs.** The poll request
   is now a POST with the key in the form body, as the submit already was. It
   used to put the key in the query string.

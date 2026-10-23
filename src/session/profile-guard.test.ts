@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -30,6 +30,27 @@ describe("resolveProfileDir", () => {
   it("maps an explicit name to <workspace>/profiles/<name>", () => {
     const ws = resolveWorkspace({ BROWX_WORKSPACE: root });
     expect(resolveProfileDir(ws, "work")).toBe(join(root, "profiles", "work"));
+  });
+
+  it("refuses a name that is not one plain directory name, and creates nothing", () => {
+    const ws = resolveWorkspace({ BROWX_WORKSPACE: join(root, "ws") });
+    const bad = [
+      "../x",
+      "../../x",
+      "a/../b",
+      "a/b",
+      "a\\b",
+      join(root, "abs"),
+      "..",
+      "a\0b",
+      "x".repeat(129),
+    ];
+    for (const name of bad) {
+      expect(() => resolveProfileDir(ws, name), JSON.stringify(name)).toThrow(/^invalid-name:/);
+    }
+    // The workspace root exists; nothing else was created, inside or beside it.
+    expect(readdirSync(root)).toEqual(["ws"]);
+    expect(readdirSync(join(root, "ws"))).toEqual([]);
   });
 });
 

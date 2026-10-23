@@ -36,11 +36,6 @@ export function findInstalledChrome(
   return chromeCandidates(platform, env, home).find((p) => exists(p));
 }
 
-/** A `--profile` value that stays one directory name under `profiles/`. */
-export function isValidProfileName(name: string): boolean {
-  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) && !name.includes("..");
-}
-
 /** Flags every `chrome` launch carries. */
 const BASE_ARGS = ["--no-first-run", "--no-default-browser-check"];
 

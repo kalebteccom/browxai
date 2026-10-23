@@ -58,6 +58,21 @@ describe("snapshotProfile", () => {
     expect(() => snapshotProfile(ws, undefined, "../escape")).toThrow(/invalid/);
     expect(() => snapshotProfile(ws, "../p", "ok")).toThrow(/invalid/);
   });
+
+  it("rejects `.` and `..` as snapshot or profile names and leaves the workspace intact", () => {
+    seedProfile("default", "f", "x");
+    writeFileSync(join(ws, "keep.txt"), "keep");
+    for (const snap of ["..", "."]) {
+      expect(() => snapshotProfile(ws, undefined, snap)).toThrow(/invalid/);
+    }
+    for (const profile of ["..", ".", "a/../b"]) {
+      expect(() => snapshotProfile(ws, profile, "ok")).toThrow(/invalid/);
+      expect(() => restoreProfile(ws, profile, "ok")).toThrow(/invalid/);
+    }
+    expect(() => restoreProfile(ws, undefined, "..")).toThrow(/invalid/);
+    expect(readFileSync(join(ws, "keep.txt"), "utf8")).toBe("keep");
+    expect(existsSync(join(ws, "profile", "f"))).toBe(true);
+  });
 });
 
 describe("restoreProfile", () => {

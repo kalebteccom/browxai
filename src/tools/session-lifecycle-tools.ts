@@ -9,6 +9,7 @@ import {
 import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 import { resolveOpenSessionPolicies } from "./open-session-policies.js";
+import { invalidNameRefusal, isValidProfileName, PROFILE_NAME_RULE } from "../util/profile-name.js";
 import type {
   GateHost,
   RegisterHost,
@@ -28,6 +29,30 @@ function lifecycleJson(body: object): ToolResponse {
  *  lifted from an Error or stringified. */
 function lifecycleError(err: unknown): ToolResponse {
   return lifecycleJson({ ok: false, error: err instanceof Error ? err.message : String(err) });
+}
+
+/** The refusal `open_session` returns before launching anything, or null: a
+ *  session id or profile that is not one plain name (checked here as well as in
+ *  the schema, because in-process SDK callers skip the MCP schema parse), or a
+ *  session id that is already open. */
+function openSessionPrecheck(
+  isOpen: boolean,
+  session: string,
+  profile: string | undefined,
+): ToolResponse | null {
+  const badName = !isValidProfileName(session)
+    ? invalidNameRefusal("session id", session)
+    : profile !== undefined && !isValidProfileName(profile)
+      ? invalidNameRefusal("profile", profile)
+      : null;
+  if (badName) return lifecycleJson({ ok: false, code: "invalid-name", error: badName });
+  if (isOpen) {
+    return lifecycleJson({
+      ok: false,
+      error: `session "${session}" already open; close_session first`,
+    });
+  }
+  return null;
 }
 
 /** Build the optional `har` / `harsReplay` / `video` fields of the open_session
@@ -115,7 +140,12 @@ export function registerSessionLifecycleTools(
       description:
         "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). A name whose last session closed holding `ask-human` on `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` keeps it: a policy you leave out is inherited, and one that moves a held key off `ask-human` is refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it.Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir under `<workspace>/profiles/`; omit it and the session runs on the workspace's default profile, shared by every session of that workspace. A profile can be open in one browser at a time, so a second live session on it is refused with `profile-in-use` (pass a `profile` name or use `incognito`).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP and the off-by-default `byob-attach` capability (refused with `requiredCapability: \"byob-attach\"` without it).\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
       inputSchema: {
-        session: z.string().describe('Session id to create (e.g. "agent-a", "user-2").'),
+        session: z
+          .string()
+          .refine(isValidProfileName, PROFILE_NAME_RULE)
+          .describe(
+            'Session id to create (e.g. "agent-a", "user-2"). A plain name: letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 128 characters.',
+          ),
         mode: z
           .enum(["persistent", "incognito", "attached"])
           .optional()
@@ -139,9 +169,10 @@ export function registerSessionLifecycleTools(
           ),
         profile: z
           .string()
+          .refine(isValidProfileName, PROFILE_NAME_RULE)
           .optional()
           .describe(
-            "persistent mode only: named profile dir under <workspace>/profiles/. Default = the workspace's default profile (BROWX_DEFAULT_PROFILE when set, else <workspace>/profile), whatever the session id. One profile is open in one browser at a time: while another live session holds it, open_session is refused with `profile-in-use`; pass a distinct `profile` name or mode `incognito`.",
+            "persistent mode only: named profile dir under <workspace>/profiles/, a plain name (letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 128 characters; no path separators, no `..`). Default = the workspace's default profile (BROWX_DEFAULT_PROFILE when set, else <workspace>/profile), whatever the session id. One profile is open in one browser at a time: while another live session holds it, open_session is refused with `profile-in-use`; pass a distinct `profile` name or mode `incognito`.",
           ),
         channel: z
           .string()
@@ -302,12 +333,8 @@ export function registerSessionLifecycleTools(
       hars,
       recordVideo,
     }) => {
-      if (registry.has(session)) {
-        return lifecycleJson({
-          ok: false,
-          error: `session "${session}" already open; close_session first`,
-        });
-      }
+      const early = openSessionPrecheck(registry.has(session), session, profile);
+      if (early) return early;
       const engineResult = resolveOpenSessionEngine(engine);
       if (!engineResult.ok) return engineResult.response;
       const resolved = resolveOpenSessionPolicies(

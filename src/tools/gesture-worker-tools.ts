@@ -7,6 +7,7 @@ import type {
   SessionHost,
   ActionHost,
   ServerServicesHost,
+  EgressHost,
 } from "./host.js";
 import { engineDeclaration, requirePage } from "../engine/index.js";
 import type { ServiceWorkerAccess } from "../page/workers.js";
@@ -33,9 +34,9 @@ function swAccessFor(e: SessionEntry, originPolicy: OriginPolicy): ServiceWorker
  * through the shared `ToolHost` seam in the same source order.
  */
 export function registerGestureWorkerTools(
-  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost,
+  host: RegisterHost & GateHost & SessionHost & ActionHost & ServerServicesHost & EgressHost,
 ): void {
-  const { z, register, gateCheck, engineGate, entryFor } = host;
+  const { z, register, gateCheck, engineGate, entryFor, egressFor } = host;
 
   // ---- Workers visibility -----------------------------------------
   // Web Workers + Service Workers are invisible to the rest of the surface —
@@ -77,13 +78,14 @@ export function registerGestureWorkerTools(
           swAccessFor(e, host.confirmCtxFor(e).policy),
           type ?? "all",
         );
-        const body = { ok: true, workers: list, tokensEstimate: 0 };
+        // Worker script URLs are page-controlled and can carry a registered value.
+        const body = { ok: true, workers: egressFor(e).maskDeep(list), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
@@ -121,14 +123,15 @@ export function registerGestureWorkerTools(
             message,
           },
         );
-        const body = { ...r, tokensEstimate: 0 };
+        // A failed send echoes the page's error message.
+        const body = { ...egressFor(e).maskDeep(r), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
           workerId,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
@@ -160,13 +163,14 @@ export function registerGestureWorkerTools(
           requirePage(e.session),
           workerId !== undefined ? { workerId } : {},
         );
-        const body = { ok: true, messages, tokensEstimate: 0 };
+        // Message data is whatever the worker posted, so it is masked like `ws_read` frames.
+        const body = { ok: true, messages: egressFor(e).maskDeep(messages), tokensEstimate: 0 };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));
         return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };
       } catch (err) {
         const body = {
           ok: false,
-          error: err instanceof Error ? err.message : String(err),
+          error: egressFor(e).maskDeep(err instanceof Error ? err.message : String(err)),
           tokensEstimate: 0,
         };
         body.tokensEstimate = estimateTokens(JSON.stringify(body));

@@ -8,16 +8,24 @@
 
 import { existsSync, lstatSync, readlinkSync } from "node:fs";
 import { hostname } from "node:os";
-import { join } from "node:path";
-import type { Workspace } from "../util/workspace.js";
+import { join, relative } from "node:path";
+import { assertValidProfileName, invalidNameRefusal } from "../util/profile-name.js";
+import { resolveWorkspacePath, type Workspace } from "../util/workspace.js";
 
 /** The profile directory for a persistent launch: `<workspace>/profiles/<name>`
- *  for an explicit name, else the workspace default profile. */
+ *  for an explicit name, else the workspace default profile. A name that is not
+ *  one plain directory name is refused before anything is created, and the
+ *  resolved directory must sit directly under `<workspace>/profiles`. */
 export function resolveProfileDir(
-  workspace: Pick<Workspace, "sub" | "defaultProfile">,
+  workspace: Pick<Workspace, "root" | "sub" | "defaultProfile">,
   profile: string | undefined,
 ): string {
-  return profile ? workspace.sub(`profiles/${profile}`) : workspace.defaultProfile();
+  if (!profile) return workspace.defaultProfile();
+  assertValidProfileName("profile", profile);
+  const profilesDir = join(workspace.root, "profiles");
+  const dir = resolveWorkspacePath(profilesDir, profile, "open_session");
+  if (dir === profilesDir) throw new Error(invalidNameRefusal("profile", profile));
+  return workspace.sub(relative(workspace.root, dir));
 }
 
 interface LiveSession {

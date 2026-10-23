@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 import { SecretRegistry } from "./secrets.js";
+import { EgressSanitiser } from "./egress-sanitiser.js";
 import { ConsoleBuffer } from "../page/console.js";
 import { NetworkBuffer, NetworkTap, WsBuffer, fetchResponseBody } from "../page/network.js";
 import { verifyPredicate } from "../page/verify.js";
@@ -408,6 +409,50 @@ describe("sink: watch — NetworkTap secrets threading + regions[].name masking 
     expect(JSON.stringify(masked)).not.toContain("987654");
     expect(masked.regions[0]!.name).toBe("Code <OTP> sent");
     expect(masked.regions[1]!.name).toBe("Use <OTP> within 5 minutes");
+  });
+});
+
+describe("sink: worker_messages_read / workers_list / worker_message_send", () => {
+  // The worker tools mask through `egressFor(e).maskDeep`, the same chokepoint
+  // the other handler sinks use; `ws_read` masks its frames in the buffer.
+  const egress = () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok-xyz" });
+    return new EgressSanitiser(r);
+  };
+
+  it("masks registered values in Web Worker (ww-*) and Service Worker (sw-*) message data", () => {
+    const messages = [
+      { workerId: "ww-1", data: '{"auth":"tok-xyz"}', at: 1 },
+      { workerId: "sw-2", data: "push payload tok-xyz", at: 2 },
+      { workerId: "sw-2", data: "nothing secret", at: 3 },
+    ];
+    const masked = egress().maskDeep({ ok: true, messages });
+    expect(JSON.stringify(masked)).not.toContain("tok-xyz");
+    expect(masked.messages[0]!.data).toBe('{"auth":"<TOKEN>"}');
+    expect(masked.messages[1]!.data).toBe("push payload <TOKEN>");
+    expect(masked.messages[2]!.data).toBe("nothing secret");
+    expect(masked.messages.map((m) => m.workerId)).toEqual(["ww-1", "sw-2", "sw-2"]);
+  });
+
+  it("masks registered values in worker URLs and in an echoed send error", () => {
+    const list = [
+      {
+        workerId: "ww-1",
+        type: "web",
+        url: "https://app.example/w.js?k=tok-xyz",
+        state: "running",
+      },
+      { workerId: "sw-1", type: "service", url: "https://app.example/sw-tok-xyz.js" },
+    ];
+    expect(JSON.stringify(egress().maskDeep(list))).not.toContain("tok-xyz");
+    const sent = egress().maskDeep({ ok: false, workerId: "sw-1", error: "rejected tok-xyz" });
+    expect(sent.error).toBe("rejected <TOKEN>");
+  });
+
+  it("passes data through unchanged when the secrets capability is off", () => {
+    const messages = [{ workerId: "ww-1", data: "tok-xyz", at: 1 }];
+    expect(new EgressSanitiser(null).maskDeep(messages)).toEqual(messages);
   });
 });
 
