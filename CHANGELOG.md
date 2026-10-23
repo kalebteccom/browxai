@@ -28,6 +28,9 @@ surface" covers.
 
 ### Fixed
 
+- **`browxai chrome start --port abc` is refused.** A port that is not a whole
+  number from 1 to 65535 now prints a message and exits with code 2. It used to
+  fall back to 9222 without saying so.
 - **Server log lines no longer read `browxai: browxai: ...`.** The logger adds the
   prefix, so the message text drops its own.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;

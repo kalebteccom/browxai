@@ -76,7 +76,12 @@ function resolveLaunchTarget(
 }
 
 function startChrome(opts: string[]): Promise<number> {
-  const port = parseFlagNum(opts, "--port") ?? DEFAULT_PORT;
+  const port = parsePort(opts);
+  if (port === undefined) {
+    const raw = opts[opts.indexOf("--port") + 1] ?? "";
+    process.stderr.write(`invalid --port "${raw}": expected a whole number from 1 to 65535\n`);
+    return Promise.resolve(2);
+  }
   const insecure = opts.includes("--insecure"); // opt-in security-lowered (BYOB recipe's `--disable-web-security`)
   const noBackgroundThrottling = opts.includes("--disable-background-throttling");
   const pidFile = join(resolveWorkspace().root, "chrome.pid");
@@ -200,11 +205,15 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-function parseFlagNum(args: string[], flag: string): number | undefined {
-  const i = args.indexOf(flag);
-  if (i < 0) return undefined;
-  const v = Number(args[i + 1]);
-  return Number.isFinite(v) ? v : undefined;
+/** The `--port` value, `DEFAULT_PORT` when the flag is absent, or undefined when
+ *  the value is missing, non-numeric or outside 1 to 65535. */
+function parsePort(args: string[]): number | undefined {
+  const i = args.indexOf("--port");
+  if (i < 0) return DEFAULT_PORT;
+  const raw = args[i + 1];
+  if (raw === undefined || !/^\d+$/.test(raw)) return undefined;
+  const port = Number(raw);
+  return port >= 1 && port <= 65535 ? port : undefined;
 }
 
 function parseFlagStr(args: string[], flag: string): string | undefined {
