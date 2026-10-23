@@ -67,6 +67,13 @@ structured codes the adapters share: `bad-arg` (missing/invalid
 argument, checked _before_ the page is touched), `eval-failed` (the
 page-side expression threw), plus per-tool codes noted below.
 
+All adapter tools act on the default session: open the app there first
+(`navigate`, with no `session` argument). Each adapter probes a different
+global, so confirm it exists before the first call:
+`eval_js({expr: "typeof figma"})`, `eval_js({expr: "typeof window.editor"})`
+or `eval_js({expr: "typeof window.excalidrawAPI"})` should not answer
+`"undefined"`.
+
 ## Calling adapter tools
 
 Two equivalent routes:
@@ -138,8 +145,8 @@ Error codes: `tldraw-not-loaded`, `bad-arg`, `create-failed`,
 
 Adapts Excalidraw 0.17+ through the `window.excalidrawAPI` global,
 the imperative ref the Excalidraw React component hands to its host
-page (the public excalidraw.com deployment forwards it by default;
-self-hosted embeds must do the same for this plugin to find it).
+page. The host page has to forward that ref to `window.excalidrawAPI`
+for this plugin to find it.
 Targets `excalidrawAPI.getSceneElements()`,
 `excalidrawAPI.getAppState()`, `excalidrawAPI.updateScene()`.
 
@@ -170,16 +177,19 @@ $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 ```
 // 3. Confirm the plugin loaded.
 plugins_list()
-// → [{ "name": "@browxai/plugin-tldraw", "namespace": "tldraw",
-//      "version": "0.1.0", "trust": "kalebtec",
-//      "capabilities": ["eval", "canvas"], "dependsOn": [],
-//      "status": "loaded",
-//      "tools": ["tldraw.get_selected_shapes", "tldraw.get_viewport",
-//                "tldraw.create_shape", "tldraw.delete_shape",
-//                "tldraw.select_shapes"], ... }]
+// → { "ok": true, "apiVersion": "1.0.0",
+//     "plugins": [{ "name": "@browxai/plugin-tldraw", "namespace": "tldraw",
+//       "version": "0.1.1", "trust": "kalebtec",
+//       "capabilities": ["eval", "canvas"], "dependsOn": [],
+//       "status": "loaded",
+//       "tools": ["tldraw.get_selected_shapes", "tldraw.get_viewport",
+//                 "tldraw.create_shape", "tldraw.delete_shape",
+//                 "tldraw.select_shapes"], ... }] }
 
-// 4. Open the canvas app.
-navigate({ url: "https://www.tldraw.com/" })
+// 4. Open a page that mounts Tldraw and exposes window.editor, then check it.
+navigate({ url: "<your Tldraw page>" })
+eval_js({ expr: "typeof window.editor" })
+// → { "ok": true, "value": "object" }
 
 // 5. Drive it through the dispatcher (or call tldraw.* directly).
 canvas_query({ adapter: "tldraw", op: "get_viewport" })
@@ -193,13 +203,13 @@ canvas_query({ adapter: "tldraw", op: "create_shape",
 Per-adapter step 5 equivalents:
 
 ```
-// figma — open a Figma file in the editor first
+// figma: open a page whose main frame defines the figma global first
 canvas_query({ adapter: "figma", op: "get_selection" })
 canvas_query({ adapter: "figma", op: "create_rectangle",
                args: { x: 0, y: 0, width: 200, height: 120,
                        fillColor: { r: 0.9, g: 0.2, b: 0.2 } } })
 
-// excalidraw — open https://excalidraw.com/ first
+// excalidraw: open a page that sets window.excalidrawAPI first
 canvas_query({ adapter: "excalidraw", op: "get_scene_state" })
 canvas_query({ adapter: "excalidraw", op: "add_element",
                args: { type: "rectangle", x: 64, y: 64,
@@ -228,12 +238,12 @@ included, like adding an npm dependency: review what it declares
 (`browxai plugin info <pkg>`), grant only the capabilities it needs,
 and audit the live set with `plugins_list`. See
 [`docs/plugin-governance.md`](./plugin-governance.md) for the tier
-definitions and review process.
+definitions.
 
 ## Versioning
 
-Each plugin's manifest carries an advisory `browxaiVersion` range (the
-host versions it was tested against) and a binding `apiVersion` (the
+Each plugin's manifest carries an advisory `browxaiVersion` range (`>=0.13.0`
+today: the oldest host version it was tested against) and a binding `apiVersion` (the
 plugin-runtime contract major; see
 [`docs/plugin-authoring.md`](./plugin-authoring.md)). The canvas
 adapters track the upstream app APIs noted per section above; if an
