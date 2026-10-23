@@ -18,6 +18,9 @@ surface" covers.
   `.downloads/` and `.artifacts/` directories. `profile_snapshot` and
   `profile_restore` apply the rule to `profile` and reject `.` and `..` as a
   snapshot name.
+- `worker_messages_read` now masks registered secrets in message data, as
+  `ws_read` does. `workers_list` masks them in worker URLs, and
+  `worker_message_send` in an error it echoes from the page.
 - **`solve_captcha` keeps the provider API key out of URLs.** The poll request
   is now a POST with the key in the form body, as the submit already was. It
   used to put the key in the query string.
