@@ -1,7 +1,8 @@
 // `browxai doctor` — environment + connectivity health-check ().
 //
 // Prints a ✓/✗ checklist + one-line fix per failing check (− marks purely
-// informational rows). Exits 0 iff everything passes, 1 otherwise. Writes to
+// informational rows, which get an `enable with:` line when their lane is not
+// ready). Exits 0 iff everything passes, 1 otherwise. Writes to
 // stdout (this is a CLI subcommand, not the MCP server — stdout is fine here).
 
 import { existsSync, statSync } from "node:fs";
@@ -40,6 +41,9 @@ export interface Check {
   ok: boolean;
   detail: string;
   fix?: string;
+  /** How to turn on an opt-in lane that is not ready. Printed as `enable with:`
+   *  under an informational row, and only when the row sets it. */
+  enable?: string;
   /** Informational row — printed with − instead of ✓/✗; never fails doctor. */
   info?: boolean;
 }
@@ -315,6 +319,7 @@ export async function runDoctor(): Promise<number> {
     const glyph = c.info ? "−" : c.ok ? "✓" : "✗";
     process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
     if (!c.ok && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
+    if (c.info && c.enable) process.stdout.write(`    enable with: ${c.enable}\n`);
   }
   process.stdout.write(
     `\n${

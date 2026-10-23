@@ -15,11 +15,11 @@ installed, so no browser download is required on a machine with Chrome.
 ```bash
 npm install -g browxai
 browxai doctor                          # checks the environment and your setup
-npx playwright-core install chromium    # optional, ~150 MB: the fallback when Chrome is missing
+npx playwright-core@1.64.1 install chromium    # optional, ~150 MB: the fallback when Chrome is missing
 ```
 
 Firefox and WebKit sessions use their own Playwright builds
-(`npx playwright-core install firefox webkit`).
+(`npx playwright-core@1.64.1 install firefox webkit`).
 
 A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the
@@ -28,15 +28,10 @@ stdio transport. Run by hand in a terminal it just waits for a client, so use
 browser, the workspace and your configuration, and prints a fix next to
 anything that fails.
 
-browxai launches the Google Chrome already installed on the machine. When there
-is no Chrome it falls back to Playwright's bundled Chromium, which you download
-once (about 150 MB):
-
-```bash
-npx playwright-core install chromium
-```
-
-`browxai doctor` fails only when neither browser is present.
+browxai launches the Google Chrome already installed on the machine, on one
+default profile per workspace (`<workspace>/profile`), so logins carry over
+between sessions. When there is no Chrome it falls back to Playwright's bundled
+Chromium. `browxai doctor` fails only when neither browser is present.
 
 ## Wire it into an MCP client
 
@@ -103,9 +98,10 @@ opens and the heading and link come back as refs it can `click`.
 - **A tool answers that it is disabled.** Its capability is off. Add it to
   `BROWX_CAPABILITIES` together with the default four and restart the server, as
   capabilities are read once at start.
-- **A site shows a challenge page.** See
-  [Sites behind bot protection](/guides/sites-behind-bot-protection/): browxai
-  cannot clear it for you, and `browxai chrome login` lets you do it by hand.
+- **A site shows a challenge page.** browxai does not defeat or spoof bot
+  detection, so it cannot clear the challenge for you. `browxai chrome login`
+  opens the same Chrome profile with nothing attached so you can clear it by
+  hand. See [Sites behind bot protection](/guides/sites-behind-bot-protection/).
 
 ## Where to go next
 

@@ -17,9 +17,22 @@ surface" covers.
 - **A launch with no Chrome and no bundled Chromium names the fix.** The
   Playwright "Executable doesn't exist" error keeps its text and gains a line
   pointing at Google Chrome or `npx playwright-core install chromium`.
+- **Browser install hints name the playwright-core version browxai runs.** Doctor and
+  the launch error now print `npx playwright-core@<version> install chromium`
+  (and the same for firefox and webkit), with the version read from the
+  installed package. A bare `npx playwright-core install chromium` fetches the
+  newest release, whose Chromium build can differ from the one browxai launches.
+  The docs show the current version, 1.64.1.
+- **`browxai doctor` says how to enable an opt-in engine.** A firefox, webkit,
+  android or electron row that is not ready now prints an `enable with:` line
+  under it. Before, only failed rows got a hint.
 - **Running `browxai` in a terminal prints a one-time note on stderr** saying it
   is an MCP server that waits for a client, and pointing at `browxai doctor`.
 - **`browxai --help` lists `chrome status` and the `safari` engine.**
+- **`browxai init` suggests the npx entry.** The snippet still uses `node` and
+  the absolute `dist/cli.js` path, and init now prints one line pointing at
+  `{ "command": "npx", "args": ["-y", "browxai"] }`, which survives a move of node
+  or the global prefix.
 - **`browxai init` next steps** now cover the `byob-attach` capability the
   `browxai-attached` entry needs, and warn when the written path sits in the npx
   cache.
@@ -31,6 +44,11 @@ surface" covers.
 
 ### Fixed
 
+- **`browxai chrome start --port abc` is refused.** A port that is not a whole
+  number from 1 to 65535 now prints a message and exits with code 2. It used to
+  fall back to 9222 without saying so.
+- **Server log lines no longer read `browxai: browxai: ...`.** The logger adds the
+  prefix, so the message text drops its own.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.

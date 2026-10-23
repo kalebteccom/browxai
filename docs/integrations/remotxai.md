@@ -594,7 +594,7 @@ product, keeping browxai's `LICENSE`, `THIRD_PARTY_NOTICES.md` and Playwright's
 The browser runs on the operator's host next to the harness. The browser
 never runs on the relay. browxai needs Node 22 or later; remotxai's host needs
 Node 26, so one Node serves both. Chromium is a separate one-time download
-(`playwright-core install chromium`).
+(`npx playwright-core@1.64.1 install chromium`).
 
 ### Shipping options
 

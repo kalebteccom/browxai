@@ -79,7 +79,7 @@ export class SecretRegistry {
       // capability is off by default; once registered, the egress-masking
       // layer is engaged for the lifetime of the session.
       log.warn(
-        "browxai: secrets capability is ENABLED — a sensitive value was registered. " +
+        "secrets capability is ENABLED — a sensitive value was registered. " +
           "All egress sinks (ActionResult.network, network_read, network_body, " +
           "ws_read, console_read, snapshot, find) now strip occurrences of the " +
           "registered value and substitute `<NAME>` aliases. `fill`/`press` " +

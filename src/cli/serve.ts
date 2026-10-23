@@ -201,11 +201,11 @@ export async function startServeForTests(opts: ServeOptions): Promise<{
 
 async function startServe(opts: ServeOptions): Promise<number> {
   const { shutdown } = await startServeForTests(opts);
-  log.info("browxai: serve listening", { socket: opts.socketPath });
+  log.info("serve listening", { socket: opts.socketPath });
 
   // Keep the process alive until a signal.
   const onSignal = async (sig: string): Promise<void> => {
-    log.info(`browxai: serve shutdown (${sig})`);
+    log.info(`serve shutdown (${sig})`);
     await shutdown();
     process.exit(0);
   };

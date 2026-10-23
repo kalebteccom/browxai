@@ -7,7 +7,7 @@ Register browxai as an MCP server in the OpenAI Codex CLI, and give Codex the
 
 - OpenAI Codex CLI: `npm i -g @openai/codex`, then run `codex` once to sign in.
 - Node.js 22+.
-- Google Chrome installed. Without it, download the bundled Chromium once with `npx playwright-core install chromium`.
+- Google Chrome installed. Without it, download the bundled Chromium once with `npx playwright-core@1.64.1 install chromium`.
 
 ## 1. Install browxai
 

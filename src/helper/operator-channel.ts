@@ -266,7 +266,7 @@ class OperatorLink implements OperatorChannel {
       // not connect to it. Pending requests keep waiting and are denied at their
       // timeouts, and a later retry connects once the daemon has made it right.
       if (this.#lastUnsafe !== check.reason) {
-        log.error(`browxai: operator channel is not connecting: ${check.reason}`);
+        log.error(`operator channel is not connecting: ${check.reason}`);
         this.#lastUnsafe = check.reason;
       }
       return this.#scheduleRetry();
@@ -291,8 +291,7 @@ class OperatorLink implements OperatorChannel {
     sock.on("data", (chunk: string) => this.#onData(sock, chunk));
     // Node's connect errors name the socket path in their message. Log the code only.
     sock.on("error", (e: NodeJS.ErrnoException) => {
-      if (this.#sock === sock)
-        log.warn("browxai: operator channel connection error", { code: e.code });
+      if (this.#sock === sock) log.warn("operator channel connection error", { code: e.code });
     });
     sock.on("close", () => {
       if (this.#sock !== sock) return;
@@ -391,7 +390,7 @@ class OperatorLink implements OperatorChannel {
     if (!proofMatches(expected, f.proof)) {
       // A listener that does not know the token holds the socket. Do not retry:
       // pending requests are denied now.
-      log.error("browxai: operator channel closed: the daemon failed authentication");
+      log.error("operator channel closed: the daemon failed authentication");
       return this.close();
     }
     this.#daemonNonce = f.nonce;
@@ -407,7 +406,7 @@ class OperatorLink implements OperatorChannel {
     this.#clearHandshake();
     this.#state = "ready";
     this.#backoff = BACKOFF_START_MS;
-    log.info("browxai: operator channel connected");
+    log.info("operator channel connected");
     // Requests made while the channel was down, or sent to a daemon that
     // restarted, go out again under the same id.
     for (const p of this.#pending.values()) this.#send(p.frame);
@@ -473,7 +472,7 @@ export function openOperatorChannel(
   if (capabilityMissing("operator-channel", caps)) {
     if (socketPath || token) {
       log.warn(
-        "browxai: BROWX_OPERATOR_SOCKET or BROWX_OPERATOR_TOKEN is set but the operator-channel capability is off; the channel stays closed and DevTools stays the answer path. Add operator-channel to BROWX_CAPABILITIES to use it.",
+        "BROWX_OPERATOR_SOCKET or BROWX_OPERATOR_TOKEN is set but the operator-channel capability is off; the channel stays closed and DevTools stays the answer path. Add operator-channel to BROWX_CAPABILITIES to use it.",
       );
     }
     return null;
@@ -498,10 +497,10 @@ export function openOperatorChannel(
   }
   if (check.state === "missing") {
     log.warn(
-      "browxai: the operator channel socket does not exist yet; retrying until the daemon creates it",
+      "the operator channel socket does not exist yet; retrying until the daemon creates it",
     );
   }
-  for (const w of operatorCombinationWarnings(caps)) log.warn(`browxai: ${w}`);
+  for (const w of operatorCombinationWarnings(caps)) log.warn(w);
   const link = new OperatorLink(socketPath, token, liveView);
   link.start();
   return link;

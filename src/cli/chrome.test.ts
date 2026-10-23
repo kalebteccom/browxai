@@ -80,6 +80,21 @@ describe("browxai chrome start", () => {
     expect(err).toMatch(/no installed Google Chrome/);
   });
 
+  it.each(["abc", "0", "65536", "-1", "9222.5", ""])(
+    "rejects --port %j with exit code 2 and launches nothing",
+    async (value) => {
+      expect(await runChrome(["start", "--port", value])).toBe(2);
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(err).toContain("invalid --port");
+    },
+  );
+
+  it("rejects --port with no value", async () => {
+    expect(await runChrome(["start", "--port"])).toBe(2);
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(err).toContain("invalid --port");
+  });
+
   it("rejects a --profile that is a path", async () => {
     expect(await runChrome(["start", "--profile", "../escape"])).toBe(1);
     expect(spawnMock).not.toHaveBeenCalled();

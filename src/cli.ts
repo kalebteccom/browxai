@@ -125,7 +125,7 @@ async function main(): Promise<void> {
     throw err;
   }
 
-  log.info("browxai: starting", {
+  log.info("starting", {
     workspace: workspace.root,
     mode: attachCdp ? "byob" : "managed",
     attachCdp,
@@ -146,7 +146,7 @@ async function main(): Promise<void> {
   const server = await createServer({ attachCdp, headless, browserType });
 
   const shutdown = async (signal: string): Promise<void> => {
-    log.info(`browxai: shutdown (${signal})`);
+    log.info(`shutdown (${signal})`);
     await server.shutdown();
     process.exit(0);
   };
@@ -157,6 +157,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  log.error("browxai: fatal", { error: err instanceof Error ? err.message : String(err) });
+  log.error("fatal", { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });
