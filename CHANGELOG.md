@@ -10,6 +10,9 @@ surface" covers.
 
 ### Changed
 
+- **`solve_captcha` keeps the provider API key out of URLs.** The poll request
+  is now a POST with the key in the form body, as the submit already was. It
+  used to put the key in the query string.
 - **`browxai doctor` checks the browser the default launch uses.** It reports the
   installed Google Chrome, and a missing bundled Chromium no longer fails doctor
   while Chrome is installed. It fails when neither is present, and it now checks

@@ -2969,7 +2969,7 @@ for the answer, and the solver runs entirely on the provider's
 infrastructure. Off by default (capability `captcha`).
 
 **What leaves the machine.** On each call: `BROWX_CAPTCHA_API_KEY` (in
-the submit body and in the query string of every poll request), the URL
+the form body of the submit and of every poll request, never in a URL), the URL
 of the current page (`pageurl`), and the widget site-key, or the base64
 image bytes for `type:"image"`. They go to the provider's API,
 `https://2captcha.com` or `https://api.capmonster.cloud` unless
@@ -2996,7 +2996,7 @@ configured — …", hint:…}` and sends nothing. Setting only one of
 name, returns an `ok:false` that names the missing piece.
 
 **Protocol target.** v0.2.0 targets the **2Captcha-compatible REST API**
-(`POST /in.php` submit + `GET /res.php` poll). CapMonster Cloud
+(`POST /in.php` submit + `POST /res.php` poll). CapMonster Cloud
 documents itself as drop-in compatible with this shape, so the same
 code talks to either provider. Other providers (AntiCaptcha's
 `/createTask` + `/getTaskResult`, etc.) are extensible: add a branch
