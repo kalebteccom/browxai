@@ -16,10 +16,12 @@ import {
 import { resolveConfig } from "../util/config.js";
 import { resolveOriginPolicy, describePolicy } from "../policy/origin.js";
 import { resolveWorkspace } from "../util/workspace.js";
+import { PACKAGE_VERSION } from "../util/version.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
 import {
+  chromeCheck,
   chromiumCheck,
   firefoxCheck,
   webkitCheck,
@@ -45,6 +47,20 @@ export interface Check {
 export async function runDoctor(): Promise<number> {
   const checks: Check[] = [];
 
+  // 0. Node version. package.json `engines` is >=22; npm only warns on a
+  // mismatch, so doctor is where an older Node gets named.
+  const nodeVersion = process.versions.node;
+  if (Number(nodeVersion.split(".")[0]) >= 22) {
+    checks.push({ name: "node", ok: true, detail: `v${nodeVersion}` });
+  } else {
+    checks.push({
+      name: "node",
+      ok: false,
+      detail: `v${nodeVersion}, browxai needs Node 22 or later`,
+      fix: "install Node 22 or later (nodejs.org, or `nvm install 22`) and reinstall browxai",
+    });
+  }
+
   // 1. dist/cli.js built?
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const distCli = resolve(__dirname, "../cli.js");
@@ -56,7 +72,7 @@ export async function runDoctor(): Promise<number> {
       name: "build",
       ok: false,
       detail: `dist/cli.js missing at ${distCli}`,
-      fix: "run `pnpm build`",
+      fix: "reinstall browxai (`npm install -g browxai`), or run `pnpm build` in a source checkout",
     });
   }
 
@@ -194,10 +210,14 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 8. Chromium installed (managed-mode dependency). 8a2/8a3 follow with the
-  // opt-in firefox + webkit binary probes. All three are per-engine availability
-  // probes — see src/cli/doctor-engines.ts.
-  checks.push(await chromiumCheck());
+  // 8. Browser for managed mode. The default launch uses the installed Google
+  // Chrome and falls back to the bundled Chromium, so doctor fails only when
+  // neither exists. 8a2/8a3 follow with the opt-in firefox + webkit binary
+  // probes. All are per-engine availability probes — see
+  // src/cli/doctor-engines.ts.
+  const chrome = chromeCheck();
+  checks.push(chrome);
+  checks.push(await chromiumCheck(!chrome.info));
   checks.push(await firefoxCheck());
   checks.push(await webkitCheck());
 
@@ -289,13 +309,19 @@ export async function runDoctor(): Promise<number> {
 
   // Print + exit.
   let allOk = true;
-  process.stdout.write("browxai doctor — environment & connectivity\n\n");
+  process.stdout.write(`browxai doctor (v${PACKAGE_VERSION}) — environment & connectivity\n\n`);
   for (const c of checks) {
     if (!c.ok) allOk = false;
     const glyph = c.info ? "−" : c.ok ? "✓" : "✗";
     process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
     if (!c.ok && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
   }
-  process.stdout.write(`\n${allOk ? "all checks passed" : "fix the ✗ items above"}\n`);
+  process.stdout.write(
+    `\n${
+      allOk
+        ? "all checks passed. Next: add browxai to your MCP client, see https://browxai.com/getting-started/"
+        : "fix the ✗ items above, then run `browxai doctor` again"
+    }\n`,
+  );
   return allOk ? 0 : 1;
 }

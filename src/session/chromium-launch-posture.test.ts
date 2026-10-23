@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   automationSwitchOptions,
+  isBundledBrowserMissing,
   isChannelNotInstalled,
   launchWithChannelPlan,
   planChromiumChannel,
@@ -118,6 +119,45 @@ describe("launchWithChannelPlan", () => {
     const launch = vi.fn().mockResolvedValue("bundled");
     await launchWithChannelPlan({ fallbackToBundled: false }, launch);
     expect(launch.mock.calls).toEqual([[{}]]);
+  });
+});
+
+describe("a launch that finds no browser", () => {
+  const NO_BUNDLED = new Error(
+    "browserType.launchPersistentContext: Executable doesn't exist at /home/u/.cache/ms-playwright/chromium-1200/chrome-linux/chrome\n" +
+      "Looks like Playwright was just installed or updated. Please run: npx playwright install",
+  );
+
+  it("recognises Playwright's missing-download error", () => {
+    expect(isBundledBrowserMissing(NO_BUNDLED)).toBe(true);
+    expect(isBundledBrowserMissing(new Error("profile locked"))).toBe(false);
+  });
+
+  it("adds an install hint after the fallback to the bundled build also fails", async () => {
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    const launch = vi.fn().mockRejectedValueOnce(NOT_FOUND).mockRejectedValueOnce(NO_BUNDLED);
+    const err = await launchWithChannelPlan(
+      { channel: "chrome", fallbackToBundled: true },
+      launch,
+    ).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain("Executable doesn't exist");
+    expect((err as Error).message).toMatch(/Install Google Chrome/);
+    expect((err as Error).message).toMatch(/npx playwright-core install chromium/);
+    expect((err as Error).cause).toBe(NO_BUNDLED);
+  });
+
+  it("adds the hint when the bundled build is pinned and missing", async () => {
+    const launch = vi.fn().mockRejectedValue(NO_BUNDLED);
+    await expect(launchWithChannelPlan({ fallbackToBundled: false }, launch)).rejects.toThrow(
+      /no browser to launch/,
+    );
+  });
+
+  it("leaves other bundled-launch errors untouched", async () => {
+    const boom = new Error("profile locked");
+    const launch = vi.fn().mockRejectedValue(boom);
+    await expect(launchWithChannelPlan({ fallbackToBundled: false }, launch)).rejects.toBe(boom);
   });
 });
 

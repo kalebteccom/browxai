@@ -215,7 +215,7 @@ export async function createServer(opts: StartOptions = {}): Promise<{
     );
   if (isByob && !caps.enabled.has("byob-attach")) {
     log.warn(
-      "browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it.",
+      "browxai: BROWX_ATTACH_CDP is set but `byob-attach` capability is disabled. Add `byob-attach` to BROWX_CAPABILITIES to use it, keeping the defaults in the list (BROWX_CAPABILITIES=read,navigation,action,human,byob-attach).",
     );
   }
 

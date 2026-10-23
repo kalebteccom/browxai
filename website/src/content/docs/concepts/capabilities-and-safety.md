@@ -91,8 +91,11 @@ Off by default, each opted in deliberately:
   trade-offs.
 
 Because capabilities resolve at server start, changing them means restarting
-the server. `BROWX_CAPABILITIES` is the ceiling: a `capabilities` list saved
-through `set_config` can narrow it and never widen it. Request only what the task in front of you needs: a scrape run
+the server. `BROWX_CAPABILITIES` holds the whole set. Setting it to `eval`
+leaves `eval` as the only capability, with no `click` and no `navigate`; write
+`read,navigation,action,human,eval` to add one to the default. It is also the
+ceiling: a `capabilities` list saved through `set_config` can narrow it and
+never widen it. Request only what the task in front of you needs: a scrape run
 wants `read` and `navigation`; nothing about scraping needs `eval` or
 `network-body`.
 

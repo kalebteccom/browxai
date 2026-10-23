@@ -6,6 +6,32 @@ All notable changes to browxai are documented here. The format follows
 [Stability & semver](docs/tool-reference.md) policy for what "the stable
 surface" covers.
 
+## Unreleased
+
+### Changed
+
+- **`browxai doctor` checks the browser the default launch uses.** It reports the
+  installed Google Chrome, and a missing bundled Chromium no longer fails doctor
+  while Chrome is installed. It fails when neither is present, and it now checks
+  for Node 22 or later and prints the browxai version.
+- **A launch with no Chrome and no bundled Chromium names the fix.** The
+  Playwright "Executable doesn't exist" error keeps its text and gains a line
+  pointing at Google Chrome or `npx playwright-core install chromium`.
+- **Running `browxai` in a terminal prints a one-time note on stderr** saying it
+  is an MCP server that waits for a client, and pointing at `browxai doctor`.
+- **`browxai --help` lists `chrome status` and the `safari` engine.**
+- **`browxai init` next steps** now cover the `byob-attach` capability the
+  `browxai-attached` entry needs, and warn when the written path sits in the npx
+  cache.
+- **The disabled-tool hint says `BROWX_CAPABILITIES` replaces the default set**,
+  so a newcomer who sets it to one capability keeps `read,navigation,action,human`.
+
+### Fixed
+
+- Docs: install steps now state Node 22 and that Chrome is the default browser;
+  the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
+  profile directory; the harness READMEs said Node 20.
+
 ## [0.13.0] - 2026-10-22
 
 Installed Chrome on one default profile per workspace.
