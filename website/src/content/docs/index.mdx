@@ -25,8 +25,8 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
       and real Chrome on an Android phone), two native-app engines on an
       Android emulator and the iOS Simulator, and a desktop Electron app. By
       default it launches the installed Google Chrome on one default profile
-      per workspace. Every capability past reading, navigating and acting
-      starts off until you switch it on. It works with any MCP client over
+      per workspace. Every capability past the default four (read, navigation,
+      action and human) starts off until you switch it on. It works with any MCP client over
       stdio, and ships a typed TypeScript SDK.
     </div>
     <div class="browx-cta">
@@ -180,8 +180,7 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
         Capability-gated tools, an origin allow and block list, confirmation
         hooks, and a hard anti-wedge deadline on every call. Arbitrary JS, full
         response bodies, the OS clipboard, your password manager, the native
-        engines, attaching to a desktop app and network mocking are all off
-        until you opt in.
+        engines and attaching to a desktop app are all off until you opt in.
       </div>
     </div>
     <div class="browx-card">
@@ -208,13 +207,14 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
       <span class="browx-card-mark">// access</span>
       <h3>Sites behind bot protection</h3>
       <div class="browx-card-text">
-        browxai does not defeat or spoof bot detection, and it cannot guarantee
-        access to any site. When a challenge needs a person,
+        By default browxai does not defeat or spoof bot detection, and it cannot
+        guarantee access to any site. When a challenge needs a person,
         <code>browxai chrome login</code> opens the installed Chrome on the
         workspace profile with nothing attached. Clear it by hand, quit Chrome,
-        and later sessions on that profile reuse the cookies. An off-by-default
-        <code>solve_captcha</code> tool can hand a captcha to a third-party
-        solving service you configure. See
+        and later sessions on that profile reuse the cookies. The off-by-default
+        <code>stealth</code> and <code>captcha</code> capabilities patch four
+        browser properties and hand captchas to a third-party solving service.
+        See
         <a href="/guides/sites-behind-bot-protection/">the guide</a>.
       </div>
     </div>

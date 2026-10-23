@@ -4,13 +4,16 @@ description: What browxai does and does not do for sites that gate access with b
 ---
 
 Some sites put a bot-protection layer (a Cloudflare challenge, Turnstile and
-similar) in front of the page. browxai does not defeat or spoof bot detection.
-It patches no fingerprint, runs no token service and bundles no solver, and it
-cannot guarantee access to any site. One optional tool, `solve_captcha`, sends a
-captcha to a third-party solving service that you configure and pay for. It is
-off by default and described [at the end of this page](#captcha-solving-through-a-third-party-service-off-by-default).
-A site's terms of use apply to what you drive against it. What follows is how to
-run a normal browser and how to hand the one step a person has to do to a person.
+similar) in front of the page. By default browxai does not defeat or spoof bot
+detection, and it cannot guarantee access to any site. Two optional
+capabilities, both off by default, go further:
+[`stealth`](#fingerprint-patches-through-stealth-off-by-default) patches four
+browser properties, and
+[`captcha`](#captcha-solving-through-a-third-party-service-off-by-default) sends
+a captcha to a third-party solving service you configure and pay for. browxai
+runs no token service and bundles no solver. A site's terms of use apply to what
+you drive against it. What follows is how to run a normal browser and how to
+hand the one step a person has to do to a person.
 
 ## Light protection: a regular Chrome
 
@@ -23,9 +26,10 @@ installed browxai falls back to the bundled Chromium and logs a warning saying
 so. `channel: "chromium"` pins the bundled build, and `BROWX_AUTOMATION_SWITCH=1`
 puts the automation switch back for debugging.
 
-That is all it changes. browxai adds no `--disable-blink-features` flag, does
-not patch `navigator`, injects no script to hide the debugger and does not
-rewrite the user agent.
+That is all the default launch changes. browxai adds no
+`--disable-blink-features` flag, injects no script to hide the debugger and does
+not rewrite the user agent. With `stealth` off it does not patch `navigator`
+either.
 
 ## Strict challenges: clear them by hand, then continue
 
@@ -59,6 +63,18 @@ When a challenge appears mid-run, `ActionResult.challenge` names it. The
 `await_human` tool pauses the run and lets a person clear it in the live browser,
 then the run continues. Use it for one-off gates; use `chrome login` for a
 profile you want to keep signed in.
+
+## Fingerprint patches through `stealth` (off by default)
+
+The `stealth` capability registers no tool. With it on, every session's browser
+context loads an init script that runs before any page script and overrides four
+properties Playwright leaves recognizable: `navigator.webdriver` (set to false),
+`navigator.plugins` (a non-empty list), `navigator.languages` (filled in when
+the headless default left it empty) and `window.chrome` (defined). It bundles no
+anti-fingerprinting library beyond those four patches, and a site that probes
+for an attached debugger still sees one. Enabling it logs a warning at server
+start that names the terms-of-service exposure. Circumventing automation
+detection may break a site's terms, and you carry that exposure.
 
 ## Captcha solving through a third-party service (off by default)
 

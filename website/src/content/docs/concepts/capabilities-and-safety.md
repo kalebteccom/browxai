@@ -95,8 +95,11 @@ Off by default, each opted in deliberately:
 - `captcha` enables `solve_captcha`, which sends a captcha to a third-party
   solving service you configure (2Captcha or CapMonster). The API key, page URL
   and site key leave the machine. browxai bundles no solver.
-- `credentials`, `stealth`, `device-emulation`, `canvas`, and `diagnostics` gate
-  the remaining posture-broadening lanes. The
+- `stealth` loads an init script in every session that overrides
+  `navigator.webdriver`, `navigator.plugins`, `navigator.languages` and
+  `window.chrome`.
+- `credentials`, `device-emulation`, `canvas`, and `diagnostics` gate the
+  remaining posture-broadening lanes. The
   [threat model](/security/threat-model/) documents each one's rationale and
   trade-offs.
 

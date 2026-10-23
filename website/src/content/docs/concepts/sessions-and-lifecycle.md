@@ -55,13 +55,13 @@ single-session callers need to know none of this.
 
 ### Managing sessions
 
-- `open_session({ session, mode?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`
+- `open_session({ session, mode?, engine?, profile?, channel?, backgroundThrottling?, device?, viewport?, har?, hars? })`
   eagerly creates an id. Re-opening a live id is an error.
 - `close_session({ session })` tears one down.
 - `close_sessions({ prefix?, all?, idleMs? })` is the bulk reap primitive for
   multi-agent cleanup. Selectors AND together, and at least one is required so
   you cannot accidentally close nothing or everything.
-- `list_sessions()` returns `[{ id, mode, url, pages, openedAt }]`.
+- `list_sessions()` returns `[{ id, mode, engine, url, pages, openedAt }]`.
 
 ## Session modes
 

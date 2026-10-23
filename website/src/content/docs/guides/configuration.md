@@ -48,6 +48,7 @@ persisted layers for that session only.
 | `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                                                             |
 | `disableWebSecurity`                | Turn off the same-origin policy and CORS for managed and incognito sessions. Dangerous; off by default.                                                               |
 | `hideOverlaySelectors`              | CSS selectors for chrome or overlay elements to neutralize non-destructively on every navigation.                                                                     |
+| `plugins`                           | Plugin names to load. A saved list is a subset of `BROWX_PLUGINS`, and a change applies on the next server start.                                                     |
 | `unstable`                          | A free-form namespace for experimental knobs. Not stable across versions.                                                                                             |
 
 ### A few keys worth understanding
