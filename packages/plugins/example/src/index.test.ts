@@ -4,7 +4,7 @@
 // handlers themselves do what they say.
 
 import { describe, it, expect } from "vitest";
-import { handlers, register } from "./index.js";
+import { handlers } from "./index.js";
 
 function parseFirst(res: {
   content: ReadonlyArray<{ type: string; text?: string }>;

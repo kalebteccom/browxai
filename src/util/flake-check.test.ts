@@ -7,7 +7,6 @@ import {
   signatureFor,
 } from "./flake-check.js";
 import type { ToolHandler } from "./batch.js";
-import { runBatch } from "./batch.js";
 
 const ALLOWED = new Set([
   "click",
