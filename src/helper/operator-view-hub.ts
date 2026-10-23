@@ -307,7 +307,7 @@ export class ViewHub implements LiveViewRegistry {
     }
     if (stream.stopped) return;
     if (this.#sources.get(session) !== source) return this.#finish(stream, "session-closed");
-    log.info("browxai: live view started");
+    log.info("live view started");
     this.sink.send({
       type: "view.started",
       session,
@@ -340,7 +340,7 @@ export class ViewHub implements LiveViewRegistry {
     if (s.stopped) return;
     await s.end();
     if (!tell) return;
-    log.info("browxai: live view stopped", { reason });
+    log.info("live view stopped", { reason });
     // Sent only while the connection is up; a dropped one carries no frame.
     this.sink.send({ type: "view.stopped", session: s.session, reason });
   }

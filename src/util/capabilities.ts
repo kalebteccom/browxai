@@ -268,8 +268,8 @@ export interface CapabilityWarningContext {
 export interface CapabilityWarning {
   capability: Capability;
   /** The loud one-time warning text. A function for the two warnings that
-   *  interpolate runtime values; a string for the rest. server.ts prefixes
-   *  `browxai: ` exactly as before. */
+   *  interpolate runtime values; a string for the rest. server.ts passes the text to `log.warn`, which adds the
+   *  `browxai:` prefix. */
   message: string | ((ctx: CapabilityWarningContext) => string);
 }
 
@@ -277,7 +277,7 @@ export interface CapabilityWarning {
  * The off-by-default-capability startup warning table (the data behind the
  * formerly ~95 lines of per-capability `if (caps.enabled.has(...)) log.warn(...)`
  * blocks in server.ts). server.ts iterates this in order, emitting one loud
- * `log.warn("browxai: " + message)` per ENABLED capability — preserving the
+ * `log.warn(message)` per ENABLED capability — preserving the
  * exact text, the exact set of capabilities that warn, the exact emission order,
  * and the one-time-per-startup semantics. Keeping the data here (next to the
  * `Capability` vocabulary) leaves server.ts pure composition/wiring.

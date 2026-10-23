@@ -28,6 +28,8 @@ surface" covers.
 
 ### Fixed
 
+- **Server log lines no longer read `browxai: browxai: ...`.** The logger adds the
+  prefix, so the message text drops its own.
 - Docs: install steps now state Node 22 and that Chrome is the default browser;
   the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
   profile directory; the harness READMEs said Node 20.

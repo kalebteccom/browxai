@@ -49,7 +49,7 @@ interface WritableTarget {
 class ShedWriteError extends Error {
   constructor() {
     super(
-      "browxai: file write dropped, the page sent chunks faster than the binding call budget allows",
+      "file write dropped, the page sent chunks faster than the binding call budget allows",
     );
     this.name = "NotAllowedError";
   }
