@@ -132,7 +132,7 @@ export function isSafeName(name: string): boolean {
 export function assertSafeName(kind: string, name: string): void {
   if (!isSafeName(name)) {
     throw new Error(
-      `${kind} "${name}" is invalid: use only letters, digits, '.', '_' and '-', ` +
+      `${kind} "${name}" is an invalid name. Use only letters, digits, '.', '_' and '-', ` +
         `with no path separators and no ".."`,
     );
   }
