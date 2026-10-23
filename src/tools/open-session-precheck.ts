@@ -25,6 +25,6 @@ export function openSessionPrecheck(
       ? invalidNameRefusal("profile", profile)
       : null;
   if (badName) return { ok: false, code: "invalid-name", error: badName };
-  if (isOpen) return { ok: false, error: `session "${session}" already open; close_session first` };
+  if (isOpen) return { ok: false, error: `session "${session}" is already open. Close it with close_session, or pick another name.` };
   return null;
 }

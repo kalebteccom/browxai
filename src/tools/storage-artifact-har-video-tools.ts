@@ -326,10 +326,10 @@ export function registerStorageArtifactHarVideoTools(
           return errText(
             "stop_video",
             new Error(
-              "stop_video: not supported on attached / BYOB sessions — recordVideo is " +
-                "a context-creation primitive and we don't wire it on the consumer's " +
-                'Chrome (not-owned). Open a managed session ({mode:"persistent"} or ' +
-                '{mode:"incognito"}) with {recordVideo:{...}} and re-run.',
+              "stop_video: not supported on attached sessions. recordVideo is applied when a " +
+                "browser context is created, and browxai does not create the context for " +
+                'your own Chrome. Open a session with {mode:"persistent"} or ' +
+                '{mode:"incognito"} and {recordVideo:{...}}, then run it again.',
             ),
           );
         }
@@ -337,9 +337,8 @@ export function registerStorageArtifactHarVideoTools(
           return errText(
             "stop_video",
             new Error(
-              "stop_video: no video recorder is active on this session. Video must be " +
-                "wired at session creation via `open_session({recordVideo:{...}})` — " +
-                "Playwright doesn't expose a runtime `start_video` primitive.",
+              "stop_video: no video recorder is active on this session. Recording can only " +
+                "be set up when the session opens: use `open_session({recordVideo:{...}})`.",
             ),
           );
         }
@@ -386,9 +385,9 @@ export function registerStorageArtifactHarVideoTools(
           return errText(
             "get_video",
             new Error(
-              "get_video: not supported on attached / BYOB sessions — recordVideo is " +
-                "a context-creation primitive and was refused at session-open time on " +
-                "this session. Open a managed session with {recordVideo:{...}} to record.",
+              "get_video: not supported on attached sessions, which cannot record video. " +
+                'Open a session with {mode:"persistent"} or {mode:"incognito"} and ' +
+                "{recordVideo:{...}} to record.",
             ),
           );
         }
@@ -396,8 +395,8 @@ export function registerStorageArtifactHarVideoTools(
           return errText(
             "get_video",
             new Error(
-              "get_video: no video recorder is active on this session. Video must be " +
-                "wired at session creation via `open_session({recordVideo:{...}})`.",
+              "get_video: no video recorder is active on this session. Recording can only " +
+                "be set up when the session opens: use `open_session({recordVideo:{...}})`.",
             ),
           );
         }

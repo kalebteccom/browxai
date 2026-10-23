@@ -308,7 +308,9 @@ export function applyReload(
 ): { loaded: LoadedExtension[]; entry: LoadedExtension } {
   const idx = reg.loaded.findIndex((e) => e.id === id);
   if (idx < 0) {
-    throw new Error(`${tool}: no extension with id "${id}" is loaded in this session`);
+    throw new Error(
+      `${tool}: no extension with id "${id}" is loaded in this session (call extensions_list to see ids)`,
+    );
   }
   const prev = reg.loaded[idx]!;
   const next: LoadedExtension = {

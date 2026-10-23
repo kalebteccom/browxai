@@ -344,10 +344,10 @@ export function registerExtensionsTools(
           return extensionErrorEnvelope(
             "extensions_trigger",
             new Error(
-              `extensions_trigger: cannot determine Chrome-runtime extension id for path-hash id "${id}". ` +
-                `Browxai's id is a hash of the unpacked path and does NOT necessarily equal Chrome's runtime id (Chrome derives that from the manifest \`key\` when present). ` +
-                `runtimeIdsDetected: ${JSON.stringify(runtimeIds)}; loaded: ${e.extensions.loaded.length}. ` +
-                `Workaround: navigate the page directly to the extension popup URL once you know the runtime id.`,
+              `extensions_trigger: cannot find the id Chrome assigned to extension "${id}". ` +
+                `browxai's id is a hash of the unpacked path, so it can differ from Chrome's own id (Chrome derives that from the manifest \`key\` when present). ` +
+                `Chrome ids detected: ${JSON.stringify(runtimeIds)}; extensions loaded: ${e.extensions.loaded.length}. ` +
+                `Navigate the page directly to the extension's popup URL once you know Chrome's id.`,
             ),
           );
         }
@@ -406,7 +406,7 @@ export function registerExtensionsTools(
         return extensionErrorEnvelope(
           "extensions_uninstall",
           new Error(
-            `(post-rebuild) ${err instanceof Error ? err.message : String(err)} — session "${e.id}" is now in a degraded state; close it and open a fresh one.`,
+            `extensions_uninstall: the browser restart after removal failed (${err instanceof Error ? err.message : String(err)}). Session "${e.id}" is no longer usable; close it and open a fresh one.`,
           ),
         );
       }
