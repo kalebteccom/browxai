@@ -203,7 +203,7 @@ export function registerDeepDeterminismTools(host: ToolHost): void {
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_wait_for_network") {
         return determinismJsonError(
-          `act_and_wait_for_network: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)`,
+          `act_and_wait_for_network: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
         );
       }
       const ig = gateCheck(innerTool);

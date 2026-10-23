@@ -76,7 +76,7 @@ export async function runBatch(calls: BatchCall[], opts: BatchOptions): Promise<
       results.push({
         tool: call.tool,
         ok: false,
-        error: `tool "${call.tool}" not allowed inside batch (whitelist: ${[...opts.allowed].sort().join(", ")})`,
+        error: `tool "${call.tool}" not allowed inside batch. Allowed tools: ${[...opts.allowed].sort().join(", ")}`,
       });
       failedAt = i;
       if (stop) break;

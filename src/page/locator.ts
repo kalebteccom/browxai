@@ -132,7 +132,7 @@ export function locatorFor(page: Page | Frame, refs: RefRegistry, target: Action
     const inputs = refs.locatorOf(target.ref);
     if (!inputs) {
       throw new Error(
-        `unknown ref "${target.ref}"; call snapshot() or find() first to populate refs, or pass a selector instead`,
+        `unknown ref "${target.ref}". Refs reset when the page changes: call snapshot() or find() for fresh ones, or pass a selector.`,
       );
     }
     // Frame-aware resolution: refs minted inside a child frame
@@ -148,7 +148,7 @@ export function locatorFor(page: Page | Frame, refs: RefRegistry, target: Action
       const ctxInputs = refs.locatorOf(target.contextRef);
       if (!ctxInputs) {
         throw new Error(
-          `unknown contextRef "${target.contextRef}"; call snapshot() or find() first to populate refs`,
+          `unknown contextRef "${target.contextRef}". Refs reset when the page changes: call snapshot() or find() for fresh ones.`,
         );
       }
       const ctxFrame = refFrameOf(refs, target.contextRef);

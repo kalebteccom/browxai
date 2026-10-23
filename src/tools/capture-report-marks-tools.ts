@@ -245,7 +245,7 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
               text: JSON.stringify(
                 {
                   ok: false,
-                  error: `cross_session_sample: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)`,
+                  error: `cross_session_sample: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
                 },
                 null,
                 2,

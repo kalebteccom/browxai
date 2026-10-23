@@ -92,7 +92,7 @@ export function registerBatchActTools(
       const innerTool = args.action.tool;
       if (!BATCH_ALLOWED_TOOLS.has(innerTool) || innerTool === "act_and_sample") {
         return batchJsonError(
-          `act_and_sample: inner tool "${innerTool}" not allowed (must be in the batch whitelist; no batch / await_human / recording / self)`,
+          `act_and_sample: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
         );
       }
       const ig = gateCheck(innerTool);
@@ -187,7 +187,7 @@ export function registerBatchActTools(
               text: JSON.stringify(
                 {
                   ok: false,
-                  error: `act_and_diff: inner tool "${innerTool}" not allowed (batch whitelist; no batch / await_human / recording / self)`,
+                  error: `act_and_diff: inner tool "${innerTool}" not allowed (batch, await_human and recording tools cannot be inner tools, nor can the tool itself)`,
                 },
                 null,
                 2,
@@ -327,7 +327,7 @@ export function registerBatchActTools(
                 text: JSON.stringify(
                   {
                     ok: false,
-                    error: `flake_check: inner tool "${c.tool}" not allowed (batch whitelist; no batch / flake_check / await_human / recording)`,
+                    error: `flake_check: inner tool "${c.tool}" not allowed (batch, flake_check, await_human and recording tools cannot be inner tools)`,
                   },
                   null,
                   2,
