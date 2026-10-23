@@ -5,6 +5,10 @@
 // survives a real Chromium init-script injection and that `__browxWorkers.*`
 // is reachable from the agent via `page.evaluate`.
 //
+// A service worker is listed through Playwright's `context.serviceWorkers()` and
+// messaged with `Worker.evaluate`; its reply comes back through the page-side
+// ring (`/sw-page`, `/sw.js`).
+//
 // SW intercept is intentionally left to a follow-up — a fixture-served SW
 // would need a longer round-trip (registration + activation + claim before
 // the next fetch goes through the SW). That path is exercised by the
@@ -222,6 +226,92 @@ describe("workers_list / worker_message_send / worker_messages_read keystone", (
         workerId: pong!.workerId,
       });
       expect(again.messages.find((m) => m.data === "pong:ping")).toBeUndefined();
+
+      await callJson("close_session", { session });
+    },
+    KEYSTONE_TIMEOUT,
+  );
+
+  it(
+    "workers_list sees a service worker and worker_message_send reaches it",
+    async () => {
+      const session = "ks-workers-sw-send";
+      const opened = await callJson<{ ok: boolean }>("open_session", {
+        session,
+        mode: "incognito",
+      });
+      expect(opened.ok).toBe(true);
+
+      await callJson("navigate", { session, url: `${fixture.url}/sw-page` });
+
+      // The page registers /sw.js, pings it once active, and shows the reply.
+      const state = await pollUntil(
+        () =>
+          callJson<{ ok: boolean; value: string }>("eval_js", {
+            session,
+            expr: "document.getElementById('sw-state').textContent",
+          }),
+        (r) => r.value === "pong:ping",
+        15_000,
+      );
+      expect(state.value).toBe("pong:ping");
+
+      // workers_list names the worker `sw-N` by its script URL.
+      const listed = await pollUntil(
+        () =>
+          callJson<{
+            ok: boolean;
+            workers: Array<{ workerId: string; type: string; url: string; state?: string }>;
+          }>("workers_list", { session, type: "service" }),
+        (r) => r.workers.some((w) => w.url.endsWith("/sw.js")),
+      );
+      expect(listed.ok).toBe(true);
+      const sw = listed.workers.find((w) => w.url.endsWith("/sw.js"));
+      expect(sw).toBeDefined();
+      expect(sw!.type).toBe("service");
+      expect(sw!.workerId).toMatch(/^sw-\d+$/);
+
+      // Clear the "pong:ping" reply so the next read holds only what the send causes.
+      const first = await pollUntil(
+        () =>
+          callJson<{ messages: Array<{ workerId: string; data: string }> }>(
+            "worker_messages_read",
+            { session, workerId: sw!.workerId },
+          ),
+        (r) => r.messages.some((m) => m.data === "pong:ping"),
+      );
+      expect(first.messages.some((m) => m.data === "pong:ping")).toBe(true);
+
+      // The message reaches the worker's `message` listener. The event has no
+      // `source`, so the worker answers its clients, and the page ring records it.
+      const sent = await callJson<{ ok: boolean; workerId: string }>("worker_message_send", {
+        session,
+        workerId: sw!.workerId,
+        message: "from-agent",
+      });
+      expect(sent.ok).toBe(true);
+      expect(sent.workerId).toBe(sw!.workerId);
+
+      const reply = await pollUntil(
+        () =>
+          callJson<{ messages: Array<{ workerId: string; data: string }> }>(
+            "worker_messages_read",
+            { session, workerId: sw!.workerId },
+          ),
+        (r) => r.messages.some((m) => m.data === "pong:from-agent"),
+      );
+      const pong = reply.messages.find((m) => m.data === "pong:from-agent");
+      expect(pong).toBeDefined();
+      expect(pong!.workerId).toBe(sw!.workerId);
+
+      // A worker id nobody holds returns an error.
+      const missing = await callJson<{ ok: boolean; error?: string }>("worker_message_send", {
+        session,
+        workerId: "sw-999",
+        message: "x",
+      });
+      expect(missing.ok).toBe(false);
+      expect(missing.error).toMatch(/no service worker/);
 
       await callJson("close_session", { session });
     },
