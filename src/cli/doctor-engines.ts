@@ -96,7 +96,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in second engine — browserType:"firefox")',
-      fix: `run \`${playwrightInstallCommand("firefox")}\` to enable the firefox engine`,
+      enable: `\`${playwrightInstallCommand("firefox")}\``,
     };
   } catch (e) {
     return {
@@ -104,7 +104,7 @@ export async function firefoxCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: `run \`${playwrightInstallCommand("firefox")}\` to enable the firefox engine`,
+      enable: `\`${playwrightInstallCommand("firefox")}\``,
     };
   }
 }
@@ -126,7 +126,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'not installed (opt-in third engine — browserType:"webkit")',
-      fix: `run \`${playwrightInstallCommand("webkit")}\` to enable the webkit engine`,
+      enable: `\`${playwrightInstallCommand("webkit")}\``,
     };
   } catch (e) {
     return {
@@ -134,7 +134,7 @@ export async function webkitCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: e instanceof Error ? e.message : String(e),
-      fix: `run \`${playwrightInstallCommand("webkit")}\` to enable the webkit engine`,
+      enable: `\`${playwrightInstallCommand("webkit")}\``,
     };
   }
 }
@@ -159,7 +159,7 @@ export async function androidCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `${msg} (opt-in BYOB lane — browserType:"android")`,
-      fix: "connect an Android phone over USB, enable USB debugging, open Chrome",
+      enable: "connect an Android phone over USB, turn on USB debugging, open Chrome",
     };
   }
   // Device ready — try to reach the Chrome socket so the operator knows whether
@@ -184,7 +184,7 @@ export async function androidCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `device ${serial} ready but Chrome socket not reachable: ${msg}`,
-      fix: "open Chrome on the device + enable USB web-debugging (chrome://inspect should list its tabs)",
+      enable: "open Chrome on the device with USB debugging on (chrome://inspect lists its tabs)",
     };
   } finally {
     if (localPort) {
@@ -208,8 +208,8 @@ const ELECTRON_UA = /\bElectron\/([0-9][\w.]*)/;
  *  Electron version from the protocol answers that without driving anything. */
 export async function electronCheck(): Promise<Check> {
   const name = "electron";
-  const fix =
-    "launch the app with a loopback debugging port (e.g. `--remote-debugging-port=9333`), set BROWX_ATTACH_CDP to it, and grant the `byob-attach` capability. Read docs/threat-model.md first: that port is unauthenticated for the app's lifetime and your EDR will flag the launch (MITRE T1539).";
+  const enable =
+    "start the app with `--remote-debugging-port=9333`, set BROWX_ATTACH_CDP to it, add `byob-attach` to BROWX_CAPABILITIES (that port is unauthenticated, read docs/threat-model.md)";
   const endpoint = process.env.BROWX_ATTACH_CDP?.trim();
   if (!endpoint) {
     return {
@@ -217,7 +217,7 @@ export async function electronCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: 'BROWX_ATTACH_CDP not set (opt-in attach-only lane — browserType:"electron")',
-      fix,
+      enable,
     };
   }
   try {
@@ -248,7 +248,7 @@ export async function electronCheck(): Promise<Check> {
       ok: true,
       info: true,
       detail: `BROWX_ATTACH_CDP=${endpoint} not reachable: ${msg}`,
-      fix,
+      enable,
     };
   }
 }

@@ -23,6 +23,9 @@ surface" covers.
   installed package. A bare `npx playwright-core install chromium` fetches the
   newest release, whose Chromium build can differ from the one browxai launches.
   The docs show the current version, 1.64.1.
+- **`browxai doctor` says how to enable an opt-in engine.** A firefox, webkit,
+  android or electron row that is not ready now prints an `enable with:` line
+  under it. Before, only failed rows got a hint.
 - **Running `browxai` in a terminal prints a one-time note on stderr** saying it
   is an MCP server that waits for a client, and pointing at `browxai doctor`.
 - **`browxai --help` lists `chrome status` and the `safari` engine.**
