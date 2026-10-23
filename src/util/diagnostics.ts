@@ -202,27 +202,6 @@ export function sweepRetention(
   return { removed, kept };
 }
 
-/** Remove a single session's diagnostics directory. Used on session close. */
-export function removeSessionDiagnostics(workspaceRoot: string, sessionId: string): boolean {
-  const root = join(workspaceRoot, DIAG_DIR);
-  // Reject escape attempts the same way the write path does.
-  let dir: string;
-  try {
-    dir = resolveWorkspacePath(workspaceRoot, join(DIAG_DIR, sessionId), "diagnostics");
-  } catch {
-    return false;
-  }
-  const diagRoot = root;
-  if (dir !== diagRoot && !dir.startsWith(diagRoot + pathSep)) return false;
-  if (!existsSync(dir)) return false;
-  try {
-    rmSync(dir, { recursive: true, force: true });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * The recorder. One instance per server. The capability gate is captured at
  * construction; `enabled` is the public hot-path flag the dispatch wrapper
