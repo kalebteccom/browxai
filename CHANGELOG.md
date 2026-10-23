@@ -17,6 +17,9 @@ surface" covers.
   installed Google Chrome, and a missing bundled Chromium no longer fails doctor
   while Chrome is installed. It fails when neither is present, and it now checks
   for Node 22 or later and prints the browxai version.
+- **`browxai doctor` warns when `BROWX_ATTACH_CDP` is set without `byob-attach`.**
+  It prints a `⚠` row with the one-line fix instead of leaving the refusal to
+  show up at the first attach. The warning does not change doctor's exit code.
 - **A launch with no Chrome and no bundled Chromium names the fix.** The
   Playwright "Executable doesn't exist" error keeps its text and gains a line
   pointing at Google Chrome or `npx playwright-core install chromium`.

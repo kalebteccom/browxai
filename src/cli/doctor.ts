@@ -2,7 +2,8 @@
 //
 // Prints a ✓/✗ checklist + one-line fix per failing check (− marks purely
 // informational rows, which get an `enable with:` line when their lane is not
-// ready). Exits 0 iff everything passes, 1 otherwise. Writes to
+// ready; ⚠ marks a warning with a fix line, which never fails doctor). Exits 0
+// iff no check fails, 1 otherwise. Writes to
 // stdout (this is a CLI subcommand, not the MCP server — stdout is fine here).
 
 import { existsSync, statSync } from "node:fs";
@@ -21,6 +22,7 @@ import { PACKAGE_VERSION } from "../util/version.js";
 import { ConfigStore } from "../util/config-store.js";
 import { pluginChecks } from "./doctor-plugins.js";
 import { probeCdp } from "./doctor-cdp.js";
+import { attachCapabilityCheck } from "./doctor-attach.js";
 import {
   chromeCheck,
   chromiumCheck,
@@ -46,6 +48,9 @@ export interface Check {
   enable?: string;
   /** Informational row — printed with − instead of ✓/✗; never fails doctor. */
   info?: boolean;
+  /** Warning row: ok, so it never fails doctor, but printed with ⚠ and its
+   *  `fix` line. */
+  warn?: boolean;
 }
 
 export async function runDoctor(): Promise<number> {
@@ -167,6 +172,8 @@ export async function runDoctor(): Promise<number> {
           : "see docs/threat-model.md for the full set; default is " +
             DEFAULT_CAPABILITIES.join(","),
     });
+    const attachWarn = attachCapabilityCheck(cdpEnv, c.enabled);
+    if (attachWarn) checks.push(attachWarn);
   } catch (e) {
     checks.push({
       name: "capabilities",
@@ -316,9 +323,9 @@ export async function runDoctor(): Promise<number> {
   process.stdout.write(`browxai doctor (v${PACKAGE_VERSION}) — environment & connectivity\n\n`);
   for (const c of checks) {
     if (!c.ok) allOk = false;
-    const glyph = c.info ? "−" : c.ok ? "✓" : "✗";
+    const glyph = c.info ? "−" : c.warn ? "⚠" : c.ok ? "✓" : "✗";
     process.stdout.write(`  ${glyph} ${c.name.padEnd(12)} ${c.detail}\n`);
-    if (!c.ok && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
+    if ((!c.ok || c.warn) && c.fix) process.stdout.write(`    fix: ${c.fix}\n`);
     if (c.info && c.enable) process.stdout.write(`    enable with: ${c.enable}\n`);
   }
   process.stdout.write(
