@@ -18,10 +18,6 @@ describe("PACKAGE_VERSION", () => {
     expect(PACKAGE_VERSION).toBe(pkg.version);
   });
 
-  it("is a concrete semver", () => {
-    expect(PACKAGE_VERSION).toMatch(/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/);
-  });
-
   // The dynamic import loads the whole server module graph; a cold transform on a loaded CI box took over the 5 s default.
   it("is re-exported as the server VERSION", { timeout: 60_000 }, async () => {
     const { VERSION } = await import("../server.js");

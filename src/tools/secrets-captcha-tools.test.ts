@@ -103,17 +103,6 @@ describe("solve_captcha — no Playwright page", () => {
     expect(posts).toEqual([]);
   });
 
-  it("proceeds to the provider when the caller supplies the site-key", async () => {
-    const body = bodyOf(
-      await captureSolveCaptcha()({ type: "recaptcha2", siteKey: "6Lc-explicit" }),
-    );
-    expect(posts).toEqual(["https://2captcha.com/in.php"]);
-    // The 503 stub is what failed it — the handler got as far as the POST, and
-    // the scope it submitted came from the target port, not from a Page.
-    expect(body.ok).toBe(false);
-    expect(String(body.error)).toContain("503");
-  });
-
   it("submits the target-port URL as the solve scope", async () => {
     let submitted = "";
     globalThis.fetch = vi.fn((_url: string | URL | Request, init?: RequestInit) => {

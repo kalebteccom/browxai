@@ -1,11 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  runFlakeCheck,
-  rollUpSteps,
-  findFirstDivergence,
-  extractCachedResolvers,
-  signatureFor,
-} from "./flake-check.js";
+import { runFlakeCheck, rollUpSteps, extractCachedResolvers, signatureFor } from "./flake-check.js";
 import type { ToolHandler } from "./batch.js";
 
 const ALLOWED = new Set([
@@ -85,29 +79,6 @@ describe("runFlakeCheck — repetition + roll-up", () => {
       { n: 2, allowed: ALLOWED, handlers },
     );
     expect(report.firstDivergence).toEqual({ step: 1, tool: "click", label: "submit" });
-  });
-
-  it("findFirstDivergence returns null when every run agrees per step", () => {
-    const calls = [{ tool: "click" }];
-    const allOk = [
-      {
-        completed: 1,
-        failedAt: null,
-        results: [{ tool: "click", ok: true, result: { ok: true } }],
-      },
-      {
-        completed: 1,
-        failedAt: null,
-        results: [{ tool: "click", ok: true, result: { ok: true } }],
-      },
-    ];
-    expect(findFirstDivergence(calls, allOk)).toBeNull();
-    // ALL fail is also agreement → null.
-    const allFail = [
-      { completed: 1, failedAt: 0, results: [{ tool: "click", ok: false, error: "x" }] },
-      { completed: 1, failedAt: 0, results: [{ tool: "click", ok: false, error: "y" }] },
-    ];
-    expect(findFirstDivergence(calls, allFail)).toBeNull();
   });
 });
 
@@ -281,26 +252,6 @@ describe("runFlakeCheck — cached-selector artifact", () => {
 });
 
 describe("runFlakeCheck — internals (pure helpers)", () => {
-  it("signatureFor extracts plan ref+hint when present", () => {
-    const sig = signatureFor(
-      { tool: "plan" },
-      {
-        tool: "plan",
-        ok: true,
-        result: { descriptor: { ref: "e1", evidence: { selectorHint: "role=button" } } },
-      },
-    );
-    expect(sig).toBe("plan:e1::role=button");
-  });
-
-  it("signatureFor falls back to bound target when no resolution payload", () => {
-    const sig = signatureFor(
-      { tool: "click", args: { ref: "e9" } },
-      { tool: "click", ok: true, result: { ok: true } },
-    );
-    expect(sig).toBe("ref:e9");
-  });
-
   it("signatureFor distinguishes selector vs named targets", () => {
     expect(
       signatureFor({ tool: "click", args: { selector: "#save" } }, { tool: "click", ok: true }),

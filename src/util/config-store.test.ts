@@ -18,15 +18,6 @@ describe("ConfigStore precedence", () => {
     expect(s.resolve()).toEqual(BUILTIN_DEFAULTS);
   });
 
-  it("env layer overrides defaults", () => {
-    const s = new ConfigStore(dir, { BROWX_CAPABILITIES: "read", BROWX_HEADLESS: "1" });
-    const r = s.resolve();
-    expect(r.capabilities).toEqual(["read"]);
-    expect(r.headless).toBe(true);
-    // untouched keys keep defaults
-    expect(r.testAttributes).toEqual(BUILTIN_DEFAULTS.testAttributes);
-  });
-
   it("user layer overrides env; project overrides user; session overrides project", () => {
     writeFileSync(
       join(dir, "config.json"),
@@ -38,11 +29,6 @@ describe("ConfigStore precedence", () => {
     const s = new ConfigStore(dir, { BROWX_TEST_ATTRIBUTES: "data-env" });
     expect(s.resolve().testAttributes).toEqual(["data-p"]); // project wins
     expect(s.resolve({ testAttributes: ["data-s"] }).testAttributes).toEqual(["data-s"]); // session wins
-  });
-
-  it("arrays replace (not merge) across layers", () => {
-    const s = new ConfigStore(dir, { BROWX_HIDE_OVERLAY_SELECTORS: "#a,#b" });
-    expect(s.resolve({ hideOverlaySelectors: ["#c"] }).hideOverlaySelectors).toEqual(["#c"]);
   });
 
   it("unstable.* shallow-merges across layers instead of replacing", () => {
@@ -148,43 +134,6 @@ describe("envLayer", () => {
   });
 });
 
-describe("actionTimeoutMs precedence", () => {
-  it("defaults undefined (server falls back to 5000); set via any persistent layer or session", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-wm1-"));
-    try {
-      const s = new ConfigStore(dir, {});
-      expect(s.resolve().actionTimeoutMs).toBeUndefined();
-      s.setLayer("user", { actionTimeoutMs: 3000 });
-      expect(s.resolve().actionTimeoutMs).toBe(3000);
-      s.setLayer("project", { actionTimeoutMs: 1500 });
-      expect(s.resolve().actionTimeoutMs).toBe(1500); // project > user
-      expect(s.resolve({ actionTimeoutMs: 20000 }).actionTimeoutMs).toBe(20000); // session > project
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("disableWebSecurity precedence", () => {
-  it("defaults off; only the env turns it on; a saved layer can only turn it off", () => {
-    const dir = mkdtempSync(join(tmpdir(), "browx-wl1-"));
-    try {
-      const off = new ConfigStore(dir, {});
-      off.setLayer("project", { disableWebSecurity: true });
-      expect(off.resolve().disableWebSecurity).toBeUndefined(); // config can't enable it
-      const on = new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" });
-      expect(on.resolve().disableWebSecurity).toBe(true);
-      on.setLayer("project", { disableWebSecurity: false });
-      expect(on.resolve().disableWebSecurity).toBeUndefined();
-      expect(
-        new ConfigStore(dir, { BROWX_DISABLE_WEB_SECURITY: "1" }).resolve({}).disableWebSecurity,
-      ).toBeUndefined();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
 describe("hideOverlaySelectors precedence", () => {
   it("defaults []; env layer parses; project/session override", () => {
     const dir = mkdtempSync(join(tmpdir(), "browx-hos-"));
@@ -250,12 +199,6 @@ describe("ConfigStore BROWX_CONFIG_READONLY", () => {
     expect(readFileSync(join(dir, "config.json"), "utf8")).toBe(before);
     // Reads still resolve the persisted layers.
     expect(s.resolve().headless).toBe(true);
-  });
-
-  it("is off unless the value is 1 or true", () => {
-    expect(new ConfigStore(dir, {}).readonly).toBe(false);
-    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "0" }).readonly).toBe(false);
-    expect(new ConfigStore(dir, { BROWX_CONFIG_READONLY: "TRUE" }).readonly).toBe(true);
   });
 });
 

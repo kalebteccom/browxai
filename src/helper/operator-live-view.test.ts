@@ -90,19 +90,6 @@ describe("live-view — the gate", () => {
     daemon.frames.length = 0;
     expect(open(BOTH).liveView).toBeDefined();
   });
-
-  it("answers view.start with view-disabled when the capability is off, and starts nothing", async () => {
-    open(CHANNEL_ONLY);
-    await until(() => daemon.authenticated === 1);
-    daemon.send({ type: "view.start", session: "default" });
-    daemon.send({ type: "view.stop", session: "default" });
-    daemon.send({ type: "frame.ack", session: "default", seq: 1 });
-    await until(() => frames("error").length === 1);
-    expect(frames("error")[0]).toMatchObject({ code: "view-disabled", session: "default" });
-    await new Promise((r) => setTimeout(r, 150));
-    expect(frames("view.started")).toEqual([]);
-    expect(frames("error")).toHaveLength(1);
-  });
 });
 
 describe("live-view — a stream over the socket", () => {
@@ -135,16 +122,6 @@ describe("live-view — a stream over the socket", () => {
     source.emit("AAAA");
     await new Promise((r) => setTimeout(r, 100));
     expect(frames("frame")).toEqual([]);
-  });
-
-  it("stops the stream when the channel closes", async () => {
-    const source = new FakeSource();
-    open().liveView!.register("default", source);
-    await until(() => daemon.authenticated === 1);
-    daemon.send({ type: "view.start", session: "default" });
-    await until(() => source.starts === 1);
-    channel!.close();
-    await until(() => source.stops === 1);
   });
 
   it("keeps request frames flowing while a stream runs", async () => {

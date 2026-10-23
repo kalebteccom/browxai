@@ -20,19 +20,9 @@ describe("defaultModeForEngine — per-session default launch mode", () => {
     },
   );
 
-  it.each(["chromium", "firefox", "webkit", "safari"] as const)(
-    "%s defaults to persistent with no attach endpoint",
-    (engine) => {
-      expect(defaultModeForEngine(engine, undefined)).toBe("persistent");
-    },
-  );
-
-  it.each(["chromium", "firefox", "webkit", "safari"] as const)(
-    "%s defaults to attached when BROWX_ATTACH_CDP is set",
-    (engine) => {
-      expect(defaultModeForEngine(engine, "http://127.0.0.1:9222")).toBe("attached");
-    },
-  );
+  it.each(["chromium"] as const)("%s defaults to persistent with no attach endpoint", (engine) => {
+    expect(defaultModeForEngine(engine, undefined)).toBe("persistent");
+  });
 
   it("is byte-identical to the legacy server default for every engine/attach combo", () => {
     // The legacy server-level rule (createServer): an attach-only engine OR

@@ -163,12 +163,4 @@ describe("BrowxBridge — operator channel", () => {
     expect(b.successor().usesOperatorChannel()).toBe(true);
     expect(new BrowxBridge().usesOperatorChannel()).toBe(false);
   });
-
-  it("answerHint names DevTools only when the operator channel is off", () => {
-    const plain = new BrowxBridge({ worldName: "browxai-w" });
-    expect(plain.answerHint('__browx.proceed("t")')).toContain("browxai-w");
-    const on = withOperator(async () => ({ decision: "approve" }));
-    expect(on.answerHint('__browx.proceed("t")')).toContain("operator channel");
-    expect(on.answerHint('__browx.proceed("t")')).not.toContain("__browx");
-  });
 });

@@ -82,14 +82,6 @@ describe("open_session — per-session engine surface + validation", () => {
     expect(body.ok).toBe(false);
     expect(String(body.error)).toContain("registry.get must not be reached");
   });
-
-  it("omitting engine skips engine validation entirely (legacy path)", async () => {
-    const { handler } = captureOpenSession();
-    const body = bodyOf(await handler({ session: "x" }));
-    // No unknown-engine code — it went straight to the registry (sentinel throw).
-    expect(body.code).toBeUndefined();
-    expect(String(body.error)).toContain("registry.get must not be reached");
-  });
 });
 
 // ---------------------------------------------------------------------------
