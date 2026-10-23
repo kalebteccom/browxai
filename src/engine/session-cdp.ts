@@ -26,9 +26,9 @@ export interface CdpCapable {
 export function requireCdp(session: CdpCapable): CDPSession {
   if (!session.cdp) {
     throw new Error(
-      `engine "${session.engine}" has no CDP escape hatch — this operation needs raw CDP ` +
-        "(perf / coverage / heap / network tap / a11y substrate) and is only available on " +
-        "chromium today.",
+      `engine "${session.engine}" has no CDP connection. This operation needs one ` +
+        "(perf, coverage, heap, network tap, accessibility tree) and only works on chromium. " +
+        "Open a chromium session.",
     );
   }
   return session.cdp();

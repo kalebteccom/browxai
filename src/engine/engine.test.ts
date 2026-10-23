@@ -78,6 +78,6 @@ describe("engine port — cdp() as a capability via requireCdp", () => {
 
   it("throws a structured, engine-naming error when cdp() is absent", () => {
     const session = { engine: "firefox" as EngineKind };
-    expect(() => requireCdp(session)).toThrowError(/engine "firefox" has no CDP escape hatch/);
+    expect(() => requireCdp(session)).toThrowError(/engine "firefox" has no CDP connection/);
   });
 });

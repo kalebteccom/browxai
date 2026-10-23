@@ -31,7 +31,7 @@ describe("buildSafariSession", () => {
     // names the engine, says the engine declares no `page` sub-interface, and
     // points at the capability substrates. `replay/session.ts` catches it to fall
     // back to an action-only archive, the same as before.
-    expect(() => requirePage(sess)).toThrow(/engine "safari" backs no Playwright Page/);
+    expect(() => requirePage(sess)).toThrow(/engine "safari" has no browser page/);
     expect(() => requirePage(sess)).toThrow(/declares no `page` sub-interface/);
     expect(() => requirePage(sess)).toThrow(/capability substrate/);
   });

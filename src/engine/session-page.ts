@@ -45,9 +45,8 @@ export interface PageCapable {
 export function requirePage(session: PageCapable): Page {
   if (!session.page) {
     throw new Error(
-      `engine "${session.engine}" backs no Playwright Page — this operation needs one, and the ` +
-        "engine declares no `page` sub-interface. Route it through a capability substrate, or " +
-        "use a chromium/firefox/webkit/android session.",
+      `engine "${session.engine}" has no browser page. This operation needs one. ` +
+        "Use a chromium, firefox, webkit or android session.",
     );
   }
   return session.page();

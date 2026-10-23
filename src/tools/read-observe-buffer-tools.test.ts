@@ -86,6 +86,6 @@ describe("point_probe — structured envelope on a gone target", () => {
     const body = bodyOf(await handler({ coords: { x: 1, y: 2 } }));
     expect(body.ok).toBe(false);
     expect(body.url).toBe("https://shop.test/cart");
-    expect(String(body.error)).toContain("backs no Playwright Page");
+    expect(String(body.error)).toContain("has no browser page");
   });
 });
