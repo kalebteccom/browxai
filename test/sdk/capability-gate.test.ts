@@ -49,6 +49,81 @@ describe("SDK capability gate — default posture (no posture-broadening caps)",
     expect(client.exposedTools).toContain("open_session");
     expect(client.exposedTools).toContain("close_session");
   });
+
+  it("does NOT expose eval_js / network_body / upload_file / register_secret by default", () => {
+    const { transport } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set(["read", "navigation", "action", "human"]),
+    });
+    expect(client.exposedTools).not.toContain("eval_js");
+    expect(client.exposedTools).not.toContain("network_body");
+    expect(client.exposedTools).not.toContain("upload_file");
+    expect(client.exposedTools).not.toContain("register_secret");
+  });
+
+  it("REJECTS callTool('eval_js', …) at the SDK gate with a NOT_EXPOSED error — does NOT reach the transport", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set(["read", "navigation", "action", "human"]),
+    });
+    let captured: unknown = null;
+    try {
+      await client.callTool("eval_js", { code: "1+1" });
+    } catch (err) {
+      captured = err;
+    }
+    expect(captured).toBeInstanceOf(Error);
+    expect((captured as Error).message).toContain(NOT_EXPOSED_ERROR);
+    expect((captured as Error).message).toContain("eval_js");
+    expect((captured as Error).message).toContain('"eval"'); // required capability advertised
+    expect(calls.length).toBe(0); // gate fired BEFORE any dispatch
+  });
+
+  it("REJECTS the (client as any).eval_js({...}) escape attempt — typed method is present but gated", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set(["read", "navigation", "action", "human"]),
+    });
+    let captured: unknown = null;
+    try {
+      await (client as any).callTool("eval_js", { code: "1+1" });
+    } catch (err) {
+      captured = err;
+    }
+    expect((captured as Error).message).toContain(NOT_EXPOSED_ERROR);
+    expect(calls.length).toBe(0);
+  });
+});
+
+describe("SDK capability gate — opting in to `eval` exposes eval_js", () => {
+  it("with capabilities: [...defaults, 'eval'], eval_js becomes callable end-to-end", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set(["read", "navigation", "action", "human", "eval"]),
+    });
+    expect(client.exposedTools).toContain("eval_js");
+    const r = await client.callTool("eval_js", { code: "1+1" });
+    expect(r.data).toMatchObject({ ok: true, name: "eval_js" });
+    expect(calls).toEqual([{ name: "eval_js", args: { code: "1+1" } }]);
+  });
+});
+
+describe("SDK capability gate — opting in to `network-body` / `file-io` / `secrets` independently", () => {
+  it("`network-body` alone exposes network_body but NOT upload_file or register_secret", () => {
+    const { transport } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set(["read", "navigation", "action", "human", "network-body"]),
+    });
+    expect(client.exposedTools).toContain("network_body");
+    expect(client.exposedTools).not.toContain("upload_file");
+    expect(client.exposedTools).not.toContain("register_secret");
+    expect(client.exposedTools).not.toContain("eval_js");
+  });
 });
 
 describe("SDK session-default behaviour", () => {
@@ -135,6 +210,17 @@ const DEFAULTS: Capability[] = ["read", "navigation", "action", "human"];
 const OFF_BY_DEFAULT = ALL_CAPABILITIES.filter((c) => !DEFAULTS.includes(c));
 
 describe("SDK callTool — the documented canvas/vision example (docs/tool-reference.md)", () => {
+  it("canvas_capture + gesture_chain dispatch once `canvas` is named", async () => {
+    const { transport, calls } = mockTransport();
+    const client = buildClient({
+      transport,
+      capabilities: new Set([...DEFAULTS, "canvas"]),
+    });
+    await client.callTool("canvas_capture", { format: "png" });
+    await client.callTool("gesture_chain", { steps: [{ kind: "down", x: 1, y: 2 }] });
+    expect(calls.map((c) => c.name)).toEqual(["canvas_capture", "gesture_chain"]);
+  });
+
   it("and both still refuse without it, naming `canvas` as the remedy", async () => {
     const { transport, calls } = mockTransport();
     const client = buildClient({ transport, capabilities: new Set(DEFAULTS) });
@@ -148,9 +234,11 @@ describe("SDK callTool — the documented canvas/vision example (docs/tool-refer
 });
 
 describe("SDK callTool — the always-on capabilities carry no ceiling", () => {
-  // A `read` row and a `human` row, both absent from the curated typed surface.
+  // One per always-on capability, each absent from the curated typed surface.
   it.each([
     ["sample", "read"],
+    ["tab_visibility", "navigation"],
+    ["double_click", "action"],
     ["start_recording", "human"],
   ])("%s (capability %s) dispatches on a default client", async (tool) => {
     const { transport, calls } = mockTransport();
@@ -278,7 +366,11 @@ describe("SDK capability gate — a nested tool name is gated too", () => {
   // `eval_js` head-on and admit the same call wrapped in a `batch`.
   const NESTED: ReadonlyArray<[string, Record<string, unknown>]> = [
     ["batch", { calls: [{ tool: "eval_js", args: { expr: "1" } }] }],
+    ["flake_check", { calls: [{ tool: "network_body", args: {} }], runs: 2 }],
     ["act_and_sample", { action: { tool: "eval_js", args: {} } }],
+    ["act_and_diff", { action: { tool: "upload_file", args: {} } }],
+    ["act_and_wait_for_network", { action: { tool: "network_body", args: {} } }],
+    ["cross_session_sample", { action: { tool: "register_secret", args: {} } }],
     // A batch carrying an act_and_* — the deepest real nesting.
     ["batch", { calls: [{ tool: "act_and_sample", args: { action: { tool: "eval_js" } } }] }],
   ];
