@@ -1043,11 +1043,11 @@ Two completely different transport stories under one façade:
 
 #### `workers_list({ type?, session? })`
 
-Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / `"all"` (default). Returns `[{ workerId, type, url, state? }]`. On an engine that cannot reach service workers (anything but Chromium-based), `type: "service"` returns an error naming the engine, and `"all"` lists the Web Workers only. Capability: `read`.
+Enumerate live workers in this session. `type` filters: `"web"` / `"service"` / `"all"` (default). Returns `[{ workerId, type, url, state? }]`. On an engine that cannot reach service workers (anything but Chromium-based), `type: "service"` returns an error naming the engine, and `"all"` lists the Web Workers only. A Service Worker on an origin `BROWX_BLOCKED_ORIGINS` blocks, or that `BROWX_ALLOWED_ORIGINS` does not list, is left out. Capability: `read`.
 
 #### `worker_message_send({ workerId, message, session? })`
 
-`postMessage` to a worker: `ww-N` for Web Workers, `sw-N` for Service Workers. `message` is a string; structured-clone / `MessagePort` transfer is not in MVP. A Service Worker receives a synthetic `MessageEvent` (no `source`). Sending to an `sw-N` returns `ok: false` with an error naming the engine when the engine cannot reach service workers, and when no live service worker has that id. Capability: `action`.
+`postMessage` to a worker: `ww-N` for Web Workers, `sw-N` for Service Workers. `message` is a string; structured-clone / `MessagePort` transfer is not in MVP. A Service Worker receives a synthetic `MessageEvent` (no `source`). Sending to an `sw-N` returns `ok: false` with an error naming the engine when the engine cannot reach service workers, and when no live service worker has that id. It also returns `ok: false` with an `origin-blocked` error, and sends nothing, when the service worker is on an origin the origin policy does not allow. Capability: `action`.
 
 #### `worker_messages_read({ workerId?, session? })`
 

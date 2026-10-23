@@ -28,6 +28,7 @@
 // so a session that only lists or messages SWs pays zero CDP overhead.
 
 import type { BrowserContext, CDPSession, Worker } from "playwright-core";
+import { isOriginAllowed, type OriginPolicy } from "../policy/origin.js";
 import { invariant } from "../util/invariant.js";
 import { globToRegex } from "./ws-interactive.js";
 import type { SwFetchInterceptSpec, WorkerListing, WorkerMessage } from "./workers-types.js";
@@ -256,11 +257,16 @@ export class WorkersSwChannel {
   /** The live SWs of a context as `{id, url, worker}`, one per `sw-N` id. Two
    *  live workers can share a script URL (two scopes, or a version swap); they
    *  share the id too, and the newest one stands for it. A worker whose URL
-   *  cannot get an id (the index is full) is left out. */
-  private liveWorkers(context: BrowserContext): Array<{ id: string; url: string; worker: Worker }> {
+   *  cannot get an id (the index is full), or whose origin `policy` does not
+   *  allow, is left out. */
+  private liveWorkers(
+    context: BrowserContext,
+    policy?: OriginPolicy,
+  ): Array<{ id: string; url: string; worker: Worker }> {
     const byId = new Map<string, { id: string; url: string; worker: Worker }>();
     for (const worker of context.serviceWorkers()) {
       const url = worker.url();
+      if (policy && !isOriginAllowed(url, policy)) continue;
       const id = this.idForUrl(url);
       if (!id) continue;
       byId.delete(id);
@@ -272,8 +278,8 @@ export class WorkersSwChannel {
   /** Listings for the SWs Playwright currently holds for the context (the
    *  `sw-*` family). Playwright drops a SW when its target goes away, so a
    *  stopped SW is not listed and every listed one is `running`. */
-  list(context: BrowserContext): WorkerListing[] {
-    return this.liveWorkers(context).map(({ id, url }) => ({
+  list(context: BrowserContext, policy?: OriginPolicy): WorkerListing[] {
+    return this.liveWorkers(context, policy).map(({ id, url }) => ({
       workerId: id,
       type: "service",
       url,
@@ -285,6 +291,7 @@ export class WorkersSwChannel {
   async sendMessage(
     context: BrowserContext,
     args: { workerId: string; message: string },
+    policy?: OriginPolicy,
   ): Promise<{ ok: boolean; workerId: string; error?: string }> {
     const hit = this.liveWorkers(context).find((w) => w.id === args.workerId);
     if (!hit)
@@ -292,6 +299,14 @@ export class WorkersSwChannel {
         ok: false,
         workerId: args.workerId,
         error: `no service worker with id ${args.workerId}`,
+      };
+    if (policy && !isOriginAllowed(hit.url, policy))
+      return {
+        ok: false,
+        workerId: args.workerId,
+        error:
+          `origin-blocked: service worker ${args.workerId} (${hit.url}) is on an origin the ` +
+          "origin policy does not allow (BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS), so it is not messaged",
       };
     try {
       await hit.worker.evaluate(dispatchSwMessage, args.message);
