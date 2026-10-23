@@ -15,7 +15,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Check } from "./doctor.js";
-import type { Capability } from "../util/capabilities.js";
+import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import {
   isApiVersionCompatible,
   RUNTIME_API_VERSION,
@@ -228,7 +228,7 @@ export function pluginChecks(opts: PluginChecksOptions): Check[] {
     if (missing.length > 0) {
       note(name, {
         detail: `${name} declares capability(ies) [${missing.join(", ")}] not enabled on this server`,
-        fix: `add ${missing.join(",")} to BROWX_CAPABILITIES (or set_config({capabilities:[...]})) and restart`,
+        fix: `set BROWX_CAPABILITIES=${capabilitiesWith(missing.join(","))} and restart (a saved set_config({capabilities}) list can only narrow)`,
       });
     }
   }

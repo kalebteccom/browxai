@@ -10,7 +10,7 @@ import type {
   PluginToolResponse,
 } from "../plugin/types.js";
 import { RUNTIME_API_VERSION } from "../plugin/manifest.js";
-import type { Capability } from "../util/capabilities.js";
+import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 
@@ -119,8 +119,10 @@ export async function wirePluginRuntime(
               requiredCapability: cap,
               activeCapabilities: [...caps.enabled],
               hint:
-                "Plugin-declared capabilities are gated the same way as core tools — add the capability to BROWX_CAPABILITIES " +
-                "(or set_config({capabilities:[...]})) and RESTART the browxai server.",
+                "Plugin-declared capabilities are gated the same way as core tools. Set " +
+                `BROWX_CAPABILITIES=${capabilitiesWith(cap)} ` +
+                "(that variable replaces the default set, so the defaults stay in the list) and RESTART the browxai server. " +
+                "A saved set_config({capabilities}) list can only narrow the start-time set.",
             },
             null,
             2,

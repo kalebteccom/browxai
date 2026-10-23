@@ -120,6 +120,12 @@ surface" covers.
   Schema object (no `zod` needed) or a zod shape, and the declared parameters show
   up on `tools/list`. The four first-party plugins declare theirs. A tool that
   declares nothing behaves as before.
+- **Plugin capability hints now name `BROWX_CAPABILITIES` with the defaults.**
+  When a plugin's capability is off, `browxai doctor`, `plugins_list` and the
+  refusal on a plugin tool suggested `set_config({capabilities})`, which can only
+  narrow the set. They now say to set `BROWX_CAPABILITIES` (for example
+  `read,navigation,action,human,canvas`, since the variable replaces the default
+  set) and restart.
 
 ## [0.13.0] - 2026-10-22
 

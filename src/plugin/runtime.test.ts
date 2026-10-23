@@ -222,6 +222,9 @@ describe("startPluginRuntime — capability gate", () => {
     });
     expect(r.plugins[0]?.status).toBe("disabled-by-capability-mismatch");
     expect(r.plugins[0]?.statusReason).toMatch(/RESTART/);
+    expect(r.plugins[0]?.statusReason).toContain(
+      "BROWX_CAPABILITIES=read,navigation,action,human,secrets",
+    );
   });
 });
 
