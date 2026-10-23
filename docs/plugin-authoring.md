@@ -6,10 +6,14 @@ looking to extend browxai's core surface (not write a plugin), the
 contribution path is `src/page/` / `src/session/`. Plugins are for
 self-contained surfaces an outside team owns.
 
-The plugin runtime ships as part of browxai's v1.0
-foundations. The contract is **resolved-once-at-server-start**, the
-loading model is **in-process JS modules**, and tool registration is
-**globally namespaced**.
+The plugin contract is version `1.0.0` (`apiVersion`). It is
+**resolved-once-at-server-start**, plugins load as **in-process JS
+modules**, and tool registration is **globally namespaced**.
+
+The fastest start: copy
+[`packages/plugins/example/`](../packages/plugins/example/), follow
+"Worked example" below, install it with a `file:` path, and check it
+with `browxai doctor` and `plugins_list()`.
 
 ## What a plugin is
 
@@ -21,21 +25,21 @@ A plugin is a normal npm package with:
 
 That's the entire contract. There is no decorator, no auto-discovery,
 no class hierarchy. The minimum viable plugin is one file plus a
-five-key `package.json#browxai` field.
+`package.json#browxai` field with three required keys (`apiVersion`,
+`namespace`, `register`).
 
 ## The manifest (`package.json#browxai`)
 
 ```json
 {
-  "name": "@browxai/plugin-example",
+  "name": "browxai-plugin-hello",
   "version": "0.1.0",
   "browxai": {
     "apiVersion": "1.0.0",
-    "browxaiVersion": "^0.7.0",
-    "namespace": "example",
+    "browxaiVersion": ">=0.13.0",
+    "namespace": "hello",
     "register": "dist/index.js",
     "capabilities": [],
-    "trust": "kalebtec",
     "dependsOn": []
   }
 }
@@ -53,7 +57,10 @@ Every field:
   browxai host the plugin was tested against. Surfaced on
   `plugins_list`; never used to reject loading. If the running host's
   version falls outside the range, the runtime logs a warning at load
-  time (untested combination) and loads the plugin anyway.
+  time (untested combination) and loads the plugin anyway. The check
+  understands `^`, `~`, `>=`, an exact version and `*`. In `0.x`, `^0.13.0`
+  matches `0.13.x` only, so every host minor release would log the warning.
+  Use `>=` with the oldest host version you tested.
 - **`namespace`** (required): the tool prefix. Every tool the
   plugin registers MUST be `<namespace>.<tool>`. Namespace must
   match `/^[a-z][a-z0-9_]*$/` (lowercase, alphanumeric + underscore,
@@ -69,21 +76,25 @@ Every field:
   need. Subset of the operator's enabled set at load time. Mismatch
   → plugin disabled (`status: "disabled-by-capability-mismatch"`),
   server still starts.
-- **`trust`** (optional): `kalebtec | community | local`. Set
-  explicitly on Kalebtec-maintained plugins. The CLI overrides on
-  community / local installs based on the install source.
+- **`trust`** (optional): `kalebtec | community | local`. Leave it out
+  unless you publish under `@browxai/*`: a `kalebtec` claim on any other
+  package name is dropped with a warning. The tier comes from the install
+  identity, and the operator can override it per entry in `plugins.json`
+  (see [`docs/plugin-governance.md`](./plugin-governance.md)).
 - **`dependsOn`** (default `[]`): other browxai plugins this one
   calls into. Each entry is `{plugin: <npm-name>, version: <semver-range>}`.
 
 ## The `register(api)` function
 
 ```ts
+import { z } from "zod";
+
 export function register(api) {
   api.log.info("registering tools", { namespace: api.namespace });
 
   api.registerTool(
     `${api.namespace}.echo`,
-    { description: "Round-trip primitive.", inputSchema: {} },
+    { description: "Round-trip primitive.", inputSchema: { msg: z.string() } },
     async (args) => ({
       content: [{ type: "text", text: JSON.stringify({ ok: true, result: args.msg ?? "" }) }],
     }),
@@ -104,7 +115,12 @@ The `api` argument exposes:
     `tools/list`.
   - `def.inputSchema` (optional): a `Record<string, ZodTypeAny>`
     object. Same shape as core browxai tools use. Pass an empty
-    object (or omit) for argless tools.
+    object (or omit) for argless tools. The host validates every call
+    against this schema, and keys the schema does not declare are dropped
+    before your handler runs, so declare every argument the tool reads.
+    If you import `zod`, use `zod@^4` (what the host ships) and list it
+    under `peerDependencies` (`"zod": "^4.0.0"`) so you share the host's
+    copy.
   - `handler(args)` returns the MCP envelope `{content:[...]}`.
     Handlers should produce `{ok:true,...}` or `{ok:false, error,...}`
     JSON in the first text item, which matches the convention every
@@ -126,7 +142,7 @@ would otherwise be unique. This rule:
   The core surface lives in the implicit-root namespace, and a plugin
   trying to register `click` would fail.
 - Makes it obvious from a tool name alone which plugin owns it
-  (`figma.move_node` vs `core_click`).
+  (`figma.move_node` vs the core `click`).
 - Lets the SDK's typed seam expose plugin tools under
   `client.plugins.<namespace>.<tool>` for autocomplete.
 
@@ -204,7 +220,7 @@ declarations may come in a future minor version.
 - `community`: third-party npm packages
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
 - `local`: file-path-installed plugins. Used during plugin
-  development (`browxai plugin install file:./my-plugin/`).
+  development (`browxai plugin install file:/abs/path/to/my-plugin`).
 
 Trust is **advisory**: the runtime gates all three tiers identically
 at capability + call-graph time. Surfaced on `plugins_list` so the
@@ -216,14 +232,27 @@ During development, install your plugin's working directory by file
 path:
 
 ```sh
-$ browxai plugin install file:./my-plugin/
+$ pnpm build                                          # inside my-plugin/
+$ browxai plugin install file:/abs/path/to/my-plugin
+$ browxai plugin list                                 # the key must be the package name
+$ browxai doctor                                      # plugins section: manifest, lock, drift
 ```
 
-This shells out to `pnpm add file:./my-plugin/` in the workspace's
-plugin install dir, writes the entry to `plugins.json`, pins the
+This shells out to `pnpm add file:/abs/path/to/my-plugin` (or `npm
+install`, when pnpm isn't on PATH) in the workspace's plugin install dir
+(`<workspace>/plugins/`), writes the entry to `plugins.json`, pins the
 content hash in `plugins-lock.json`, and tags the plugin's trust
-tier as `local`. **Restart the browxai server** for the change to
-take effect: plugin lifecycle is resolved-once-at-server-start.
+tier as `local`. Use an absolute path: a relative `file:` path resolves
+from the install dir, not from your shell's working directory. The
+entry in `plugins.json` must be the `name` from your `package.json`
+(`my-plugin` or `@me/my-plugin`); if `plugin list` shows anything else,
+fix the key by hand.
+
+**Restart the browxai server** for the change to
+take effect: plugin lifecycle is resolved-once-at-server-start. Then
+call `plugins_list()` and look for `status: "loaded"`. Any other status
+comes with a `statusReason`. `plugins_info({name})` adds the manifest
+and each tool's input fields.
 
 Local mode is the right shape for fast iteration: edit the plugin's
 source, rebuild it (`pnpm build` inside the plugin's own dir),
@@ -247,8 +276,14 @@ For community plugins:
    `@<org>/browxai-plugin-<name>`. Operators install by this name.
 2. Ship a built `dist/` directory and a typed `schema.d.ts`
    describing your tools' arg/result shapes (see "SDK typing" below).
+   Set `"type": "module"`, `"main": "dist/index.js"`,
+   `"files": ["dist", "schema.d.ts", "LICENSE"]` and
+   `"engines": {"node": ">=22"}`, as the example plugin does. Add the
+   `browxai-plugin` keyword so people can find it.
 3. Publish the same way you'd publish any npm package
-   (`npm publish` / `pnpm publish`).
+   (`npm publish` / `pnpm publish`). Drop the example's
+   `publishConfig.provenance` unless you publish from a CI provider npm
+   supports for provenance.
 
 ## Plugin lifecycle (resolved-once-at-server-start)
 
@@ -263,7 +298,8 @@ This means:
 - **No hot reload.** Editing a plugin's source while the server is
   running has zero effect. Restart.
 - **`set_config({plugins})` persists but doesn't apply** until the
-  next restart. The `pluginsPendingRestart` flag on
+  next restart, and a saved list can only name a subset of
+  `BROWX_PLUGINS`. The `pluginsPendingRestart` flag on
   `get_config({scope:"resolved"})` flags the divergence.
 - **Capability gating is server-startup-time, not per-call.** A
   plugin disabled at load time stays disabled until restart.
@@ -296,10 +332,12 @@ export interface ExamplePluginSchema {
 
 ```ts
 // In the consumer's code:
+import { createBrowxai, type BrowxaiClient } from "browxai";
 import type { ExamplePluginSchema } from "@browxai/plugin-example/schema";
-import type { BrowxaiClientWithPlugins } from "browxai";
 
-const client = (await createBrowxai({...})) as BrowxaiClientWithPlugins<ExamplePluginSchema>;
+type Client = Omit<BrowxaiClient, "plugins"> & { readonly plugins: ExamplePluginSchema };
+
+const client = (await createBrowxai({...})) as unknown as Client;
 await client.plugins.example.echo({ msg: "hello" });
 ```
 
@@ -308,24 +346,32 @@ plugin tool, while the runtime still rides the same dispatch path.
 
 ## Worked example
 
-See `packages/plugins/example/` in the browxai repo for the
-canonical reference plugin (`@browxai/plugin-example`). It
-exercises every primitive listed above and is the source the keystone
-test loads end-to-end.
+`packages/plugins/example/` in the browxai repo is the reference plugin
+(`@browxai/plugin-example`). The runtime keystone test loads it end to
+end. It has three tools (`example.echo`, `example.add`, `example.now`),
+an empty `capabilities` array and an empty `dependsOn`.
 
-The example:
+Files to copy, and what to change in each:
 
-- Three tools: `example.echo`, `example.add`, `example.now`.
-- Empty `capabilities` array (no capability-gated work).
-- Empty `dependsOn` (no other plugin called).
-- Trust tier `kalebtec` (the manifest declares it; the CLI tags
-  community/local installs based on source).
-- Vitest unit tests for the plugin handlers in isolation.
-- A `schema.d.ts` for typed SDK access.
+| File                | What it is                                       | Change                                                                                                                                           |
+| ------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `package.json`      | npm metadata plus the `browxai` manifest         | `name`, `version`, `description`, `repository`, `homepage`, `browxai.namespace`, `capabilities`. Delete `trust` unless you publish `@browxai/*`. |
+| `src/index.ts`      | `register(api)` and the handlers                 | Your tools. Keep `handlers` exported so tests can call them without a server.                                                                    |
+| `src/index.test.ts` | Vitest unit tests that call `handlers` directly  | Test your handlers. Run with `pnpm test` inside the plugin dir.                                                                                  |
+| `schema.d.ts`       | Typed SDK overlay (`client.plugins.<ns>.<tool>`) | Rename the interface and list your tools.                                                                                                        |
+| `tsconfig.json`     | Compiles `src/` to `dist/`, tests excluded       | Nothing. The `dist/` it writes is what `browxai.register` points at.                                                                             |
+| `LICENSE`           | MIT                                              | Your license.                                                                                                                                    |
 
-Copy that layout, change `package.json#browxai`, swap in your own
-handlers. The runtime contract is identical regardless of what your
-plugin actually does.
+Build with `pnpm build` (`tsc -p tsconfig.json`), then install it with
+the `file:` flow above. The example's `devDependencies` are `typescript`
+and `vitest`. The comment in `tsconfig.json` about the package-contents
+audit is a check this repo's CI runs, so you can ignore it elsewhere.
+
+The example gives every tool `inputSchema: {}` so the file needs no
+`zod` import. That is fine for `example.now`. For tools that read
+arguments, declare the fields (`{ msg: z.string() }`) as in the
+`register(api)` section above, or the host drops them before your
+handler runs.
 
 ## Real-world plugins
 
