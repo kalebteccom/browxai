@@ -114,6 +114,7 @@ surface" covers.
   directory now adds `logo-1.png` next to the earlier `logo.png`.
   `chrome.pid` joins the workspace files that path-taking tools neither write
   nor read.
+- Clearer error messages for refused and failed tool calls
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
