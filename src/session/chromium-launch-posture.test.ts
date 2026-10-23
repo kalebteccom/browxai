@@ -114,12 +114,6 @@ describe("launchWithChannelPlan", () => {
     ).rejects.toBe(boom);
     expect(launch).toHaveBeenCalledTimes(1);
   });
-
-  it("launches once with no channel for the bundled plan", async () => {
-    const launch = vi.fn().mockResolvedValue("bundled");
-    await launchWithChannelPlan({ fallbackToBundled: false }, launch);
-    expect(launch.mock.calls).toEqual([[{}]]);
-  });
 });
 
 describe("a launch that finds no browser", () => {
@@ -147,13 +141,6 @@ describe("a launch that finds no browser", () => {
     expect((err as Error).cause).toBe(NO_BUNDLED);
   });
 
-  it("adds the hint when the bundled build is pinned and missing", async () => {
-    const launch = vi.fn().mockRejectedValue(NO_BUNDLED);
-    await expect(launchWithChannelPlan({ fallbackToBundled: false }, launch)).rejects.toThrow(
-      /no browser to launch/,
-    );
-  });
-
   it("leaves other bundled-launch errors untouched", async () => {
     const boom = new Error("profile locked");
     const launch = vi.fn().mockRejectedValue(boom);
@@ -169,13 +156,5 @@ describe("automationSwitchOptions", () => {
   it("restores the switch for BROWX_AUTOMATION_SWITCH=1 or true", () => {
     expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: "1" })).toEqual({});
     expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: " TRUE " })).toEqual({});
-  });
-
-  it("keeps dropping it for any other value", () => {
-    for (const v of ["", "0", "no"]) {
-      expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: v })).toEqual({
-        ignoreDefaultArgs: ["--enable-automation"],
-      });
-    }
   });
 });

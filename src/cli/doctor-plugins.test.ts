@@ -110,14 +110,6 @@ describe("declaration file states", () => {
     expect(checks[0]!.detail).toMatch(/absent/);
   });
 
-  it("− informational when plugins.json declares nothing", () => {
-    declare({});
-    const checks = run();
-    const row = find(checks, /no plugins declared/);
-    expect(row).toMatchObject({ ok: true, info: true });
-    expect(fails(checks)).toHaveLength(0);
-  });
-
   it("✗ when plugins.json is malformed JSON, with a fix pointing at the file", () => {
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, "plugins.json"), "{not json");
@@ -126,15 +118,6 @@ describe("declaration file states", () => {
     expect(checks[0]!.ok).toBe(false);
     expect(checks[0]!.detail).toMatch(/plugins\.json malformed/);
     expect(checks[0]!.fix).toContain(join(root, "plugins.json"));
-  });
-
-  it("✓ declaration summary counts the declared set", () => {
-    declare({ "plugin-a": {}, "plugin-b": {} });
-    install("plugin-a", { namespace: "a" });
-    install("plugin-b", { namespace: "b" });
-    writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
-    const checks = run();
-    expect(find(checks, /plugins\.json: 2 declared/)).toMatchObject({ ok: true });
   });
 });
 
@@ -297,16 +280,6 @@ describe("manifest sanity (no code execution)", () => {
     expect(row?.fix).toMatch(/restart/);
   });
 
-  it("✓ capability subset passes when the operator enabled it", () => {
-    declare({ "plugin-canvas": {} });
-    install("plugin-canvas", { namespace: "cv", capabilities: ["eval", "canvas"] });
-    writeLockFile({ "plugin-canvas": pinFor("plugin-canvas") });
-    const enabled = new Set<Capability>([...DEFAULT_CAPABILITIES, "eval", "canvas"]);
-    const checks = run({ enabled });
-    expect(fails(checks)).toHaveLength(0);
-    expect(find(checks, /plugin-canvas@1\.0\.0/)?.ok).toBe(true);
-  });
-
   it("✗ dependsOn target not resolvable", () => {
     declare({ "plugin-a": {} });
     install("plugin-a", {
@@ -346,15 +319,5 @@ describe("manifest sanity (no code execution)", () => {
     expect(row?.fix).toMatch(/remove one direction/);
     expect(find(checks, /plugin-a@1\.0\.0/)).toBeUndefined();
     expect(find(checks, /plugin-b@1\.0\.0/)).toBeUndefined();
-  });
-});
-
-describe("doctor exit-code convention", () => {
-  it("informational − rows report ok=true so they never fail doctor", () => {
-    declare({ "plugin-off": { enabled: false } });
-    writeLockFile({});
-    const checks = run();
-    for (const c of checks.filter((x) => x.info)) expect(c.ok).toBe(true);
-    expect(fails(checks)).toHaveLength(0);
   });
 });

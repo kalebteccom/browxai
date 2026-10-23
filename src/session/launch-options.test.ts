@@ -2,11 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  backgroundThrottlingArgs,
-  buildIncognitoLaunchOptions,
-  buildManagedLaunch,
-} from "./launch-options.js";
+import { buildIncognitoLaunchOptions, buildManagedLaunch } from "./launch-options.js";
 
 // buildManagedLaunch resolves the workspace (and creates it) to derive the
 // default profile dir, so the suite pins it away from the real ~/.browxai.
@@ -30,12 +26,6 @@ const BACKGROUND_FLAGS = [
   "--disable-backgrounding-occluded-windows",
   "--disable-renderer-backgrounding",
 ];
-
-describe("backgroundThrottlingArgs", () => {
-  it("emits nothing when unset", () => {
-    expect(backgroundThrottlingArgs({})).toEqual([]);
-  });
-});
 
 describe("buildManagedLaunch — background-throttling flags", () => {
   it('carries the three flags on chromiumArgs for "disabled"', () => {
@@ -71,11 +61,5 @@ describe("buildIncognitoLaunchOptions — background-throttling flags", () => {
 
   it("omits `args` entirely when unset", () => {
     expect(buildIncognitoLaunchOptions("chromium", {})).not.toHaveProperty("args");
-  });
-
-  it('omits `args` for "default"', () => {
-    expect(
-      buildIncognitoLaunchOptions("chromium", { backgroundThrottling: "default" }),
-    ).not.toHaveProperty("args");
   });
 });

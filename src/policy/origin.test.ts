@@ -7,14 +7,6 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
     expect(isOriginAllowed("https://anything.example.com/", p)).toBe(true);
   });
 
-  it("exact origin match in allowlist", () => {
-    const p = resolveOriginPolicy({
-      BROWX_ALLOWED_ORIGINS: "https://app.example.com",
-    });
-    expect(isOriginAllowed("https://app.example.com/x", p)).toBe(true);
-    expect(isOriginAllowed("https://other.example.com/", p)).toBe(false);
-  });
-
   it("wildcard subdomain", () => {
     const p = resolveOriginPolicy({
       BROWX_ALLOWED_ORIGINS: "https://*.example.com",

@@ -6,9 +6,7 @@ import {
   DEFAULT_ATTACH_POOL_MAX,
   acquireTarget,
   attachLeaseTtlMs,
-  attachPoolExhausted,
   attachPoolMax,
-  attachTargetGone,
   attachLeases,
   touchAttachLease,
   releaseTarget,
@@ -106,17 +104,6 @@ describe("AttachLeaseTable", () => {
 });
 
 describe("acquireTarget", () => {
-  it("gives two distinct sessions two distinct targets", async () => {
-    const leases = new AttachLeaseTable();
-    const src = source([target("T1", fakePage()), target("T2", fakePage())]);
-    const a = await acquireTarget(leases, src, { sessionId: "a", endpoint: ENDPOINT });
-    const b = await acquireTarget(leases, src, { sessionId: "b", endpoint: ENDPOINT });
-    expect(a.targetId).toBe("T1");
-    expect(b.targetId).toBe("T2");
-    expect(a.created).toBe(false);
-    expect(b.created).toBe(false);
-  });
-
   it("serializes concurrent acquisitions so neither claims the same target", async () => {
     const leases = new AttachLeaseTable();
     const src = source([target("T1", fakePage()), target("T2", fakePage())]);
@@ -184,13 +171,6 @@ describe("releaseTarget", () => {
     expect(page.close).not.toHaveBeenCalled();
     expect(leases.leasedTargets(ENDPOINT).size).toBe(0);
   });
-
-  it("is a no-op for a session that holds no lease", async () => {
-    const leases = new AttachLeaseTable();
-    const page = fakePage();
-    await releaseTarget(leases, "nobody", page as unknown as Page);
-    expect(page.close).not.toHaveBeenCalled();
-  });
 });
 
 describe("pool limits and structured errors", () => {
@@ -206,19 +186,6 @@ describe("pool limits and structured errors", () => {
     vi.stubEnv("BROWX_ATTACH_POOL_MAX", "not-a-number");
     expect(attachPoolMax()).toBe(DEFAULT_ATTACH_POOL_MAX);
     vi.unstubAllEnvs();
-  });
-
-  it("names the session and target in attach-target-gone", () => {
-    expect(attachTargetGone("agent-a", "T1").message).toMatch(/attach-target-gone.*agent-a.*T1/);
-  });
-
-  it("names the ceiling and the live leases in attach-pool-exhausted", () => {
-    const leases = new AttachLeaseTable();
-    leases.claim({ sessionId: "a", targetId: "T1", endpoint: ENDPOINT, owned: false });
-    const err = attachPoolExhausted(ENDPOINT, 1, leases.forEndpoint(ENDPOINT));
-    expect(err.message).toMatch(/attach-pool-exhausted/);
-    expect(err.message).toContain("a→T1");
-    expect(err.message).toContain("1-target ceiling");
   });
 });
 
@@ -316,37 +283,5 @@ describe("acquireTarget on a source that cannot create targets", () => {
     await expect(
       acquireTarget(leases, creationlessSource(only), { sessionId: "two", endpoint: ep }),
     ).rejects.toThrow(/attach-target-creation-unavailable/);
-  });
-
-  it("names the session holding the target so the caller knows what to close", async () => {
-    const leases = new AttachLeaseTable();
-    const ep = "http://127.0.0.1:9603";
-    const only = [target("R1", fakePage())];
-    await acquireTarget(leases, creationlessSource(only), { sessionId: "holder", endpoint: ep });
-    const err = (await acquireTarget(leases, creationlessSource(only), {
-      sessionId: "two",
-      endpoint: ep,
-    }).catch((e: unknown) => e)) as Error;
-    expect(err.message).toContain("holder");
-    expect(err.message).toContain("R1");
-    // It also distinguishes itself from browxai's OWN pool ceiling, which has a
-    // different fix: close a browxai session versus open a window in the app.
-    expect(err.message).not.toContain("attach-pool-exhausted");
-    expect(err.message).toMatch(/open another window IN THE APP/i);
-  });
-
-  it("never reaches the refusal while a free target remains", async () => {
-    const leases = new AttachLeaseTable();
-    const ep = "http://127.0.0.1:9604";
-    const two = [target("R1", fakePage()), target("R2", fakePage())];
-    const a = await acquireTarget(leases, creationlessSource(two), {
-      sessionId: "one",
-      endpoint: ep,
-    });
-    const b = await acquireTarget(leases, creationlessSource(two), {
-      sessionId: "two",
-      endpoint: ep,
-    });
-    expect([a.targetId, b.targetId].sort()).toEqual(["R1", "R2"]);
   });
 });

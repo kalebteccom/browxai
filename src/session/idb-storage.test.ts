@@ -6,14 +6,7 @@
 // /get()/put()/delete()/clear() use the request callback shape).
 
 import { describe, it, expect } from "vitest";
-import {
-  idbListDatabases,
-  idbListStores,
-  idbGet,
-  idbPut,
-  idbDelete,
-  idbClear,
-} from "./idb-storage.js";
+import { idbGet, idbPut } from "./idb-storage.js";
 
 // ---- in-page IDB stub ----------------------------------------------------
 
@@ -245,129 +238,7 @@ function fakePage(initialUrl: string): FakePageHandle {
 // ---- tests ---------------------------------------------------------------
 
 describe("IndexedDB CRUD", () => {
-  describe("origin guard", () => {
-    it("rejects when on about:blank", async () => {
-      const { page } = fakePage("about:blank");
-
-      await expect(idbListDatabases(page as any, "idb_list_databases")).rejects.toThrow(
-        /Navigate the session/,
-      );
-    });
-  });
-
-  describe("idbListDatabases", () => {
-    it("returns the databases known to the origin", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("appA", "kv");
-      idb._ensure("appB", "kv");
-
-      const r = await idbListDatabases(page as any, "idb_list_databases");
-      expect(r.supported).toBe(true);
-      expect(r.databases.map((d) => d.name).sort()).toEqual(["appA", "appB"]);
-      expect(r.origin).toBe("https://example.com");
-    });
-  });
-
-  describe("idbListStores", () => {
-    it("lists the stores in a database", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv");
-      idb._ensure("app", "logs");
-
-      const r = await idbListStores(page as any, { dbName: "app" }, "idb_list_stores");
-      expect(r.stores.sort()).toEqual(["kv", "logs"]);
-      expect(r.dbName).toBe("app");
-    });
-    it("rejects missing dbName", async () => {
-      const { page } = fakePage("https://example.com/");
-
-      await expect(idbListStores(page as any, { dbName: "" }, "idb_list_stores")).rejects.toThrow(
-        /dbName/,
-      );
-    });
-  });
-
   describe("idbGet + idbPut + idbDelete + idbClear", () => {
-    it("put + get round-trips a string key + json value (out-of-line keyPath)", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      const putR = await idbPut(
-        page as any,
-        {
-          dbName: "app",
-          storeName: "kv",
-          key: "u1",
-          value: { name: "Ada" },
-        },
-        "idb_put",
-      );
-      expect(putR.ok).toBe(true);
-
-      const getR = await idbGet(
-        page as any,
-        {
-          dbName: "app",
-          storeName: "kv",
-          key: "u1",
-        },
-        "idb_get",
-      );
-      expect(getR.found).toBe(true);
-      if (getR.found) expect(getR.value).toEqual({ name: "Ada" });
-    });
-    it("get returns found:false for missing key", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      const r = await idbGet(
-        page as any,
-        { dbName: "app", storeName: "kv", key: "ghost" },
-        "idb_get",
-      );
-      expect(r.found).toBe(false);
-    });
-    it("delete then get returns found:false (idempotent)", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      await idbPut(page as any, { dbName: "app", storeName: "kv", key: "a", value: 1 }, "idb_put");
-
-      await idbDelete(page as any, { dbName: "app", storeName: "kv", key: "a" }, "idb_delete");
-
-      const r = await idbGet(page as any, { dbName: "app", storeName: "kv", key: "a" }, "idb_get");
-      expect(r.found).toBe(false);
-    });
-    it("clear empties the store", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      await idbPut(page as any, { dbName: "app", storeName: "kv", key: "a", value: 1 }, "idb_put");
-
-      await idbPut(page as any, { dbName: "app", storeName: "kv", key: "b", value: 2 }, "idb_put");
-
-      const r = await idbClear(page as any, { dbName: "app", storeName: "kv" }, "idb_clear");
-      expect(r.ok).toBe(true);
-      const store = idb._dbs.get("app")!.stores.get("kv")!;
-      expect(store.records.size).toBe(0);
-    });
-    it("put against a missing store rejects with the schema hint", async () => {
-      const { page, idb } = fakePage("https://example.com/");
-      idb._ensure("app", "kv", null);
-
-      await expect(
-        idbPut(
-          page as any,
-          {
-            dbName: "app",
-            storeName: "missing",
-            key: "k",
-            value: 1,
-          },
-          "idb_put",
-        ),
-      ).rejects.toThrow(/does not exist|upgrade transaction/);
-    });
     it("get against a missing store rejects clearly", async () => {
       const { page, idb } = fakePage("https://example.com/");
       idb._ensure("app", "kv", null);

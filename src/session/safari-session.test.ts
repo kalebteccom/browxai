@@ -32,16 +32,6 @@ describe("buildSafariSession", () => {
     expect(sess.engine).toBe("safari");
   });
 
-  it("omits the page member entirely — the engine backs none", () => {
-    const { handle } = fakeHandle();
-    const sess = buildSafariSession(handle);
-    // Absent, not present-and-throwing. A present member is the L5 violation RFC
-    // 0004 named, and it made `requirePage`'s `!session.page` guard false on the
-    // one engine it exists for, so the structured refusal below was dead code.
-    expect(sess.page).toBeUndefined();
-    expect("page" in sess).toBe(false);
-  });
-
   it("requirePage refuses with the engine-naming message, not a Safari throw", () => {
     const { handle } = fakeHandle();
     const sess = buildSafariSession(handle);

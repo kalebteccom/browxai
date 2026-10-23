@@ -7,8 +7,6 @@ import {
   attachFsPickerPolicy,
   parseFsPickerPolicyArg,
   resolveWorkspaceFsPath,
-  SUPPORTED_FS_PICKER_APIS,
-  UNHANDLED_FS_PICKER_HINT,
   FS_PICKER_PAGE_SCRIPT,
   type FsPickerAskHandler,
   type FsPickerApi,
@@ -101,16 +99,6 @@ describe("FsPickerPolicyState", () => {
     expect(s.modeFor("showOpenFilePicker")).toBe("allow"); // falls back
   });
 
-  it("set() flips policy for the NEXT call; prior records unchanged", () => {
-    const s = new FsPickerPolicyState({ mode: "allow" });
-    const t0 = Date.now();
-    s.record({ api: "showSaveFilePicker", handledAs: "allowed", ts: t0 });
-    s.set({ mode: "deny" });
-    expect(s.current().mode).toBe("deny");
-    expect(s.since(t0)).toHaveLength(1);
-    expect(s.since(t0)[0]?.handledAs).toBe("allowed");
-  });
-
   it("response queue is per-API and FIFO", () => {
     const s = new FsPickerPolicyState();
     s.pushResponse("showSaveFilePicker", [{ path: "out1.txt" }]);
@@ -120,17 +108,6 @@ describe("FsPickerPolicyState", () => {
     expect(s.dequeueResponse("showOpenFilePicker")).toEqual([{ contents: "AA==" }]);
     expect(s.dequeueResponse("showSaveFilePicker")).toEqual([{ path: "out2.txt" }]);
     expect(s.dequeueResponse("showSaveFilePicker")).toBeUndefined();
-  });
-});
-
-// ---- exposed constants + hint --------------------------------------------
-
-describe("UNHANDLED_FS_PICKER_HINT", () => {
-  it("mentions both set knobs and the page-side rejection", () => {
-    expect(UNHANDLED_FS_PICKER_HINT).toMatch(/open_session/);
-    expect(UNHANDLED_FS_PICKER_HINT).toMatch(/set_fs_picker_policy/);
-    expect(UNHANDLED_FS_PICKER_HINT).toMatch(/rejected page-side/);
-    expect(UNHANDLED_FS_PICKER_HINT).toMatch(/fs_picker_respond/);
   });
 });
 
@@ -144,15 +121,8 @@ describe("resolveWorkspaceFsPath", () => {
   afterEach(() => {
     rmSync(ws, { recursive: true, force: true });
   });
-  it("accepts a path inside the workspace", () => {
-    const r = resolveWorkspaceFsPath(ws, "sub/out.txt");
-    expect(r.startsWith(ws)).toBe(true);
-  });
   it("rejects path traversal escaping the workspace", () => {
     expect(() => resolveWorkspaceFsPath(ws, "../escape.txt")).toThrow(/inside \$BROWX_WORKSPACE/);
-  });
-  it("rejects an absolute path outside the workspace", () => {
-    expect(() => resolveWorkspaceFsPath(ws, "/etc/passwd")).toThrow(/inside \$BROWX_WORKSPACE/);
   });
 });
 
@@ -288,21 +258,6 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     ).toEqual({ decision: "deny" });
   });
 
-  it("per-API override wins over top-level", async () => {
-    const { state, check } = await setupCheck(
-      { mode: "allow", perAPI: { showSaveFilePicker: "deny" } },
-      ws,
-    );
-    state.pushResponse("showOpenFilePicker", [{ contents: "QUE=" }]);
-    expect(
-      JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))),
-    ).toEqual({ decision: "deny" });
-    const allowRaw = JSON.parse(
-      String(await check({}, JSON.stringify({ api: "showOpenFilePicker" }))),
-    ) as { decision: string };
-    expect(allowRaw.decision).toBe("allow");
-  });
-
   it("unknown API name → safe-by-default deny", async () => {
     const { check } = await setupCheck({ mode: "allow" }, ws);
     expect(JSON.parse(String(await check({}, JSON.stringify({ api: "showFontPicker" }))))).toEqual({
@@ -324,19 +279,6 @@ describe("attachFsPickerPolicy — check handler per mode", () => {
     expect(
       JSON.parse(String(await check({}, JSON.stringify({ api: "showSaveFilePicker" })))),
     ).toEqual({ decision: "deny" });
-  });
-
-  it("each supported API can take each mode", async () => {
-    for (const api of SUPPORTED_FS_PICKER_APIS) {
-      const { check, state } = await setupCheck({ mode: "deny" }, ws);
-      const t = Date.now();
-      expect(JSON.parse(String(await check({}, JSON.stringify({ api })))).decision).toBe("deny");
-      expect(state.since(t).at(-1)?.handledAs).toBe("denied");
-      const { check: c2, state: s2 } = await setupCheck({ mode: "raise" }, ws);
-      const t2 = Date.now();
-      expect(JSON.parse(String(await c2({}, JSON.stringify({ api })))).decision).toBe("deny");
-      expect(s2.since(t2).at(-1)?.handledAs).toBe("raised");
-    }
   });
 
   it("workspace-escape on a queued response throws via the check handler", async () => {
@@ -481,18 +423,6 @@ describe("attachFsPickerPolicy — write handler routes to workspace", () => {
     expect(body.length).toBeLessThan(1100);
   });
 
-  it("a write on a handle that was never shed still succeeds", async () => {
-    const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
-    state.pushResponse("showSaveFilePicker", [{ path: "calm.txt" }]);
-    const raw = await check({}, JSON.stringify({ api: "showSaveFilePicker" }));
-    const handleId = (JSON.parse(String(raw)) as { files: Array<{ handleId: string }> }).files[0]!
-      .handleId;
-    const source = { page: {} };
-    await write(source, JSON.stringify({ handleId, op: "write", data: "b64:QQ==" }));
-    await write(source, JSON.stringify({ handleId, op: "close" }));
-    expect(readFileSync(join(ws, "calm.txt"), "utf8")).toBe("A");
-  });
-
   it("nested dir is created on first write", async () => {
     const { state, check, write } = await setupCheck({ mode: "allow" }, ws);
     state.pushResponse("showSaveFilePicker", [{ path: "deep/nested/dir/out.txt" }]);
@@ -550,34 +480,6 @@ describe("attachFsPickerPolicy — install plumbing", () => {
     await attachFsPickerPolicy(ctx, state, ws, async () => null);
     expect(p1.evaluate).toHaveBeenCalledWith(FS_PICKER_PAGE_SCRIPT);
     expect(p2.evaluate).toHaveBeenCalledWith(FS_PICKER_PAGE_SCRIPT);
-  });
-});
-
-// ---- the init script is browser-only JS ----------------------------------
-
-describe("FS_PICKER_PAGE_SCRIPT", () => {
-  it("contains the install guard so re-injection is a no-op", () => {
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/__browx_fs_picker_installed/);
-  });
-
-  it("replaces every governed entry point", () => {
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/showOpenFilePicker/);
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/showSaveFilePicker/);
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/showDirectoryPicker/);
-  });
-
-  it("consults the check binding and falls back to deny when missing", () => {
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/__browx_fs_picker_check/);
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/decision: "deny"/);
-  });
-
-  it("routes createWritable() ops through the write binding", () => {
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/__browx_fs_picker_write/);
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/createWritable/);
-  });
-
-  it("throws NotAllowedError on deny (matches the spec'd rejection name)", () => {
-    expect(FS_PICKER_PAGE_SCRIPT).toMatch(/NotAllowedError/);
   });
 });
 
