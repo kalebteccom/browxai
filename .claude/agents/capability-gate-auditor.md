@@ -16,7 +16,7 @@ Runs on PRs touching `src/util/capabilities.ts` or any new tool with off-by-defa
 3. **Threat-model row.** `docs/threat-model.md` has a row for each new off-by-default capability or capability-gated tool.
 4. **Capability table.** `AGENTS.md` capability table + `docs/ai-context/architecture/capability-posture-map.md` updated.
 5. **Keystone denial test.** Each off-by-default tool has a keystone test asserting structured `capability-denied` envelope when capability unset.
-6. **Multi-capability composition.** Tools requiring multiple capabilities (e.g. `poll_eval`: `eval` + `diagnostics`) have a matrix test covering each missing-capability case.
+6. **Multi-capability composition.** Tools requiring multiple capabilities (any tool registered with more than one capability) have a matrix test covering each missing-capability case.
 7. **No inlined gates.** Handler files do not contain ad-hoc capability checks beyond calling the shared gate from `src/util/capabilities.ts`.
 
 ## Success criteria
