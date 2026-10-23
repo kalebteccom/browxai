@@ -1,7 +1,8 @@
 // `browxai doctor` — the per-engine availability probes.
 //
 // One probe per browser engine doctor reports on: chromium (the managed-mode
-// dependency — a missing binary FAILS doctor) and the four opt-in lanes —
+// dependency — a missing bundled binary FAILS doctor only when no Google Chrome
+// is installed either) and the four opt-in lanes —
 // firefox, webkit, android, electron — whose probes are always INFORMATIONAL (a
 // missing binary / no device / an unset attach endpoint just tells the operator
 // how to enable the engine; it never fails doctor). Each returns a doctor `Check` row; doctor.ts owns the checklist
@@ -14,6 +15,7 @@
 
 import { existsSync } from "node:fs";
 import type { Check } from "./doctor.js";
+import { findInstalledChrome } from "./chrome-launch.js";
 import {
   AndroidCdpAdapter,
   defaultAdbRunner,
@@ -25,28 +27,54 @@ import {
   extractWsUrl,
 } from "../engine/index.js";
 
-// Chromium installed (managed-mode dependency). Lazy import so doctor doesn't pay
-// the playwright-core cost on bare invocation. A missing binary FAILS doctor —
-// chromium is the default engine, not opt-in.
-export async function chromiumCheck(): Promise<Check> {
+// The installed Google Chrome, the browser a chromium session launches by
+// default. Informational: a missing Chrome is only a fault when the bundled
+// Chromium is missing too (see `chromiumCheck`).
+export function chromeCheck(find: () => string | undefined = findInstalledChrome): Check {
+  const path = find();
+  if (path) return { name: "chrome", ok: true, detail: path };
+  return {
+    name: "chrome",
+    ok: true,
+    info: true,
+    detail:
+      "Google Chrome not found. Sessions fall back to the bundled Chromium, and `browxai chrome start` / `chrome login` need Chrome installed",
+  };
+}
+
+// Bundled Chromium (playwright-core's download). The default launch uses the
+// installed Chrome and only falls back to this build, so it is a hard
+// requirement only when `chromeInstalled` is false. Lazy import so doctor
+// doesn't pay the playwright-core cost on bare invocation.
+export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
+  const install = "npx playwright-core install chromium";
   try {
     const { chromium } = await import("playwright-core");
     const path = chromium.executablePath();
     if (path && existsSync(path)) {
       return { name: "chromium", ok: true, detail: `${path}` };
     }
+    if (chromeInstalled) {
+      return {
+        name: "chromium",
+        ok: true,
+        info: true,
+        detail: `bundled build not downloaded. Not needed while Google Chrome is installed; run \`${install}\` to use channel "chromium"`,
+      };
+    }
     return {
       name: "chromium",
       ok: false,
-      detail: "playwright-core has no Chromium binary cached",
-      fix: "run `pnpm install-browser`",
+      detail: "no Google Chrome and no bundled Chromium, so a session has no browser to launch",
+      fix: `install Google Chrome, or run \`${install}\``,
     };
   } catch (e) {
     return {
       name: "chromium",
-      ok: false,
+      ok: chromeInstalled,
+      ...(chromeInstalled ? { info: true } : {}),
       detail: e instanceof Error ? e.message : String(e),
-      fix: "run `pnpm install` and `pnpm install-browser`",
+      fix: `reinstall browxai (playwright-core failed to load), then run \`${install}\``,
     };
   }
 }

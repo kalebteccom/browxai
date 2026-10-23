@@ -92,10 +92,18 @@ export function runInit(args: string[]): Promise<number> {
   process.stdout.write(
     `\n.mcp.json snippet (workspace-scope; pair with \`claude mcp add-json -s user\` for user-scope):\n\n${mcpJsonText}\n\n`,
   );
+  if (/[\\/]_npx[\\/]/.test(distCli)) {
+    process.stdout.write(
+      `⚠  the snippet points at ${distCli}, inside the npx cache, which npm can delete. ` +
+        "Run `npm install -g browxai` and run `browxai init` again so the path stays put.\n\n",
+    );
+  }
   process.stdout.write(
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
-      `  2) (BYOB) \`browxai chrome start\` to launch the attachable Chrome\n` +
-      `  3) use the \`browxai\` MCP server for managed mode, \`browxai-attached\` for BYOB\n`,
+      `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
+      `  3) (BYOB) run \`browxai chrome start\` to launch the attachable Chrome, then use \`browxai-attached\`.\n` +
+      `     Add BROWX_CAPABILITIES=read,navigation,action,human,byob-attach to that entry's env first; without byob-attach the server logs a warning at start.\n` +
+      `  4) run \`browxai doctor\` if a session fails to open\n`,
   );
   return Promise.resolve(0);
 }
