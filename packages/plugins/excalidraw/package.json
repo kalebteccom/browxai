@@ -25,6 +25,16 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./schema.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "schema.d.ts",
