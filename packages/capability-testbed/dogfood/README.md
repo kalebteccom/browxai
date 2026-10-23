@@ -4,7 +4,7 @@ This directory contains the agent-driven dogfood harness for the capability
 testbed. It measures how a real Codex session experiences the browxai MCP tool
 surface while completing fixed goal-based missions.
 
-The deterministic 198-tool harness remains under `src/harness`. Dogfood reuses
+The deterministic 199-tool harness remains under `src/harness`. Dogfood reuses
 that manifest and those exercises, but it does not script tool calls for the
 agent. Codex receives only the app URL, a browxai session id, the mission goal,
 and the final `DOGFOOD_MISSION_DONE` marker requirement.

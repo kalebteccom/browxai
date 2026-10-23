@@ -10,10 +10,16 @@ surface" covers.
 
 ### Changed
 
+- **`solve_captcha` keeps the provider API key out of URLs.** The poll request
+  is now a POST with the key in the form body, as the submit already was. It
+  used to put the key in the query string.
 - **`browxai doctor` checks the browser the default launch uses.** It reports the
   installed Google Chrome, and a missing bundled Chromium no longer fails doctor
   while Chrome is installed. It fails when neither is present, and it now checks
   for Node 22 or later and prints the browxai version.
+- **`browxai doctor` warns when `BROWX_ATTACH_CDP` is set without `byob-attach`.**
+  It prints a `⚠` row with the one-line fix instead of leaving the refusal to
+  show up at the first attach. The warning does not change doctor's exit code.
 - **A launch with no Chrome and no bundled Chromium names the fix.** The
   Playwright "Executable doesn't exist" error keeps its text and gains a line
   pointing at Google Chrome or `npx playwright-core install chromium`.
@@ -46,6 +52,9 @@ surface" covers.
 
 ### Fixed
 
+- **`BROWX_HEADLESS=true` now launches headless from the CLI.** `browxai` and
+  `browxai serve` only honoured `1`, while the config layer accepted `1` and
+  `true`. Both now accept `1` and `true`, in any case.
 - **`browxai chrome start --port abc` is refused.** A port that is not a whole
   number from 1 to 65535 now prints a message and exits with code 2. It used to
   fall back to 9222 without saying so.

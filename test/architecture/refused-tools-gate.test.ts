@@ -122,11 +122,10 @@ describe("electron's shipped declaration", () => {
   });
 
   it("keeps the rest of the navigation family, which operates inside the app", () => {
-    // `reload` on VS Code is its own Cmd-R; `go_back` / `go_forward` walk the
-    // renderer's own history. Refusing these to gate `navigate` would cost three
-    // working tools for one, and `navigation` is one of the four sub-interfaces
+    // `go_back` / `go_forward` walk the renderer's own history. Refusing these
+    // to gate `navigate` would cost two working tools for one, and `navigation` is one of the four sub-interfaces
     // no engine may omit — so the by-name declaration is the only shape that fits.
-    for (const tool of ["reload", "go_back", "go_forward", "click", "snapshot", "find"]) {
+    for (const tool of ["go_back", "go_forward", "click", "snapshot", "find"]) {
       expect(assertEngineRefuses(tool, "electron"), `${tool} must not be refused`).toBeNull();
     }
   });

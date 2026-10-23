@@ -91,25 +91,6 @@ export const WRAPPED_PERMISSIONS: readonly string[] = [
   "clipboard-write",
 ];
 
-/** Subset of names CDP `Browser.setPermission` accepts. Maps our canonical
- *  names to the CDP descriptor names (most are 1:1; midi vs midi-sysex,
- *  notifications vs background-sync etc. all match CDP's permission enum). */
-const CDP_PERMISSION_NAME: Readonly<Record<SupportedPermission, string>> = {
-  camera: "videoCapture",
-  microphone: "audioCapture",
-  geolocation: "geolocation",
-  notifications: "notifications",
-  "clipboard-read": "clipboardReadWrite",
-  "clipboard-write": "clipboardSanitizedWrite",
-  midi: "midi",
-  "midi-sysex": "midiSysex",
-  "payment-handler": "paymentHandler",
-  "background-sync": "backgroundSync",
-  accelerometer: "sensors",
-  gyroscope: "sensors",
-  magnetometer: "sensors",
-};
-
 /** Public, runtime-mutable shape. Top-level `mode` is the default; the
  *  per-permission override map wins when present. */
 export interface PermissionPolicy {
@@ -255,31 +236,6 @@ export function parsePermissionPolicyArg(
   throw new Error(
     `permissionPolicy: invalid value "${v}" — expected "allow" | "deny" | "raise" | "ask-human"`,
   );
-}
-
-/** Map a canonical permission name to the CDP `Browser.setPermission`
- *  descriptor name. */
-export function cdpPermissionName(p: SupportedPermission): string {
-  return CDP_PERMISSION_NAME[p];
-}
-
-/** Compute the CDP setting (granted/denied) for a permission given the active
- *  policy. `raise` / `deny` → "denied"; `allow` → "granted"; `ask-human` →
- *  "prompt" (CDP returns to the page-script wrapper which then asks the human).
- *
- *  Kept as a pure function so registry.test.ts can assert the mapping without
- *  launching Chromium. */
-export function cdpSettingFor(mode: PolicyMode): "granted" | "denied" | "prompt" {
-  switch (mode) {
-    case "allow":
-      return "granted";
-    case "ask-human":
-      return "prompt";
-    case "deny":
-    case "raise":
-    default:
-      return "denied";
-  }
 }
 
 /** Bridge callback type. The server-side binding wires this to await-human

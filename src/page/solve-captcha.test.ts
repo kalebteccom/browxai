@@ -102,10 +102,10 @@ describe("submitToProvider", () => {
   };
 
   it("submits a recaptcha2 challenge with the right form fields", async () => {
-    const calls: Array<{ url: string; body?: string }> = [];
+    const calls: Array<{ url: string; body?: string; method?: string }> = [];
     let pollN = 0;
-    const fakeFetch = vi.fn(async (url: string, init?: { body?: string }) => {
-      calls.push({ url, body: init?.body });
+    const fakeFetch = vi.fn(async (url: string, init?: { body?: string; method?: string }) => {
+      calls.push({ url, body: init?.body, method: init?.method });
       if (url.endsWith("/in.php")) {
         return new Response(JSON.stringify({ status: 1, request: "tid-42" }), { status: 200 });
       }
@@ -135,6 +135,18 @@ describe("submitToProvider", () => {
     expect(submit.body).toMatch(/googlekey=site-abc/);
     expect(submit.body).toContain("pageurl=https%3A%2F%2Fapp.example%2Flogin");
     expect(submit.body).toMatch(/method=userrecaptcha/);
+    // every poll is a POST to /res.php with the key and task id in the form body,
+    // and no request URL carries the key
+    const polls = calls.filter((c) => c.url.endsWith("/res.php"));
+    expect(polls).toHaveLength(2);
+    for (const p of polls) {
+      expect(p.method).toBe("POST");
+      const form = new URLSearchParams(p.body);
+      expect(form.get("key")).toBe("secret-key");
+      expect(form.get("id")).toBe("tid-42");
+      expect(form.get("action")).toBe("get");
+    }
+    for (const c of calls) expect(c.url).not.toContain("secret-key");
   });
 
   it("returns a structured failure when the provider rejects the submission", async () => {

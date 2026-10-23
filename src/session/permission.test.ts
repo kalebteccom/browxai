@@ -4,7 +4,6 @@ import {
   attachPermissionPolicy,
   applyCdpBaseline,
   parsePermissionPolicyArg,
-  cdpSettingFor,
   PERMISSION_PAGE_SCRIPT,
   type PermissionAskHandler,
 } from "./permission.js";
@@ -133,17 +132,6 @@ describe("PermissionPolicyState", () => {
     expect(s.current().mode).toBe("deny");
     expect(s.since(t0)).toHaveLength(1);
     expect(s.since(t0)[0]?.handledAs).toBe("allowed");
-  });
-});
-
-// ---- exposed constants / mapping -----------------------------------------
-
-describe("CDP mapping", () => {
-  it("cdpSettingFor maps each policy mode deterministically", () => {
-    expect(cdpSettingFor("allow")).toBe("granted");
-    expect(cdpSettingFor("deny")).toBe("denied");
-    expect(cdpSettingFor("raise")).toBe("denied");
-    expect(cdpSettingFor("ask-human")).toBe("prompt");
   });
 });
 

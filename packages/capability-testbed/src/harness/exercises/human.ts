@@ -307,6 +307,24 @@ const profile_restore = exercise(async (ctx) => {
   });
 });
 
+const profile_status = exercise(async (ctx) => {
+  const profile = unique("profile-status-profile", ctx);
+  const seedSession = unique("profile-status-seed", ctx);
+  await ctx.client.callTool("close_session", { session: ctx.session });
+  const opened = await openAndClosePersistentProfile(ctx, seedSession, profile);
+  const result = dataRecord(await ctx.client.callTool("profile_status", { profile }));
+  const rows = records(result?.profiles);
+  if (
+    opened?.ok === true &&
+    result?.ok === true &&
+    numberAt(result, "count") === rows.length &&
+    rows.some((row) => stringAt(row, "name") === profile)
+  ) {
+    return pass("profile_status listed the closed persistent profile", { opened, result });
+  }
+  return fail("profile_status did not list the closed persistent profile", { opened, result });
+});
+
 const map: ExerciseMap = {
   await_human,
   end_recording,
@@ -315,6 +333,7 @@ const map: ExerciseMap = {
   name_region,
   profile_restore,
   profile_snapshot,
+  profile_status,
   record_annotate,
   region,
   start_recording,

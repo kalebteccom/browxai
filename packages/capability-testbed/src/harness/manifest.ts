@@ -1,5 +1,5 @@
 // THE authoritative tool -> exercise registry. One row per browxai handler:
-// 188 capability-gated tools + 10 control-plane tools = 198. Generated against
+// 189 capability-gated tools + 10 control-plane tools = 199. Generated against
 // the live registry (toolCapabilityMap() + server handler names) at scaffold
 // time; keep it in sync if the tool surface changes (the run-report driver
 // asserts every manifest tool has an exercise OR is reported `pending`, and
@@ -16,7 +16,7 @@ function rows(
 }
 
 export const MANIFEST: readonly ManifestRow[] = [
-  // ---- read (61) ----
+  // ---- read (62) ----
   ...rows("read", "/core", [
     ["snapshot", "capture an a11y/DOM snapshot of the core page; assert it contains the greeting"],
     ["find", "find the 'Ping' button by description; assert a ref resolves"],
@@ -38,6 +38,7 @@ export const MANIFEST: readonly ManifestRow[] = [
     ["verify_predicate", "verify a server-evaluated predicate over an element"],
     ["watch", "watch the status region for a change after ping"],
     ["sample", "sample the page state; assert a structured observation"],
+    ["profile_status", "after a persistent profile is created and closed, list it by name; assert it appears"],
     ["plan", "plan an NL action ('click ping') to a bound descriptor without dispatch"],
   ]),
   ...rows("read", "/console", [["console_read", "click emit-logs then read console; assert all 5 levels present"]]),
