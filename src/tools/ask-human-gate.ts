@@ -12,7 +12,7 @@ import { SUPPORTED_FS_PICKER_APIS, type FsPickerPolicy } from "../session/fs-pic
 import { capabilityMissing, type Capability, type CapabilityConfig } from "../util/capabilities.js";
 import type { ToolResponse } from "./host.js";
 
-type GateCheck = (
+export type GateCheck = (
   toolName: string,
   extra?: readonly Capability[],
   reason?: string,

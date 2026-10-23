@@ -14,16 +14,10 @@
 import {
   capabilitiesAssignment,
   capabilityMissing,
-  type Capability,
   type CapabilityConfig,
 } from "../util/capabilities.js";
+import type { GateCheck } from "./ask-human-gate.js";
 import type { ToolResponse } from "./host.js";
-
-type GateCheck = (
-  toolName: string,
-  extra?: readonly Capability[],
-  reason?: string,
-) => ToolResponse | null;
 
 /** Thrown at session creation when an `attached` session is asked for without
  *  `byob-attach`. `open_session` turns it into the standard gate refusal; any
