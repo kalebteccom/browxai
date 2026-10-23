@@ -364,8 +364,8 @@ Files to copy, and what to change in each:
 
 Build with `pnpm build` (`tsc -p tsconfig.json`), then install it with
 the `file:` flow above. The example's `devDependencies` are `typescript`
-and `vitest`. The comment in `tsconfig.json` about the package-contents
-audit is a check this repo's CI runs, so you can ignore it elsewhere.
+and `vitest`. The comment in `tsconfig.json` about source maps refers to a package-contents
+check this repo's CI runs, so you can ignore it elsewhere.
 
 The example gives every tool `inputSchema: {}` so the file needs no
 `zod` import. That is fine for `example.now`. For tools that read
