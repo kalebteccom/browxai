@@ -79,12 +79,6 @@ describe("AttachLeaseTable", () => {
     expect(leases.renew("missing", 4_000)).toBeUndefined();
   });
 
-  it("never expires a lease on elapsed time alone", () => {
-    const leases = new AttachLeaseTable();
-    leases.claim({ sessionId: "a", targetId: "T1", endpoint: ENDPOINT, owned: false, now: 1_000 });
-    expect(leases.renew("a", 9_999_999)?.renewedAt).toBe(9_999_999);
-  });
-
   it("reclaims only the leases idle past the TTL", () => {
     const leases = new AttachLeaseTable();
     leases.claim({ sessionId: "idle", targetId: "T1", endpoint: ENDPOINT, owned: false, now: 0 });

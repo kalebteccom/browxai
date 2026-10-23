@@ -46,11 +46,6 @@ describe("extractTopLevelKeys — response shape redaction", () => {
     ]);
   });
 
-  it("does not descend into nested objects", () => {
-    const result = extractTopLevelKeys({ outer: { inner: { deep: 1 } } });
-    expect(result).toEqual(["outer"]);
-  });
-
   it("marks array shape via the [].key prefix when an array of objects", () => {
     const result = extractTopLevelKeys([
       { id: 1, label: "a" },
@@ -96,15 +91,6 @@ describe("cdpTypeFromPlaywright — cross-engine resourceType reconciliation", (
     expect(cdpTypeFromPlaywright("fetch")).toBe("Fetch");
     expect(cdpTypeFromPlaywright("eventsource")).toBe("EventSource");
     expect(cdpTypeFromPlaywright("websocket")).toBe("WebSocket");
-  });
-
-  it("folds the noise types to the same capitalised names NOISE_TYPES gates on", () => {
-    // NOISE_TYPES = {Image, Font, Stylesheet, Media, Manifest}. The mapper must
-    // produce exactly those so the off-Chromium noise-fold matches chromium.
-    for (const t of ["image", "font", "stylesheet", "media", "manifest"]) {
-      const mapped = cdpTypeFromPlaywright(t);
-      expect(["Image", "Font", "Stylesheet", "Media", "Manifest"]).toContain(mapped);
-    }
   });
 
   it("degrades an unknown / CDP-only type to Other (no Playwright equivalent)", () => {

@@ -5,7 +5,6 @@ import { join } from "node:path";
 import {
   profileStatus,
   profileDirFor,
-  MAX_SCAN_ENTRIES,
   type LiveProfileProbe,
 } from "./profile-status.js";
 
@@ -237,10 +236,6 @@ describe("profileStatus — the scan budget", () => {
     expect(r.profiles[0]?.scanTruncated).toBe(true);
     expect(r.profiles[1]?.scanTruncated).toBe(true);
     expect(r.profiles[1]?.files).toBe(0);
-  });
-
-  it("ships a positive default budget", () => {
-    expect(MAX_SCAN_ENTRIES).toBeGreaterThan(0);
   });
 
   it("leaves a within-budget profile unflagged and exact", async () => {

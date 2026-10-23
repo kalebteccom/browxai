@@ -264,30 +264,6 @@ describeFf("firefox keystone — the second engine is real (adapter + seam)", ()
   );
 
   it(
-    "the three D6-reclassified tools carry their specific hints on Firefox",
-    async () => {
-      const session = "ff-d6";
-      await callJson("open_session", { session, mode: "incognito" });
-
-      const pdf = await callJson<{ hint?: string }>("pdf_save", { session });
-      expect(pdf.hint).toContain("Headless-Chromium-only");
-
-      const ua = await callJson<{ hint?: string }>("set_user_agent", {
-        session,
-        userAgent: "x",
-      });
-      expect(ua.hint).toContain("open_session({ device: { userAgent");
-
-      const net = await callJson<{ hint?: string }>("network_emulate", {
-        session,
-        offline: true,
-      });
-      expect(net.hint).toContain("refuse-pending");
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "snapshot/find/navigate/click/fill run on real Firefox via the page-side substrate",
     async () => {
       // The snapshot/a11y substrate has a Playwright

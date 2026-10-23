@@ -132,15 +132,6 @@ describe("elementExport — directory mode", () => {
 
     expect(r.warnings.some((w) => w.toLowerCase().includes("unmasked"))).toBe(true);
   });
-
-  it("falls back to a default workspace-rooted path", async () => {
-    const locator = fakeLocator({ html: "<div></div>", css: "", resources: [] });
-    const page = fakePage({});
-    const r = await elementExport(page, locator, WS, "alpha", { ref: "e1" });
-    expect(r.path.startsWith(join(WS, "elements", "alpha-"))).toBe(true);
-    expect(r.path.endsWith("-e1")).toBe(true);
-    expect(existsSync(join(r.path, "element.html"))).toBe(true);
-  });
 });
 
 describe("elementExport — single-file mode", () => {

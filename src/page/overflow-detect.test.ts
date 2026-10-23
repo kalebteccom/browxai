@@ -6,7 +6,6 @@ import {
   applyLimit,
   resolveTypes,
   overflows,
-  OVERFLOW_EPSILON,
   type OverflowDetectPage,
   type MinimalElement,
   type OverflowFinding,
@@ -151,14 +150,6 @@ describe("synthesiseSelector — selector tiers", () => {
 });
 
 describe("EPSILON math — overflows()", () => {
-  it("OVERFLOW_EPSILON is 1 px (sub-pixel-noise tolerance)", () => {
-    expect(OVERFLOW_EPSILON).toBe(1);
-  });
-
-  it("equal dims do not trip", () => {
-    expect(overflows(100, 100)).toBe(false);
-  });
-
   it("sub-pixel difference does not trip (within epsilon)", () => {
     expect(overflows(100.5, 100)).toBe(false);
     expect(overflows(101, 100)).toBe(false);

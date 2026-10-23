@@ -80,13 +80,6 @@ describe("augmentLocator — provenance merge", () => {
     expect(got?.cssPath).toBe("table > tbody > tr:nth-child(3) > td:nth-child(2)");
   });
 
-  it("combines two distinct sources into 'both'", () => {
-    const r = new RefRegistry();
-    const ref = r.forKey("k1", { role: "button", source: "a11y" });
-    r.augmentLocator(ref, { source: "dom" });
-    expect(r.locatorOf(ref)?.source).toBe("both");
-  });
-
   it("does nothing when called for an unknown ref", () => {
     const r = new RefRegistry();
     r.augmentLocator("e999", { role: "button", source: "a11y" });

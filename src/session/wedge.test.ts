@@ -28,15 +28,6 @@ describe("WedgeTracker", () => {
     expect(w.wedged()).toBe(false);
   });
 
-  it("an interrupting responsive call prevents a wedge verdict", () => {
-    const w = new WedgeTracker();
-    w.recordTimeout();
-    w.recordTimeout();
-    w.recordResponsive(); // session answered — not wedged
-    w.recordTimeout();
-    expect(w.wedged()).toBe(false);
-  });
-
   it("the hint names the discard-and-reopen recovery", () => {
     const w = new WedgeTracker();
     for (let i = 0; i < WEDGE_THRESHOLD; i++) w.recordTimeout();

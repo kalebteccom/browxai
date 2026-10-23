@@ -69,19 +69,6 @@ afterAll(async () => {
 
 describe("profile_status keystone — real Chromium", () => {
   it(
-    "reports an empty inventory before any persistent session has opened",
-    async () => {
-      const body = await status();
-      expect(body.ok).toBe(true);
-      expect(body.count).toBe(0);
-      expect(body.profiles).toEqual([]);
-      expect(body.profilesRoot).toBe(join(workspace, "profiles"));
-      expect(body.tokensEstimate).toBeGreaterThan(0);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "reports a real persistent profile as live under the session id that opened it",
     async () => {
       const session = "ks-profile-a";

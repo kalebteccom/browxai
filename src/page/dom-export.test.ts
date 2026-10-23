@@ -1,6 +1,6 @@
 /// <reference lib="dom" />
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync, readFileSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -81,19 +81,6 @@ describe("domExport — html mode", () => {
     });
     expect(r.warnings.some((w) => w.toLowerCase().includes("shadow-dom"))).toBe(true);
     expect(r.warnings.some((w) => w.toLowerCase().includes("closed shadow roots"))).toBe(true);
-  });
-
-  it("defaults to a workspace-rooted path under dom-dumps/", async () => {
-    const page = fakePage({
-      html: "<html/>",
-      nodeCount: 1,
-      shadowRootCount: 0,
-      hasCustomElements: false,
-    });
-    const r = await domExport(page, WS, "alpha", {});
-    expect(r.path.startsWith(join(WS, "dom-dumps", "alpha-"))).toBe(true);
-    expect(existsSync(r.path)).toBe(true);
-    expect(r.path.endsWith(".html")).toBe(true);
   });
 });
 

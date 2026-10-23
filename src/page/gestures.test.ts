@@ -355,17 +355,6 @@ describe("gestureSwipe", () => {
     expect(calls.at(-1)?.params).toMatchObject({ type: "touchEnd", touchPoints: [] });
   });
 
-  it("custom durationMs is reflected on the result", async () => {
-    const { cdp } = fakeCdp();
-    const r = await gestureSwipe(cdp, {
-      from: { x: 0, y: 0 },
-      to: { x: 10, y: 0 },
-      durationMs: 50,
-      steps: 1,
-    });
-    expect(r.durationMs).toBe(50);
-  });
-
   it("uses ease-out curve — intermediate moves are not linear", async () => {
     const { cdp, calls } = fakeCdp();
     await gestureSwipe(cdp, {

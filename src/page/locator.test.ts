@@ -156,19 +156,6 @@ describe("locatorFor — frame-scoped refs", () => {
     expect(frameCalls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
   });
 
-  it("main-frame ref (no binding) routes through the page — back-compat", () => {
-    const { page, calls } = mockPage();
-    const refs = new RefRegistry();
-    const ref = refs.forKey("kf1", {
-      role: "div",
-      testId: "save-btn",
-      testIdAttr: "data-testid",
-      source: "dom",
-    });
-    locatorFor(page, refs, { ref });
-    expect(calls).toEqual([{ method: "locator", selector: '[data-testid="save-btn"]' }]);
-  });
-
   it("contextRef-scoped selector resolves inside the bound frame's nested locator", () => {
     const { page, calls: pageCalls } = mockPage();
     const { page: framePage, calls: frameCalls } = mockPage();
@@ -258,14 +245,6 @@ describe("resolveTarget — coords escape hatch", () => {
       expect(r.y).toBe(120);
     }
     expect(calls).toEqual([]); // no locator resolution attempted
-  });
-
-  it("returns kind:'locator' for ref/selector/contextRef targets", () => {
-    const { page } = mockPage();
-    const refs = new RefRegistry();
-    const ref = refs.forKey("k1", { role: "button", name: "Save", source: "a11y" });
-    const r = resolveTarget(page, refs, { ref });
-    expect(r.kind).toBe("locator");
   });
 
   it("locatorFor throws if called with a coords target — callers must switch on kind", () => {

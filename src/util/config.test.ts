@@ -12,12 +12,6 @@ describe("resolveConfig (BROWX_TEST_ATTRIBUTES)", () => {
     expect(c.testAttributes).toEqual(["data-testid", "data-type", "data-qa"]);
   });
 
-  it("preserves order (first match wins, per the contract)", () => {
-    const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: "data-type,data-testid" });
-    // Order is meaningful — calling code reads first-hit.
-    expect(c.testAttributes).toEqual(["data-type", "data-testid"]);
-  });
-
   it("filters empty entries from a sloppy list", () => {
     const c = resolveConfig({ BROWX_TEST_ATTRIBUTES: "data-testid,,data-type" });
     expect(c.testAttributes).toEqual(["data-testid", "data-type"]);

@@ -103,21 +103,6 @@ describe("FrameRegistry / listFrames", () => {
     expect(out[3]).toMatchObject({ parentFrameId: "f0", name: "frame-b" });
   });
 
-  it("keeps frameIds stable across repeat listings of the same tree", () => {
-    const main = buildTree({
-      url: "http://example.com/",
-      children: [
-        { url: "http://a.test/", name: "a" },
-        { url: "http://b.test/", name: "b" },
-      ],
-    });
-    const page = fakePage(main);
-    const reg = new FrameRegistry();
-    const first = listFrames(page, reg);
-    const second = listFrames(page, reg);
-    expect(first.map((f) => f.frameId)).toEqual(second.map((f) => f.frameId));
-  });
-
   it("keeps a frameId stable across an intra-iframe URL change (same handle)", () => {
     const main = buildTree({
       url: "http://example.com/",

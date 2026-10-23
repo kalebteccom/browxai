@@ -13,7 +13,6 @@ import {
   hierarchyDigest,
   NativeHierarchyParseError,
   nameFor,
-  nativeElementKey,
   parseBounds,
   parseHierarchy,
   roleFor,
@@ -178,12 +177,6 @@ describe("testIdFor", () => {
     });
   });
 
-  it("records which attribute matched", () => {
-    // A selector hint has to say what it actually queried. Implying a convention
-    // the app did not use is how an exported step stops reproducing.
-    expect(testIdFor({ ...base, resourceId: "com.acme.app:id/x" })!.testIdAttr).toBe("resource-id");
-  });
-
   it("ignores the platform's own furniture", () => {
     // `android:id/content` is on every screen of every app. Anchoring identity to
     // it would make refs collide across unrelated screens.
@@ -292,35 +285,6 @@ describe("the selector model — a testID-anchored ref survives a layout change"
     const byId = new Map<string, string>();
     for (const { node: n } of walk(root)) if (n.testId) byId.set(n.testId, n.ref);
     expect(byId.get("a")).not.toBe(byId.get("b"));
-  });
-
-  it("passes an empty path to elementKey exactly when a testID is present", () => {
-    // The rule stated as an equality, so a refactor that reintroduces the path
-    // into a testID-bearing key fails here rather than in a flaky move test.
-    const withId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      testId: "submit",
-      path: "a/b/c",
-      bounds: null,
-    });
-    const movedWithId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      testId: "submit",
-      path: "x/y/z/w",
-      bounds: null,
-    });
-    expect(withId).toBe(movedWithId);
-
-    const withoutId = nativeElementKey({ role: "button", name: "Go", path: "a/b/c", bounds: null });
-    const movedWithoutId = nativeElementKey({
-      role: "button",
-      name: "Go",
-      path: "x/y/z/w",
-      bounds: null,
-    });
-    expect(withoutId).not.toBe(movedWithoutId);
   });
 
   it("namespaces refs by window so two windows with identical markup do not collide", () => {

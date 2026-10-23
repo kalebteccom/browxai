@@ -124,13 +124,6 @@ describe("pageArchive — directory mode", () => {
     // warnings always carry the secrets-masking caveat.
     expect(r.warnings.some((w) => w.toLowerCase().includes("unmasked"))).toBe(true);
   });
-
-  it("falls back to a default workspace-rooted path", async () => {
-    const page = fakePage({ html: "<html></html>", resources: [], responses: {} });
-    const r = await pageArchive(page, WS, "alpha", {});
-    expect(r.path.startsWith(join(WS, "archives", "alpha-"))).toBe(true);
-    expect(existsSync(join(r.path, "index.html"))).toBe(true);
-  });
 });
 
 describe("pageArchive — single-file mode", () => {

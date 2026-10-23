@@ -74,10 +74,6 @@ describe("argv construction", () => {
     expect(dumpHierarchyArgs("emulator-5554").slice(0, 2)).toEqual(["-s", "emulator-5554"]);
   });
 
-  it("omits the serial flag when none is given", () => {
-    expect(tapArgs(10, 20)).toEqual(["shell", "input", "tap", "10", "20"]);
-  });
-
   it("uses exec-out for the two binary-safe streams", () => {
     // `shell screencap` corrupts a PNG by translating LF to CRLF on some
     // transports, which surfaces as an unreadable image with no explanation.

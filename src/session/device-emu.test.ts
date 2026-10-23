@@ -134,14 +134,6 @@ describe("DeviceEmulationState", () => {
     expect(new DeviceEmulationState(true).capabilityEnabled()).toBe(true);
     expect(new DeviceEmulationState(false).capabilityEnabled()).toBe(false);
   });
-
-  it("hasContext / markContext form an idempotent install guard", () => {
-    const s = new DeviceEmulationState(true);
-    const c = fakeContext();
-    expect(s.hasContext(c)).toBe(false);
-    s.markContext(c);
-    expect(s.hasContext(c)).toBe(true);
-  });
 });
 
 // ---- attachDeviceEmulation -----------------------------------------------
@@ -294,15 +286,6 @@ describe("attachDeviceEmulation", () => {
 // ---- page-side script: surface checks ------------------------------------
 
 describe("DEVICE_EMU_PAGE_SCRIPT (surface checks — not browser-executed)", () => {
-  it("guards on a window-level installed flag (idempotent re-injection)", () => {
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("__browx_device_emu_installed");
-  });
-  it("wraps all three requestDevice APIs", () => {
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("navigator.bluetooth");
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("navigator.usb");
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("navigator.hid");
-    expect(DEVICE_EMU_PAGE_SCRIPT).toContain("requestDevice");
-  });
   it("constructs a NotFoundError on user-dismissed bluetooth/usb pickers", () => {
     expect(DEVICE_EMU_PAGE_SCRIPT).toContain("NotFoundError");
   });

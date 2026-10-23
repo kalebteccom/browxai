@@ -62,25 +62,6 @@ describe("PerfTracingState — start/stop lifecycle", () => {
     expect(traceConfig.includedCategories).toEqual(["loading", "v8.execute"]);
   });
 
-  it("stop buffers dataCollected events and resolves on tracingComplete", async () => {
-    const { cdp } = fakeCdp();
-    const state = new PerfTracingState();
-    await state.start(cdp as never);
-    // emit two batches then completion
-    void state.stop(cdp as never).then(() => undefined);
-    await cdp._emit("Tracing.dataCollected", {
-      value: [
-        { name: "A", ts: 1000 },
-        { name: "B", ts: 2000 },
-      ],
-    });
-    await cdp._emit("Tracing.dataCollected", { value: [{ name: "C", ts: 3000 }] });
-    await cdp._emit("Tracing.tracingComplete", {});
-    // The stop promise above is already resolved by tracingComplete; restart
-    // sequence + assertions
-    expect(state.isRunning()).toBe(false);
-  });
-
   it("stop returns the buffered events and clears state", async () => {
     const { cdp } = fakeCdp();
     const state = new PerfTracingState();

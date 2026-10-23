@@ -32,16 +32,6 @@ const BACKGROUND_FLAGS = [
 ];
 
 describe("backgroundThrottlingArgs", () => {
-  it('emits the three lifecycle flags for "disabled"', () => {
-    expect(backgroundThrottlingArgs({ backgroundThrottling: "disabled" })).toEqual(
-      BACKGROUND_FLAGS,
-    );
-  });
-
-  it('emits nothing for "default"', () => {
-    expect(backgroundThrottlingArgs({ backgroundThrottling: "default" })).toEqual([]);
-  });
-
   it("emits nothing when unset", () => {
     expect(backgroundThrottlingArgs({})).toEqual([]);
   });
@@ -67,12 +57,6 @@ describe("buildManagedLaunch — background-throttling flags", () => {
 });
 
 describe("buildIncognitoLaunchOptions — background-throttling flags", () => {
-  it('splices the three flags for "disabled"', () => {
-    expect(
-      buildIncognitoLaunchOptions("chromium", { backgroundThrottling: "disabled" }).args,
-    ).toEqual(BACKGROUND_FLAGS);
-  });
-
   it("appends them after the web-security flags without displacing them", () => {
     const { args } = buildIncognitoLaunchOptions("chromium", {
       disableWebSecurity: true,

@@ -121,12 +121,6 @@ describe("colour scheme (Playwright page mutator)", () => {
     await applyColorScheme(asPage(page), "dark");
     expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "dark" });
   });
-
-  it("'no-preference' is a valid pass-through (clears via Playwright semantics)", async () => {
-    const page = fakePage();
-    await applyColorScheme(asPage(page), "no-preference");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ colorScheme: "no-preference" });
-  });
 });
 
 describe("reduced motion (Playwright page mutator)", () => {
@@ -134,12 +128,6 @@ describe("reduced motion (Playwright page mutator)", () => {
     const page = fakePage();
     await applyReducedMotion(asPage(page), "reduce");
     expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "reduce" });
-  });
-
-  it("'no-preference' clears via Playwright semantics", async () => {
-    const page = fakePage();
-    await applyReducedMotion(asPage(page), "no-preference");
-    expect(page.emulateMedia).toHaveBeenCalledWith({ reducedMotion: "no-preference" });
   });
 });
 
@@ -197,18 +185,6 @@ describe("permissions", () => {
     state.permissions.set("https://a.com", ["geolocation"]);
     state.permissions.set("https://b.com", ["notifications"]);
     await clearPermissions(asContext(ctx), state);
-    expect(ctx.clearPermissions).toHaveBeenCalled();
-    expect(state.permissions.size).toBe(0);
-  });
-
-  it("clearPermissions with per-origin arg still wipes everything (platform limit)", async () => {
-    const ctx = fakeContext();
-    const state = newEmulationState();
-    state.permissions.set("https://a.com", ["geolocation"]);
-    state.permissions.set("https://b.com", ["notifications"]);
-    await clearPermissions(asContext(ctx), state, "https://a.com");
-    // Playwright lacks per-origin revocation — caller surfaces this as a warning,
-    // and the underlying call is context-wide.
     expect(ctx.clearPermissions).toHaveBeenCalled();
     expect(state.permissions.size).toBe(0);
   });

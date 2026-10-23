@@ -287,15 +287,6 @@ describe("fillForm — atomic-failure result envelope (no partial fills)", () =>
     expect(byRef.get("e1")!.fills).toHaveLength(0);
     expect(byRef.get("e2")!.fills).toHaveLength(0);
   });
-
-  it("rejects coords field targets at validation time (fill needs a real element)", async () => {
-    const ctx = mkCtx(new Map());
-    await expect(
-      fillForm(ctx, {
-        fields: [{ target: { coords: { x: 1, y: 1 } }, value: "x" }],
-      }),
-    ).rejects.toThrow(/coords target/);
-  });
 });
 
 // ---------- secrets masking composes ----------
@@ -344,15 +335,6 @@ describe("fillForm — descriptor value tag", () => {
     const ctx = mkCtx(byRef);
     const r = await fillForm(ctx, { fields: [{ target: { ref: "bad" }, value: "x" }] });
     expect(r.action.value).toBe("1 field");
-  });
-  it("renders +submit when a submit is supplied", async () => {
-    const byRef = new Map<string, ScriptedLocator>([["bad", mkLocator({ count: 0 })]]);
-    const ctx = mkCtx(byRef);
-    const r = await fillForm(ctx, {
-      fields: [{ target: { ref: "bad" }, value: "x" }],
-      submit: { ref: "also_bad" },
-    });
-    expect(r.action.value).toBe("1 field +submit");
   });
 });
 

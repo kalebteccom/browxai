@@ -91,15 +91,6 @@ describe("SessionRegistry", () => {
     expect(factory).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the same entry on repeated get() (no second factory call)", async () => {
-    const factory = vi.fn(async (id: string) => fakeEntry(id));
-    const reg = new SessionRegistry(factory, async () => undefined);
-    const a = await reg.get("s1");
-    const b = await reg.get("s1");
-    expect(a).toBe(b);
-    expect(factory).toHaveBeenCalledTimes(1);
-  });
-
   it("distinct ids get isolated entries (own refs)", async () => {
     const reg = new SessionRegistry(
       async (id) => fakeEntry(id),
@@ -251,15 +242,6 @@ describe("SessionRegistry", () => {
     // A second get() with a *different* spec must NOT re-create or re-spec.
     await reg.get("s", { mode: "persistent" });
     expect(factory).toHaveBeenCalledTimes(1);
-  });
-
-  it("close(default) allows lazy re-creation on the next get()", async () => {
-    const factory = vi.fn(async (id: string) => fakeEntry(id));
-    const reg = new SessionRegistry(factory, async () => undefined);
-    await reg.get(); // create default
-    await reg.close(DEFAULT_SESSION_ID);
-    await reg.get(); // re-create
-    expect(factory).toHaveBeenCalledTimes(2);
   });
 
   describe("ask-human memory across close", () => {

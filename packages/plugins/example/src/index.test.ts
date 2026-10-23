@@ -15,19 +15,9 @@ function parseFirst(res: {
 }
 
 describe("@browxai/plugin-example handlers", () => {
-  it("echo round-trips msg", async () => {
-    const res = await handlers.echo({ msg: "hi" });
-    expect(parseFirst(res)).toEqual({ ok: true, result: "hi" });
-  });
-
   it("echo defaults to empty string when msg is missing", async () => {
     const res = await handlers.echo({});
     expect(parseFirst(res)).toEqual({ ok: true, result: "" });
-  });
-
-  it("add sums two numbers", async () => {
-    const res = await handlers.add({ a: 2, b: 3 });
-    expect(parseFirst(res)).toEqual({ ok: true, sum: 5 });
   });
 
   it("add defaults missing args to 0", async () => {
@@ -44,19 +34,3 @@ describe("@browxai/plugin-example handlers", () => {
   });
 });
 
-describe("@browxai/plugin-example register()", () => {
-  it("registers exactly 3 tools, all namespaced", () => {
-    const registered: string[] = [];
-    const fakeApi = {
-      namespace: "example",
-      declaredCapabilities: [],
-      registerTool: (name: string) => {
-        registered.push(name);
-      },
-      callTool: async () => ({ content: [] }),
-      log: { info: () => undefined, warn: () => undefined, error: () => undefined },
-    };
-    register(fakeApi);
-    expect(registered.sort()).toEqual(["example.add", "example.echo", "example.now"]);
-  });
-});

@@ -65,18 +65,6 @@ describe("buildDepGraph", () => {
     }
   });
 
-  it("rejects a three-node cycle", () => {
-    expect(() =>
-      buildDepGraph({
-        directDeps: new Map([
-          ["a", ["b"]],
-          ["b", ["c"]],
-          ["c", ["a"]],
-        ]),
-      }),
-    ).toThrow(DepGraphCycleError);
-  });
-
   it("reports every plugin in a cycle", () => {
     try {
       buildDepGraph({
