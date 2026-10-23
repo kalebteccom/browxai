@@ -25,6 +25,9 @@ surface" covers.
   cache.
 - **The disabled-tool hint says `BROWX_CAPABILITIES` replaces the default set**,
   so a newcomer who sets it to one capability keeps `read,navigation,action,human`.
+- **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
+  values are zod 4 schemas. `idb_put` now lists `value` as required in its
+  advertised input schema.
 
 ### Fixed
 

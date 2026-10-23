@@ -153,7 +153,7 @@ export function registerStorageCachesTools(
         response: z
           .object({
             status: z.number().optional().describe("HTTP status (default 200)."),
-            headers: z.record(z.string()).optional().describe("Response headers."),
+            headers: z.record(z.string(), z.string()).optional().describe("Response headers."),
             body: z
               .string()
               .optional()
