@@ -1,0 +1,67 @@
+---
+// A shell command with a copy button. Three labels share one fixed-width slot,
+// so the state changes without moving anything: idle, copied, and failed. A
+// failed copy selects the command so it can be copied by hand.
+interface Props {
+  command: string;
+}
+const { command } = Astro.props;
+---
+
+<div class="browx-install">
+  <span class="pfx" aria-hidden="true">$</span>
+  <code>{command}</code>
+  <button
+    type="button"
+    class="browx-copy"
+    data-copy={command}
+    data-state="idle"
+    aria-label={`Copy command: ${command}`}
+  >
+    <span class="lbl lbl-idle" aria-hidden="true">Copy</span>
+    <span class="lbl lbl-copied" aria-hidden="true">Copied</span>
+    <span class="lbl lbl-failed" aria-hidden="true">Copy failed</span>
+  </button>
+  <span class="browx-sr-only" role="status" aria-live="polite"></span>
+</div>
+
+<script>
+  const RESET_MS = { copied: 1800, failed: 4000 } as const;
+
+  document.querySelectorAll<HTMLButtonElement>("button[data-copy]").forEach((btn) => {
+    const root = btn.closest(".browx-install");
+    const status = root?.querySelector<HTMLElement>("[role='status']");
+    const code = root?.querySelector("code");
+    let timer: number | undefined;
+
+    const show = (state: "idle" | "copied" | "failed") => {
+      btn.dataset.state = state;
+      if (status) {
+        status.textContent =
+          state === "copied"
+            ? "Command copied to the clipboard."
+            : state === "failed"
+              ? "Copy failed. The command is selected, press Ctrl+C or Cmd+C to copy it."
+              : "";
+      }
+      window.clearTimeout(timer);
+      if (state !== "idle") timer = window.setTimeout(() => show("idle"), RESET_MS[state]);
+    };
+
+    btn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copy ?? "");
+        show("copied");
+      } catch {
+        if (code) {
+          const range = document.createRange();
+          range.selectNodeContents(code);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+        show("failed");
+      }
+    });
+  });
+</script>
