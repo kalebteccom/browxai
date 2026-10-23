@@ -295,6 +295,11 @@ export const CAPABILITY_WARNINGS: readonly CapabilityWarning[] = [
       "eval capability is ENABLED — `eval_js` will execute page-side JS. Return values are page-controlled.",
   },
   {
+    capability: "byob-attach",
+    message:
+      'byob-attach capability is ENABLED — `open_session({mode:"attached"})`, a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines can now connect to a browser or app you already run. That browser is NOT-OWNED and holds your real profile: every cookie, password and authed tab is in scope of any page the agent visits, and managed-profile isolation does not apply. browxai detaches on shutdown and never closes the browser or resets its storage. Each attach also logs its own warning naming the target. Same posture class as `eval` / `network-body` / `secrets` — see docs/threat-model.md.',
+  },
+  {
     capability: "network-body",
     message:
       "network-body capability is ENABLED — `network_body` returns full response bodies, which can carry PII / auth tokens. Off by default for a reason.",
