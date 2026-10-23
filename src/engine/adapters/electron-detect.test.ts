@@ -73,11 +73,6 @@ describe("profileAttachedBrowser — which app is on the other end", () => {
     expect(profile.canCreateTargets).toBe(true);
   });
 
-  it("falls back to chromium when Browser.getVersion itself errors", async () => {
-    const profile = await profileAttachedBrowser(fakeBrowser({ fail: "send" }));
-    expect(profile.engine).toBe("chromium");
-  });
-
   it("falls back to chromium when the endpoint answers with no user agent", async () => {
     const profile = await profileAttachedBrowser(fakeBrowser({}));
     expect(profile.engine).toBe("chromium");

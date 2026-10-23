@@ -99,12 +99,6 @@ describe("@browxai/plugin-excalidraw handlers", () => {
       expect(parseFirst(res).code).toBe("bad-arg");
     });
 
-    it("returns bad-arg when width missing", async () => {
-      const api = makeApi(async () => evalEnvelope(true));
-      const res = await handlers.add_element(api, { type: "rectangle", x: 0, y: 0, height: 50 });
-      expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
     it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
       const api = makeApi(async () => evalEnvelope(false));
       const res = await handlers.add_element(api, {

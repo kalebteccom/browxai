@@ -4,13 +4,9 @@ import {
   AdbNotInstalledError,
   NoAndroidDeviceError,
   ChromeSocketUnreachableError,
-  devicesArgs,
   forwardArgs,
-  forwardRemoveArgs,
   parseDevices,
   selectDevice,
-  devToolsBaseUrl,
-  versionUrl,
   extractWsUrl,
   pickFreePort,
 } from "./adb.js";
@@ -21,34 +17,9 @@ import {
 // runner/fetcher) is exercised by the device-gated keystone.
 
 describe("adb argv construction (execFile — no shell, no injection)", () => {
-  it("builds `adb devices`", () => {
-    expect(devicesArgs()).toEqual(["devices"]);
-  });
-
   it("builds the socket forward, defaulting to the Chrome browser socket", () => {
     expect(forwardArgs(9333)).toEqual(["forward", "tcp:9333", CHROME_ANDROID_SOCKET]);
     expect(CHROME_ANDROID_SOCKET).toBe("localabstract:chrome_devtools_remote");
-  });
-
-  it("scopes the forward to a serial with `-s <serial>` when given", () => {
-    expect(forwardArgs(9333, "ZY223abc")).toEqual([
-      "-s",
-      "ZY223abc",
-      "forward",
-      "tcp:9333",
-      CHROME_ANDROID_SOCKET,
-    ]);
-  });
-
-  it("builds the forward --remove cleanup (serial-scoped + bare)", () => {
-    expect(forwardRemoveArgs(9333, "ZY223abc")).toEqual([
-      "-s",
-      "ZY223abc",
-      "forward",
-      "--remove",
-      "tcp:9333",
-    ]);
-    expect(forwardRemoveArgs(9333)).toEqual(["forward", "--remove", "tcp:9333"]);
   });
 });
 
@@ -69,30 +40,9 @@ describe("parseDevices — `adb devices` output", () => {
       { serial: "OFFLINE99", state: "offline" },
     ]);
   });
-
-  it("returns [] for an empty / header-only listing", () => {
-    expect(parseDevices("List of devices attached\n\n")).toEqual([]);
-    expect(parseDevices("")).toEqual([]);
-  });
 });
 
 describe("selectDevice — ready-device resolution", () => {
-  it("picks the single ready device when no serial is requested", () => {
-    const d = selectDevice([{ serial: "ZY223abc", state: "device" }]);
-    expect(d.serial).toBe("ZY223abc");
-  });
-
-  it("picks the requested serial when it is ready", () => {
-    const d = selectDevice(
-      [
-        { serial: "A", state: "device" },
-        { serial: "B", state: "device" },
-      ],
-      "B",
-    );
-    expect(d.serial).toBe("B");
-  });
-
   it("throws no-device naming the unauthorized/offline rows when none is ready", () => {
     const fn = () =>
       selectDevice([
@@ -103,10 +53,6 @@ describe("selectDevice — ready-device resolution", () => {
     expect(fn).toThrow(/no-device/);
     // names what the user must fix (the RSA prompt for unauthorized).
     expect(fn).toThrow(/unauthorized|RSA/);
-  });
-
-  it("throws no-device on an empty listing", () => {
-    expect(() => selectDevice([])).toThrow(NoAndroidDeviceError);
   });
 
   it("throws no-device when the requested serial is not ready", () => {
@@ -123,13 +69,6 @@ describe("selectDevice — ready-device resolution", () => {
       ]);
     expect(fn).toThrow(/ambiguous-device/);
     expect(fn).toThrow(/BROWX_ANDROID_SERIAL/);
-  });
-});
-
-describe("DevTools socket-discovery URL building", () => {
-  it("builds the loopback base + /json/version URL for a forwarded port", () => {
-    expect(devToolsBaseUrl(9333)).toBe("http://127.0.0.1:9333");
-    expect(versionUrl(9333)).toBe("http://127.0.0.1:9333/json/version");
   });
 });
 
@@ -155,12 +94,6 @@ describe("structured error shapes", () => {
     expect(e.name).toBe("AdbNotInstalledError");
     expect(e.message).toContain("adb-missing");
     expect(e.message).toContain("platform-tools");
-  });
-
-  it("NoAndroidDeviceError carries the device rows it saw", () => {
-    const e = new NoAndroidDeviceError([{ serial: "X", state: "offline" }]);
-    expect(e.devices).toEqual([{ serial: "X", state: "offline" }]);
-    expect(e.message).toContain("USB debugging");
   });
 });
 

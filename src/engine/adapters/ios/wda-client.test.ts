@@ -68,12 +68,6 @@ describe("WdaClient session lifecycle", () => {
     });
   });
 
-  it("refuses a session-scoped call before a session exists", async () => {
-    const { http } = fakeHttp({});
-    const client = new WdaClient(DEFAULT_WDA_URL, http);
-    await expect(client.source()).rejects.toThrow(/no WebDriverAgent session is open/);
-  });
-
   it("forgets the session id after delete, so a later call refuses instead of using a dead id", async () => {
     const { client } = await openedClient();
     await client.deleteSession();

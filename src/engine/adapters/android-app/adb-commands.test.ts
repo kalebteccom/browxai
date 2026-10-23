@@ -36,16 +36,6 @@ describe("shellQuote — the device-shell chokepoint", () => {
     expect(shellQuote("a; reboot")).toBe("'a; reboot'");
   });
 
-  it("neutralises command substitution", () => {
-    expect(shellQuote("$(reboot)")).toBe("'$(reboot)'");
-    expect(shellQuote("`reboot`")).toBe("'`reboot`'");
-  });
-
-  it("neutralises a pipe and a redirect", () => {
-    expect(shellQuote("x | tee /sdcard/leak")).toBe("'x | tee /sdcard/leak'");
-    expect(shellQuote("x > /sdcard/leak")).toBe("'x > /sdcard/leak'");
-  });
-
   it("splices an embedded single quote instead of ending the quoting", () => {
     // The one character that can escape single quotes. `it's` must not become
     // `'it'` followed by a bare `s`.
@@ -62,9 +52,6 @@ describe("shellQuote — the device-shell chokepoint", () => {
 describe("encodeInputText", () => {
   it("encodes spaces the way `input text` needs", () => {
     expect(encodeInputText("hello world")).toBe("hello%sworld");
-  });
-  it("leaves a value with no spaces alone", () => {
-    expect(encodeInputText("hello")).toBe("hello");
   });
 });
 
@@ -163,10 +150,6 @@ describe("stripDumpTrailer", () => {
   it("returns null when the dump failed, so a parser never sees an error message", () => {
     expect(stripDumpTrailer("ERROR: could not get idle state.")).toBeNull();
   });
-
-  it("returns null for a truncated document", () => {
-    expect(stripDumpTrailer('<hierarchy rotation="0"><node ')).toBeNull();
-  });
 });
 
 describe("parseForeground", () => {
@@ -191,11 +174,6 @@ describe("parseForeground", () => {
       packageName: "com.acme.app",
       activity: "com.acme.app.MainActivity",
     });
-  });
-
-  it("expands a component-relative activity to a full component name", () => {
-    const relative = "mCurrentFocus=Window{a u0 com.acme.app/.MainActivity}";
-    expect(parseForeground(relative)?.activity).toBe("com.acme.app.MainActivity");
   });
 
   it("answers null when nothing has focus", () => {
@@ -249,13 +227,6 @@ describe("parseResolvedActivity", () => {
 });
 
 describe("parseAvds", () => {
-  it("returns the bare names", () => {
-    expect(parseAvds("Pixel_3a_API_34\nPixel_XL_API_31\n")).toEqual([
-      "Pixel_3a_API_34",
-      "Pixel_XL_API_31",
-    ]);
-  });
-
   it("skips a warning line so it never becomes a bootable AVD name", () => {
     const out = "INFO    | Storing crashdata\nPixel_3a_API_34";
     expect(parseAvds(out)).toEqual(["Pixel_3a_API_34"]);

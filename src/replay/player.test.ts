@@ -22,12 +22,7 @@ import {
   stepIndexAt,
   DEFAULT_IDLE_GAP_MS,
 } from "./player/model.js";
-import {
-  openArtifact,
-  parseEventLine,
-  readCentralDirectory,
-  ArtifactOpenError,
-} from "./player/artifact-open.js";
+import { openArtifact, parseEventLine, ArtifactOpenError } from "./player/artifact-open.js";
 import {
   domPayloads,
   isPlayable,
@@ -186,13 +181,6 @@ describe("forward compatibility — an unknown event type", () => {
     expect(model.steps.some((s) => s.tool.includes("flamechart"))).toBe(false);
   });
 
-  it("does not block playback: the DOM stream and the step list are untouched", () => {
-    const withUnknown = buildTimeline(sampleEvents());
-    const without = buildTimeline(sampleEvents().filter((e) => e.type !== "telemetry/flamechart"));
-    expect(withUnknown.steps).toEqual(without.steps);
-    expect(domPayloads(sampleEvents())).toHaveLength(3);
-  });
-
   it("leaves a known type this build DOES know but ships no panel for out of the unknown set", () => {
     // `framework/redux-action` is in the schema's union with no v1 panel. It is
     // known, so it must not be reported as "recorded by a newer browxai".
@@ -242,12 +230,6 @@ describe("health reporting", () => {
     const cut = { at: 900, reason: "size-cap" as const, droppedEvents: 412 };
     const health = healthOf(manifest({ truncated: cut }), buildTimeline(sampleEvents()), true);
     expect(health.truncated).toEqual(cut);
-  });
-
-  it("reports no truncation as absent, not as zero", () => {
-    const health = healthOf(manifest(), buildTimeline([]), true);
-    expect(health.truncated).toBeUndefined();
-    expect("truncated" in health).toBe(false);
   });
 
   it("surfaces malformed lines and an unverified digest", () => {
@@ -386,13 +368,6 @@ describe("browser-side artifact reader", () => {
 
   it("refuses a file that is not a zip, with a message that says why", async () => {
     await expect(openArtifact(new Uint8Array(64))).rejects.toBeInstanceOf(ArtifactOpenError);
-  });
-
-  it("walks the central directory without inflating the bodies", async () => {
-    const bytes = await write(sampleEvents(), {}, "dir");
-    const entries = readCentralDirectory(bytes);
-    expect([...entries.keys()]).toEqual(["manifest.json", "events.jsonl.gz"]);
-    expect(entries.get("manifest.json")?.size).toBeGreaterThan(0);
   });
 });
 

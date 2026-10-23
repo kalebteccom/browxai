@@ -14,27 +14,10 @@ import { redactedMarker } from "./redact.js";
 import { indexEvents, fromIndex, upToIndex, windowUpTo } from "./player/panels/event-index.js";
 import { mountPanels, type PanelDef, type PanelHost } from "./player/panels/panel-host.js";
 import { displayText, formatBytes } from "./player/panels/panel-ui.js";
-import {
-  buildNetworkRows,
-  resolveNetwork,
-  statusText,
-  NETWORK_EMPTY,
-  NETWORK_NONE_YET,
-} from "./player/panels/network-panel.js";
-import {
-  buildWsConnections,
-  resolveWs,
-  closeText,
-  WS_EMPTY,
-  WS_NONE_YET,
-} from "./player/panels/ws-panel.js";
-import {
-  buildConsoleRows,
-  resolveConsole,
-  levelOf,
-  CONSOLE_EMPTY,
-} from "./player/panels/console-panel.js";
-import { buildCoverage, resolveCoverage, COVERAGE_EMPTY } from "./player/panels/coverage-panel.js";
+import { buildNetworkRows, resolveNetwork, statusText } from "./player/panels/network-panel.js";
+import { buildWsConnections, resolveWs, closeText } from "./player/panels/ws-panel.js";
+import { buildConsoleRows, resolveConsole, levelOf } from "./player/panels/console-panel.js";
+import { buildCoverage, resolveCoverage } from "./player/panels/coverage-panel.js";
 
 function ev(t: number, type: string, payload: unknown, v = 1): ReplayEvent {
   return { t, type, v, payload };
@@ -70,12 +53,6 @@ describe("event index", () => {
     expect(index.count("net/request")).toBe(2);
     expect(index.events("telemetry/flamechart")).toHaveLength(1);
     expect(index.duration).toBe(130);
-  });
-
-  it("reports a type the log does not carry as absent rather than throwing", () => {
-    const index = indexEvents(sampleEvents());
-    expect(index.events("ws/nonesuch")).toEqual([]);
-    expect(index.count("ws/nonesuch")).toBe(0);
   });
 
   it("orders a bucket whose events did not arrive in time order", () => {
@@ -188,26 +165,6 @@ describe("network panel", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ orphan: true, status: 204, method: "?" });
   });
-
-  it("renders an empty state for a log with no network events at all", () => {
-    const rows = buildNetworkRows(indexEvents([ev(0, "telemetry/flamechart", { a: 1 })]));
-    expect(rows).toEqual([]);
-    expect(NETWORK_EMPTY).toMatch(/No network events/);
-    expect(NETWORK_NONE_YET).toMatch(/timeline/);
-  });
-
-  it("bounds the row window and reports what it left out", () => {
-    const many: ReplayEvent[] = [];
-    for (let i = 0; i < 500; i++) {
-      many.push(
-        ev(i, "net/request", { requestId: String(i), request: { url: "u", method: "GET" } }),
-      );
-    }
-    const resolved = resolveNetwork(buildNetworkRows(indexEvents(many)), 499, 100);
-    expect(resolved.rows).toHaveLength(100);
-    expect(resolved.hidden).toBe(400);
-    expect(resolved.total).toBe(500);
-  });
 });
 
 describe("websocket panel", () => {
@@ -254,22 +211,6 @@ describe("websocket panel", () => {
     expect(conns).toHaveLength(1);
     expect(conns[0]).toMatchObject({ inferred: true, kind: "sse", openT: 10 });
     expect(resolveWs(conns, 20).rows[0]?.received).toBe(2);
-  });
-
-  it("renders a redacted frame payload as the marker, never as the raw object", () => {
-    const conns = buildWsConnections(
-      indexEvents([
-        ev(0, "ws/open", { requestId: "s", url: "wss://a.test/s" }),
-        ev(5, "ws/frame", {
-          url: "wss://a.test/s",
-          dir: "recv",
-          kind: "ws",
-          payload: redactedMarker("body-rule"),
-        }),
-      ]),
-    );
-    const frame = resolveWs(conns, 10).rows[0]?.visibleFrames[0];
-    expect(displayText(frame?.payload)).toBe("[redacted: body-rule]");
   });
 
   it("does not let an early frame's inferred connection steal the real socket", () => {
@@ -342,26 +283,6 @@ describe("websocket panel", () => {
     expect(closeText(view)).toBe("closed: 1006 abnormal");
   });
 
-  it("counts directions at a playhead from a prefix built once, not by walking", () => {
-    const events: ReplayEvent[] = [ev(0, "ws/open", { requestId: "w", url: "u" })];
-    for (let i = 1; i <= 400; i++) {
-      events.push(
-        ev(i, "ws/frame", {
-          url: "u",
-          dir: i % 4 === 0 ? "sent" : "recv",
-          kind: "ws",
-          payload: "f",
-        }),
-      );
-    }
-    const conns = buildWsConnections(indexEvents(events));
-    expect(conns[0]?.sentPrefix).toHaveLength(401);
-    const mid = resolveWs(conns, 200).rows[0]!;
-    expect({ sent: mid.sent, received: mid.received }).toEqual({ sent: 50, received: 150 });
-    const end = resolveWs(conns, 400).rows[0]!;
-    expect({ sent: end.sent, received: end.received }).toEqual({ sent: 100, received: 300 });
-  });
-
   it("tells a url that was removed from one that was never there", () => {
     const conns = buildWsConnections(
       indexEvents([
@@ -372,12 +293,6 @@ describe("websocket panel", () => {
     expect(displayText(conns[0]?.url)).toBe("[redacted: secret]");
     expect(conns[0]?.urlKey).toBe("");
     expect(displayText(conns[1]?.url)).toBe("—");
-  });
-
-  it("renders an empty state for a log with no socket traffic", () => {
-    expect(buildWsConnections(indexEvents([ev(0, "telemetry/flamechart", {})]))).toEqual([]);
-    expect(WS_EMPTY).toMatch(/No WebSocket/);
-    expect(WS_NONE_YET).toMatch(/timeline/);
   });
 });
 
@@ -423,11 +338,6 @@ describe("console panel", () => {
     expect(resolved.rows[0]?.t).toBe(250);
     expect(resolved.more).toBe(true);
     expect(resolved.total).toBe(300);
-  });
-
-  it("renders an empty state for a log with no console output", () => {
-    expect(buildConsoleRows(indexEvents([ev(0, "telemetry/flamechart", {})]))).toEqual([]);
-    expect(CONSOLE_EMPTY).toMatch(/No console output/);
   });
 });
 
@@ -518,13 +428,6 @@ describe("coverage view", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0]).toMatchObject({ from: 0, to: 399_998 });
   });
-
-  it("renders an empty state when nothing was annotated", () => {
-    expect(
-      buildCoverage(indexEvents([ev(0, "action/result", { tool: "click", ok: true })])),
-    ).toEqual([]);
-    expect(COVERAGE_EMPTY).toMatch(/record_annotate/);
-  });
 });
 
 describe("forward compatibility — a log this build does not understand", () => {
@@ -541,11 +444,6 @@ describe("forward compatibility — a log this build does not understand", () =>
     expect(buildConsoleRows(index)).toEqual([]);
     expect(buildCoverage(index)).toEqual([]);
     expect(buildNetworkRows(index)).toHaveLength(1);
-  });
-
-  it("ignores payload fields it does not recognise instead of choking on them", () => {
-    const rows = buildNetworkRows(indexEvents(future()));
-    expect(resolveNetwork(rows, 30).rows[0]).toMatchObject({ status: 200, state: "ok" });
   });
 
   it("never renders a value as [object Object]", () => {

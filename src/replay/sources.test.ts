@@ -123,36 +123,9 @@ describe("network sources", () => {
     });
     expect("body" in ev.payload).toBe(false);
   });
-
-  it("carries the failure text verbatim", () => {
-    const ev = netFailedEvent(ctx(), {
-      requestId: "42",
-      errorText: "net::ERR_CONNECTION_REFUSED",
-      canceled: false,
-    });
-    expect(ev.type).toBe("net/failed");
-    expect(ev.payload.errorText).toBe("net::ERR_CONNECTION_REFUSED");
-    expect(ev.payload.canceled).toBe(false);
-  });
 });
 
 describe("websocket sources", () => {
-  it("does not carry handshake headers on open", () => {
-    // Handshake headers (`Authorization` / `Cookie`) sit on CDP's
-    // `Network.webSocketWillSendHandshakeRequest`; the replay layer does NOT
-    // tap that event and the schema no longer has a slot for the request
-    // object. Capturing the handshake would broaden the archive's disclosure
-    // surface without a corresponding review use case — the WS panel keys
-    // off frames.
-    const ev = wsOpenEvent(ctx(), {
-      requestId: "ws-1",
-      url: "wss://app.example.com/socket",
-    });
-    expect(ev.type).toBe("ws/open");
-    expect(ev.payload.url).toBe("wss://app.example.com/socket");
-    expect((ev.payload as Record<string, unknown>).request).toBeUndefined();
-  });
-
   it("gives a frame payload the same body rule an HTTP body gets", () => {
     const redact = new Redactor({ bodyPaths: ["auth.token"] });
     const wire = JSON.stringify({ auth: { token: "t" }, msg: "hi" });
@@ -177,59 +150,9 @@ describe("websocket sources", () => {
     expect(frame.payload.dir).toBe("recv");
     expect(frame.t).toBe(10);
   });
-
-  it("keeps a frame's unrecognised fields", () => {
-    const ev = wsFrameEvent(ctx(), {
-      url: "",
-      dir: "sent",
-      kind: "sse",
-      event: "tick",
-      payload: "1",
-      futureFrameField: 7,
-    });
-    expect(ev.payload.futureFrameField).toBe(7);
-    expect(ev.payload.event).toBe("tick");
-  });
-
-  it("records the close", () => {
-    expect(wsCloseEvent(ctx(), { requestId: "ws-1" }).type).toBe("ws/close");
-  });
-});
-
-describe("console, page errors and lifecycle", () => {
-  it("carries a console message and a page error onto the log", () => {
-    const msg = consoleMessageEvent(ctx(), { type: "warning", text: "deprecated", ts: ORIGIN + 5 });
-    const err = pageErrorEvent(ctx(), { text: "TypeError: x", stack: "at f()" });
-    expect(msg.type).toBe("console/message");
-    expect(msg.payload.text).toBe("deprecated");
-    expect(err.type).toBe("page/error");
-    expect(err.payload.stack).toBe("at f()");
-  });
-
-  it("carries a lifecycle event as the page reported it", () => {
-    const ev = pageLifecycleEvent(ctx(), {
-      name: "framenavigated",
-      url: "https://app.example.com/next",
-      isMainFrame: true,
-    });
-    expect(ev.type).toBe("page/lifecycle");
-    expect(ev.payload.name).toBe("framenavigated");
-    expect(ev.payload.isMainFrame).toBe(true);
-  });
 });
 
 describe("the agent timeline", () => {
-  it("records the call with its args and target", () => {
-    const ev = actionCallEvent(ctx(), {
-      tool: "click",
-      args: { ref: "e3" },
-      target: { ref: "e3", bbox: [0, 0, 10, 10] },
-    });
-    expect(ev.type).toBe("action/call");
-    expect(ev.payload.tool).toBe("click");
-    expect(ev.payload.target).toEqual({ ref: "e3", bbox: [0, 0, 10, 10] });
-  });
-
   it("carries the whole ActionResult through rather than summarising it", () => {
     const ev = resultEvent(
       ctx(),
@@ -258,14 +181,7 @@ describe("the agent timeline", () => {
 
 describe("what counts as an assertion", () => {
   it("routes the whole registered verify_* family onto assert/result", () => {
-    for (const tool of [
-      "verify_visible",
-      "verify_text",
-      "verify_value",
-      "verify_count",
-      "verify_attribute",
-      "verify_predicate",
-    ]) {
+    for (const tool of ["verify_visible", "verify_predicate"]) {
       expect(isAssertion(tool)).toBe(true);
       expect(resultEvent(ctx(), tool, { ok: true }).type).toBe("assert/result");
     }

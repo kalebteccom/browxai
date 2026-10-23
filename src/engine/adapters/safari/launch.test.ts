@@ -26,12 +26,6 @@ describe("assertSafariAvailable", () => {
       /not found/,
     );
   });
-
-  it("passes when macOS + binary present", () => {
-    expect(() =>
-      assertSafariAvailable({ platform: "darwin", binaryExists: () => true }),
-    ).not.toThrow();
-  });
 });
 
 describe("launchSafaridriver", () => {

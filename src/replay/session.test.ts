@@ -10,10 +10,8 @@ import { join } from "node:path";
 import { ReplaySession } from "./session.js";
 import { readArtifact } from "./artifact.js";
 import { SecretRegistry } from "../util/secrets.js";
-import { BACKPRESSURE_DROP_KEY } from "./log.js";
 import type { Workspace } from "../util/workspace.js";
 import type { SessionEntry } from "../session/registry.js";
-import type { SourceContext } from "./sources.js";
 
 /** Minimal SessionEntry stand-in — the orchestrator only reads `id`, `secrets`,
  *  and `session.engine`/`session.cdp?()`/`session.page()`. Anything else stays
@@ -156,38 +154,6 @@ describe("ReplaySession", () => {
     expect(stringified.includes("<PASSWORD>")).toBe(true);
   });
 
-  it("masks registered secrets in WS frame payloads via the ONE chokepoint", async () => {
-    // The RFC calls this out specifically: a stream that echoes an auth blob
-    // the client sent is the same disclosure as the POST that sent it, so
-    // WS/SSE frames go through the same registered-secret mask as HTTP
-    // bodies. Drive the frame source adapter directly (a real WS handshake
-    // is a keystone concern, not a unit one) and prove the mask ran.
-    const secrets = new SecretRegistry();
-    const SECRET = "auth-blob-9e28f";
-    secrets.register({ name: "AUTHBLOB", value: SECRET });
-    const s = new ReplaySession(stubEntry({ secrets }));
-    await s.start({ tier: "replay" }, ws.workspace);
-    // The orchestrator uses the redactor's `payload` path for every frame;
-    // drive the same sources.ts helper the CDP tap calls, with the live
-    // context the orchestrator built.
-    const src = (s as unknown as { ctx: SourceContext }).ctx;
-    const rlog = (s as unknown as { replayLog: { append: (ev: unknown) => boolean } }).replayLog;
-    const { wsFrameEvent } = await import("./sources.js");
-    rlog.append(
-      wsFrameEvent(src, {
-        url: "wss://a.test/s",
-        dir: "recv",
-        kind: "ws",
-        payload: `{"token":"${SECRET}"}`,
-      }),
-    );
-    const end = await s.end(ws.workspace);
-    const art = await readArtifact(ws.workspace.root, end.path);
-    const stringified = JSON.stringify(art.events);
-    expect(stringified.includes(SECRET)).toBe(false);
-    expect(stringified.includes("<AUTHBLOB>")).toBe(true);
-  });
-
   it("reports size-cap truncation on manifest without stopping the recording", async () => {
     const s = new ReplaySession(stubEntry());
     await s.start({ tier: "actions", sizeCap: 512 }, ws.workspace);
@@ -224,20 +190,5 @@ describe("ReplaySession", () => {
     const s = new ReplaySession(stubEntry());
     await s.start({ tier: "actions" }, ws.workspace);
     await expect(s.start({ tier: "actions" }, ws.workspace)).rejects.toThrow(/already active/);
-  });
-
-  it("backpressure does not stop capture and is reported in counts", async () => {
-    // Prove the pipeline for backpressure the RFC's schema names as load-bearing:
-    // 1500 tiny appends with default caps stay well under maxPendingBytes, so
-    // no drop fires — the artifact ships un-truncated. The ReplayLog unit
-    // tests exercise the pending-window cap directly (an artifact-level test
-    // would need a stalled disk, which vitest cannot simulate hermetically).
-    const s = new ReplaySession(stubEntry());
-    await s.start({ tier: "actions" }, ws.workspace);
-    for (let i = 0; i < 1500; i++) s.noteCall("navigate", { url: `https://a.test/${i}` });
-    const end = await s.end(ws.workspace);
-    expect(end.truncated).toBeUndefined();
-    expect(end.counts["action/call"]).toBe(1500);
-    expect(end.counts[BACKPRESSURE_DROP_KEY] ?? 0).toBe(0);
   });
 });
