@@ -42,7 +42,7 @@ persisted layers for that session only.
 | `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.                                               |
 | `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                                                                  |
 | `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                                                                |
-| `headless`                          | Launch managed Chromium headless.                                                                                                                                     |
+| `headless`                          | Launch managed Chrome headless.                                                                                                                                       |
 | `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, `chromium`, …). Unset launches the installed Chrome, or the bundled Chromium when it is absent. |
 | `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                                                                    |
 | `actionTimeoutMs`                   | The anti-wedge hard deadline on every action and read path. Default 5000.                                                                                             |
@@ -55,8 +55,8 @@ persisted layers for that session only.
 **`actionTimeoutMs`** applies to every action body, `eval_js`, and the read CDP
 paths. The default of 5000 ms is deliberate: an action that needs longer is
 almost always a no-op or a wedged page op. Every action and read tool also
-takes a per-call `timeoutMs` override; raise that for one known-slow call
-rather than raising the global default. The value is clamped to a one-hour
+takes a per-call `timeoutMs` override; raise that for one known-slow call.
+The value is clamped to a one-hour
 ceiling.
 
 **`disableWebSecurity`** is turned on only by the operator, with
@@ -97,7 +97,7 @@ not config.
 | `BROWX_CONFIRM_REQUIRED` | `navigate_off_allowlist,byob_action`    | Policy hooks that route through human confirmation.                               |
 | `BROWX_ALLOWED_ORIGINS`  | unset                                   | Allow list for `navigate`. Wildcards allowed.                                     |
 | `BROWX_BLOCKED_ORIGINS`  | unset                                   | Block list; overrides the allow list.                                             |
-| `BROWX_CHANNEL`          | unset                                   | Playwright browser channel for chromium sessions. Unset uses the bundled build.   |
+| `BROWX_CHANNEL`          | unset                                   | Playwright channel for chromium sessions. Unset uses the installed Chrome.        |
 
 For the complete configuration and session surface, see the
 [tool reference](/reference/tool-reference/).

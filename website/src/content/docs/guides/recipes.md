@@ -49,8 +49,8 @@ await fill_form({
 
 ## Extract structured data
 
-For reading rather than acting, `text_search`, `inspect`, and `extract` keep
-the result scoped instead of dumping the page. `extract` is schema-driven: each
+To read without acting, `text_search`, `inspect`, and `extract` keep
+the result scoped. `extract` is schema-driven: each
 property name doubles as the query, and arrays take a `collection` selector for
 the repeated container.
 
@@ -78,7 +78,7 @@ const res = await extract({
 // res.evidence.partialMisses names anything the schema asked for but missed.
 ```
 
-Pair it with the `verify_*` family when you want an assertion rather than a
+Pair it with the `verify_*` family when you want an assertion, not a
 value, for example `verify_text` or `verify_count`.
 
 ## Handle flaky or transient UI
