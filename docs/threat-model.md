@@ -647,6 +647,10 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Pure coordination primitives. The human's answer comes only from the `browxai` isolated world (section 7 above); page scripts cannot produce it.
 
+- Service-worker tooling, no capability of its own. Tools: `workers_list` (`read`), `worker_message_send` (`action`), `worker_messages_read` (`read`), `sw_intercept_fetch` (`action`), plus `sw_unintercept_fetch` (`action`).
+
+  Makes Web Workers and service workers visible and drivable. Everything a worker posts back, and every URL and payload `workers_list` and `worker_messages_read` return, comes from the page and is untrusted, like any other page text. Web Workers are found by a page-side wrapper. Live service workers are reached through Playwright (`context.serviceWorkers()`, `Worker.evaluate`) and CDP on engines whose declaration has `deep`. Sends are subject to the origin policy.
+
 - `self-approval`, default **off**. Tools: `approve_actions`.
 
   Lets the agent pre-approve confirm-required scopes (`byob_action`, `navigate_off_allowlist`, `file_download`, `file_upload`) for a TTL window, after which the matching confirm hooks pass without asking the human. The hooks exist to hold the agent's own actions until someone says yes, so a tool that lets the agent say yes has to be the operator's opt-in. Without the capability `approve_actions` returns the standard gate refusal (`requiredCapability: "self-approval"`) and grants nothing; under `BROWX_CONFIG_READONLY=1` it is not registered at all. Every grant and every consume is logged. When one hook is the only thing in the way, removing it from `BROWX_CONFIRM_REQUIRED` is narrower than enabling this. Loud one-time warning at server boot. Pinned by `test/keystone/approval-config-gate.keystone.test.ts`.
@@ -663,9 +667,9 @@ detail tools `text_search`, `inspect` and `ws_read` also fall under `read`, and
 
   Needs `operator-channel`: with `live-view` on and `operator-channel` off the server refuses to start, because frames go only to the daemon. It is not a tool, so there is no per-tool refusal: the gate is the start-time check, and with it off a daemon's `view.start` gets `view-disabled` and no screencast starts. The agent cannot start, stop or read the stream, and no tool result, log, artifact, report, HAR or recording carries a frame. **Secret masking does not cover frames: a registered secret that is visible on screen reaches the daemon as pixels, as it does in `screenshot`.** Loud one-time warning when enabled. Section 7 holds the rules (flow control, drops, step-down, frame parts, stop conditions) and the residuals.
 
-- `eval`, default **off**. Tools: `eval_js`.
+- `eval`, default **off**. Tools: `eval_js`, `poll_eval`.
 
-  Arbitrary page-side JS execution. Off by default; loud warning when enabled.
+  Arbitrary page-side JS execution. `poll_eval` re-runs an expression until it is truthy and is gated by `eval` alone. Off by default; loud warning when enabled.
 
 - `byob-attach`, default **off**. Tools: none; it gates every `attached` session: `open_session({mode:"attached"})`, the default session of a server started with `BROWX_ATTACH_CDP`, and the attach-only `android` and `electron` engines. Without it, session creation refuses with `capability-required` before any connection is made, and `open_session` returns the standard refusal with `requiredCapability: "byob-attach"`.
 
