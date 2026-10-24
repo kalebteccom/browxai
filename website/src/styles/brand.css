@@ -1187,6 +1187,14 @@ main:has(.browx-404) > .content-panel {
     overflow-wrap: anywhere;
   }
 }
+/* Off-screen code blocks and tables skip layout and paint until they near the
+   viewport. The tool reference holds 88 blocks and 18 tables in 15k nodes, and
+   style recalc over all of them made Ctrl+K and first load slow. "auto" keeps
+   the measured size once a block has rendered, so scrolling back does not shift. */
+.sl-markdown-content :is(.expressive-code, table):not(:where(.not-content *)) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 12rem;
+}
 .sl-markdown-content table:focus-visible {
   outline: 2px solid var(--sl-color-text-accent);
   outline-offset: 2px;
