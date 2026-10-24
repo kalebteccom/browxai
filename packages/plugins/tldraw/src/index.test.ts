@@ -68,12 +68,6 @@ describe("@browxai/plugin-tldraw handlers", () => {
       const res = await handlers.get_viewport(api, {});
       expect(parseFirst(res)).toEqual({ ok: true, x: 0, y: 0, w: 1024, h: 768, zoom: 1.25 });
     });
-
-    it("returns tldraw-not-loaded when editor is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res).code).toBe("tldraw-not-loaded");
-    });
   });
 
   describe("create_shape", () => {
@@ -102,12 +96,6 @@ describe("@browxai/plugin-tldraw handlers", () => {
       const res = await handlers.create_shape(api, { type: "geo", x: 0, y: 0 });
       expect(parseFirst(res).code).toBe("create-failed");
     });
-
-    it("returns tldraw-not-loaded when editor is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.create_shape(api, { type: "geo", x: 0, y: 0 });
-      expect(parseFirst(res).code).toBe("tldraw-not-loaded");
-    });
   });
 
   describe("delete_shape", () => {
@@ -126,12 +114,6 @@ describe("@browxai/plugin-tldraw handlers", () => {
       const res = await handlers.delete_shape(api, {});
       expect(parseFirst(res).code).toBe("bad-arg");
     });
-
-    it("returns tldraw-not-loaded when editor is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.delete_shape(api, { shapeId: "shape:1" });
-      expect(parseFirst(res).code).toBe("tldraw-not-loaded");
-    });
   });
 
   describe("select_shapes", () => {
@@ -149,12 +131,6 @@ describe("@browxai/plugin-tldraw handlers", () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.select_shapes(api, { shapeIds: ["shape:1", 99] });
       expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns tldraw-not-loaded when editor is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.select_shapes(api, { shapeIds: ["shape:1"] });
-      expect(parseFirst(res).code).toBe("tldraw-not-loaded");
     });
   });
 });

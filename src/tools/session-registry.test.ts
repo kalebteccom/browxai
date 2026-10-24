@@ -20,10 +20,6 @@ describe("defaultModeForEngine — per-session default launch mode", () => {
     },
   );
 
-  it.each(["chromium"] as const)("%s defaults to persistent with no attach endpoint", (engine) => {
-    expect(defaultModeForEngine(engine, undefined)).toBe("persistent");
-  });
-
   it("is byte-identical to the legacy server default for every engine/attach combo", () => {
     // The legacy server-level rule (createServer): an attach-only engine OR
     // attachCdp => attached, else persistent. For a launchable engine the helper

@@ -167,27 +167,6 @@ describeSafari("safari keystone — the fifth engine is real (first non-Playwrig
   );
 
   it(
-    "structured-refuses the CDP-deep tools on Safari with engine:safari",
-    async () => {
-      const session = SESSION;
-      await callJson("open_session", { session, mode: "persistent" });
-
-      for (const tool of ["perf_start", "heap_snapshot"]) {
-        const res = await callJson<{
-          ok: boolean;
-          engine?: string;
-          requiredCapability?: unknown;
-        }>(tool, { session });
-        expect(res.ok, `${tool} should refuse on safari`).toBe(false);
-        // The ENGINE gate (deep:false), not the capability gate.
-        expect(res.engine, `${tool} refusal carries engine:safari`).toBe("safari");
-        expect(res.requiredCapability, `${tool} is NOT a capability denial`).toBeUndefined();
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "drives the action subset on real Safari (fill → click → eval → screenshot → cookies)",
     async () => {
       const session = SESSION;

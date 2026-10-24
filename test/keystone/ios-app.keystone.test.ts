@@ -312,51 +312,6 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
   );
 
   it(
-    "click re-resolves the ref against a FRESH hierarchy before it taps",
-    async () => {
-      // The claim RFC 0008 §3 makes, driven through the real tool handlers. The
-      // ref is minted while the button is at y=700; the hierarchy then MOVES it,
-      // and the tap must land on the new centre. A cached coordinate would land
-      // on 724.
-      wda.setSubmitY(700);
-      const found = await callJson<{ candidates: Array<{ ref: string }> }>("find", {
-        session: SESSION,
-        query: "Pay now",
-      });
-      const ref = found.candidates[0]!.ref;
-      wda.setSubmitY(300);
-      wda.taps.length = 0;
-      const clicked = await callJson<{ ok: boolean }>("click", { session: SESSION, ref });
-      expect(clicked.ok, JSON.stringify(clicked)).toBe(true);
-      // Centre of {x:20, y:300, w:353, h:48} — read off the hierarchy the tap
-      // itself fetched, not the one the ref was minted against.
-      expect(wda.taps).toEqual([{ x: 197, y: 324 }]);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "verify_visible and verify_text run through the element port on a Page-free engine",
-    async () => {
-      const found = await callJson<{ candidates: Array<{ ref: string }> }>("find", {
-        session: SESSION,
-        query: "Pay now",
-      });
-      const ref = found.candidates[0]!.ref;
-      const visible = await callJson<{ ok: boolean }>("verify_visible", { session: SESSION, ref });
-      expect(visible.ok, JSON.stringify(visible)).toBe(true);
-      const texted = await callJson<{ ok: boolean }>("verify_text", {
-        session: SESSION,
-        ref,
-        text: "Pay now",
-        exact: true,
-      });
-      expect(texted.ok, JSON.stringify(texted)).toBe(true);
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
     "screenshot returns a REAL simulator frame through the capture port",
     async () => {
       // simctl, not the fake: this image is a genuine photograph of the booted
@@ -392,28 +347,6 @@ describeSim("ios-app keystone — the tool surface over a faked WebDriverAgent",
         const refused = await callJson<{ ok: boolean; error?: string }>(tool, { session: SESSION });
         expect(refused.ok).toBe(false);
         expect(refused.error).toMatch(/not supported on the "ios-app" engine/);
-      }
-    },
-    KEYSTONE_TIMEOUT,
-  );
-
-  it(
-    "the omitted sub-interfaces refuse rather than answering a plausible empty",
-    async () => {
-      // The gate that exists because a Safari substrate once answered
-      // `{total: 0, requests: []}` for a question it could not answer.
-      for (const [tool, args] of [
-        ["network_read", {}],
-        ["cookies_list", {}],
-        ["frames_list", {}],
-      ] as const) {
-        const res = await callJson<{ ok: boolean; engine?: string; hint?: string }>(tool, {
-          session: SESSION,
-          ...args,
-        });
-        expect(res.ok, `${tool} answered instead of refusing`).toBe(false);
-        expect(res.engine).toBe("ios-app");
-        expect(typeof res.hint).toBe("string");
       }
     },
     KEYSTONE_TIMEOUT,

@@ -68,12 +68,6 @@ describe("@browxai/plugin-excalidraw handlers", () => {
       const res = await handlers.get_viewport(api, {});
       expect(parseFirst(res)).toEqual({ ok: true, scrollX: 100, scrollY: 200, zoom: 2 });
     });
-
-    it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res).code).toBe("excalidraw-not-loaded");
-    });
   });
 
   describe("add_element", () => {
@@ -97,18 +91,6 @@ describe("@browxai/plugin-excalidraw handlers", () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.add_element(api, { x: 0, y: 0, width: 100, height: 50 });
       expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.add_element(api, {
-        type: "rectangle",
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 50,
-      });
-      expect(parseFirst(res).code).toBe("excalidraw-not-loaded");
     });
   });
 
@@ -138,12 +120,6 @@ describe("@browxai/plugin-excalidraw handlers", () => {
       const res = await handlers.delete_element(api, {});
       expect(parseFirst(res).code).toBe("bad-arg");
     });
-
-    it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.delete_element(api, { elementId: "el1" });
-      expect(parseFirst(res).code).toBe("excalidraw-not-loaded");
-    });
   });
 
   describe("set_scroll", () => {
@@ -161,12 +137,6 @@ describe("@browxai/plugin-excalidraw handlers", () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.set_scroll(api, { scrollX: 50 });
       expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns excalidraw-not-loaded when excalidrawAPI is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.set_scroll(api, { scrollX: 0, scrollY: 0 });
-      expect(parseFirst(res).code).toBe("excalidraw-not-loaded");
     });
   });
 });

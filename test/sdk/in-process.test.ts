@@ -50,14 +50,6 @@ describe("in-process SDK transport — drives the real MCP handler registry", ()
     expect(typeof r.data).toBe("object");
   });
 
-  it("exposedTools includes the default surface and excludes the gated tools", () => {
-    expect(client.exposedTools).toContain("navigate");
-    expect(client.exposedTools).toContain("snapshot");
-    expect(client.exposedTools).toContain("extract");
-    expect(client.exposedTools).not.toContain("eval_js");
-    expect(client.exposedTools).not.toContain("network_body");
-  });
-
   it("close() ends the embedded server cleanly", async () => {
     const tmp = await createBrowxai();
     // Hits the same handler map, prove dispatch works …

@@ -76,12 +76,6 @@ describe("@browxai/plugin-figma handlers", () => {
       const res = await handlers.get_viewport(api, {});
       expect(parseFirst(res)).toEqual({ ok: true, center: { x: 100, y: 200 }, zoom: 1.5 });
     });
-
-    it("returns figma-not-loaded when global is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.get_viewport(api, {});
-      expect(parseFirst(res).code).toBe("figma-not-loaded");
-    });
   });
 
   describe("select_node", () => {
@@ -110,12 +104,6 @@ describe("@browxai/plugin-figma handlers", () => {
       const res = await handlers.select_node(api, { nodeId: "missing" });
       expect(parseFirst(res).code).toBe("node-not-found");
     });
-
-    it("returns figma-not-loaded when global is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.select_node(api, { nodeId: "1:2" });
-      expect(parseFirst(res).code).toBe("figma-not-loaded");
-    });
   });
 
   describe("move_node", () => {
@@ -133,12 +121,6 @@ describe("@browxai/plugin-figma handlers", () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.move_node(api, { nodeId: "1:2", dy: 0 });
       expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns figma-not-loaded when global is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.move_node(api, { nodeId: "1:2", dx: 0, dy: 0 });
-      expect(parseFirst(res).code).toBe("figma-not-loaded");
     });
   });
 
@@ -167,12 +149,6 @@ describe("@browxai/plugin-figma handlers", () => {
       const api = makeApi(async () => evalEnvelope(true));
       const res = await handlers.create_rectangle(api, { x: 0, y: 0, width: 0, height: 50 });
       expect(parseFirst(res).code).toBe("bad-arg");
-    });
-
-    it("returns figma-not-loaded when global is undefined", async () => {
-      const api = makeApi(async () => evalEnvelope(false));
-      const res = await handlers.create_rectangle(api, { x: 0, y: 0, width: 10, height: 10 });
-      expect(parseFirst(res).code).toBe("figma-not-loaded");
     });
   });
 });

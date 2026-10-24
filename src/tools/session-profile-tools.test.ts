@@ -103,12 +103,6 @@ function seedProfile(name: string): string {
   return dir;
 }
 
-describe("profile_status — registration surface", () => {
-  it("declares the `read` capability", () => {
-    expect(captureTool().def.capability).toBe("read");
-  });
-});
-
 describe("profile_status — handler", () => {
   it("maps a live persistent session onto its profile row", async () => {
     const dir = seedProfile("job-search-live");

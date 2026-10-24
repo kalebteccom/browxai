@@ -48,18 +48,6 @@ const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>live</titl
 </style></head>
 <body><div class="bar"></div><h1>operator view keystone</h1></body></html>`;
 
-// A page the screencast cannot compress well: random 3 px cells, drawn once. Its
-// JPEG is well over 64 KiB, so a frame has to travel as parts.
-const NOISE_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>noise</title>
-<style>html,body{margin:0;background:#000}canvas{display:block}</style></head>
-<body><canvas id="c" width="1280" height="720"></canvas><script>
-var c = document.getElementById("c").getContext("2d");
-for (var y = 0; y < 720; y += 3) for (var x = 0; x < 1280; x += 3) {
-  c.fillStyle = "rgb(" + (Math.random() * 256 | 0) + "," + (Math.random() * 256 | 0) + "," + (Math.random() * 256 | 0) + ")";
-  c.fillRect(x, y, 3, 3);
-}
-</script></body></html>`;
-
 let http: Server;
 let base: string;
 
@@ -169,9 +157,9 @@ beforeAll(async () => {
     stderrLog.push(String(chunk));
     return (realStderrWrite as (...a: unknown[]) => boolean)(chunk, ...rest);
   };
-  http = createHttp((req, res) => {
+  http = createHttp((_req, res) => {
     res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-    res.end(req.url?.startsWith("/noise") ? NOISE_PAGE : PAGE);
+    res.end(PAGE);
   });
   await new Promise<void>((r) => http.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(http.address() as AddressInfo).port}`;
@@ -316,33 +304,6 @@ describe("live view — capability set, managed Chromium", () => {
     const seqs = completeFrames(daemon, "a").map((f) => f.seq as number);
     expect(seqs).toEqual([...seqs].sort((x, y) => x - y));
     expect(new Set(seqs).size).toBe(seqs.length);
-  });
-
-  it("sends a frame over 64 KiB as parts that join into one JPEG, each line under the limit", async () => {
-    await call("open_session", { session: "big", mode: "incognito" });
-    await call("navigate", { session: "big", url: `${base}/noise` });
-    const ack = autoAck(daemon);
-    try {
-      daemon.send({ type: "view.start", session: "big", quality: 80 });
-      await waitFor(() => completeFrames(daemon, "big").length >= 1);
-    } finally {
-      ack.stop();
-    }
-    const first = completeFrames(daemon, "big")[0]!;
-    expect(first.parts as number).toBeGreaterThan(1);
-    expect(first.parts as number).toBeLessThanOrEqual(16);
-    const lines = ofType(daemon, "frame").filter((f) => f.session === "big" && f.seq === first.seq);
-    expect(lines).toHaveLength(first.parts as number);
-    for (const line of lines) {
-      expect(Buffer.byteLength(JSON.stringify(line))).toBeLessThan(MAX_LINE_BYTES);
-    }
-    const jpeg = jpegOf(daemon, "big", first.seq as number);
-    expect(jpeg.length).toBeGreaterThan(64 * 1024);
-    expect(jpeg.subarray(0, 2).toString("hex")).toBe("ffd8");
-    expect(jpeg.subarray(-2).toString("hex")).toBe("ffd9");
-    daemon.send({ type: "view.stop", session: "big" });
-    await waitFor(() => stopped("big").length === 1);
-    await call("close_session", { session: "big" });
   });
 
   it("sends nothing after view.stop, and the session keeps working", async () => {

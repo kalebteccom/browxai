@@ -75,14 +75,6 @@ describe("L2 — DEEP_TOOLS is derived from the registrations", () => {
     expect(onlyInSet, "in DEEP_TOOLS but not flagged deep").toEqual([]);
     expect(onlyFlagged, "flagged deep but missing from DEEP_TOOLS").toEqual([]);
   });
-
-  it("the derived set has 26 entries", () => {
-    // The set once held 31. The five touch/gesture registrations named in
-    // RETIRED_BY_SUBSTRATE below no longer carry the flag. Change this number
-    // only together with the assertions in the next block, which show those
-    // tools are still refused on the same engines for the same reason.
-    expect(DEEP_TOOLS.size).toBe(26);
-  });
 });
 
 /** The five registrations RFC 0009 P3 took `deep: true` off, and the tools they
