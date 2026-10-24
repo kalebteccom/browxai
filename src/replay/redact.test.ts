@@ -50,40 +50,46 @@ describe("header rules", () => {
 });
 
 describe("body rules by JSON path", () => {
-  it("replaces a matched leaf with a marker and leaves its siblings", () => {
-    const body = JSON.stringify({ user: { name: "ada", password: "hunter2" } });
-    const out = new Redactor({ bodyPaths: ["user.password"] }).payload(body);
-    expect(JSON.parse(out as string)).toEqual({
-      user: { name: "ada", password: redactedMarker("body-rule") },
-    });
+  const user = JSON.stringify({ user: { name: "ada", password: "hunter2" } });
+
+  it.each<[string, string[], string, unknown]>([
+    [
+      "replaces a matched leaf with a marker and leaves its siblings",
+      ["user.password"],
+      user,
+      { user: { name: "ada", password: redactedMarker("body-rule") } },
+    ],
+    [
+      "matches any array index through a wildcard segment",
+      ["items.*.token"],
+      JSON.stringify({ items: [{ token: "a" }, { token: "b" }] }),
+      { items: [{ token: redactedMarker("body-rule") }, { token: redactedMarker("body-rule") }] },
+    ],
+    [
+      "drops the whole body on the root path",
+      [ROOT_PATH],
+      '{"anything":1}',
+      redactedMarker("body-rule"),
+    ],
+  ])("%s", (_label, bodyPaths, body, expected) => {
+    const out = new Redactor({ bodyPaths }).payload(body);
+    expect(typeof out === "string" ? JSON.parse(out) : out).toEqual(expected);
   });
 
-  it("matches any array index through a wildcard segment", () => {
-    const body = JSON.stringify({ items: [{ token: "a" }, { token: "b" }] });
-    const out = new Redactor({ bodyPaths: ["items.*.token"] }).payload(body);
-    expect(out).not.toContain('"a"');
-    expect(JSON.parse(out as string)).toEqual({
-      items: [{ token: redactedMarker("body-rule") }, { token: redactedMarker("body-rule") }],
-    });
-  });
-
-  it("drops the whole body on the root path", () => {
-    const out = new Redactor({ bodyPaths: [ROOT_PATH] }).payload('{"anything":1}');
-    expect(out).toEqual(redactedMarker("body-rule"));
-  });
-
-  it("passes a non-JSON body through instead of failing", () => {
-    const out = new Redactor({ bodyPaths: ["user.password"] }).payload("not json at all");
-    expect(out).toBe("not json at all");
-  });
-
-  it("leaves a body with no matching path untouched", () => {
-    const body = JSON.stringify({ user: { name: "ada" } });
-    expect(new Redactor({ bodyPaths: ["user.password"] }).payload(body)).toBe(body);
-  });
-
-  it("returns undefined for an absent body — nothing there is not the same as taken out", () => {
-    expect(new Redactor({ bodyPaths: [ROOT_PATH] }).payload(undefined)).toBeUndefined();
+  it.each<[string, string[], string | undefined]>([
+    ["passes a non-JSON body through instead of failing", ["user.password"], "not json at all"],
+    [
+      "leaves a body with no matching path untouched",
+      ["user.password"],
+      JSON.stringify({ user: { name: "ada" } }),
+    ],
+    [
+      "returns undefined for an absent body, since nothing there is not the same as taken out",
+      [ROOT_PATH],
+      undefined,
+    ],
+  ])("%s", (_label, bodyPaths, body) => {
+    expect(new Redactor({ bodyPaths }).payload(body)).toBe(body);
   });
 });
 

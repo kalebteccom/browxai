@@ -34,48 +34,68 @@ function jpegOf(w: number, h: number, extra = 0): string {
 }
 
 describe("parseViewStart", () => {
-  it("takes 5 fps, 960 px and quality 60 when the daemon names nothing", () => {
-    expect(parseViewStart({ session: "default" })).toEqual({
-      ok: true,
-      session: "default",
-      params: { maxFps: 5, maxWidth: 960, quality: 60 },
-    });
-  });
+  const bad = { ok: false, code: "invalid-view" };
 
-  it("clamps what the daemon asks for to the ceiling and the floor", () => {
-    const high = parseViewStart({ session: "s", maxFps: 60, maxWidth: 4000, quality: 100 });
-    expect(high).toMatchObject({ params: { maxFps: 5, maxWidth: 1280, quality: 80 } });
-    const low = parseViewStart({ session: "s", maxFps: 0, maxWidth: 1, quality: -5 });
-    expect(low).toMatchObject({ params: { maxFps: 0.2, maxWidth: 160, quality: 10 } });
-  });
-
-  it("refuses a missing or oversized session, a wrong type and a format other than jpeg", () => {
-    const bad = { ok: false, code: "invalid-view" };
-    expect(parseViewStart({})).toEqual(bad);
-    expect(parseViewStart({ session: "" })).toEqual(bad);
-    expect(parseViewStart({ session: "x".repeat(129) })).toEqual(bad);
-    expect(parseViewStart({ session: "s", maxFps: "5" })).toEqual(bad);
-    expect(parseViewStart({ session: "s", maxWidth: Number.NaN })).toEqual(bad);
-    expect(parseViewStart({ session: "s", quality: Infinity })).toEqual(bad);
-    expect(parseViewStart({ session: "s", format: "png" })).toEqual(bad);
+  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    [
+      "takes 5 fps, 960 px and quality 60 when the daemon names nothing",
+      { session: "default" },
+      { ok: true, session: "default", params: { maxFps: 5, maxWidth: 960, quality: 60 } },
+    ],
+    [
+      "clamps what the daemon asks for to the ceiling",
+      { session: "s", maxFps: 60, maxWidth: 4000, quality: 100 },
+      { params: { maxFps: 5, maxWidth: 1280, quality: 80 } },
+    ],
+    [
+      "clamps what the daemon asks for to the floor",
+      { session: "s", maxFps: 0, maxWidth: 1, quality: -5 },
+      { params: { maxFps: 0.2, maxWidth: 160, quality: 10 } },
+    ],
+    ["refuses a missing session", {}, bad],
+    ["refuses an empty session", { session: "" }, bad],
+    ["refuses an oversized session", { session: "x".repeat(129) }, bad],
+    ["refuses a string fps", { session: "s", maxFps: "5" }, bad],
+    ["refuses a NaN width", { session: "s", maxWidth: Number.NaN }, bad],
+    ["refuses an infinite quality", { session: "s", quality: Infinity }, bad],
+    ["refuses a format other than jpeg", { session: "s", format: "png" }, bad],
+  ])("%s", (_label, input, expected) => {
+    // Rows that name `ok` pin the whole result; the clamp rows pin `params` only.
+    if (expected.ok !== undefined) expect(parseViewStart(input)).toEqual(expected);
+    else expect(parseViewStart(input)).toMatchObject(expected);
   });
 });
 
 describe("levelsFor", () => {
-  it("walks from the request to 1 fps and 640 px", () => {
-    const levels = levelsFor({ maxFps: 5, maxWidth: 960, quality: 60 });
-    expect(levels[0]).toEqual({ fps: 5, width: 960 });
-    expect(levels[levels.length - 1]).toEqual({ fps: 1, width: 640 });
+  it.each<
+    [
+      string,
+      { maxFps: number; maxWidth: number; quality: number },
+      Array<{ fps: number; width: number }>,
+    ]
+  >([
+    [
+      "walks from the request to 1 fps and 640 px",
+      { maxFps: 5, maxWidth: 960, quality: 60 },
+      [
+        { fps: 5, width: 960 },
+        { fps: 1, width: 640 },
+      ],
+    ],
+    [
+      "does not go below a request that is already under the floor",
+      { maxFps: 0.5, maxWidth: 400, quality: 60 },
+      [{ fps: 0.5, width: 400 }],
+    ],
+  ])("%s", (_label, request, ends) => {
+    const levels = levelsFor(request);
+    expect(levels[0]).toEqual(ends[0]);
+    expect(levels[levels.length - 1]).toEqual(ends[ends.length - 1]);
+    if (ends.length === 1) expect(levels).toEqual(ends);
     for (let i = 1; i < levels.length; i++) {
       expect(levels[i]!.fps).toBeLessThan(levels[i - 1]!.fps);
       expect(levels[i]!.width).toBeLessThan(levels[i - 1]!.width);
     }
-  });
-
-  it("does not go below a request that is already under the floor", () => {
-    expect(levelsFor({ maxFps: 0.5, maxWidth: 400, quality: 60 })).toEqual([
-      { fps: 0.5, width: 400 },
-    ]);
   });
 });
 
@@ -132,13 +152,20 @@ describe("ViewAdapter", () => {
 });
 
 describe("jpegSize", () => {
-  it("reads the frame size from the start-of-frame marker", () => {
-    expect(jpegSize(jpegOf(960, 540))).toEqual({ width: 960, height: 540 });
-  });
-
-  it("answers null for data that is not a JPEG", () => {
-    expect(jpegSize(Buffer.from("not an image").toString("base64"))).toBeNull();
-    expect(jpegSize("")).toBeNull();
+  it.each<[string, string, { width: number; height: number } | null]>([
+    [
+      "reads the frame size from the start-of-frame marker",
+      jpegOf(960, 540),
+      { width: 960, height: 540 },
+    ],
+    [
+      "answers null for text that is not a JPEG",
+      Buffer.from("not an image").toString("base64"),
+      null,
+    ],
+    ["answers null for empty data", "", null],
+  ])("%s", (_label, data, expected) => {
+    expect(jpegSize(data)).toEqual(expected);
   });
 });
 

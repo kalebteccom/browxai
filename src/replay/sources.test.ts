@@ -180,36 +180,30 @@ describe("the agent timeline", () => {
 });
 
 describe("what counts as an assertion", () => {
-  it("routes the whole registered verify_* family onto assert/result", () => {
-    for (const tool of ["verify_visible", "verify_predicate"]) {
-      expect(isAssertion(tool)).toBe(true);
-      expect(resultEvent(ctx(), tool, { ok: true }).type).toBe("assert/result");
-    }
-  });
-
-  it("routes a plugin's namespaced verify_* too", () => {
-    expect(isAssertion("figma.verify_frame")).toBe(true);
-  });
-
-  it("routes an unknown tool that returned the fail-emitting verify contract", () => {
-    expect(
-      isAssertion("check_invariant", {
-        ok: false,
-        failure: { source: "app", kind: "count-equals", expected: "3", actual: 2 },
-      }),
-    ).toBe(true);
-  });
-
-  it("leaves the permissive and ordinary tools on action/result", () => {
-    expect(isAssertion("click")).toBe(false);
-    expect(isAssertion("wait_for", { ok: false })).toBe(false);
-    expect(
-      isAssertion("navigate", {
-        ok: false,
-        failure: { source: "browxai", hint: "context torn down" },
-      }),
-    ).toBe(false);
-    expect(resultEvent(ctx(), "wait_for", { ok: false }).type).toBe("action/result");
+  type Outcome = Parameters<typeof resultEvent>[2];
+  it.each<[string, string, Outcome, boolean]>([
+    ["routes verify_visible onto assert/result", "verify_visible", { ok: true }, true],
+    ["routes verify_predicate onto assert/result", "verify_predicate", { ok: true }, true],
+    ["routes a plugin's namespaced verify_* too", "figma.verify_frame", { ok: true }, true],
+    [
+      "routes an unknown tool that returned the fail-emitting verify contract",
+      "check_invariant",
+      { ok: false, failure: { source: "app", kind: "count-equals", expected: "3", actual: 2 } },
+      true,
+    ],
+    ["leaves click on action/result", "click", { ok: true }, false],
+    ["leaves the permissive wait_for on action/result", "wait_for", { ok: false }, false],
+    [
+      "leaves a browxai-sourced failure on action/result",
+      "navigate",
+      { ok: false, failure: { source: "browxai", hint: "context torn down" } },
+      false,
+    ],
+  ])("%s", (_label, tool, outcome, assertion) => {
+    expect(isAssertion(tool, outcome)).toBe(assertion);
+    expect(resultEvent(ctx(), tool, outcome).type).toBe(
+      assertion ? "assert/result" : "action/result",
+    );
   });
 
   it("lifts expected/actual out of the failure and keeps the failure itself", () => {
@@ -235,20 +229,21 @@ describe("what counts as an assertion", () => {
 });
 
 describe("annotation spans", () => {
-  it("prefers an explicit label and defaults the phase to start", () => {
-    const ev = annotateSpanEvent(ctx(), { label: "AC-4", copy: "checkout works", phase: "end" });
+  it.each<[string, Parameters<typeof annotateSpanEvent>[1], Record<string, unknown>]>([
+    [
+      "prefers an explicit label and carries the phase and note",
+      { label: "AC-4", copy: "checkout works", phase: "end" },
+      { label: "AC-4", phase: "end", note: "checkout works" },
+    ],
+    [
+      "falls back to the annotation copy, defaults the phase to start and keeps record_annotate's own fields",
+      { copy: "login page", arrow: "top-left", stepId: "s2" },
+      { label: "login page", phase: "start", arrow: "top-left", stepId: "s2" },
+    ],
+  ])("%s", (_label, args, payload) => {
+    const ev = annotateSpanEvent(ctx(), args);
     expect(ev.type).toBe("annotate/span");
-    expect(ev.payload.label).toBe("AC-4");
-    expect(ev.payload.phase).toBe("end");
-    expect(ev.payload.note).toBe("checkout works");
-  });
-
-  it("falls back to the annotation copy, and keeps record_annotate's own fields", () => {
-    const ev = annotateSpanEvent(ctx(), { copy: "login page", arrow: "top-left", stepId: "s2" });
-    expect(ev.payload.label).toBe("login page");
-    expect(ev.payload.phase).toBe("start");
-    expect(ev.payload.arrow).toBe("top-left");
-    expect(ev.payload.stepId).toBe("s2");
+    expect(ev.payload).toMatchObject(payload);
   });
 });
 

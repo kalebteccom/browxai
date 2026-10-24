@@ -114,43 +114,50 @@ describe("openOperatorChannel — the gate", () => {
     expect(daemon.connections).toBe(0);
   });
 
-  it("refuses to start on a directory that is not 0700, without naming it", () => {
-    chmodSync(daemon.dir, 0o750);
-    let message = "";
-    try {
-      open();
-    } catch (e) {
-      message = (e as Error).message;
-    }
-    chmodSync(daemon.dir, 0o700);
-    expect(message).toContain("refusing to start the channel");
-    expect(message).not.toContain(daemon.dir);
-    expect(daemon.connections).toBe(0);
-  });
-
-  it("refuses to start on a socket that is not 0600", () => {
-    chmodSync(daemon.socketPath, 0o666);
-    expect(() => open()).toThrow(/refusing to start the channel.*0600/);
-  });
-
-  it("refuses a short token, without echoing it", () => {
+  it.each<[string, () => { socket: string; token: string }, RegExp]>([
+    [
+      "refuses to start on a directory that is not 0700, without naming it",
+      () => {
+        chmodSync(daemon.dir, 0o750);
+        return { socket: daemon.socketPath, token: daemon.token };
+      },
+      /refusing to start the channel/,
+    ],
+    [
+      "refuses to start on a socket that is not 0600",
+      () => {
+        chmodSync(daemon.socketPath, 0o666);
+        return { socket: daemon.socketPath, token: daemon.token };
+      },
+      /refusing to start the channel.*0600/,
+    ],
+    [
+      "refuses a short token, without echoing it",
+      () => ({ socket: daemon.socketPath, token: "short" }),
+      /shorter than/,
+    ],
+  ])("%s", (_label, unsafe, expected) => {
+    const env = unsafe();
     let message = "";
     try {
       openOperatorChannel(ON, {
-        BROWX_OPERATOR_SOCKET: daemon.socketPath,
-        BROWX_OPERATOR_TOKEN: "short",
+        BROWX_OPERATOR_SOCKET: env.socket,
+        BROWX_OPERATOR_TOKEN: env.token,
       });
     } catch (e) {
       message = (e as Error).message;
     }
-    expect(message).toContain("shorter than");
-    expect(message).not.toContain("short\n");
+    chmodSync(daemon.dir, 0o700);
+    expect(message).toMatch(expected);
+    expect(message).not.toContain(daemon.dir);
+    expect(message).not.toContain(env.token + "\n");
+    expect(message).not.toContain(daemon.token);
     expect(daemon.connections).toBe(0);
   });
 });
 
 describe("OperatorChannel — requests and answers", () => {
-  it("sends an approval request and resolves on approve", async () => {
+  it("sends an approval request, resolves on approve, and never puts the token on the wire", async () => {
     const ch = open();
     const answer = ch.ask(approvalAsk());
     const req = await daemon.nextRequest();
@@ -175,25 +182,24 @@ describe("OperatorChannel — requests and answers", () => {
       outcome: "approved",
       by: "operator",
     });
+    // The token authenticates the handshake and never rides on a frame.
+    expect(JSON.stringify(daemon.frames)).not.toContain(daemon.token);
   });
 
-  it("resolves a deny as a deny", async () => {
+  it.each<
+    [string, { decision: "approve" | "deny"; grant?: { scope: string; ttlSeconds: number } }]
+  >([
+    ["resolves a deny as a deny", { decision: "deny" }],
+    [
+      "carries a grant on an approve",
+      { decision: "approve", grant: { scope: "session", ttlSeconds: 900 } },
+    ],
+  ])("%s", async (_label, reply) => {
     const ch = open();
     const answer = ch.ask(approvalAsk());
     const req = await daemon.nextRequest();
-    daemon.answer(req.id, { decision: "deny" });
-    await expect(answer).resolves.toEqual({ decision: "deny" });
-  });
-
-  it("carries a grant on an approve", async () => {
-    const ch = open();
-    const answer = ch.ask(approvalAsk());
-    const req = await daemon.nextRequest();
-    daemon.answer(req.id, { decision: "approve", grant: { scope: "session", ttlSeconds: 900 } });
-    await expect(answer).resolves.toEqual({
-      decision: "approve",
-      grant: { scope: "session", ttlSeconds: 900 },
-    });
+    daemon.answer(req.id, reply);
+    await expect(answer).resolves.toEqual(reply);
   });
 
   it("sends a human request and resolves with the typed value", async () => {
@@ -346,13 +352,6 @@ describe("OperatorChannel — fails closed", () => {
     } finally {
       await impostor.close();
     }
-  });
-
-  it("never sends the token on the wire", async () => {
-    const ch = open();
-    void ch.ask(approvalAsk()).catch(() => undefined);
-    await daemon.nextRequest();
-    expect(JSON.stringify(daemon.frames)).not.toContain(daemon.token);
   });
 
   it("denies a pending request when the abort signal fires", async () => {

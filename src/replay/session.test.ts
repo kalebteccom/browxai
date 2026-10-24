@@ -59,6 +59,7 @@ describe("ReplaySession", () => {
 
   it("writes a .browx artifact containing the recorded action stream", async () => {
     const s = new ReplaySession(stubEntry());
+    expect(s.lastArtifact()).toBeUndefined();
     const start = await s.start({ tier: "actions" }, ws.workspace);
     expect(start.tier).toBe("actions");
 
@@ -75,6 +76,9 @@ describe("ReplaySession", () => {
     expect(end.bytes).toBeGreaterThan(0);
     expect(end.events).toBe(5);
     expect(end.path).toContain(".browx");
+    // The finished artifact's path is what export_session_report reads later.
+    expect(s.lastArtifact()?.absolutePath).toBe(end.absolutePath);
+    expect(s.lastArtifact()?.path).toBe(end.path);
 
     const art = await readArtifact(ws.workspace.root, end.path);
     expect(art.manifest.tier).toBe("actions");
@@ -164,17 +168,6 @@ describe("ReplaySession", () => {
     expect(end.truncated?.droppedEvents).toBeGreaterThan(0);
     const art = await readArtifact(ws.workspace.root, end.path);
     expect(art.manifest.truncated?.reason).toBe("size-cap");
-  });
-
-  it("records a completed artifact's path for later export_session_report", async () => {
-    const s = new ReplaySession(stubEntry());
-    expect(s.lastArtifact()).toBeUndefined();
-    await s.start({ tier: "actions" }, ws.workspace);
-    s.noteCall("navigate", { url: "https://a.test/" });
-    const end = await s.end(ws.workspace);
-    const last = s.lastArtifact();
-    expect(last?.absolutePath).toBe(end.absolutePath);
-    expect(last?.path).toBe(end.path);
   });
 
   it("refuses a second start on the same session while a recording is active", async () => {

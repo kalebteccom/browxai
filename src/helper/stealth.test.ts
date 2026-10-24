@@ -2,15 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import { applyStealth, buildStealthScript } from "./stealth.js";
 
 describe("buildStealthScript", () => {
-  it("guards against double-apply via a sentinel on window", () => {
+  it("guards against double-apply via a sentinel and uses configurable property descriptors", () => {
     const s = buildStealthScript();
     // sentinel name and the early-return must be present
     expect(s).toContain("__browx_stealth");
     expect(s).toMatch(/if \(window\.__browx_stealth\) return/);
-  });
-
-  it("uses configurable property descriptors (does not strand the patch)", () => {
-    const s = buildStealthScript();
     // every defineProperty in the script must be configurable so a future
     // legitimate overwrite (or a re-apply with a different value) isn't
     // permanently locked out.
