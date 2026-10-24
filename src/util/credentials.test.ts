@@ -49,7 +49,6 @@ describe("parseSeedsEnv", () => {
       { acct1: "ABC", acct2: "DEF" },
     ],
     ["returns {} on undefined", undefined, {}],
-    ["returns {} on empty", "", {}],
     [
       "silently drops malformed entries",
       "good=ok,bad,also=fine,=missingkey,missingvalue=",

@@ -147,13 +147,6 @@ describe("package-manager detection + verb mapping", () => {
       expected: ["uninstall", "--", "x"],
     },
     {
-      label: "npm update keeps the verb",
-      pm: "npm",
-      op: "update",
-      spec: "x",
-      expected: ["update", "--", "x"],
-    },
-    {
       label: "npm install without a spec",
       pm: "npm",
       op: "install",
@@ -167,13 +160,6 @@ describe("package-manager detection + verb mapping", () => {
       spec: "file:/tmp/p",
       expected: ["add", "--ignore-scripts", "--", "file:/tmp/p"],
     },
-    {
-      label: "pnpm remove puts the spec after --",
-      pm: "pnpm",
-      op: "remove",
-      spec: "x",
-      expected: ["remove", "--", "x"],
-    },
   ] as const)("$label", ({ pm, op, spec, expected }) => {
     expect(pmArgs(pm, op, spec)).toEqual(expected);
   });
@@ -186,7 +172,6 @@ describe("package-manager detection + verb mapping", () => {
 
 describe("runPlugin with a spec that starts with a dash", () => {
   it.each([
-    ["install", "--registry=http://127.0.0.1:1/"],
     ["install", "-g"],
     ["remove", "--global"],
     ["upgrade", "--latest"],

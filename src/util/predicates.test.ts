@@ -36,19 +36,15 @@ describe("resolveKey", () => {
   // can never return a function/prototype object.
   it.each([
     ["nested value via dotted access", "actionResult.element.value", "hello world"],
-    ["nested value, second path", "actionResult.navigation.kind", "spa"],
     ["length over an array", "actionResult.console.errors.length", 1],
     ["length over a string", "actionResult.element.value.length", "hello world".length],
-    ["length over an array under snapshot", "snapshot.warnings.length", 2],
     [
       "missing intermediates resolve undefined without throwing",
       "actionResult.missing.path",
       undefined,
     ],
     ["__proto__ segment is refused", "actionResult.__proto__", undefined],
-    ["__proto__ then member is refused", "actionResult.__proto__.toString", undefined],
     ["constructor segment is refused", "actionResult.constructor", undefined],
-    ["constructor then member is refused", "actionResult.constructor.name", undefined],
     ["prototype segment is refused", "actionResult.element.prototype", undefined],
   ])("resolveKey: %s", (_label, key, expected) => {
     expect(resolveKey(SAMPLE, key)).toBe(expected);

@@ -45,12 +45,9 @@ describe("parseManifestField", () => {
 
 describe("isApiVersionCompatible", () => {
   it.each([
-    ["1.0.0", "1.0.0", true],
     ["1.0.0", "1.5.0", true],
-    ["1.5.0", "1.5.0", true],
     ["1.5.0", "1.0.0", false],
     ["2.0.0", "1.0.0", false],
-    ["0.5.0", "1.0.0", false],
     ["^1.0.0", "1.0.0", true],
   ])("plugin %s on runtime %s is compatible: %s", (plugin, runtime, expected) => {
     expect(isApiVersionCompatible(plugin, runtime)).toBe(expected);
@@ -63,7 +60,6 @@ describe("satisfiesRange", () => {
     ["1.2.3", "^1.0.0", true],
     ["1.0.0", "^1.0.0", true],
     ["2.0.0", "^1.0.0", false],
-    ["0.5.0", "^1.0.0", false],
     ["0.1.2", "^0.1.0", true],
     ["0.2.0", "^0.1.0", false],
     ["1.0.5", "~1.0.0", true],

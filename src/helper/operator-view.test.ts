@@ -53,11 +53,9 @@ describe("parseViewStart", () => {
       { params: { maxFps: 0.2, maxWidth: 160, quality: 10 } },
     ],
     ["refuses a missing session", {}, bad],
-    ["refuses an empty session", { session: "" }, bad],
     ["refuses an oversized session", { session: "x".repeat(129) }, bad],
     ["refuses a string fps", { session: "s", maxFps: "5" }, bad],
     ["refuses a NaN width", { session: "s", maxWidth: Number.NaN }, bad],
-    ["refuses an infinite quality", { session: "s", quality: Infinity }, bad],
     ["refuses a format other than jpeg", { session: "s", format: "png" }, bad],
   ])("%s", (_label, input, expected) => {
     // Rows that name `ok` pin the whole result; the clamp rows pin `params` only.

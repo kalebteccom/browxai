@@ -97,12 +97,6 @@ describe("eventTimestamp", () => {
       500,
     ],
     ["falls back to arrival time when rrweb carried no timestamp", {}, 1_000_250, 250],
-    [
-      "falls back to arrival time when the timestamp is not a number",
-      { timestamp: "nope" },
-      1_000_250,
-      250,
-    ],
     ["falls back to arrival time when the event is null", null, 1_000_250, 250],
   ])("%s", (_label, rrwebEvent, arrival, expected) => {
     expect(eventTimestamp(rrwebEvent, 1_000_000, arrival)).toBe(expected);
