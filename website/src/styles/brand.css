@@ -1351,6 +1351,18 @@ mobile-starlight-toc nav {
   }
 }
 @media (pointer: coarse) {
+  /* Install copy button: 44px tall on touch. */
+  .browx-copy {
+    min-height: 2.75rem;
+    min-width: 2.75rem;
+  }
+  /* Footer and facts links: grow the hit area without moving the text. */
+  .browx-credit a,
+  .browx-facts a {
+    display: inline-block;
+    padding-block: 0.7rem;
+    margin-block: -0.7rem;
+  }
   #starlight__sidebar .top-level a,
   #starlight__sidebar .top-level ul ul a {
     padding-block: 0.7rem;

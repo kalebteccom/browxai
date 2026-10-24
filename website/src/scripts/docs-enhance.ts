@@ -2,8 +2,14 @@
 // 1. Inline code that holds a command or a BROWX_* name copies on click, Enter or
 //    Space. The "Copied" bubble is a ::after (see brand.css), so nothing reflows.
 // 2. A table that scrolls sideways becomes focusable, so a keyboard can scroll it.
-const COMMAND = /^(?:(?:browxai|npx|pnpm) \S|BROWX_[A-Z0-9_]+$)/;
-const SKIP = "a, pre, summary, h1, h2, h3, h4, h5, h6, .not-content";
+// BROWX_NAME and BROWX_NAME=value both copy. A value with a placeholder or an
+// ellipsis is not a command, so it stays plain.
+const COMMAND = /^(?:(?:browxai|npx|pnpm|npm) \S|BROWX_[A-Z0-9_]+(?:=[^\s<…]+)?$)/;
+const SKIP = "a, pre, summary, h1, h2, h3, h4, h5, h6";
+// Landing cards sit in a .not-content block but hold real commands.
+const skipped = (el: HTMLElement) =>
+  Boolean(el.closest(SKIP)) ||
+  (Boolean(el.closest(".not-content")) && !el.closest(".browx-card-text"));
 
 const live = document.createElement("div");
 live.className = "browx-sr-only";
@@ -44,7 +50,7 @@ const copy = async (el: HTMLElement) => {
 
 document.querySelectorAll<HTMLElement>(".sl-markdown-content code").forEach((el) => {
   const text = el.textContent?.trim() ?? "";
-  if (!COMMAND.test(text) || el.closest(SKIP)) return;
+  if (!COMMAND.test(text) || skipped(el)) return;
   el.classList.add("browx-copyable");
   el.tabIndex = 0;
   el.setAttribute("role", "button");
