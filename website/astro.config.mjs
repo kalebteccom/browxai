@@ -40,6 +40,7 @@ export default defineConfig({
       components: {
         Footer: "./src/components/Footer.astro",
         Head: "./src/components/Head.astro",
+        Header: "./src/components/Header.astro",
         Sidebar: "./src/components/Sidebar.astro",
       },
       routeMiddleware: "./src/route-data.ts",

@@ -1,0 +1,45 @@
+---
+// Wraps Starlight's default header. On the splash landing page there is no
+// sidebar, so there is no menu drawer to hold the theme select below 50rem
+// (the stock header hides it there). Render the same ThemeSelect next to the
+// search button on narrow viewports. It is the stock component, so the label,
+// keyboard behaviour and localStorage persistence match the desktop select.
+import Default from "@astrojs/starlight/components/Header.astro";
+import ThemeSelect from "virtual:starlight/components/ThemeSelect";
+
+const isSplash = Astro.locals.starlightRoute.entry.data.template === "splash";
+---
+
+{
+  isSplash ? (
+    <div class="browx-header-row">
+      <Default><slot /></Default>
+      <div class="browx-header-theme print:hidden">
+        <ThemeSelect />
+      </div>
+    </div>
+  ) : (
+    <Default><slot /></Default>
+  )
+}
+
+<style>
+  .browx-header-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 100%;
+  }
+  .browx-header-row > :global(.header) {
+    flex: 1;
+    min-width: 0;
+  }
+  .browx-header-theme {
+    flex: none;
+  }
+  @media (min-width: 50rem) {
+    .browx-header-theme {
+      display: none;
+    }
+  }
+</style>
