@@ -51,6 +51,7 @@ import type { CredentialProvider, CredentialsConfig } from "../util/credentials.
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
+import { byobAttachRefusal } from "./byob-attach-gate.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -475,9 +476,19 @@ export function buildHost(deps: HostDeps): ToolHost {
       // wedges still lands in the replay log. `noteReplayCall` is a no-op
       // when the session has no active recording, so the hot path stays cheap.
       noteReplayCall(name, args);
-      const inner = tracked
-        ? await noteWedgeOutcome(args, await handler(args))
-        : await handler(args);
+      // A tool that creates the default session lazily can hit the `byob-attach`
+      // refusal inside the registry; it leaves here as the same structured gate
+      // refusal `open_session` returns, for every tool and for `batch` alike.
+      const run = async (): Promise<ToolResponse> => {
+        try {
+          return await handler(args);
+        } catch (err) {
+          const refusal = byobAttachRefusal(gateCheck, err);
+          if (refusal) return refusal;
+          throw err;
+        }
+      };
+      const inner = tracked ? await noteWedgeOutcome(args, await run()) : await run();
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       noteReplayResult(name, args, inner);
