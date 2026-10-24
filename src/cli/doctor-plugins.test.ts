@@ -122,6 +122,14 @@ describe("declaration file states", () => {
 });
 
 describe("declared-plugin drift", () => {
+  it("✗ declared but not installed → browxai plugin sync", () => {
+    declare({ "plugin-missing": {} });
+    const checks = run();
+    const row = find(checks, /plugin-missing declared but not installed/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin sync");
+  });
+
   it("− declared but disabled is informational and skips validation", () => {
     declare({ "plugin-off": { enabled: false } });
     const checks = run();
@@ -154,6 +162,18 @@ describe("declared-plugin drift", () => {
 });
 
 describe("orphan installs", () => {
+  it("✗ installed-but-not-declared plugin → remove (or declare)", () => {
+    declare({ "plugin-good": {} });
+    install("plugin-good", { namespace: "good" });
+    writeLockFile({ "plugin-good": pinFor("plugin-good") });
+    install("@scope/plugin-orphan", { namespace: "orphan" });
+    const checks = run();
+    const row = find(checks, /orphan install: @scope\/plugin-orphan/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin remove @scope/plugin-orphan");
+    expect(row?.fix).toMatch(/declare it/);
+  });
+
   it("ignores plain dependencies (no browxai field) in the install dir", () => {
     declare({ "plugin-good": {} });
     install("plugin-good", { namespace: "good" });
@@ -165,180 +185,139 @@ describe("orphan installs", () => {
   });
 });
 
-interface FailRow {
-  label: string;
-  setup: () => void;
-  /** Every pattern must match the failing row's detail. */
-  detail: RegExp[];
-  /** A string must be contained in the fix hint, a RegExp must match it. */
-  fix: Array<string | RegExp>;
-  extra?: (checks: Check[]) => void;
-}
-
-const SYNC = "browxai plugin sync";
-
-const FAIL_ROWS: FailRow[] = [
-  {
-    label: "declared but not installed points at plugin sync",
-    setup: () => declare({ "plugin-missing": {} }),
-    detail: [/plugin-missing declared but not installed/],
-    fix: [SYNC],
-  },
-  {
-    label: "installed-but-not-declared plugin is an orphan to remove or declare",
-    setup: () => {
-      declare({ "plugin-good": {} });
-      install("plugin-good", { namespace: "good" });
-      writeLockFile({ "plugin-good": pinFor("plugin-good") });
-      install("@scope/plugin-orphan", { namespace: "orphan" });
-    },
-    detail: [/orphan install: @scope\/plugin-orphan/],
-    fix: ["browxai plugin remove @scope/plugin-orphan", /declare it/],
-  },
-  {
-    label: "plugins-lock.json missing while plugins are declared",
-    setup: () => {
-      declare({ "plugin-good": {} });
-      install("plugin-good", { namespace: "good" });
-    },
-    detail: [/plugins-lock\.json missing/],
-    fix: [SYNC],
-  },
-  {
-    label: "sha256 mismatch vs the installed package is loud and fail-closed",
-    setup: () => {
-      declare({ "plugin-good": {} });
-      install("plugin-good", { namespace: "good" });
-      writeLockFile({ "plugin-good": pinFor("plugin-good", { contentSha256: "deadbeef" }) });
-    },
-    detail: [/contentSha256 MISMATCH/, /NOT what was pinned/],
-    fix: [/do not trust the install until audited/, SYNC],
-  },
-  {
-    label: "installed and declared plugin missing its lock pin",
-    setup: () => {
-      declare({ "plugin-good": {} });
-      install("plugin-good", { namespace: "good" });
-      writeLockFile({});
-    },
-    detail: [/no pin in plugins-lock\.json/],
-    fix: [SYNC],
-  },
-  {
-    label: "stale lock entry for an undeclared plugin",
-    setup: () => {
-      declare({ "plugin-good": {} });
-      install("plugin-good", { namespace: "good" });
-      writeLockFile({
-        "plugin-good": pinFor("plugin-good"),
-        "plugin-ghost": {
-          name: "plugin-ghost",
-          version: "1.0.0",
-          source: "plugin-ghost",
-          contentSha256: "abc",
-        },
-      });
-    },
-    detail: [/stale lock entry: plugin-ghost/],
-    fix: ["browxai plugin remove plugin-ghost"],
-  },
-  {
-    label: "invalid manifest (package.json lacks the browxai field)",
-    setup: () => {
-      declare({ "plugin-plain": {} });
-      install("plugin-plain", { browxai: false });
-    },
-    detail: [/plugin-plain invalid manifest/],
-    fix: ["package.json#browxai"],
-  },
-  {
-    label: "apiVersion incompatible with RUNTIME_API_VERSION",
-    setup: () => {
-      declare({ "plugin-future": {} });
-      install("plugin-future", { namespace: "future", apiVersion: "2.0.0" });
-      writeLockFile({ "plugin-future": pinFor("plugin-future") });
-    },
-    detail: [/apiVersion "2\.0\.0" incompatible with runtime apiVersion "1\.0\.0"/],
-    fix: [/upgrade the plugin/],
-  },
-  {
-    label: "duplicate namespace across the declared set names both plugins",
-    setup: () => {
-      declare({ "plugin-a": {}, "plugin-b": {} });
-      install("plugin-a", { namespace: "shared" });
-      install("plugin-b", { namespace: "shared" });
-      writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
-    },
-    detail: [/plugin-b namespace "shared" already claimed by plugin-a/],
-    fix: [/rename one/],
-    // First claimer stays healthy.
-    extra: (checks) => expect(find(checks, /plugin-a@1\.0\.0/)?.ok).toBe(true),
-  },
-  {
-    label: "capability mismatch names the missing capability in the fix hint",
-    setup: () => {
-      declare({ "plugin-canvas": {} });
-      install("plugin-canvas", { namespace: "cv", capabilities: ["eval", "canvas"] });
-      writeLockFile({ "plugin-canvas": pinFor("plugin-canvas") });
-    },
-    detail: [/capability\(ies\) \[eval, canvas\] not enabled/],
-    fix: ["set BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas", /restart/],
-  },
-  {
-    label: "dependsOn target not resolvable",
-    setup: () => {
-      declare({ "plugin-a": {} });
-      install("plugin-a", {
-        namespace: "a",
-        dependsOn: [{ plugin: "plugin-b", version: "^1.0.0" }],
-      });
-      writeLockFile({ "plugin-a": pinFor("plugin-a") });
-    },
-    detail: [/dependsOn\["plugin-b"\] is not resolvable/],
-    fix: ["browxai plugin install plugin-b"],
-  },
-  {
-    label: "dependsOn version range unsatisfied",
-    setup: () => {
-      declare({ "plugin-a": {}, "plugin-b": {} });
-      install("plugin-a", {
-        namespace: "a",
-        dependsOn: [{ plugin: "plugin-b", version: "^2.0.0" }],
-      });
-      install("plugin-b", { namespace: "b", version: "1.0.0" });
-      writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
-    },
-    detail: [/installed version 1\.0\.0 does not satisfy range "\^2\.0\.0"/],
-    fix: ["browxai plugin upgrade plugin-b"],
-  },
-  {
-    label: "dependsOn cycle is loud and suppresses the members' healthy rows",
-    setup: () => {
-      declare({ "plugin-a": {}, "plugin-b": {} });
-      install("plugin-a", { namespace: "a", dependsOn: [{ plugin: "plugin-b", version: "*" }] });
-      install("plugin-b", { namespace: "b", dependsOn: [{ plugin: "plugin-a", version: "*" }] });
-      writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
-    },
-    detail: [/dependency cycle:/, /server start ABORTS/],
-    fix: [/remove one direction/],
-    extra: (checks) => {
-      expect(find(checks, /plugin-a@1\.0\.0/)).toBeUndefined();
-      expect(find(checks, /plugin-b@1\.0\.0/)).toBeUndefined();
-    },
-  },
-];
-
-describe("failing doctor rows", () => {
-  it.each(FAIL_ROWS)("✗ $label", ({ setup, detail, fix, extra }) => {
-    setup();
+describe("lock health", () => {
+  it("✗ plugins-lock.json missing while plugins are declared → sync", () => {
+    declare({ "plugin-good": {} });
+    install("plugin-good", { namespace: "good" });
     const checks = run();
-    const row = find(checks, detail[0]!);
+    const row = find(checks, /plugins-lock\.json missing/);
     expect(row?.ok).toBe(false);
-    for (const re of detail) expect(row?.detail).toMatch(re);
-    for (const f of fix) {
-      if (typeof f === "string") expect(row?.fix).toContain(f);
-      else expect(row?.fix).toMatch(f);
-    }
-    extra?.(checks);
+    expect(row?.fix).toContain("browxai plugin sync");
+  });
+
+  it("✗ sha256 mismatch vs the installed package is loud and fail-closed", () => {
+    declare({ "plugin-good": {} });
+    install("plugin-good", { namespace: "good" });
+    writeLockFile({ "plugin-good": pinFor("plugin-good", { contentSha256: "deadbeef" }) });
+    const checks = run();
+    const row = find(checks, /contentSha256 MISMATCH/);
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toMatch(/NOT what was pinned/);
+    expect(row?.fix).toMatch(/do not trust the install until audited/);
+    expect(row?.fix).toContain("browxai plugin sync");
+  });
+
+  it("✗ installed + declared plugin missing its lock pin → sync", () => {
+    declare({ "plugin-good": {} });
+    install("plugin-good", { namespace: "good" });
+    writeLockFile({});
+    const checks = run();
+    const row = find(checks, /no pin in plugins-lock\.json/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin sync");
+  });
+
+  it("✗ stale lock entry for an undeclared plugin", () => {
+    declare({ "plugin-good": {} });
+    install("plugin-good", { namespace: "good" });
+    writeLockFile({
+      "plugin-good": pinFor("plugin-good"),
+      "plugin-ghost": {
+        name: "plugin-ghost",
+        version: "1.0.0",
+        source: "plugin-ghost",
+        contentSha256: "abc",
+      },
+    });
+    const checks = run();
+    const row = find(checks, /stale lock entry: plugin-ghost/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin remove plugin-ghost");
+  });
+});
+
+describe("manifest sanity (no code execution)", () => {
+  it("✗ invalid manifest (package.json lacks browxai field)", () => {
+    declare({ "plugin-plain": {} });
+    install("plugin-plain", { browxai: false });
+    const checks = run();
+    const row = find(checks, /plugin-plain invalid manifest/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("package.json#browxai");
+  });
+
+  it("✗ apiVersion incompatible with RUNTIME_API_VERSION", () => {
+    declare({ "plugin-future": {} });
+    install("plugin-future", { namespace: "future", apiVersion: "2.0.0" });
+    writeLockFile({ "plugin-future": pinFor("plugin-future") });
+    const checks = run();
+    const row = find(checks, /apiVersion "2\.0\.0" incompatible with runtime apiVersion "1\.0\.0"/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toMatch(/upgrade the plugin/);
+  });
+
+  it("✗ duplicate namespace across the declared set names both plugins", () => {
+    declare({ "plugin-a": {}, "plugin-b": {} });
+    install("plugin-a", { namespace: "shared" });
+    install("plugin-b", { namespace: "shared" });
+    writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
+    const checks = run();
+    const row = find(checks, /plugin-b namespace "shared" already claimed by plugin-a/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toMatch(/rename one/);
+    // First claimer stays healthy.
+    expect(find(checks, /plugin-a@1\.0\.0/)?.ok).toBe(true);
+  });
+
+  it("✗ capability mismatch names the missing capability in the fix hint", () => {
+    declare({ "plugin-canvas": {} });
+    install("plugin-canvas", { namespace: "cv", capabilities: ["eval", "canvas"] });
+    writeLockFile({ "plugin-canvas": pinFor("plugin-canvas") });
+    const checks = run();
+    const row = find(checks, /capability\(ies\) \[eval, canvas\] not enabled/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("set BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas");
+    expect(row?.fix).toMatch(/restart/);
+  });
+
+  it("✗ dependsOn target not resolvable", () => {
+    declare({ "plugin-a": {} });
+    install("plugin-a", {
+      namespace: "a",
+      dependsOn: [{ plugin: "plugin-b", version: "^1.0.0" }],
+    });
+    writeLockFile({ "plugin-a": pinFor("plugin-a") });
+    const checks = run();
+    const row = find(checks, /dependsOn\["plugin-b"\] is not resolvable/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin install plugin-b");
+  });
+
+  it("✗ dependsOn version range unsatisfied", () => {
+    declare({ "plugin-a": {}, "plugin-b": {} });
+    install("plugin-a", {
+      namespace: "a",
+      dependsOn: [{ plugin: "plugin-b", version: "^2.0.0" }],
+    });
+    install("plugin-b", { namespace: "b", version: "1.0.0" });
+    writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
+    const checks = run();
+    const row = find(checks, /installed version 1\.0\.0 does not satisfy range "\^2\.0\.0"/);
+    expect(row?.ok).toBe(false);
+    expect(row?.fix).toContain("browxai plugin upgrade plugin-b");
+  });
+
+  it("✗ dependsOn cycle is loud and suppresses the members' ✓ rows", () => {
+    declare({ "plugin-a": {}, "plugin-b": {} });
+    install("plugin-a", { namespace: "a", dependsOn: [{ plugin: "plugin-b", version: "*" }] });
+    install("plugin-b", { namespace: "b", dependsOn: [{ plugin: "plugin-a", version: "*" }] });
+    writeLockFile({ "plugin-a": pinFor("plugin-a"), "plugin-b": pinFor("plugin-b") });
+    const checks = run();
+    const row = find(checks, /dependency cycle:/);
+    expect(row?.ok).toBe(false);
+    expect(row?.detail).toMatch(/server start ABORTS/);
+    expect(row?.fix).toMatch(/remove one direction/);
+    expect(find(checks, /plugin-a@1\.0\.0/)).toBeUndefined();
+    expect(find(checks, /plugin-b@1\.0\.0/)).toBeUndefined();
   });
 });

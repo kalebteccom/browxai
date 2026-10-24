@@ -99,6 +99,14 @@ describe(" plugin runtime — keystone", () => {
     expect(ex?.tools.sort()).toEqual(["example.add", "example.echo", "example.now"]);
   });
 
+  it("dispatches example.echo end-to-end", async () => {
+    const res = await callJson<{ ok: boolean; result: string }>("example.echo", {
+      msg: "hi",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.result).toBe("hi");
+  });
+
   it("plugins_info returns the full manifest dump", async () => {
     const info = await callJson<{
       ok: boolean;
@@ -111,6 +119,15 @@ describe(" plugin runtime — keystone", () => {
     expect(info.namespace).toBe("example");
     expect(info.apiVersion).toBe("1.0.0");
     expect(info.tools.length).toBe(3);
+  });
+
+  it("get_config({scope:'resolved'}) reports the live plugin set", async () => {
+    const cfg = await callJson<{
+      scope: string;
+      config: { plugins: string[] };
+    }>("get_config", {});
+    expect(cfg.scope).toBe("resolved");
+    expect(cfg.config.plugins).toContain("@browxai/plugin-example");
   });
 
   it("delivers arguments to plugin tools over a real MCP connection", async () => {

@@ -99,23 +99,6 @@ afterEach(() => {
   rmSync(workspaceRoot, { recursive: true, force: true });
 });
 
-const callerOf = async (
-  plugins: MakePluginOpts[],
-  decl: string[],
-  tool: string,
-): Promise<Record<string, unknown>> => {
-  for (const plugin of plugins) makePlugin(workspaceRoot, plugin);
-  writeDecl(workspaceRoot, decl);
-  const r = await startPluginRuntime({
-    workspaceRoot,
-    enabledCapabilities: new Set(["read"] as never),
-    host: makeHost(host),
-  });
-  expect(r.plugins.every((p) => p.status === "loaded")).toBe(true);
-  const result = await host.tools.get(tool)!.handler({});
-  return JSON.parse((result.content[0] as { text: string }).text) as Record<string, unknown>;
-};
-
 describe("startPluginRuntime — basic loading", () => {
   it("returns an empty result when no plugins are declared", async () => {
     const r = await startPluginRuntime({
@@ -151,52 +134,49 @@ describe("startPluginRuntime — basic loading", () => {
     expect(r.toolCount).toBe(1);
     expect(host.tools.has("a.echo")).toBe(true);
   });
-});
 
-describe("startPluginRuntime — namespace enforcement", () => {
-  it.each<{
-    label: string;
-    plugin: Partial<MakePluginOpts> & { name: string };
-    reason: RegExp;
-  }>([
-    {
-      label: "an invalid manifest",
-      plugin: { name: "bad-plugin", namespace: "Bad-NS!", source: "export function register() {}" },
-      reason: /namespace/,
-    },
-    {
-      label: "an unnamespaced tool registration at registerTool time",
-      plugin: {
-        name: "plugin-bad",
-        namespace: "bad",
-        source: `
-          export function register(api) {
-            api.registerTool("notNamespaced", { description: "x" }, async () => ({content:[]}));
-          }
-        `,
-      },
-      reason: /namespace prefix is mandatory/,
-    },
-    {
-      label: "a plugin with an incompatible apiVersion",
-      plugin: {
-        name: "plugin-future",
-        namespace: "future",
-        apiVersion: "2.0.0",
-        source: "export function register(){}",
-      },
-      reason: /apiVersion/,
-    },
-  ])("rejects $label", async ({ plugin, reason }) => {
-    makePlugin(workspaceRoot, { namespace: plugin.name, source: "", ...plugin });
-    writeDecl(workspaceRoot, [plugin.name]);
+  it("rejects an invalid manifest", async () => {
+    const root = join(workspaceRoot, "plugins", "node_modules", "bad-plugin");
+    mkdirSync(root, { recursive: true });
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "bad-plugin",
+        version: "1.0.0",
+        browxai: { apiVersion: "1.0.0", namespace: "Bad-NS!", register: "index.js" },
+      }),
+    );
+    writeFileSync(join(root, "index.js"), "export function register() {}");
+    writeDecl(workspaceRoot, ["bad-plugin"]);
     const r = await startPluginRuntime({
       workspaceRoot,
       enabledCapabilities: new Set(["read"] as never),
       host: makeHost(host),
     });
     expect(r.plugins[0]?.status).toBe("load-error");
-    expect(r.plugins[0]?.statusReason).toMatch(reason);
+    expect(r.plugins[0]?.statusReason).toMatch(/namespace/);
+  });
+});
+
+describe("startPluginRuntime — namespace enforcement", () => {
+  it("rejects an unnamespaced tool registration at registerTool time", async () => {
+    makePlugin(workspaceRoot, {
+      name: "plugin-bad",
+      namespace: "bad",
+      source: `
+        export function register(api) {
+          api.registerTool("notNamespaced", { description: "x" }, async () => ({content:[]}));
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-bad"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("load-error");
+    expect(r.plugins[0]?.statusReason).toMatch(/namespace prefix is mandatory/);
   });
 
   it("rejects a namespace conflict between two plugins", async () => {
@@ -249,32 +229,43 @@ describe("startPluginRuntime — capability gate", () => {
 });
 
 describe("startPluginRuntime — call graph enforcement", () => {
-  const calls = (target: string) => `
-    export function register(api) {
-      api.registerTool("b.call", { description: "x" }, async () => {
-        return await api.callTool(${JSON.stringify(target)});
-      });
-    }
-  `;
-  const pluginA: MakePluginOpts = {
-    name: "plugin-a",
-    namespace: "a",
-    source: `
-      export function register(api) {
-        api.registerTool("a.hello", { description: "x" }, async () => ({
-          content: [{type:"text", text: JSON.stringify({ok:true, who:"a"})}],
-        }));
-      }
-    `,
-  };
-
   it("rejects a plugin calling an undeclared dep at runtime", async () => {
-    // b does NOT declare a in dependsOn, so the cross-call must be rejected.
-    const parsed = await callerOf(
-      [pluginA, { name: "plugin-b", namespace: "b", source: calls("a.hello") }],
-      ["plugin-a", "plugin-b"],
-      "b.call",
-    );
+    makePlugin(workspaceRoot, {
+      name: "plugin-a",
+      namespace: "a",
+      source: `
+        export function register(api) {
+          api.registerTool("a.hello", { description: "x" }, async () => ({
+            content: [{type:"text", text: JSON.stringify({ok:true})}],
+          }));
+        }
+      `,
+    });
+    makePlugin(workspaceRoot, {
+      name: "plugin-b",
+      namespace: "b",
+      // b does NOT declare a in dependsOn → cross-call must be rejected.
+      source: `
+        export function register(api) {
+          api.registerTool("b.callIntoA", { description: "x" }, async () => {
+            const res = await api.callTool("a.hello");
+            return res;
+          });
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-a", "plugin-b"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins.every((p) => p.status === "loaded")).toBe(true);
+    const handler = host.tools.get("b.callIntoA");
+    expect(handler).toBeDefined();
+    const result = await handler!.handler({});
+    const txt = (result.content[0] as { text: string }).text;
+    const parsed = JSON.parse(txt) as Record<string, unknown>;
     expect(parsed.ok).toBe(false);
     expect(parsed.code).toBe(PLUGIN_CALL_GRAPH_VIOLATION);
     expect(parsed.fromPlugin).toBe("plugin-b");
@@ -282,66 +273,132 @@ describe("startPluginRuntime — call graph enforcement", () => {
     expect(parsed.error).toMatch(/plugin call-graph violation/);
   });
 
+  it("allows a cross-plugin call when the dep is declared", async () => {
+    makePlugin(workspaceRoot, {
+      name: "plugin-a",
+      namespace: "a",
+      source: `
+        export function register(api) {
+          api.registerTool("a.hello", { description: "x" }, async () => ({
+            content: [{type:"text", text: JSON.stringify({ok:true, who:"a"})}],
+          }));
+        }
+      `,
+    });
+    makePlugin(workspaceRoot, {
+      name: "plugin-b",
+      namespace: "b",
+      dependsOn: [{ plugin: "plugin-a", version: "^1.0.0" }],
+      source: `
+        export function register(api) {
+          api.registerTool("b.callIntoA", { description: "x" }, async () => {
+            return await api.callTool("a.hello");
+          });
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-a", "plugin-b"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins.every((p) => p.status === "loaded")).toBe(true);
+    const handler = host.tools.get("b.callIntoA");
+    const result = await handler!.handler({});
+    const txt = (result.content[0] as { text: string }).text;
+    const parsed = JSON.parse(txt) as Record<string, unknown>;
+    expect(parsed.ok).toBe(true);
+    expect(parsed.who).toBe("a");
+  });
+
+  it("allows a plugin to call a core tool", async () => {
+    makePlugin(workspaceRoot, {
+      name: "plugin-a",
+      namespace: "a",
+      source: `
+        export function register(api) {
+          api.registerTool("a.peek", { description: "x" }, async () => {
+            return await api.callTool("snapshot");
+          });
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-a"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("loaded");
+    const handler = host.tools.get("a.peek");
+    const result = await handler!.handler({});
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.ok).toBe(true);
+    expect(parsed.core).toBe("snapshot");
+  });
+
   it("rejects a call to an unknown tool", async () => {
-    const parsed = await callerOf(
-      [{ name: "plugin-b", namespace: "b", source: calls("nonexistent.tool") }],
-      ["plugin-b"],
-      "b.call",
-    );
+    makePlugin(workspaceRoot, {
+      name: "plugin-a",
+      namespace: "a",
+      source: `
+        export function register(api) {
+          api.registerTool("a.peek", { description: "x" }, async () => {
+            return await api.callTool("nonexistent.tool");
+          });
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-a"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("loaded");
+    const handler = host.tools.get("a.peek");
+    const result = await handler!.handler({});
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
     expect(parsed.ok).toBe(false);
     expect(parsed.code).toBe(PLUGIN_CALL_GRAPH_VIOLATION);
   });
 
-  it.each<{
-    label: string;
-    plugins: MakePluginOpts[];
-    expected: Record<string, unknown>;
-  }>([
-    {
-      label: "a cross-plugin call when the dep is declared",
-      plugins: [
-        pluginA,
-        {
-          name: "plugin-b",
-          namespace: "b",
-          dependsOn: [{ plugin: "plugin-a", version: "^1.0.0" }],
-          source: calls("a.hello"),
-        },
-      ],
-      expected: { ok: true, who: "a" },
-    },
-    {
-      label: "a plugin to call a core tool",
-      plugins: [{ name: "plugin-b", namespace: "b", source: calls("snapshot") }],
-      expected: { ok: true, core: "snapshot" },
-    },
-    {
-      label: "a plugin to call its OWN tools",
-      plugins: [
-        {
-          name: "plugin-b",
-          namespace: "b",
-          source: `
-            export function register(api) {
-              api.registerTool("b.helper", { description: "h" }, async () => ({
-                content: [{type:"text", text: JSON.stringify({ok:true, helper:true})}],
-              }));
-              api.registerTool("b.call", { description: "m" }, async () => {
-                return await api.callTool("b.helper");
-              });
-            }
-          `,
-        },
-      ],
-      expected: { helper: true },
-    },
-  ])("allows $label", async ({ plugins, expected }) => {
-    const parsed = await callerOf(
-      plugins,
-      plugins.map((pl) => pl.name),
-      "b.call",
-    );
-    expect(parsed).toMatchObject(expected);
+  it("allows a plugin to call its OWN tools", async () => {
+    makePlugin(workspaceRoot, {
+      name: "plugin-a",
+      namespace: "a",
+      source: `
+        export function register(api) {
+          api.registerTool("a.helper", { description: "h" }, async () => ({
+            content: [{type:"text", text: JSON.stringify({ok:true, helper:true})}],
+          }));
+          api.registerTool("a.main", { description: "m" }, async () => {
+            return await api.callTool("a.helper");
+          });
+        }
+      `,
+    });
+    writeDecl(workspaceRoot, ["plugin-a"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("loaded");
+    const handler = host.tools.get("a.main");
+    const result = await handler!.handler({});
+    const parsed = JSON.parse((result.content[0] as { text: string }).text) as Record<
+      string,
+      unknown
+    >;
+    expect(parsed.helper).toBe(true);
   });
 });
 
@@ -371,6 +428,23 @@ describe("startPluginRuntime — dep-graph cycles", () => {
 });
 
 describe("startPluginRuntime — apiVersion + dep-version checks", () => {
+  it("rejects a plugin with incompatible apiVersion", async () => {
+    makePlugin(workspaceRoot, {
+      name: "plugin-future",
+      namespace: "future",
+      apiVersion: "2.0.0",
+      source: "export function register(){}",
+    });
+    writeDecl(workspaceRoot, ["plugin-future"]);
+    const r = await startPluginRuntime({
+      workspaceRoot,
+      enabledCapabilities: new Set(["read"] as never),
+      host: makeHost(host),
+    });
+    expect(r.plugins[0]?.status).toBe("load-error");
+    expect(r.plugins[0]?.statusReason).toMatch(/apiVersion/);
+  });
+
   it("warns (but still loads) on a browxaiVersion range the host doesn't satisfy", async () => {
     const { log } = await import("../util/logging.js");
     const { PACKAGE_VERSION } = await import("../util/version.js");
@@ -423,7 +497,7 @@ describe("startPluginRuntime — apiVersion + dep-version checks", () => {
 
 describe("startPluginRuntime — workspace escape attempts", () => {
   it("does not traverse outside the workspace's plugin dir", async () => {
-    // Even if plugins.json names a path with `../` segments, the
+    // Even if plugins.json names something with path traversal, the
     // resolver only joins against the install dir → never escapes.
     writeDecl(workspaceRoot, ["../../etc-passwd"]);
     const r = await startPluginRuntime({

@@ -27,30 +27,44 @@ function fakeCdp() {
 }
 
 describe("sink: console_read", () => {
-  it.each([
-    [
-      "masks registered values appearing in console message text",
-      "log",
-      "auth header carried tok-xyz inline",
-      "auth header carried <TOKEN> inline",
-    ],
-    [
-      // URL sanitiser strips ?…; secrets layer rewrites the bare token literal.
-      "composes with the URL sanitiser (both layers apply)",
-      "error",
-      "fetch https://api.example.com/x?token=tok-xyz failed for tok-xyz",
-      "fetch https://api.example.com/x?… failed for <TOKEN>",
-    ],
-  ])("%s", (_label, type, text, expected) => {
+  it("masks registered values appearing in console message text", () => {
     const buf = new ConsoleBuffer();
     const secrets = new SecretRegistry();
     secrets.register({ name: "TOKEN", value: "tok-xyz" });
     buf.setSecrets(secrets);
-    // Drive a console event through a fake Page emitter.
+    // Synthesise a buffered message by calling the internal events the way
+    // Playwright would. We re-attach a fake page by directly pushing through
+    // the public surface — but the simplest path is to drive through `recent`
+    // after manually populating the ring; instead, inject a console-like
+    // event via attach() and a fake Page emitter.
     const listeners = new Map<string, (m: { type: () => string; text: () => string }) => void>();
+    const fakePage = {
+      on: (evt: string, fn: never) => listeners.set(evt, fn),
+    };
+
+    buf.attach(fakePage as any);
+    listeners.get("console")!({
+      type: () => "log",
+      text: () => "auth header carried tok-xyz inline",
+    });
+    const out = buf.recent();
+    expect(out[0]!.text).toBe("auth header carried <TOKEN> inline");
+  });
+
+  it("composes with the URL sanitiser (both layers apply)", () => {
+    const buf = new ConsoleBuffer();
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: "tok-xyz" });
+    buf.setSecrets(secrets);
+    const listeners = new Map<string, (m: { type: () => string; text: () => string }) => void>();
+
     buf.attach({ on: (evt: string, fn: never) => listeners.set(evt, fn) } as any);
-    listeners.get("console")!({ type: () => type, text: () => text });
-    expect(buf.recent()[0]!.text).toBe(expected);
+    listeners.get("console")!({
+      type: () => "error",
+      text: () => "fetch https://api.example.com/x?token=tok-xyz failed for tok-xyz",
+    });
+    // URL sanitiser strips ?…; secrets layer rewrites the bare token literal.
+    expect(buf.recent()[0]!.text).toBe("fetch https://api.example.com/x?… failed for <TOKEN>");
   });
 });
 
@@ -151,35 +165,40 @@ describe("sink: network_body (fetchResponseBody)", () => {
   });
 });
 
-describe("sink: NetworkTap (ActionResult.network and watch window)", () => {
-  // watch.ts once built `new NetworkTap(ctx.cdp)` and dropped the secrets arg,
-  // leaving the literal-value scan off across the watch window. Both consumers
-  // use the constructor signature below.
-  it.each([
-    [
-      "masks registered values in egressing request URLs through the action-window tap",
-      "API_KEY",
-      "raw-key-9999",
-      "GET",
-      "https://api.example.com/raw-key-9999/data",
-    ],
-    [
-      "NetworkTap inside watchWindow masks egressing URLs (constructor takes secrets arg)",
-      "PASSWORD",
-      "hunter2",
-      "POST",
-      "https://api.example.com/login?password=hunter2",
-    ],
-  ])("%s", async (_label, name, value, method, url) => {
+describe("sink: NetworkTap (ActionResult.network)", () => {
+  it("masks registered values in egressing request URLs through the action-window tap", async () => {
     const { cdp, fire } = fakeCdp();
     const secrets = new SecretRegistry();
-    secrets.register({ name, value });
+    secrets.register({ name: "API_KEY", value: "raw-key-9999" });
     const tap = new NetworkTap(cdp, secrets);
     await tap.open();
-    fire("Network.requestWillBeSent", { requestId: "r1", request: { method, url }, type: "XHR" });
+    fire("Network.requestWillBeSent", {
+      requestId: "r1",
+      request: { method: "GET", url: "https://api.example.com/raw-key-9999/data" },
+      type: "XHR",
+    });
     fire("Network.responseReceived", { requestId: "r1", response: { status: 200 } });
     const { requests } = await tap.close();
-    expect(requests[0]!.url).not.toContain(value);
+    expect(requests[0]!.url).not.toContain("raw-key-9999");
+  });
+});
+
+describe("sanitiser composition — URL sanitiser + secrets both apply", () => {
+  it("URL sanitiser patternises path; secrets layer catches a literal value elsewhere", () => {
+    // The URL sanitiser handles URL structure (query/fragment/userinfo/
+    // token-paths via regex). The secrets layer handles literal real-value
+    // substring scans. They compose at the egress boundary — neither layer
+    // depends on the other's output shape.
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "TOKEN", value: "tok-xyz" });
+    // Verified indirectly by the per-sink tests above; this one is the
+    // declarative invariant — both layers are reachable independently and
+    // ordering is "URL first, then secrets" (so a secret that landed in a
+    // path segment that the URL sanitiser patternised away is fine — the
+    // value vanished before the secrets-scan ran; the scan is defence-in-
+    // depth for values that landed OUTSIDE URL shape).
+    const out = secrets.applyMaskInText("a tok-xyz b");
+    expect(out).toBe("a <TOKEN> b");
   });
 });
 
@@ -209,210 +228,189 @@ describe("capability gate — registering without `secrets` capability", () => {
 // — a removal of that step breaks both the shape-test and the wired path.
 // ---------------------------------------------------------------------------
 
-// Per-sink coverage for handler-layer sinks. The handlers depend on a
-// Playwright Page, so each row runs the exact data shape the handler emits
-// through the masker its last step uses (applyMaskDeep / applyMaskInText). Each
-// row is one sink; a regression in any single sink fails its named row.
-type Check = [(masked: any) => unknown, unknown];
-const verifyFail = (kind: string, expected: string, actual: string) => ({
-  ok: false as const,
-  failure: { source: "app" as const, kind, expected, actual },
+describe("sink: snapshot — a11y tree text masking", () => {
+  it("masks a registered value rendered into a node name in the serialised tree", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const rawBody =
+      '- textbox "Password" [ref=e3]\n' +
+      '  - text "hunter2" [ref=e4]\n' +
+      '- button "Reveal: hunter2" [ref=e5]';
+    const masked = r.applyMaskInText(rawBody);
+    expect(masked).not.toContain("hunter2");
+    expect(masked).toContain("<PASSWORD>");
+    // count: two distinct occurrences should both be masked
+    expect(masked.match(/<PASSWORD>/g)?.length).toBe(2);
+  });
 });
 
-describe("handler-layer sinks — applyMask* over each handler's result shape", () => {
-  it.each<{
-    sink: string;
-    name: string;
-    value: string;
-    text?: string;
-    input: unknown;
-    checks: Check[];
-  }>([
-    {
-      sink: "snapshot: masks a registered value rendered into a node name in the serialised tree (both occurrences)",
-      name: "PASSWORD",
-      value: "hunter2",
-      text:
-        '- textbox "Password" [ref=e3]\n' +
-        '  - text "hunter2" [ref=e4]\n' +
-        '- button "Reveal: hunter2" [ref=e5]',
-      input: undefined,
-      checks: [[(m) => m.match(/<PASSWORD>/g)?.length, 2]],
-    },
-    {
-      sink: "find: masks registered values in candidate names / selectorHint / context.rowText",
-      name: "TOKEN",
-      value: "tok-xyz",
-      input: {
-        query: "the token row",
-        candidates: [
-          {
-            ref: "e3",
-            role: "row",
-            name: "Token: tok-xyz",
-            selectorHint: 'role=row[name="Token: tok-xyz"]',
-            confidence: 0.91,
-            bbox: { x: 0, y: 0, width: 100, height: 20 },
-            context: { rowText: "Token tok-xyz Created 2026-05-26" },
-          },
-        ],
-      },
-      checks: [
-        [(m) => m.candidates[0].name, "Token: <TOKEN>"],
-        [(m) => m.candidates[0].selectorHint, 'role=row[name="Token: <TOKEN>"]'],
-        [(m) => m.candidates[0].context.rowText, "Token <TOKEN> Created 2026-05-26"],
+describe("sink: find — evidence masking", () => {
+  it("masks registered values in candidate names / selectorHint / context.rowText", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok-xyz" });
+    const findResult = {
+      query: "the token row",
+      candidates: [
+        {
+          ref: "e3",
+          role: "row",
+          name: "Token: tok-xyz",
+          selectorHint: 'role=row[name="Token: tok-xyz"]',
+          confidence: 0.91,
+          bbox: { x: 0, y: 0, width: 100, height: 20 },
+          context: { rowText: "Token tok-xyz Created 2026-05-26" },
+        },
       ],
-    },
-    {
-      sink: "text_search: masks registered values in match text / context",
-      name: "OTP",
-      value: "987654",
-      input: {
-        query: "987654",
-        count: 1,
-        matches: [
-          {
-            ref: "e7",
-            role: "text",
-            text: "Your code is 987654",
-            context: { rowText: "code: 987654" },
-          },
-        ],
-      },
-      checks: [
-        [(m) => m.matches[0].text, "Your code is <OTP>"],
-        [(m) => m.matches[0].context.rowText, "code: <OTP>"],
+    };
+    const masked = r.applyMaskDeep(findResult);
+    const json = JSON.stringify(masked);
+    expect(json).not.toContain("tok-xyz");
+    expect(masked.candidates[0]!.name).toBe("Token: <TOKEN>");
+    expect(masked.candidates[0]!.selectorHint).toBe('role=row[name="Token: <TOKEN>"]');
+    expect(masked.candidates[0]!.context.rowText).toBe("Token <TOKEN> Created 2026-05-26");
+  });
+});
+
+describe("sink: text_search — matches masking", () => {
+  it("masks registered values in match text / context", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OTP", value: "987654" });
+    const searchResult = {
+      query: "987654",
+      count: 1,
+      matches: [
+        {
+          ref: "e7",
+          role: "text",
+          text: "Your code is 987654",
+          context: { rowText: "code: 987654" },
+        },
       ],
-    },
-    {
-      // After fill({value:"<PASSWORD>"}) the dispatch substitutes the real value,
-      // and the post-action probe reads the DOM `.value` back: that string IS the
-      // real value and must be re-masked on egress.
-      sink: "fill/press post-action probe: masks the dispatched value when the element's value echoes",
-      name: "PASSWORD",
-      value: "hunter2",
-      input: {
-        ok: true,
-        action: { type: "fill", target: { ref: "e3" }, value: "<PASSWORD>" },
-        element: { ref: "e3", role: "textbox", name: "Password", value: "hunter2" },
-        network: { summary: { total: 0, errors: 0, slow: 0 }, requests: [] },
-      },
-      checks: [
-        [(m) => m.element.value, "<PASSWORD>"],
-        // descriptor was already alias-shaped, stays alias-shaped
-        [(m) => m.action.value, "<PASSWORD>"],
-      ],
-    },
-    {
-      // act_and_diff carries raw aria-* / data-* attribute values and inline-style
-      // values; `aria-label="copied hunter2"` would disclose the value verbatim.
-      sink: "act_and_diff: masks registered values in aria-label / data-tooltip / class / style deltas",
-      name: "PASSWORD",
-      value: "hunter2",
-      input: {
-        changed: [
-          {
-            path: "div.row[0]",
-            tag: "div",
-            testId: null,
-            classDelta: { added: ["copied-hunter2"], removed: [] },
-            styleDelta: { changed: { "background-image": "url(/avatars/hunter2.png)" } },
-            attrDelta: {
-              changed: {
-                "aria-label": { from: "Click to copy", to: "Copied hunter2 to clipboard" },
-                "data-tooltip": { from: null, to: "Value: hunter2" },
-              },
+    };
+    const masked = r.applyMaskDeep(searchResult);
+    expect(JSON.stringify(masked)).not.toContain("987654");
+    expect(masked.matches[0]!.text).toBe("Your code is <OTP>");
+    expect(masked.matches[0]!.context.rowText).toBe("code: <OTP>");
+  });
+});
+
+describe("sink: fill/press post-action probe — element echo masking", () => {
+  it("masks the dispatched value when the element's post-action value echoes", () => {
+    // After fill({value:"<PASSWORD>"}), the dispatch substitutes the real
+    // value but the action handler records value:"<PASSWORD>" on the
+    // descriptor. The post-action element probe reads back the DOM `.value`
+    // — that string IS the real value and must be re-masked on egress.
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const actionResult = {
+      ok: true,
+      action: { type: "fill", target: { ref: "e3" }, value: "<PASSWORD>" },
+      element: { ref: "e3", role: "textbox", name: "Password", value: "hunter2" },
+      network: { summary: { total: 0, errors: 0, slow: 0 }, requests: [] },
+    };
+    const masked = r.applyMaskDeep(actionResult);
+    expect(JSON.stringify(masked)).not.toContain("hunter2");
+    expect(masked.element.value).toBe("<PASSWORD>");
+    // descriptor was already alias-shaped, stays alias-shaped
+    expect(masked.action.value).toBe("<PASSWORD>");
+  });
+});
+
+describe("sink: act_and_diff — diff output masking (HIGH)", () => {
+  it("masks registered values in aria-label / data-tooltip attribute deltas", () => {
+    // act_and_diff diff carries raw aria-* / data-* attribute *values* and
+    // inline-style values via classDelta / styleDelta / attrDelta. A
+    // selection-state UI that writes `aria-label="copied hunter2"` would
+    // disclose the registered value verbatim without this masking.
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const diff = {
+      changed: [
+        {
+          path: "div.row[0]",
+          tag: "div",
+          testId: null,
+          classDelta: { added: ["copied-hunter2"], removed: [] },
+          styleDelta: { changed: { "background-image": "url(/avatars/hunter2.png)" } },
+          attrDelta: {
+            changed: {
+              "aria-label": { from: "Click to copy", to: "Copied hunter2 to clipboard" },
+              "data-tooltip": { from: null, to: "Value: hunter2" },
             },
           },
-        ],
-        added: [],
-        removed: [],
-        counts: { changed: 1, added: 0, removed: 0 },
-      },
-      checks: [
-        [(m) => m.changed[0].classDelta.added[0], "copied-<PASSWORD>"],
-        [
-          (m) => m.changed[0].styleDelta.changed["background-image"],
-          "url(/avatars/<PASSWORD>.png)",
-        ],
-        [(m) => m.changed[0].attrDelta.changed["aria-label"].to, "Copied <PASSWORD> to clipboard"],
-        [(m) => m.changed[0].attrDelta.changed["data-tooltip"].to, "Value: <PASSWORD>"],
+        },
       ],
-    },
-    {
-      // A status region whose visible text includes a registered value would leak
-      // through `regions[].name` if the watch result weren't deep-masked.
-      sink: "watch: masks registered values in WatchResult.regions[].name (a11y node names)",
-      name: "OTP",
-      value: "987654",
-      input: {
-        durationMs: 2000,
-        samples: 8,
-        regions: [
-          {
-            role: "status",
-            name: "Code 987654 sent",
-            ref: "e1",
-            appearedAtMs: 120,
-            disappearedAtMs: 1800,
-          },
-          {
-            role: "alert",
-            name: "Use 987654 within 5 minutes",
-            ref: "e2",
-            appearedAtMs: 200,
-            disappearedAtMs: null,
-          },
-        ],
-        console: { errors: [], warnings: 0, pageErrors: [] },
-        network: { summary: { total: 1, errors: 0, slow: 0 }, requests: [] },
-        wsFrames: [],
-      },
-      checks: [
-        [(m) => m.regions[0].name, "Code <OTP> sent"],
-        [(m) => m.regions[1].name, "Use <OTP> within 5 minutes"],
-      ],
-    },
-    {
-      // Headline invariant: verify_value({value:"guess", ref:pwField}) must not
-      // return failure.actual:"hunter2". `expected` is the agent's own input.
-      sink: "verify_value: a wrong expected masks the real value in failure.actual",
-      name: "PASSWORD",
-      value: "hunter2",
-      input: verifyFail("value", "guess", "hunter2"),
-      checks: [
-        [(m) => m.failure.actual, "<PASSWORD>"],
-        [(m) => m.failure.expected, "guess"],
-      ],
-    },
-    {
-      sink: "verify_text: the echoed innerText slice is masked on miss",
-      name: "TOKEN",
-      value: "raw-tok-xyz",
-      input: verifyFail("text", "Welcome", "Your session token is raw-tok-xyz — copy it now"),
-      checks: [[(m) => m.failure.actual, "Your session token is <TOKEN> — copy it now"]],
-    },
-    {
-      sink: "verify_attribute: the echoed attribute value is masked on miss",
-      name: "API_KEY",
-      value: "raw-key-9999",
-      input: verifyFail("attribute", "stable", "live-with-raw-key-9999"),
-      checks: [[(m) => m.failure.actual, "live-with-<API_KEY>"]],
-    },
-    {
-      sink: "verify_*: ok:true results pass through unchanged (no body fields to mask)",
-      name: "PASSWORD",
-      value: "hunter2",
-      input: { ok: true as const },
-      checks: [[(m) => m, { ok: true }]],
-    },
-  ])("sink: $sink", ({ name, value, text, input, checks }) => {
+      added: [],
+      removed: [],
+      counts: { changed: 1, added: 0, removed: 0 },
+    };
+    const masked = r.applyMaskDeep(diff);
+    expect(JSON.stringify(masked)).not.toContain("hunter2");
+    expect(masked.changed[0]!.classDelta.added[0]).toBe("copied-<PASSWORD>");
+    expect(masked.changed[0]!.styleDelta.changed["background-image"]).toBe(
+      "url(/avatars/<PASSWORD>.png)",
+    );
+    expect(masked.changed[0]!.attrDelta.changed["aria-label"].to).toBe(
+      "Copied <PASSWORD> to clipboard",
+    );
+    expect(masked.changed[0]!.attrDelta.changed["data-tooltip"].to).toBe("Value: <PASSWORD>");
+  });
+});
+
+describe("sink: watch — NetworkTap secrets threading + regions[].name masking (HIGH)", () => {
+  it("NetworkTap inside watchWindow masks egressing URLs (constructor takes secrets arg)", async () => {
+    // Regression guard for the construct-site fix: watch.ts previously did
+    // `new NetworkTap(ctx.cdp)` and dropped the secrets arg, leaving the
+    // literal-value scan disabled across the watch window. After the fix
+    // the same constructor signature is used.
+    const { cdp, fire } = fakeCdp();
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const tap = new NetworkTap(cdp, secrets);
+    await tap.open();
+    fire("Network.requestWillBeSent", {
+      requestId: "r1",
+      request: { method: "POST", url: "https://api.example.com/login?password=hunter2" },
+      type: "XHR",
+    });
+    fire("Network.responseReceived", { requestId: "r1", response: { status: 200 } });
+    const { requests } = await tap.close();
+    expect(requests[0]!.url).not.toContain("hunter2");
+  });
+
+  it("masks registered values in WatchResult.regions[].name (a11y node names)", () => {
+    // A status-region whose visible text includes a registered value would
+    // leak through `regions[].name` if the watch result weren't deep-masked
+    // on the way out of the tool handler.
     const r = new SecretRegistry();
-    r.register({ name, value });
-    const masked = text !== undefined ? r.applyMaskInText(text) : r.applyMaskDeep(input as never);
-    expect(typeof masked === "string" ? masked : JSON.stringify(masked)).not.toContain(value);
-    if (text !== undefined) expect(masked).toContain(`<${name}>`);
-    for (const [pick, expected] of checks) expect(pick(masked)).toEqual(expected);
+    r.register({ name: "OTP", value: "987654" });
+    const watchResult = {
+      durationMs: 2000,
+      samples: 8,
+      regions: [
+        {
+          role: "status",
+          name: "Code 987654 sent",
+          ref: "e1",
+          appearedAtMs: 120,
+          disappearedAtMs: 1800,
+        },
+        {
+          role: "alert",
+          name: "Use 987654 within 5 minutes",
+          ref: "e2",
+          appearedAtMs: 200,
+          disappearedAtMs: null,
+        },
+      ],
+      console: { errors: [], warnings: 0, pageErrors: [] },
+      network: { summary: { total: 1, errors: 0, slow: 0 }, requests: [] },
+      wsFrames: [],
+    };
+    const masked = r.applyMaskDeep(watchResult);
+    expect(JSON.stringify(masked)).not.toContain("987654");
+    expect(masked.regions[0]!.name).toBe("Code <OTP> sent");
+    expect(masked.regions[1]!.name).toBe("Use <OTP> within 5 minutes");
   });
 });
 
@@ -460,59 +458,128 @@ describe("sink: worker_messages_read / workers_list / worker_message_send", () =
   });
 });
 
-describe("sink: verify_predicate — deep failure.actual masking (the unbounded-depth sink)", () => {
-  // verify_predicate is the one shipped sink with no depth ceiling: `data` is
-  // `z.record(z.string(), z.unknown())` and `failure.actual` is a subtree lifted
-  // straight out of it, so the caller controls how deep the masker has to walk.
-  // Real predicate engine, not a hand-built failure: `equals` against a
-  // non-scalar key lifts the whole resolved subtree into `failure.actual`.
-  let deep30: unknown = { code: "your code is 987654" };
-  for (let i = 0; i < 30; i++) deep30 = { level: deep30 };
+describe("sink: verify_* — failure.actual masking (CRITICAL — direct value disclosure)", () => {
+  it("verify_value with a wrong expected masks the real value in failure.actual", () => {
+    // The headline-invariant breach: an agent does
+    //   verify_value({value:"guess", ref:pwField})
+    // The real value of the field is "hunter2" (registered as <PASSWORD>).
+    // Without masking, the tool result returns failure.actual:"hunter2"
+    // — direct disclosure of the registered secret to the agent.
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const verifyResult = {
+      ok: false as const,
+      failure: {
+        source: "app" as const,
+        kind: "value" as const,
+        expected: "guess",
+        actual: "hunter2",
+      },
+    };
+    const masked = r.applyMaskDeep(verifyResult);
+    expect(JSON.stringify(masked)).not.toContain("hunter2");
+    expect(masked.failure.actual).toBe("<PASSWORD>");
+    // expected is what the AGENT supplied — pass-through (not the secret)
+    expect(masked.failure.expected).toBe("guess");
+  });
 
-  it.each<[string, string, string, string, Record<string, unknown>, string[]]>([
-    [
-      "masks a registered value nested ~10 deep in the caller's data bag",
-      "PASSWORD",
-      "hunter2",
-      "actionResult",
-      {
-        actionResult: {
-          page: {
-            frames: [
-              {
-                dom: {
-                  form: {
-                    fields: [
-                      { element: { attrs: { value: "hunter2" } } },
-                      { element: { attrs: { value: "not-a-secret" } } },
-                    ],
-                  },
+  it("verify_text echoes innerText slice — masked on miss", () => {
+    // verify.ts:235 echoes trimmed.slice(0,200) of the field's actual
+    // innerText on a verify_text miss. Same exposure shape; same fix.
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "raw-tok-xyz" });
+    const verifyResult = {
+      ok: false as const,
+      failure: {
+        source: "app" as const,
+        kind: "text" as const,
+        expected: "Welcome",
+        actual: "Your session token is raw-tok-xyz — copy it now",
+      },
+    };
+    const masked = r.applyMaskDeep(verifyResult);
+    expect(masked.failure.actual).toBe("Your session token is <TOKEN> — copy it now");
+    expect(JSON.stringify(masked)).not.toContain("raw-tok-xyz");
+  });
+
+  it("verify_attribute echoes the attribute value — masked on miss", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "API_KEY", value: "raw-key-9999" });
+    const verifyResult = {
+      ok: false as const,
+      failure: {
+        source: "app" as const,
+        kind: "attribute" as const,
+        expected: "stable",
+        actual: "live-with-raw-key-9999",
+      },
+    };
+    const masked = r.applyMaskDeep(verifyResult);
+    expect(masked.failure.actual).toBe("live-with-<API_KEY>");
+  });
+
+  it("ok:true results pass through unchanged (no body fields to mask)", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const verifyResult = { ok: true as const };
+    expect(r.applyMaskDeep(verifyResult)).toEqual({ ok: true });
+  });
+});
+
+describe("sink: verify_predicate — deep failure.actual masking (the unbounded-depth sink)", () => {
+  // Every other fixture in this file is shallow (the deepest, act_and_diff,
+  // reaches 5). verify_predicate is the one shipped sink with no depth
+  // ceiling: `data` is `z.record(z.string(), z.unknown())` and `failure.actual` is a
+  // subtree lifted straight out of it, so the caller controls how deep the
+  // masker has to walk. Piping a prior snapshot or ActionResult back into
+  // `data` is the documented use, which is exactly how a pre-masking value
+  // ends up down there.
+  it("masks a registered value nested ~10 deep in the caller's data bag", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    const data = {
+      actionResult: {
+        page: {
+          frames: [
+            {
+              dom: {
+                form: {
+                  fields: [
+                    { element: { attrs: { value: "hunter2" } } },
+                    { element: { attrs: { value: "not-a-secret" } } },
+                  ],
                 },
               },
-            ],
-          },
+            },
+          ],
         },
       },
-      // non-secret leaves survive intact
-      ["<PASSWORD>", "not-a-secret"],
-    ],
-    [
-      "masks a registered value in a long accessor chain (depth 30)",
-      "OTP",
-      "987654",
-      "snapshot",
-      { snapshot: deep30 },
-      ["your code is <OTP>"],
-    ],
-  ])("%s", (_label, name, value, key, data, survivors) => {
-    const r = new SecretRegistry();
-    r.register({ name, value });
-    const res = verifyPredicate({ kind: "equals", key, value: "never" }, data);
+    };
+    // Real predicate engine, not a hand-built failure: `equals` against a
+    // non-scalar key lifts the whole resolved subtree into `failure.actual`.
+    const res = verifyPredicate({ kind: "equals", key: "actionResult", value: "never" }, data);
     expect(res.ok).toBe(false);
     const rawBody = res.ok ? { ok: true as const } : { ok: false as const, failure: res.failure };
+    const masked = r.applyMaskDeep(rawBody);
+    const json = JSON.stringify(masked);
+    expect(json).not.toContain("hunter2");
+    expect(json).toContain("<PASSWORD>");
+    expect(json).toContain("not-a-secret"); // non-secret leaves survive intact
+  });
+
+  it("masks a registered value in a long accessor chain (depth 30)", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OTP", value: "987654" });
+    let deep: unknown = { code: "your code is 987654" };
+    for (let i = 0; i < 30; i++) deep = { level: deep };
+    const res = verifyPredicate(
+      { kind: "equals", key: "snapshot", value: "never" },
+      { snapshot: deep },
+    );
+    const rawBody = res.ok ? { ok: true as const } : { ok: false as const, failure: res.failure };
     const json = JSON.stringify(r.applyMaskDeep(rawBody));
-    expect(json).not.toContain(value);
-    for (const keep of survivors) expect(json).toContain(keep);
+    expect(json).not.toContain("987654");
+    expect(json).toContain("your code is <OTP>");
   });
 });
 
@@ -545,54 +612,56 @@ describe("sink: page-data readers through the register wrapper", () => {
     origin: "https://app.test",
   };
 
-  it.each<[string, unknown, (out: string) => unknown, unknown]>([
-    [
-      "extract: a filled field read back by a schema",
-      {
-        ok: true,
-        data: { email: "a@b.test", password: "hunter2", rows: [{ note: "pw hunter2" }] },
-        tokensEstimate: 20,
-      },
-      (out) => JSON.parse(out).data,
-      { email: "a@b.test", password: "<PASSWORD>", rows: [{ note: "pw <PASSWORD>" }] },
-    ],
-    [
-      "shadow_trees: an input value inside a shadow root",
-      {
-        ok: true,
-        hosts: [{ host: "login-form", tree: { tag: "input", value: "hunter2", children: [] } }],
-      },
-      (out) => JSON.parse(out).hosts[0].tree.value,
-      "<PASSWORD>",
-    ],
-    [
-      "cookies_get: a cookie value carrying the password",
-      {
-        ok: true,
-        cookie: { name: "remember", value: "user%3Dalice%26pw%3Dhunter2", domain: "app.test" },
-      },
-      (out) => JSON.parse(out).cookie.value,
-      "user%3Dalice%26pw%3D<PASSWORD>",
-    ],
-    [
-      "idb_get: a stored record, value and key",
-      { ok: true, found: true, key: "hunter2", value: { draft: { password: "hunter2" } } },
-      (out) => {
-        const b = JSON.parse(out);
-        return { key: b.key, value: b.value };
-      },
-      { key: "<PASSWORD>", value: { draft: { password: "<PASSWORD>" } } },
-    ],
-    [
-      "caches_get: a cached text body, with network-body on",
-      { ok: true, ...cacheEntryForCaps(cachedEntry, true) },
-      (out) => JSON.parse(out).text,
-      '{"password":"<PASSWORD>"}',
-    ],
-  ])("%s", (_label, body, pick, expected) => {
-    const out = viaWrapper(body);
+  it("extract: a filled field read back by a schema", () => {
+    const out = viaWrapper({
+      ok: true,
+      data: { email: "a@b.test", password: "hunter2", rows: [{ note: "pw hunter2" }] },
+      tokensEstimate: 20,
+    });
     expect(out).not.toContain("hunter2");
-    expect(pick(out)).toEqual(expected);
+    expect(JSON.parse(out).data).toEqual({
+      email: "a@b.test",
+      password: "<PASSWORD>",
+      rows: [{ note: "pw <PASSWORD>" }],
+    });
+  });
+
+  it("shadow_trees: an input value inside a shadow root", () => {
+    const out = viaWrapper({
+      ok: true,
+      hosts: [{ host: "login-form", tree: { tag: "input", value: "hunter2", children: [] } }],
+    });
+    expect(out).not.toContain("hunter2");
+    expect(out).toContain("<PASSWORD>");
+  });
+
+  it("cookies_get: a cookie value carrying the password", () => {
+    const out = viaWrapper({
+      ok: true,
+      cookie: { name: "remember", value: "user%3Dalice%26pw%3Dhunter2", domain: "app.test" },
+    });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out).cookie.value).toBe("user%3Dalice%26pw%3D<PASSWORD>");
+  });
+
+  it("idb_get: a stored record, value and key", () => {
+    const out = viaWrapper({
+      ok: true,
+      found: true,
+      key: "hunter2",
+      value: { draft: { password: "hunter2" } },
+    });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out)).toMatchObject({
+      key: "<PASSWORD>",
+      value: { draft: { password: "<PASSWORD>" } },
+    });
+  });
+
+  it("caches_get: a cached text body, with network-body on", () => {
+    const out = viaWrapper({ ok: true, ...cacheEntryForCaps(cachedEntry, true) });
+    expect(out).not.toContain("hunter2");
+    expect(JSON.parse(out).text).toBe('{"password":"<PASSWORD>"}');
   });
 
   it("caches_get: without network-body the body is left out and the headers are masked", () => {

@@ -12,50 +12,44 @@ import {
 import { SecretRegistry } from "./secrets.js";
 
 describe("aliasFromAccount", () => {
-  it.each<[string, Array<[string, string]>]>([
-    [
-      "uppercases + collapses non-identifier characters",
-      [
-        ["acme-corp", "PASSWORD_ACME_CORP"],
-        ["foo.bar baz", "PASSWORD_FOO_BAR_BAZ"],
-        ["a/b/c", "PASSWORD_A_B_C"],
-      ],
-    ],
-    [
-      "guarantees a leading letter when account starts with digit",
-      [["123abc", "PASSWORD_X_123ABC"]],
-    ],
-    [
-      "falls back to bare prefix on empty input",
-      [
-        ["", "PASSWORD"],
-        ["...", "PASSWORD"],
-      ],
-    ],
-  ])("aliasFromAccount: %s", (_label, pairs) => {
-    for (const [account, alias] of pairs) {
-      expect(aliasFromAccount(account)).toBe(alias);
-      // SecretRegistry contract: alias must match /^[A-Z][A-Z0-9_]*$/
-      expect(/^[A-Z][A-Z0-9_]*$/.test(alias)).toBe(true);
-    }
+  it("uppercases + collapses non-identifier characters", () => {
+    expect(aliasFromAccount("acme-corp")).toBe("PASSWORD_ACME_CORP");
+    expect(aliasFromAccount("foo.bar baz")).toBe("PASSWORD_FOO_BAR_BAZ");
+    expect(aliasFromAccount("a/b/c")).toBe("PASSWORD_A_B_C");
+  });
+
+  it("guarantees a leading letter when account starts with digit", () => {
+    const a = aliasFromAccount("123abc");
+    expect(a).toBe("PASSWORD_X_123ABC");
+    // SecretRegistry contract: alias must match /^[A-Z][A-Z0-9_]*$/
+    expect(/^[A-Z][A-Z0-9_]*$/.test(a)).toBe(true);
+  });
+
+  it("falls back to bare prefix on empty input", () => {
+    expect(aliasFromAccount("")).toBe("PASSWORD");
+    expect(aliasFromAccount("...")).toBe("PASSWORD");
+  });
+
+  it("respects a custom prefix", () => {
+    expect(aliasFromAccount("acme", "TOKEN")).toBe("TOKEN_ACME");
   });
 });
 
 describe("parseSeedsEnv", () => {
-  it.each<[string, string | undefined, Record<string, string>]>([
-    [
-      "parses comma-separated key=value pairs",
-      "acct1=ABC,acct2=DEF",
-      { acct1: "ABC", acct2: "DEF" },
-    ],
-    ["returns {} on undefined", undefined, {}],
-    [
-      "silently drops malformed entries",
-      "good=ok,bad,also=fine,=missingkey,missingvalue=",
-      { good: "ok", also: "fine" },
-    ],
-  ])("parseSeedsEnv: %s", (_label, input, expected) => {
-    expect(parseSeedsEnv(input)).toEqual(expected);
+  it("parses comma-separated key=value pairs", () => {
+    expect(parseSeedsEnv("acct1=ABC,acct2=DEF")).toEqual({ acct1: "ABC", acct2: "DEF" });
+  });
+
+  it("returns {} on undefined / empty", () => {
+    expect(parseSeedsEnv(undefined)).toEqual({});
+    expect(parseSeedsEnv("")).toEqual({});
+  });
+
+  it("silently drops malformed entries", () => {
+    expect(parseSeedsEnv("good=ok,bad,also=fine,=missingkey,missingvalue=")).toEqual({
+      good: "ok",
+      also: "fine",
+    });
   });
 });
 
@@ -80,6 +74,11 @@ describe("resolveCredentialsProvider", () => {
     expect(r.config.provider).toBe("oathtool");
     expect(r.config.warnings.length).toBe(1);
     expect(r.config.warnings[0]).toContain("unknown provider");
+  });
+
+  it("normalises case on provider name", () => {
+    const r = resolveCredentialsProvider({ BROWX_CREDENTIALS_PROVIDER: "1Password" });
+    expect(r.config.provider).toBe("1password");
   });
 });
 
@@ -310,49 +309,68 @@ describe("vault CLIs get `--` before the account", () => {
     return { calls, run };
   }
 
-  it.each([
-    [
-      "1password",
-      "Acme Corp",
+  it("1password", async () => {
+    const { calls, run } = recordingRun("123456");
+    const { provider } = resolveCredentialsProvider(
+      { BROWX_CREDENTIALS_PROVIDER: "1password" },
+      run,
+    );
+    await provider.getTotp("Acme Corp");
+    await provider.getCredential("Acme Corp");
+    expect(calls).toEqual([
+      ["op", "item", "get", "--otp", "--", "Acme Corp"],
       [
-        ["op", "item", "get", "--otp", "--", "Acme Corp"],
-        [
-          "op",
-          "item",
-          "get",
-          "--fields",
-          "label=username,label=password",
-          "--format",
-          "json",
-          "--",
-          "Acme Corp",
-        ],
+        "op",
+        "item",
+        "get",
+        "--fields",
+        "label=username,label=password",
+        "--format",
+        "json",
+        "--",
+        "Acme Corp",
       ],
-    ],
-    [
-      "bitwarden",
-      "item-id-1",
-      [
-        ["bw", "get", "totp", "--", "item-id-1"],
-        ["bw", "get", "item", "--", "item-id-1"],
-      ],
-    ],
-    [
-      "lastpass",
-      "Shared/Acme",
-      [
-        ["lpass", "show", "--field=otp", "--", "Shared/Acme"],
-        ["lpass", "show", "--username", "--password", "--", "Shared/Acme"],
-      ],
-    ],
-  ])(
-    "%s, with `--` immediately before the account, last in argv",
-    async (name, account, expected) => {
-      const { calls, run } = recordingRun("123456");
-      const { provider } = resolveCredentialsProvider({ BROWX_CREDENTIALS_PROVIDER: name }, run);
-      await provider.getTotp(account);
-      await provider.getCredential(account);
-      expect(calls).toEqual(expected);
-    },
-  );
+    ]);
+  });
+
+  it("bitwarden", async () => {
+    const { calls, run } = recordingRun("123456");
+    const { provider } = resolveCredentialsProvider(
+      { BROWX_CREDENTIALS_PROVIDER: "bitwarden" },
+      run,
+    );
+    await provider.getTotp("item-id-1");
+    await provider.getCredential("item-id-1");
+    expect(calls).toEqual([
+      ["bw", "get", "totp", "--", "item-id-1"],
+      ["bw", "get", "item", "--", "item-id-1"],
+    ]);
+  });
+
+  it("lastpass", async () => {
+    const { calls, run } = recordingRun("123456");
+    const { provider } = resolveCredentialsProvider(
+      { BROWX_CREDENTIALS_PROVIDER: "lastpass" },
+      run,
+    );
+    await provider.getTotp("Shared/Acme");
+    await provider.getCredential("Shared/Acme");
+    expect(calls).toEqual([
+      ["lpass", "show", "--field=otp", "--", "Shared/Acme"],
+      ["lpass", "show", "--username", "--password", "--", "Shared/Acme"],
+    ]);
+  });
+
+  it("puts `--` immediately before the account, last in argv", async () => {
+    const { calls, run } = recordingRun("123456");
+    for (const p of ["1password", "bitwarden", "lastpass"]) {
+      const { provider } = resolveCredentialsProvider({ BROWX_CREDENTIALS_PROVIDER: p }, run);
+      await provider.getTotp("acct");
+      await provider.getCredential("acct");
+    }
+    for (const argv of calls) {
+      expect(argv.at(-1)).toBe("acct");
+      expect(argv.at(-2)).toBe("--");
+    }
+  });
 });

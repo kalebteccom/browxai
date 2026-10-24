@@ -46,22 +46,15 @@ function fakeContext() {
 }
 
 describe("defaultHarFilename", () => {
-  it.each([
-    {
-      name: "uses ISO timestamp with colon/dot stripped + safe session id",
-      id: "agent-a",
-      at: "2026-05-26T12:34:56.789Z",
-      patterns: [/^agent-a-2026-05-26T12-34-56-789Z\.har$/],
-    },
-    {
-      name: "scrubs unsafe characters in the session id",
-      id: "bad/id:with*chars",
-      at: "2026-05-26T12:00:00.000Z",
-      patterns: [/^bad_id_with_chars-/, /\.har$/],
-    },
-  ])("$name", ({ id, at, patterns }) => {
-    const name = defaultHarFilename(id, new Date(at));
-    for (const pattern of patterns) expect(name).toMatch(pattern);
+  it("uses ISO timestamp with colon/dot stripped + safe session id", () => {
+    const name = defaultHarFilename("agent-a", new Date("2026-05-26T12:34:56.789Z"));
+    expect(name).toBe("agent-a-2026-05-26T12-34-56-789Z.har");
+  });
+
+  it("scrubs unsafe characters in the session id", () => {
+    const name = defaultHarFilename("bad/id:with*chars", new Date("2026-05-26T12:00:00.000Z"));
+    expect(name).toMatch(/^bad_id_with_chars-/);
+    expect(name).toMatch(/\.har$/);
   });
 });
 
@@ -111,15 +104,16 @@ describe("resolveHarPath (.zip refusal)", () => {
 });
 
 describe("resolveHarReplayPaths", () => {
-  it.each([
-    { name: "empty / non-string entries", entry: "", error: /non-empty workspace-rooted/ },
-    {
-      name: "missing files (no silent fallback to network on a typo)",
-      entry: "captures/nope.har",
-      error: /HAR replay file not found/,
-    },
-  ])("rejects $name", ({ entry, error }) => {
-    expect(() => resolveHarReplayPaths(ws, [entry], "open_session")).toThrow(error);
+  it("rejects empty / non-string entries", () => {
+    expect(() => resolveHarReplayPaths(ws, [""], "open_session")).toThrow(
+      /non-empty workspace-rooted/,
+    );
+  });
+
+  it("rejects missing files (no silent fallback to network on a typo)", () => {
+    expect(() => resolveHarReplayPaths(ws, ["captures/nope.har"], "open_session")).toThrow(
+      /HAR replay file not found/,
+    );
   });
 
   it("rejects path traversal outside the workspace", () => {
@@ -273,23 +267,23 @@ describe("stopHar", () => {
 });
 
 describe("readHarIfSmall (inline-vs-path threshold)", () => {
-  const small = JSON.stringify({ log: { entries: [] } });
-  it.each([
-    {
-      name: "returns undefined when the file does not exist (HAR not yet finalized)",
-      body: undefined,
-      inlined: undefined,
-    },
-    { name: "inlines a file under the cap", body: small, inlined: small },
-    {
-      name: "returns undefined when the file is over the inline cap",
-      body: "x".repeat(HAR_INLINE_CAP_BYTES + 1024),
-      inlined: undefined,
-    },
-  ])("$name", ({ body, inlined }) => {
-    const p = join(ws, "fixture.har");
-    if (body !== undefined) writeFileSync(p, body);
-    expect(readHarIfSmall(p)).toBe(inlined);
+  it("returns undefined when the file does not exist (HAR not yet finalized)", () => {
+    expect(readHarIfSmall(join(ws, "missing.har"))).toBeUndefined();
+  });
+
+  it("inlines a file under the cap", () => {
+    const p = join(ws, "small.har");
+    const body = JSON.stringify({ log: { entries: [] } });
+    writeFileSync(p, body);
+    expect(readHarIfSmall(p)).toBe(body);
+  });
+
+  it("returns undefined when the file is over the inline cap", () => {
+    const p = join(ws, "big.har");
+    // Construct a payload safely over the cap.
+    const big = "x".repeat(HAR_INLINE_CAP_BYTES + 1024);
+    writeFileSync(p, big);
+    expect(readHarIfSmall(p)).toBeUndefined();
   });
 });
 

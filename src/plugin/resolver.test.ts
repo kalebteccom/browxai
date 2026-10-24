@@ -105,26 +105,37 @@ describe("resolveDeclaredPlugin first-party tier", () => {
     return r.kind === "resolved" ? r.manifest.trust : undefined;
   };
 
-  it.each([
-    { label: "an @browxai/ name with no lock entry" },
-    { label: "an aliased install", lockSource: `${NAME}@npm:other`, integrity: "sha512-AAAA" },
-    {
-      label: "a git install whose package.json claims the name",
-      browxai: { trust: "kalebtec" },
-      lockSource: "github:someone/repo",
-      integrity: "sha512-AAAA",
-    },
-    { label: "a plain registry spec without an integrity hash", lockSource: NAME },
-    {
-      label: "an installed package.json that names another package",
-      pkgName: "other",
-      lockSource: NAME,
-      integrity: "sha512-AAAA",
-    },
-  ])("is community for $label", ({ browxai, pkgName, lockSource, integrity }) => {
+  it("is community for an @browxai/ name with no lock entry", () => {
     const paths = pluginPaths(workspaceRoot);
-    installPackage(paths, NAME, browxai ?? {}, pkgName ?? NAME);
-    if (lockSource) writeLockEntry(paths, NAME, lockSource, integrity);
+    installPackage(paths, NAME);
+    expect(tierOf(paths)).toBe("community");
+  });
+
+  it("is community for an aliased install", () => {
+    const paths = pluginPaths(workspaceRoot);
+    installPackage(paths, NAME);
+    writeLockEntry(paths, NAME, `${NAME}@npm:other`, "sha512-AAAA");
+    expect(tierOf(paths)).toBe("community");
+  });
+
+  it("is community for a git install whose package.json claims the name", () => {
+    const paths = pluginPaths(workspaceRoot);
+    installPackage(paths, NAME, { trust: "kalebtec" });
+    writeLockEntry(paths, NAME, "github:someone/repo", "sha512-AAAA");
+    expect(tierOf(paths)).toBe("community");
+  });
+
+  it("is community for a plain registry spec without an integrity hash", () => {
+    const paths = pluginPaths(workspaceRoot);
+    installPackage(paths, NAME);
+    writeLockEntry(paths, NAME, NAME);
+    expect(tierOf(paths)).toBe("community");
+  });
+
+  it("is community when the installed package.json names another package", () => {
+    const paths = pluginPaths(workspaceRoot);
+    installPackage(paths, NAME, {}, "other");
+    writeLockEntry(paths, NAME, NAME, "sha512-AAAA");
     expect(tierOf(paths)).toBe("community");
   });
 
@@ -137,7 +148,38 @@ describe("resolveDeclaredPlugin first-party tier", () => {
   });
 });
 
-describe("resolveDeclaredPlugin", () => {
+describe("resolveDeclaredPlugin entry containment", () => {
+  it("refuses a register path that leaves the package with ../", () => {
+    const paths = pluginPaths(workspaceRoot);
+    installPackage(paths, "outside-rel", { register: "../x.js" });
+    writeFileSync(join(paths.nodeModulesDir, "x.js"), "export function register(){}");
+    const r = resolveDeclaredPlugin(paths, { name: "outside-rel", enabled: true });
+    expect(r.kind).toBe("invalid-manifest");
+    if (r.kind === "invalid-manifest") expect(r.error).toMatch(/outside the package directory/);
+  });
+
+  it("refuses an absolute register path", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const outsideFile = join(workspaceRoot, "outside.js");
+    writeFileSync(outsideFile, "export function register(){}");
+    installPackage(paths, "outside-abs", { register: outsideFile });
+    const r = resolveDeclaredPlugin(paths, { name: "outside-abs", enabled: true });
+    expect(r.kind).toBe("invalid-manifest");
+    if (r.kind === "invalid-manifest") expect(r.error).toMatch(/absolute path/);
+  });
+
+  it("refuses a register path that leaves the package through a symlink", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const outsideDir = join(workspaceRoot, "elsewhere");
+    mkdirSync(outsideDir);
+    writeFileSync(join(outsideDir, "index.js"), "export function register(){}");
+    const pkgRoot = installPackage(paths, "outside-link", { register: "lib/index.js" });
+    symlinkSync(outsideDir, join(pkgRoot, "lib"));
+    const r = resolveDeclaredPlugin(paths, { name: "outside-link", enabled: true });
+    expect(r.kind).toBe("invalid-manifest");
+    if (r.kind === "invalid-manifest") expect(r.error).toMatch(/through a link/);
+  });
+
   it("accepts an entry in a subdirectory of the package", () => {
     const paths = pluginPaths(workspaceRoot);
     const pkgRoot = installPackage(paths, "nested", { register: "dist/index.js" });
@@ -145,88 +187,40 @@ describe("resolveDeclaredPlugin", () => {
     writeFileSync(join(pkgRoot, "dist", "index.js"), "export function register(){}");
     expect(resolveDeclaredPlugin(paths, { name: "nested", enabled: true }).kind).toBe("resolved");
   });
+});
 
-  it.each<{
-    label: string;
-    name: string;
-    kind: string;
-    error?: RegExp;
-    setup: (paths: PluginPaths) => void;
-  }>([
-    {
-      label: "a register path that leaves the package with ../",
-      name: "outside-rel",
-      kind: "invalid-manifest",
-      error: /outside the package directory/,
-      setup: (paths) => {
-        installPackage(paths, "outside-rel", { register: "../x.js" });
-        writeFileSync(join(paths.nodeModulesDir, "x.js"), "export function register(){}");
-      },
-    },
-    {
-      label: "an absolute register path",
-      name: "outside-abs",
-      kind: "invalid-manifest",
-      error: /absolute path/,
-      setup: (paths) => {
-        const outsideFile = join(workspaceRoot, "outside.js");
-        writeFileSync(outsideFile, "export function register(){}");
-        installPackage(paths, "outside-abs", { register: outsideFile });
-      },
-    },
-    {
-      label: "a register path that leaves the package through a symlink",
-      name: "outside-link",
-      kind: "invalid-manifest",
-      error: /through a link/,
-      setup: (paths) => {
-        const outsideDir = join(workspaceRoot, "elsewhere");
-        mkdirSync(outsideDir);
-        writeFileSync(join(outsideDir, "index.js"), "export function register(){}");
-        const pkgRoot = installPackage(paths, "outside-link", { register: "lib/index.js" });
-        symlinkSync(outsideDir, join(pkgRoot, "lib"));
-      },
-    },
-    {
-      label: "a register entry file that is missing",
-      name: "noentry",
-      kind: "invalid-manifest",
-      error: /does not exist/,
-      setup: (paths) => {
-        installPackage(paths, "noentry", { namespace: "x", register: "missing.js" });
-        rmSync(join(paths.nodeModulesDir, "noentry", "index.js"));
-      },
-    },
-    {
-      label: "a package.json without a browxai field",
-      name: "plain",
-      kind: "invalid-manifest",
-      setup: (paths) => {
-        const pkgRoot = join(paths.nodeModulesDir, "plain");
-        mkdirSync(pkgRoot, { recursive: true });
-        writeFileSync(
-          join(pkgRoot, "package.json"),
-          JSON.stringify({ name: "plain", version: "1.0.0" }),
-        );
-      },
-    },
-    {
-      label: "a package dir that is absent",
-      name: "missing",
-      kind: "not-installed",
-      setup: () => {},
-    },
-  ])("refuses $label", ({ name, kind, error, setup }) => {
+describe("resolveDeclaredPlugin", () => {
+  it("returns not-installed when the package dir is absent", () => {
     const paths = pluginPaths(workspaceRoot);
-    setup(paths);
-    const r = resolveDeclaredPlugin(paths, { name, enabled: true });
-    expect(r.kind).toBe(kind);
-    if (error && r.kind === "invalid-manifest") expect(r.error).toMatch(error);
+    const r = resolveDeclaredPlugin(paths, { name: "missing", enabled: true });
+    expect(r.kind).toBe("not-installed");
+  });
+
+  it("returns invalid-manifest when package.json lacks browxai field", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "plain");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({ name: "plain", version: "1.0.0" }),
+    );
+    const r = resolveDeclaredPlugin(paths, { name: "plain", enabled: true });
+    expect(r.kind).toBe("invalid-manifest");
   });
 
   it("resolves a registry-installed @browxai/ plugin with an integrity pin as kalebtec", () => {
     const paths = pluginPaths(workspaceRoot);
-    installPackage(paths, "@browxai/plugin-good", { namespace: "good" });
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-good");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "@browxai/plugin-good",
+        version: "1.2.3",
+        browxai: { apiVersion: "1.0.0", namespace: "good", register: "index.js" },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
     writeLockEntry(paths, "@browxai/plugin-good", "@browxai/plugin-good@^1.2.0", "sha512-AAAA");
     const r = resolveDeclaredPlugin(paths, {
       name: "@browxai/plugin-good",
@@ -240,41 +234,90 @@ describe("resolveDeclaredPlugin", () => {
     }
   });
 
-  it.each<{
-    label: string;
-    name: string;
-    browxai: Record<string, unknown>;
-    entryTrust?: "local";
-    expected: string;
-  }>([
-    {
-      label: "honours a per-entry trust override from plugins.json",
-      name: "@browxai/plugin-good",
-      browxai: { namespace: "good" },
-      entryTrust: "local",
-      expected: "local",
-    },
-    {
-      label: "refuses a self-declared kalebtec tier outside the @browxai/* scope",
-      name: "browxai-plugin-hostile",
-      browxai: { namespace: "hostile", trust: "kalebtec" },
-      expected: "community",
-    },
-    {
-      label: "honours a manifest self-downgrade below what the scope would grant",
-      name: "@browxai/plugin-modest",
-      browxai: { namespace: "modest", trust: "community" },
-      expected: "community",
-    },
-  ])("$label", ({ name, browxai, entryTrust, expected }) => {
+  it("honours per-entry trust override from plugins.json", () => {
     const paths = pluginPaths(workspaceRoot);
-    installPackage(paths, name, browxai);
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-good");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "@browxai/plugin-good",
+        version: "1.2.3",
+        browxai: { apiVersion: "1.0.0", namespace: "good", register: "index.js" },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
     const r = resolveDeclaredPlugin(paths, {
-      name,
+      name: "@browxai/plugin-good",
       enabled: true,
-      ...(entryTrust ? { trust: entryTrust } : {}),
+      trust: "local",
     });
     if (r.kind !== "resolved") throw new Error("expected resolved");
-    expect(r.manifest.trust).toBe(expected);
+    expect(r.manifest.trust).toBe("local");
+  });
+
+  it("refuses a self-declared kalebtec tier outside the @browxai/* scope", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "browxai-plugin-hostile");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "browxai-plugin-hostile",
+        version: "1.0.0",
+        browxai: {
+          apiVersion: "1.0.0",
+          namespace: "hostile",
+          register: "index.js",
+          trust: "kalebtec",
+        },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
+    const r = resolveDeclaredPlugin(paths, { name: "browxai-plugin-hostile", enabled: true });
+    if (r.kind !== "resolved") throw new Error("expected resolved");
+    expect(r.manifest.trust).toBe("community");
+  });
+
+  it("honours a manifest self-downgrade below what the scope would grant", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "@browxai", "plugin-modest");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "@browxai/plugin-modest",
+        version: "1.0.0",
+        browxai: {
+          apiVersion: "1.0.0",
+          namespace: "modest",
+          register: "index.js",
+          trust: "community",
+        },
+      }),
+    );
+    writeFileSync(join(pkgRoot, "index.js"), "export function register(){}");
+    const r = resolveDeclaredPlugin(paths, { name: "@browxai/plugin-modest", enabled: true });
+    if (r.kind !== "resolved") throw new Error("expected resolved");
+    expect(r.manifest.trust).toBe("community");
+  });
+
+  it("rejects when register entry file is missing", () => {
+    const paths = pluginPaths(workspaceRoot);
+    const pkgRoot = join(paths.nodeModulesDir, "noentry");
+    mkdirSync(pkgRoot, { recursive: true });
+    writeFileSync(
+      join(pkgRoot, "package.json"),
+      JSON.stringify({
+        name: "noentry",
+        version: "1.0.0",
+        browxai: { apiVersion: "1.0.0", namespace: "x", register: "missing.js" },
+      }),
+    );
+    const r = resolveDeclaredPlugin(paths, { name: "noentry", enabled: true });
+    expect(r.kind).toBe("invalid-manifest");
+    if (r.kind === "invalid-manifest") {
+      expect(r.error).toMatch(/does not exist/);
+    }
   });
 });

@@ -3,14 +3,17 @@ import { SecretRegistry, composeUrlAndSecretsInText } from "./secrets.js";
 import { sanitizeUrlsInText } from "./url-sanitizer.js";
 
 describe("SecretRegistry — register flow", () => {
-  it.each([
-    ["rejects a lowercase name", { name: "password", value: "v" }, /must match/],
-    ["rejects a mixed-case name", { name: "Password", value: "v" }, /must match/],
-    ["rejects a whitespace-bearing name", { name: "MY PASS", value: "v" }, /must match/],
-    ["rejects an angle-bracketed name", { name: "<PWD>", value: "v" }, /must match/],
-    ["rejects an empty value (would mask everything)", { name: "X", value: "" }, /non-empty/],
-  ])("%s", (_label, spec, message) => {
-    expect(() => new SecretRegistry().register(spec)).toThrow(message);
+  it("rejects lowercase / mixed-case / whitespace-bearing names", () => {
+    const r = new SecretRegistry();
+    expect(() => r.register({ name: "password", value: "v" })).toThrow(/must match/);
+    expect(() => r.register({ name: "Password", value: "v" })).toThrow(/must match/);
+    expect(() => r.register({ name: "MY PASS", value: "v" })).toThrow(/must match/);
+    expect(() => r.register({ name: "<PWD>", value: "v" })).toThrow(/must match/);
+  });
+
+  it("rejects an empty value (would mask everything)", () => {
+    const r = new SecretRegistry();
+    expect(() => r.register({ name: "X", value: "" })).toThrow(/non-empty/);
   });
 
   it("enforces a capacity cap", () => {
@@ -75,74 +78,51 @@ describe("SecretRegistry.materialize — dispatch-side substitution", () => {
     expect(refused.value).toBe("<TOKEN>");
   });
 
-  it.each<[string, string | string[], Array<[string, boolean]>, string[] | undefined]>([
-    [
-      "matches the scope as an origin, never as a substring of the URL",
-      "app.example.com",
-      [
-        ["https://evil.test/?app.example.com", false],
-        ["https://evil.test/app.example.com/login", false],
-        ["https://app.example.com.evil.test/", false],
-        ["https://evil.test/#https://app.example.com", false],
-        ["https://app.example.com@evil.test/", false],
-        ["about:blank", false],
-        ["about:srcdoc", false],
-        ["data:text/html,app.example.com", false],
-        ["not a url", false],
-        ["https://APP.example.com/x?y=1", true],
-        ["https://app.example.com:443/", true],
-      ],
-      undefined,
-    ],
-    [
-      "compares scheme and port for a bare-host scope",
-      "app.example.com",
-      [
-        ["http://app.example.com/", false],
-        ["https://app.example.com:8443/", false],
-      ],
-      undefined,
-    ],
-    [
-      "compares scheme and port for an explicit http://localhost:3000 scope",
-      "http://localhost:3000",
-      [
-        ["http://localhost:3000/login", true],
-        ["https://localhost:3000/login", false],
-        ["http://localhost:3001/login", false],
-        ["http://localhost/login", false],
-      ],
-      undefined,
-    ],
-    [
-      "accepts a list of origins and matches any one of them exactly",
-      ["https://app.example.com", "https://sso.example.com/"],
-      [
-        ["https://sso.example.com/auth", true],
-        ["https://app.example.com/", true],
-        ["https://example.com/", false],
-      ],
-      ["https://app.example.com", "https://sso.example.com"],
-    ],
-    [
-      "matches a native app scope against the app:// target url",
-      "app://com.acme.app",
-      [
-        ["app://com.acme.app/CheckoutActivity", true],
-        ["app://com.acme.app.evil/Main", false],
-        ["https://com.acme.app/", false],
-      ],
-      undefined,
-    ],
-  ])("%s", (_label, scope, checks, origins) => {
+  it("matches the scope as an origin, never as a substring of the URL", () => {
     const r = new SecretRegistry();
-    r.register({ name: "TOKEN", value: "tok-xyz", scope });
-    if (origins) expect(r.scopeOrigins("TOKEN")).toEqual(origins);
-    for (const [url, ok] of checks) {
+    r.register({ name: "TOKEN", value: "tok-xyz", scope: "app.example.com" });
+    for (const url of [
+      "https://evil.test/?app.example.com",
+      "https://evil.test/app.example.com/login",
+      "https://app.example.com.evil.test/",
+      "https://evil.test/#https://app.example.com",
+      "https://app.example.com@evil.test/",
+      "about:blank",
+      "about:srcdoc",
+      "data:text/html,app.example.com",
+      "not a url",
+    ]) {
       const m = r.materialize("<TOKEN>", url);
-      expect(m.ok, url).toBe(ok);
-      if (!ok) expect(m.materialised, url).toBe(false);
+      expect(m.ok, url).toBe(false);
+      expect(m.materialised, url).toBe(false);
     }
+    expect(r.materialize("<TOKEN>", "https://APP.example.com/x?y=1").ok).toBe(true);
+    expect(r.materialize("<TOKEN>", "https://app.example.com:443/").ok).toBe(true);
+  });
+
+  it("compares scheme and port", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "BARE", value: "v-bare", scope: "app.example.com" });
+    r.register({ name: "DEV", value: "v-dev", scope: "http://localhost:3000" });
+    expect(r.materialize("<BARE>", "http://app.example.com/").ok).toBe(false);
+    expect(r.materialize("<BARE>", "https://app.example.com:8443/").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3000/login").ok).toBe(true);
+    expect(r.materialize("<DEV>", "https://localhost:3000/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3001/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost/login").ok).toBe(false);
+  });
+
+  it("accepts a list of origins and matches any one of them exactly", () => {
+    const r = new SecretRegistry();
+    r.register({
+      name: "SSO",
+      value: "v-sso",
+      scope: ["https://app.example.com", "https://sso.example.com/"],
+    });
+    expect(r.scopeOrigins("SSO")).toEqual(["https://app.example.com", "https://sso.example.com"]);
+    expect(r.materialize("<SSO>", "https://sso.example.com/auth").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://app.example.com/").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://example.com/").ok).toBe(false);
   });
 
   it("rejects a scope that is not an origin at registration", () => {
@@ -174,46 +154,46 @@ describe("SecretRegistry.materialize — dispatch-side substitution", () => {
     expect(r.needsScopeCheck("<SCOPED>")).toBe(false);
     expect(r.scopeOrigins("SCOPED")).toBeNull();
   });
+
+  it("matches a native app scope against the app:// target url", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "4321", scope: "app://com.acme.app" });
+    expect(r.materialize("<PIN>", "app://com.acme.app/CheckoutActivity").ok).toBe(true);
+    expect(r.materialize("<PIN>", "app://com.acme.app.evil/Main").ok).toBe(false);
+    expect(r.materialize("<PIN>", "https://com.acme.app/").ok).toBe(false);
+  });
 });
 
 describe("SecretRegistry.applyMaskInText — egress masking", () => {
-  // Every row is also checked for idempotence: re-masking is a no-op because
-  // the mask never contains a secret.
-  it.each<[string, Array<[string, string]>, Array<[string, string]>]>([
-    [
-      "substitutes every occurrence of the real value with <NAME>",
-      [["PASSWORD", "hunter2"]],
-      [
-        [
-          "typed hunter2 into the field; got hunter2 back",
-          "typed <PASSWORD> into the field; got <PASSWORD> back",
-        ],
-      ],
-    ],
-    [
-      "masks longer values before shorter ones (no partial leak)",
-      [
-        ["SHORT", "abc"],
-        ["LONG", "abc12345"],
-      ],
-      [
-        ["value=abc12345", "value=<LONG>"],
-        ["value=abc", "value=<SHORT>"],
-      ],
-    ],
-    [
-      "handles regex-metachar values via literal split/join",
-      [["PATTERN", "a+b.c*d"]],
-      [["payload=a+b.c*d end", "payload=<PATTERN> end"]],
-    ],
-  ])("%s", (_label, secrets, pairs) => {
+  it("substitutes every occurrence of the real value with <NAME>", () => {
     const r = new SecretRegistry();
-    for (const [name, value] of secrets) r.register({ name, value });
-    for (const [input, expected] of pairs) {
-      const once = r.applyMaskInText(input);
-      expect(once).toBe(expected);
-      expect(r.applyMaskInText(once)).toBe(once);
-    }
+    r.register({ name: "PASSWORD", value: "hunter2" });
+    expect(r.applyMaskInText("typed hunter2 into the field; got hunter2 back")).toBe(
+      "typed <PASSWORD> into the field; got <PASSWORD> back",
+    );
+  });
+
+  it("is idempotent — re-masking is a no-op (the mask never contains a secret)", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "X", value: "secret" });
+    const once = r.applyMaskInText("got secret value");
+    const twice = r.applyMaskInText(once);
+    expect(twice).toBe(once);
+  });
+
+  it("masks longer values before shorter ones (no partial leak)", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "SHORT", value: "abc" });
+    r.register({ name: "LONG", value: "abc12345" });
+    // LONG is a superstring of SHORT — masking SHORT first would corrupt LONG.
+    expect(r.applyMaskInText("value=abc12345")).toBe("value=<LONG>");
+    expect(r.applyMaskInText("value=abc")).toBe("value=<SHORT>");
+  });
+
+  it("handles regex-metachar values via literal split/join", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PATTERN", value: "a+b.c*d" });
+    expect(r.applyMaskInText("payload=a+b.c*d end")).toBe("payload=<PATTERN> end");
   });
 });
 
@@ -377,26 +357,20 @@ describe("SecretRegistry.applyMaskDeep — recursive object/array masking", () =
 });
 
 describe("composeUrlAndSecretsInText — sanitiser composition (URL + secrets)", () => {
-  // The URL's query is redacted by the URL sanitiser (?…); a LITERAL value that
-  // landed outside the URL is masked by the secrets layer.
-  it.each<[string, boolean, string, string]>([
-    [
-      "applies the URL sanitiser first, then the secrets layer",
-      true,
-      "connected to https://api.example.com/x?key=raw-token-12345 and stored raw-token-12345 locally",
-      "connected to https://api.example.com/x?… and stored <TOKEN> locally",
-    ],
-    [
-      "falls back to URL-sanitisation-only when no registry is given",
-      false,
-      "goto https://api.example.com/x?token=raw-token-12345",
-      "goto https://api.example.com/x?…",
-    ],
-  ])("%s", (_label, withRegistry, input, expected) => {
+  it("applies the URL sanitiser first, then the secrets layer", () => {
     const r = new SecretRegistry();
     r.register({ name: "TOKEN", value: "raw-token-12345" });
-    expect(composeUrlAndSecretsInText(input, sanitizeUrlsInText, withRegistry ? r : null)).toBe(
-      expected,
+    const input = `connected to https://api.example.com/x?key=raw-token-12345 and stored raw-token-12345 locally`;
+    const out = composeUrlAndSecretsInText(input, sanitizeUrlsInText, r);
+    // The URL's query was redacted by the URL sanitiser (?…); the LITERAL
+    // value that landed outside the URL is masked by the secrets layer.
+    expect(out).toBe("connected to https://api.example.com/x?… and stored <TOKEN> locally");
+  });
+
+  it("falls back to URL-sanitisation-only when no registry is given", () => {
+    const input = `goto https://api.example.com/x?token=raw-token-12345`;
+    expect(composeUrlAndSecretsInText(input, sanitizeUrlsInText, null)).toBe(
+      "goto https://api.example.com/x?…",
     );
   });
 });

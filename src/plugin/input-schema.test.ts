@@ -13,15 +13,12 @@ const shapeOf = (schema: PluginJsonSchemaObject): z.ZodRawShape => {
 const parse = (shape: z.ZodRawShape, value: unknown) => z.object(shape).safeParse(value);
 
 describe("toToolInput", () => {
-  it.each([
-    { label: "leaves an undeclared schema undeclared", schema: undefined, expected: undefined },
-    {
-      label: "keeps an empty declaration empty, so an argless tool stays argless",
-      schema: {},
-      expected: { shape: {}, passthrough: false },
-    },
-  ])("$label", ({ schema, expected }) => {
-    expect(toToolInput("p.t", schema)).toEqual(expected);
+  it("leaves an undeclared schema undeclared", () => {
+    expect(toToolInput("p.t", undefined)).toBeUndefined();
+  });
+
+  it("keeps an empty declaration empty, so an argless tool stays argless", () => {
+    expect(toToolInput("p.t", {})).toEqual({ shape: {}, passthrough: false });
   });
 
   it("passes a zod raw shape through untouched", () => {

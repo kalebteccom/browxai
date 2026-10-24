@@ -64,40 +64,29 @@ describe.skipIf(process.platform === "win32")("socket files in a temp directory"
     expect(existsSync(path)).toBe(false);
   });
 
-  it.each([
-    {
-      label: "a regular file",
-      make: (dir: string) => {
-        const path = join(dir, "notes.txt");
-        writeFileSync(path, "keep me");
-        return { path, kept: path, content: "keep me", message: /not a socket/ };
-      },
-    },
-    {
-      label: "a directory",
-      make: (dir: string) => {
-        const path = join(dir, "folder");
-        mkdirSync(path);
-        return { path, kept: path, content: undefined, message: undefined };
-      },
-    },
-    {
-      // Refuses to follow the link: both the link and its target survive.
-      label: "a symlink",
-      make: (dir: string) => {
-        const target = join(dir, "target.txt");
-        const link = join(dir, "link.sock");
-        writeFileSync(target, "keep me");
-        symlinkSync(target, link);
-        return { path: link, kept: target, content: "keep me", message: undefined };
-      },
-    },
-  ])("refuses to remove $label, and leaves it intact", ({ make }) => {
-    const { path, kept, content, message } = make(dir);
+  it("refuses to remove a regular file, and leaves it intact", () => {
+    const path = join(dir, "notes.txt");
+    writeFileSync(path, "keep me");
     expect(() => removeStaleSocket(path)).toThrow(SocketPathError);
-    if (message) expect(() => removeStaleSocket(path)).toThrow(message);
-    expect(existsSync(kept)).toBe(true);
-    if (content !== undefined) expect(readFileSync(kept, "utf8")).toBe(content);
+    expect(() => removeStaleSocket(path)).toThrow(/not a socket/);
+    expect(readFileSync(path, "utf8")).toBe("keep me");
+  });
+
+  it("refuses to remove a directory", () => {
+    const path = join(dir, "folder");
+    mkdirSync(path);
+    expect(() => removeStaleSocket(path)).toThrow(SocketPathError);
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it("refuses to follow a symlink, and leaves the link and its target", () => {
+    const target = join(dir, "target.txt");
+    const link = join(dir, "link.sock");
+    writeFileSync(target, "keep me");
+    symlinkSync(target, link);
+    expect(() => removeStaleSocket(link)).toThrow(SocketPathError);
+    expect(existsSync(target)).toBe(true);
+    expect(readFileSync(target, "utf8")).toBe("keep me");
   });
 
   it("creates the socket owner-only, with no group or other access", async () => {

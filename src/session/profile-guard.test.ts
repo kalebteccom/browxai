@@ -20,20 +20,16 @@ afterEach(() => {
 });
 
 describe("resolveProfileDir", () => {
-  it.each([
-    {
-      label: "uses the workspace default profile when no profile is named, whatever the session id",
-      names: [undefined, ""],
-      expected: ["profile"],
-    },
-    {
-      label: "maps an explicit name to <workspace>/profiles/<name>",
-      names: ["work"],
-      expected: ["profiles", "work"],
-    },
-  ])("$label", ({ names, expected }) => {
+  it("uses the workspace default profile when no profile is named, whatever the session id", () => {
     const ws = resolveWorkspace({ BROWX_WORKSPACE: root });
-    for (const name of names) expect(resolveProfileDir(ws, name)).toBe(join(root, ...expected));
+    // The session id is not an input: every id resolves to the same directory.
+    expect(resolveProfileDir(ws, undefined)).toBe(join(root, "profile"));
+    expect(resolveProfileDir(ws, "")).toBe(join(root, "profile"));
+  });
+
+  it("maps an explicit name to <workspace>/profiles/<name>", () => {
+    const ws = resolveWorkspace({ BROWX_WORKSPACE: root });
+    expect(resolveProfileDir(ws, "work")).toBe(join(root, "profiles", "work"));
   });
 
   it("refuses a name that is not one plain directory name, and creates nothing", () => {
@@ -74,30 +70,15 @@ describe("liveProfileRefusal", () => {
     expect(msg).toContain('"incognito"');
   });
 
-  it.each([
-    {
-      label: "allows a different directory",
-      sessions: live,
-      id: "agent-b",
-      dir: "/ws/profiles/other",
-      profile: "other",
-    },
-    {
-      label: "ignores sessions with no profile directory",
-      sessions: [{ id: "incog", session: {} }],
-      id: "x",
-      dir: "/ws/profile",
-      profile: undefined,
-    },
-    {
-      label: "does not refuse a session against itself",
-      sessions: live,
-      id: "agent-a",
-      dir: "/ws/profile",
-      profile: undefined,
-    },
-  ])("$label", ({ sessions, id, dir, profile }) => {
-    expect(liveProfileRefusal(sessions, id, dir, profile)).toBeNull();
+  it("allows a different directory, and ignores sessions with no profile directory", () => {
+    expect(liveProfileRefusal(live, "agent-b", "/ws/profiles/other", "other")).toBeNull();
+    expect(
+      liveProfileRefusal([{ id: "incog", session: {} }], "x", "/ws/profile", undefined),
+    ).toBeNull();
+  });
+
+  it("does not refuse a session against itself", () => {
+    expect(liveProfileRefusal(live, "agent-a", "/ws/profile", undefined)).toBeNull();
   });
 });
 
@@ -114,25 +95,19 @@ describe("refuseLiveProfile", () => {
 describe("profileLockHolder", () => {
   const lockTo = (target: string): void => symlinkSync(target, join(root, "SingletonLock"));
 
-  it.each([
-    {
-      label: "finds a live Chrome on this host",
-      target: () => `${hostname()}-${process.pid}`,
-      holder: () => ({ pid: process.pid }),
-    },
-    {
-      label: "ignores a stale lock whose pid is gone",
-      target: () => `${hostname()}-2147483646`,
-      holder: () => null,
-    },
-    {
-      label: "leaves a lock from another host to Chrome",
-      target: () => `some-other-host-${process.pid}`,
-      holder: () => null,
-    },
-  ])("$label", ({ target, holder }) => {
-    lockTo(target());
-    expect(profileLockHolder(root)).toEqual(holder());
+  it("finds a live Chrome on this host", () => {
+    lockTo(`${hostname()}-${process.pid}`);
+    expect(profileLockHolder(root)).toEqual({ pid: process.pid });
+  });
+
+  it("ignores a stale lock whose pid is gone", () => {
+    lockTo(`${hostname()}-2147483646`);
+    expect(profileLockHolder(root)).toBeNull();
+  });
+
+  it("leaves a lock from another host to Chrome", () => {
+    lockTo(`some-other-host-${process.pid}`);
+    expect(profileLockHolder(root)).toBeNull();
   });
 
   it("is null for an unlocked profile", () => {
