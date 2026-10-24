@@ -382,10 +382,7 @@ registerPluginCommand("sync", () => cmdSync());
  *  help branch (no verb / `help` / `--help` / `-h`) and the unknown-verb
  *  diagnostic stay inline — they are the subcommand's fixed contract; the
  *  extensibility verbs resolve through the add-only registry above. */
-export async function runPlugin(
-  args: ReadonlyArray<string>,
-  cwd?: string,
-): Promise<number> {
+export async function runPlugin(args: ReadonlyArray<string>, cwd?: string): Promise<number> {
   const [sub, ...rest] = args;
   if (sub === undefined || sub === "help" || sub === "--help" || sub === "-h") {
     return help();
