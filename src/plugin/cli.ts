@@ -24,7 +24,8 @@ import { pluginPaths, type PluginPaths } from "./resolver.js";
 import { registerPluginCommand, pluginCommandFor } from "./command-registry.js";
 import { type LockEntry, readLock, writeLock, sha256OfPackage } from "./lock-store.js";
 import { runPm } from "./pm-runner.js";
-import { inferTrustFromInstallIdentity } from "./trust.js";
+import { readRegistryIntegrity } from "./registry-integrity.js";
+import { inferTrustFromInstallIdentity, isVerifiedFirstParty } from "./trust.js";
 
 // Back-compat barrel — preserve the public surface of `./cli.js` for callers
 // (`./doctor-plugins.js`, `./cli.test.ts`, `./doctor-plugins.test.ts`) that
@@ -81,11 +82,14 @@ function pinEntry(paths: PluginPaths, name: string, source: string): LockEntry |
   if (!existsSync(pkgJsonPath)) return null;
   try {
     const parsed = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as { version?: string };
+    const version = parsed.version ?? "0.0.0";
+    const integrity = readRegistryIntegrity(paths.installDir, name, version);
     return {
       name,
-      version: parsed.version ?? "0.0.0",
+      version,
       source,
       contentSha256: sha256OfPackage(pkgRoot),
+      ...(integrity ? { integrity } : {}),
     };
   } catch {
     return null;
@@ -167,16 +171,19 @@ async function cmdInstall(spec: string): Promise<number> {
   }
   const hintName = resolveInstalledName(spec);
   const name = findActualPackageName(paths, hintName);
-  // Persist into plugins.json.
-  const data = readPluginsJson(paths);
-  const trust = inferTrustFromInstallIdentity(spec.startsWith("file:") ? spec : name);
-  data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
-  writePluginsJson(paths, data);
-  // Persist into plugins-lock.json.
+  // Persist into plugins-lock.json, then plugins.json. The trust tier reads
+  // the pinned entry: the recorded spec and the registry integrity.
   const lock = readLock(paths);
   const pinned = pinEntry(paths, name, spec);
   if (pinned) lock.entries[name] = pinned;
   writeLock(paths, lock);
+  const data = readPluginsJson(paths);
+  const trust = inferTrustFromInstallIdentity(
+    spec,
+    isVerifiedFirstParty(name, pinned ?? undefined),
+  );
+  data.plugins[name] = { enabled: true, ...(trust === "local" ? { trust: "local" } : {}) };
+  writePluginsJson(paths, data);
   process.stderr.write(
     `browxai plugin: installed ${name}@${pinned?.version ?? "?"} (trust=${trust})\n`,
   );

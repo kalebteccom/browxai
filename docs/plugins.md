@@ -135,8 +135,9 @@ the keystone fodder for the runtime itself.
 
 ## Trust tiers
 
-- `kalebtec`: Kalebtec-maintained plugins
-  (`@browxai/plugin-*` on npm).
+- `kalebtec`: Kalebtec-maintained plugins (`@browxai/plugin-*` on
+  npm), installed from the registry under that exact name. An alias,
+  git or tarball install of the same name is `community`.
 - `community`: third-party npm plugins
   (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
 - `local`: installed from a file path during development

@@ -6,7 +6,7 @@
 // help text, and the list/info read paths that only touch local files.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { detectPackageManager, pmArgs, runPlugin } from "./cli.js";
@@ -125,11 +125,43 @@ describe("package-manager detection + verb mapping", () => {
   it("maps operations onto npm's verb names", () => {
     expect(pmArgs("npm", "add", "@browxai/plugin-figma")).toEqual([
       "install",
+      "--ignore-scripts",
+      "--",
       "@browxai/plugin-figma",
     ]);
-    expect(pmArgs("npm", "remove", "x")).toEqual(["uninstall", "x"]);
-    expect(pmArgs("npm", "update", "x")).toEqual(["update", "x"]);
-    expect(pmArgs("npm", "install")).toEqual(["install"]);
+    expect(pmArgs("npm", "remove", "x")).toEqual(["uninstall", "--", "x"]);
+    expect(pmArgs("npm", "update", "x")).toEqual(["update", "--", "x"]);
+    expect(pmArgs("npm", "install")).toEqual(["install", "--ignore-scripts"]);
+  });
+
+  it("puts the spec after `--` and turns lifecycle scripts off for pnpm too", () => {
+    expect(pmArgs("pnpm", "add", "file:/tmp/p")).toEqual([
+      "add",
+      "--ignore-scripts",
+      "--",
+      "file:/tmp/p",
+    ]);
+    expect(pmArgs("pnpm", "remove", "x")).toEqual(["remove", "--", "x"]);
+  });
+
+  it("refuses a spec that starts with a dash", () => {
+    expect(() => pmArgs("pnpm", "add", "--global")).toThrow(/never starts with "-"/);
+    expect(() => pmArgs("npm", "remove", "-g")).toThrow(/never starts with "-"/);
+  });
+});
+
+describe("runPlugin with a spec that starts with a dash", () => {
+  it.each([
+    ["install", "--registry=http://127.0.0.1:1/"],
+    ["install", "-g"],
+    ["remove", "--global"],
+    ["upgrade", "--latest"],
+  ])("%s %s exits 2 and leaves the workspace alone", async (verb, spec) => {
+    const code = await runPlugin([verb, spec]);
+    expect(code).toBe(2);
+    expect(stderrLog.join("")).toMatch(/never starts with "-"/);
+    expect(existsSync(join(workspaceRoot, "plugins"))).toBe(false);
+    expect(existsSync(join(workspaceRoot, "plugins.json"))).toBe(false);
   });
 });
 

@@ -14,7 +14,8 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { type PluginPaths } from "./resolver.js";
+import { packagePathProblem } from "./package-paths.js";
+import type { PluginPaths } from "./resolver.js";
 
 export interface LockEntry {
   /** npm package name. */
@@ -27,6 +28,10 @@ export interface LockEntry {
    *  reproducibility pin. Mismatch on next install means the underlying
    *  package contents changed. */
   readonly contentSha256: string;
+  /** The registry integrity hash (`sha512-…`) the package manager recorded
+   *  for this name and version. Absent for anything not fetched from the
+   *  registry under its own name. The `kalebtec` trust tier requires it. */
+  readonly integrity?: string;
 }
 
 export interface LockFile {
@@ -78,6 +83,8 @@ export function sha256OfPackage(pkgRoot: string): string {
     if (parsed.main) targets.add(parsed.main);
     for (const f of parsed.files ?? []) targets.add(f);
     for (const rel of [...targets].sort()) {
+      // A path outside the package is not part of the package.
+      if (packagePathProblem(pkgRoot, rel)) continue;
       const abs = join(pkgRoot, rel);
       if (!existsSync(abs)) continue;
       const st = statSync(abs);

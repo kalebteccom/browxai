@@ -10,6 +10,23 @@ surface" covers.
 
 ### Changed
 
+- **`browxai plugin` passes the spec to the package manager as a spec.** The
+  spec follows `--`, a spec or name that starts with `-` exits 2 before the
+  package manager runs, and `install`, `upgrade` and `sync` run with lifecycle
+  scripts off (`--ignore-scripts`). Build a `file:` plugin before installing it.
+- **The plugin entry resolves inside the package.** `browxai.register` must name
+  a file inside the package directory, checked on the real path. An absolute
+  path, a `../` path or a symlink out of the package marks the plugin
+  `load-error` with the reason. `plugins-lock.json` hashes only files inside the
+  package.
+- **The `kalebtec` trust tier follows the recorded install.** A plugin is
+  `kalebtec` only when `plugins-lock.json` records a plain registry spec of its
+  exact `@browxai/*` name and the registry integrity hash, and the installed
+  package.json carries that name. An `npm:` alias, a git or tarball install, or
+  a lock entry without the hash is `community`, and a `kalebtec` claim in the
+  manifest or `plugins.json` is dropped with a warning. The lock now stores
+  `integrity`. Existing installs read as `community` until
+  `browxai plugin sync` or `upgrade` re-pins them.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
