@@ -4,23 +4,20 @@ import { matchesResponse } from "./await_network.js";
 const resp = { url: "https://api.example.com/v1/records?id=4", method: "POST", status: 201 };
 
 describe("matchesResponse", () => {
-  it("matches a case-insensitive URL substring", () => {
-    expect(matchesResponse(resp, { urlPattern: "/v1/records" })).toBe(true);
-    expect(matchesResponse(resp, { urlPattern: "/V1/RECORDS" })).toBe(true);
-    expect(matchesResponse(resp, { urlPattern: "/other" })).toBe(false);
-  });
-
-  it("matches method case-insensitively", () => {
-    expect(matchesResponse(resp, { method: "post" })).toBe(true);
-    expect(matchesResponse(resp, { method: "GET" })).toBe(false);
-  });
-
-  it("matches an exact status", () => {
-    expect(matchesResponse(resp, { status: 201 })).toBe(true);
-    expect(matchesResponse(resp, { status: 200 })).toBe(false);
-  });
-
-  it("an empty match matches nothing (refuses to wait for anything)", () => {
-    expect(matchesResponse(resp, {})).toBe(false);
+  it.each([
+    { name: "a case-insensitive URL substring", match: { urlPattern: "/v1/records" }, want: true },
+    { name: "a URL substring in another case", match: { urlPattern: "/V1/RECORDS" }, want: true },
+    { name: "a URL substring that is absent", match: { urlPattern: "/other" }, want: false },
+    { name: "method case-insensitively", match: { method: "post" }, want: true },
+    { name: "a different method", match: { method: "GET" }, want: false },
+    { name: "an exact status", match: { status: 201 }, want: true },
+    { name: "a different status", match: { status: 200 }, want: false },
+    {
+      name: "an empty match matches nothing (refuses to wait for anything)",
+      match: {},
+      want: false,
+    },
+  ])("matchesResponse matches $name", ({ match, want }) => {
+    expect(matchesResponse(resp, match)).toBe(want);
   });
 });

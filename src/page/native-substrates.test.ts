@@ -344,13 +344,6 @@ describe("NativeActionSubstrate", () => {
     expect(io.calls).toEqual(["key KEYCODE_BACK", "text a"]);
   });
 
-  it("press refuses an unknown multi-character key by name", async () => {
-    const { sub } = elementsOver(SCREEN);
-    const r = await sub.press({ key: "Meta+Shift+K" });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/is not an Android key/);
-  });
-
   it("scroll drags the content the OPPOSITE way to the requested direction", async () => {
     // Scrolling a list DOWN means dragging the content UP. Getting this
     // backwards is the classic native-automation bug.
@@ -361,34 +354,31 @@ describe("NativeActionSubstrate", () => {
     expect(io.calls[0]).toMatch(/^swipe 540,1110 -> 540,1 /);
   });
 
-  it("scroll refuses without a direction", async () => {
-    const { sub } = elementsOver(SCREEN);
-    const r = await sub.scroll({});
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/needs a direction/);
-  });
-
-  it("go_back is the platform BACK key; go_forward has no analogue and refuses", async () => {
+  it("go_back is the platform BACK key", async () => {
     const { io, sub } = elementsOver(SCREEN);
     await sub.goBack();
     expect(io.calls).toEqual(["key KEYCODE_BACK"]);
-    const forward = await sub.goForward();
-    expect(forward.ok).toBe(false);
-    expect(forward.error).toMatch(/back-only/);
   });
 
-  it("hover, select, chooseOption, setViewport and waitFor each refuse with a reason", async () => {
+  it.each([
+    [
+      "press with an unknown multi-character key",
+      (s: NativeActionSubstrate) => s.press({ key: "Meta+Shift+K" }),
+      /is not an Android key/,
+    ],
+    ["scroll without a direction", (s: NativeActionSubstrate) => s.scroll({}), /needs a direction/],
+    // go_forward has no analogue on a back-only platform
+    ["go_forward", (s: NativeActionSubstrate) => s.goForward(), /back-only/],
+    ["hover", (s: NativeActionSubstrate) => s.hover(), /^[\s\S]{41,}$/],
+    ["select", (s: NativeActionSubstrate) => s.select(), /^[\s\S]{41,}$/],
+    ["chooseOption", (s: NativeActionSubstrate) => s.chooseOption(), /^[\s\S]{41,}$/],
+    ["setViewport", (s: NativeActionSubstrate) => s.setViewport(), /^[\s\S]{41,}$/],
+    ["waitFor", (s: NativeActionSubstrate) => s.waitFor(), /^[\s\S]{41,}$/],
+  ])("NativeActionSubstrate refuses %s with a reason", async (_name, run, error) => {
     const { sub } = elementsOver(SCREEN);
-    for (const r of [
-      await sub.hover(),
-      await sub.select(),
-      await sub.chooseOption(),
-      await sub.setViewport(),
-      await sub.waitFor(),
-    ]) {
-      expect(r.ok).toBe(false);
-      expect(r.error!.length).toBeGreaterThan(40);
-    }
+    const r = await run(sub);
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(error);
   });
 });
 

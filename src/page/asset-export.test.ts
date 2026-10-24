@@ -17,36 +17,66 @@ import {
 import { NetworkBuffer, type NetworkEntry } from "./network.js";
 
 describe("sanitiseAssetFilename", () => {
-  it("strips path separators (forward + back)", () => {
-    expect(sanitiseAssetFilename("a/b/c.png")).toBe("a_b_c.png");
-    expect(sanitiseAssetFilename("a\\b\\c.png")).toBe("a_b_c.png");
-  });
-  it("collapses traversal sequences and strips leading dots", () => {
-    const out = sanitiseAssetFilename("../../evil.sh");
-    expect(out).not.toContain("/");
-    expect(out).not.toContain("..");
-    expect(out).not.toMatch(/^\./);
-  });
-  it("caps long names", () => {
-    const long = "a".repeat(500) + ".png";
-    expect(sanitiseAssetFilename(long).length).toBeLessThanOrEqual(200);
-  });
-  it('falls back to "asset" on empty / all-stripped input', () => {
-    expect(sanitiseAssetFilename("")).toBe("asset");
-    expect(sanitiseAssetFilename("/")).toBe("asset");
-    expect(sanitiseAssetFilename("...")).toBe("asset");
+  it.each([
+    {
+      name: "strips forward slashes",
+      input: "a/b/c.png",
+      check: (out: string) => expect(out).toBe("a_b_c.png"),
+    },
+    {
+      name: "strips back slashes",
+      input: "a\\b\\c.png",
+      check: (out: string) => expect(out).toBe("a_b_c.png"),
+    },
+    {
+      name: "collapses parent-directory sequences and strips leading dots",
+      input: "../../evil.sh",
+      check: (out: string) => {
+        expect(out).not.toContain("/");
+        expect(out).not.toContain("..");
+        expect(out).not.toMatch(/^\./);
+      },
+    },
+    {
+      name: "caps long names",
+      input: "a".repeat(500) + ".png",
+      check: (out: string) => expect(out.length).toBeLessThanOrEqual(200),
+    },
+    {
+      name: "empty input falls back to asset",
+      input: "",
+      check: (out: string) => expect(out).toBe("asset"),
+    },
+    {
+      name: "a lone slash falls back to asset",
+      input: "/",
+      check: (out: string) => expect(out).toBe("asset"),
+    },
+    {
+      name: "all dots fall back to asset",
+      input: "...",
+      check: (out: string) => expect(out).toBe("asset"),
+    },
+  ])("sanitiseAssetFilename: $name", ({ input, check }) => {
+    check(sanitiseAssetFilename(input));
   });
 });
 
 describe("filenameFromUrl", () => {
-  it("takes the last path segment", () => {
-    expect(filenameFromUrl("https://x.com/static/img/logo.png")).toBe("logo.png");
-  });
-  it("decodes percent-encoding", () => {
-    expect(filenameFromUrl("https://x.com/a/hello%20world.png")).toBe("hello world.png");
-  });
-  it("falls back to 'asset' on directory roots", () => {
-    expect(filenameFromUrl("https://x.com/")).toBe("asset");
+  it.each([
+    {
+      name: "takes the last path segment",
+      url: "https://x.com/static/img/logo.png",
+      want: "logo.png",
+    },
+    {
+      name: "decodes percent-encoding",
+      url: "https://x.com/a/hello%20world.png",
+      want: "hello world.png",
+    },
+    { name: "falls back to asset on directory roots", url: "https://x.com/", want: "asset" },
+  ])("filenameFromUrl: $name", ({ url, want }) => {
+    expect(filenameFromUrl(url)).toBe(want);
   });
 });
 
@@ -72,76 +102,108 @@ describe("matchesFilter", () => {
     mimeType: "image/png",
     bytes: 1024,
   };
-  it("defaults status to 2xx", () => {
-    expect(matchesFilter(baseEntry, { urlPattern: null, status: null })).toBe(true);
-    expect(matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: null })).toBe(
-      false,
-    );
-    expect(matchesFilter({ ...baseEntry, status: 301 }, { urlPattern: null, status: null })).toBe(
-      false,
-    );
-  });
-  it("honours an explicit status allow-list", () => {
-    expect(
-      matchesFilter({ ...baseEntry, status: 404 }, { urlPattern: null, status: new Set([404]) }),
-    ).toBe(true);
-  });
-  it("rejects entries without status", () => {
-    const noStatus: NetworkEntry = { ...baseEntry };
-    delete noStatus.status;
-    expect(matchesFilter(noStatus, { urlPattern: null, status: null })).toBe(false);
-  });
-  it("matches mime substrings case-insensitively", () => {
-    expect(matchesFilter(baseEntry, { mime: ["IMAGE/"], urlPattern: null, status: null })).toBe(
-      true,
-    );
-    expect(matchesFilter(baseEntry, { mime: ["video/"], urlPattern: null, status: null })).toBe(
-      false,
-    );
-  });
-  it("rejects when mime filter set but entry has no mime", () => {
-    const noMime: NetworkEntry = { ...baseEntry };
-    delete noMime.mimeType;
-    expect(matchesFilter(noMime, { mime: ["image/"], urlPattern: null, status: null })).toBe(false);
-  });
-  it("matches urlPattern (case-insensitive)", () => {
-    const p = compileUrlPattern("\\.PNG$")!;
-    expect(matchesFilter(baseEntry, { urlPattern: p, status: null })).toBe(true);
-  });
-  it("enforces minBytes / maxBytes only when bytes known", () => {
-    expect(matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 2000 })).toBe(
-      false,
-    );
-    expect(matchesFilter(baseEntry, { urlPattern: null, status: null, maxBytes: 500 })).toBe(false);
-    expect(
-      matchesFilter(baseEntry, { urlPattern: null, status: null, minBytes: 100, maxBytes: 2000 }),
-    ).toBe(true);
-    const noBytes: NetworkEntry = { ...baseEntry };
-    delete noBytes.bytes;
-    // unknown bytes admitted at the filter step — the caller still enforces
+  const noStatus: NetworkEntry = { ...baseEntry };
+  delete noStatus.status;
+  const noMime: NetworkEntry = { ...baseEntry };
+  delete noMime.mimeType;
+  const noBytes: NetworkEntry = { ...baseEntry };
+  delete noBytes.bytes;
+  const open = { urlPattern: null, status: null };
+  it.each([
+    { name: "status defaults to 2xx: 200 passes", entry: baseEntry, filter: open, want: true },
+    {
+      name: "status defaults to 2xx: 404 fails",
+      entry: { ...baseEntry, status: 404 },
+      filter: open,
+      want: false,
+    },
+    {
+      name: "status defaults to 2xx: 301 fails",
+      entry: { ...baseEntry, status: 301 },
+      filter: open,
+      want: false,
+    },
+    {
+      name: "an explicit status allow-list admits 404",
+      entry: { ...baseEntry, status: 404 },
+      filter: { urlPattern: null, status: new Set([404]) },
+      want: true,
+    },
+    { name: "rejects entries without status", entry: noStatus, filter: open, want: false },
+    {
+      name: "mime substring matches case-insensitively",
+      entry: baseEntry,
+      filter: { mime: ["IMAGE/"], ...open },
+      want: true,
+    },
+    {
+      name: "mime substring that does not match fails",
+      entry: baseEntry,
+      filter: { mime: ["video/"], ...open },
+      want: false,
+    },
+    {
+      name: "rejects when a mime filter is set but the entry has no mime",
+      entry: noMime,
+      filter: { mime: ["image/"], ...open },
+      want: false,
+    },
+    {
+      name: "urlPattern matches case-insensitively",
+      entry: baseEntry,
+      filter: { urlPattern: compileUrlPattern("\\.PNG$"), status: null },
+      want: true,
+    },
+    {
+      name: "minBytes above the size fails",
+      entry: baseEntry,
+      filter: { ...open, minBytes: 2000 },
+      want: false,
+    },
+    {
+      name: "maxBytes below the size fails",
+      entry: baseEntry,
+      filter: { ...open, maxBytes: 500 },
+      want: false,
+    },
+    {
+      name: "bytes inside min and max pass",
+      entry: baseEntry,
+      filter: { ...open, minBytes: 100, maxBytes: 2000 },
+      want: true,
+    },
+    // unknown bytes are admitted at the filter step; the caller still enforces
     // the post-fetch total-byte budget.
-    expect(matchesFilter(noBytes, { urlPattern: null, status: null, minBytes: 1_000_000 })).toBe(
-      true,
-    );
+    {
+      name: "unknown bytes are admitted whatever minBytes says",
+      entry: noBytes,
+      filter: { ...open, minBytes: 1_000_000 },
+      want: true,
+    },
+  ])("matchesFilter: $name", ({ entry, filter, want }) => {
+    expect(matchesFilter(entry, filter)).toBe(want);
   });
 });
 
 describe("resolveAssetExportDir", () => {
-  it("defaults to assets/<sessionId>-<ts>/ under workspace", () => {
+  it.each([
+    {
+      name: "defaults to assets/<sessionId>-<ts>/ under workspace",
+      intoDir: undefined,
+      check: (out: string, root: string) => {
+        expect(out.startsWith(root)).toBe(true);
+        expect(out).toMatch(/assets\/sess-/);
+      },
+    },
+    {
+      name: "honours a workspace-relative intoDir",
+      intoDir: "out/icons",
+      check: (out: string, root: string) => expect(out).toBe(join(root, "out/icons")),
+    },
+  ])("resolveAssetExportDir: $name", ({ intoDir, check }) => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
-      const out = resolveAssetExportDir(root, "sess");
-      expect(out.startsWith(root)).toBe(true);
-      expect(out).toMatch(/assets\/sess-/);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-  it("honours a workspace-relative `intoDir`", () => {
-    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
-    try {
-      const out = resolveAssetExportDir(root, "sess", "out/icons");
-      expect(out).toBe(join(root, "out/icons"));
+      check(resolveAssetExportDir(root, "sess", intoDir), root);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -451,96 +513,43 @@ describe("assetExport integration", () => {
     }
   });
 
-  it("respects maxCount cap and reports it in warnings", async () => {
+  it.each([
+    {
+      name: "maxCount caps the export and reports it in warnings",
+      bytes: 10,
+      body: "x",
+      args: { filter: {}, maxCount: 2 },
+      warn: "maxCount",
+    },
+    {
+      name: "maxBytes stops the export early (6-byte bodies, cap 10)",
+      bytes: 5,
+      body: "ABCDEF",
+      args: { filter: {}, maxBytes: 10 },
+      warn: "maxBytes",
+    },
+  ])("assetExport: $name", async ({ bytes, body, args, warn }) => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {
-      const buf = bufferWith([
-        {
+      const buf = bufferWith(
+        ["a", "b", "c"].map((n, i) => ({
           method: "GET",
-          url: "https://x.com/a.png",
+          url: `https://x.com/${n}.png`,
           type: "Image",
           status: 200,
           mimeType: "image/png",
-          bytes: 10,
-          requestId: "r1",
-        },
-        {
-          method: "GET",
-          url: "https://x.com/b.png",
-          type: "Image",
-          status: 200,
-          mimeType: "image/png",
-          bytes: 10,
-          requestId: "r2",
-        },
-        {
-          method: "GET",
-          url: "https://x.com/c.png",
-          type: "Image",
-          status: 200,
-          mimeType: "image/png",
-          bytes: 10,
-          requestId: "r3",
-        },
-      ]);
-      const cdp = stubCdpNoBody();
-      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from("x").toString("base64") }));
+          bytes,
+          requestId: `r${i + 1}`,
+        })),
+      );
+      const page = stubPageWith(() => ({ ok: true, base64: Buffer.from(body).toString("base64") }));
       const r = await assetExport(
-        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
-        { filter: {}, maxCount: 2 },
+        { cdp: stubCdpNoBody(), page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        args,
       );
       expect(r.matchedCount).toBeGreaterThanOrEqual(2);
-      expect(r.persistedCount).toBe(2);
-      expect(r.warnings.some((w) => w.includes("maxCount"))).toBe(true);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it("respects maxBytes cap and stops the export early", async () => {
-    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
-    try {
-      const buf = bufferWith([
-        {
-          method: "GET",
-          url: "https://x.com/a.png",
-          type: "Image",
-          status: 200,
-          mimeType: "image/png",
-          bytes: 5,
-          requestId: "r1",
-        },
-        {
-          method: "GET",
-          url: "https://x.com/b.png",
-          type: "Image",
-          status: 200,
-          mimeType: "image/png",
-          bytes: 5,
-          requestId: "r2",
-        },
-        {
-          method: "GET",
-          url: "https://x.com/c.png",
-          type: "Image",
-          status: 200,
-          mimeType: "image/png",
-          bytes: 5,
-          requestId: "r3",
-        },
-      ]);
-      const cdp = stubCdpNoBody();
-      // Each body is 6 bytes. maxBytes=10 → first persisted, second exceeds → stop.
-      const page = stubPageWith(() => ({
-        ok: true,
-        base64: Buffer.from("ABCDEF").toString("base64"),
-      }));
-      const r = await assetExport(
-        { cdp, page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
-        { filter: {}, maxBytes: 10 },
-      );
-      expect(r.persistedCount).toBe(1);
-      expect(r.warnings.some((w) => w.includes("maxBytes"))).toBe(true);
+      expect(r.persistedCount).toBe(warn === "maxCount" ? 2 : 1);
+      expect(r.warnings.some((w) => w.includes(warn))).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

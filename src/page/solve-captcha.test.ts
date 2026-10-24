@@ -7,114 +7,85 @@ import {
 } from "./solve-captcha.js";
 
 describe("resolveCaptchaProvider", () => {
-  it("returns unconfigured when no env vars are set", () => {
-    const r = resolveCaptchaProvider({});
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("unconfigured");
-  });
+  const KEYED = { BROWX_CAPTCHA_PROVIDER: "2captcha", BROWX_CAPTCHA_API_KEY: "k" };
 
-  it("returns partial when only one of provider/key is set", () => {
-    const a = resolveCaptchaProvider({ BROWX_CAPTCHA_PROVIDER: "2captcha" });
-    expect(a.ok).toBe(false);
-    if (!a.ok) expect(a.reason).toBe("partial");
-    const b = resolveCaptchaProvider({ BROWX_CAPTCHA_API_KEY: "abc" });
-    expect(b.ok).toBe(false);
-    if (!b.ok) expect(b.reason).toBe("partial");
-  });
-
-  it("rejects an unknown provider with a named hint", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "deathbycaptcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe("partial");
-      expect(r.error).toMatch(/deathbycaptcha/);
-      expect(r.error).toMatch(/2captcha/);
-    }
-  });
-
-  it("resolves a 2captcha config with defaults", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "2captcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-    });
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.config.provider).toBe("2captcha");
-      expect(r.config.apiBase).toBe("https://2captcha.com");
-      expect(r.config.timeoutMs).toBe(120_000);
-      expect(r.config.pollMs).toBe(5000);
-    }
-  });
-
-  it("honours an explicit BROWX_CAPTCHA_API_BASE override", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "2captcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-      BROWX_CAPTCHA_API_BASE: "https://example.test/captcha/",
-    });
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      // trailing slash trimmed
-      expect(r.config.apiBase).toBe("https://example.test/captcha");
-    }
-  });
-
-  it("refuses a plain-http BROWX_CAPTCHA_API_BASE on a non-loopback host", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "2captcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-      BROWX_CAPTCHA_API_BASE: "http://captcha.example.test",
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.reason).toBe("partial");
-      expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE must be an https URL/);
-    }
-  });
-
-  it("refuses a non-http(s) BROWX_CAPTCHA_API_BASE and an unparseable one", () => {
-    for (const base of ["ftp://127.0.0.1", "not a url"]) {
-      const r = resolveCaptchaProvider({
-        BROWX_CAPTCHA_PROVIDER: "2captcha",
-        BROWX_CAPTCHA_API_KEY: "k",
-        BROWX_CAPTCHA_API_BASE: base,
-      });
-      expect(r.ok).toBe(false);
-      if (!r.ok) expect(r.error).toMatch(/BROWX_CAPTCHA_API_BASE/);
-    }
-  });
-
-  it.each(["http://127.0.0.1:8080", "http://localhost:8080/", "http://[::1]:8080"])(
-    "accepts plain http for the loopback base %s",
-    (base) => {
-      const r = resolveCaptchaProvider({
-        BROWX_CAPTCHA_PROVIDER: "2captcha",
-        BROWX_CAPTCHA_API_KEY: "k",
-        BROWX_CAPTCHA_API_BASE: base,
-      });
-      expect(r.ok).toBe(true);
-      if (r.ok) expect(r.config.apiBase).toBe(base.replace(/\/+$/, ""));
+  it.each([
+    { name: "no env vars set", env: {}, match: { reason: "unconfigured" } },
+    {
+      name: "only the provider set",
+      env: { BROWX_CAPTCHA_PROVIDER: "2captcha" },
+      match: { reason: "partial" },
     },
-  );
-
-  it("rejects a non-positive timeoutMs", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "2captcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-      BROWX_CAPTCHA_TIMEOUT_MS: "0",
-    });
-    expect(r.ok).toBe(false);
+    {
+      name: "only the key set",
+      env: { BROWX_CAPTCHA_API_KEY: "abc" },
+      match: { reason: "partial" },
+    },
+    {
+      name: "an unknown provider, naming it and the known ones",
+      env: { BROWX_CAPTCHA_PROVIDER: "deathbycaptcha", BROWX_CAPTCHA_API_KEY: "k" },
+      match: {
+        reason: "partial",
+        error: expect.stringMatching(/^(?=[\s\S]*deathbycaptcha)(?=[\s\S]*2captcha)/),
+      },
+    },
+    {
+      name: "a plain-http base on a non-loopback host",
+      env: { ...KEYED, BROWX_CAPTCHA_API_BASE: "http://captcha.example.test" },
+      match: {
+        reason: "partial",
+        error: expect.stringMatching(/BROWX_CAPTCHA_API_BASE must be an https URL/),
+      },
+    },
+    {
+      name: "a non-http(s) base",
+      env: { ...KEYED, BROWX_CAPTCHA_API_BASE: "ftp://127.0.0.1" },
+      match: { error: expect.stringMatching(/BROWX_CAPTCHA_API_BASE/) },
+    },
+    {
+      name: "an unparseable base",
+      env: { ...KEYED, BROWX_CAPTCHA_API_BASE: "not a url" },
+      match: { error: expect.stringMatching(/BROWX_CAPTCHA_API_BASE/) },
+    },
+    {
+      name: "a non-positive timeoutMs",
+      env: { ...KEYED, BROWX_CAPTCHA_TIMEOUT_MS: "0" },
+      match: {},
+    },
+  ])("refuses $name", ({ env, match }) => {
+    expect(resolveCaptchaProvider(env)).toMatchObject({ ok: false, ...match });
   });
 
-  it("provider names are case-insensitive (operators paste from docs)", () => {
-    const r = resolveCaptchaProvider({
-      BROWX_CAPTCHA_PROVIDER: "2Captcha",
-      BROWX_CAPTCHA_API_KEY: "k",
-    });
+  it.each([
+    {
+      name: "a 2captcha config with defaults",
+      env: KEYED,
+      config: {
+        provider: "2captcha",
+        apiBase: "https://2captcha.com",
+        timeoutMs: 120_000,
+        pollMs: 5000,
+      },
+    },
+    {
+      name: "an https BROWX_CAPTCHA_API_BASE override, trailing slash trimmed",
+      env: { ...KEYED, BROWX_CAPTCHA_API_BASE: "https://example.test/captcha/" },
+      config: { apiBase: "https://example.test/captcha" },
+    },
+    {
+      name: "a mixed-case provider name (operators paste from docs)",
+      env: { ...KEYED, BROWX_CAPTCHA_PROVIDER: "2Captcha" },
+      config: {},
+    },
+    ...["http://127.0.0.1:8080", "http://localhost:8080/", "http://[::1]:8080"].map((base) => ({
+      name: `plain http for the loopback base ${base}`,
+      env: { ...KEYED, BROWX_CAPTCHA_API_BASE: base },
+      config: { apiBase: base.replace(/\/+$/, "") },
+    })),
+  ])("resolves $name", ({ env, config }) => {
+    const r = resolveCaptchaProvider(env);
     expect(r.ok).toBe(true);
+    if (r.ok) expect(r.config).toMatchObject(config);
   });
 });
 
@@ -231,22 +202,13 @@ describe("submitToProvider", () => {
     if (!r.ok) expect(r.error).toMatch(/did not return a solution within/);
   });
 
-  it("rejects a recaptcha2 submission missing siteKey before contacting the provider", async () => {
+  it.each([
+    { name: "a recaptcha2 submission missing siteKey", challenge: { type: "recaptcha2" as const } },
+    { name: "an image submission missing imageBase64", challenge: { type: "image" as const } },
+  ])("rejects $name before contacting the provider", async ({ challenge }) => {
     const fakeFetch = vi.fn(async () => new Response("{}", { status: 200 }));
     const r = await submitToProvider(
-      { type: "recaptcha2", pageUrl: "https://app.example" },
-      config,
-      fakeFetch,
-      () => 0,
-    );
-    expect(r.ok).toBe(false);
-    expect(fakeFetch).not.toHaveBeenCalled();
-  });
-
-  it("rejects an image submission missing imageBase64 before contacting the provider", async () => {
-    const fakeFetch = vi.fn(async () => new Response("{}", { status: 200 }));
-    const r = await submitToProvider(
-      { type: "image", pageUrl: "https://app.example" },
+      { ...challenge, pageUrl: "https://app.example" },
       config,
       fakeFetch,
       () => 0,

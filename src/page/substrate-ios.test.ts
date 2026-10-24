@@ -181,28 +181,34 @@ describe("IosSnapshotSubstrate", () => {
     expect(composed.tree!.children.every((c) => /^e\d+$/.test(c.ref))).toBe(true);
   });
 
-  it("says `pierce` has no meaning here", async () => {
-    const r = rig();
-    const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, [], {
-      pierce: "closed",
-    });
-    expect(composed.warnings.join(" ")).toMatch(/no DOM and no shadow root/);
-  });
-
-  it("warns when NO element carries an identifier, with the counts", async () => {
-    // browxai cannot make an element addressable that the app never labelled. The
-    // warning is the app team's fix list.
-    const unlabelled = node({
-      type: "Application",
-      rect: { x: 0, y: 0, width: 400, height: 800 },
-      children: [node({ type: "Button", label: "Pay now" })],
-    });
-    const r = rig(unlabelled);
-    const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, []);
-    expect(composed.warnings.join(" ")).toMatch(
-      /no element on this screen carries an accessibility identifier/,
-    );
-    expect(composed.warnings.join(" ")).toMatch(/1 of 2 carry a label/);
+  it.each([
+    {
+      name: "says `pierce` has no meaning here",
+      trees: [] as NativeNode[],
+      opts: { pierce: "closed" as const },
+      warnings: [/no DOM and no shadow root/],
+    },
+    {
+      // browxai cannot make an element addressable that the app never labelled. The
+      // warning is the app team's fix list.
+      name: "warns when NO element carries an identifier, with the counts",
+      trees: [
+        node({
+          type: "Application",
+          rect: { x: 0, y: 0, width: 400, height: 800 },
+          children: [node({ type: "Button", label: "Pay now" })],
+        }),
+      ],
+      opts: {},
+      warnings: [
+        /no element on this screen carries an accessibility identifier/,
+        /1 of 2 carry a label/,
+      ],
+    },
+  ])("$name", async ({ trees, opts, warnings }) => {
+    const r = rig(...trees);
+    const composed = await new IosSnapshotSubstrate(r.handle).compose(r.refs, [], opts);
+    for (const w of warnings) expect(composed.warnings.join(" ")).toMatch(w);
   });
 });
 
@@ -336,12 +342,6 @@ describe("IosActionSubstrate", () => {
     expect(r.driver.dispatched).toEqual([{ kind: "tap", args: { x: 11, y: 22 } }]);
   });
 
-  it('refuses `dispatch: "direct"` — every tap here already lands on a freshly measured point', async () => {
-    const r = rig();
-    const res = await r.actions.click({ target: { coords: { x: 1, y: 2 } }, dispatch: "direct" });
-    expect(res.ok).toBe(false);
-  });
-
   it("fills through the element-scoped set-value when the element is identified", async () => {
     // RFC 0008 §6: no shell string, and no keyboard, so no character-preview
     // bubble for a screen recording to catch.
@@ -378,11 +378,28 @@ describe("IosActionSubstrate", () => {
     ]);
   });
 
-  it('refuses `press({key:"back"})`, which is an Android idiom', async () => {
-    const r = rig();
-    const res = await r.actions.press({ key: "back" });
+  it.each([
+    {
+      // Every tap here already lands on a freshly measured point.
+      name: '`dispatch: "direct"`',
+      run: (a: Rig["actions"]) =>
+        a.click({ target: { coords: { x: 1, y: 2 } }, dispatch: "direct" }),
+      error: /^/,
+    },
+    {
+      name: '`press({key:"back"})`, which is an Android idiom',
+      run: (a: Rig["actions"]) => a.press({ key: "back" }),
+      error: /iOS has no hardware back key/,
+    },
+    {
+      name: "scroll-into-view, naming the primitive it would need",
+      run: (a: Rig["actions"]) => a.scroll({ target: { ref: "e1" } }),
+      error: /container-aware scroll/,
+    },
+  ])("refuses $name", async ({ run, error }) => {
+    const res = await run(rig().actions);
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/iOS has no hardware back key/);
+    expect(res.error ?? "").toMatch(error);
   });
 
   it("navigates by URL scheme, and refuses a bare path", async () => {
@@ -411,13 +428,6 @@ describe("IosActionSubstrate", () => {
     const res = await r.actions.scroll({ to: "bottom" });
     expect(r.driver.dispatched).toHaveLength(8);
     expect(res.warnings.join(" ")).toMatch(/bounded best effort/);
-  });
-
-  it("refuses scroll-into-view, naming the primitive it would need", async () => {
-    const r = rig();
-    const res = await r.actions.scroll({ target: { ref: "e1" } });
-    expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/container-aware scroll/);
   });
 
   it("dispatches swipe and pinch as XCUITest primitives", async () => {
@@ -471,24 +481,26 @@ describe("IosActionSubstrate", () => {
 describe("IosCaptureSubstrate", () => {
   const req = { format: "png" as const, fullPage: false, describe: false };
 
-  it("returns the simulator's PNG inline", async () => {
+  it.each([
+    {
+      name: "returns the simulator's PNG inline",
+      saver: () => {
+        throw new Error("not reached");
+      },
+      extra: {},
+      expected: { kind: "image", mimeType: "image/png" },
+    },
+    {
+      name: "writes through the workspace saver in `path` mode",
+      saver: (buf: Buffer, args: { path?: string }) =>
+        ({ ok: true, path: args.path, bytes: buf.length }) as never,
+      extra: { path: "shots/a.png" },
+      expected: { kind: "saved" },
+    },
+  ])("$name", async ({ saver, extra, expected }) => {
     const r = rig();
-    const capture = new IosCaptureSubstrate(r.handle, () => {
-      throw new Error("not reached");
-    });
-    const res = await capture.screenshot(req);
-    expect(res).toMatchObject({ kind: "image", mimeType: "image/png" });
-  });
-
-  it("writes through the workspace saver in `path` mode", async () => {
-    const r = rig();
-    const capture = new IosCaptureSubstrate(
-      r.handle,
-      (buf, args) => ({ ok: true, path: args.path, bytes: buf.length }) as never,
-    );
-    expect(await capture.screenshot({ ...req, path: "shots/a.png" })).toMatchObject({
-      kind: "saved",
-    });
+    const capture = new IosCaptureSubstrate(r.handle, saver);
+    expect(await capture.screenshot({ ...req, ...extra })).toMatchObject(expected);
   });
 
   it("refuses element-scoped capture and jpeg, naming the missing decoder", async () => {

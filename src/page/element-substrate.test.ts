@@ -191,49 +191,35 @@ describe("PlaywrightElementSubstrate — probe", () => {
 });
 
 describe("PlaywrightElementSubstrate — bounds and count", () => {
-  it("reports a null box as an answer, not a refusal", async () => {
+  it.each([
+    {
+      // Each caller's own zero-size policy stays at the caller: `find` drops it,
+      // `targetPoint` refuses to aim at it, `describeTarget` prints `0×0`.
+      name: "reports a null box as an answer, not a refusal",
+      behaviour: { box: null },
+      expected: { kind: "bounds", rect: null },
+    },
+    {
+      name: "reports a zero-sized box rather than flattening it to null",
+      behaviour: { box: { x: 0, y: 0, width: 0, height: 9 } },
+      expected: { kind: "bounds", rect: { x: 0, y: 0, width: 0, height: 9 } },
+    },
+    {
+      // `gestures.targetPoint` re-throws this, which is how a caller still sees
+      // Playwright's own timeout message.
+      name: "surfaces a boundingBox throw as a refusal rather than swallowing it",
+      behaviour: { throwOn: "boundingBox" as const },
+      expected: { kind: "refusal", reason: "probe-failed" },
+    },
+  ])("$name", async ({ behaviour, expected }) => {
     const refs = new RefRegistry();
     const ref = testIdRef(refs);
-    const elements = elementsOver(mockPage({ '[data-testid="row-edit"]': { box: null } }), refs);
+    const elements = elementsOver(mockPage({ '[data-testid="row-edit"]': behaviour }), refs);
     const res = await elements.resolve({ kind: "ref", ref });
     if (res.kind !== "element") throw new Error("resolve refused");
-    expect(await elements.bounds(res.el)).toEqual({ kind: "bounds", rect: null });
-  });
-
-  it("reports a zero-sized box rather than flattening it to null", async () => {
-    // Each caller's own zero-size policy stays at the caller: `find` drops it,
-    // `targetPoint` refuses to aim at it, `describeTarget` prints `0×0`. Folding
-    // the decision into the port would pick one of the three for all of them.
-    const refs = new RefRegistry();
-    const ref = testIdRef(refs);
-    const elements = elementsOver(
-      mockPage({ '[data-testid="row-edit"]': { box: { x: 0, y: 0, width: 0, height: 9 } } }),
-      refs,
-    );
-    const res = await elements.resolve({ kind: "ref", ref });
-    if (res.kind !== "element") throw new Error("resolve refused");
-    expect(await elements.bounds(res.el)).toEqual({
-      kind: "bounds",
-      rect: { x: 0, y: 0, width: 0, height: 9 },
-    });
-  });
-
-  it("surfaces a boundingBox throw as a refusal rather than swallowing it", async () => {
-    // `gestures.targetPoint` re-throws this, which is how a caller still sees
-    // Playwright's own timeout message. Swallowing it to `rect: null` would turn
-    // a 30-second timeout into "no rendered box" — a different answer.
-    const refs = new RefRegistry();
-    const ref = testIdRef(refs);
-    const elements = elementsOver(
-      mockPage({ '[data-testid="row-edit"]': { throwOn: "boundingBox" } }),
-      refs,
-    );
-    const res = await elements.resolve({ kind: "ref", ref });
-    if (res.kind !== "element") throw new Error("resolve refused");
-    expect(await elements.bounds(res.el)).toMatchObject({
-      kind: "refusal",
-      reason: "probe-failed",
-    });
+    const got = await elements.bounds(res.el);
+    if (expected.kind === "bounds") expect(got).toEqual(expected);
+    else expect(got).toMatchObject(expected);
   });
 });
 

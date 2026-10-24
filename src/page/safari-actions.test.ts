@@ -112,17 +112,21 @@ describe("Safari element actions (click / fill / press)", () => {
     expect(calls.clicked).toEqual([`EL([data-testid="save"])`]);
   });
 
-  it("refuses a target that is not addressable (no selector / no locatable ref)", async () => {
-    const { handle } = fakeElementHandle("found");
-    const r = await safariClick(handle, new RefRegistry(), { ref: "e999" });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/not addressable on the Safari engine/);
-  });
-
-  it("reports a clean failure when no element matches", async () => {
-    const { handle } = fakeElementHandle(null);
-    const r = await safariClick(handle, new RefRegistry(), selectorTarget);
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/no element matches/);
-  });
+  it.each([
+    [
+      "is not addressable (no selector / no locatable ref)",
+      "found",
+      { ref: "e999" },
+      /not addressable on the Safari engine/,
+    ],
+    ["matches no element", null, selectorTarget, /no element matches/],
+  ])(
+    "safariClick refuses with a clean error when the target %s",
+    async (_name, found, target, error) => {
+      const { handle } = fakeElementHandle(found);
+      const r = await safariClick(handle, new RefRegistry(), target);
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(error);
+    },
+  );
 });

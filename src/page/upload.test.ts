@@ -67,21 +67,13 @@ describe("uploadFile", () => {
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
   });
 
-  it("rejects passing both content and path", async () => {
+  it.each([
+    { name: "both content and path", extra: { content: "AA==", path: "x" }, error: /exactly one/ },
+    { name: "neither", extra: {}, error: /requires/ },
+  ])("rejects passing $name", async ({ extra, error }) => {
     const { page } = fakePage();
     await expect(
-      uploadFile(page as never, refs, WS, {
-        target: { selector: "#f" },
-        content: "AA==",
-        path: "x",
-      }),
-    ).rejects.toThrow(/exactly one/);
-  });
-
-  it("rejects passing neither", async () => {
-    const { page } = fakePage();
-    await expect(
-      uploadFile(page as never, refs, WS, { target: { selector: "#f" } }),
-    ).rejects.toThrow(/requires/);
+      uploadFile(page as never, refs, WS, { target: { selector: "#f" }, ...extra }),
+    ).rejects.toThrow(error);
   });
 });

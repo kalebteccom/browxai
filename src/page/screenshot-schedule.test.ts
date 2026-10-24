@@ -46,32 +46,32 @@ function virtualClock(): ScheduleClock & { advance(ms: number): void } {
 }
 
 describe("validateScheduleArgs", () => {
-  it("rejects everyMs below the floor", () => {
-    expect(() => validateScheduleArgs({ everyMs: 50, count: 2, intoDir: "x" })).toThrow(/everyMs/);
-  });
-  it("rejects everyMs above the ceiling", () => {
-    expect(() => validateScheduleArgs({ everyMs: 60_001, count: 2, intoDir: "x" })).toThrow(
-      /everyMs/,
-    );
-  });
-  it("rejects when neither count nor durationMs is supplied", () => {
-    expect(() => validateScheduleArgs({ everyMs: 200, intoDir: "x" })).toThrow(/either `count`/);
-  });
-  it("rejects when both count and durationMs are supplied (mutex)", () => {
-    expect(() =>
-      validateScheduleArgs({ everyMs: 200, count: 3, durationMs: 1000, intoDir: "x" }),
-    ).toThrow(/mutually exclusive/);
-  });
-  it("rejects count outside [1, MAX_CAPTURES_PER_CALL]", () => {
-    expect(() => validateScheduleArgs({ everyMs: 200, count: 0, intoDir: "x" })).toThrow(/count/);
-    expect(() =>
-      validateScheduleArgs({ everyMs: 200, count: MAX_CAPTURES_PER_CALL + 1, intoDir: "x" }),
-    ).toThrow(/count/);
-  });
-  it("rejects durationMs < everyMs (cadence couldn't fire even once)", () => {
-    expect(() => validateScheduleArgs({ everyMs: 500, durationMs: 100, intoDir: "x" })).toThrow(
-      /durationMs/,
-    );
+  it.each([
+    { name: "everyMs below the floor", args: { everyMs: 50, count: 2 }, error: /everyMs/ },
+    { name: "everyMs above the ceiling", args: { everyMs: 60_001, count: 2 }, error: /everyMs/ },
+    {
+      name: "neither count nor durationMs supplied",
+      args: { everyMs: 200 },
+      error: /either `count`/,
+    },
+    {
+      name: "both count and durationMs supplied (mutex)",
+      args: { everyMs: 200, count: 3, durationMs: 1000 },
+      error: /mutually exclusive/,
+    },
+    { name: "count below 1", args: { everyMs: 200, count: 0 }, error: /count/ },
+    {
+      name: "count above MAX_CAPTURES_PER_CALL",
+      args: { everyMs: 200, count: MAX_CAPTURES_PER_CALL + 1 },
+      error: /count/,
+    },
+    {
+      name: "durationMs < everyMs (cadence couldn't fire even once)",
+      args: { everyMs: 500, durationMs: 100 },
+      error: /durationMs/,
+    },
+  ])("rejects $name", ({ args, error }) => {
+    expect(() => validateScheduleArgs({ ...args, intoDir: "x" })).toThrow(error);
   });
 });
 

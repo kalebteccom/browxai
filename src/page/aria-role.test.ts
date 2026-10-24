@@ -2,39 +2,63 @@ import { describe, it, expect } from "vitest";
 import { effectiveAriaRole } from "./aria-role.js";
 
 describe("effectiveAriaRole", () => {
-  it("is the identity on CDP a11y roles (no tag present)", () => {
-    for (const role of ["link", "button", "textbox", "navigation", "generic", "region", "tab"]) {
-      expect(effectiveAriaRole({ role })).toBe(role);
-    }
-  });
-
-  it("maps the bare tags the DOM-walk emits", () => {
-    expect(effectiveAriaRole({ role: "a", tag: "a", hasHref: true })).toBe("link");
-    expect(effectiveAriaRole({ role: "nav", tag: "nav" })).toBe("navigation");
-    expect(effectiveAriaRole({ role: "div", tag: "div" })).toBe("generic");
-    expect(effectiveAriaRole({ role: "textarea", tag: "textarea" })).toBe("textbox");
-    expect(effectiveAriaRole({ role: "select", tag: "select" })).toBe("combobox");
-  });
-
-  it("demotes an anchor with a measured absent href, and only then", () => {
-    expect(effectiveAriaRole({ role: "a", tag: "a", hasHref: false })).toBe("generic");
-    expect(effectiveAriaRole({ role: "a", tag: "a" })).toBe("link");
-  });
-
-  it("resolves <input> by type, defaulting to textbox", () => {
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "checkbox" })).toBe(
-      "checkbox",
-    );
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "range" })).toBe("slider");
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "hidden" })).toBe("generic");
-    expect(effectiveAriaRole({ role: "input", tag: "input", inputType: "email" })).toBe("textbox");
-    expect(effectiveAriaRole({ role: "input", tag: "input" })).toBe("textbox");
-  });
-
-  it("defers to an explicit role= attribute", () => {
-    expect(effectiveAriaRole({ role: "button", tag: "div" })).toBe("button");
-    expect(effectiveAriaRole({ role: "presentation", tag: "a", hasHref: true })).toBe(
-      "presentation",
-    );
+  it.each([
+    ...["link", "button", "textbox", "navigation", "generic", "region", "tab"].map((role) => ({
+      name: `is the identity on the CDP a11y role ${role} (no tag present)`,
+      input: { role },
+      want: role,
+    })),
+    { name: "maps a to link", input: { role: "a", tag: "a", hasHref: true }, want: "link" },
+    { name: "maps nav to navigation", input: { role: "nav", tag: "nav" }, want: "navigation" },
+    { name: "maps div to generic", input: { role: "div", tag: "div" }, want: "generic" },
+    {
+      name: "maps textarea to textbox",
+      input: { role: "textarea", tag: "textarea" },
+      want: "textbox",
+    },
+    { name: "maps select to combobox", input: { role: "select", tag: "select" }, want: "combobox" },
+    {
+      name: "demotes an anchor with a measured absent href",
+      input: { role: "a", tag: "a", hasHref: false },
+      want: "generic",
+    },
+    {
+      name: "keeps an anchor whose href is unmeasured",
+      input: { role: "a", tag: "a" },
+      want: "link",
+    },
+    {
+      name: "resolves input type checkbox",
+      input: { role: "input", tag: "input", inputType: "checkbox" },
+      want: "checkbox",
+    },
+    {
+      name: "resolves input type range",
+      input: { role: "input", tag: "input", inputType: "range" },
+      want: "slider",
+    },
+    {
+      name: "resolves input type hidden",
+      input: { role: "input", tag: "input", inputType: "hidden" },
+      want: "generic",
+    },
+    {
+      name: "resolves input type email to textbox",
+      input: { role: "input", tag: "input", inputType: "email" },
+      want: "textbox",
+    },
+    { name: "defaults input to textbox", input: { role: "input", tag: "input" }, want: "textbox" },
+    {
+      name: "defers to an explicit role on a div",
+      input: { role: "button", tag: "div" },
+      want: "button",
+    },
+    {
+      name: "defers to an explicit presentation role on an anchor",
+      input: { role: "presentation", tag: "a", hasHref: true },
+      want: "presentation",
+    },
+  ])("effectiveAriaRole: $name", ({ input, want }) => {
+    expect(effectiveAriaRole(input)).toBe(want);
   });
 });

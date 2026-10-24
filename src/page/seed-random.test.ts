@@ -91,16 +91,21 @@ describe("SeededRandomRegistry — init script", () => {
 });
 
 describe("SeededRandomRegistry — apply", () => {
-  it("subsequent applies do NOT re-install the context init script", async () => {
+  it("subsequent applies re-install neither the context init script nor the reattach hook", async () => {
     const { ctx } = fakeContext();
     const { page } = fakePage();
     const reg = new SeededRandomRegistry();
     await reg.apply(ctx as never, page as never, { seed: 1 });
     await reg.apply(ctx as never, page as never, { seed: 2 });
+    await reg.apply(ctx as never, page as never, { seed: 3 });
     expect(ctx.addInitScript).toHaveBeenCalledTimes(1);
     // but the current-page push happens every apply
-    expect(page.evaluate).toHaveBeenCalledTimes(2);
-    expect(reg.current()).toEqual({ seed: 2 });
+    expect(page.evaluate).toHaveBeenCalledTimes(3);
+    expect(reg.current()).toEqual({ seed: 3 });
+    // and the framenavigated reattach hook is installed once per page
+    expect(
+      (page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"),
+    ).toHaveLength(1);
   });
 
   it("rejects invalid seeds", async () => {
@@ -144,17 +149,5 @@ describe("SeededRandomRegistry — re-apply on navigation", () => {
     );
     expect(evaluates.length).toBe(initialPushes + 1);
     expect(evaluates[evaluates.length - 1]).toContain("9");
-  });
-
-  it("only installs the reattach hook once per page", async () => {
-    const { ctx } = fakeContext();
-    const { page } = fakePage();
-    const reg = new SeededRandomRegistry();
-    await reg.apply(ctx as never, page as never, { seed: 1 });
-    await reg.apply(ctx as never, page as never, { seed: 2 });
-    await reg.apply(ctx as never, page as never, { seed: 3 });
-    expect(
-      (page.on as ReturnType<typeof vi.fn>).mock.calls.filter((c) => c[0] === "framenavigated"),
-    ).toHaveLength(1);
   });
 });

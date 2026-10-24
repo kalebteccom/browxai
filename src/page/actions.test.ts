@@ -202,33 +202,47 @@ describe("preProbe()", () => {
 });
 
 describe("scrollMode — scroll primitive dispatch", () => {
-  it("window scroll when no target and to/by given", () => {
-    expect(scrollMode({ to: "bottom" }).kind).toBe("window");
-    expect(scrollMode({ by: { y: 400 } }).kind).toBe("window");
+  const tgt = { ref: "e1" };
+  const coords = { coords: { x: 10, y: 20 } };
+  it.each([
+    { name: "window scroll when no target and `to` given", args: { to: "bottom" }, kind: "window" },
+    {
+      name: "window scroll when no target and `by` given",
+      args: { by: { y: 400 } },
+      kind: "window",
+    },
+    {
+      name: "into-view when a target is given and neither to nor by",
+      args: { target: tgt },
+      kind: "into-view",
+    },
+    {
+      name: "container scroll when a target is given with `to`",
+      args: { target: tgt, to: "bottom" },
+      kind: "container",
+    },
+    {
+      name: "container scroll when a target is given with `by`",
+      args: { target: tgt, by: { y: 200 } },
+      kind: "container",
+    },
+    {
+      name: "intoView:false forces container even without to/by",
+      args: { target: tgt, intoView: false },
+      kind: "container",
+    },
+    { name: "coords target is wheel-at", args: { target: coords }, kind: "wheel-at" },
+    {
+      name: "coords target is wheel-at regardless of by",
+      args: { target: coords, by: { y: 300 } },
+      kind: "wheel-at",
+    },
+  ])("scrollMode: $name", ({ args, kind }) => {
+    expect(scrollMode(args as Parameters<typeof scrollMode>[0]).kind).toBe(kind);
   });
 
   it("throws a clear no-op error when nothing is specified", () => {
     expect(() => scrollMode({})).toThrow(/no-op/);
-  });
-
-  it("into-view when a target is given and neither to nor by", () => {
-    expect(scrollMode({ target: { ref: "e1" } }).kind).toBe("into-view");
-  });
-
-  it("container scroll when a target is given with to/by", () => {
-    expect(scrollMode({ target: { ref: "e1" }, to: "bottom" }).kind).toBe("container");
-    expect(scrollMode({ target: { ref: "e1" }, by: { y: 200 } }).kind).toBe("container");
-  });
-
-  it("intoView:false forces container even without to/by", () => {
-    expect(scrollMode({ target: { ref: "e1" }, intoView: false }).kind).toBe("container");
-  });
-
-  it("coords target → wheel-at regardless of to/by", () => {
-    expect(scrollMode({ target: { coords: { x: 10, y: 20 } } }).kind).toBe("wheel-at");
-    expect(scrollMode({ target: { coords: { x: 10, y: 20 } }, by: { y: 300 } }).kind).toBe(
-      "wheel-at",
-    );
   });
 });
 

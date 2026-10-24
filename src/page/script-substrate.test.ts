@@ -32,30 +32,40 @@ function safariHandle(): {
   return { handle, calls, result };
 }
 
-describe("SafariScriptSubstrate", () => {
-  it("wraps the expression in `return (…)`, runs it over execute/sync and returns the value", async () => {
-    const { handle, calls, result } = safariHandle();
-    result.value = { ok: 1 };
-    const sub: ScriptSubstrate = new SafariScriptSubstrate(handle);
-    const expr = "1 + 2";
-    expect(await sub.evaluate(expr)).toEqual({ ok: 1 });
-    expect(calls).toEqual([{ sessionId: "S", script: "return (1 + 2);" }]);
-  });
-});
-
-describe("PlaywrightScriptSubstrate", () => {
-  it("delegates the raw expression to page.evaluate verbatim (no wrapping)", async () => {
-    const seen: string[] = [];
-    const page = (() => ({
-      evaluate: async (expr: string) => {
-        seen.push(expr);
-        return "v";
+describe("ScriptSubstrate adapters", () => {
+  it.each([
+    {
+      name: "SafariScriptSubstrate wraps the expression in `return (…)`, runs it over execute/sync and returns the value",
+      expr: "1 + 2",
+      value: { ok: 1 },
+      make: (expr: string) => {
+        const { handle, calls, result } = safariHandle();
+        result.value = { ok: 1 };
+        const sub: ScriptSubstrate = new SafariScriptSubstrate(handle);
+        return { run: () => sub.evaluate(expr), seen: () => calls };
       },
-    })) as unknown as () => Page;
-    const sub: ScriptSubstrate = new PlaywrightScriptSubstrate(page);
-    const expr = "document.title";
-    const value = await sub.evaluate(expr);
-    expect(seen).toEqual(["document.title"]);
-    expect(value).toBe("v");
+      expectedSeen: [{ sessionId: "S", script: "return (1 + 2);" }],
+    },
+    {
+      name: "PlaywrightScriptSubstrate delegates the raw expression to page.evaluate verbatim (no wrapping)",
+      expr: "document.title",
+      value: "v",
+      make: (expr: string) => {
+        const seen: string[] = [];
+        const page = (() => ({
+          evaluate: async (e: string) => {
+            seen.push(e);
+            return "v";
+          },
+        })) as unknown as () => Page;
+        const sub: ScriptSubstrate = new PlaywrightScriptSubstrate(page);
+        return { run: () => sub.evaluate(expr), seen: () => seen };
+      },
+      expectedSeen: ["document.title"],
+    },
+  ])("$name", async ({ expr, value, make, expectedSeen }) => {
+    const driven = make(expr);
+    expect(await driven.run()).toEqual(value);
+    expect(driven.seen()).toEqual(expectedSeen);
   });
 });

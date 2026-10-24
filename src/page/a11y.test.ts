@@ -72,46 +72,57 @@ const CHROMIUM_SHAPED: FixtureNode[] = [
 ];
 
 describe("getA11yTree — ignored nodes splice, they do not prune", () => {
-  it("yields a tree when the ROOT is ignored", async () => {
-    // A detached-ish document whose root node is itself ignored. Pre-fix this
-    // returned null and the whole a11y tier went dark.
-    const nodes: FixtureNode[] = [
-      { nodeId: "1", ignored: true, role: { value: "none" }, childIds: ["2", "3"] },
-      { nodeId: "2", parentId: "1", role: { value: "button" }, name: { value: "Alpha" } },
-      { nodeId: "3", parentId: "1", role: { value: "link" }, name: { value: "Beta" } },
-    ];
-    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
-    expect(tree).not.toBeNull();
-    expect(roles(tree!)).toEqual(["button", "link"]);
-  });
-
-  it("drops an aria-hidden subtree, whose descendants are ignored too", async () => {
-    // CDP marks every node under `aria-hidden` ignored, so splicing surfaces
-    // nothing. The root stays as the anchor `mergeDomWalkIntoTree` hangs
-    // DOM-walk entries off — a null tree would drop those too.
-    const nodes: FixtureNode[] = [
-      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "4"] },
-      { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" }, childIds: ["3"] },
-      { nodeId: "3", parentId: "2", ignored: true, role: { value: "none" } },
-      // Exposed sibling: the hidden subtree goes, the rest of the page stays.
-      { nodeId: "4", parentId: "1", role: { value: "button" }, name: { value: "Visible" } },
-    ];
-    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
-    expect(tree!.role).toBe("RootWebArea");
-    expect(names(tree!)).toEqual(["Visible"]);
-  });
-
-  it("splices in document order at the ignored node's position", async () => {
-    const nodes: FixtureNode[] = [
-      { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "3", "6"] },
-      { nodeId: "2", parentId: "1", role: { value: "button" }, name: { value: "A" } },
-      { nodeId: "3", parentId: "1", ignored: true, role: { value: "none" }, childIds: ["4", "5"] },
-      { nodeId: "4", parentId: "3", role: { value: "button" }, name: { value: "B" } },
-      { nodeId: "5", parentId: "3", role: { value: "button" }, name: { value: "C" } },
-      { nodeId: "6", parentId: "1", role: { value: "button" }, name: { value: "D" } },
-    ];
-    const tree = await getA11yTree(cdpServing(nodes), new RefRegistry());
-    expect(names(tree!)).toEqual(["A", "B", "C", "D"]);
+  it.each([
+    {
+      // A detached-ish document whose root node is itself ignored. Pre-fix this
+      // returned null and the whole a11y tier went dark.
+      name: "yields a tree when the ROOT is ignored",
+      nodes: [
+        { nodeId: "1", ignored: true, role: { value: "none" }, childIds: ["2", "3"] },
+        { nodeId: "2", parentId: "1", role: { value: "button" }, name: { value: "Alpha" } },
+        { nodeId: "3", parentId: "1", role: { value: "link" }, name: { value: "Beta" } },
+      ] as FixtureNode[],
+      check: (tree: A11yNode | null) => {
+        expect(tree).not.toBeNull();
+        expect(roles(tree!)).toEqual(["button", "link"]);
+      },
+    },
+    {
+      // CDP marks every node under `aria-hidden` ignored, so splicing surfaces
+      // nothing. The root stays as the anchor `mergeDomWalkIntoTree` hangs
+      // DOM-walk entries off. The exposed sibling stays.
+      name: "drops an aria-hidden subtree, whose descendants are ignored too",
+      nodes: [
+        { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "4"] },
+        { nodeId: "2", parentId: "1", ignored: true, role: { value: "none" }, childIds: ["3"] },
+        { nodeId: "3", parentId: "2", ignored: true, role: { value: "none" } },
+        { nodeId: "4", parentId: "1", role: { value: "button" }, name: { value: "Visible" } },
+      ] as FixtureNode[],
+      check: (tree: A11yNode | null) => {
+        expect(tree!.role).toBe("RootWebArea");
+        expect(names(tree!)).toEqual(["Visible"]);
+      },
+    },
+    {
+      name: "splices in document order at the ignored node's position",
+      nodes: [
+        { nodeId: "1", role: { value: "RootWebArea" }, childIds: ["2", "3", "6"] },
+        { nodeId: "2", parentId: "1", role: { value: "button" }, name: { value: "A" } },
+        {
+          nodeId: "3",
+          parentId: "1",
+          ignored: true,
+          role: { value: "none" },
+          childIds: ["4", "5"],
+        },
+        { nodeId: "4", parentId: "3", role: { value: "button" }, name: { value: "B" } },
+        { nodeId: "5", parentId: "3", role: { value: "button" }, name: { value: "C" } },
+        { nodeId: "6", parentId: "1", role: { value: "button" }, name: { value: "D" } },
+      ] as FixtureNode[],
+      check: (tree: A11yNode | null) => expect(names(tree!)).toEqual(["A", "B", "C", "D"]),
+    },
+  ])("getA11yTree ignored splice: $name", async ({ nodes, check }) => {
+    check(await getA11yTree(cdpServing(nodes), new RefRegistry()));
   });
 });
 

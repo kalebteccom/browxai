@@ -12,50 +12,50 @@ describe("describeNavigation", () => {
     });
   });
 
-  it("classifies a hash-only move", () => {
-    const n = describeNavigation("https://a.test/x", "https://a.test/x#y", false);
-    expect(n.kind).toBe("hash");
+  it.each([
+    { name: "a hash-only move", to: "https://a.test/x#y", full: false, kind: "hash" },
+    {
+      name: "full_load from the frame signal",
+      to: "https://a.test/y",
+      full: true,
+      kind: "full_load",
+    },
+    { name: "spa from the frame signal", to: "https://a.test/y", full: false, kind: "spa" },
+  ])("describeNavigation classifies $name", ({ to, full, kind }) => {
+    expect(describeNavigation("https://a.test/x", to, full).kind).toBe(kind);
   });
 
-  it("classifies full_load vs spa from the frame signal", () => {
-    expect(describeNavigation("https://a.test/x", "https://a.test/y", true).kind).toBe("full_load");
-    expect(describeNavigation("https://a.test/x", "https://a.test/y", false).kind).toBe("spa");
-  });
-
-  describe("offOrigin", () => {
-    it("fires when the landed host differs from the requested host", () => {
-      const n = describeNavigation(
+  it.each<{
+    name: string;
+    args: [string, string, boolean, string?];
+    want: { requested: string; landed: string } | undefined;
+  }>([
+    {
+      name: "fires when the landed host differs from the requested host",
+      args: [
         "https://start.test/",
         "https://workspace.google.com/intl/en-US/gmail/",
         true,
         "https://mail.google.com/mail/u/0/",
-      );
-      expect(n.offOrigin).toEqual({
-        requested: "https://mail.google.com",
-        landed: "https://workspace.google.com",
-      });
-    });
-
-    it("stays absent on a same-host redirect", () => {
-      const n = describeNavigation(
-        "https://a.test/",
-        "https://a.test/login?next=/inbox",
-        true,
-        "https://a.test/inbox",
-      );
-      expect(n.offOrigin).toBeUndefined();
-    });
-
-    it("stays absent when the action carried no requested url", () => {
-      expect(
-        describeNavigation("https://a.test/", "https://b.test/", true).offOrigin,
-      ).toBeUndefined();
-    });
-
-    it("stays absent when either url is unparseable", () => {
-      expect(
-        describeNavigation("about:blank", "not a url", true, "https://a.test/").offOrigin,
-      ).toBeUndefined();
-    });
+      ],
+      want: { requested: "https://mail.google.com", landed: "https://workspace.google.com" },
+    },
+    {
+      name: "stays absent on a same-host redirect",
+      args: ["https://a.test/", "https://a.test/login?next=/inbox", true, "https://a.test/inbox"],
+      want: undefined,
+    },
+    {
+      name: "stays absent when the action carried no requested url",
+      args: ["https://a.test/", "https://b.test/", true],
+      want: undefined,
+    },
+    {
+      name: "stays absent when either url is unparseable",
+      args: ["about:blank", "not a url", true, "https://a.test/"],
+      want: undefined,
+    },
+  ])("describeNavigation offOrigin $name", ({ args, want }) => {
+    expect(describeNavigation(...args).offOrigin).toEqual(want);
   });
 });

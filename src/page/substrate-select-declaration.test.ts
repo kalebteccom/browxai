@@ -8,6 +8,7 @@ import {
   PlaywrightNetworkSubstrate,
   SafariNoopNetworkSubstrate,
 } from "./network-substrate.js";
+import { RefRegistry } from "./refs.js";
 import { registerEngine } from "../engine/registry.js";
 import { engineDeclares } from "../engine/sub-interface.js";
 import type { EngineKind, SafariSessionHandle } from "../engine/index.js";
@@ -56,11 +57,29 @@ registerEngine({
 });
 
 /** A Safari-shaped native handle: the two WebDriver endpoints the no-Page
- *  snapshot substrate is wired from. */
-function nativeHandle(): SafariSessionHandle {
+ *  snapshot substrate is wired from. `execCalls` records what the substrate
+ *  sent, and `executeScript` answers one DOM-walk entry. */
+function nativeHandle(execCalls: Array<{ sessionId: string; scriptBody: string }> = []) {
   return {
-    sessionId: "SID",
-    webDriver: { executeScript: () => Promise.resolve([]), currentUrl: () => Promise.resolve("") },
+    sessionId: "SID-42",
+    webDriver: {
+      executeScript: (sessionId: string, scriptBody: string) => {
+        execCalls.push({ sessionId, scriptBody });
+        return Promise.resolve([
+          {
+            role: "button",
+            name: "Go",
+            testId: "go",
+            testIdAttr: "data-testid",
+            tag: "button",
+            id: "",
+            structuralPath: "body[0]/button[0]",
+            cssPath: "body > button",
+          },
+        ]);
+      },
+      currentUrl: () => Promise.resolve("https://example.com/"),
+    },
   } as unknown as SafariSessionHandle;
 }
 
@@ -73,17 +92,26 @@ function forbiddenPage(): () => Page {
 }
 
 describe("substrate selection keys on the declared `page` sub-interface", () => {
-  it("routes an unknown engine that declares no `page` to the no-Page substrates", () => {
+  it("routes an unknown engine that declares no `page` to the no-Page substrates", async () => {
+    const execCalls: Array<{ sessionId: string; scriptBody: string }> = [];
     const session = {
       engine: NO_PAGE,
       page: forbiddenPage(),
-      safari: nativeHandle,
+      safari: () => nativeHandle(execCalls),
     };
     // The engine is synthetic, registered at runtime, and named nowhere in either
     // selector — the declaration is the only thing steering this.
     expect(engineDeclares(NO_PAGE, "page")).toBe(false);
-    expect(snapshotSubstrateFor(session)).toBeInstanceOf(SafariClassicSnapshotSubstrate);
+    const substrate = snapshotSubstrateFor(session);
+    expect(substrate).toBeInstanceOf(SafariClassicSnapshotSubstrate);
     expect(networkSubstrateFor(session)).toBeInstanceOf(SafariNoopNetworkSubstrate);
+
+    // Driving it routes execute/sync through the handle's WebDriver with the
+    // session's id, so the IO bridge is wired and page() is never touched.
+    const snap = await substrate.compose(new RefRegistry(), ["data-testid"]);
+    expect(snap.tree?.children).toHaveLength(1);
+    expect(execCalls[0]?.sessionId).toBe("SID-42");
+    expect(execCalls[0]?.scriptBody).toContain("arguments[0]");
   });
 
   it("routes an unknown engine that DOES declare `page` to the Playwright substrates", () => {

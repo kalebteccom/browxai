@@ -69,23 +69,43 @@ describe("ClockRegistry — freeze", () => {
     expect(state!.nowMs).toBeGreaterThanOrEqual(before);
     expect(state!.nowMs).toBeLessThanOrEqual(after);
   });
+});
 
-  it("rejects byMs on freeze", async () => {
+describe("ClockRegistry — rejections", () => {
+  it.each([
+    {
+      name: "byMs on freeze",
+      args: { mode: "freeze", byMs: 1000 },
+      err: /byMs is only valid with mode:"advance"/,
+    },
+    {
+      name: "an invalid atIso",
+      args: { mode: "freeze", atIso: "not-a-date" },
+      err: /atIso is not a valid ISO-8601 timestamp/,
+    },
+    {
+      name: "advance with neither atIso nor byMs",
+      args: { mode: "advance" },
+      err: /advance requires either atIso or byMs/,
+    },
+    {
+      name: "advance with both atIso and byMs",
+      args: { mode: "advance", atIso: "2030-01-01T00:00:00Z", byMs: 1000 },
+      err: /exactly one of atIso or byMs/,
+    },
+    { name: "byMs of 0", args: { mode: "advance", byMs: 0 }, err: /positive finite/ },
+    { name: "a negative byMs", args: { mode: "advance", byMs: -1 }, err: /positive finite/ },
+    { name: "a NaN byMs", args: { mode: "advance", byMs: Number.NaN }, err: /positive finite/ },
+    {
+      name: "byMs beyond the 1-year ceiling",
+      args: { mode: "advance", byMs: 2 * 365 * 24 * 60 * 60 * 1000 },
+      err: /exceeds max/,
+    },
+  ])("ClockRegistry rejects $name", async ({ args, err }) => {
     const { cdp } = fakeCdp();
     const page = fakePage();
     const reg = new ClockRegistry();
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "freeze", byMs: 1000 }),
-    ).rejects.toThrow(/byMs is only valid with mode:"advance"/);
-  });
-
-  it("rejects invalid atIso", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "freeze", atIso: "not-a-date" }),
-    ).rejects.toThrow(/atIso is not a valid ISO-8601 timestamp/);
+    await expect(reg.apply(cdp as never, page as never, args as never)).rejects.toThrow(err);
   });
 });
 
@@ -126,53 +146,6 @@ describe("ClockRegistry — advance", () => {
     });
     expect(appliedAtIso).toBe("2030-01-15T12:00:30.000Z");
     expect(state!.nowMs).toBe(Date.parse("2030-01-15T12:00:30.000Z"));
-  });
-
-  it("rejects when neither atIso nor byMs given", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    await expect(reg.apply(cdp as never, page as never, { mode: "advance" })).rejects.toThrow(
-      /advance requires either atIso or byMs/,
-    );
-  });
-
-  it("rejects when both atIso and byMs given", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    await expect(
-      reg.apply(cdp as never, page as never, {
-        mode: "advance",
-        atIso: "2030-01-01T00:00:00Z",
-        byMs: 1000,
-      }),
-    ).rejects.toThrow(/exactly one of atIso or byMs/);
-  });
-
-  it("rejects byMs <= 0 or non-finite", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "advance", byMs: 0 }),
-    ).rejects.toThrow(/positive finite/);
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "advance", byMs: -1 }),
-    ).rejects.toThrow(/positive finite/);
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "advance", byMs: Number.NaN }),
-    ).rejects.toThrow(/positive finite/);
-  });
-
-  it("rejects byMs exceeding the 1-year ceiling", async () => {
-    const { cdp } = fakeCdp();
-    const page = fakePage();
-    const reg = new ClockRegistry();
-    const twoYears = 2 * 365 * 24 * 60 * 60 * 1000;
-    await expect(
-      reg.apply(cdp as never, page as never, { mode: "advance", byMs: twoYears }),
-    ).rejects.toThrow(/exceeds max/);
   });
 });
 

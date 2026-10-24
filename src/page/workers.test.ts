@@ -177,43 +177,55 @@ describe("WorkersRegistry.sendMessage", () => {
     expect(String(fn)).toContain("dispatchEvent");
   });
 
-  it("sw-* reports the evaluate failure", async () => {
+  it.each([
+    {
+      name: "sw-* reports the evaluate failure",
+      engine: CHROMIUM,
+      workerId: "sw-1",
+      swUrl: "https://x/sw.js",
+      swThrows: true,
+      error: /^Target closed$/,
+    },
+    {
+      name: "sw-* with no live SW returns an error",
+      engine: CHROMIUM,
+      workerId: "sw-1",
+      error: /no service worker/,
+    },
+    {
+      name: "sw-* on an engine without service workers is refused, naming the engine",
+      engine: FIREFOX,
+      workerId: "sw-1",
+      swUrl: "https://x/sw.js",
+      error: /"firefox" engine/,
+    },
+    {
+      name: "unknown workerId prefixes are rejected",
+      engine: CHROMIUM,
+      workerId: "garbage-7",
+      error: /unknown workerId prefix/,
+    },
+  ] as Array<{
+    name: string;
+    engine: typeof CHROMIUM;
+    workerId: string;
+    swUrl?: string;
+    swThrows?: boolean;
+    error: RegExp;
+  }>)("refuses: $name", async ({ engine, workerId, swUrl, swThrows, error }) => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    f.serviceWorkers.push(
-      fakeSw("https://x/sw.js", () => {
-        throw new Error("Target closed");
-      }),
-    );
-    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
-    expect(r).toEqual({ ok: false, workerId: "sw-1", error: "Target closed" });
-  });
-
-  it("sw-* with no live SW returns an error", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
+    const sw = fakeSw(swUrl ?? "https://x/none.js", () => {
+      if (swThrows) throw new Error("Target closed");
+      return true;
+    });
+    if (swUrl) f.serviceWorkers.push(sw);
+    const r = await reg.sendMessage(f.page, engine, { workerId, message: "x" });
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/no service worker/);
-  });
-
-  it("sw-* on an engine without service workers is refused, naming the engine", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    const sw = fakeSw("https://x/sw.js");
-    f.serviceWorkers.push(sw);
-    const r = await reg.sendMessage(f.page, FIREFOX, { workerId: "sw-1", message: "x" });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/"firefox" engine/);
-    expect(sw.evaluate).not.toHaveBeenCalled();
-  });
-
-  it("rejects unknown workerId prefixes", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "garbage-7", message: "x" });
-    expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/unknown workerId prefix/);
+    expect(r.workerId).toBe(workerId);
+    expect(r.error).toMatch(error);
+    // Only the evaluate-failure row reaches the worker; the other rows refuse first.
+    expect(sw.evaluate).toHaveBeenCalledTimes(swThrows ? 1 : 0);
   });
 });
 
@@ -392,32 +404,28 @@ describe("service workers and the origin policy", () => {
     originPolicy: resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://blocked.example" }),
   };
 
-  it("omits a service worker on a blocked origin from the listing", async () => {
+  it.each([
+    {
+      name: "a service worker on a blocked origin from the listing",
+      engine: blocked,
+      urls: ["https://blocked.example/sw.js", "https://ok.example/sw.js"],
+    },
+    {
+      name: "a service worker off the allowlist, like navigate does",
+      engine: {
+        ...CHROMIUM,
+        originPolicy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://ok.example" }),
+      },
+      urls: ["https://ok.example/sw.js", "https://other.example/sw.js"],
+    },
+  ])("omits $name", async ({ engine, urls }) => {
     const reg = new WorkersRegistry();
     const f = fakePage();
-    f.serviceWorkers.push(
-      fakeSw("https://blocked.example/sw.js"),
-      fakeSw("https://ok.example/sw.js"),
-    );
-    const out = await reg.list(f.page, blocked, "service");
+    f.serviceWorkers.push(...urls.map((u) => fakeSw(u)));
+    const out = await reg.list(f.page, engine, "service");
     expect(out).toEqual([
       { workerId: "sw-1", type: "service", url: "https://ok.example/sw.js", state: "running" },
     ]);
-  });
-
-  it("omits a service worker off the allowlist, like navigate does", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    f.serviceWorkers.push(
-      fakeSw("https://ok.example/sw.js"),
-      fakeSw("https://other.example/sw.js"),
-    );
-    const allowOnly = {
-      ...CHROMIUM,
-      originPolicy: resolveOriginPolicy({ BROWX_ALLOWED_ORIGINS: "https://ok.example" }),
-    };
-    const out = await reg.list(f.page, allowOnly, "service");
-    expect(out.map((w) => w.url)).toEqual(["https://ok.example/sw.js"]);
   });
 
   it("refuses a send to a service worker on a blocked origin", async () => {

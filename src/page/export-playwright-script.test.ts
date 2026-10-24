@@ -151,22 +151,6 @@ describe("export_playwright_script — lowering", () => {
     ]);
   });
 
-  it("flags unhandled action types with a TODO + non-handled counter", () => {
-    const r = lowerTraceToSpec("mystery", [
-      {
-        id: "mystery-1",
-        kind: "action" as const,
-        action: { type: "mysteryAction", value: "?" },
-        url: "u",
-        ts: 0,
-      },
-    ]);
-    expect(r.stats.handled).toBe(0);
-    expect(r.stats.unhandled).toBe(1);
-    expect(r.source).toContain(`// TODO: unhandled action type "mysteryAction"`);
-    expect(parseCheck(r.source).ok).toBe(true);
-  });
-
   it("integrates with the Recorder via `inspect()` for mid-recording export", () => {
     const rec = new Recorder();
     rec.start("integration");
@@ -230,12 +214,6 @@ describe("export_playwright_script — recorded reads", () => {
     expect(parseCheck(r.source).ok).toBe(true);
   });
 
-  it("counts a `find` that resolved no candidate as unhandled", () => {
-    const r = lowerTraceToSpec("miss-flow", [readStep("find-1", { type: "find", query: "ghost" })]);
-    expect(r.stats.unhandled).toBe(1);
-    expect(r.source).toContain(`// TODO: find("ghost") resolved no candidate`);
-  });
-
   it("lowers `extract` to a live per-field read and logs the result", () => {
     const r = lowerTraceToSpec("extract-flow", [
       readStep("extract-1", {
@@ -266,19 +244,6 @@ describe("export_playwright_script — recorded reads", () => {
     expect(parseCheck(r.source).ok).toBe(true);
   });
 
-  it("counts an `extract` field with no recorded selector as unhandled", () => {
-    const r = lowerTraceToSpec("partial-extract", [
-      readStep("extract-1", {
-        type: "extract",
-        schema: { type: "object", properties: { body: { type: "string" } } },
-      }),
-    ]);
-    expect(r.stats.handled).toBe(0);
-    expect(r.stats.unhandled).toBe(1);
-    expect(r.source).toContain("body: null, // TODO: no selector recorded");
-    expect(parseCheck(r.source).ok).toBe(true);
-  });
-
   it("flags a ref-scoped `extract` — refs are session-local", () => {
     const r = lowerTraceToSpec("ref-extract", [
       readStep("extract-1", {
@@ -294,14 +259,58 @@ describe("export_playwright_script — recorded reads", () => {
     expect(r.source).toContain(`sender: (await page.locator(".s").first().innerText()).trim(),`);
   });
 
-  it("lowers `snapshot` to a comment and counts it unhandled", () => {
-    const r = lowerTraceToSpec("snap-flow", [
-      readStep("snapshot-1", { type: "snapshot", scope: "e4" }),
-    ]);
-    expect(r.stats).toEqual({ steps: 1, handled: 0, unhandled: 1, fragile: 0 });
-    expect(r.source).toContain("// snapshot (scope: e4) — agent orientation read");
-    expect(r.source).not.toContain("await page");
-    expect(parseCheck(r.source).ok).toBe(true);
+  it.each([
+    {
+      name: "an unhandled action type",
+      steps: [
+        {
+          id: "mystery-1",
+          kind: "action" as const,
+          action: { type: "mysteryAction", value: "?" },
+          url: "u",
+          ts: 0,
+        },
+      ],
+      stats: { handled: 0, unhandled: 1 },
+      has: [`// TODO: unhandled action type "mysteryAction"`],
+      lacks: [],
+      parses: true,
+    },
+    {
+      name: "a `find` that resolved no candidate",
+      steps: [readStep("find-1", { type: "find", query: "ghost" })],
+      stats: { unhandled: 1 },
+      has: [`// TODO: find("ghost") resolved no candidate`],
+      lacks: [],
+      parses: false,
+    },
+    {
+      name: "an `extract` field with no recorded selector",
+      steps: [
+        readStep("extract-1", {
+          type: "extract",
+          schema: { type: "object", properties: { body: { type: "string" } } },
+        }),
+      ],
+      stats: { handled: 0, unhandled: 1 },
+      has: ["body: null, // TODO: no selector recorded"],
+      lacks: [],
+      parses: true,
+    },
+    {
+      name: "a `snapshot` (lowered to a comment)",
+      steps: [readStep("snapshot-1", { type: "snapshot", scope: "e4" })],
+      stats: { steps: 1, handled: 0, unhandled: 1, fragile: 0 },
+      has: ["// snapshot (scope: e4) — agent orientation read"],
+      lacks: ["await page"],
+      parses: true,
+    },
+  ])("counts $name as unhandled", ({ steps, stats, has, lacks, parses }) => {
+    const r = lowerTraceToSpec("unhandled-flow", steps);
+    expect(r.stats).toMatchObject(stats);
+    for (const h of has) expect(r.source).toContain(h);
+    for (const l of lacks) expect(r.source).not.toContain(l);
+    if (parses) expect(parseCheck(r.source).ok).toBe(true);
   });
 
   it("lowers `eval_js` and states the capability provenance in the header", () => {

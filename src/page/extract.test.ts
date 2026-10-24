@@ -64,15 +64,19 @@ describe("validateSchema", () => {
     ).toBeNull();
   });
 
-  it("rejects an object schema without properties", () => {
-    const e = validateSchema({ type: "object" }, "");
-    expect(e).toMatch(/requires `properties`/);
-  });
-
-  it("rejects an array schema without items", () => {
-    const e = validateSchema({ type: "array" }, "");
-    expect(e).toMatch(/requires `items`/);
-  });
+  it.each([
+    {
+      name: "an object schema without properties",
+      schema: { type: "object" },
+      hint: /requires `properties`/,
+    },
+    { name: "an array schema without items", schema: { type: "array" }, hint: /requires `items`/ },
+  ] as Array<{ name: string; schema: ExtractSchema; hint: RegExp }>)(
+    "rejects $name",
+    ({ schema, hint }) => {
+      expect(validateSchema(schema, "")).toMatch(hint);
+    },
+  );
 
   it('rejects `integer` with a "did you mean number?" hint', () => {
     // Regression — the adopter trial-1 turn 2 burned a full retry cycle here.
@@ -94,38 +98,46 @@ describe("validateSchema", () => {
 });
 
 describe("scanTreeForBestMatch", () => {
-  it("exact name match wins over substring", () => {
+  it.each([
+    {
+      name: "exact name match wins over substring",
+      build: () =>
+        n("WebArea", undefined, [n("text", "Engineering and design"), n("text", "Engineering")]),
+      query: "Engineering",
+      field: "name" as const,
+    },
+    {
+      name: "matches against testId",
+      build: () => n("WebArea", undefined, [n("text", "label", [], { testId: "price-input" })]),
+      query: "price-input",
+      field: "testId" as const,
+    },
+  ])("$name", ({ build, query, field }) => {
     seq = 0;
-    const tree = n("WebArea", undefined, [
-      n("text", "Engineering and design"),
-      n("text", "Engineering"),
-    ]);
-    const hit = scanTreeForBestMatch(tree, "Engineering");
-    expect(hit?.name).toBe("Engineering");
-  });
-
-  it("matches against testId", () => {
-    seq = 0;
-    const tree = n("WebArea", undefined, [n("text", "label", [], { testId: "price-input" })]);
-    const hit = scanTreeForBestMatch(tree, "price-input");
-    expect(hit?.testId).toBe("price-input");
+    expect(scanTreeForBestMatch(build(), query)?.[field]).toBe(query);
   });
 });
 
 describe("coerceLeaf", () => {
-  it("strips $ from a number string", () => {
-    expect(coerceLeaf("$1,234.50", "number")).toBe(1234.5);
-  });
-  it("returns null when a number cannot be parsed", () => {
-    expect(coerceLeaf("not a number", "number")).toBeNull();
-  });
-  it("coerces boolean-ish strings", () => {
-    expect(coerceLeaf("true", "boolean")).toBe(true);
-    expect(coerceLeaf("0", "boolean")).toBe(false);
-    expect(coerceLeaf("yes", "boolean")).toBe(true);
-  });
-  it("strings stringify non-strings", () => {
-    expect(coerceLeaf(42, "string")).toBe("42");
+  it.each([
+    { name: "strips $ from a number string", value: "$1,234.50", type: "number", out: 1234.5 },
+    {
+      name: "returns null when a number cannot be parsed",
+      value: "not a number",
+      type: "number",
+      out: null,
+    },
+    { name: "coerces a true boolean-ish string", value: "true", type: "boolean", out: true },
+    { name: "coerces a false boolean-ish string", value: "0", type: "boolean", out: false },
+    { name: "coerces a yes boolean-ish string", value: "yes", type: "boolean", out: true },
+    { name: "stringifies non-strings", value: 42, type: "string", out: "42" },
+  ] as Array<{
+    name: string;
+    value: unknown;
+    type: "number" | "boolean" | "string";
+    out: unknown;
+  }>)("coerceLeaf $name", ({ value, type, out }) => {
+    expect(coerceLeaf(value, type)).toBe(out);
   });
 });
 
@@ -566,50 +578,40 @@ describe("extract() — Proposal D: BROWX_EXTRACT_STRICT=1 hard-reject opt-in", 
   const cdp = emptySubstrate;
   const refs = noPage as unknown as Parameters<typeof extract>[2];
 
-  it("env set → unknown-hint-key becomes a hard `invalid-schema` rejection", async () => {
-    const prev = process.env.BROWX_EXTRACT_STRICT;
-    process.env.BROWX_EXTRACT_STRICT = "1";
-    try {
-      const res = await extract(noPage, cdp, refs, {
-        schema: {
-          type: "string",
-          "x-browx-source": { selector: "a", attribute: "href" },
-        },
-        testAttributes: ["data-testid"],
-      });
-      expect(res.ok).toBe(false);
-      if (!res.ok) {
-        expect(res.failure.kind).toBe("invalid-schema");
-        expect(String(res.failure.actual)).toContain("unknown `x-browx-source` key `attribute`");
-        expect(res.failure.source).toBe("browxai");
-      }
-    } finally {
-      if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
+  it.each([
+    { name: "env set", env: "1", strictArg: undefined },
+    {
+      name: "call-arg `strictUnknownHintKeys:true` without the env var",
+      env: undefined,
+      strictArg: true,
+    },
+  ])(
+    "$name → unknown-hint-key becomes a hard `invalid-schema` rejection",
+    async ({ env, strictArg }) => {
+      const prev = process.env.BROWX_EXTRACT_STRICT;
+      if (env !== undefined) process.env.BROWX_EXTRACT_STRICT = env;
       else delete process.env.BROWX_EXTRACT_STRICT;
-    }
-  });
-
-  it("call-arg `strictUnknownHintKeys:true` works without needing the env var", async () => {
-    const prev = process.env.BROWX_EXTRACT_STRICT;
-    delete process.env.BROWX_EXTRACT_STRICT;
-    try {
-      const res = await extract(noPage, cdp, refs, {
-        schema: {
-          type: "string",
-          "x-browx-source": { selector: "a", attribute: "href" },
-        },
-        testAttributes: ["data-testid"],
-        strictUnknownHintKeys: true,
-      });
-      expect(res.ok).toBe(false);
-      if (!res.ok) {
-        expect(res.failure.kind).toBe("invalid-schema");
-        expect(String(res.failure.actual)).toContain("`attribute`");
+      try {
+        const res = await extract(noPage, cdp, refs, {
+          schema: {
+            type: "string",
+            "x-browx-source": { selector: "a", attribute: "href" },
+          },
+          testAttributes: ["data-testid"],
+          ...(strictArg !== undefined ? { strictUnknownHintKeys: strictArg } : {}),
+        });
+        expect(res.ok).toBe(false);
+        if (!res.ok) {
+          expect(res.failure.kind).toBe("invalid-schema");
+          expect(String(res.failure.actual)).toContain("unknown `x-browx-source` key `attribute`");
+          expect(res.failure.source).toBe("browxai");
+        }
+      } finally {
+        if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
+        else delete process.env.BROWX_EXTRACT_STRICT;
       }
-    } finally {
-      if (prev !== undefined) process.env.BROWX_EXTRACT_STRICT = prev;
-    }
-  });
+    },
+  );
 
   it("strict mode does NOT promote integer-coerce notes (educational, not typo-like)", async () => {
     const prev = process.env.BROWX_EXTRACT_STRICT;

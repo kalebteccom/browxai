@@ -110,38 +110,34 @@ describe("screenshotMarks (composition)", () => {
     expect(page.calls.evaluate[1]).toMatch(/getElementById/);
   });
 
-  it("default label is the array index, paired with the index→ref mapping", async () => {
+  it.each([
+    {
+      name: "default label is the array index, paired with the index→ref mapping",
+      opts: {},
+      painted: ['"label":"1"', '"label":"2"'],
+      absent: '"label":"e3"',
+    },
+    {
+      name: "label:'ref' paints the existing eN — does NOT invent a parallel ID space",
+      opts: { label: "ref" as const },
+      painted: ['"label":"e3"', '"label":"e9"'],
+      absent: '"label":"1"',
+    },
+  ])("$name", async ({ opts, painted, absent }) => {
     const page = fakePage();
     const refs = new RefRegistry();
     const res = await screenshotMarks(page as never, {} as never, refs, {
+      ...opts,
       candidates: [
         { ref: "e3", role: "button", bbox: { x: 0, y: 50, width: 10, height: 10 } },
         { ref: "e9", role: "button", bbox: { x: 20, y: 50, width: 10, height: 10 } },
       ],
     });
-    // The overlay script for label:"index" should include `"label":"1"` and
-    // `"label":"2"` (the 1-based positions), NOT `"e3"`/`"e9"`.
+    // The overlay script carries the label the mode asks for, and not the other mode's.
     const overlayCall = page.calls.evaluate[0]!;
-    expect(overlayCall).toContain('"label":"1"');
-    expect(overlayCall).toContain('"label":"2"');
-    expect(overlayCall).not.toContain('"label":"e3"');
-    expect(res.mapping).toEqual({ "1": "e3", "2": "e9" });
-  });
-
-  it("label:'ref' paints the existing eN — does NOT invent a parallel ID space", async () => {
-    const page = fakePage();
-    const refs = new RefRegistry();
-    const res = await screenshotMarks(page as never, {} as never, refs, {
-      label: "ref",
-      candidates: [
-        { ref: "e3", role: "button", bbox: { x: 0, y: 50, width: 10, height: 10 } },
-        { ref: "e9", role: "button", bbox: { x: 20, y: 50, width: 10, height: 10 } },
-      ],
-    });
-    const overlayCall = page.calls.evaluate[0]!;
-    expect(overlayCall).toContain('"label":"e3"');
-    expect(overlayCall).toContain('"label":"e9"');
-    // Mapping invariant holds either way.
+    for (const label of painted) expect(overlayCall).toContain(label);
+    expect(overlayCall).not.toContain(absent);
+    // The index→ref mapping invariant holds in both modes.
     expect(res.mapping).toEqual({ "1": "e3", "2": "e9" });
   });
 

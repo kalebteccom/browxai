@@ -3,105 +3,88 @@ import { RefRegistry, type RefLocatorInputs } from "./refs.js";
 import { generateLocator, generatePlaywrightLocator } from "./generate-locator.js";
 
 describe("generatePlaywrightLocator — tier mapping", () => {
-  it("tier 1: default data-testid lowers to getByTestId, stability high", () => {
-    const out = generatePlaywrightLocator({
-      role: "button",
-      testId: "save-btn",
-      testIdAttr: "data-testid",
-      source: "dom",
-    });
-    expect(out.playwright).toBe("page.getByTestId('save-btn')");
-    expect(out.stability).toBe("high");
-    expect(out.components).toEqual([{ kind: "testid", value: "save-btn" }]);
-  });
-
-  it("tier 1: non-default test attribute lowers to attribute-CSS via page.locator", () => {
-    // Adopters configuring `BROWX_TEST_ATTRIBUTES=data-cy` get the same
-    // strength signal, but `getByTestId` is locked to `data-testid`, so the
-    // attribute form is the correct emission.
-    const out = generatePlaywrightLocator({
-      role: "div",
-      testId: "submit-form",
-      testIdAttr: "data-cy",
-      source: "dom",
-    });
-    expect(out.playwright).toBe(`page.locator('[data-cy="submit-form"]')`);
-    expect(out.stability).toBe("high");
-    expect(out.components).toEqual([
-      { kind: "testid", value: "submit-form", attribute: "data-cy" },
-    ]);
-  });
-
-  it("tier 2: DOM-only ref without testId lowers via cssPath, stability medium (semantic anchor)", () => {
-    const out = generatePlaywrightLocator({
-      role: "td",
-      cssPath: "main > table > tbody > tr:nth-child(4) > td:nth-child(3)",
-      source: "dom",
-    });
-    expect(out.playwright).toBe(
-      "page.locator('main > table > tbody > tr:nth-child(4) > td:nth-child(3)')",
-    );
-    expect(out.stability).toBe("medium");
-    expect(out.components).toEqual([
-      {
-        kind: "css",
-        value: "main > table > tbody > tr:nth-child(4) > td:nth-child(3)",
+  it.each([
+    {
+      name: "tier 1: default data-testid lowers to getByTestId",
+      input: { role: "button", testId: "save-btn", testIdAttr: "data-testid", source: "dom" },
+      playwright: "page.getByTestId('save-btn')",
+      stability: "high",
+      components: [{ kind: "testid", value: "save-btn" }],
+    },
+    {
+      // `getByTestId` is locked to `data-testid`, so a configured attribute
+      // (BROWX_TEST_ATTRIBUTES=data-cy) takes the attribute-CSS form.
+      name: "tier 1: non-default test attribute lowers to attribute-CSS via page.locator",
+      input: { role: "div", testId: "submit-form", testIdAttr: "data-cy", source: "dom" },
+      playwright: `page.locator('[data-cy="submit-form"]')`,
+      stability: "high",
+      components: [{ kind: "testid", value: "submit-form", attribute: "data-cy" }],
+    },
+    {
+      name: "tier 2: DOM-only ref without testId lowers via cssPath (semantic anchor)",
+      input: {
+        role: "td",
+        cssPath: "main > table > tbody > tr:nth-child(4) > td:nth-child(3)",
+        source: "dom",
       },
-    ]);
-  });
-
-  it("tier 2: positional-only DOM cssPath falls back to stability low", () => {
-    // A path that is entirely `:nth-child` chains under generic tags carries
-    // no semantic anchor — the next render can easily reshuffle it. `find()`
-    // would have called this `low`; mirror that.
-    const out = generatePlaywrightLocator({
-      role: "div",
-      cssPath: "div > div:nth-child(2) > div:nth-child(5) > div",
-      source: "dom",
-    });
-    expect(out.stability).toBe("low");
-  });
-
-  it("tier 3: role + name lowers to getByRole({ name }), stability high", () => {
-    const out = generatePlaywrightLocator({
-      role: "button",
-      name: "Save",
-      source: "a11y",
-    });
-    expect(out.playwright).toBe("page.getByRole('button', { name: 'Save' })");
-    expect(out.stability).toBe("high");
-    expect(out.components).toEqual([
-      { kind: "role", value: "button", name: "Save" },
-      { kind: "text", value: "Save" },
-    ]);
-  });
-
-  it("tier 4: cssPath fallback for `both` refs without name, stability medium when semantic", () => {
-    const out = generatePlaywrightLocator({
-      role: "generic",
-      cssPath: "form > div:nth-child(2)",
-      source: "both",
-    });
-    expect(out.playwright).toBe("page.locator('form > div:nth-child(2)')");
-    expect(out.stability).toBe("medium");
-  });
-
-  it("tier 5: role-only fallback returns getByRole(role), stability low", () => {
-    const out = generatePlaywrightLocator({ role: "button", source: "a11y" });
-    expect(out.playwright).toBe("page.getByRole('button')");
-    expect(out.stability).toBe("low");
-    expect(out.components).toEqual([{ kind: "role", value: "button" }]);
-  });
-
-  it("escapes single quotes inside accessible names", () => {
-    // A name like `O'Brien` would break a single-quoted JS string literal if
-    // emitted bare. The emitted expression must be paste-safe into a .spec.ts.
-    const out = generatePlaywrightLocator({
-      role: "button",
-      name: "O'Brien",
-      source: "a11y",
-    });
-    expect(out.playwright).toBe(`page.getByRole('button', { name: 'O\\'Brien' })`);
+      playwright: "page.locator('main > table > tbody > tr:nth-child(4) > td:nth-child(3)')",
+      stability: "medium",
+      components: [
+        { kind: "css", value: "main > table > tbody > tr:nth-child(4) > td:nth-child(3)" },
+      ],
+    },
+    {
+      // A path that is entirely `:nth-child` chains under generic tags carries no
+      // semantic anchor, so `find()` would have called it `low` too.
+      name: "tier 2: positional-only DOM cssPath falls back to stability low",
+      input: {
+        role: "div",
+        cssPath: "div > div:nth-child(2) > div:nth-child(5) > div",
+        source: "dom",
+      },
+      stability: "low",
+    },
+    {
+      name: "tier 3: role + name lowers to getByRole({ name })",
+      input: { role: "button", name: "Save", source: "a11y" },
+      playwright: "page.getByRole('button', { name: 'Save' })",
+      stability: "high",
+      components: [
+        { kind: "role", value: "button", name: "Save" },
+        { kind: "text", value: "Save" },
+      ],
+    },
+    {
+      name: "tier 4: cssPath fallback for `both` refs without name",
+      input: { role: "generic", cssPath: "form > div:nth-child(2)", source: "both" },
+      playwright: "page.locator('form > div:nth-child(2)')",
+      stability: "medium",
+    },
+    {
+      name: "tier 5: role-only fallback returns getByRole(role)",
+      input: { role: "button", source: "a11y" },
+      playwright: "page.getByRole('button')",
+      stability: "low",
+      components: [{ kind: "role", value: "button" }],
+    },
+    {
+      // `O'Brien` would break a single-quoted JS string literal if emitted bare;
+      // the expression must be paste-safe into a .spec.ts.
+      name: "escapes single quotes inside accessible names",
+      input: { role: "button", name: "O'Brien", source: "a11y" },
+      playwright: `page.getByRole('button', { name: 'O\\'Brien' })`,
+    },
+  ] as Array<{
+    name: string;
+    input: Parameters<typeof generatePlaywrightLocator>[0];
+    playwright?: string;
+    stability?: string;
+    components?: unknown[];
+  }>)("$name", ({ input, playwright, stability, components }) => {
+    const out = generatePlaywrightLocator(input);
+    if (playwright !== undefined) expect(out.playwright).toBe(playwright);
+    if (stability !== undefined) expect(out.stability).toBe(stability);
+    if (components !== undefined) expect(out.components).toEqual(components);
   });
 });
 

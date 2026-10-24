@@ -84,89 +84,90 @@ describe("verifyVisible", () => {
 });
 
 describe("verifyText", () => {
-  it("ok when innerText contains substring (default case-insensitive)", async () => {
+  it.each([
+    {
+      name: "ok when innerText contains substring (default case-insensitive)",
+      innerText: "  Saved successfully  ",
+      expected: "saved",
+      exact: false,
+      result: { ok: true },
+    },
+    {
+      name: "exact:true accepts case-sensitive equality on trimmed innerText",
+      innerText: "  Saved  ",
+      expected: "Saved",
+      exact: true,
+      result: { ok: true },
+    },
+    {
+      name: "exact:true rejects a case-different match",
+      innerText: "  Saved  ",
+      expected: "saved",
+      exact: true,
+      result: { ok: false },
+    },
+    {
+      name: "fails source:'app' with the actual snippet when text doesn't match",
+      innerText: "Error: bad",
+      expected: "Saved",
+      exact: false,
+      result: { ok: false, failure: { source: "app", actual: "Error: bad" } },
+    },
+  ])("$name", async ({ innerText, expected, exact, result }) => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Banner");
-    const page = mockPage({
-      "role:button[name=Banner]": { count: 1, innerText: "  Saved successfully  " },
-    });
-    const r = await verifyText(elementsOver(page, refs), { ref }, "saved", false);
-    expect(r.ok).toBe(true);
-  });
-
-  it("exact:true requires case-sensitive equality on trimmed innerText", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Banner");
-    const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: "  Saved  " } });
-    expect((await verifyText(elementsOver(page, refs), { ref }, "Saved", true)).ok).toBe(true);
-    expect((await verifyText(elementsOver(page, refs), { ref }, "saved", true)).ok).toBe(false);
-  });
-
-  it("fails source:'app' with the actual snippet when text doesn't match", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Banner");
-    const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText: "Error: bad" } });
-    const r = await verifyText(elementsOver(page, refs), { ref }, "Saved", false);
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.failure?.source).toBe("app");
-      expect(r.failure?.actual).toBe("Error: bad");
-    }
+    const page = mockPage({ "role:button[name=Banner]": { count: 1, innerText } });
+    const r = await verifyText(elementsOver(page, refs), { ref }, expected, exact);
+    expect(r).toMatchObject(result);
   });
 });
 
 describe("verifyValue", () => {
-  it("fails source:'app' with actual when value differs", async () => {
+  it.each([
+    { name: "when value differs", evaluatedValue: "wrong", actual: "wrong" },
+    {
+      name: "with 'no value' for elements without a DOM value",
+      evaluatedValue: null,
+      actual: expect.stringContaining("no `value`"),
+    },
+  ])("fails source:'app' $name", async ({ evaluatedValue, actual }) => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Email");
-    const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue: "wrong" } });
+    const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue } });
     const r = await verifyValue(elementsOver(page, refs), { ref }, "you@example.com");
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.failure?.source).toBe("app");
-      expect(r.failure?.actual).toBe("wrong");
-    }
-  });
-
-  it("fails source:'app' with 'no value' for elements without a DOM value", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Email");
-    const page = mockPage({ "role:button[name=Email]": { count: 1, evaluatedValue: null } });
-    const r = await verifyValue(elementsOver(page, refs), { ref }, "anything");
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.failure?.actual).toContain("no `value`");
+    expect(r).toMatchObject({ ok: false, failure: { source: "app", actual } });
   });
 });
 
 describe("verifyAttribute", () => {
-  it("fails source:'app' on attribute mismatch", async () => {
+  it.each([
+    {
+      name: "fails source:'app' on attribute mismatch",
+      attributes: { "aria-pressed": "false" },
+      attribute: "aria-pressed",
+      value: "true",
+      result: { ok: false, failure: { actual: "false" } },
+    },
+    {
+      name: "omitting `value` asserts presence, passing when the attribute is present",
+      attributes: { "data-state": "open" },
+      attribute: "data-state",
+      value: undefined,
+      result: { ok: true },
+    },
+    {
+      name: "presence assertion fails when attribute is absent (getAttribute is null)",
+      attributes: {},
+      attribute: "data-state",
+      value: undefined,
+      result: { ok: false, failure: { actual: null } },
+    },
+  ])("$name", async ({ attributes, attribute, value, result }) => {
     const refs = new RefRegistry();
     const ref = refForButton(refs, "Toggle");
-    const page = mockPage({
-      "role:button[name=Toggle]": { count: 1, attributes: { "aria-pressed": "false" } },
-    });
-    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "aria-pressed", "true");
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.failure?.actual).toBe("false");
-  });
-
-  it("omitting `value` asserts presence — passes when attribute is present", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Toggle");
-    const page = mockPage({
-      "role:button[name=Toggle]": { count: 1, attributes: { "data-state": "open" } },
-    });
-    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "data-state", undefined);
-    expect(r.ok).toBe(true);
-  });
-
-  it("presence assertion fails when attribute is absent (getAttribute → null)", async () => {
-    const refs = new RefRegistry();
-    const ref = refForButton(refs, "Toggle");
-    const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes: {} } });
-    const r = await verifyAttribute(elementsOver(page, refs), { ref }, "data-state", undefined);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.failure?.actual).toBeNull();
+    const page = mockPage({ "role:button[name=Toggle]": { count: 1, attributes } });
+    const r = await verifyAttribute(elementsOver(page, refs), { ref }, attribute, value);
+    expect(r).toMatchObject(result);
   });
 });
 

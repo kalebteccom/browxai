@@ -141,107 +141,136 @@ describe("SafariStorageSubstrate", () => {
     expect(scripts[1]).toContain("s.clear()");
   });
 
-  it("rejects a blank web-storage key WITHOUT touching the page (matches the helper)", async () => {
+  it.each([
+    {
+      name: "a blank web-storage key on get",
+      call: (sub: SafariStorageSubstrate) =>
+        sub.webStorageGet("localStorage", { key: "" }, "localstorage_get"),
+      error: /`key` is required/,
+    },
+    {
+      name: "a blank web-storage key on set",
+      call: (sub: SafariStorageSubstrate) =>
+        sub.webStorageSet("localStorage", { key: "", value: "v" }, "localstorage_set"),
+      error: /`key` is required/,
+    },
+    {
+      name: "a non-string web-storage value",
+      call: (sub: SafariStorageSubstrate) =>
+        sub.webStorageSet("localStorage", { key: "k", value: 42 as unknown as string }, "x"),
+      error: /`value` \(string\) is required/,
+    },
+  ])("rejects $name WITHOUT touching the page (matches the helper)", async ({ call, error }) => {
     const { handle, scripts } = safariHandle();
-    const sub = new SafariStorageSubstrate(handle);
-    await expect(
-      sub.webStorageGet("localStorage", { key: "" }, "localstorage_get"),
-    ).rejects.toThrow(/`key` is required/);
-    await expect(
-      sub.webStorageSet("localStorage", { key: "", value: "v" }, "localstorage_set"),
-    ).rejects.toThrow(/`key` is required/);
+    await expect(call(new SafariStorageSubstrate(handle))).rejects.toThrow(error);
     expect(scripts).toEqual([]);
   });
 
-  it("rejects a non-string web-storage value", async () => {
-    const { handle } = safariHandle();
-    const sub = new SafariStorageSubstrate(handle);
-    await expect(
-      sub.webStorageSet("localStorage", { key: "k", value: 42 as unknown as string }, "x"),
-    ).rejects.toThrow(/`value` \(string\) is required/);
-  });
-
-  it("refuses web-storage on about:blank with the same navigation hint as the helper", async () => {
-    const { handle, scripts } = safariHandle({ url: "about:blank" });
-    const sub = new SafariStorageSubstrate(handle);
-    await expect(sub.webStorageList("localStorage", "localstorage_list")).rejects.toThrow(
-      /origin-scoped[\s\S]*Navigate the session to the target origin/,
-    );
-    // The guard short-circuits before any execute/sync — no page-side write attempt.
+  it.each([
+    {
+      name: "refuses web-storage on about:blank with the same navigation hint as the helper",
+      opts: { url: "about:blank" },
+      prepare: (_handle: SafariSessionHandle) => undefined,
+      call: (sub: SafariStorageSubstrate) =>
+        sub.webStorageList("localStorage", "localstorage_list"),
+      error: /origin-scoped[\s\S]*Navigate the session to the target origin/,
+    },
+    {
+      name: "treats an unreachable currentUrl as the (unknown) navigation refusal",
+      opts: {},
+      // currentUrl throws: the guard catches it and reframes it as the nav refusal.
+      prepare: (handle: SafariSessionHandle) => {
+        (handle.webDriver as unknown as { currentUrl: () => Promise<string> }).currentUrl = () => {
+          throw new Error("session gone");
+        };
+      },
+      call: (sub: SafariStorageSubstrate) =>
+        sub.webStorageClear("localStorage", "localstorage_clear"),
+      error: /origin-scoped and the page is at "\(unknown\)"/,
+    },
+  ])("$name", async ({ opts, prepare, call, error }) => {
+    const { handle, scripts } = safariHandle(opts);
+    prepare(handle);
+    await expect(call(new SafariStorageSubstrate(handle))).rejects.toThrow(error);
+    // The guard short-circuits before any execute/sync, so no page-side write is attempted.
     expect(scripts).toEqual([]);
   });
 
-  it("treats an unreachable currentUrl as the (unknown) navigation refusal", async () => {
-    const { handle } = safariHandle();
-    // Make currentUrl throw — the guard catches it and reframes as the nav refusal.
-    (handle.webDriver as unknown as { currentUrl: () => Promise<string> }).currentUrl = () => {
-      throw new Error("session gone");
-    };
-    const sub = new SafariStorageSubstrate(handle);
-    await expect(sub.webStorageClear("localStorage", "localstorage_clear")).rejects.toThrow(
-      /origin-scoped and the page is at "\(unknown\)"/,
-    );
-  });
-
-  it("refuses every idb method cleanly WITHOUT touching the page (async API, sync driver)", async () => {
-    // IndexedDB's promise-based API needs an async page-script path that
-    // safaridriver's synchronous execute/sync cannot provide, so each idb method
-    // refuses in the adapter rather than running a script whose result is a pending
-    // promise. The refusal names the tool + points at a Playwright engine, and no
-    // cookie/execute/sync call is attempted.
+  // IndexedDB and the Cache API are promise-based, so each needs an async page-script
+  // path that safaridriver's synchronous execute/sync cannot provide. Every method
+  // refuses in the adapter instead of running a script whose result is a pending
+  // promise. The refusal names the tool and points at a Playwright engine, and no
+  // cookie or execute/sync call is attempted.
+  type Refusal = Array<[() => Promise<unknown>, RegExp]>;
+  it.each([
+    {
+      name: "idb",
+      calls: (sub: SafariStorageSubstrate): Refusal => [
+        [
+          () => sub.idbListDatabases("idb_list_databases"),
+          /`idb_list_databases`: IndexedDB is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
+        ],
+        [
+          () => sub.idbListStores({ dbName: "d" }, "idb_list_stores"),
+          /`idb_list_stores`: IndexedDB is not available on the Safari engine/,
+        ],
+        [
+          () => sub.idbGet({ dbName: "d", storeName: "s", key: "k" }, "idb_get"),
+          /IndexedDB is not available on the Safari engine/,
+        ],
+        [
+          () => sub.idbPut({ dbName: "d", storeName: "s", key: "k", value: 1 }, "idb_put"),
+          /IndexedDB is not available on the Safari engine/,
+        ],
+        [
+          () => sub.idbDelete({ dbName: "d", storeName: "s", key: "k" }, "idb_delete"),
+          /IndexedDB is not available on the Safari engine/,
+        ],
+        [
+          () => sub.idbClear({ dbName: "d", storeName: "s" }, "idb_clear"),
+          /IndexedDB is not available on the Safari engine/,
+        ],
+      ],
+    },
+    {
+      name: "caches",
+      calls: (sub: SafariStorageSubstrate): Refusal => [
+        [
+          () => sub.cachesListStorages("caches_list_storages"),
+          /`caches_list_storages`: the Cache API is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
+        ],
+        [
+          () => sub.cachesList({ cacheName: "c" }, "caches_list"),
+          /`caches_list`: the Cache API is not available on the Safari engine/,
+        ],
+        [
+          () => sub.cachesGet({ cacheName: "c", url: "u" }, "caches_get"),
+          /the Cache API is not available on the Safari engine/,
+        ],
+        [
+          () => sub.cachesPut({ cacheName: "c", url: "u", response: { body: "b" } }, "caches_put"),
+          /the Cache API is not available on the Safari engine/,
+        ],
+        [
+          () => sub.cachesDelete({ cacheName: "c", url: "u" }, "caches_delete"),
+          /the Cache API is not available on the Safari engine/,
+        ],
+        [
+          () => sub.cachesClear({ cacheName: "c" }, "caches_clear"),
+          /the Cache API is not available on the Safari engine/,
+        ],
+        [
+          () => sub.cachesDeleteStorage({ cacheName: "c" }, "caches_delete_storage"),
+          /the Cache API is not available on the Safari engine/,
+        ],
+      ],
+    },
+  ])("refuses every $name method cleanly WITHOUT touching the page", async ({ calls }) => {
     const { handle, scripts, added } = safariHandle();
     const sub = new SafariStorageSubstrate(handle);
-    await expect(sub.idbListDatabases("idb_list_databases")).rejects.toThrow(
-      /`idb_list_databases`: IndexedDB is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
-    );
-    await expect(sub.idbListStores({ dbName: "d" }, "idb_list_stores")).rejects.toThrow(
-      /`idb_list_stores`: IndexedDB is not available on the Safari engine/,
-    );
-    await expect(sub.idbGet({ dbName: "d", storeName: "s", key: "k" }, "idb_get")).rejects.toThrow(
-      /IndexedDB is not available on the Safari engine/,
-    );
-    await expect(
-      sub.idbPut({ dbName: "d", storeName: "s", key: "k", value: 1 }, "idb_put"),
-    ).rejects.toThrow(/IndexedDB is not available on the Safari engine/);
-    await expect(
-      sub.idbDelete({ dbName: "d", storeName: "s", key: "k" }, "idb_delete"),
-    ).rejects.toThrow(/IndexedDB is not available on the Safari engine/);
-    await expect(sub.idbClear({ dbName: "d", storeName: "s" }, "idb_clear")).rejects.toThrow(
-      /IndexedDB is not available on the Safari engine/,
-    );
-    expect(scripts).toEqual([]);
-    expect(added).toEqual([]);
-  });
-
-  it("refuses every caches method cleanly WITHOUT touching the page (async API, sync driver)", async () => {
-    // The Cache API is promise-based exactly like IndexedDB, so its page-side script
-    // is an async IIFE safaridriver's synchronous execute/sync cannot await; each
-    // caches method refuses in the adapter rather than running a script whose result
-    // is a pending promise. The refusal names the tool + points at a Playwright
-    // engine, and no execute/sync call is attempted.
-    const { handle, scripts, added } = safariHandle();
-    const sub = new SafariStorageSubstrate(handle);
-    await expect(sub.cachesListStorages("caches_list_storages")).rejects.toThrow(
-      /`caches_list_storages`: the Cache API is not available on the Safari engine[\s\S]*chromium, firefox, or webkit/,
-    );
-    await expect(sub.cachesList({ cacheName: "c" }, "caches_list")).rejects.toThrow(
-      /`caches_list`: the Cache API is not available on the Safari engine/,
-    );
-    await expect(sub.cachesGet({ cacheName: "c", url: "u" }, "caches_get")).rejects.toThrow(
-      /the Cache API is not available on the Safari engine/,
-    );
-    await expect(
-      sub.cachesPut({ cacheName: "c", url: "u", response: { body: "b" } }, "caches_put"),
-    ).rejects.toThrow(/the Cache API is not available on the Safari engine/);
-    await expect(sub.cachesDelete({ cacheName: "c", url: "u" }, "caches_delete")).rejects.toThrow(
-      /the Cache API is not available on the Safari engine/,
-    );
-    await expect(sub.cachesClear({ cacheName: "c" }, "caches_clear")).rejects.toThrow(
-      /the Cache API is not available on the Safari engine/,
-    );
-    await expect(
-      sub.cachesDeleteStorage({ cacheName: "c" }, "caches_delete_storage"),
-    ).rejects.toThrow(/the Cache API is not available on the Safari engine/);
+    for (const [call, error] of calls(sub)) {
+      await expect(call()).rejects.toThrow(error);
+    }
     expect(scripts).toEqual([]);
     expect(added).toEqual([]);
   });
@@ -293,31 +322,30 @@ describe("PlaywrightStorageSubstrate", () => {
     expect(added).toEqual([{ name: "k", value: "v", url: "https://example.com/" }]);
   });
 
-  it("delegates web-storage reads to the helper, evaluating the IIFE on the Page", async () => {
-    const { context, page, evaluated } = ctxStub({
+  // The Playwright path runs the bare IIFE (no `return` wrapper, since page.evaluate
+  // takes an expression): the byte-identical pre-seam helper behaviour.
+  it.each([
+    {
+      name: "web-storage reads to the helper, evaluating the IIFE",
       evalResult: { value: "v", origin: "https://example.com" },
-    });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    const r = await sub.webStorageGet("localStorage", { key: "k" }, "localstorage_get");
-    expect(r).toEqual({ value: "v", origin: "https://example.com" });
-    // The Playwright path runs the bare IIFE (no `return` wrapper — page.evaluate
-    // takes an expression), the byte-identical pre-seam helper behaviour.
-    expect(evaluated).toHaveLength(1);
-    expect(evaluated[0]).toContain("window.localStorage");
-    expect(evaluated[0]!.startsWith("(() =>")).toBe(true);
-  });
-
-  it("delegates idb reads to the helper, evaluating the async IIFE on the Page", async () => {
-    const { context, page, evaluated } = ctxStub({
+      read: (sub: PlaywrightStorageSubstrate) =>
+        sub.webStorageGet("localStorage", { key: "k" }, "localstorage_get"),
+      contains: "window.localStorage",
+      prefix: "(() =>",
+    },
+    {
+      name: "idb reads to the helper, evaluating the async IIFE",
       evalResult: { databases: [{ name: "d", version: 1 }], origin: "o", supported: true },
-    });
+      read: (sub: PlaywrightStorageSubstrate) => sub.idbListDatabases("idb_list_databases"),
+      contains: "indexedDB",
+      prefix: "(async () =>",
+    },
+  ])("delegates $name on the Page", async ({ evalResult, read, contains, prefix }) => {
+    const { context, page, evaluated } = ctxStub({ evalResult });
     const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    const r = await sub.idbListDatabases("idb_list_databases");
-    expect(r).toEqual({ databases: [{ name: "d", version: 1 }], origin: "o", supported: true });
-    // The Playwright path runs the byte-identical pre-seam helper: an async IIFE
-    // driving the W3C IndexedDB API through page.evaluate (no `return` wrapper).
+    expect(await read(sub)).toEqual(evalResult);
     expect(evaluated).toHaveLength(1);
-    expect(evaluated[0]).toContain("indexedDB");
-    expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
+    expect(evaluated[0]).toContain(contains);
+    expect(evaluated[0]!.startsWith(prefix)).toBe(true);
   });
 });

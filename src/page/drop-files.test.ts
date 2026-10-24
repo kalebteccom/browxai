@@ -67,41 +67,42 @@ function fakePage(
 }
 
 describe("drop_files — Node-side argument handling", () => {
-  it("rejects empty files array", async () => {
-    const { page, refs } = fakePage();
-    await expect(
-      dropFiles(page as never, refs as never, WS, { target: { selector: "#zone" }, files: [] }),
-    ).rejects.toThrow(/non-empty array/);
-  });
-
-  it("rejects passing both `path` and `contents` on one file entry", async () => {
-    const { page, refs } = fakePage();
+  it.each([
+    { name: "an empty files array", files: [], err: /non-empty array/ },
+    {
+      name: "both `path` and `contents` on one file entry",
+      files: [{ path: "x", contents: "AA==", name: "x" }],
+      err: /exactly one of `path` or `contents`/,
+    },
+    {
+      name: "neither `path` nor `contents` on a file entry",
+      files: [{ name: "x" }],
+      err: /requires `path` or `contents`/,
+    },
+    {
+      name: "contents-mode without a `name`",
+      files: [{ contents: "AA==" }],
+      err: /`name` is required in contents-mode/,
+    },
+    {
+      name: "a workspace path that doesn't exist",
+      files: [{ path: "missing.bin" }],
+      err: /files\[0\]\.path/,
+    },
+    {
+      name: "a target element with no rendered box (ref/selector mode)",
+      box: null,
+      files: [{ contents: "AAAA", name: "a.txt" }],
+      err: /no rendered box/,
+    },
+  ])("dropFiles rejects $name", async ({ files, err, box }) => {
+    const { page, refs } = box === null ? fakePage({ boundingBox: null }) : fakePage();
     await expect(
       dropFiles(page as never, refs as never, WS, {
         target: { selector: "#zone" },
-        files: [{ path: "x", contents: "AA==", name: "x" }],
+        files: files as never,
       }),
-    ).rejects.toThrow(/exactly one of `path` or `contents`/);
-  });
-
-  it("rejects neither `path` nor `contents` on a file entry", async () => {
-    const { page, refs } = fakePage();
-    await expect(
-      dropFiles(page as never, refs as never, WS, {
-        target: { selector: "#zone" },
-        files: [{ name: "x" } as never],
-      }),
-    ).rejects.toThrow(/requires `path` or `contents`/);
-  });
-
-  it("rejects contents-mode without a `name`", async () => {
-    const { page, refs } = fakePage();
-    await expect(
-      dropFiles(page as never, refs as never, WS, {
-        target: { selector: "#zone" },
-        files: [{ contents: "AA==" } as never],
-      }),
-    ).rejects.toThrow(/`name` is required in contents-mode/);
+    ).rejects.toThrow(err);
   });
 
   it("rejects a path that escapes the workspace (relative)", async () => {
@@ -112,26 +113,6 @@ describe("drop_files — Node-side argument handling", () => {
         files: [{ path: "../../etc/passwd" }],
       }),
     ).rejects.toThrow(/inside \$BROWX_WORKSPACE/);
-  });
-
-  it("surfaces a clear error when a workspace path doesn't exist", async () => {
-    const { page, refs } = fakePage();
-    await expect(
-      dropFiles(page as never, refs as never, WS, {
-        target: { selector: "#zone" },
-        files: [{ path: "missing.bin" }],
-      }),
-    ).rejects.toThrow(/files\[0\]\.path/);
-  });
-
-  it("rejects when the target element has no rendered box (ref/selector mode)", async () => {
-    const { page, refs } = fakePage({ boundingBox: null });
-    await expect(
-      dropFiles(page as never, refs as never, WS, {
-        target: { selector: "#zone" },
-        files: [{ contents: "AAAA", name: "a.txt" }],
-      }),
-    ).rejects.toThrow(/no rendered box/);
   });
 });
 

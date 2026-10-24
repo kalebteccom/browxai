@@ -117,26 +117,31 @@ describe("canvasDiff (envelope around diffRgba)", () => {
     expect(r.code).toBe("missing-dimensions");
   });
 
-  it("PNG inputs: byte-equal compare + warning", () => {
-    const r = canvasDiff({
-      beforeBase64: "iVBORw0",
-      afterBase64: "iVBORw0",
-      inputFormat: "png",
-    });
-    expect(r.ok).toBe(true);
-    expect(r.changedPixelCount).toBe(0);
-    expect(r.warnings.some((w) => /PNG-decoded/.test(w))).toBe(true);
-  });
-
-  it("PNG inputs different bytes: surfaces a non-zero change + warning", () => {
-    const r = canvasDiff({
-      beforeBase64: "aaaa",
-      afterBase64: "bbbb",
-      inputFormat: "png",
-    });
-    expect(r.changedPixelCount).toBeGreaterThan(0);
-    expect(r.bboxOfChanges).toBeNull();
-    expect(r.warnings.some((w) => /PNG/.test(w))).toBe(true);
+  it.each([
+    {
+      name: "PNG inputs: byte-equal compare + warning",
+      before: "iVBORw0",
+      after: "iVBORw0",
+      changed: false,
+      warn: /PNG-decoded/,
+    },
+    {
+      name: "PNG inputs different bytes: surfaces a non-zero change + warning",
+      before: "aaaa",
+      after: "bbbb",
+      changed: true,
+      warn: /PNG/,
+    },
+  ])("canvasDiff: $name", ({ before, after, changed, warn }) => {
+    const r = canvasDiff({ beforeBase64: before, afterBase64: after, inputFormat: "png" });
+    if (changed) {
+      expect(r.changedPixelCount).toBeGreaterThan(0);
+      expect(r.bboxOfChanges).toBeNull();
+    } else {
+      expect(r.ok).toBe(true);
+      expect(r.changedPixelCount).toBe(0);
+    }
+    expect(r.warnings.some((w) => warn.test(w))).toBe(true);
   });
 });
 
@@ -148,51 +153,52 @@ describe("applyWorldToScreen + applyScreenToWorld (explicit-mode math)", () => {
 });
 
 describe("validateGestureChain (caps, floors, refusals)", () => {
-  it("rejects an empty step list", () => {
-    const r = validateGestureChain([]);
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe("no-steps");
-  });
-
-  it("rejects more than MAX steps", () => {
-    const steps = Array.from({ length: GESTURE_CHAIN_MAX_STEPS + 1 }, () => ({
-      kind: "move" as const,
-      x: 0,
-      y: 0,
-    }));
+  it.each([
+    { name: "an empty step list", steps: [], code: "no-steps" },
+    {
+      name: "more than MAX steps",
+      steps: Array.from({ length: GESTURE_CHAIN_MAX_STEPS + 1 }, () => ({
+        kind: "move" as const,
+        x: 0,
+        y: 0,
+      })),
+      code: "too-many-steps",
+    },
+    {
+      name: "a wheel step with zero delta",
+      steps: [{ kind: "wheel" as const, deltaX: 0, deltaY: 0 }],
+      code: "bad-step",
+    },
+    { name: "move/down/up without coords", steps: [{ kind: "down" as const }], code: undefined },
+    {
+      name: "an unknown kind",
+      steps: [{ kind: "teleport" as unknown as "down" }],
+      code: undefined,
+    },
+  ])("validateGestureChain rejects $name", ({ steps, code }) => {
     const r = validateGestureChain(steps);
     expect(r.ok).toBe(false);
-    expect(r.code).toBe("too-many-steps");
+    if (code) expect(r.code).toBe(code);
   });
 
-  it("floors a too-fast move ms with a warning", () => {
-    const r = validateGestureChain([{ kind: "move", x: 1, y: 1, ms: 1 }]);
+  it.each([
+    {
+      name: "floors a too-fast move ms with a warning",
+      steps: [{ kind: "move" as const, x: 1, y: 1, ms: 1 }],
+      ms: GESTURE_CHAIN_MIN_MOVE_MS,
+      warn: /floored/,
+    },
+    {
+      name: "clamps a too-long wait ms with a warning",
+      steps: [{ kind: "wait" as const, ms: 10_000 }],
+      ms: GESTURE_CHAIN_MAX_WAIT_MS,
+      warn: /clamped/,
+    },
+  ])("validateGestureChain: $name", ({ steps, ms, warn }) => {
+    const r = validateGestureChain(steps);
     expect(r.ok).toBe(true);
-    expect(r.steps[0]!.ms).toBe(GESTURE_CHAIN_MIN_MOVE_MS);
-    expect(r.warnings.some((w) => /floored/.test(w))).toBe(true);
-  });
-
-  it("clamps a too-long wait ms with a warning", () => {
-    const r = validateGestureChain([{ kind: "wait", ms: 10_000 }]);
-    expect(r.ok).toBe(true);
-    expect(r.steps[0]!.ms).toBe(GESTURE_CHAIN_MAX_WAIT_MS);
-    expect(r.warnings.some((w) => /clamped/.test(w))).toBe(true);
-  });
-
-  it("rejects a wheel step with zero delta", () => {
-    const r = validateGestureChain([{ kind: "wheel", deltaX: 0, deltaY: 0 }]);
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe("bad-step");
-  });
-
-  it("rejects move/down/up without coords", () => {
-    const r = validateGestureChain([{ kind: "down" }]);
-    expect(r.ok).toBe(false);
-  });
-
-  it("rejects unknown kind", () => {
-    const r = validateGestureChain([{ kind: "teleport" as unknown as "down" }]);
-    expect(r.ok).toBe(false);
+    expect(r.steps[0]!.ms).toBe(ms);
+    expect(r.warnings.some((w) => warn.test(w))).toBe(true);
   });
 });
 
@@ -223,28 +229,30 @@ describe("runGestureChain (executes against a stubbed mouse)", () => {
     };
   }
 
-  it("dispatches a 3-step program in order", async () => {
-    const { page, log } = makeStubPage();
-    const r = await runGestureChain(page, {
+  it.each([
+    {
+      name: "dispatches a 3-step program in order",
       steps: [
-        { kind: "down", x: 10, y: 20 },
-        { kind: "move", x: 30, y: 40, ms: 10 },
-        { kind: "up", x: 30, y: 40 },
+        { kind: "down" as const, x: 10, y: 20 },
+        { kind: "move" as const, x: 30, y: 40, ms: 10 },
+        { kind: "up" as const, x: 30, y: 40 },
       ],
-    });
-    expect(r.ok).toBe(true);
-    expect(r.stepsExecuted).toBe(3);
-    // move-before-down, the explicit move, then move-before-up.
-    expect(log).toEqual(["move:10,20", "down", "move:30,40", "move:30,40", "up"]);
-  });
-
-  it("dispatches a wheel step", async () => {
+      executed: 3,
+      // move-before-down, the explicit move, then move-before-up.
+      want: ["move:10,20", "down", "move:30,40", "move:30,40", "up"],
+    },
+    {
+      name: "dispatches a wheel step",
+      steps: [{ kind: "wheel" as const, deltaX: 0, deltaY: 100, x: 5, y: 6 }],
+      executed: 1,
+      want: ["move:5,6", "wheel:0,100"],
+    },
+  ])("runGestureChain: $name", async ({ steps, executed, want }) => {
     const { page, log } = makeStubPage();
-    const r = await runGestureChain(page, {
-      steps: [{ kind: "wheel", deltaX: 0, deltaY: 100, x: 5, y: 6 }],
-    });
+    const r = await runGestureChain(page, { steps });
     expect(r.ok).toBe(true);
-    expect(log).toEqual(["move:5,6", "wheel:0,100"]);
+    expect(r.stepsExecuted).toBe(executed);
+    expect(log).toEqual(want);
   });
 });
 

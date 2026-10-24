@@ -74,29 +74,36 @@ describe("annotateStructuralContext", () => {
     expect(inner.context?.column).toBeUndefined();
   });
 
-  it("uses 'feed' collection for article descendants inside a feed", () => {
+  it.each([
+    {
+      name: "uses 'feed' collection for article descendants inside a feed",
+      build: () => {
+        const link = n("link", "Open post");
+        const article = n("article", undefined, [n("heading", "Post title"), link]);
+        const feed = n("feed", undefined, [
+          article,
+          n("article", undefined, [n("heading", "Other")]),
+        ]);
+        return { leaf: link, root: n("WebArea", undefined, [feed]) };
+      },
+      context: { collection: "feed", rowKey: "Post title" },
+    },
+    {
+      // A row directly under a generic container (no `table`/`grid` ancestor).
+      name: "falls back to '<row-role>-list' when the row has no canonical collection parent",
+      build: () => {
+        const cell = n("cell", "X");
+        return { leaf: cell, root: n("WebArea", undefined, [n("row", undefined, [cell])]) };
+      },
+      context: { collection: "row-list" },
+    },
+  ])("$name", ({ build, context }) => {
     refSeq = 0;
-    const link = n("link", "Open post");
-    const article = n("article", undefined, [n("heading", "Post title"), link]);
-    const feed = n("feed", undefined, [article, n("article", undefined, [n("heading", "Other")])]);
-    const root = n("WebArea", undefined, [feed]);
+    const { leaf, root } = build();
 
     annotateStructuralContext(root);
 
-    expect(link.context?.collection).toBe("feed");
-    expect(link.context?.rowKey).toBe("Post title");
-  });
-
-  it("falls back to '<row-role>-list' when the row has no canonical collection parent", () => {
-    refSeq = 0;
-    // A row directly under a generic container (no `table`/`grid` ancestor).
-    const cell = n("cell", "X");
-    const row = n("row", undefined, [cell]);
-    const root = n("WebArea", undefined, [row]);
-
-    annotateStructuralContext(root);
-
-    expect(cell.context?.collection).toBe("row-list");
+    expect(leaf.context).toMatchObject(context);
   });
 
   it("treats a standalone article (no feed ancestor) as not-a-row", () => {

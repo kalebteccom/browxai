@@ -34,46 +34,64 @@ function fakePage(result: PageRawResult, capture?: { args?: unknown }): Overflow
 }
 
 describe("synthesiseSelector — selector tiers", () => {
-  it("tier 1: data-testid wins everything", () => {
-    const el: MinimalElement = {
-      tagName: "BUTTON",
-      testId: "save-btn",
-      role: "button",
-      ariaLabel: "Save",
-      classList: ["btn", "primary"],
-    };
+  const bare = {
+    testId: null,
+    role: null,
+    ariaLabel: null,
+    classList: [] as string[],
+  };
+
+  it.each([
+    [
+      "tier 1: data-testid wins everything",
+      {
+        tagName: "BUTTON",
+        testId: "save-btn",
+        role: "button",
+        ariaLabel: "Save",
+        classList: ["btn", "primary"],
+      },
+      '[data-testid="save-btn"]',
+    ],
+    [
+      "tier 2: role + accessible name when no testid",
+      {
+        tagName: "DIV",
+        testId: null,
+        role: "navigation",
+        ariaLabel: "Main",
+        classList: ["nav"],
+      },
+      '[role="navigation"][aria-label="Main"]',
+    ],
+    [
+      "tier 3: nth-of-type CSS path bounded at 5 levels",
+      {
+        tagName: "SPAN",
+        ...bare,
+        nthOfType: 2,
+        parentChain: [
+          { tagName: "DIV", nthOfType: 1 },
+          { tagName: "MAIN", nthOfType: 1 },
+        ],
+      },
+      "main:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)",
+    ],
+    [
+      "tier 4: tag.classes when no testid/role+name/parentChain, up to 3 classes",
+      { tagName: "DIV", ...bare, classList: ["a", "b", "c", "d", "e"] },
+      "div.a.b.c",
+    ],
+    ["falls through to bare tag when nothing distinguishing", { tagName: "DIV", ...bare }, "div"],
+    [
+      "escapes embedded double-quotes in testId values",
+      { tagName: "DIV", ...bare, testId: 'evil"id' },
+      '[data-testid="evil\\"id"]',
+    ],
+  ] as Array<[string, MinimalElement, string]>)("synthesiseSelector %s", (_name, el, selector) => {
     const s = synthesiseSelector(el);
-    expect(s.selector).toBe('[data-testid="save-btn"]');
+    expect(s.selector).toBe(selector);
     expect(s.truncated).toBe(false);
-  });
-
-  it("tier 2: role + accessible name when no testid", () => {
-    const el: MinimalElement = {
-      tagName: "DIV",
-      testId: null,
-      role: "navigation",
-      ariaLabel: "Main",
-      classList: ["nav"],
-    };
-    const s = synthesiseSelector(el);
-    expect(s.selector).toBe('[role="navigation"][aria-label="Main"]');
-  });
-
-  it("tier 3: nth-of-type CSS path bounded at 5 levels", () => {
-    const el: MinimalElement = {
-      tagName: "SPAN",
-      testId: null,
-      role: null,
-      ariaLabel: null,
-      classList: [],
-      nthOfType: 2,
-      parentChain: [
-        { tagName: "DIV", nthOfType: 1 },
-        { tagName: "MAIN", nthOfType: 1 },
-      ],
-    };
-    const s = synthesiseSelector(el);
-    expect(s.selector).toBe("main:nth-of-type(1) > div:nth-of-type(1) > span:nth-of-type(2)");
   });
 
   it("tier 3: caps at 5 levels of chain", () => {
@@ -96,30 +114,6 @@ describe("synthesiseSelector — selector tiers", () => {
     expect(s.selector.endsWith("p:nth-of-type(3)")).toBe(true);
   });
 
-  it("tier 4: tag.classes when no testid/role+name/parentChain — up to 3 classes", () => {
-    const el: MinimalElement = {
-      tagName: "DIV",
-      testId: null,
-      role: null,
-      ariaLabel: null,
-      classList: ["a", "b", "c", "d", "e"],
-    };
-    const s = synthesiseSelector(el);
-    expect(s.selector).toBe("div.a.b.c");
-  });
-
-  it("falls through to bare tag when nothing distinguishing", () => {
-    const el: MinimalElement = {
-      tagName: "DIV",
-      testId: null,
-      role: null,
-      ariaLabel: null,
-      classList: [],
-    };
-    const s = synthesiseSelector(el);
-    expect(s.selector).toBe("div");
-  });
-
   it("caps at 200 chars — falls back to tag-only + flags truncation", () => {
     const big = "x".repeat(500);
     const el: MinimalElement = {
@@ -134,53 +128,30 @@ describe("synthesiseSelector — selector tiers", () => {
     expect(s.selector).toBe("section");
     expect(s.originalLength).toBeGreaterThan(200);
   });
-
-  it("escapes embedded double-quotes in testId values", () => {
-    const el: MinimalElement = {
-      tagName: "DIV",
-      testId: 'evil"id',
-      role: null,
-      ariaLabel: null,
-      classList: [],
-    };
-    const s = synthesiseSelector(el);
-    expect(s.selector).toBe('[data-testid="evil\\"id"]');
-  });
 });
 
 describe("EPSILON math — overflows()", () => {
-  it("sub-pixel difference does not trip (within epsilon)", () => {
-    expect(overflows(100.5, 100)).toBe(false);
-    expect(overflows(101, 100)).toBe(false);
-  });
-
-  it("custom epsilon honoured", () => {
-    expect(overflows(105, 100, 4)).toBe(true);
-    expect(overflows(104, 100, 4)).toBe(false);
+  it.each([
+    ["sub-pixel difference does not trip (100.5 vs 100)", 100.5, 100, undefined, false],
+    ["a difference of exactly 1 does not trip", 101, 100, undefined, false],
+    ["custom epsilon honoured above the bound", 105, 100, 4, true],
+    ["custom epsilon honoured at the bound", 104, 100, 4, false],
+  ])("overflows: %s", (_name, scroll, client, epsilon, expected) => {
+    expect(
+      epsilon === undefined ? overflows(scroll, client) : overflows(scroll, client, epsilon),
+    ).toBe(expected);
   });
 });
 
 describe("type filter — resolveTypes()", () => {
-  it("undefined → all four", () => {
-    const s = resolveTypes(undefined);
-    expect(s.size).toBe(4);
-    expect(s.has("layout")).toBe(true);
-    expect(s.has("clipped")).toBe(true);
-    expect(s.has("text-ellipsis")).toBe(true);
-    expect(s.has("viewport-horizontal")).toBe(true);
-  });
-
-  it("subset preserved", () => {
-    const s = resolveTypes(["clipped", "text-ellipsis"]);
-    expect(s.size).toBe(2);
-    expect(s.has("clipped")).toBe(true);
-    expect(s.has("text-ellipsis")).toBe(true);
-    expect(s.has("layout")).toBe(false);
-  });
-
-  it("all-unknown falls back to all four (don't silently match nothing)", () => {
-    const s = resolveTypes(["totally-bogus" as unknown as "clipped"]);
-    expect(s.size).toBe(4);
+  const all = ["layout", "clipped", "text-ellipsis", "viewport-horizontal"];
+  it.each([
+    ["undefined → all four", undefined, all],
+    ["subset preserved", ["clipped", "text-ellipsis"], ["clipped", "text-ellipsis"]],
+    ["all-unknown falls back to all four (don't silently match nothing)", ["totally-bogus"], all],
+  ])("resolveTypes: %s", (_name, input, expected) => {
+    const s = resolveTypes(input as unknown as Parameters<typeof resolveTypes>[0]);
+    expect([...s].sort()).toEqual([...expected].sort());
   });
 });
 

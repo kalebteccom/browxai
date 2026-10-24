@@ -11,14 +11,16 @@ import {
 } from "./downloads.js";
 
 describe("sanitiseFilename", () => {
-  it("strips path separators (forward + back)", () => {
-    expect(sanitiseFilename("a/b/c.pdf")).toBe("a_b_c.pdf");
-    expect(sanitiseFilename("a\\b\\c.pdf")).toBe("a_b_c.pdf");
-  });
-
-  it("strips leading dots so the on-disk file isn't hidden", () => {
-    expect(sanitiseFilename(".bashrc")).toBe("bashrc");
-    expect(sanitiseFilename("...evil.sh")).toBe("evil.sh");
+  it.each([
+    { name: "strips forward slashes", input: "a/b/c.pdf", want: "a_b_c.pdf" },
+    { name: "strips back slashes", input: "a\\b\\c.pdf", want: "a_b_c.pdf" },
+    { name: "strips one leading dot so the file isn't hidden", input: ".bashrc", want: "bashrc" },
+    { name: "strips several leading dots", input: "...evil.sh", want: "evil.sh" },
+    { name: 'empty input falls back to "download"', input: "", want: "download" },
+    { name: 'a lone slash falls back to "download"', input: "/", want: "download" },
+    { name: 'all dots fall back to "download"', input: "...", want: "download" },
+  ])("sanitiseFilename: $name", ({ input, want }) => {
+    expect(sanitiseFilename(input)).toBe(want);
   });
 
   it("caps very long names", () => {
@@ -26,25 +28,18 @@ describe("sanitiseFilename", () => {
     const out = sanitiseFilename(big);
     expect(out.length).toBeLessThanOrEqual(200);
   });
-
-  it('falls back to "download" on empty / all-stripped input', () => {
-    expect(sanitiseFilename("")).toBe("download");
-    expect(sanitiseFilename("/")).toBe("download");
-    expect(sanitiseFilename("...")).toBe("download");
-  });
 });
 
 describe("mimeTypeFromName", () => {
-  it("infers common types", () => {
-    expect(mimeTypeFromName("a.pdf")).toBe("application/pdf");
-    expect(mimeTypeFromName("a.CSV")).toBe("text/csv");
-    expect(mimeTypeFromName("a.png")).toBe("image/png");
-    expect(mimeTypeFromName("a.zip")).toBe("application/zip");
-  });
-
-  it("returns undefined for unknown / extension-less", () => {
-    expect(mimeTypeFromName("README")).toBeUndefined();
-    expect(mimeTypeFromName("a.bogus")).toBeUndefined();
+  it.each([
+    { name: "infers pdf", file: "a.pdf", want: "application/pdf" },
+    { name: "infers csv case-insensitively", file: "a.CSV", want: "text/csv" },
+    { name: "infers png", file: "a.png", want: "image/png" },
+    { name: "infers zip", file: "a.zip", want: "application/zip" },
+    { name: "returns undefined for an extension-less name", file: "README", want: undefined },
+    { name: "returns undefined for an unknown extension", file: "a.bogus", want: undefined },
+  ])("mimeTypeFromName: $name", ({ file, want }) => {
+    expect(mimeTypeFromName(file)).toBe(want);
   });
 });
 
@@ -75,27 +70,23 @@ describe("DownloadsRegistry pending captures", () => {
   const record = (reg: DownloadsRegistry, name: string, capturedAt: number) =>
     reg.record({ suggestedFilename: name, sizeBytes: 1, path: `/tmp/x/${name}`, capturedAt });
 
-  it("drops a pending capture once an action window slices it", () => {
+  it.each([
+    {
+      name: "drops a pending capture once an action window slices it",
+      advance: (reg: DownloadsRegistry) => reg.since(5_000),
+    },
+    {
+      name: "drops a pending capture nobody claimed after the timeout",
+      advance: () => vi.setSystemTime(10_000 + DownloadsRegistry.PENDING_TTL_MS + 1),
+    },
+  ])("DownloadsRegistry pending: $name", ({ advance }) => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(10_000);
       const reg = new DownloadsRegistry("/tmp/x");
       record(reg, "a", 10_000);
       expect(reg.pendingCount()).toBe(1);
-      reg.since(5_000);
-      expect(reg.pendingCount()).toBe(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("drops a pending capture nobody claimed after the timeout", () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(10_000);
-      const reg = new DownloadsRegistry("/tmp/x");
-      record(reg, "a", 10_000);
-      vi.setSystemTime(10_000 + DownloadsRegistry.PENDING_TTL_MS + 1);
+      advance(reg);
       expect(reg.pendingCount()).toBe(0);
     } finally {
       vi.useRealTimers();

@@ -3,43 +3,61 @@ import type { BrowserContext, Request, Response } from "playwright-core";
 import { PlaywrightNetworkBuffer, bodyReadDecision } from "./network-playwright.js";
 
 describe("bodyReadDecision", () => {
-  it("reads a body whose content-length is within the cap", () => {
-    expect(bodyReadDecision({ "content-length": "100" }, 1000)).toEqual({ read: true });
-    expect(bodyReadDecision({ "content-length": "1000" }, 1000)).toEqual({ read: true });
-  });
-
-  it("does not read a body over the cap and reports its size", () => {
-    expect(bodyReadDecision({ "content-length": "1001" }, 1000)).toEqual({
-      read: false,
-      size: 1001,
-    });
-  });
-
-  it("does not read a body of unknown size", () => {
-    expect(bodyReadDecision({}, 1000)).toEqual({ read: false });
-    expect(bodyReadDecision({ "content-length": "abc" }, 1000)).toEqual({ read: false });
-  });
-
-  it("prefers the transfer size of a finished request", () => {
-    expect(bodyReadDecision({}, 1000, 400)).toEqual({ read: true });
-    expect(bodyReadDecision({ "content-length": "10" }, 1000, 5000)).toEqual({
-      read: false,
-      size: 5000,
-    });
-  });
-
-  it("holds a compressed body to a smaller transfer size", () => {
-    const gz = { "content-encoding": "gzip" };
-    expect(bodyReadDecision({ ...gz, "content-length": "125" }, 1000)).toEqual({ read: true });
-    expect(bodyReadDecision({ ...gz, "content-length": "126" }, 1000)).toEqual({
-      read: false,
-      size: 126,
-    });
-    expect(
-      bodyReadDecision({ "content-encoding": "identity", "content-length": "900" }, 1000),
-    ).toEqual({
-      read: true,
-    });
+  const gz = { "content-encoding": "gzip" };
+  it.each([
+    [
+      "reads a body within the cap (content-length 100)",
+      { "content-length": "100" },
+      undefined,
+      { read: true },
+    ],
+    ["reads a body exactly at the cap", { "content-length": "1000" }, undefined, { read: true }],
+    [
+      "does not read a body over the cap and reports its size",
+      { "content-length": "1001" },
+      undefined,
+      { read: false, size: 1001 },
+    ],
+    ["does not read a body of unknown size (no header)", {}, undefined, { read: false }],
+    [
+      "does not read a body of unknown size (unparseable header)",
+      { "content-length": "abc" },
+      undefined,
+      { read: false },
+    ],
+    ["prefers a finished request's transfer size when within the cap", {}, 400, { read: true }],
+    [
+      "prefers a finished request's transfer size over the header when over the cap",
+      { "content-length": "10" },
+      5000,
+      { read: false, size: 5000 },
+    ],
+    [
+      "holds a compressed body to a smaller transfer size (125 passes)",
+      { ...gz, "content-length": "125" },
+      undefined,
+      { read: true },
+    ],
+    [
+      "holds a compressed body to a smaller transfer size (126 refused)",
+      { ...gz, "content-length": "126" },
+      undefined,
+      { read: false, size: 126 },
+    ],
+    [
+      "applies no compression allowance to an identity-encoded body",
+      { "content-encoding": "identity", "content-length": "900" },
+      undefined,
+      { read: true },
+    ],
+  ] as Array<
+    [string, Record<string, string>, number | undefined, { read: boolean; size?: number }]
+  >)("bodyReadDecision %s", (_name, headers, transferSize, expected) => {
+    const got =
+      transferSize === undefined
+        ? bodyReadDecision(headers, 1000)
+        : bodyReadDecision(headers, 1000, transferSize);
+    expect(got).toEqual(expected);
   });
 });
 
