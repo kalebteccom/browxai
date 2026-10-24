@@ -9,14 +9,25 @@ any MCP client.
 
 ## Install
 
-You need Node 22 or newer. browxai drives the Google Chrome you already have
-installed, so no browser download is required on a machine with Chrome.
+You need Node 22 or newer (`node --version` tells you). browxai drives the
+Google Chrome you already have installed, so a machine with Chrome needs no
+browser download.
 
 ```bash
 npm install -g browxai
-browxai doctor                          # checks the environment and your setup
-npx playwright-core@1.64.1 install chromium    # optional, ~150 MB: the fallback when Chrome is missing
+browxai doctor
 ```
+
+`browxai doctor` checks the environment and prints a fix next to anything that
+fails. On a machine with no Google Chrome it fails until you add a browser:
+install Chrome, or fetch the bundled Chromium (about 150 MB).
+
+```bash
+npx playwright-core@1.64.1 install chromium
+```
+
+A bare Linux image also lacks the system libraries Chromium needs. Add
+`--with-deps` to that command to install them (it needs root).
 
 Firefox and WebKit sessions use their own Playwright builds
 (`npx playwright-core@1.64.1 install firefox webkit`).
@@ -25,37 +36,52 @@ A global install puts the `browxai` binary on your `PATH`, so an MCP client can
 launch it by name (`command: "browxai"`). The binary is the MCP server on the
 stdio transport. Run by hand in a terminal it just waits for a client, so use
 `browxai doctor` to check the machine instead: it reports the Node version, the
-browser, the workspace and your configuration, and prints a fix next to
-anything that fails.
+browser, the workspace and your configuration.
 
 browxai launches the Google Chrome already installed on the machine, on one
 default profile per workspace (`<workspace>/profile`), so logins carry over
-between sessions. When there is no Chrome it falls back to Playwright's bundled
-Chromium. `browxai doctor` fails only when neither browser is present.
+between sessions. It looks for Google Chrome at its default install path on each
+OS, so a distro Chromium package is not picked up. When there is no Chrome it
+falls back to Playwright's bundled Chromium. `browxai doctor` fails only when
+neither browser is present.
 
 ## Wire it into an MCP client
 
-Add browxai to your client's MCP server config. For example, an `.mcp.json`:
+Add browxai to your client's MCP server config. In Claude Code, one command does it:
 
-```jsonc
+```bash
+claude mcp add browxai -- browxai
+```
+
+In Codex, `codex mcp add browxai -- browxai`. Any other client takes the same
+command in its MCP config, for example an `.mcp.json`:
+
+```json
 {
   "mcpServers": {
     "browxai": {
-      "command": "browxai",
-    },
-  },
+      "command": "browxai"
+    }
+  }
 }
 ```
 
 Prefer not to install globally? Use `{ "command": "npx", "args": ["-y", "browxai"] }`
-as the entry. Restart the client after editing its config, then check that
-`browxai` shows as connected (in Claude Code, run `/mcp`).
+as the entry (`claude mcp add browxai -- npx -y browxai`). Restart the client
+after editing its config, then check that `browxai` shows as connected (in
+Claude Code, run `/mcp`).
 
 By default the server launches a **managed** Chrome on the workspace's default
 profile, headed, with the default capability set (`read`, `navigation`,
 `action`, `human`). That is the installed Google Chrome, or the bundled
 Chromium with a logged warning when Chrome is absent. Everything dangerous is
-opt-in. On a machine with no display, such as a Linux server or a container, set `BROWX_HEADLESS=1`.
+opt-in.
+
+A headed browser needs a display. On a machine without one, such as a Linux
+server or a container, the first session fails to open until you set
+`BROWX_HEADLESS=1` in the server's environment. In the MCP config that is an
+`env` entry next to `command`: `"env": { "BROWX_HEADLESS": "1" }`. With
+Claude Code, add `--env BROWX_HEADLESS=1` to `claude mcp add`.
 
 ### Common environment variables
 
@@ -64,7 +90,7 @@ opt-in. On a machine with no display, such as a Linux server or a container, set
 | `BROWX_WORKSPACE`    | Where all transient state lives (default `~/.browxai/`). Never `cwd`.                                                                                                                       |
 | `BROWX_HEADLESS`     | `1` or `true` launches headless.                                                                                                                                                            |
 | `BROWX_CAPABILITIES` | The full comma-separated capability set. It replaces the default, so keep `read,navigation,action,human` and add `eval`, `network-body`, `clipboard`, or `file-io` to opt into gated tools. |
-| `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. All eight are in the [FAQ](/reference/faq/).                                                                                 |
+| `BROWX_ENGINE`       | Default engine, `chromium` unless set. Also `--engine <kind>`. The eight values are listed in the [FAQ](/reference/faq/#which-engines-does-it-drive).                                                                                 |
 | `BROWX_ATTACH_CDP`   | Loopback CDP endpoint to attach to an existing Chrome (BYOB). Needs `byob-attach` in `BROWX_CAPABILITIES` too: `read,navigation,action,human,byob-attach`.                                  |
 
 See the [tool reference](/reference/tool-reference/) for the full configuration
@@ -84,8 +110,9 @@ For verification use `text_search`, `inspect`, and the read tools; for
 flaky or transient UI use `wait_for`, `sample`, and `act_and_sample`.
 
 Try it with a prompt such as "open https://example.com, snapshot it and tell me
-what the page says". The agent calls `navigate` and `snapshot`; a browser window
-opens and the heading and link come back as refs it can `click`.
+what the page says". The agent calls `navigate` and `snapshot`, and the heading
+and link come back as refs it can `click`. A Chrome window opens on a machine
+with a display. Headless runs show no window.
 
 ## When something does not work
 
