@@ -119,6 +119,9 @@ function names(text, re) {
   return new Set([...text.matchAll(re)].map((m) => m[1]));
 }
 
+// Registration names are read from code, not from the comments that describe the pattern.
+const noComments = (text) => text.replace(/^[ \t]*\/\/.*$/gm, "");
+
 function sourceFacts() {
   const isSource = (n) => n.endsWith(".ts") && !n.endsWith(".test.ts");
   const srcText = listFiles("src", isSource).map(read).join("\n");
@@ -127,9 +130,12 @@ function sourceFacts() {
   const facts = {
     srcText,
     cliText: cliFiles.map(read).join("\n"),
-    commands: names(read("src/cli/register-commands.ts"), /registerCommand\("([\w-]+)"/g),
-    pluginVerbs: names(read("src/plugin/cli.ts"), /registerPluginCommand\("([\w-]+)"/g),
-    chromeSubs: names(read("src/cli/chrome.ts"), /sub === "([\w-]+)"/g),
+    commands: names(
+      noComments(read("src/cli/register-commands.ts")),
+      /registerCommand\("([\w-]+)"/g,
+    ),
+    pluginVerbs: names(noComments(read("src/plugin/cli.ts")), /registerPluginCommand\("([\w-]+)"/g),
+    chromeSubs: names(noComments(read("src/cli/chrome.ts")), /sub === "([\w-]+)"/g),
     capabilities: new Set(quotedList(caps, "ALL_CAPABILITIES")),
     defaults: quotedList(caps, "DEFAULT_CAPABILITIES"),
   };
