@@ -21,7 +21,8 @@ describe("openSessionPrecheck", () => {
   it("refuses a session id that is already open", () => {
     expect(openSessionPrecheck(true, "agent-a", undefined)).toEqual({
       ok: false,
-      error: 'session "agent-a" is already open. Close it with close_session, or pick another name.',
+      error:
+        'session "agent-a" is already open. Close it with close_session, or pick another name.',
     });
   });
 });
