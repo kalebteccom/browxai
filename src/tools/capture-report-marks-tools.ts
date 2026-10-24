@@ -84,14 +84,14 @@ export function registerCaptureReportMarksTools(host: ToolHost): void {
       capability: "read",
       batchable: true,
       description:
-        'Take a PNG with numbered boxes painted over candidate elements, so a vision read can point at refs ("click 2") instead of estimating coordinates. Each candidate is a bare `{ref}` (its bbox comes from the current snapshot) or a full `find` candidate row passed through. `label:"index"` (default) paints 1..N and returns an `{index→ref}` mapping, `"ref"` paints the `eN` ref, `"role"` paints the role. The numbers share the `eN` ref namespace, so `mapping["2"] === "e7"`. A candidate with `bbox:null` (clipped or off-screen) stays in `marks` with `painted:false`. A temporary in-page overlay is removed before return. Use `screenshot` when you do not need marks.',
+        'Take a PNG with numbered boxes painted over candidate elements, so a vision read can point at refs ("click 2") instead of estimating coordinates. Each candidate is a bare `{ref}` (its box comes from the ref table, resolved the way a click resolves it, so a ref from `snapshot` or `find` works as is; a ref the table has never seen is named in `warnings`) or a full `find` candidate row passed through. `label:"index"` (default) paints 1..N and returns an `{index→ref}` mapping, `"ref"` paints the `eN` ref, `"role"` paints the role. The numbers share the `eN` ref namespace, so `mapping["2"] === "e7"`. A candidate with `bbox:null` (clipped or off-screen) stays in `marks` with `painted:false`. A temporary in-page overlay is removed before return. Use `screenshot` when you do not need marks.',
       inputSchema: {
         candidates: z
           .array(z.union([z.object({ ref: z.string() }).passthrough(), z.object({}).passthrough()]))
           .min(1)
           .max(50)
           .describe(
-            "Either `{ref}` rows (looked up against the current snapshot for bbox) OR full find() candidate rows (passed through). Mix-and-match allowed. Cap 50.",
+            "Either `{ref}` rows (box resolved through the ref table) OR full find() candidate rows (passed through). Mix-and-match allowed. Cap 50.",
           ),
         label: z
           .enum(["index", "ref", "role"])

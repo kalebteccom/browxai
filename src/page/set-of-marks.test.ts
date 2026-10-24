@@ -75,6 +75,104 @@ describe("resolveCandidates (full-find-candidate fast path)", () => {
   });
 });
 
+describe("resolveCandidates (bare refs)", () => {
+  /** A page whose `locator(selector)` answers from a selector → box table, and
+   *  records every selector it was asked for. */
+  function pageWithBoxes(
+    boxes: Record<string, { x: number; y: number; width: number; height: number }>,
+  ) {
+    const asked: string[] = [];
+    const page = {
+      asked,
+      evaluate: vi.fn(),
+      locator: vi.fn((selector: string) => ({
+        first: () => ({
+          boundingBox: async () => {
+            asked.push(selector);
+            return boxes[selector] ?? null;
+          },
+        }),
+      })),
+      getByRole: vi.fn(() => ({ first: () => ({ boundingBox: async () => null }) })),
+    };
+    return page;
+  }
+
+  it("resolves a DOM-walk ref through its structural path from the ref table", async () => {
+    const refs = new RefRegistry();
+    const ref = refs.forKey("k1", {
+      role: "a",
+      name: "Pull requests",
+      source: "dom",
+      cssPath: "body > nav > a:nth-child(2)",
+    });
+    const page = pageWithBoxes({
+      "body > nav > a:nth-child(2)": { x: 40, y: 12, width: 90, height: 20 },
+    });
+    // The current walk does not carry the node: the ref table alone must do.
+    const substrate = { compose: async () => ({ tree: null }) };
+    const { entries, warnings } = await resolveCandidates(
+      { page: page as never, substrate: substrate as never, refs, testAttributes: [] },
+      [{ ref }],
+    );
+    expect(entries).toEqual([
+      {
+        index: 1,
+        ref,
+        role: "a",
+        name: "Pull requests",
+        bbox: { x: 40, y: 12, width: 90, height: 20 },
+        painted: true,
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it("resolves ten bare refs in parallel, inside one locator timeout", async () => {
+    const refs = new RefRegistry();
+    const ids: string[] = [];
+    for (let i = 0; i < 10; i++) {
+      ids.push(refs.forKey(`k${i}`, { role: "div", source: "dom", cssPath: `#n${i}` }));
+    }
+    let inFlight = 0;
+    let peak = 0;
+    const page = {
+      locator: vi.fn(() => ({
+        first: () => ({
+          boundingBox: async () => {
+            inFlight++;
+            peak = Math.max(peak, inFlight);
+            await new Promise((r) => setTimeout(r, 5));
+            inFlight--;
+            return { x: 0, y: 0, width: 10, height: 10 };
+          },
+        }),
+      })),
+    };
+    const substrate = { compose: async () => ({ tree: null }) };
+    const { entries } = await resolveCandidates(
+      { page: page as never, substrate: substrate as never, refs, testAttributes: [] },
+      ids.map((ref) => ({ ref })),
+    );
+    expect(entries.every((e) => e.painted)).toBe(true);
+    expect(peak).toBe(10);
+  });
+
+  it("names a ref the table has never seen instead of silently dropping the box", async () => {
+    const refs = new RefRegistry();
+    const page = pageWithBoxes({});
+    const substrate = { compose: async () => ({ tree: null }) };
+    const { entries, warnings } = await resolveCandidates(
+      { page: page as never, substrate: substrate as never, refs, testAttributes: [] },
+      [{ ref: "e999" }],
+    );
+    expect(entries).toEqual([{ index: 1, ref: "e999", bbox: null, painted: false }]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/"e999" is not in the ref table/);
+    expect(page.locator).not.toHaveBeenCalled();
+  });
+});
+
 describe("screenshotMarks (composition)", () => {
   it("paints only candidates with a non-null bbox; mapping is 1-based and complete", async () => {
     const page = fakePage();
