@@ -170,7 +170,7 @@ describePool("byob-attach capability gate — real Chrome, capability unset", ()
         const lazy = JSON.parse(await call("snapshot", {})) as typeof opened;
         expect(lazy.ok).toBe(false);
         expect(lazy.requiredCapability).toBe("byob-attach");
-        expect(lazy.error).toMatch(/capability is not in the server's ACTIVE set/);
+        expect(lazy.error).toMatch(/capability "byob-attach" is not enabled on this server/);
         expect(lazy.reason).toMatch(/capability-required/);
 
         const listed = JSON.parse(await call("list_sessions", {})) as unknown;
