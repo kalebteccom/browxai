@@ -125,47 +125,57 @@ describe("secrets-masking composability", () => {
 });
 
 describe("classifyEvalExpr taxonomy", () => {
-  it("dom-query matches querySelector / getElementBy* / closest / matches", () => {
-    expect(classifyEvalExpr("document.querySelector('.x')")).toBe("dom-query");
-    expect(classifyEvalExpr("document.getElementById('foo')")).toBe("dom-query");
-    expect(classifyEvalExpr("el.closest('div')")).toBe("dom-query");
-    expect(classifyEvalExpr("el.matches('.bar')")).toBe("dom-query");
-  });
-
-  it("storage-access matches localStorage / sessionStorage / indexedDB / caches / cookies", () => {
-    expect(classifyEvalExpr("localStorage.getItem('x')")).toBe("storage-access");
-    expect(classifyEvalExpr("sessionStorage.length")).toBe("storage-access");
-    expect(classifyEvalExpr("indexedDB.open('app', 1)")).toBe("storage-access");
-    expect(classifyEvalExpr("caches.keys()")).toBe("storage-access");
-    expect(classifyEvalExpr("document.cookie")).toBe("storage-access");
-  });
-
-  it("computed-style matches getComputedStyle / getBoundingClientRect / offset/client/scroll dims", () => {
-    expect(classifyEvalExpr("getComputedStyle(el)")).toBe("computed-style");
-    expect(classifyEvalExpr("el.getBoundingClientRect()")).toBe("computed-style");
-    expect(classifyEvalExpr("el.offsetWidth")).toBe("computed-style");
-    expect(classifyEvalExpr("el.scrollHeight")).toBe("computed-style");
-  });
-
-  it("callback-trigger matches .click()/.focus()/.blur()/.dispatchEvent/.submit()", () => {
-    expect(classifyEvalExpr("btn.click()")).toBe("callback-trigger");
-    expect(classifyEvalExpr("input.focus()")).toBe("callback-trigger");
-    expect(classifyEvalExpr("input.blur()")).toBe("callback-trigger");
-    expect(classifyEvalExpr("el.dispatchEvent(new Event('x'))")).toBe("callback-trigger");
-    expect(classifyEvalExpr("form.submit()")).toBe("callback-trigger");
-  });
-
-  it("feature-detect matches typeof window./navigator. and 'X' in window/navigator", () => {
-    expect(classifyEvalExpr("typeof window.ResizeObserver")).toBe("feature-detect");
-    expect(classifyEvalExpr("typeof navigator.bluetooth")).toBe("feature-detect");
-    expect(classifyEvalExpr("'serial' in navigator")).toBe("feature-detect");
-    expect(classifyEvalExpr("window.WebAssembly !== undefined")).toBe("feature-detect");
-  });
-
-  it("custom catches everything else", () => {
-    expect(classifyEvalExpr("Math.random()")).toBe("custom");
-    expect(classifyEvalExpr("1 + 1")).toBe("custom");
-    expect(classifyEvalExpr("foo.bar(baz)")).toBe("custom");
+  it.each([
+    [
+      "dom-query matches querySelector / getElementBy* / closest / matches",
+      "dom-query",
+      [
+        "document.querySelector('.x')",
+        "document.getElementById('foo')",
+        "el.closest('div')",
+        "el.matches('.bar')",
+      ],
+    ],
+    [
+      "storage-access matches localStorage / sessionStorage / indexedDB / caches / cookies",
+      "storage-access",
+      [
+        "localStorage.getItem('x')",
+        "sessionStorage.length",
+        "indexedDB.open('app', 1)",
+        "caches.keys()",
+        "document.cookie",
+      ],
+    ],
+    [
+      "computed-style matches getComputedStyle / getBoundingClientRect / offset/client/scroll dims",
+      "computed-style",
+      ["getComputedStyle(el)", "el.getBoundingClientRect()", "el.offsetWidth", "el.scrollHeight"],
+    ],
+    [
+      "callback-trigger matches .click()/.focus()/.blur()/.dispatchEvent/.submit()",
+      "callback-trigger",
+      [
+        "btn.click()",
+        "input.focus()",
+        "input.blur()",
+        "el.dispatchEvent(new Event('x'))",
+        "form.submit()",
+      ],
+    ],
+    [
+      "feature-detect matches typeof window./navigator. and 'X' in window/navigator",
+      "feature-detect",
+      [
+        "typeof window.ResizeObserver",
+        "typeof navigator.bluetooth",
+        "'serial' in navigator",
+        "window.WebAssembly !== undefined",
+      ],
+    ],
+    ["custom catches everything else", "custom", ["Math.random()", "1 + 1", "foo.bar(baz)"]],
+  ] as const)("classifyEvalExpr: %s", (_label, bucket, exprs) => {
+    for (const expr of exprs) expect(classifyEvalExpr(expr)).toBe(bucket);
   });
 });
 
@@ -283,14 +293,13 @@ describe("workspace-escape rejection", () => {
 });
 
 describe("resolveRetentionDays", () => {
-  it("honours BROWX_DIAGNOSTICS_RETENTION_DAYS", () => {
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "7" })).toBe(7);
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "0" })).toBe(0);
-  });
-
-  it("falls back to default on garbage input (no throw)", () => {
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "garbage" })).toBe(30);
-    expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: "-3" })).toBe(30);
+  it.each([
+    ["honours BROWX_DIAGNOSTICS_RETENTION_DAYS", { "7": 7, "0": 0 }],
+    ["falls back to default on garbage input (no throw)", { garbage: 30, "-3": 30 }],
+  ] as const)("resolveRetentionDays: %s", (_label, cases) => {
+    for (const [raw, expected] of Object.entries(cases)) {
+      expect(resolveRetentionDays({ BROWX_DIAGNOSTICS_RETENTION_DAYS: raw })).toBe(expected);
+    }
   });
 });
 

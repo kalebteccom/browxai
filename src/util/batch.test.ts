@@ -7,6 +7,10 @@ function jsonHandler(body: object): ToolHandler {
   return async () => ({ content: [{ type: "text", text: JSON.stringify(body) }] });
 }
 
+const plainHandler: ToolHandler = async () => ({
+  content: [{ type: "text", text: "plain reply" }],
+});
+
 function throwingHandler(msg: string): ToolHandler {
   return async () => {
     throw new Error(msg);
@@ -69,56 +73,54 @@ describe("runBatch — sequential dispatch", () => {
     expect(report.results.map((r) => r.ok)).toEqual([true, false, true]);
   });
 
-  it("rejects non-whitelisted tools with a clear error and stops", async () => {
-    const calls = [
-      { tool: "click", args: {} },
-      { tool: "batch", args: {} }, // nesting blocked
-      { tool: "wait_for", args: {} },
-    ];
-    const handlers = {
-      click: jsonHandler({ ok: true }),
-      wait_for: jsonHandler({ ok: true }),
-    };
+  it.each([
+    [
+      "rejects a non-whitelisted tool with a clear error and stops",
+      [{ tool: "click" }, { tool: "batch" }, { tool: "wait_for" }],
+      { click: jsonHandler({ ok: true }), wait_for: jsonHandler({ ok: true }) },
+      1,
+      "not allowed inside batch",
+    ],
+    [
+      "captures thrown errors from inner handlers as failed entries",
+      [{ tool: "click" }],
+      { click: throwingHandler("clicked into the void") },
+      0,
+      "clicked into the void",
+    ],
+    [
+      "flags missing handler entries as failures",
+      [{ tool: "click" }],
+      {},
+      0,
+      'unknown tool "click"',
+    ],
+  ])("%s", async (_label, calls, handlers, failedAt, error) => {
     const report = await runBatch(calls, { allowed: ALLOWED, handlers });
-    expect(report.failedAt).toBe(1);
-    expect(report.results[1]?.ok).toBe(false);
-    expect(report.results[1]?.error).toContain("not allowed inside batch");
-    expect(report.results[2]).toBeUndefined();
+    expect(report.failedAt).toBe(failedAt);
+    expect(report.results[failedAt]?.ok).toBe(false);
+    expect(report.results[failedAt]?.error).toContain(error);
+    expect(report.results[failedAt + 1]).toBeUndefined();
   });
 
-  it("captures thrown errors from inner handlers as failed entries", async () => {
-    const handlers = {
-      click: throwingHandler("clicked into the void"),
-    };
-    const report = await runBatch([{ tool: "click" }], { allowed: ALLOWED, handlers });
-    expect(report.failedAt).toBe(0);
-    expect(report.results[0]?.ok).toBe(false);
-    expect(report.results[0]?.error).toContain("clicked into the void");
-  });
-
-  it("flags missing handler entries as failures", async () => {
-    const report = await runBatch([{ tool: "click" }], { allowed: ALLOWED, handlers: {} });
-    expect(report.failedAt).toBe(0);
-    expect(report.results[0]?.error).toContain('unknown tool "click"');
-  });
-
-  it("parses inner JSON body; ok defaults to true when handler omits it", async () => {
-    const report = await runBatch([{ tool: "click" }], {
-      allowed: ALLOWED,
-      handlers: { click: jsonHandler({ message: "no ok field here" }) },
-    });
-    expect(report.results[0]?.ok).toBe(true);
-    expect(report.results[0]?.result).toEqual({ message: "no ok field here" });
-  });
-
-  it("falls back to raw text when the handler's first content item isn't JSON", async () => {
-    const handler: ToolHandler = async () => ({ content: [{ type: "text", text: "plain reply" }] });
+  it.each([
+    [
+      "parses inner JSON body; ok defaults to true when handler omits it",
+      jsonHandler({ message: "no ok field here" }),
+      { message: "no ok field here" },
+    ],
+    [
+      "falls back to raw text when the handler's first content item isn't JSON",
+      plainHandler,
+      "plain reply",
+    ],
+  ])("%s", async (_label, handler, result) => {
     const report = await runBatch([{ tool: "click" }], {
       allowed: ALLOWED,
       handlers: { click: handler },
     });
     expect(report.results[0]?.ok).toBe(true);
-    expect(report.results[0]?.result).toBe("plain reply");
+    expect(report.results[0]?.result).toEqual(result);
   });
 });
 
@@ -159,13 +161,20 @@ describe("evaluateExpect — predicate evaluation", () => {
     ).toBeNull();
   });
 
-  it("handles missing element gracefully", () => {
-    expect(evaluateExpect({ valueEquals: "x" }, { something: "else" })).toMatch(/element.value/);
-  });
-
-  it("ownerControl.changed predicate reads from element.ownerControl", () => {
-    expect(
-      evaluateExpect({ controlChanged: true }, { element: { ownerControl: { changed: false } } }),
-    ).toMatch(/ownerControl.changed/);
+  it.each([
+    [
+      "handles missing element gracefully",
+      { valueEquals: "x" },
+      { something: "else" },
+      /element.value/,
+    ],
+    [
+      "ownerControl.changed predicate reads from element.ownerControl",
+      { controlChanged: true },
+      { element: { ownerControl: { changed: false } } },
+      /ownerControl.changed/,
+    ],
+  ])("evaluateExpect: %s", (_label, expectArg, body, message) => {
+    expect(evaluateExpect(expectArg, body)).toMatch(message);
   });
 });

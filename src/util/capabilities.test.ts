@@ -41,42 +41,56 @@ describe("resolveCapabilities (BROWX_CAPABILITIES)", () => {
 });
 
 describe("isToolEnabled", () => {
-  it("treats unknown tools as enabled (human-coordination default)", () => {
-    const c = resolveCapabilities({ BROWX_CAPABILITIES: "read" });
-    expect(isToolEnabled("unknown_tool", c)).toBe(true);
-  });
-
-  it("network_body is off under the default capability set (gate)", () => {
-    const def = resolveCapabilities({});
-    expect(isToolEnabled("network_body", def)).toBe(false);
-    const on = resolveCapabilities({
-      BROWX_CAPABILITIES: "read,network-body",
-    });
-    expect(isToolEnabled("network_body", on)).toBe(true);
-  });
-
-  it("credentials is off under the default capability set; get_totp + get_credential gate on it", () => {
-    const def = resolveCapabilities({});
-    expect(isToolEnabled("get_totp", def)).toBe(false);
-    expect(isToolEnabled("get_credential", def)).toBe(false);
-    const on = resolveCapabilities({
-      BROWX_CAPABILITIES: "read,credentials",
-    });
-    expect(isToolEnabled("get_totp", on)).toBe(true);
-    expect(isToolEnabled("get_credential", on)).toBe(true);
-  });
-
-  it("ws_send / ws_intercept / ws_unintercept gate on `action` (default-on)", () => {
-    const def = resolveCapabilities({});
-    expect(isToolEnabled("ws_send", def)).toBe(true);
-    expect(isToolEnabled("ws_intercept", def)).toBe(true);
-    expect(isToolEnabled("ws_unintercept", def)).toBe(true);
-    // read-only server: WS interactive primitives are off, but `ws_read` stays.
-    const readOnly = resolveCapabilities({ BROWX_CAPABILITIES: "read" });
-    expect(isToolEnabled("ws_send", readOnly)).toBe(false);
-    expect(isToolEnabled("ws_intercept", readOnly)).toBe(false);
-    expect(isToolEnabled("ws_unintercept", readOnly)).toBe(false);
-    expect(isToolEnabled("ws_read", readOnly)).toBe(true);
+  it.each<[string, NodeJS.ProcessEnv, Array<[string, boolean]>]>([
+    [
+      "treats unknown tools as enabled (human-coordination default)",
+      { BROWX_CAPABILITIES: "read" },
+      [["unknown_tool", true]],
+    ],
+    ["network_body is off under the default capability set (gate)", {}, [["network_body", false]]],
+    [
+      "network_body is on once network-body is granted",
+      { BROWX_CAPABILITIES: "read,network-body" },
+      [["network_body", true]],
+    ],
+    [
+      "credentials is off under the default set: get_totp + get_credential gate on it",
+      {},
+      [
+        ["get_totp", false],
+        ["get_credential", false],
+      ],
+    ],
+    [
+      "get_totp + get_credential are on once credentials is granted",
+      { BROWX_CAPABILITIES: "read,credentials" },
+      [
+        ["get_totp", true],
+        ["get_credential", true],
+      ],
+    ],
+    [
+      "ws_send / ws_intercept / ws_unintercept gate on `action` (default-on)",
+      {},
+      [
+        ["ws_send", true],
+        ["ws_intercept", true],
+        ["ws_unintercept", true],
+      ],
+    ],
+    [
+      "read-only server: WS interactive primitives are off, `ws_read` stays",
+      { BROWX_CAPABILITIES: "read" },
+      [
+        ["ws_send", false],
+        ["ws_intercept", false],
+        ["ws_unintercept", false],
+        ["ws_read", true],
+      ],
+    ],
+  ])("%s", (_label, env, checks) => {
+    const c = resolveCapabilities(env);
+    for (const [tool, enabled] of checks) expect(isToolEnabled(tool, c), tool).toBe(enabled);
   });
 });
 

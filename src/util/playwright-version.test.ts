@@ -7,19 +7,19 @@ const installed = (
 ).version;
 
 describe("playwrightInstallCommand", () => {
-  it("pins the installed version", () => {
-    expect(playwrightInstallCommand("chromium")).toBe(
+  it.each<[string, [string, (string | null)?], string]>([
+    [
+      "pins the installed version",
+      ["chromium"],
       `npx playwright-core@${installed} install chromium`,
-    );
-  });
-
-  it("takes an explicit version", () => {
-    expect(playwrightInstallCommand("firefox", "1.2.3")).toBe(
+    ],
+    [
+      "takes an explicit version",
+      ["firefox", "1.2.3"],
       "npx playwright-core@1.2.3 install firefox",
-    );
-  });
-
-  it("drops the pin when given no version", () => {
-    expect(playwrightInstallCommand("webkit", null)).toBe("npx playwright-core install webkit");
+    ],
+    ["drops the pin when given no version", ["webkit", null], "npx playwright-core install webkit"],
+  ])("%s", (_label, args, expected) => {
+    expect(playwrightInstallCommand(...args)).toBe(expected);
   });
 });
