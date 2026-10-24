@@ -214,19 +214,19 @@ export class SecretRegistry {
 
   /** Egress-side, for one whole tool-result text item, which is usually a
    *  JSON document. Masking JSON text as a plain string would miss a value
-   *  that JSON escaped (a `"` or `\` in it) and could break the document, so
+   *  that JSON encoding changed (a `"` or `\` in it) and could break the document, so
    *  JSON is parsed, its string leaves, object keys and any number whose
    *  digits carry a value are masked, and it is serialised again in the same
    *  layout (two-space indent or compact). Non-JSON text gets
    *  `applyMaskInText`.
    *
-   *  Fast path: text that contains no registered value, raw or JSON-escaped,
+   *  Fast path: text that contains no registered value, raw or JSON-encoded,
    *  comes back untouched with no parse, which is the case for every result a
    *  sink already masked. That also makes the method idempotent. */
   applyMaskInResultText(text: string): string {
     if (this.byName.size === 0 || !text) return text;
     const entries = this.entriesByValueLenDesc();
-    if (!entries.some((e) => text.includes(e.value) || text.includes(jsonEscaped(e.value)))) {
+    if (!entries.some((e) => text.includes(e.value) || text.includes(jsonEncoded(e.value)))) {
       return text;
     }
     let parsed: unknown;
@@ -361,7 +361,7 @@ export class SecretRegistry {
 }
 
 /** A value as it appears inside a JSON string literal. */
-function jsonEscaped(value: string): string {
+function jsonEncoded(value: string): string {
   return JSON.stringify(value).slice(1, -1);
 }
 

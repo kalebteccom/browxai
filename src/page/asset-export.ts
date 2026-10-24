@@ -297,7 +297,7 @@ function writeAssetFile(
     const name = resolveCollision(base, st.used);
     st.used.add(name);
     // Defence in depth — the sanitised name has no separators, so the join
-    // can't escape `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
+    // can't leave `intoDir`; verify anyway ($BROWX_WORKSPACE-rooted by construction).
     const path = resolve(join(st.intoDir, name));
     if (path !== st.intoDir && !path.startsWith(st.intoDir + sep)) {
       return { ok: false, warning: `refused to write outside intoDir: ${url}` };

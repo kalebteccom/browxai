@@ -58,7 +58,7 @@ export function registerCaptureReportDiagnosticsTools(host: ToolHost): void {
     {
       capability: "read",
       description:
-        "Bundle a session's current QA evidence into one JSON object — url (redacted like `network_read`: no query string, fragment or userinfo), console errors, recent network summary, named regions, live sessions — so multi-agent QA results are auditable without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
+        "Bundle a session's current QA evidence into one JSON object — url (redacted like `network_read`: no query string, fragment or userinfo), console errors, recent network summary, named regions, live sessions — so multi-agent QA results can be checked without normalising each agent's notes by hand. `note` records a free-text label/summary. Returns the bundle (not written to disk).",
       inputSchema: {
         note: z.string().optional().describe("Free-text label / summary for this session's run."),
         ...SESSION_ARG,

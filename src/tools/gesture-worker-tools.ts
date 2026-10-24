@@ -16,7 +16,7 @@ import type { OriginPolicy } from "../policy/origin.js";
 
 /** Whether this session's engine can reach service workers. Playwright exposes
  *  them (`context.serviceWorkers()`) on the engines that declare the raw-CDP
- *  `deep` escape hatch, which is every Chromium-based one. Read from the engine's
+ *  `deep` capability, which is every Chromium-based one. Read from the engine's
  *  declaration, so a new Chromium-based engine needs no edit here. */
 function swAccessFor(e: SessionEntry, originPolicy: OriginPolicy): ServiceWorkerAccess {
   return {

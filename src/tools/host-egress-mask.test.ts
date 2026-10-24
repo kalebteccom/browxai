@@ -85,7 +85,7 @@ describe("maskToolResponse", () => {
     return r;
   };
 
-  it("masks a value JSON escaped, an object key and a number, keeping the JSON valid", () => {
+  it("masks a JSON-encoded value, an object key and a number, keeping the JSON valid", () => {
     const res = text({ value: 'pa"ss\\word', pa: { 'pa"ss\\word': 1 }, pin: 48151623 });
     const out = maskToolResponse(res, [reg()]);
     const t = (out.content[0] as { text: string }).text;

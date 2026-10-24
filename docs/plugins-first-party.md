@@ -242,8 +242,8 @@ definitions.
 
 ## Versioning
 
-Each plugin's manifest carries an advisory `browxaiVersion` range (`>=0.13.0`
-today: the oldest host version it was tested against) and a binding `apiVersion` (the
+Each plugin's manifest carries a `browxaiVersion` range (`>=0.13.0`
+today: the oldest host version it was tested against; a mismatch only warns) and a binding `apiVersion` (the
 plugin-runtime contract major; see
 [`docs/plugin-authoring.md`](./plugin-authoring.md)). The canvas
 adapters track the upstream app APIs noted per section above; if an

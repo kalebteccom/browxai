@@ -43,7 +43,7 @@ function fromNpmLock(installDir: string, name: string, version: string): string 
   return typeof entry.integrity === "string" && entry.integrity ? entry.integrity : undefined;
 }
 
-function escapeRe(s: string): string {
+function quoteRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 }
 
@@ -60,14 +60,14 @@ function fromPnpmLock(installDir: string, name: string, version: string): string
   } catch {
     return undefined;
   }
-  const n = escapeRe(name);
+  const n = quoteRe(name);
   const importer = new RegExp(
     `^ {6}'?${n}'?:\\n {8}specifier: [^\\n]*\\n {8}version: ([^\\s(]+)`,
     "m",
   ).exec(text);
   if (!importer || importer[1] !== version) return undefined;
   const pkg = new RegExp(
-    `^ {2}'?${n}@${escapeRe(version)}'?:\\n {4}resolution: \\{integrity: (sha\\d+-[A-Za-z0-9+/=]+)[,}]`,
+    `^ {2}'?${n}@${quoteRe(version)}'?:\\n {4}resolution: \\{integrity: (sha\\d+-[A-Za-z0-9+/=]+)[,}]`,
     "m",
   ).exec(text);
   return pkg?.[1];

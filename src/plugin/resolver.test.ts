@@ -151,9 +151,9 @@ describe("resolveDeclaredPlugin first-party tier", () => {
 describe("resolveDeclaredPlugin entry containment", () => {
   it("refuses a register path that leaves the package with ../", () => {
     const paths = pluginPaths(workspaceRoot);
-    installPackage(paths, "escape-rel", { register: "../x.js" });
+    installPackage(paths, "outside-rel", { register: "../x.js" });
     writeFileSync(join(paths.nodeModulesDir, "x.js"), "export function register(){}");
-    const r = resolveDeclaredPlugin(paths, { name: "escape-rel", enabled: true });
+    const r = resolveDeclaredPlugin(paths, { name: "outside-rel", enabled: true });
     expect(r.kind).toBe("invalid-manifest");
     if (r.kind === "invalid-manifest") expect(r.error).toMatch(/outside the package directory/);
   });
@@ -162,8 +162,8 @@ describe("resolveDeclaredPlugin entry containment", () => {
     const paths = pluginPaths(workspaceRoot);
     const outsideFile = join(workspaceRoot, "outside.js");
     writeFileSync(outsideFile, "export function register(){}");
-    installPackage(paths, "escape-abs", { register: outsideFile });
-    const r = resolveDeclaredPlugin(paths, { name: "escape-abs", enabled: true });
+    installPackage(paths, "outside-abs", { register: outsideFile });
+    const r = resolveDeclaredPlugin(paths, { name: "outside-abs", enabled: true });
     expect(r.kind).toBe("invalid-manifest");
     if (r.kind === "invalid-manifest") expect(r.error).toMatch(/absolute path/);
   });
@@ -173,9 +173,9 @@ describe("resolveDeclaredPlugin entry containment", () => {
     const outsideDir = join(workspaceRoot, "elsewhere");
     mkdirSync(outsideDir);
     writeFileSync(join(outsideDir, "index.js"), "export function register(){}");
-    const pkgRoot = installPackage(paths, "escape-link", { register: "lib/index.js" });
+    const pkgRoot = installPackage(paths, "outside-link", { register: "lib/index.js" });
     symlinkSync(outsideDir, join(pkgRoot, "lib"));
-    const r = resolveDeclaredPlugin(paths, { name: "escape-link", enabled: true });
+    const r = resolveDeclaredPlugin(paths, { name: "outside-link", enabled: true });
     expect(r.kind).toBe("invalid-manifest");
     if (r.kind === "invalid-manifest") expect(r.error).toMatch(/through a link/);
   });
