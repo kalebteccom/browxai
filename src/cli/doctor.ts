@@ -72,12 +72,17 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 1. dist/cli.js built?
+  // 1. dist/cli.js built? The age only means something in a source checkout,
+  // where a stale build is a real failure mode. An installed package ships
+  // dist/ and no src/, and doctor is already running from it, so it gets no row.
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const distCli = resolve(__dirname, "../cli.js");
+  const isSourceCheckout = existsSync(resolve(__dirname, "../../src/cli.ts"));
   if (existsSync(distCli)) {
-    const age = Math.floor((Date.now() - statSync(distCli).mtimeMs) / 86_400_000);
-    checks.push({ name: "build", ok: true, detail: `dist/cli.js exists (${age}d old)` });
+    if (isSourceCheckout) {
+      const age = Math.floor((Date.now() - statSync(distCli).mtimeMs) / 86_400_000);
+      checks.push({ name: "build", ok: true, detail: `dist/cli.js exists (${age}d old)` });
+    }
   } else {
     checks.push({
       name: "build",
