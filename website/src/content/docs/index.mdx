@@ -34,6 +34,9 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
       <a href="/reference/tool-reference/" class="browx-btn browx-btn--ghost">Tool reference</a>
     </div>
     <InstallCommand command="npm install -g browxai" />
+    <p class="browx-install-note">
+      Needs Node 22 or newer. Next, <a href="/getting-started/#wire-it-into-an-mcp-client">wire it into your MCP client</a>.
+    </p>
   </div>
 
   <div class="browx-window" aria-hidden="true">
@@ -214,8 +217,8 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
         and later sessions on that profile reuse the cookies. The off-by-default
         <code>stealth</code> and <code>captcha</code> capabilities patch four
         browser properties and hand captchas to a third-party solving service.
-        See
-        <a href="/guides/sites-behind-bot-protection/">the guide</a>.
+        Read
+        <a href="/guides/sites-behind-bot-protection/">Sites behind bot protection</a>.
       </div>
     </div>
   </div>

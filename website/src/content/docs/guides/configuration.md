@@ -41,7 +41,7 @@ persisted layers for that session only.
 | `testAttributes`                    | HTML attributes treated as tier-1 selector anchors. Order-sensitive: the first match on a node wins.                                                                  |
 | `capabilities`                      | Narrows the enabled capability set. `BROWX_CAPABILITIES` is the ceiling; a saved list can drop capabilities, never add.                                               |
 | `confirmRequired`                   | Which policy hooks route through human confirmation before dispatch.                                                                                                  |
-| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow.                                                                                |
+| `allowedOrigins` / `blockedOrigins` | Origin allow and block lists for `navigate`. Wildcards allowed; block overrides allow. An off-list navigation waits for a person to confirm.                          |
 | `headless`                          | Launch managed Chrome headless.                                                                                                                                       |
 | `channel`                           | Playwright browser channel for chromium sessions (`chrome`, `msedge`, `chromium`, …). Unset launches the installed Chrome, or the bundled Chromium when it is absent. |
 | `defaultDevice` / `defaultViewport` | Applied when `open_session` does not specify a device or viewport.                                                                                                    |
@@ -59,6 +59,15 @@ almost always a no-op or a wedged page op. Every action and read tool also
 takes a per-call `timeoutMs` override; raise that for one known-slow call.
 The value is clamped to a one-hour
 ceiling.
+
+**`allowedOrigins`** and **`blockedOrigins`** do not refuse a navigation by
+themselves. A `navigate` to an origin off the allow list, or on the block list,
+hits the `navigate_off_allowlist` confirmation hook, which is on by default. A
+person then has five minutes to answer `__browx.confirm(true)` in the DevTools
+`browxai` console context, and the call fails if nobody does. A headless server
+has nobody to answer. Leaving `navigate_off_allowlist` out of
+`BROWX_CONFIRM_REQUIRED` lets those navigations through with a logged warning,
+which turns the lists into a warning in the log.
 
 **`disableWebSecurity`** is turned on only by the operator, with
 `BROWX_DISABLE_WEB_SECURITY=1` in the server's environment. `set_config` can turn
@@ -88,18 +97,23 @@ documented but no longer the recommended path. `BROWX_WORKSPACE` is the
 exception: it anchors where the config store itself lives, so it is a location,
 not config.
 
-| Env var                    | Default                                 | What                                                                                                                                                                                                                                                                                              |
-| -------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BROWX_WORKSPACE`          | `~/.browxai/`                           | Workspace root. All transient state lives here. Never `cwd`.                                                                                                                                                                                                                                      |
-| `BROWX_ATTACH_CDP`         | unset                                   | Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. Needs `byob-attach`.                                                                                                                                                                                            |
-| `BROWX_HEADLESS`           | `0`                                     | Managed mode only. `1` or `true` launches headless.                                                                                                                                                                                                                                               |
-| `BROWX_TEST_ATTRIBUTES`    | `data-testid,data-test,data-cy,data-qa` | Selector-anchor attributes, order-sensitive.                                                                                                                                                                                                                                                      |
-| `BROWX_CAPABILITIES`       | `read,navigation,action,human`          | The full capability set at server start. It replaces the default set, so list the defaults too.                                                                                                                                                                                                   |
-| `BROWX_CONFIRM_REQUIRED`   | `navigate_off_allowlist,byob_action`    | Policy hooks that route through human confirmation.                                                                                                                                                                                                                                               |
-| `BROWX_ALLOWED_ORIGINS`    | unset                                   | Allow list for `navigate`, as full origins: `https://app.example.com`, `https://*.example.com` (subdomains, not the bare domain). No port means the scheme default only; a port matches that port. `navigate` checks the landed URL too.                                                          |
-| `BROWX_BLOCKED_ORIGINS`    | unset                                   | Block list; overrides the allow list. Ports match as for the allow list.                                                                                                                                                                                                                          |
-| `BROWX_CHANNEL`            | unset                                   | Playwright browser channel for chromium sessions. Unset uses the installed Chrome, else the bundled build.                                                                                                                                                                                        |
-| `BROWX_CREDENTIAL_ORIGINS` | unset                                   | Origins each `get_credential` account may be typed into, as `acct=https://app.example.com\|https://sso.example.com,other=host`. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start. |
+- `BROWX_WORKSPACE`, default `~/.browxai/`. Workspace root. All transient state lives here. Never `cwd`.
+- `BROWX_ATTACH_CDP`, unset. Attach to an externally launched Chrome over CDP (BYOB). Loopback hostnames only. Needs `byob-attach`.
+- `BROWX_HEADLESS`, default `0`. Managed mode only. `1` or `true` launches headless.
+- `BROWX_TEST_ATTRIBUTES`, default `data-testid,data-test,data-cy,data-qa`. Selector-anchor attributes, order-sensitive.
+- `BROWX_CAPABILITIES`, default `read,navigation,action,human`. The full capability set at server start. It replaces the default set, so list the defaults too.
+- `BROWX_CONFIRM_REQUIRED`, default `navigate_off_allowlist,byob_action`. Policy hooks that route through human confirmation. Valid hooks: `navigate_off_allowlist`, `file_download`, `file_upload`, `byob_action`.
+- `BROWX_ALLOWED_ORIGINS`, unset. Allow list for `navigate`, as full origins: `https://app.example.com`, `https://*.example.com` (subdomains, not the bare domain). No port means the scheme default only; a port matches that port. `navigate` checks the landed URL too.
+- `BROWX_BLOCKED_ORIGINS`, unset. Block list; overrides the allow list. Ports match as for the allow list.
+- `BROWX_CHANNEL`, unset. Playwright browser channel for chromium sessions. Unset uses the installed Chrome, else the bundled build.
+- `BROWX_FIREFOX_CHANNEL`, unset. The same knob for Firefox sessions.
+- `BROWX_AUTOMATION_SWITCH`, unset. `1` or `true` restores Playwright's `--enable-automation` switch on chromium launches.
+- `BROWX_DEFAULT_PROFILE`, unset. Absolute path of the workspace default profile directory, in place of `<workspace>/profile`. Persistent sessions with no `profile`, `browxai chrome start` and `chrome login` all use it.
+- `BROWX_HIDE_OVERLAY_SELECTORS`, unset. Comma-separated CSS selectors for the `hideOverlaySelectors` key.
+- `BROWX_DISABLE_WEB_SECURITY`, unset. `1` or `true` launches managed and incognito sessions with the same-origin policy and CORS off. The only way to turn it on.
+- `BROWX_PLUGINS`, unset. Plugin names a saved `plugins` config list may name. `plugins.json`, written by `browxai plugin install`, is unaffected.
+- `BROWX_CONFIG_READONLY`, unset. `1` or `true` leaves out the write tools and refuses config writes.
+- `BROWX_CREDENTIAL_ORIGINS`, unset. Origins each `get_credential` account may be typed into, as `acct=https://app.example.com|https://sso.example.com,other=host`. `get_credential` refuses an account that is not listed, before the vault is asked. An entry that does not parse is ignored with a startup warning. Read at start.
 
 For the complete configuration and session surface, see the
 [tool reference](/reference/tool-reference/).

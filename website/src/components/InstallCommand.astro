@@ -16,6 +16,7 @@ const { command } = Astro.props;
     class="browx-copy"
     data-copy={command}
     data-state="idle"
+    hidden
     aria-label={`Copy command: ${command}`}
   >
     <span class="lbl lbl-idle" aria-hidden="true">Copy</span>
@@ -33,6 +34,7 @@ const { command } = Astro.props;
     const status = root?.querySelector<HTMLElement>("[role='status']");
     const code = root?.querySelector("code");
     let timer: number | undefined;
+    btn.hidden = false;
 
     const show = (state: "idle" | "copied" | "failed") => {
       btn.dataset.state = state;
