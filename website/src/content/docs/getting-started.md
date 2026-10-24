@@ -37,13 +37,13 @@ Chromium. `browxai doctor` fails only when neither browser is present.
 
 Add browxai to your client's MCP server config. For example, an `.mcp.json`:
 
-```jsonc
+```json
 {
   "mcpServers": {
     "browxai": {
-      "command": "browxai",
-    },
-  },
+      "command": "browxai"
+    }
+  }
 }
 ```
 

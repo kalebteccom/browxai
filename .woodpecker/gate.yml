@@ -71,6 +71,12 @@ steps:
       - bash scripts/gate-slot.sh pnpm run depcheck
       - bash scripts/gate-slot.sh pnpm depcruise
       - bash scripts/gate-slot.sh pnpm jscpd:check
+  # Example commands and config blocks in the README and docs: BROWX_* names, CLI subcommands and flags, MCP config JSON. This step has no dist/, so the CLI probes are skipped; package-contents repeats the check after the build and runs them.
+  - <<: *step
+    name: examples
+    depends_on: [install]
+    commands:
+      - bash scripts/gate-slot.sh node scripts/check-examples.mjs
   # Supply-chain checks (dependency scan, licenses, lockfile); the scan needs the network, so it stays off the lint and test steps.
   - <<: *step
     name: supply-chain
@@ -89,6 +95,7 @@ steps:
       - corepack enable
       - bash scripts/gate-slot.sh pnpm build
       - bash scripts/gate-slot.sh node scripts/audit-package-contents.mjs
+      - bash scripts/gate-slot.sh node scripts/check-examples.mjs
 
   # Push to main: the head commit must be the squash merge of a gated PR.
   - name: main-check

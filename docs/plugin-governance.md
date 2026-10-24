@@ -38,11 +38,11 @@ the plugin.
 
 An operator can override the tier per entry in `plugins.json`:
 
-```jsonc
+```json
 {
   "plugins": {
-    "my-local-plugin": { "enabled": true, "trust": "local" },
-  },
+    "my-local-plugin": { "enabled": true, "trust": "local" }
+  }
 }
 ```
 
