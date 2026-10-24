@@ -8,13 +8,22 @@ import { maskToolResponse, activeSecretRegistries } from "./host-egress-mask.js"
 import type { ToolResponse } from "./host.js";
 import { SecretRegistry } from "../util/secrets.js";
 
+type Handler = (args: unknown) => Promise<ToolResponse>;
+
 function hostWith(opts: { secretsOn: boolean; sessions: Array<{ secrets: SecretRegistry }> }): {
   register: (name: string, result: ToolResponse) => void;
+  registerThrowing: (name: string, err: Error) => void;
   call: (name: string) => Promise<ToolResponse>;
+  callOnWire: (name: string) => Promise<ToolResponse & { isError?: boolean }>;
 } {
-  const toolHandlers: Record<string, (args: unknown) => Promise<ToolResponse>> = {};
+  const toolHandlers: Record<string, Handler> = {};
+  const wire: Record<string, Handler> = {};
   const host = buildHost({
-    server: { registerTool: () => undefined },
+    server: {
+      registerTool: (name: string, _def: unknown, cb: Handler) => {
+        wire[name] = cb;
+      },
+    },
     toolHandlers,
     registry: { list: () => opts.sessions, peek: () => undefined },
     config: { testAttributes: [] },
@@ -25,7 +34,10 @@ function hostWith(opts: { secretsOn: boolean; sessions: Array<{ secrets: SecretR
   return {
     register: (name, result) =>
       host.register(name, { description: "wrapper probe" }, () => Promise.resolve(result)),
+    registerThrowing: (name, err) =>
+      host.register(name, { description: "wrapper probe" }, () => Promise.reject(err)),
     call: (name) => toolHandlers[name]!({}),
+    callOnWire: (name) => wire[name]!({}),
   };
 }
 
@@ -65,6 +77,26 @@ describe("register wrapper — tool output masks registered secrets", () => {
     const result = text({ field: "hunter2" });
     h.register("probe_off", result);
     expect(await h.call("probe_off")).toBe(result);
+  });
+
+  it("masks the error text of a handler that throws", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const h = hostWith({ secretsOn: true, sessions: [{ secrets }] });
+    h.registerThrowing("probe_throws", new Error("login failed for hunter2 at step 2"));
+    const res = await h.callOnWire("probe_throws");
+    expect(res.isError).toBe(true);
+    expect(res.content).toEqual([{ type: "text", text: "login failed for <PASSWORD> at step 2" }]);
+    // Composing tools still see the rejection from the in-process handler.
+    await expect(h.call("probe_throws")).rejects.toThrow(/login failed/);
+  });
+
+  it("returns the same result on the wire as in process", async () => {
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const h = hostWith({ secretsOn: true, sessions: [{ secrets }] });
+    h.register("probe_wire", text({ field: "hunter2" }));
+    expect(await h.callOnWire("probe_wire")).toEqual(await h.call("probe_wire"));
   });
 
   it("returns an already-masked result as the same object", async () => {

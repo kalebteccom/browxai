@@ -37,7 +37,8 @@ surface" covers.
 - **Tool output masks registered secrets.** With `secrets` on, every tool
   result's text is masked for registered values on the way out, including
   `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
-  results keep their layout and stay valid.
+  results keep their layout and stay valid. The error text of a tool that
+  fails is masked the same way.
 - **`caches_get` returns the body only with `network-body`.** Without it the
   result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
   and `requiredCapability: "network-body"`.

@@ -6,6 +6,9 @@
 // carries no registered value, so this pass leaves it untouched without
 // parsing it.
 //
+// A handler that throws is masked too: the wrapper the MCP server calls turns
+// the error into the SDK's error result and masks that (`maskedToolError`).
+//
 // Only text items are masked. Image items are pixels; `screenshot`'s page-text
 // warning covers them. Result shapes are unchanged: an item is replaced only
 // when its text changed.
@@ -27,11 +30,11 @@ export function activeSecretRegistries(
 }
 
 /** Mask registered values in every text item of a tool result. Returns `res`
- *  itself when nothing changed. */
-export function maskToolResponse(
-  res: ToolResponse,
+ *  itself when nothing changed. Other fields (`isError`) are kept. */
+export function maskToolResponse<T extends ToolResponse>(
+  res: T,
   registries: readonly SecretRegistry[],
-): ToolResponse {
+): T {
   if (registries.length === 0) return res;
   let changed = false;
   const content = res.content.map((item) => {
@@ -43,4 +46,15 @@ export function maskToolResponse(
     return { ...item, text };
   });
   return changed ? { ...res, content } : res;
+}
+
+/** The result the MCP SDK builds for a handler that throws: the error message
+ *  as one text item, with `isError: true`. Built here so the message goes
+ *  through the same masking pass as any other result before it is sent. */
+export function maskedToolError(
+  err: unknown,
+  registries: readonly SecretRegistry[],
+): ToolResponse & { isError: true } {
+  const text = err instanceof Error ? err.message : String(err);
+  return maskToolResponse({ content: [{ type: "text", text }], isError: true }, registries);
 }
