@@ -2791,15 +2791,19 @@ Optional CLI-path overrides (when the binary lives outside PATH):
 `BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
 `BROWX_LASTPASS_BIN`.
 
-Optional per-account origins for `get_credential`, in the same
-`account=value,…` form as the seeds, with `|` between origins:
+Per-account origins for `get_credential`, in the same `account=value,…`
+form as the seeds, with `|` between origins. `get_credential` needs the
+account listed here; an unlisted account is refused before the vault is
+asked:
 
 ```
 BROWX_CREDENTIAL_ORIGINS="acme=https://app.acme.com|https://sso.acme.com,other=other.example"
 ```
 
 Each origin takes the `register_secret` scope forms. An account whose list
-has an entry that does not parse is ignored with a startup warning.
+has an entry that does not parse is ignored with a startup warning, so it is
+refused like an unlisted one. The variable is read at start: restart browxai
+after changing it.
 
 **Account names.** `account` must start with a letter or digit and use only
 letters, digits, space and `. _ @ + : / -`, at most 128 characters. Anything
@@ -2827,12 +2831,11 @@ Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
 origins, provider}` on success, **never the cleartext password**. The password is
 auto-registered into the per-session secrets registry under
 `<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`), scoped
-to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list when the operator
-set one, else the origin of the page the session is on when the call is
-made. `fill` then materialises the password only into a frame on one of
-those origins, so call `get_credential` on the login page. On a page with no
-origin (`about:blank`) and no configured list, the call refuses before the
-vault is asked. The agent then drives:
+to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list. `fill` then
+materialises the password only into a frame on one of those origins. An
+account with no `BROWX_CREDENTIAL_ORIGINS` entry is refused before the vault
+is asked; the error names the variable and the account and gives an example
+value. With `acme-corp=https://app.acme.com` set, the agent drives:
 
 ```
 navigate({url:"https://app.acme.com/login"})

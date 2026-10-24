@@ -20,9 +20,9 @@
 // the agent then uses `fill({value:"<PASSWORD_acct>"})` and Playwright
 // receives the real value at dispatch via the registry's materialise path.
 // The egress-masking layer also catches the value in every other sink.
-// The registration carries a scope: the operator-configured origins for the
-// account, or else the origin of the page the credential was fetched on, so
-// `fill` materialises the password only into a frame on one of those origins.
+// The registration carries a scope: the origins the operator listed for the
+// account in BROWX_CREDENTIAL_ORIGINS, so `fill` materialises the password
+// only into a frame on one of those origins. An unlisted account is refused.
 // `get_totp` returns the 6-digit code directly (TOTPs are single-use and short-lived
 // — the value is "spent" the moment it's typed, so masking buys little
 // and complicates the agent's verify-step flow).
@@ -83,8 +83,8 @@ export function applyCredentialToRegistry(
       ok: false,
       provider: result.provider,
       error:
-        "credentials lookup refused: no origin to bind the password to. Navigate to the " +
-        "login page first, or list the account's origins in BROWX_CREDENTIAL_ORIGINS.",
+        "credentials lookup refused: no origin to bind the password to. List the " +
+        "account's origins in BROWX_CREDENTIAL_ORIGINS, then restart.",
     };
   }
   const aliasName = aliasFromAccount(account);

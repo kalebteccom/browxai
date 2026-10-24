@@ -116,8 +116,8 @@ describe("solve_captcha — no Playwright page", () => {
   });
 });
 
-// get_credential binds the vault password to where it may be typed: the
-// operator's origin list for the account, else the current page's origin.
+// get_credential binds the vault password to the origins the operator listed
+// for the account in BROWX_CREDENTIAL_ORIGINS, and refuses any other account.
 describe("get_credential — origin binding and account names", () => {
   function captureGetCredential(opts: { pageUrl: string; origins?: Record<string, string[]> }): {
     handler: CapturedHandler;
@@ -160,38 +160,58 @@ describe("get_credential — origin binding and account names", () => {
     return { handler: handlers.get_credential!, secrets, lookups };
   }
 
-  it("binds the password to the current page origin", async () => {
-    const { handler, secrets } = captureGetCredential({
-      pageUrl: "https://app.example.com/login?next=/home",
+  it("refuses an unlisted account before asking the vault", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
+      pageUrl: "https://app.example.com/login",
+      origins: { other: ["https://other.example.com"] },
     });
     const body = bodyOf(await handler({ account: "acme" }));
-    expect(body.ok).toBe(true);
-    expect(body.origins).toEqual(["https://app.example.com"]);
-    expect(JSON.stringify(body)).not.toContain("vault-pass-2");
-    expect(secrets.materialize("<PASSWORD_ACME>", "https://app.example.com/x").ok).toBe(true);
-    expect(secrets.materialize("<PASSWORD_ACME>", "https://evil.test/?app.example.com").ok).toBe(
-      false,
-    );
+    expect(body.ok).toBe(false);
+    expect(String(body.error)).toContain("BROWX_CREDENTIAL_ORIGINS");
+    expect(String(body.error)).toContain('"acme"');
+    expect(String(body.error)).toContain("acme=https://");
+    expect(String(body.error)).toMatch(/restart/);
+    expect(lookups).toEqual([]);
+    expect(secrets.size()).toBe(0);
   });
 
-  it("uses the operator's origin list for the account when there is one", async () => {
-    const { handler, secrets } = captureGetCredential({
+  it("refuses an unlisted account even with no origins configured at all", async () => {
+    const { handler, lookups } = captureGetCredential({ pageUrl: "https://app.example.com/" });
+    const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(false);
+    expect(lookups).toEqual([]);
+  });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty"])(
+    "treats the account name %s as unlisted",
+    async (account) => {
+      const { handler, secrets, lookups } = captureGetCredential({
+        pageUrl: "https://app.example.com/",
+        origins: { acme: ["https://app.example.com"] },
+      });
+      const body = bodyOf(await handler({ account }));
+      expect(body.ok).toBe(false);
+      expect(lookups).toEqual([]);
+      expect(secrets.size()).toBe(0);
+    },
+  );
+
+  it("binds a listed account to its listed origins, whatever page is open", async () => {
+    const { handler, secrets, lookups } = captureGetCredential({
       pageUrl: "https://elsewhere.test/",
       origins: { acme: ["https://sso.example.com", "https://app.example.com"] },
     });
     const body = bodyOf(await handler({ account: "acme" }));
+    expect(body.ok).toBe(true);
+    expect(lookups).toEqual(["acme"]);
     expect(body.origins).toEqual(["https://sso.example.com", "https://app.example.com"]);
+    expect(JSON.stringify(body)).not.toContain("vault-pass-2");
     expect(secrets.materialize("<PASSWORD_ACME>", "https://elsewhere.test/").ok).toBe(false);
     expect(secrets.materialize("<PASSWORD_ACME>", "https://sso.example.com/").ok).toBe(true);
-  });
-
-  it("refuses on a page with no origin, before asking the vault", async () => {
-    const { handler, secrets, lookups } = captureGetCredential({ pageUrl: "about:blank" });
-    const body = bodyOf(await handler({ account: "acme" }));
-    expect(body.ok).toBe(false);
-    expect(String(body.error)).toMatch(/Navigate to the login page/);
-    expect(lookups).toEqual([]);
-    expect(secrets.size()).toBe(0);
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://app.example.com/x").ok).toBe(true);
+    expect(secrets.materialize("<PASSWORD_ACME>", "https://evil.test/?app.example.com").ok).toBe(
+      false,
+    );
   });
 
   it("rejects an account that could read as a CLI flag, before asking the vault", async () => {

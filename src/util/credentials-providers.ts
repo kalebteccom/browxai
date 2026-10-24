@@ -394,7 +394,7 @@ export interface CredentialsConfig {
   warnings: readonly string[];
   /** Operator-configured origins per account (`BROWX_CREDENTIAL_ORIGINS`).
    *  A `get_credential` value for a listed account is bound to these origins;
-   *  any other account is bound to the origin of the page it was fetched on. */
+   *  `get_credential` refuses any account that is not listed. */
   origins?: Readonly<Record<string, readonly string[]>>;
 }
 

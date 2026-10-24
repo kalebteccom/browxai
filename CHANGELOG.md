@@ -17,11 +17,13 @@ surface" covers.
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
   registration. The result carries the normalised `origins`.
-- **`get_credential` values are bound to the page they were fetched for.** The
-  registered password is scoped to the origin of the page the session is on at
-  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
-  setting. With neither (for example on `about:blank`) the call refuses before
-  the vault is asked. The result carries `origins`.
+- **`get_credential` now requires the account to be listed in
+  `BROWX_CREDENTIAL_ORIGINS`.** The new setting binds credentials to configured
+  origins: `acme=https://app.acme.com|https://sso.acme.com`. The registered
+  password is scoped to that list and typed only into a frame on one of those
+  origins. An account with no entry is refused before the vault is asked, with
+  a message naming the setting. The setting is read at start, so restart after
+  changing it. The result carries `origins`.
 - **`get_totp` and `get_credential` check the account name.** It must start
   with a letter or digit and use only letters, digits, space and
   `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
