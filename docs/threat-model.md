@@ -873,6 +873,15 @@ is set, navigation off-allowlist requires confirmation (or, if `navigate_off_all
 is in `BROWX_CONFIRM_REQUIRED`, hard-fails unless confirmed). Wildcards (`*.example.com`)
 are supported.
 
+Matching rules: scheme and host must match, case-insensitively, and a trailing dot on the
+host is ignored (`https://ads.example.com.` matches an `https://ads.example.com` entry).
+The port is compared as the port the request uses: an entry without a port means the scheme
+default (80 for `http`, 443 for `https`), and an entry with a port matches that port only.
+A `blob:` or `filesystem:` URL is matched by the origin it wraps. A redirect is checked
+again on the URL the navigation landed on, through the same hook as the requested URL.
+Without `navigate_off_allowlist` in `BROWX_CONFIRM_REQUIRED`, a blocked origin only logs a
+warning that names the matching `BROWX_BLOCKED_ORIGINS` entry, and the navigation proceeds.
+
 Documented as **defense-in-depth, not a security boundary**. Page-initiated redirects
 and JS-driven navigation may still escape; the allowlist is a blast-radius reducer + a
 confirmation hook point.

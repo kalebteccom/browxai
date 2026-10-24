@@ -70,6 +70,16 @@ surface" covers.
 - **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
   values are zod 4 schemas. `idb_put` now lists `value` as required in its
   advertised input schema.
+- **Origin entries match more exactly.** A trailing dot on a host
+  (`https://ads.example.com.`) matches the entry for the same host. An entry
+  matches the port a request uses: no port means 80 for `http` and 443 for
+  `https`, so `https://app.example.com` no longer matches
+  `https://app.example.com:8443`, and an entry with a port matches that port
+  only. A `blob:` or `filesystem:` URL matches by the origin it wraps.
+- **`navigate` checks the URL it landed on.** After a redirect, the final URL
+  goes through the same origin policy and confirm hook as the requested one. The
+  warning logged when no confirm hook is set names the `BROWX_BLOCKED_ORIGINS`
+  entry that matched.
 
 ### Fixed
 
