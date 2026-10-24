@@ -51,7 +51,7 @@ async function makeElectronAdapter(opts: SessionOptions): Promise<BrowserSession
       "then point browxai at it with BROWX_ATTACH_CDP=http://127.0.0.1:9333 and grant the " +
       "`byob-attach` capability. Note that the port is UNAUTHENTICATED for the app's whole " +
       "lifetime and the app holds a logged-in session: see " +
-      docsUrl.threatModel +
+      docsUrl.threatModelCapabilities +
       " before you do " +
       "this to an app that matters.",
   );

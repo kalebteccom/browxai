@@ -173,11 +173,11 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       detail,
       fix: dangerous.length
-        ? `${dangerous.join(",")} on — page text remains untrusted; review ${docsUrl.threatModel}`
+        ? `${dangerous.join(",")} on — page text remains untrusted; review ${docsUrl.threatModelCapabilities}`
         : explicit
           ? undefined
           : "see " +
-            docsUrl.threatModel +
+            docsUrl.threatModelCapabilities +
             " for the full set; default is " +
             DEFAULT_CAPABILITIES.join(","),
     });
@@ -188,7 +188,7 @@ export async function runDoctor(): Promise<number> {
       name: "capabilities",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CAPABILITIES (comma-separated, see " + docsUrl.threatModel + ")",
+      fix: "fix BROWX_CAPABILITIES (comma-separated, see " + docsUrl.threatModelConfiguring + ")",
     });
   }
 
@@ -205,7 +205,7 @@ export async function runDoctor(): Promise<number> {
       name: "confirm-hooks",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModel,
+      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModelConfiguring,
     });
   }
 
@@ -218,7 +218,8 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       detail: describePolicy(policy),
       fix: noAllowlist
-        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate."
+        ? "no allowlist set — defense-in-depth not engaged. Set BROWX_ALLOWED_ORIGINS for the navigation gate, see " +
+          docsUrl.threatModelOrigins
         : undefined,
     });
   } catch (e) {
@@ -226,7 +227,9 @@ export async function runDoctor(): Promise<number> {
       name: "origins",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com)",
+      fix:
+        "BROWX_ALLOWED_ORIGINS / BROWX_BLOCKED_ORIGINS: comma-separated absolute URLs (https://app.example.com or https://*.example.com), see " +
+        docsUrl.threatModelOrigins,
     });
   }
 
@@ -345,8 +348,8 @@ export async function runDoctor(): Promise<number> {
   process.stdout.write(
     `\n${
       allOk
-        ? "all checks passed. Next: add browxai to your MCP client, see https://browxai.com/getting-started/"
-        : "fix the ✗ items above, then run `browxai doctor` again"
+        ? `all checks passed. Next: add browxai to your MCP client, see ${docsUrl.gettingStartedConnect}`
+        : `fix the ✗ items above, then run \`browxai doctor\` again. Common errors: ${docsUrl.troubleshooting}`
     }\n`,
   );
   return allOk ? 0 : 1;

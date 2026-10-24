@@ -243,7 +243,7 @@ export async function electronCheck(): Promise<Check> {
   const name = "electron";
   const enable =
     "start the app with `--remote-debugging-port=9333`, set BROWX_ATTACH_CDP to it, add `byob-attach` to BROWX_CAPABILITIES (that port is unauthenticated, read " +
-    docsUrl.threatModel +
+    docsUrl.threatModelCapabilities +
     ")";
   const endpoint = process.env.BROWX_ATTACH_CDP?.trim();
   if (!endpoint) {

@@ -38,7 +38,7 @@ export function refuseAttachWithoutCapability(
       "capability, which is OFF by default. Add it to BROWX_CAPABILITIES and keep the defaults in " +
       `the list (${capabilitiesAssignment("byob-attach")}), then restart the ` +
       "server. A saved config or set_config cannot add it. See " +
-      docsUrl.threatModel +
+      docsUrl.threatModelConfiguring +
       " for what it grants.",
   );
 }
