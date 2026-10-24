@@ -144,7 +144,24 @@ describe("SessionRegistry", () => {
     expect(teardown).toHaveBeenCalledTimes(2);
   });
 
-  it("closeMatching({ idleMs }) reaps only stale sessions; get() touches activity", async () => {
+  it.each([
+    {
+      label: "closeMatching({ idleMs }) reaps only stale sessions; get() touches activity",
+      ids: ["stale", "fresh"],
+      touch: "fresh",
+      filter: { idleMs: 60_000 },
+      closed: ["stale"],
+      survivor: "fresh",
+    },
+    {
+      label: "closeMatching ANDs prefix + idleMs",
+      ids: ["a-1", "b-1"],
+      touch: undefined,
+      filter: { prefix: "a-", idleMs: 60_000 },
+      closed: ["a-1"],
+      survivor: "b-1",
+    },
+  ])("$label", async ({ ids, touch, filter, closed, survivor }) => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
@@ -152,32 +169,11 @@ describe("SessionRegistry", () => {
         async (id) => fakeEntry(id),
         async () => undefined,
       );
-      await reg.get("stale");
-      await reg.get("fresh");
-      vi.setSystemTime(new Date("2026-05-19T10:05:00Z")); // +5min
-      await reg.get("fresh"); // touch — resets lastActivityAt to now
-      const closed = await reg.closeMatching({ idleMs: 60_000 }); // idle > 1min
-      expect(closed).toEqual(["stale"]);
-      expect(reg.peek("fresh")?.id).toBe("fresh");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("closeMatching ANDs prefix + idleMs", async () => {
-    vi.useFakeTimers();
-    try {
-      vi.setSystemTime(new Date("2026-05-19T10:00:00Z"));
-      const reg = new SessionRegistry(
-        async (id) => fakeEntry(id),
-        async () => undefined,
-      );
-      await reg.get("a-1"); // matches prefix, will be idle
-      await reg.get("b-1"); // idle but wrong prefix
+      for (const id of ids) await reg.get(id);
       vi.setSystemTime(new Date("2026-05-19T10:10:00Z"));
-      const closed = await reg.closeMatching({ prefix: "a-", idleMs: 60_000 });
-      expect(closed).toEqual(["a-1"]);
-      expect(reg.peek("b-1")?.id).toBe("b-1");
+      if (touch) await reg.get(touch); // resets lastActivityAt to now
+      expect(await reg.closeMatching(filter)).toEqual(closed);
+      expect(reg.peek(survivor)?.id).toBe(survivor);
     } finally {
       vi.useRealTimers();
     }

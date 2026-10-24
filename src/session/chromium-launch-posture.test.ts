@@ -18,38 +18,65 @@ afterEach(() => {
 });
 
 describe("planChromiumChannel", () => {
-  it("defaults to the installed Chrome, with a fallback to the bundled build", () => {
-    expect(planChromiumChannel({})).toEqual({ channel: "chrome", fallbackToBundled: true });
-    expect(planChromiumChannel({ channel: "" })).toEqual({
+  it.each([
+    {
+      label: "defaults to the installed Chrome, with a fallback to the bundled build",
+      input: {},
       channel: "chrome",
-      fallbackToBundled: true,
-    });
-  });
-
-  it("honours an explicit channel without a fallback", () => {
-    expect(planChromiumChannel({ channel: "msedge" })).toEqual({
+      fallback: true,
+    },
+    {
+      label: "treats an empty channel as the default",
+      input: { channel: "" },
+      channel: "chrome",
+      fallback: true,
+    },
+    {
+      label: "honours an explicit msedge without a fallback",
+      input: { channel: "msedge" },
       channel: "msedge",
-      fallbackToBundled: false,
-    });
-    expect(planChromiumChannel({ channel: "chrome" })).toEqual({
+      fallback: false,
+    },
+    {
+      label: "honours an explicit chrome without a fallback",
+      input: { channel: "chrome" },
       channel: "chrome",
-      fallbackToBundled: false,
-    });
-  });
-
-  it('"chromium" forces the bundled build', () => {
-    const plan = planChromiumChannel({ channel: "chromium" });
-    expect(plan.channel).toBeUndefined();
-    expect(plan.fallbackToBundled).toBe(false);
-    expect(planChromiumChannel({ channel: " Chromium " }).channel).toBeUndefined();
-  });
-
-  it("keeps an extension launch with no channel on the bundled build", () => {
-    expect(planChromiumChannel({ extensionPaths: ["/tmp/ext"] }).channel).toBeUndefined();
-    expect(planChromiumChannel({ extensionPaths: ["/tmp/ext"], channel: "chrome" }).channel).toBe(
-      "chrome",
-    );
-    expect(planChromiumChannel({ extensionPaths: [] }).channel).toBe("chrome");
+      fallback: false,
+    },
+    {
+      label: '"chromium" forces the bundled build',
+      input: { channel: "chromium" },
+      channel: undefined,
+      fallback: false,
+    },
+    {
+      label: '"chromium" is matched case- and whitespace-insensitively',
+      input: { channel: " Chromium " },
+      channel: undefined,
+      fallback: undefined,
+    },
+    {
+      label: "keeps an extension launch with no channel on the bundled build",
+      input: { extensionPaths: ["/tmp/ext"] },
+      channel: undefined,
+      fallback: undefined,
+    },
+    {
+      label: "keeps an explicit channel for an extension launch",
+      input: { extensionPaths: ["/tmp/ext"], channel: "chrome" },
+      channel: "chrome",
+      fallback: undefined,
+    },
+    {
+      label: "treats an empty extension list as no extensions",
+      input: { extensionPaths: [] },
+      channel: "chrome",
+      fallback: undefined,
+    },
+  ])("$label", ({ input, channel, fallback }) => {
+    const plan = planChromiumChannel(input);
+    expect(plan.channel).toBe(channel);
+    if (fallback !== undefined) expect(plan.fallbackToBundled).toBe(fallback);
   });
 });
 
@@ -130,12 +157,24 @@ describe("a launch that finds no browser", () => {
 });
 
 describe("automationSwitchOptions", () => {
-  it("drops --enable-automation by default", () => {
-    expect(automationSwitchOptions({})).toEqual({ ignoreDefaultArgs: ["--enable-automation"] });
-  });
-
-  it("restores the switch for BROWX_AUTOMATION_SWITCH=1 or true", () => {
-    expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: "1" })).toEqual({});
-    expect(automationSwitchOptions({ BROWX_AUTOMATION_SWITCH: " TRUE " })).toEqual({});
+  it.each([
+    {
+      label: "drops --enable-automation by default",
+      env: {},
+      expected: { ignoreDefaultArgs: ["--enable-automation"] },
+    },
+    {
+      label: "restores the switch for BROWX_AUTOMATION_SWITCH=1",
+      env: { BROWX_AUTOMATION_SWITCH: "1" },
+      expected: {},
+    },
+    {
+      label:
+        "restores the switch for BROWX_AUTOMATION_SWITCH=true, case- and whitespace-insensitive",
+      env: { BROWX_AUTOMATION_SWITCH: " TRUE " },
+      expected: {},
+    },
+  ])("$label", ({ env, expected }) => {
+    expect(automationSwitchOptions(env)).toEqual(expected);
   });
 });

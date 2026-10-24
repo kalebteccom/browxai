@@ -69,27 +69,27 @@ describe("geolocation (Playwright context mutator)", () => {
 });
 
 describe("permissions", () => {
-  it("applyPermissions records by origin and calls Playwright grant", async () => {
-    const ctx = fakeContext();
-    const state = newEmulationState();
-    await applyPermissions(
-      asContext(ctx),
-      state,
-      ["geolocation", "clipboard-read"],
-      "https://example.com",
-    );
-    expect(ctx.grantPermissions).toHaveBeenCalledWith(["geolocation", "clipboard-read"], {
+  it.each([
+    {
+      label: "applyPermissions records by origin and calls Playwright grant",
+      permissions: ["geolocation", "clipboard-read"] as string[],
       origin: "https://example.com",
-    });
-    expect(state.permissions.get("https://example.com")).toEqual(["geolocation", "clipboard-read"]);
-  });
-
-  it("applyPermissions without origin keys on '' and omits options arg", async () => {
+      key: "https://example.com",
+      options: { origin: "https://example.com" },
+    },
+    {
+      label: "applyPermissions without origin keys on '' and omits options arg",
+      permissions: ["notifications"] as string[],
+      origin: undefined as string | undefined,
+      key: "",
+      options: undefined as { origin: string } | undefined,
+    },
+  ])("$label", async ({ permissions, origin, key, options }) => {
     const ctx = fakeContext();
     const state = newEmulationState();
-    await applyPermissions(asContext(ctx), state, ["notifications"]);
-    expect(ctx.grantPermissions).toHaveBeenCalledWith(["notifications"], undefined);
-    expect(state.permissions.get("")).toEqual(["notifications"]);
+    await applyPermissions(asContext(ctx), state, permissions, origin);
+    expect(ctx.grantPermissions).toHaveBeenCalledWith(permissions, options);
+    expect(state.permissions.get(key)).toEqual(permissions);
   });
 
   it("re-applying for the same origin REPLACES (mirrors Playwright semantics)", async () => {
