@@ -10,10 +10,10 @@ import {
 
 const NAME = "@browxai/plugin-figma";
 const INTEGRITY = "sha512-AAAA";
-const entry = (source: string, integrity: string | undefined = INTEGRITY) => ({
+const entry = (source: string, integrity: string | null = INTEGRITY) => ({
   name: NAME,
   source,
-  ...(integrity === undefined ? {} : { integrity }),
+  ...(integrity === null ? {} : { integrity }),
 });
 
 describe("isPlainRegistrySpec", () => {
@@ -58,7 +58,7 @@ describe("isVerifiedFirstParty", () => {
   });
 
   it("refuses a lock entry without an integrity hash, or no entry at all", () => {
-    expect(isVerifiedFirstParty(NAME, entry(NAME, undefined), NAME)).toBe(false);
+    expect(isVerifiedFirstParty(NAME, entry(NAME, null), NAME)).toBe(false);
     expect(isVerifiedFirstParty(NAME, entry(NAME, ""), NAME)).toBe(false);
     expect(isVerifiedFirstParty(NAME, undefined, NAME)).toBe(false);
   });
