@@ -1377,6 +1377,13 @@ mobile-starlight-toc nav {
   backdrop-filter: blur(14px) saturate(140%);
 }
 
+/* The "Search docs" button reads as a field and its border is its only edge, so
+   it takes a gray that reaches 3:1 against the header in both themes (WCAG
+   1.4.11). Starlight's default gray-5 measures 1.76:1 light and 1.51:1 dark. */
+site-search button[data-open-modal] {
+  border-color: var(--sl-color-gray-3);
+}
+
 /* Small screens (Starlight switches layout at 50rem). Tap targets reach 44px. */
 @media (max-width: 49.9375rem) {
   :root {
