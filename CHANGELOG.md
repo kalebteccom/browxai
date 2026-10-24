@@ -8,6 +8,12 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- A session created lazily by any tool, or inside `batch`, on a profile that a closed
+  `ask-human` session held now returns the same `human-gate-override` refusal as
+  `open_session`, instead of a plain-text error.
+
 ## [0.14.0] - 2026-10-24
 
 Tighter handling of secrets, plugins, workspace paths and origin rules, plain

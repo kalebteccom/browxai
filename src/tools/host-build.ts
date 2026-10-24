@@ -53,6 +53,7 @@ import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
 import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
+import { askHumanProfileRefusal } from "./ask-human-gate.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 
 /** The createServer locals the host's closures close over. Each field is the
@@ -483,14 +484,16 @@ export function buildHost(deps: HostDeps): ToolHost {
       // wedges still lands in the replay log. `noteReplayCall` is a no-op
       // when the session has no active recording, so the hot path stays cheap.
       noteReplayCall(name, args);
-      // A tool that creates the default session lazily can hit the `byob-attach`
-      // refusal inside the registry; it leaves here as the same structured gate
-      // refusal `open_session` returns, for every tool and for `batch` alike.
+      // A tool that creates a session lazily can hit the `byob-attach` or the
+      // held `ask-human` profile refusal inside the registry; each leaves here as
+      // the same structured gate refusal `open_session` returns, for every tool
+      // and for `batch` alike.
       const run = async (): Promise<ToolResponse> => {
         try {
           return await handler(args);
         } catch (err) {
-          const refusal = byobAttachRefusal(gateCheck, err);
+          const refusal =
+            askHumanProfileRefusal(gateCheck, err) ?? byobAttachRefusal(gateCheck, err);
           if (refusal) return refusal;
           throw err;
         }
