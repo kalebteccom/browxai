@@ -4,7 +4,12 @@ import {
   unconfiguredFailure,
   type CaptchaType,
 } from "../page/solve-captcha.js";
-import { applyCredentialToRegistry, type ProviderCredentialInternal } from "../util/credentials.js";
+import {
+  accountError,
+  applyCredentialToRegistry,
+  type ProviderCredentialInternal,
+} from "../util/credentials.js";
+import { originOf } from "../util/secret-scope.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
@@ -38,6 +43,31 @@ async function readSiteKeyFromSelector(
     return key;
   } catch {
     return undefined;
+  }
+}
+
+/** The `{ok:false}` envelope the credentials tools return before any vault
+ *  call: a rejected account name, or nothing to bind a password to. */
+function accountRefusal(
+  provider: string,
+  error: string,
+): { content: Array<{ type: "text"; text: string }> } {
+  return captchaJsonResult({ ok: false, provider, error });
+}
+
+/** The origins a `get_credential` password is bound to: the operator's list
+ *  for the account when there is one, else the origin of the current page.
+ *  Empty when neither exists (no page, or a page with no origin). */
+async function credentialOrigins(
+  configured: readonly string[] | undefined,
+  pageUrl: () => Promise<string>,
+): Promise<readonly string[]> {
+  if (configured) return configured;
+  try {
+    const origin = originOf(await pageUrl());
+    return origin ? [origin] : [];
+  } catch {
+    return [];
   }
 }
 
@@ -302,7 +332,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "credentials",
       description:
-        "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts).",
+        "Look up a one-time TOTP code from the deployment's configured credentials vault. **Gated behind the off-by-default `credentials` capability** — same posture class as `eval` / `network-body` / `secrets`. Provider is selected per-deployment via `BROWX_CREDENTIALS_PROVIDER` (`oathtool` default — no paid dependency, seeds via env or file; or `1password` / `bitwarden` / `lastpass` via their respective CLIs the operator installs out-of-band). Returns `{ok, code, provider}` on success; `{ok:false, error, hint, provider}` on failure (missing seed / CLI not on PATH / CLI not logged in — actionable hint included). TOTP codes are NOT masked through the secrets registry: a TOTP is single-use and short-lived, so masking buys little while complicating verify-step flows — the code is returned in plaintext so the agent can pass it to `fill({value: code})` or compare against on-page text. `account` semantics depend on the provider (oathtool: a key from `BROWX_OATHTOOL_SEEDS`; 1password/bitwarden/lastpass: an item name / id the CLI accepts); it must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128).",
       inputSchema: {
         account: z
           .string()
@@ -314,6 +344,8 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     async ({ account }: { account: string }) => {
       const g = gateCheck("get_totp");
       if (g) return g;
+      const bad = accountError(account);
+      if (bad) return accountRefusal(credentialsResolved.config.provider, bad);
       const result = await credentialsResolved.provider.getTotp(account);
       const body = {
         ...result,
@@ -328,7 +360,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "credentials",
       description:
-        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would leak it into the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`); the agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch. The returned object carries `{ok, username, aliasName, provider}` — **never the cleartext password**. Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
+        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would put it in the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`), bound to the origins in `BROWX_CREDENTIAL_ORIGINS` for that account or else to the origin of the page the session is on at call time; the agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch, only into a frame on one of those origins. Call it on the login page. The returned object carries `{ok, username, aliasName, origins, provider}` — **never the cleartext password**. `account` must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128). Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
       inputSchema: {
         account: z
           .string()
@@ -341,7 +373,23 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     async ({ account, session }: { account: string; session?: string }) => {
       const g = gateCheck("get_credential");
       if (g) return g;
+      const provider = credentialsResolved.config.provider;
+      const bad = accountError(account);
+      if (bad) return accountRefusal(provider, bad);
       const e = await entryFor(session);
+      // Bind the password to where it may be typed: the operator's list for
+      // this account, else the origin of the page it is fetched on. Resolved
+      // before the vault is asked, so an unbound lookup never runs.
+      const origins = await credentialOrigins(credentialsResolved.config.origins?.[account], () =>
+        targetFor(e).url(),
+      );
+      if (origins.length === 0) {
+        return accountRefusal(
+          provider,
+          "get_credential needs an origin to bind the password to, and the current page has none. " +
+            "Navigate to the login page first, or list the account's origins in BROWX_CREDENTIAL_ORIGINS.",
+        );
+      }
       const raw = (await credentialsResolved.provider.getCredential(
         account,
       )) as ProviderCredentialInternal;
@@ -349,7 +397,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // pairing rule and strips `_password` before the result leaves this
       // module — so the response we serialise never contains cleartext.
       const registry = caps.enabled.has("secrets") ? e.secrets : null;
-      const result = applyCredentialToRegistry(raw, registry, account);
+      const result = applyCredentialToRegistry(raw, registry, account, origins);
       const body = {
         ...result,
         tokensEstimate: estimateTokens(JSON.stringify(result)),

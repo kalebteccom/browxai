@@ -2773,6 +2773,21 @@ Optional CLI-path overrides (when the binary lives outside PATH):
 `BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
 `BROWX_LASTPASS_BIN`.
 
+Optional per-account origins for `get_credential`, in the same
+`account=value,…` form as the seeds, with `|` between origins:
+
+```
+BROWX_CREDENTIAL_ORIGINS="acme=https://app.acme.com|https://sso.acme.com,other=other.example"
+```
+
+Each origin takes the `register_secret` scope forms. An account whose list
+has an entry that does not parse is ignored with a startup warning.
+
+**Account names.** `account` must start with a letter or digit and use only
+letters, digits, space and `. _ @ + : / -`, at most 128 characters. Anything
+else is refused before the vault is asked; use the vault item's id for a
+name with other characters.
+
 ### `get_totp({ account })`
 
 Look up a one-time TOTP code. Returns `{ok, code, provider}` on success;
@@ -2791,13 +2806,19 @@ verify-step flow. The agent passes the code directly to
 ### `get_credential({ account, session? })`
 
 Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
-provider}` on success, **never the cleartext password**. The password is
+origins, provider}` on success, **never the cleartext password**. The password is
 auto-registered into the per-session secrets registry under
-`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`). The
-agent then drives:
+`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`), scoped
+to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list when the operator
+set one, else the origin of the page the session is on when the call is
+made. `fill` then materialises the password only into a frame on one of
+those origins, so call `get_credential` on the login page. On a page with no
+origin (`about:blank`) and no configured list, the call refuses before the
+vault is asked. The agent then drives:
 
 ```
-get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP"}
+navigate({url:"https://app.acme.com/login"})
+get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP", origins:["https://app.acme.com"]}
 fill({selector:"input[name=username]", value:"alice@…"})
 fill({selector:"input[name=password]", value:"<PASSWORD_ACME_CORP>"})
 ```
@@ -2818,16 +2839,16 @@ transcript on first reference). Enable both:
   credential-bearing provider, OR `await_human` for the username/password
   half and `get_totp` for the TOTP half.
 - `1password` reads the `username` + `password` labelled fields via
-  `op item get <account> --fields label=username,label=password --format json`.
+  `op item get --fields label=username,label=password --format json -- <account>`.
 - `bitwarden` reads `login.username` + `login.password` via
-  `bw get item <account>`.
-- `lastpass` reads via `lpass show --username --password <account>`.
+  `bw get item -- <account>`.
+- `lastpass` reads via `lpass show --username --password -- <account>`.
 
 **Posture.** Off by default; loud one-time warning at server boot when the
 capability is on. Provider is per-deployment, never bundled, never
 auto-installed. All shell invocations use fixed argv (no shell
-interpolation, account name passed as a discrete argv element; no
-injection surface). 5-second wall-clock timeout per call so a hung CLI
+interpolation, account name passed as a discrete argv element after `--`,
+and an account name can never start with `-`). 5-second wall-clock timeout per call so a hung CLI
 can't block tool dispatch.
 
 ## Extensions registry (capability `extensions`)

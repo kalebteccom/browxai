@@ -17,6 +17,15 @@ surface" covers.
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
   registration. The result carries the normalised `origins`.
+- **`get_credential` values are bound to the page they were fetched for.** The
+  registered password is scoped to the origin of the page the session is on at
+  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
+  setting. With neither (for example on `about:blank`) the call refuses before
+  the vault is asked. The result carries `origins`.
+- **`get_totp` and `get_credential` check the account name.** It must start
+  with a letter or digit and use only letters, digits, space and
+  `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
+  the account after `--`.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
