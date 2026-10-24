@@ -20,8 +20,8 @@ import type { GateCheck } from "./ask-human-gate.js";
 import type { ToolResponse } from "./host.js";
 
 /** Thrown at session creation when an `attached` session is asked for without
- *  `byob-attach`. `open_session` turns it into the standard gate refusal; any
- *  other tool that lazily creates the session reports the message. */
+ *  `byob-attach`. `open_session` and the `register` wrapper (for a tool that
+ *  creates the default session lazily) turn it into the standard gate refusal. */
 export class ByobAttachRefused extends Error {}
 
 /** Throws `ByobAttachRefused` when `byob-attach` is not in the active set. */

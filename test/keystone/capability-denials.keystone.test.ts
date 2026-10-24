@@ -261,6 +261,7 @@ describe("capability denials with the default capability set", () => {
         expect(denied.ok).toBe(false);
         expect(denied.requiredCapability).toBe("file-io");
         expect(denied.error).toMatch(/ACTIVE set/);
+        expect(denied.hint).toMatch(/BROWX_CAPABILITIES/);
         expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
         expect(existsSync(join(workspace, "ks-capability-denials"))).toBe(false);
       },

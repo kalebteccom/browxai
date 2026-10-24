@@ -9,6 +9,7 @@ import {
   applyCredentialToRegistry,
   type ProviderCredentialInternal,
 } from "../util/credentials.js";
+import { capabilityMissing } from "../util/capabilities.js";
 import { originOf } from "../util/secret-scope.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
@@ -396,7 +397,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       // `applyCredentialToRegistry` enforces the `secrets`-capability
       // pairing rule and strips `_password` before the result leaves this
       // module — so the response we serialise never contains cleartext.
-      const registry = caps.enabled.has("secrets") ? e.secrets : null;
+      const registry = capabilityMissing("secrets", caps) ? null : e.secrets;
       const result = applyCredentialToRegistry(raw, registry, account, origins);
       const body = {
         ...result,
