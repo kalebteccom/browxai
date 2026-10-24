@@ -39,7 +39,8 @@ import {
   type ElementProbe,
 } from "./actionresult.js";
 import { locatorFor, type ActionTarget } from "./locator.js";
-import { materialiseValue, maskProbe, preProbe, probe } from "./actions.js";
+import { fillChecked, materialiseValue, maskProbe, preProbe, probe } from "./actions.js";
+import type { BoundReceiver } from "./actions-secrets.js";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 
@@ -250,6 +251,19 @@ function fillFormFailure(
   };
 }
 
+/** A field's materialised value. `bound` is set for a scoped secret: the
+ *  element its scope was checked on, which the fill then goes through. */
+interface MaterialisedField {
+  value: string;
+  alias?: string;
+  descriptorValue: string;
+  bound?: BoundReceiver;
+}
+
+async function disposeBound(fields: readonly MaterialisedField[]): Promise<void> {
+  for (const f of fields) await f.bound?.dispose();
+}
+
 /** Materialise every field's value (resolving registered-secret aliases) before
  *  any write. Returns the materialised values or a pre-flight failure (a
  *  rejection on field 3 mustn't leave 0..2 filled). */
@@ -260,10 +274,9 @@ async function materialiseFields(
   fieldResolution: FieldResolution[],
   locators: readonly Locator[],
 ): Promise<
-  | { ok: true; materialised: Array<{ value: string; alias?: string; descriptorValue: string }> }
-  | { ok: false; failure: FillFormResult }
+  { ok: true; materialised: MaterialisedField[] } | { ok: false; failure: FillFormResult }
 > {
-  const materialised: Array<{ value: string; alias?: string; descriptorValue: string }> = [];
+  const materialised: MaterialisedField[] = [];
   for (let i = 0; i < args.fields.length; i++) {
     const f = args.fields[i]!;
     const loc = locators[i]!;
@@ -275,6 +288,7 @@ async function materialiseFields(
       args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
     );
     if (!mat.ok) {
+      await disposeBound(materialised);
       return {
         ok: false,
         failure: fillFormFailure(
@@ -289,6 +303,7 @@ async function materialiseFields(
       value: mat.value,
       alias: mat.alias,
       descriptorValue: mat.alias ? `<${mat.alias}>` : f.value,
+      bound: mat.bound,
     });
   }
   return { ok: true, materialised };
@@ -347,7 +362,7 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
       const target = args.fields[i]!.target;
       try {
         const pre = await preProbe(loc);
-        await loc.fill(m.value, { timeout: args.deadlineMs ?? DEFAULT_TIMEOUT_MS });
+        await fillChecked(loc, m, args.deadlineMs ?? DEFAULT_TIMEOUT_MS);
         const probed = await probe(loc, target, m.descriptorValue, pre);
         const masked = maskProbe(probed, ctx) as ElementProbe;
         perField.push(masked);
@@ -374,7 +389,7 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
     }
 
     return finalProbe;
-  });
+  }).finally(() => disposeBound(materialised));
 
   // Attach per-field probes + fillFailure to the result.
   const out: FillFormResult = result;

@@ -10,7 +10,6 @@ import {
   type ProviderCredentialInternal,
 } from "../util/credentials.js";
 import { capabilityMissing } from "../util/capabilities.js";
-import { originOf } from "../util/secret-scope.js";
 import { estimateTokens } from "../util/tokens.js";
 import type { ToolHost } from "./host.js";
 import { SESSION_ARG } from "./schemas.js";
@@ -56,20 +55,26 @@ function accountRefusal(
   return captchaJsonResult({ ok: false, provider, error });
 }
 
-/** The origins a `get_credential` password is bound to: the operator's list
- *  for the account when there is one, else the origin of the current page.
- *  Empty when neither exists (no page, or a page with no origin). */
-async function credentialOrigins(
-  configured: readonly string[] | undefined,
-  pageUrl: () => Promise<string>,
-): Promise<readonly string[]> {
-  if (configured) return configured;
-  try {
-    const origin = originOf(await pageUrl());
-    return origin ? [origin] : [];
-  } catch {
-    return [];
-  }
+/** The origins the operator listed for `account` in `BROWX_CREDENTIAL_ORIGINS`,
+ *  or undefined when the account is not listed. `Object.hasOwn` keeps names
+ *  such as `constructor` or `toString` from resolving through the prototype. */
+function listedOrigins(
+  configured: Readonly<Record<string, readonly string[]>> | undefined,
+  account: string,
+): readonly string[] | undefined {
+  if (!configured || !Object.hasOwn(configured, account)) return undefined;
+  const origins = configured[account];
+  return Array.isArray(origins) && origins.length > 0 ? origins : undefined;
+}
+
+/** The refusal for an account with no `BROWX_CREDENTIAL_ORIGINS` entry. */
+function unlistedAccountError(account: string): string {
+  return (
+    `get_credential: account "${account}" is not listed in BROWX_CREDENTIAL_ORIGINS, so there is ` +
+    "no origin to bind its password to. List the origins it may be typed into, for example " +
+    `BROWX_CREDENTIAL_ORIGINS="${account}=https://app.example.com|https://sso.example.com", ` +
+    "then restart browxai (the variable is read at start)."
+  );
 }
 
 /** Either the Playwright `Page` the selector-derived site-key read needs, or the
@@ -361,7 +366,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "credentials",
       description:
-        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would put it in the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`), bound to the origins in `BROWX_CREDENTIAL_ORIGINS` for that account or else to the origin of the page the session is on at call time; the agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch, only into a frame on one of those origins. Call it on the login page. The returned object carries `{ok, username, aliasName, origins, provider}` — **never the cleartext password**. `account` must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128). Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
+        'Look up a `{username, password}` pair from the deployment\'s configured credentials vault. **Gated behind the off-by-default `credentials` capability** AND additionally requires the `secrets` capability (without it the lookup refuses — returning a password in cleartext would put it in the transcript on first reference). On success, the password is AUTO-REGISTERED into the per-session secrets registry under `<PASSWORD_<account>>` (account name sanitised to `/^[A-Z][A-Z0-9_]*$/`), bound to the origins listed for that account in `BROWX_CREDENTIAL_ORIGINS` (`acct=https://a.example.com|https://b.example.com`, read at start). An account with no entry there is refused before the vault is asked. The agent then passes `fill({value: "<PASSWORD_acct>"})` and the runtime materialises the real value AT Playwright dispatch, only into a frame on one of those origins. The returned object carries `{ok, username, aliasName, origins, provider}` — **never the cleartext password**. `account` must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -` (max 128). Pair with `get_totp` for the 2FA half. `oathtool` provider does NOT support `get_credential` (TOTP-only) — pair with a credential-bearing provider. `account` semantics are provider-specific (1password: item name; bitwarden: item id; lastpass: item name).',
       inputSchema: {
         account: z
           .string()
@@ -377,20 +382,11 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const provider = credentialsResolved.config.provider;
       const bad = accountError(account);
       if (bad) return accountRefusal(provider, bad);
+      // The password is bound to the origins the operator listed for this
+      // account. An unlisted account is refused here, before the vault is asked.
+      const origins = listedOrigins(credentialsResolved.config.origins, account);
+      if (!origins) return accountRefusal(provider, unlistedAccountError(account));
       const e = await entryFor(session);
-      // Bind the password to where it may be typed: the operator's list for
-      // this account, else the origin of the page it is fetched on. Resolved
-      // before the vault is asked, so an unbound lookup never runs.
-      const origins = await credentialOrigins(credentialsResolved.config.origins?.[account], () =>
-        targetFor(e).url(),
-      );
-      if (origins.length === 0) {
-        return accountRefusal(
-          provider,
-          "get_credential needs an origin to bind the password to, and the current page has none. " +
-            "Navigate to the login page first, or list the account's origins in BROWX_CREDENTIAL_ORIGINS.",
-        );
-      }
       const raw = (await credentialsResolved.provider.getCredential(
         account,
       )) as ProviderCredentialInternal;

@@ -9,6 +9,7 @@ import { z } from "zod";
 import { warnNonFirstPartyPlugins, wirePluginRuntime } from "./plugin-runtime.js";
 import type { ToolHost } from "./host.js";
 import { log } from "../util/logging.js";
+import { SecretRegistry } from "../util/secrets.js";
 import type { PluginRecord } from "../plugin/types.js";
 import type { TrustTier } from "../plugin/manifest.js";
 
@@ -85,6 +86,9 @@ describe("wirePluginRuntime — declared parameters over MCP", () => {
         },
       }, echoArgs);
       api.registerTool("tst.bare", { description: "Declares nothing.", inputSchema: {} }, echoArgs);
+      api.registerTool("tst.boom", { description: "Throws.", inputSchema: {} }, async () => {
+        throw new Error("plugin saw hunter2");
+      });
       api.registerTool("tst.loose", {
         description: "Keeps undeclared keys.",
         inputSchema: {
@@ -183,5 +187,101 @@ describe("wirePluginRuntime — declared parameters over MCP", () => {
   it("keeps an undeclared tool argless", async () => {
     const res = await client.callTool({ name: "tst.bare", arguments: { msg: "hi" } });
     expect(JSON.parse(textOf(res))).toEqual({});
+  });
+});
+
+describe("wirePluginRuntime — plugin tool output masks registered secrets", () => {
+  let workspaceRoot: string;
+
+  afterEach(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+
+  async function wire(secretsOn: boolean): Promise<{
+    handlers: Record<string, (args: unknown) => Promise<{ content: Array<{ text?: string }> }>>;
+    seen: string[];
+  }> {
+    workspaceRoot = mkdtempSync(join(tmpdir(), "browxai-plugin-mask-"));
+    const pluginDir = join(workspaceRoot, "plugins", "node_modules", "msk-plugin");
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, "package.json"),
+      JSON.stringify({
+        name: "msk-plugin",
+        version: "1.0.0",
+        type: "module",
+        main: "index.js",
+        browxai: {
+          apiVersion: "1.0.0",
+          namespace: "msk",
+          register: "index.js",
+          capabilities: [],
+          dependsOn: [],
+        },
+      }),
+    );
+    writeFileSync(
+      join(pluginDir, "index.js"),
+      `export function register(api) {
+        api.registerTool("msk.echo", { description: "e", inputSchema: { type: "object", additionalProperties: true } },
+          async (args) => ({ content: [{ type: "text", text: JSON.stringify(args) }] }));
+        api.registerTool("msk.boom", { description: "b", inputSchema: {} }, async () => {
+          throw new Error("plugin saw hunter2");
+        });
+      }`,
+    );
+    writeFileSync(join(workspaceRoot, "plugins.json"), JSON.stringify({ plugins: ["msk-plugin"] }));
+    vi.spyOn(log, "warn").mockImplementation(() => undefined);
+    vi.spyOn(log, "info").mockImplementation(() => undefined);
+    const secrets = new SecretRegistry();
+    secrets.register({ name: "PASSWORD", value: "hunter2" });
+    const toolHandlers = {};
+    const seen: string[] = [];
+    const host = {
+      register: vi.fn(),
+      gateCheck: () => null,
+      caps: {
+        enabled: new Set([
+          "read",
+          "navigation",
+          "action",
+          "human",
+          ...(secretsOn ? ["secrets"] : []),
+        ]),
+      },
+      workspace: { root: workspaceRoot },
+      resolvedConfig: { plugins: [] },
+      registry: { list: () => [{ secrets }] },
+      toolHandlers,
+      z,
+    } as unknown as ToolHost;
+    await wirePluginRuntime(host, {
+      server: new McpServer({ name: "mask-test", version: "0.0.0" }),
+      noteMetrics: (_n, _a, res) => {
+        seen.push(JSON.stringify(res));
+      },
+      noteDiagnostics: () => undefined,
+    });
+    return { handlers: toolHandlers, seen };
+  }
+
+  it("masks a registered value in a plugin result before metrics see it", async () => {
+    const { handlers, seen } = await wire(true);
+    const res = await handlers["msk.echo"]!({ note: "hunter2" });
+    expect(JSON.parse(res.content[0]!.text!)).toEqual({ note: "<PASSWORD>" });
+    expect(seen.join("")).not.toContain("hunter2");
+  });
+
+  it("masks the message of a plugin tool that throws", async () => {
+    const { handlers, seen } = await wire(true);
+    const res = await handlers["msk.boom"]!({});
+    const text = res.content[0]!.text!;
+    expect(text).toContain("<PASSWORD>");
+    expect(text).not.toContain("hunter2");
+    expect(seen.join("")).not.toContain("hunter2");
+  });
+
+  it("leaves plugin results alone when the secrets capability is off", async () => {
+    const { handlers } = await wire(false);
+    const res = await handlers["msk.echo"]!({ note: "hunter2" });
+    expect(JSON.parse(res.content[0]!.text!)).toEqual({ note: "hunter2" });
   });
 });

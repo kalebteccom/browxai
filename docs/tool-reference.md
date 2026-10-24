@@ -2644,8 +2644,12 @@ capability**, the same posture class as `eval` / `network-body` /
   `login.app.example.com`. The receiving frame is the one that owns the
   `fill` / `press` target element (so a field inside an iframe is checked
   against the iframe's origin), or the focused frame for a targetless
-  `press`. Frames with no origin to name (`about:blank`, `about:srcdoc`,
-  `data:`) never match. Egress masking is global regardless of scope.
+  `press`. The value is then typed into that same element, and its frame's
+  URL is read again right before typing: if the frame moved to another
+  origin in between, the action returns `ok:false` and nothing is typed. A
+  targetless `press` re-checks the focused frame the same way. Frames with no
+  origin to name (`about:blank`, `about:srcdoc`, `data:`) never match. Egress
+  masking is global regardless of scope.
 
 **Returns:** `{ ok, registered, scope, origins, names, tokensEstimate }`.
 `origins` lists the normalised origins the scope matches (`null` when
@@ -2682,7 +2686,7 @@ scanned on the way out:
 | `ActionResult.network.mutations[].urlPattern` + `responseShape`               | masked                                                                                   |
 | `ActionResult.network.wsFrames[].payload` + `url`                             | masked                                                                                   |
 | `network_read.requests[].url` (session ring)                                  | masked                                                                                   |
-| `network_body.body` (response body)                                           | masked: JSON / text only; base64 bodies pass through unchanged (see below)               |
+| `network_body.body` (response body)                                           | masked: JSON / text; base64 bodies only where the value's own base64 appears (see below) |
 | `ws_read.frames[].payload` + `.url`                                           | masked                                                                                   |
 | `console_read.recent[].text` + `errors` + `pageErrors`                        | masked                                                                                   |
 | `snapshot()` tree (a11y node names)                                           | masked                                                                                   |
@@ -2704,7 +2708,9 @@ registered tool's result goes through one more pass on the way out: each
 text item has registered values replaced with `<NAME>`. A JSON result is
 parsed and its string values, object keys and any number whose digits hold
 a value are masked, then it is written back in the same layout, so a value
-that JSON encoding changed is caught and the document stays valid. A result with no
+that JSON encoding changed is caught and the document stays valid. Such a
+number is replaced as a whole by the string `"<NAME>"`, so its type changes
+from number to string; other numbers stay numbers. A result with no
 registered value in it is returned untouched without being parsed, so
 already-masked sinks cost one substring scan. Image items are not touched.
 This pass covers every session's registered values, and it runs only when
@@ -2724,6 +2730,12 @@ Longest-value-first: when two registered values overlap (one is a
 substring of another), the longer one is masked first, so a partial leak
 of the shorter alias is impossible.
 
+Encoded forms: a value of 6 characters or more is also masked where it
+appears percent-encoded (`encodeURIComponent`, and the form-body encoding
+that writes a space as `+`) or as its own base64 or base64url encoding,
+padded or not. A shorter value is masked only as typed, since its encodings
+are short enough to turn up by chance.
+
 **Limitations** (enumerated for the threat model):
 
 1. **`screenshot()` is a partial sink.** PNG/JPEG bytes are not OCR'd
@@ -2733,10 +2745,13 @@ of the shorter alias is impossible.
    of the bounding boxes that contain a matched value) is a typed seam for
    v0.2.x. For verified-clean evidence, prefer `snapshot()` / `find()` /
    `text_search()` (all fully masked) over a screenshot.
-2. **Base64 response bodies pass through unchanged in `network_body`.** A
-   literal-substring scan can't match an encoded form. Decode + re-mask on
-   the agent side if you fetch base64 bodies that may carry a secret. The
-   common case (JSON / text) is fully masked.
+2. **Base64 response bodies pass through `network_body` mostly unchanged.**
+   The body is masked only where the value's own base64 appears at an
+   encoding boundary. A value inside a larger encoded string is not found:
+   base64 of `user:password` (`Authorization: Basic …`), a binary body, or a
+   value at an offset that shifts its encoding. Decode + re-mask on the agent
+   side if you fetch base64 bodies that may carry a secret. The common case
+   (JSON / text) is fully masked.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
 4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
@@ -2791,15 +2806,19 @@ Optional CLI-path overrides (when the binary lives outside PATH):
 `BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
 `BROWX_LASTPASS_BIN`.
 
-Optional per-account origins for `get_credential`, in the same
-`account=value,…` form as the seeds, with `|` between origins:
+Per-account origins for `get_credential`, in the same `account=value,…`
+form as the seeds, with `|` between origins. `get_credential` needs the
+account listed here; an unlisted account is refused before the vault is
+asked:
 
 ```
 BROWX_CREDENTIAL_ORIGINS="acme=https://app.acme.com|https://sso.acme.com,other=other.example"
 ```
 
 Each origin takes the `register_secret` scope forms. An account whose list
-has an entry that does not parse is ignored with a startup warning.
+has an entry that does not parse is ignored with a startup warning, so it is
+refused like an unlisted one. The variable is read at start: restart browxai
+after changing it.
 
 **Account names.** `account` must start with a letter or digit and use only
 letters, digits, space and `. _ @ + : / -`, at most 128 characters. Anything
@@ -2827,12 +2846,11 @@ Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
 origins, provider}` on success, **never the cleartext password**. The password is
 auto-registered into the per-session secrets registry under
 `<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`), scoped
-to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list when the operator
-set one, else the origin of the page the session is on when the call is
-made. `fill` then materialises the password only into a frame on one of
-those origins, so call `get_credential` on the login page. On a page with no
-origin (`about:blank`) and no configured list, the call refuses before the
-vault is asked. The agent then drives:
+to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list. `fill` then
+materialises the password only into a frame on one of those origins. An
+account with no `BROWX_CREDENTIAL_ORIGINS` entry is refused before the vault
+is asked; the error names the variable and the account and gives an example
+value. With `acme-corp=https://app.acme.com` set, the agent drives:
 
 ```
 navigate({url:"https://app.acme.com/login"})

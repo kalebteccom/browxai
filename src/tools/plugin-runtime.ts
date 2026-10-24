@@ -13,6 +13,7 @@ import { RUNTIME_API_VERSION } from "../plugin/manifest.js";
 import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
+import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
 
 /** The createServer-owned pieces the plugin runtime needs that the shared
  *  `ToolHost` doesn't surface: the raw MCP server (for plugin-tool
@@ -77,6 +78,10 @@ export async function wirePluginRuntime(
   deps: PluginRuntimeDeps,
 ): Promise<ReadonlyArray<PluginRecord>> {
   const { register, gateCheck, caps, workspace, resolvedConfig, toolHandlers, z } = host;
+  // The registries a plugin tool result is masked with, read per call. The
+  // registry is only read when `secrets` is on.
+  const liveRegistries = () =>
+    caps.enabled.has("secrets") ? activeSecretRegistries(true, host.registry.list()) : [];
   const { server, noteMetrics, noteDiagnostics } = deps;
 
   let pluginRecords: ReadonlyArray<PluginRecord> = [];
@@ -152,8 +157,8 @@ export async function wirePluginRuntime(
       description: def.description,
       ...(input !== undefined ? { inputSchema: input.shape } : {}),
     });
-    // Plugin tool handler envelope: capability gate → handler → standard
-    // metrics + diagnostics wrap. We don't apply the wedge tracker —
+    // Plugin tool handler envelope: capability gate → handler → secret mask →
+    // standard metrics + diagnostics wrap. We don't apply the wedge tracker —
     // plugin tools aren't core page-exercising primitives, so the
     // session-wedged stamping path is reserved for browser-touching
     // tools the host owns.
@@ -182,8 +187,10 @@ export async function wirePluginRuntime(
         };
       }
       // PluginToolResponse content items match ToolResponse exactly — same
-      // shape, kept as parallel types only to draw the API boundary.
-      const out: ToolResponse = { content: [...inner.content] };
+      // shape, kept as parallel types only to draw the API boundary. The text,
+      // a thrown error's message included, is masked for registered secrets
+      // before metrics and diagnostics see it, as core tool results are.
+      const out = maskToolResponse({ content: [...inner.content] }, liveRegistries());
       noteMetrics(name, args, out, startedAt);
       noteDiagnostics(name, args, out, startedAt);
       return out;

@@ -17,11 +17,19 @@ surface" covers.
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
   registration. The result carries the normalised `origins`.
-- **`get_credential` values are bound to the page they were fetched for.** The
-  registered password is scoped to the origin of the page the session is on at
-  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
-  setting. With neither (for example on `about:blank`) the call refuses before
-  the vault is asked. The result carries `origins`.
+- **Scoped secrets fill through the checked element.** `fill`, `fill_form` and
+  `press` type a scoped value into the same element whose frame passed the
+  scope check, and read that frame's URL again right before typing. If the
+  frame moved to another origin in between, the action returns `ok:false` and
+  nothing is typed. A targetless `press` re-checks the focused frame the same
+  way. Unscoped values are unchanged.
+- **`get_credential` now requires the account to be listed in
+  `BROWX_CREDENTIAL_ORIGINS`.** The new setting binds credentials to configured
+  origins: `acme=https://app.acme.com|https://sso.acme.com`. The registered
+  password is scoped to that list and typed only into a frame on one of those
+  origins. An account with no entry is refused before the vault is asked, with
+  a message naming the setting. The setting is read at start, so restart after
+  changing it. The result carries `origins`.
 - **`get_totp` and `get_credential` check the account name.** It must start
   with a letter or digit and use only letters, digits, space and
   `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
@@ -29,7 +37,12 @@ surface" covers.
 - **Tool output masks registered secrets.** With `secrets` on, every tool
   result's text is masked for registered values on the way out, including
   `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
-  results keep their layout and stay valid.
+  results keep their layout and stay valid. The error text of a tool that
+  fails is masked the same way, and so are plugin tool results and errors.
+  A value of 6 characters or more is also masked percent-encoded (in a URL
+  query or form body) and as its own base64 or base64url encoding. A JSON
+  number whose digits contain a value is replaced as a whole by the string
+  `"<NAME>"`.
 - **`caches_get` returns the body only with `network-body`.** Without it the
   result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
   and `requiredCapability: "network-body"`.

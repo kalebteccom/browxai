@@ -52,7 +52,7 @@ import type { CredentialProvider, CredentialsConfig } from "../util/credentials.
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
-import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
+import { activeSecretRegistries, maskedToolError, maskToolResponse } from "./host-egress-mask.js";
 import { byobAttachRefusal } from "./byob-attach-gate.js";
 
 /** The createServer locals the host's closures close over. Each field is the
@@ -434,6 +434,8 @@ export function buildHost(deps: HostDeps): ToolHost {
   // codegen, D7).
   const BATCH_ALLOWED_TOOLS = new Set<string>();
   const registrations = new Map<string, ToolRegistration>();
+  // The registries a tool result is masked with, read per call.
+  const liveRegistries = () => activeSecretRegistries(caps.enabled.has("secrets"), registry.list());
 
   const register = <S extends z.ZodRawShape = Record<string, never>>(
     name: string,
@@ -496,23 +498,31 @@ export function buildHost(deps: HostDeps): ToolHost {
       const raw = tracked ? await noteWedgeOutcome(args, await run()) : await run();
       // Tool output masks registered secrets: one pass over every text item,
       // before metrics, diagnostics and replay see the result.
-      const inner = maskToolResponse(
-        raw,
-        activeSecretRegistries(caps.enabled.has("secrets"), registry.list()),
-      );
+      const inner = maskToolResponse(raw, liveRegistries());
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       noteReplayResult(name, args, inner);
       return inner;
     };
     toolHandlers[name] = wrapped;
+    // `toolHandlers` keeps the throwing form: composing tools (`batch`,
+    // `act_and_*`) catch an inner tool's error themselves. Over MCP, a throw
+    // would become SDK-built error text with no masking, so the callback the
+    // server holds builds that same error result here and masks it.
+    const onWire = async (rawArgs: unknown): Promise<ToolResponse> => {
+      try {
+        return await wrapped(rawArgs);
+      } catch (err) {
+        return maskedToolError(err, liveRegistries());
+      }
+    };
     // The SDK's `registerTool` generic cannot relate its conditional-typed
     // callback to a still-generic `S`; widening the config's schema to a concrete
     // `ZodRawShape` lets that conditional resolve, so `wrapped` (whose args are
     // narrowed at the wire boundary above and whose result is a CallToolResult)
     // matches with no assertion.
     const sdkConfig: { description: string; inputSchema?: z.ZodRawShape } = def;
-    server.registerTool(name, sdkConfig, wrapped);
+    server.registerTool(name, sdkConfig, onWire);
   };
 
   // ---------- action tools ----------
