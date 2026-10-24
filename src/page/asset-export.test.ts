@@ -349,6 +349,41 @@ describe("assetExport integration", () => {
     }
   });
 
+  it("gives up on a file name after 1000 taken names and drops the asset", async () => {
+    const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
+    try {
+      mkdirSync(join(root, "out"));
+      writeFileSync(join(root, "out", "logo.png"), "taken");
+      for (let i = 1; i < 1000; i++) writeFileSync(join(root, "out", `logo-${i}.png`), "taken");
+      const buf = bufferWith([
+        {
+          method: "GET",
+          url: "https://x.com/a/logo.png",
+          type: "Image",
+          status: 200,
+          mimeType: "image/png",
+          bytes: 3,
+          requestId: "r1",
+        },
+      ]);
+      const page = stubPageWith(() => ({
+        ok: true,
+        base64: Buffer.from("new").toString("base64"),
+      }));
+      const r = await assetExport(
+        { cdp: stubCdpNoBody(), page, buffer: buf, workspaceRoot: root, sessionId: "sess" },
+        { filter: {}, intoDir: "out" },
+      );
+      expect(r.persistedCount).toBe(0);
+      expect(r.droppedCount).toBe(1);
+      expect(r.warnings.join("\n")).toMatch(/no free file name.*after 1000 tries/);
+      // The 1001st name was never tried.
+      expect(existsSync(join(root, "out", "logo-1000.png"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("refuses to write chrome.pid at the workspace root", async () => {
     const root = mkdtempSync(join(tmpdir(), "browx-asset-"));
     try {

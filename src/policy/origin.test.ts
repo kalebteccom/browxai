@@ -113,6 +113,18 @@ describe("resolveOriginPolicy + isOriginAllowed", () => {
     expect(isOriginAllowed("blob:null/6f1c", p)).toBe(false);
   });
 
+  it("unwraps a wrapper inside a wrapper, and refuses a third level", () => {
+    const p = resolveOriginPolicy({ BROWX_BLOCKED_ORIGINS: "https://blocked.example" });
+    // Two wrapper schemes reach the origin underneath.
+    expect(isOriginAllowed("blob:blob:https://blocked.example/a/b", p)).toBe(false);
+    expect(isOriginAllowed("filesystem:blob:https://blocked.example/a/b", p)).toBe(false);
+    // Three do not: the URL has no origin the policy trusts, whatever it wraps.
+    expect(isOriginAllowed("blob:blob:blob:https://blocked.example/a/b", p)).toBe(false);
+    const open = resolveOriginPolicy({});
+    expect(isOriginAllowed("blob:blob:https://fine.example/a/b", open)).toBe(true);
+    expect(isOriginAllowed("blob:blob:blob:https://fine.example/a/b", open)).toBe(false);
+  });
+
   it("blockedByPattern names the matching entry", () => {
     const p = resolveOriginPolicy({
       BROWX_BLOCKED_ORIGINS: "https://a.example,https://*.b.example",

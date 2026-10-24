@@ -12,6 +12,8 @@
 // only. Hosts compare case-insensitively (the URL parser already lowercases
 // special-scheme hosts; non-special ones like `app://` are lowercased here).
 
+import { safeUrl, unwrapOrigin } from "./origin-unwrap.js";
+
 /** One parsed scope entry. `port` is the URL parser's form: empty for the
  *  scheme's default port. */
 export interface ScopeOrigin {
@@ -59,16 +61,12 @@ export function parseScope(scope: string | readonly string[]): ScopeOrigin[] {
 
 /** The origin a frame URL belongs to, or null when it has none a scope can
  *  name (`about:blank`, `about:srcdoc`, `data:`, `file:`, unparseable). A
- *  `blob:` URL belongs to its inner URL's origin. */
+ *  `blob:` or `filesystem:` URL belongs to its inner URL's origin, decided by
+ *  the same `unwrapOrigin` the origin allowlist uses. */
 export function targetOrigin(url: string): ScopeOrigin | null {
-  let u: URL;
-  try {
-    u = new URL(url);
-    if (u.protocol === "blob:") u = new URL(u.pathname);
-  } catch {
-    return null;
-  }
-  if (!u.hostname) return null;
+  const parsed = safeUrl(url);
+  const u = parsed && unwrapOrigin(parsed);
+  if (!u || !u.hostname) return null;
   return { protocol: u.protocol, hostname: u.hostname.toLowerCase(), port: u.port };
 }
 

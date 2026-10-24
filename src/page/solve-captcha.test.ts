@@ -299,6 +299,46 @@ describe("submitToProvider", () => {
     expect(JSON.stringify(r)).not.toContain("secret-key");
   });
 
+  /** An error chain `levels` deep: the outermost is level 0, and the last
+   *  one carries `message`. */
+  const causeChain = (levels: number, message: string): Error => {
+    let err = new Error(message);
+    for (let i = 1; i < levels; i++) err = new Error("wrapper", { cause: err });
+    return err;
+  };
+  const submitRejecting = async (err: unknown) =>
+    submitToProvider(
+      { type: "recaptcha2", pageUrl: "https://app.example", siteKey: "sk" },
+      config,
+      vi.fn(async () => {
+        throw err;
+      }),
+      () => 0,
+    );
+
+  it("finds a redirect as deep as the fourth error in the cause chain", async () => {
+    const r = await submitRejecting(causeChain(4, "unexpected redirect"));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("not followed");
+  });
+
+  it("stops looking after four errors in the cause chain", async () => {
+    const r = await submitRejecting(causeChain(5, "unexpected redirect"));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("network error submitting");
+      expect(r.error).not.toContain("not followed");
+    }
+  });
+
+  it("ends on an error whose cause is itself", async () => {
+    const loop = new Error("loop");
+    loop.cause = loop;
+    const r = await submitRejecting(loop);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("network error submitting");
+  });
+
   it("ends the wait on a redirect during the poll instead of retrying until the deadline", async () => {
     const fakeFetch = vi.fn(async (url: string) => {
       if (url.endsWith("/in.php")) {

@@ -7,6 +7,8 @@
 //   BROWX_ALLOWED_ORIGINS=https://app.example.com,https://api.example.com,https://*.cdn.example.com
 //   BROWX_BLOCKED_ORIGINS=https://*.tracking.example.com,https://ads.example.com
 
+import { safeUrl, unwrapOrigin } from "../util/origin-unwrap.js";
+
 export interface OriginPolicy {
   /** Empty allowlist = no restriction ( default). */
   readonly allowed: ReadonlyArray<OriginPattern>;
@@ -56,22 +58,6 @@ function effectivePort(u: URL): string {
   return u.port || DEFAULT_PORTS[u.protocol] || "";
 }
 
-const WRAPPED_SCHEMES = new Set(["blob:", "filesystem:"]);
-
-/** `blob:https://a.example/uuid` and `filesystem:https://a.example/temporary/x`
- *  belong to the origin that follows the scheme. Returns that inner URL, or null
- *  when it does not parse (or wraps another wrapper past a small depth). */
-function unwrapOrigin(candidate: URL): URL | null {
-  let current = candidate;
-  for (let depth = 0; WRAPPED_SCHEMES.has(current.protocol); depth++) {
-    if (depth >= 2) return null;
-    const inner = safeUrl(current.href.slice(current.protocol.length));
-    if (!inner) return null;
-    current = inner;
-  }
-  return current;
-}
-
 function parsePattern(raw: string): OriginPattern {
   // Accept `https://app.example.com`, `https://*.example.com`, `http://localhost:3000`.
   let url: URL;
@@ -118,14 +104,6 @@ export function blockedByPattern(url: string | URL, policy: OriginPolicy): strin
   const target = parsed && unwrapOrigin(parsed);
   if (!target) return null;
   return policy.blocked.find((p) => p.test(target))?.raw ?? null;
-}
-
-function safeUrl(s: string): URL | null {
-  try {
-    return new URL(s);
-  } catch {
-    return null;
-  }
 }
 
 /** Pretty-print for startup log. */

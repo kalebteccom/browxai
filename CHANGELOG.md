@@ -16,7 +16,9 @@ surface" covers.
   materialise a scoped value only when the origin of the frame that receives it
   (the target's frame, or the focused frame for a targetless `press`) has the
   same scheme, host and port. A scope with a path, query or `*` is refused at
-  registration. The result carries the normalised `origins`.
+  registration. The result carries the normalised `origins`. A `blob:` or
+  `filesystem:` frame URL counts as the origin it wraps, the same rule
+  `BROWX_ALLOWED_ORIGINS` uses.
 - **`get_credential` values are bound to the page they were fetched for.** The
   registered password is scoped to the origin of the page the session is on at
   call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
