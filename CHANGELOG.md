@@ -14,6 +14,7 @@ surface" covers.
 - **A mistyped capability name no longer prints a stack trace.** `browxai doctor` (and every other subcommand) used to crash on a name such as `evall` in `BROWX_CAPABILITIES`. `doctor` now shows a failing `capabilities` row that names the bad value and lists the valid names, and exits 1.
 - **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
 - **`browxai init` next steps keep the workspace on `chrome login` and `chrome start`.** The generated `.mcp.json` sets `BROWX_WORKSPACE` to `<dir>/.browxai`, so a login made in a shell without it went to `~/.browxai/profile` and the `browxai` entry never saw it. The next steps now print both commands with `BROWX_WORKSPACE` set, and say why.
+- **A missing Firefox or WebKit download now says which command to run.** Playwright's own message tells you to run `npx playwright install`, which can fetch a different build from the one browxai uses. The error now ends with the matching `npx playwright-core@<version> install firefox` or `... webkit` line, as the Chromium error already did.
 
 ## [0.14.0] - 2026-10-24
 
