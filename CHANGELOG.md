@@ -8,21 +8,17 @@ surface" covers.
 
 ## Unreleased
 
-### Fixed
-
-- A session that a tool creates on first use, or that `batch` creates, on a
-  profile a closed `ask-human` session held now returns the same
-  `human-gate-override` refusal as `open_session`. It used to return plain text.
-
 ## [0.14.0] - 2026-10-24
 
-Tighter handling of secrets, plugins, workspace paths and origin rules, plain
-names for profiles and sessions, and clearer error messages. Attaching to an
-existing Chrome now needs the `byob-attach` capability, secret scopes and
-origin entries match exact origins, file reads follow symlinks before the
-workspace check, HAR recordings leave out bodies and credential headers by
-default, and page-sized data has limits. The four first-party plugins move to
-0.1.2, and zod moves to 4.x.
+This release tightens how browxai handles secrets, plugins, workspace paths and
+origin rules, makes profile and session names plain names, and rewrites error
+messages to say what to do next. Attaching to an existing Chrome needs the
+`byob-attach` capability, `get_credential` needs the account listed in
+`BROWX_CREDENTIAL_ORIGINS`, secret scopes and origin entries match exact
+origins, file reads and writes follow symlinks before the workspace check, HAR
+recordings leave out bodies and credential headers by default, and page-sized
+data has limits. The four first-party plugins move to 0.1.2, and zod moves to
+4.x.
 
 **Upgrade notes.** Each item below can need a change on your side.
 
@@ -31,17 +27,21 @@ default, and page-sized data has limits. The four first-party plugins move to
 - **Origin entries without a port match only the default port.** List every port you use in `BROWX_ALLOWED_ORIGINS` and `BROWX_BLOCKED_ORIGINS` (for example `http://localhost:3000`), because `https://app.example.com` no longer matches `https://app.example.com:8443` and an entry with a port matches that port only.
 - **`navigate` applies the origin rules to the page it lands on.** List the origins your pages redirect to in `BROWX_ALLOWED_ORIGINS`, because a redirect to a blocked or unlisted origin now asks for confirmation, or returns a deny with the page left on the landed URL.
 - **Secret scopes are exact origins.** Write each `register_secret` scope as a full origin such as `http://localhost:3000` (`app.example.com` means `https://app.example.com` only), because a scope with a path, query or `*` is refused and a value typed into an iframe is checked against the iframe's origin.
-- **Call `get_credential` on the login page.** Call it while the session is on the login page, because the password is tied to that page's origin; for `about:blank`, or a flow that fetches on one origin and fills on another, list the origins in `BROWX_CREDENTIAL_ORIGINS`, and pass the item id for an account name with a character such as `'`, `(`, `&`, `,` or `#`, which is refused.
+- **`get_credential` needs the account in `BROWX_CREDENTIAL_ORIGINS`.** Add an entry such as `BROWX_CREDENTIAL_ORIGINS=acme=https://app.acme.com|https://sso.acme.com` for each account you fetch and restart the server, because an account with no entry is refused before the vault is asked and the password is typed only into a frame on a listed origin.
+- **`get_credential` and `get_totp` refuse some account names.** Pass the item id for an account name with a character such as `'`, `(`, `&`, `,` or `#`, because a name must start with a letter or digit and use only letters, digits, space and `. _ @ + : / -`.
 - **Tool results are masked when `secrets` is on.** With `secrets` in `BROWX_CAPABILITIES`, a JSON result that held a registered value is written out again and a number that contained one becomes a string.
 - **Response bodies need `network-body`.** Add `network-body` to `BROWX_CAPABILITIES` if you need bodies, because `caches_get` returns headers and metadata only without it, `start_har` and `open_session({har})` now record no bodies by default, `embed` and `attach` need it, and a replay from a body-less HAR serves empty bodies.
-- **Saved `.har` files have empty cookie and authorization values.** A replay that relied on the `Cookie`, `Set-Cookie` or `Authorization` values behaves differently, and `.zip` HARs are unchanged.
+- **Saved `.har` files have empty cookie and authorization values.** A replay that relied on the `Cookie`, `Set-Cookie` or `Authorization` values behaves differently.
+- **HAR request bodies are emptied without `network-body`.** Add `network-body` to `BROWX_CAPABILITIES` if you need request bodies and form parameters in saved HARs, because the file is rewritten on close without them otherwise.
+- **`.zip` HAR paths are refused.** Pass a `.har` path to `start_har` and `open_session({har})`, because a `.zip` archive cannot be rewritten on close.
 - **Reads through a symlink that leads out of the workspace are refused.** Copy the files that `upload_file`, `drop_files`, storage-state files, HAR replay and `extensions_install` read into `$BROWX_WORKSPACE`.
+- **Writes through a symlink that leads out of the workspace are refused.** Point `pdf_save`, `screenshot({path})`, `asset_export`, `dump_storage_state`, HAR and video paths and similar tools at a real directory inside `$BROWX_WORKSPACE`, or remove the link.
 - **`app_install` takes a path inside the workspace.** Copy the `.apk` or `.app` into `$BROWX_WORKSPACE` and pass its relative path as `apkPath`.
 - **First-party plugins 0.1.2 need browxai 0.14.0 or later.** Upgrade browxai to 0.14.0 before you upgrade the first-party plugins, because their tool parameter declarations do not load on an older host.
 - **Existing plugin installs show as `community` until re-pinned.** Run `browxai plugin sync` (or `browxai plugin upgrade`) once after upgrading, because until then the first-party plugins log the non-first-party warning at start.
 - **Plugin installs run no lifecycle scripts.** Build a `file:` plugin before you install it, because installs run with `--ignore-scripts`, a `browxai.register` path outside the package stops the plugin loading, and a spec starting with `-` exits 2.
 - **zod 4 for plugin authors.** Upgrade `zod` to 4 in any plugin that imports it, because a plugin's `inputSchema` values are zod 4 schemas.
-- **`browxai chrome stop` stops only a Chrome.** When it exits 1 and sends no signal because the PID in `chrome.pid` is not a Chrome or its command line cannot be read (a container without `ps`), quit Chrome by hand and delete `chrome.pid`.
+- **`browxai chrome stop` stops only the Chrome started for this workspace.** When it exits 1 and sends no signal because the PID in `chrome.pid` is not a Chrome with the profile directory recorded in `chrome.profile` (or the default profile for a `chrome.pid` from an older release), or its command line cannot be read (a container without `ps`), quit that Chrome by hand and delete `chrome.pid`.
 - **`asset_export` keeps existing files.** A name already on disk gets the next `-N` suffix, so a re-run writes `logo-1.png` next to `logo.png`.
 - **Size limits.** Console messages are cut at 8,192 characters, `download_get` refuses files over 16 MiB inline (pass `pathOnly: true`), `network_body` on Firefox and WebKit returns `ok: false` for a body over 256 KB where it used to return the first 256 KB, and the socket transport closes a connection whose message line passes 32 MiB.
 - **`browxai serve` keeps a non-socket file at the socket path.** When `browxai serve` stops with exit code 2 and names that path, remove the file yourself.
@@ -107,7 +107,12 @@ default, and page-sized data has limits. The four first-party plugins move to
 - **HAR files drop credential headers on close.** When a recording session
   closes, the HAR is rewritten with `Cookie`, `Set-Cookie` and `Authorization`
   values emptied (names kept) and registered secrets masked in headers, URLs and
-  text bodies.
+  text bodies. Without `network-body`, request bodies are emptied too, including
+  form parameters. A second `start_har` in one session adds a path, and every
+  file the session recorded to is rewritten on close.
+- **`start_har` and `open_session({har})` refuse a `.zip` path.** The archive
+  cannot be rewritten on close, so the call returns an error asking for a `.har`
+  path. `content: "attach"` writes sidecar files next to the `.har`.
 - **`browxai plugin` passes the spec to the package manager as a spec.** The
   spec follows `--`, a spec or name that starts with `-` exits 2 before the
   package manager runs, and `install`, `upgrade` and `sync` run with lifecycle
@@ -163,7 +168,10 @@ default, and page-sized data has limits. The four first-party plugins move to
   directory now adds `logo-1.png` next to the earlier `logo.png`.
   `chrome.pid` joins the workspace files that path-taking tools neither write
   nor read.
-- Clearer error messages for refused and failed tool calls
+- **Clearer error messages for refused and failed tool calls.** Disabled-tool,
+  origin-policy, workspace-path, session, storage, video, SDK, `ref` and `chrome`
+  errors now say what to set or check next. Error codes and `requiredCapability`
+  are unchanged.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.
@@ -262,6 +270,10 @@ default, and page-sized data has limits. The four first-party plugins move to
 
 ### Fixed
 
+- **A lazily created session refuses a held `ask-human` profile like
+  `open_session`.** A session that a tool creates on first use, or that `batch`
+  creates, on a profile a closed `ask-human` session held now returns the same
+  `human-gate-override` refusal as `open_session`. It used to return plain text.
 - **`BROWX_HEADLESS=true` now launches headless from the CLI.** `browxai` and
   `browxai serve` only honoured `1`, while the config layer accepted `1` and
   `true`. Both now accept `1` and `true`, in any case.
