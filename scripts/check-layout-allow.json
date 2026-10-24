@@ -3,5 +3,20 @@
     "check": "offscreen",
     "selector": "aside.right-sidebar-container.print:hidden > div.right-sidebar",
     "why": "Starlight sizes this fixed column from the viewport, it never scrolls the page"
+  },
+  {
+    "check": "tap-target",
+    "selector": "li.task-list-item > input",
+    "why": "Disabled checkbox rendered from a Markdown task list, not interactive"
+  },
+  {
+    "check": "inset-pad",
+    "selector": "header.header",
+    "why": "The 76px right gutter reserves the slot of the fixed menu button"
+  },
+  {
+    "check": "inset-gap",
+    "selector": "header.header",
+    "why": "The 76px right gutter reserves the slot of the fixed menu button"
   }
 ]

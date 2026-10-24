@@ -16,6 +16,55 @@ nav.sidebar > button {
   padding: 0;
 }
 
+/* Tap targets reach 44px on touch. */
+@media (pointer: coarse) {
+  .expressive-code .copy button {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  #starlight__sidebar summary {
+    padding-block: 0.7rem;
+  }
+  .pagefind-ui__result-link {
+    display: inline-block;
+    padding-block: 0.7rem;
+  }
+  .site-title {
+    min-height: 2.75rem;
+  }
+  footer .meta a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+  :root {
+    --sl-menu-button-size: 2.75rem;
+  }
+  site-search button[data-open-modal] {
+    min-width: 2.75rem;
+    height: 2.75rem;
+  }
+  .pagefind-ui__button {
+    min-height: 2.75rem;
+  }
+  .social-icons a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+  }
+  .sl-markdown-content :is(td > a, li > strong > a) {
+    display: inline-block;
+    padding-block: 0.7rem;
+    margin-block: -0.7rem;
+  }
+  .browx-facts a {
+    padding-block: 0.75rem;
+    margin-block: -0.75rem;
+  }
+}
+
 /* At large text a card column or capability chip keeps to the viewport. */
 .browx-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
