@@ -10,9 +10,9 @@ surface" covers.
 
 ### Fixed
 
-- A session created lazily by any tool, or inside `batch`, on a profile that a closed
-  `ask-human` session held now returns the same `human-gate-override` refusal as
-  `open_session`, instead of a plain-text error.
+- A session that a tool creates on first use, or that `batch` creates, on a
+  profile a closed `ask-human` session held now returns the same
+  `human-gate-override` refusal as `open_session`. It used to return plain text.
 
 ## [0.14.0] - 2026-10-24
 
@@ -26,80 +26,30 @@ default, and page-sized data has limits. The four first-party plugins move to
 
 **Upgrade notes.** Each item below can need a change on your side.
 
-- **Attaching needs `byob-attach`.** `BROWX_ATTACH_CDP`, `open_session` with
-  mode `attached`, and the `android` and `electron` engines are refused without
-  `byob-attach` in `BROWX_CAPABILITIES`. The variable replaces the default set,
-  so keep the defaults: `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`.
-  Add it to your `browxai-attached` client entry and restart the server.
-- **Profile names and session ids are plain names.** Letters, digits, `.`, `_`
-  and `-`, starting with a letter or digit, at most 128 characters. Anything
-  else, such as `user@x` or `../x`, is refused with `invalid-name`.
-- **Origin entries without a port match only the default port.** In
-  `BROWX_ALLOWED_ORIGINS` and `BROWX_BLOCKED_ORIGINS`, `https://app.example.com`
-  no longer matches `https://app.example.com:8443`, and `http://localhost` no
-  longer matches `http://localhost:3000`. An entry with a port matches that port
-  only. List each port you use.
-- **`navigate` applies the origin rules to the page it lands on.** A redirect to
-  a blocked or unlisted origin asks for confirmation, or returns a deny with the
-  page left on the landed URL.
-- **Secret scopes are exact origins.** `app.example.com` means
-  `https://app.example.com` only, so `localhost:3000` must be written
-  `http://localhost:3000`. A scope with a path, query or `*` is refused. A value
-  typed into an iframe is checked against the iframe's origin.
-- **Call `get_credential` on the login page.** The password is tied to the
-  origin of the current page. On `about:blank`, or for a flow that fetches on one
-  origin and fills on another, list the origins in `BROWX_CREDENTIAL_ORIGINS`.
-  Account names with characters such as `'`, `(`, `&`, `,` or `#` are refused;
-  use the item id.
-- **With `secrets` on, every tool result is masked.** A JSON result that held a
-  registered value is written out again, and a number that contained one becomes
-  a string.
-- **Response bodies need `network-body`.** `caches_get` returns headers and
-  metadata only without it. `start_har` and `open_session({har})` now record no
-  bodies by default, and `embed` or `attach` needs `network-body`; a replay from
-  a body-less HAR serves empty bodies.
-- **Saved `.har` files have empty `Cookie`, `Set-Cookie` and `Authorization`
-  values.** A replay that relied on them behaves differently. `.zip` HARs are
-  unchanged.
-- **Reads through a symlink that leads out of the workspace are refused.** This
-  covers `upload_file`, `drop_files`, storage-state files, HAR replay and
-  `extensions_install`. Copy the files into `$BROWX_WORKSPACE`.
-- **`app_install` takes a path inside the workspace.** Copy the `.apk` or `.app`
-  into `$BROWX_WORKSPACE` and pass the relative path.
-- **First-party plugins 0.1.2 need browxai 0.14.0 or later.** Their tool
-  parameter declarations do not load on an older host. Upgrade browxai first.
-- **Existing plugin installs show as `community` until re-pinned.** Run
-  `browxai plugin sync` (or `upgrade`) once after upgrading. Until then the
-  first-party plugins log the non-first-party warning at start.
-- **Plugin installs run no lifecycle scripts.** Build a `file:` plugin before
-  installing it. A `browxai.register` path outside the package stops the plugin
-  loading, and a spec starting with `-` exits 2.
-- **zod 4 for plugin authors.** A plugin's `inputSchema` values are zod 4
-  schemas, and a plugin that imports zod needs zod 4.
-- **`browxai chrome stop` stops only a Chrome.** When the PID in `chrome.pid`
-  is not a Chrome, or its command line cannot be read (a container without
-  `ps`), it exits 1 and sends no signal. Quit Chrome by hand and delete
-  `chrome.pid`.
-- **`asset_export` keeps existing files.** A name already on disk gets the next
-  `-N` suffix, so a re-run writes `logo-1.png` next to `logo.png`.
-- **Size limits.** Console messages are cut at 8,192 characters. `download_get`
-  refuses files over 16 MiB inline; use `pathOnly: true`. `network_body` on
-  Firefox and WebKit returns `ok: false` for a body over 256 KB (it used to
-  return the first 256 KB). The socket transport closes a connection whose
-  message line passes 32 MiB.
-- **`browxai serve` keeps a non-socket file at the socket path.** It stops with
-  exit code 2 and names the path; remove the file yourself.
-- **`solve_captcha` needs an https provider base and no redirects.**
-  `BROWX_CAPTCHA_API_BASE` must be `https` except on `127.0.0.1`, `::1` and
-  `localhost`, and a provider that answers with a redirect fails the solve.
-- **`export_session_report` drops the query string and fragment from `url`.**
-- **Service-worker tools follow the origin rules.** `workers_list` leaves out a
-  worker on a blocked or unlisted origin and `worker_message_send` refuses it.
-- **Error messages are reworded.** Match on error codes and
-  `requiredCapability`, which are unchanged, and not on message text.
-- **`BROWX_HEADLESS=true` now runs headless** from `browxai` and
-  `browxai serve`, and `browxai chrome start --port` with a value that is not a
-  port exits 2.
+- **Attaching needs `byob-attach`.** Set `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach` in your `browxai-attached` client entry and restart the server, because `BROWX_ATTACH_CDP`, `open_session` with mode `attached` and the `android` and `electron` engines are refused without `byob-attach` and the variable replaces the default set.
+- **Profile names and session ids are plain names.** Rename any profile or session id that has a character other than a letter, digit, `.`, `_` or `-`, does not start with a letter or digit, or is over 128 characters (such as `user@x` or `../x`), because it is refused with `invalid-name`.
+- **Origin entries without a port match only the default port.** List every port you use in `BROWX_ALLOWED_ORIGINS` and `BROWX_BLOCKED_ORIGINS` (for example `http://localhost:3000`), because `https://app.example.com` no longer matches `https://app.example.com:8443` and an entry with a port matches that port only.
+- **`navigate` applies the origin rules to the page it lands on.** List the origins your pages redirect to in `BROWX_ALLOWED_ORIGINS`, because a redirect to a blocked or unlisted origin now asks for confirmation, or returns a deny with the page left on the landed URL.
+- **Secret scopes are exact origins.** Write each `register_secret` scope as a full origin such as `http://localhost:3000` (`app.example.com` means `https://app.example.com` only), because a scope with a path, query or `*` is refused and a value typed into an iframe is checked against the iframe's origin.
+- **Call `get_credential` on the login page.** Call it while the session is on the login page, because the password is tied to that page's origin; for `about:blank`, or a flow that fetches on one origin and fills on another, list the origins in `BROWX_CREDENTIAL_ORIGINS`, and pass the item id for an account name with a character such as `'`, `(`, `&`, `,` or `#`, which is refused.
+- **Tool results are masked when `secrets` is on.** With `secrets` in `BROWX_CAPABILITIES`, a JSON result that held a registered value is written out again and a number that contained one becomes a string.
+- **Response bodies need `network-body`.** Add `network-body` to `BROWX_CAPABILITIES` if you need bodies, because `caches_get` returns headers and metadata only without it, `start_har` and `open_session({har})` now record no bodies by default, `embed` and `attach` need it, and a replay from a body-less HAR serves empty bodies.
+- **Saved `.har` files have empty cookie and authorization values.** A replay that relied on the `Cookie`, `Set-Cookie` or `Authorization` values behaves differently, and `.zip` HARs are unchanged.
+- **Reads through a symlink that leads out of the workspace are refused.** Copy the files that `upload_file`, `drop_files`, storage-state files, HAR replay and `extensions_install` read into `$BROWX_WORKSPACE`.
+- **`app_install` takes a path inside the workspace.** Copy the `.apk` or `.app` into `$BROWX_WORKSPACE` and pass its relative path as `apkPath`.
+- **First-party plugins 0.1.2 need browxai 0.14.0 or later.** Upgrade browxai to 0.14.0 before you upgrade the first-party plugins, because their tool parameter declarations do not load on an older host.
+- **Existing plugin installs show as `community` until re-pinned.** Run `browxai plugin sync` (or `browxai plugin upgrade`) once after upgrading, because until then the first-party plugins log the non-first-party warning at start.
+- **Plugin installs run no lifecycle scripts.** Build a `file:` plugin before you install it, because installs run with `--ignore-scripts`, a `browxai.register` path outside the package stops the plugin loading, and a spec starting with `-` exits 2.
+- **zod 4 for plugin authors.** Upgrade `zod` to 4 in any plugin that imports it, because a plugin's `inputSchema` values are zod 4 schemas.
+- **`browxai chrome stop` stops only a Chrome.** When it exits 1 and sends no signal because the PID in `chrome.pid` is not a Chrome or its command line cannot be read (a container without `ps`), quit Chrome by hand and delete `chrome.pid`.
+- **`asset_export` keeps existing files.** A name already on disk gets the next `-N` suffix, so a re-run writes `logo-1.png` next to `logo.png`.
+- **Size limits.** Console messages are cut at 8,192 characters, `download_get` refuses files over 16 MiB inline (pass `pathOnly: true`), `network_body` on Firefox and WebKit returns `ok: false` for a body over 256 KB where it used to return the first 256 KB, and the socket transport closes a connection whose message line passes 32 MiB.
+- **`browxai serve` keeps a non-socket file at the socket path.** When `browxai serve` stops with exit code 2 and names that path, remove the file yourself.
+- **`solve_captcha` needs an https provider base and no redirects.** Set `BROWX_CAPTCHA_API_BASE` to an `https` URL (plain `http` works only for `127.0.0.1`, `::1` and `localhost`) and use a provider that does not answer with a redirect, because a redirect now fails the solve.
+- **`export_session_report` redacts `url`.** The `url` field now drops the query string, fragment and userinfo, the same way `network_read` shows URLs.
+- **Service-worker tools follow the origin rules.** List a service worker's origin in `BROWX_ALLOWED_ORIGINS`, and leave it out of `BROWX_BLOCKED_ORIGINS`, if you need it, because `workers_list` leaves out a worker on a blocked or unlisted origin and `worker_message_send` refuses it.
+- **Error messages are reworded.** Match errors on their codes and `requiredCapability`, which are unchanged, because the message text changed.
+- **`BROWX_HEADLESS=true` now runs headless.** Unset `BROWX_HEADLESS` if you set it to `true` from `browxai` or `browxai serve` and expected a visible window, and pass a port from 1 to 65535 to `browxai chrome start --port`, which exits 2 for any other value.
 
 ### Plugin packages
 
@@ -224,17 +174,17 @@ default, and page-sized data has limits. The four first-party plugins move to
 - **`worker_messages_read` says its data is untrusted.** The tool description and
   the tool reference now state that service-worker and web-worker message data
   is reported by the page and is untrusted, like any page text.
-- `open_session` now rejects profile names that are not plain names (no path
-  separators, no `..`). The refusal is `invalid-name` and gives the rule:
+- **`open_session` rejects profile names that are not plain names.** A name with
+  a path separator or `..` is refused with `invalid-name`, which gives the rule:
   letters, digits, `.`, `_` and `-`, starting with a letter or digit, at most
   128 characters. Session ids follow the same rule, on `open_session` and on any
   tool that creates a session on first use, because a session id names its
   `.downloads/` and `.artifacts/` directories. `profile_snapshot` and
   `profile_restore` apply the rule to `profile` and reject `.` and `..` as a
   snapshot name.
-- `worker_messages_read` now masks registered secrets in message data, as
-  `ws_read` does. `workers_list` masks them in worker URLs, and
-  `worker_message_send` in an error it echoes from the page.
+- **Worker tools mask registered secrets.** `worker_messages_read` masks them in
+  message data, as `ws_read` does, `workers_list` masks them in worker URLs, and
+  `worker_message_send` masks them in an error it echoes from the page.
 - **`solve_captcha` keeps the provider API key out of URLs.** The poll request
   is now a POST with the key in the form body, as the submit already was. It
   used to put the key in the query string.
@@ -243,13 +193,13 @@ default, and page-sized data has limits. The four first-party plugins move to
   while Chrome is installed. It fails when neither is present, and it now checks
   for Node 22 or later and prints the browxai version.
 - **`browxai doctor` warns when `BROWX_ATTACH_CDP` is set without `byob-attach`.**
-  It prints a `⚠` row with the one-line fix instead of leaving the refusal to
-  show up at the first attach. The warning does not change doctor's exit code.
+  It prints a `⚠` row with the one-line fix, so the refusal does not first show
+  up at the attach. The warning does not change doctor's exit code.
 - **A launch with no Chrome and no bundled Chromium names the fix.** The
   Playwright "Executable doesn't exist" error keeps its text and gains a line
   pointing at Google Chrome or `npx playwright-core install chromium`.
-- **Browser install hints name the playwright-core version browxai runs.** Doctor and
-  the launch error now print `npx playwright-core@<version> install chromium`
+- **Browser install hints name the playwright-core version browxai runs.**
+  Doctor and the launch error now print `npx playwright-core@<version> install chromium`
   (and the same for firefox and webkit), with the version read from the
   installed package. A bare `npx playwright-core install chromium` fetches the
   newest release, whose Chromium build can differ from the one browxai launches.
@@ -265,11 +215,10 @@ default, and page-sized data has limits. The four first-party plugins move to
   the absolute `dist/cli.js` path, and init now prints one line pointing at
   `{ "command": "npx", "args": ["-y", "browxai"] }`, which survives a move of node
   or the global prefix.
-- **`browxai init` next steps** now cover the `byob-attach` capability the
-  `browxai-attached` entry needs, and warn when the written path sits in the npx
-  cache.
-  `browxai chrome start` prints the same capability line next to the attach
-  endpoint.
+- **`browxai init` next steps cover `byob-attach`.** They name the capability
+  the `browxai-attached` entry needs and warn when the written path sits in the
+  npx cache, and `browxai chrome start` prints the same capability line next to
+  the attach endpoint.
 - **The disabled-tool hint says `BROWX_CAPABILITIES` replaces the default set**,
   so a newcomer who sets it to one capability keeps `read,navigation,action,human`.
 - **zod 4.** Tool input schemas are built with zod 4, and a plugin's `inputSchema`
@@ -337,19 +286,19 @@ default, and page-sized data has limits. The four first-party plugins move to
   the capability only logged a warning and attached anyway. Every `attached`
   session is now refused at creation without it: `open_session({ mode:
   "attached" })` returns the standard refusal with `requiredCapability:
-  "byob-attach"`, and the default session of a `BROWX_ATTACH_CDP` server, the
-  `android` engine and the `electron` engine are refused the same way. To keep
+  "byob-attach"`, and the default session of a `BROWX_ATTACH_CDP` server, a
+  session a tool creates on first use, the `android` engine and the `electron`
+  engine are refused the same way. To keep
   attaching, set `BROWX_CAPABILITIES=read,navigation,action,human,byob-attach`
   and restart the server; a saved config or `set_config` cannot add it.
 - **`worker_messages_read` now returns service-worker messages.** It only ever
   returned Web Worker messages. Messages a service worker posts to the page with
   `client.postMessage` are now recorded and come back with an `sw-N` `workerId`,
   in the same shape as Web Worker messages.
-- Docs: install steps now state Node 22 and that Chrome is the default browser;
-  the `BROWX_CHANNEL` row said the bundled build; the BYOB recipe used a stale
-  profile directory; the harness READMEs said Node 20.
-- Lazily created sessions refuse a missing `byob-attach` capability with the same
-  structured refusal as `open_session`.
+- **Docs corrected.** The install steps state Node 22 and that Chrome is the
+  default browser, the `BROWX_CHANNEL` row says an unset channel uses the
+  installed Chrome, the BYOB recipe uses the current profile directory, and the
+  harness READMEs say Node 22 where they said Node 20.
 - **First-party plugins no longer log an "untested combination" warning.** Their
   `browxaiVersion` range was `^0.7.0`, which excludes every later 0.x host. It is
   now `>=0.14.0` and reaches npm with the 0.1.2 plugin release. The plugin
@@ -387,12 +336,11 @@ default, and page-sized data has limits. The four first-party plugins move to
 
 ### Maintenance
 
-- CI is two Woodpecker workflows, `.woodpecker/gate.yml` and
+- CI now runs as two Woodpecker workflows, `.woodpecker/gate.yml` and
   `.woodpecker/browser.yml`. The real-browser keystone shards run on a
   dedicated browser runner, in parallel with the rest of the gate, and build
-  only the example plugin they read instead of waiting for the full build. The
-  commit status contexts are now `ci/woodpecker/push/gate` and
-  `ci/woodpecker/push/browser`.
+  only the example plugin they read. The commit status contexts are
+  `ci/woodpecker/push/gate` and `ci/woodpecker/push/browser`.
 
 ## [0.13.0] - 2026-10-22
 
