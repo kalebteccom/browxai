@@ -224,7 +224,7 @@ export function registerStorageWebAuthTools(
     {
       capability: "action",
       description:
-        "Capture the session's current storage state into a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`. Names are letters/digits/`._-` only (no separators, no `..`). Overwrites an existing slot of the same name. Pair with `open_session({authState})` to spin up a session pre-logged-in, or with `auth_load` + `inject_storage_state` for in-flight reseating. SECURITY NOTE: cookie *values* may carry credentials — these files are sensitive (a future secrets-masking pass lands separately).",
+        "Save the session's current storage state (cookies and per-origin localStorage) to a named slot at `$BROWX_WORKSPACE/.auth-states/<name>.json`, to reuse a login. Names are letters, digits and `._-` only, and an existing slot of the same name is overwritten. Reuse it with `open_session({authState})` for a new session, or `auth_load` for a live one. Use `cookies_set` for a single cookie and `dump_storage_state` for the blob without a slot. Cookie values may carry credentials: the slot file keeps them as the browser holds them, so treat it as sensitive.",
       inputSchema: {
         name: z.string().describe("Slot name (letters/digits/`._-` only)."),
         ...SESSION_ARG,
@@ -254,7 +254,7 @@ export function registerStorageWebAuthTools(
     {
       capability: "action",
       description:
-        'Load a named storage-state slot AND apply it to an existing session (replaces the context\'s cookies/localStorage/IndexedDB — same semantics as `inject_storage_state({mode:"replace"})`). For SEEDING a new session at creation time, prefer `open_session({authState:"<name>"})` — that\'s cheaper (no clear-then-replace cycle on a fresh context) and lets incognito mode use the Playwright-native primitive.',
+        'Load a named storage-state slot (saved with `auth_save`) and apply it to an existing session, replacing the context\'s cookies, localStorage and IndexedDB, the same as `inject_storage_state({mode:"replace"})`. To seed a new session at creation, prefer `open_session({authState:"<name>"})`, which skips the clear-then-replace step. An unknown name errors: check `auth_list`.',
       inputSchema: {
         name: z.string().describe("Slot name (must exist; auth_save it first)."),
         ...SESSION_ARG,

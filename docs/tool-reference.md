@@ -1644,9 +1644,11 @@ implementations.
 `inject_storage_state`, `auth_save`, `auth_load`, `auth_delete`) under
 `action`. No new capability gate to enable.
 
-**Security note (gap)**: cookie _values_ may carry credentials. The
-future secrets-masking pass will mask them on egress; this cycle
-ships unmasked. Treat dumps + saved named-states as sensitive.
+**Sensitive data**: cookie _values_ may carry credentials. With the `secrets`
+capability on, registered values are masked in tool results (`cookies_get`,
+`cookies_list`, the `dump_storage_state` blob). A file written by
+`dump_storage_state({path})` or `auth_save` keeps the values as the browser
+holds them. Treat dumps and saved named states as sensitive.
 
 #### Layer 1: bulk
 

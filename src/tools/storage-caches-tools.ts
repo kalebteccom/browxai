@@ -138,7 +138,7 @@ export function registerStorageCachesTools(
     {
       capability: "read",
       description:
-        'Read a single cache entry: `{found, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body needs the off-by-default `network-body` capability, like `network_body`: with it, text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or anything with a `charset=`) add `text` and everything else adds `contentBase64`. Without it the body is left out and the result carries `bodyOmitted:true` and `requiredCapability:"network-body"`. `{found:false}` if no entry matches the URL. Origin-scoped — navigate first. Read-only.',
+        'Read one Cache API entry: `{found, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The body needs the `network-body` capability (off by default): with it, text-like content types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, or any `charset=`) add `text` and everything else adds `contentBase64`; without it the result carries `bodyOmitted:true` and `requiredCapability:"network-body"`. `{found:false}` when no entry matches the URL. Origin-scoped: navigate first.',
       inputSchema: {
         cacheName: z.string().describe("Cache storage name."),
         url: z.string().describe("Entry URL key."),
