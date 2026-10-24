@@ -1,3 +1,4 @@
+import { docsUrl } from "../util/docs-links.js";
 // The gesture vocabulary the ActionSubstrate port declares — touch, swipe and
 // pinch as ONE request union, plus the per-kind evidence bodies and the engine
 // refusal both adapters emit.
@@ -166,6 +167,8 @@ export function touchDispatchUnsupported(req: GestureRequest, engine: string): G
       "events in page JS would produce isTrusted:false events that framework handlers drop " +
       "silently — so there is no fallback and this is a refusal, not a degraded result. " +
       'Re-run on a chromium session (browserType:"chromium", the default), or check the ' +
-      "per-engine capability matrix in docs/ai-context/architecture/engine-adapters.md.",
+      "per-engine capability matrix in " +
+      docsUrl.engineAdapters +
+      ".",
   };
 }

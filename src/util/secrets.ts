@@ -31,6 +31,7 @@ import {
   scopeMatches,
   type ScopeOrigin,
 } from "./secret-scope.js";
+import { docsUrl } from "./docs-links.js";
 
 /** A registered secret. `name` is the agent-facing alias (`PASSWORD`),
  *  `value` the real string that gets substituted in/out, and optional
@@ -108,7 +109,9 @@ export class SecretRegistry {
           "ws_read, console_read, snapshot, find) now strip occurrences of the " +
           "registered value and substitute `<NAME>` aliases. `fill`/`press` " +
           "materialise `<NAME>` to the real value at dispatch time. The " +
-          "`screenshot` tool is a partial sink — see docs/tool-reference.md.",
+          "`screenshot` tool is a partial sink — see " +
+          docsUrl.toolReference +
+          ".",
       );
       this.warnedOnce = true;
     }

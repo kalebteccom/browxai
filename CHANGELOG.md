@@ -8,9 +8,28 @@ surface" covers.
 
 ## Unreleased
 
+### Changed
+
+- **Error, doctor and warning text links the live docs site.** Refusals, doctor
+  rows, startup warnings and tool descriptions said `docs/threat-model.md` and
+  similar paths, which the npm package does not ship. They now give the
+  `https://browxai.com/` page for the threat model, the tool reference and the
+  plugin guides, and the engine matrix note links its file in the repository.
+- **The README links every docs, harness and brand page by absolute URL.** The
+  relative links to `docs/`, `deploy/` and `brand/` led nowhere from an
+  installed copy.
+
 ### Fixed
 
 - **`workers_list` shows every Service Worker that `worker_messages_read` returns messages for.** A Service Worker that has stopped keeps its `sw-N` id and is listed with `state: "stopped"`, and messages from a worker on an origin the origin rules do not allow are no longer returned.
+- **`doctor` shows the `build` row only in a source checkout.** An installed
+  package printed `build  dist/cli.js exists (0d old)`, which says nothing
+  there. A missing `dist/cli.js` still fails the check.
+- **`get_credential` says so when the provider is `oathtool`.** It used to
+  answer an unlisted account with the `BROWX_CREDENTIAL_ORIGINS` hint and
+  `"provider":"oathtool"`, a provider that holds TOTP seeds only. It now refuses
+  first, names `oathtool` as TOTP-only and points at
+  `BROWX_CREDENTIALS_PROVIDER`.
 
 ## [0.14.0] - 2026-10-24
 

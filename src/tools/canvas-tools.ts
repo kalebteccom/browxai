@@ -11,6 +11,7 @@ import {
 import { SESSION_ARG } from "./schemas.js";
 import type { ToolHost } from "./host.js";
 import { requirePage } from "../engine/index.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /**
  * Canvas-app automation primitives.
@@ -409,7 +410,9 @@ export function registerCanvasTools(host: ToolHost): void {
     {
       capability: "canvas",
       description:
-        "Route a call to a canvas-app adapter plugin. `adapter` is the namespace of a loaded plugin (such as `\"figma\"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args`. With no matching plugin it returns `{ok:false, code:'no-adapter', requestedAdapter, requestedOp}`: install `@browxai/plugin-<adapter>` (figma, tldraw or excalidraw; see docs/plugins-first-party.md) and check `plugins_list`. Requires the `canvas` capability (off by default); the inner plugin tool's own capability is enforced when it is reached.",
+        "Route a call to a canvas-app adapter plugin. `adapter` is the namespace of a loaded plugin (such as `\"figma\"`); the tool looks up `<adapter>.<op>` in the live plugin tool registry and forwards `args`. With no matching plugin it returns `{ok:false, code:'no-adapter', requestedAdapter, requestedOp}`: install `@browxai/plugin-<adapter>` (figma, tldraw or excalidraw; see " +
+        docsUrl.pluginsFirstParty +
+        ") and check `plugins_list`. Requires the `canvas` capability (off by default); the inner plugin tool's own capability is enforced when it is reached.",
       inputSchema: {
         adapter: z.string().describe('Plugin namespace to route to (e.g. `"figma"`).'),
         op: z

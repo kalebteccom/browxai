@@ -14,6 +14,7 @@ import { capabilitiesWith, type Capability } from "../util/capabilities.js";
 import { log } from "../util/logging.js";
 import type { ToolHost, ToolResponse } from "./host.js";
 import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /** The createServer-owned pieces the plugin runtime needs that the shared
  *  `ToolHost` doesn't surface: the raw MCP server (for plugin-tool
@@ -54,7 +55,8 @@ export function warnNonFirstPartyPlugins(loaded: ReadonlyArray<PluginRecord>): v
       `${lines.join("\n")}\n` +
       "browxai does not sandbox plugins and gates every trust tier identically — a declared " +
       "capability list is disclosure, not enforcement. Audit with `plugins_list`. See " +
-      "docs/plugin-governance.md.",
+      docsUrl.pluginGovernance +
+      ".",
   );
 }
 

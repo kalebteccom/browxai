@@ -9,6 +9,7 @@ import { createServer, type StartOptions } from "../server.js";
 import { parseEnvelope, type SdkTransport } from "./transport.js";
 import { registerTransport } from "./transport-registry.js";
 import type { BrowxaiResult } from "./types.js";
+import { docsUrl } from "../util/docs-links.js";
 
 /**
  * Construct an in-process transport. The factory `await`s the underlying
@@ -33,7 +34,7 @@ export async function openInProcessTransport(opts: StartOptions = {}): Promise<S
     if (!fn) {
       throw new Error(
         `browxai-sdk: unknown tool "${toolName}", it is not registered on the in-process server. ` +
-          `Check the name against docs/tool-reference.md. If it is listed there, this SDK build is older than the server's tool list.`,
+          `Check the name against ${docsUrl.toolReference}. If it is listed there, this SDK build is older than the server's tool list.`,
       );
     }
     const result = await fn(args);

@@ -77,6 +77,15 @@ function unlistedAccountError(account: string): string {
   );
 }
 
+/** The refusal for `get_credential` when the configured provider is `oathtool`. */
+function oathtoolCredentialError(): string {
+  return (
+    "get_credential: the configured provider is oathtool, which holds TOTP seeds only and stores no " +
+    "username or password. Set BROWX_CREDENTIALS_PROVIDER to 1password, bitwarden or lastpass and " +
+    "restart browxai. get_totp keeps working with oathtool."
+  );
+}
+
 /** Either the Playwright `Page` the selector-derived site-key read needs, or the
  *  structured refusal to return instead. */
 type SiteKeyPage = { page: CaptchaPage } | { refusal: ReturnType<typeof captchaJsonResult> };
@@ -378,6 +387,8 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
       const g = gateCheck("get_credential");
       if (g) return g;
       const provider = credentialsResolved.config.provider;
+      // oathtool keeps TOTP seeds only, so a password lookup can never succeed.
+      if (provider === "oathtool") return accountRefusal(provider, oathtoolCredentialError());
       const bad = accountError(account);
       if (bad) return accountRefusal(provider, bad);
       // The password is bound to the origins the operator listed for this

@@ -38,6 +38,7 @@ import {
   UnknownEngineError,
   type EngineKind,
 } from "../engine/index.js";
+import { docsUrl } from "../util/docs-links.js";
 
 export interface Check {
   name: string;
@@ -71,12 +72,17 @@ export async function runDoctor(): Promise<number> {
     });
   }
 
-  // 1. dist/cli.js built?
+  // 1. dist/cli.js built? The age only means something in a source checkout,
+  // where a stale build is a real failure mode. An installed package ships
+  // dist/ and no src/, and doctor is already running from it, so it gets no row.
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const distCli = resolve(__dirname, "../cli.js");
+  const isSourceCheckout = existsSync(resolve(__dirname, "../../src/cli.ts"));
   if (existsSync(distCli)) {
-    const age = Math.floor((Date.now() - statSync(distCli).mtimeMs) / 86_400_000);
-    checks.push({ name: "build", ok: true, detail: `dist/cli.js exists (${age}d old)` });
+    if (isSourceCheckout) {
+      const age = Math.floor((Date.now() - statSync(distCli).mtimeMs) / 86_400_000);
+      checks.push({ name: "build", ok: true, detail: `dist/cli.js exists (${age}d old)` });
+    }
   } else {
     checks.push({
       name: "build",
@@ -167,10 +173,12 @@ export async function runDoctor(): Promise<number> {
       ok: true,
       detail,
       fix: dangerous.length
-        ? `${dangerous.join(",")} on — page text remains untrusted; review docs/threat-model.md`
+        ? `${dangerous.join(",")} on — page text remains untrusted; review ${docsUrl.threatModel}`
         : explicit
           ? undefined
-          : "see docs/threat-model.md for the full set; default is " +
+          : "see " +
+            docsUrl.threatModel +
+            " for the full set; default is " +
             DEFAULT_CAPABILITIES.join(","),
     });
     const attachWarn = attachCapabilityCheck(cdpEnv, c.enabled);
@@ -180,7 +188,7 @@ export async function runDoctor(): Promise<number> {
       name: "capabilities",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CAPABILITIES (comma-separated, see docs/threat-model.md)",
+      fix: "fix BROWX_CAPABILITIES (comma-separated, see " + docsUrl.threatModel + ")",
     });
   }
 
@@ -197,7 +205,7 @@ export async function runDoctor(): Promise<number> {
       name: "confirm-hooks",
       ok: false,
       detail: e instanceof Error ? e.message : String(e),
-      fix: "fix BROWX_CONFIRM_REQUIRED — see docs/threat-model.md",
+      fix: "fix BROWX_CONFIRM_REQUIRED — see " + docsUrl.threatModel,
     });
   }
 
