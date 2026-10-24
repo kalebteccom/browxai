@@ -1344,7 +1344,7 @@ fill_form({
 //   and `element` = the submit click's probe.
 ```
 
-**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the page URL doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
+**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the field's frame origin doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
 
 **Sequential dispatch.** Once resolution succeeds, fields are filled in array order via the same Playwright `.fill()` path the single-field primitive uses. The first per-field error stops the loop; later fields are reported as `skipped` on `fillFailure: { atIndex, skipped: number[] }` so the agent can see how far the dispatch got. Submit is skipped on any per-field error (no submitting a partially-filled form).
 
@@ -2628,20 +2628,30 @@ capability**, the same posture class as `eval` / `network-body` /
 - `value`: the real secret. Stored per-session in memory only; never
   persisted, never logged. The registry never echoes it back, even on
   registration confirmation.
-- `scope?`: optional URL substring (case-insensitive). When set,
-  dispatch-side substitution **refuses** if the current page URL doesn't
-  contain the scope (prevents cross-origin leak). Egress masking is global
-  regardless of scope.
+- `scope?`: optional origin, or a list of origins. Each entry is an origin
+  (`https://app.example.com`, `http://localhost:3000`, `app://com.acme.app`
+  for a native app) or a bare host (`app.example.com`, `app.example.com:8443`)
+  meaning `https://` on that host. A path, query, fragment, credentials or a
+  `*` wildcard is refused at registration. When set, dispatch-side
+  substitution **refuses** unless the origin of the frame that receives the
+  value matches an entry exactly: same scheme, same host, same port. There
+  are no subdomain rules: `app.example.com` does not match
+  `login.app.example.com`. The receiving frame is the one that owns the
+  `fill` / `press` target element (so a field inside an iframe is checked
+  against the iframe's origin), or the focused frame for a targetless
+  `press`. Frames with no origin to name (`about:blank`, `about:srcdoc`,
+  `data:`) never match. Egress masking is global regardless of scope.
 
-**Returns:** `{ ok, registered, scope, names, tokensEstimate }`. `names`
-echoes the live alias list (NOT values).
+**Returns:** `{ ok, registered, scope, origins, names, tokensEstimate }`.
+`origins` lists the normalised origins the scope matches (`null` when
+unscoped). `names` echoes the live alias list (NOT values).
 
 **Example.**
 
 ```jsonc
 register_secret({ name: "PASSWORD", value: "s3cr3t-hunter2", scope: "app.example.com" })
 // → { "ok": true, "registered": "PASSWORD", "scope": "app.example.com",
-//     "names": ["PASSWORD"], "tokensEstimate": 38 }
+//     "origins": ["https://app.example.com"], "names": ["PASSWORD"], "tokensEstimate": 52 }
 fill({ selector: "input[type=password]", value: "<PASSWORD>" })
 // every subsequent tool result shows <PASSWORD>, never the real value
 ```
@@ -2712,9 +2722,9 @@ of the shorter alias is impossible.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
 4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
-   substituted into a `fill` on a wrong-origin page (refused with a clear
-   error), but if a registered value reaches a sink for any reason, it's
-   masked regardless of scope.
+   substituted into a `fill` in a frame on another origin (refused with a
+   clear error), but if a registered value reaches a sink for any reason,
+   it's masked regardless of scope.
 
 **Capability gate.** Off by default. Add `secrets` to
 `BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server

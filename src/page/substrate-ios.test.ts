@@ -517,9 +517,9 @@ describe("IosCaptureSubstrate", () => {
 
 describe("IosTargetSubstrate", () => {
   it("reports the app scope a secret is matched against", async () => {
-    // `SecretRegistry.materialize` checks scope by substring containment, so
-    // `app://com.acme.checkout/Checkout` contains `com.acme.checkout` and a secret
-    // scoped to that app materialises here and refuses in another's session.
+    // `SecretRegistry.materialize` matches a scope as an exact origin, and
+    // `app://com.acme.checkout/Checkout` has the origin `app://com.acme.checkout`,
+    // so a secret scoped to that app materialises here and refuses in another's.
     const r = rig();
     const target = new IosTargetSubstrate(r.handle);
     expect(await target.url()).toBe("app://com.acme.checkout/Checkout");

@@ -3,11 +3,10 @@
 // (RFC 0008): the deep-link scheme plus screen id."
 //
 // The URL is `app://<bundleId>/<screen>`, and it is load-bearing in one place
-// beyond display. `SecretRegistry.materialize` scopes a secret by
-// case-insensitive substring containment against this string, so a secret
-// registered with `scope: "com.acme.app"` materialises in that app's session and
-// refuses in another's — RFC 0008 §1.5's rename, honoured with no change to the
-// check itself.
+// beyond display. `SecretRegistry.materialize` matches a secret's scope against
+// this string's origin exactly, so a secret registered with
+// `scope: "app://com.acme.app"` materialises in that app's session and refuses
+// in another's, RFC 0008 §1.5's rename.
 //
 // Both reads are round trips to WebDriverAgent, which is what the port's async
 // members are for. They are also best-effort: a driver that has gone away

@@ -72,9 +72,95 @@ describe("SecretRegistry.materialize — dispatch-side substitution", () => {
     const ok = r.materialize("<TOKEN>", "https://app.example.com/dashboard");
     expect(ok.ok).toBe(true);
     expect(ok.value).toBe("tok-xyz");
-    const refused = r.materialize("<TOKEN>", "https://attacker.example/");
+    const refused = r.materialize("<TOKEN>", "https://other.example/");
     expect(refused.ok).toBe(false);
-    expect(refused.error).toMatch(/scoped to "app.example.com"/);
+    expect(refused.error).toMatch(/scoped to "https:\/\/app.example.com"/);
+    expect(refused.value).toBe("<TOKEN>");
+  });
+
+  it("matches the scope as an origin, never as a substring of the URL", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "TOKEN", value: "tok-xyz", scope: "app.example.com" });
+    for (const url of [
+      "https://evil.test/?app.example.com",
+      "https://evil.test/app.example.com/login",
+      "https://app.example.com.evil.test/",
+      "https://evil.test/#https://app.example.com",
+      "https://app.example.com@evil.test/",
+      "about:blank",
+      "about:srcdoc",
+      "data:text/html,app.example.com",
+      "not a url",
+    ]) {
+      const m = r.materialize("<TOKEN>", url);
+      expect(m.ok, url).toBe(false);
+      expect(m.materialised, url).toBe(false);
+    }
+    expect(r.materialize("<TOKEN>", "https://APP.example.com/x?y=1").ok).toBe(true);
+    expect(r.materialize("<TOKEN>", "https://app.example.com:443/").ok).toBe(true);
+  });
+
+  it("compares scheme and port", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "BARE", value: "v-bare", scope: "app.example.com" });
+    r.register({ name: "DEV", value: "v-dev", scope: "http://localhost:3000" });
+    expect(r.materialize("<BARE>", "http://app.example.com/").ok).toBe(false);
+    expect(r.materialize("<BARE>", "https://app.example.com:8443/").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3000/login").ok).toBe(true);
+    expect(r.materialize("<DEV>", "https://localhost:3000/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost:3001/login").ok).toBe(false);
+    expect(r.materialize("<DEV>", "http://localhost/login").ok).toBe(false);
+  });
+
+  it("accepts a list of origins and matches any one of them exactly", () => {
+    const r = new SecretRegistry();
+    r.register({
+      name: "SSO",
+      value: "v-sso",
+      scope: ["https://app.example.com", "https://sso.example.com/"],
+    });
+    expect(r.scopeOrigins("SSO")).toEqual(["https://app.example.com", "https://sso.example.com"]);
+    expect(r.materialize("<SSO>", "https://sso.example.com/auth").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://app.example.com/").ok).toBe(true);
+    expect(r.materialize("<SSO>", "https://example.com/").ok).toBe(false);
+  });
+
+  it("rejects a scope that is not an origin at registration", () => {
+    const r = new SecretRegistry();
+    for (const scope of [
+      "https://app.example.com/login",
+      "https://app.example.com/?x=1",
+      "https://user@app.example.com",
+      "*.example.com",
+      "app.example.com/login",
+      "",
+    ]) {
+      expect(() => r.register({ name: "X", value: "v", scope }), scope).toThrow(/scope/);
+    }
+    expect(() => r.register({ name: "X", value: "v", scope: [] })).toThrow(/empty/);
+    expect(r.size()).toBe(0);
+  });
+
+  it("only asks callers to resolve the receiving frame for a scoped alias", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "OPEN", value: "v-open" });
+    r.register({ name: "SCOPED", value: "v-scoped", scope: "app.example.com" });
+    expect(r.needsScopeCheck("<OPEN>")).toBe(false);
+    expect(r.needsScopeCheck("<SCOPED>")).toBe(true);
+    expect(r.needsScopeCheck("plain text")).toBe(false);
+    expect(r.needsScopeCheck("<MISSING>")).toBe(false);
+    // Re-registering without a scope drops the old one.
+    r.register({ name: "SCOPED", value: "v-scoped" });
+    expect(r.needsScopeCheck("<SCOPED>")).toBe(false);
+    expect(r.scopeOrigins("SCOPED")).toBeNull();
+  });
+
+  it("matches a native app scope against the app:// target url", () => {
+    const r = new SecretRegistry();
+    r.register({ name: "PIN", value: "4321", scope: "app://com.acme.app" });
+    expect(r.materialize("<PIN>", "app://com.acme.app/CheckoutActivity").ok).toBe(true);
+    expect(r.materialize("<PIN>", "app://com.acme.app.evil/Main").ok).toBe(false);
+    expect(r.materialize("<PIN>", "https://com.acme.app/").ok).toBe(false);
   });
 });
 

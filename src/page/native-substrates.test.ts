@@ -294,9 +294,9 @@ describe("NativeSnapshotSubstrate", () => {
 
 describe("NativeTargetSubstrate", () => {
   it("formats the native target url the secret scope is checked against", () => {
-    // RFC 0008 §6: a secret registered with `scope: "com.acme.app"` must refuse
-    // to materialise into another app's session, through the SAME
-    // case-insensitive substring containment the URL path uses.
+    // RFC 0008 §6: a secret registered with `scope: "app://com.acme.app"` must
+    // refuse to materialise into another app's session, through the SAME exact
+    // origin match the web path uses.
     expect(
       nativeTargetUrl({ packageName: "com.acme.app", activity: "com.acme.app.CheckoutActivity" }),
     ).toBe("app://com.acme.app/CheckoutActivity");

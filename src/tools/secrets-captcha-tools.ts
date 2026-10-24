@@ -90,7 +90,7 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     {
       capability: "secrets",
       description:
-        'Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:"<NAME>"})` / `press({key:"<NAME>"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (URL substring, case-insensitive) narrows the *dispatch* side: a scoped secret won\'t be substituted into a `fill` whose page URL doesn\'t contain the scope (refuses with a clear error). Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page\'s text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.',
+        'Register a sensitive value the agent will use without ever seeing the real string in any tool result. **Gated behind the off-by-default `secrets` capability** — same posture class as `eval` / `network-body` / `disableWebSecurity`. Pair: the agent calls `fill({value:"<NAME>"})` / `press({key:"<NAME>"})` and the runtime substitutes the registered real value AT dispatch (so the page receives the actual string), while EVERY egress sink — `ActionResult.network`, `network_read`, `network_body`, `ws_read`, `console_read`, `snapshot`, `find` evidence — strips occurrences of the real value back to `<NAME>` before returning to the agent. `name` must match `/^[A-Z][A-Z0-9_]*$/` (uppercase identifier — the `<NAME>` mask is the stable contract). Optional `scope` (an origin like `https://app.example.com`, a bare host meaning https, or a list of them) narrows the *dispatch* side: a scoped secret is substituted only into a frame whose origin matches one entry exactly (scheme, host and port), and refuses with a clear error anywhere else. Per-session registry, capped at 32 entries. `screenshot` is a PARTIAL sink: when the page\'s text content contains a registered value, a warning is appended; pixel-level redaction (region-blur) is deferred — call snapshot/find for verified-clean evidence instead. NEVER re-emits or logs the real value.',
       inputSchema: {
         name: z
           .string()
@@ -103,10 +103,10 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
             "The real secret value. Stored per-session in memory only; never persisted, never logged.",
           ),
         scope: z
-          .string()
+          .union([z.string(), z.array(z.string()).min(1)])
           .optional()
           .describe(
-            "Optional URL substring (case-insensitive). When set, dispatch-side substitution refuses if the current page URL doesn't contain the scope (prevents cross-origin leak). Egress masking is global regardless.",
+            'Optional origin, or list of origins: `"https://app.example.com"`, `"http://localhost:3000"`, or a bare host `"app.example.com"` (meaning https). Dispatch-side substitution happens only in a frame whose origin matches an entry exactly (scheme, host and port); no wildcards, no subdomains, no paths. Egress masking is global regardless.',
           ),
         ...SESSION_ARG,
       },
@@ -119,14 +119,18 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
     }: {
       name: string;
       value: string;
-      scope?: string;
+      scope?: string | string[];
       session?: string;
     }) => {
       const g = gateCheck("register_secret");
       if (g) return g;
       const e = await entryFor(session);
       try {
-        e.secrets.register({ name, value, ...(scope ? { scope } : {}) });
+        e.secrets.register({
+          name,
+          value,
+          ...(scope !== undefined && scope !== "" ? { scope } : {}),
+        });
       } catch (err) {
         return {
           content: [
@@ -141,15 +145,19 @@ export function registerSecretsCaptchaTools(host: ToolHost): void {
           ],
         };
       }
+      const origins = e.secrets.scopeOrigins(name);
       const body = {
         ok: true,
         registered: name,
         scope: scope ?? null,
+        // The normalised origins the scope matches, so the agent sees what a
+        // bare host resolved to.
+        origins,
         // never echo the value back. Echo only the registered names — useful
         // for the agent to confirm what aliases are live without leaking.
         names: e.secrets.names(),
         tokensEstimate: estimateTokens(
-          JSON.stringify({ ok: true, registered: name, scope, names: e.secrets.names() }),
+          JSON.stringify({ ok: true, registered: name, scope, origins, names: e.secrets.names() }),
         ),
       };
       return { content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }] };

@@ -10,6 +10,13 @@ surface" covers.
 
 ### Changed
 
+- **Secret scopes match the page origin exactly.** A `register_secret` scope is
+  now an origin (`https://app.example.com`, `http://localhost:3000`) or a bare
+  host meaning https, and may be a list. `fill`, `press` and `fill_form`
+  materialise a scoped value only when the origin of the frame that receives it
+  (the target's frame, or the focused frame for a targetless `press`) has the
+  same scheme, host and port. A scope with a path, query or `*` is refused at
+  registration. The result carries the normalised `origins`.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

@@ -24,20 +24,28 @@
 // still catches a secret that landed in a path / payload / header value).
 
 import { log } from "./logging.js";
+import {
+  formatOrigin,
+  originOf,
+  parseScope,
+  scopeMatches,
+  type ScopeOrigin,
+} from "./secret-scope.js";
 
 /** A registered secret. `name` is the agent-facing alias (`PASSWORD`),
  *  `value` the real string that gets substituted in/out, and optional
  *  `scope` narrows substitution at dispatch (a real value scoped to
  *  `https://app.example.com` won't be materialised into a `fill` on a
- *  different origin's page, even if the agent passes `<PASSWORD>`). */
+ *  different origin's frame, even if the agent passes `<PASSWORD>`). */
 export interface SecretEntry {
   name: string;
   value: string;
-  /** Optional URL substring (case-insensitive) — only applied at dispatch
-   *  when the current page URL contains it. Masking-on-egress is global
-   *  (any sink, any origin) — narrowing only the *write* side keeps the
-   *  read-side guarantee absolute. */
-  scope?: string;
+  /** Optional origin, or list of origins (see `secret-scope.ts` for the
+   *  accepted forms). Dispatch materialises the value only into a frame whose
+   *  origin equals one of them exactly. Masking-on-egress is global (any sink,
+   *  any origin): narrowing only the *write* side keeps the read-side
+   *  guarantee absolute. */
+  scope?: string | readonly string[];
 }
 
 /**
@@ -47,6 +55,8 @@ export interface SecretEntry {
  */
 export class SecretRegistry {
   private byName = new Map<string, SecretEntry>();
+  /** Parsed scope origins per scoped name. Absent for an unscoped secret. */
+  private originsByName = new Map<string, ScopeOrigin[]>();
   private warnedOnce = false;
 
   constructor(private cap = 32) {}
@@ -66,6 +76,14 @@ export class SecretRegistry {
     if (typeof entry.value !== "string" || entry.value.length === 0) {
       throw new Error("register_secret: value must be a non-empty string");
     }
+    let origins: ScopeOrigin[] | undefined;
+    if (entry.scope !== undefined) {
+      try {
+        origins = parseScope(entry.scope);
+      } catch (e) {
+        throw new Error(`register_secret: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     if (!this.byName.has(entry.name) && this.byName.size >= this.cap) {
       throw new Error(
         `register_secret: capacity ${this.cap} reached — remove an existing ` +
@@ -73,6 +91,8 @@ export class SecretRegistry {
       );
     }
     this.byName.set(entry.name, { ...entry });
+    if (origins) this.originsByName.set(entry.name, origins);
+    else this.originsByName.delete(entry.name);
     if (!this.warnedOnce) {
       // Mirrors the eval / network-body / disableWebSecurity loud-warn posture
       // (docs/threat-model.md "Loud one-time warnings"). The `secrets`
@@ -101,6 +121,21 @@ export class SecretRegistry {
     return this.byName.size;
   }
 
+  /** The normalised origins a secret is scoped to (`https://app.example.com`),
+   *  or null when it is unscoped or unknown. Never exposes the value. */
+  scopeOrigins(name: string): string[] | null {
+    const origins = this.originsByName.get(name);
+    return origins ? origins.map(formatOrigin) : null;
+  }
+
+  /** True when `value` is a `<NAME>` alias of a registered, scoped secret, so
+   *  the caller has to resolve the frame that receives it before calling
+   *  `materialize`. Plain strings and unscoped aliases answer false. */
+  needsScopeCheck(value: string): boolean {
+    const m = /^<([A-Z][A-Z0-9_]*)>$/.exec(value);
+    return !!m && this.originsByName.has(m[1]!);
+  }
+
   /** Look up an entry by name. Internal — callers go through `materialize`
    *  or `applyMask` so the real value never escapes this module by accident. */
   private lookup(name: string): SecretEntry | undefined {
@@ -118,12 +153,13 @@ export class SecretRegistry {
    * the dispatched-action descriptor (so the ActionResult records that a
    * masked value was sent, not the value itself).
    *
-   * `pageUrl` is consulted only when an entry has a `scope`; if scope is set
-   * and the current page URL doesn't contain it, the materialisation is
-   * REFUSED (returns ok:false) — substituting a secret on a wrong-origin page
-   * would leak it cross-site.
+   * `targetUrl` is the URL of the frame that receives the value. It is
+   * consulted only when an entry has a `scope`: unless the frame's origin
+   * equals one of the scope's origins exactly (scheme, host and port), the
+   * materialisation is REFUSED (returns ok:false), so the real value only
+   * reaches the origins it was registered for.
    */
-  materialize(value: string, pageUrl: string): MaterialiseResult {
+  materialize(value: string, targetUrl: string): MaterialiseResult {
     const m = /^<([A-Z][A-Z0-9_]*)>$/.exec(value);
     if (!m) return { ok: true, materialised: false, value };
     const name = m[1]!;
@@ -138,16 +174,19 @@ export class SecretRegistry {
           `"${name}" is registered on this session — call register_secret({name,value}) first`,
       };
     }
-    if (entry.scope && !pageUrl.toLowerCase().includes(entry.scope.toLowerCase())) {
+    const origins = this.originsByName.get(name);
+    if (origins && !scopeMatches(origins, targetUrl)) {
+      const scoped = origins.map((o) => `"${formatOrigin(o)}"`).join(", ");
+      const at = originOf(targetUrl) ?? "a frame with no origin to match";
       return {
         ok: false,
         materialised: false,
         value,
         error:
-          `secret "<${name}>" is scoped to "${entry.scope}" but the current ` +
-          `page URL doesn't contain it — refusing to substitute (would leak ` +
-          `the value cross-origin). Navigate to the scoped origin first, or ` +
-          `re-register without a scope.`,
+          `secret "<${name}>" is scoped to ${scoped} but the frame receiving it is ` +
+          `at "${at}". The origin must match exactly (scheme, host and port); ` +
+          `refusing to substitute. Navigate to the scoped origin first, or ` +
+          `re-register with the origin this field lives on.`,
       };
     }
     return { ok: true, materialised: true, value: entry.value, alias: name };
