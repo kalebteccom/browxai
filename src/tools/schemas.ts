@@ -36,8 +36,8 @@ export const TIMEOUT_ARG = {
     .optional()
     .describe(
       "Hard deadline in ms (default 5000, max 3600000; above max is clamped with a warning). " +
-        "On timeout retry once, then `close_session` and `open_session` afresh. A bigger value " +
-        "never unwedges a session; raise it only for one known-slow call.",
+        "On timeout retry once, or if timeouts keep recurring `close_session` and `open_session` " +
+        "afresh. A bigger value never unwedges a session; raise it only for one known-slow call.",
     ),
 };
 
@@ -65,7 +65,7 @@ export const REF_OR_SELECTOR = {
     .string()
     .optional()
     .describe(
-      "Stable [eN] ref from snapshot or find. Resets when the page changes; a stale ref errors.",
+      "Stable [eN] ref from snapshot or find. Resets when the page changes; a stale ref errors, so call snapshot or find again.",
     ),
   selector: z.string().optional().describe("CSS / selectorHint fallback"),
   named: z.string().optional().describe("Mnemonic name previously bound with name_ref"),
