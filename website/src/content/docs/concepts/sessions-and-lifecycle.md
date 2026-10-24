@@ -51,7 +51,10 @@ distinct `profile` names (see Session modes below), or use `incognito`.
   jars.
 
 Omitting `session` resolves to a lazily created `"default"` session, so simple
-single-session callers need to know none of this.
+single-session callers need to know none of this. A session id and a `profile`
+name are each one plain name: letters, digits, `.`, `_` and `-`, starting with a
+letter or digit, at most 128 characters. Anything else is refused with
+`invalid-name`.
 
 ### Managing sessions
 
@@ -61,7 +64,7 @@ single-session callers need to know none of this.
 - `close_sessions({ prefix?, all?, idleMs? })` is the bulk reap primitive for
   multi-agent cleanup. Selectors AND together, and at least one is required so
   you cannot accidentally close nothing or everything.
-- `list_sessions()` returns `[{ id, mode, engine, url, pages, openedAt }]`.
+- `list_sessions()` returns `{ sessions: [{ id, mode, engine, url, pages, openedAt }] }`.
 
 ## Session modes
 

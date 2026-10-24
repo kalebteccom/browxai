@@ -14,8 +14,10 @@ adapters. All four ship from this repo.
 # 1. Install by package name (workspace-rooted, see below).
 $ browxai plugin install @browxai/plugin-figma
 
-# 2. Start the server. Keep the four default capabilities in the list and add
-#    what the plugin declares (figma needs eval and canvas).
+# 2. Set the capabilities for the server, in your MCP client's `env` block
+#    (shown here as a shell prefix). Keep the four default capabilities in the
+#    list and add what the plugin declares (figma needs eval and canvas).
+#    Run by hand, browxai waits for a client on stdin.
 $ BROWX_CAPABILITIES=read,navigation,action,human,eval,canvas browxai
 
 # Optional: check the declaration, install and manifests without running plugin code.
@@ -159,8 +161,10 @@ the fixture the runtime keystone test loads.
 - `kalebtec`: Kalebtec-maintained plugins (`@browxai/plugin-*` on
   npm), installed from the registry under that exact name. An alias,
   git or tarball install of the same name is `community`.
-- `community`: third-party npm plugins
-  (`browxai-plugin-*` or `@<org>/browxai-plugin-*`).
+- `community`: every other registry, git or tarball install, including an
+  `@browxai/*` name installed by alias. Third-party plugins are published
+  as `browxai-plugin-*` or `@<org>/browxai-plugin-*` by convention, and the
+  name does not change the tier.
 - `local`: installed from a file path during development
   (`browxai plugin install file:/abs/path/to/plugin`).
 

@@ -118,7 +118,7 @@ the structured reads are fully masked.
 ```jsonc
 verify_visible({ selector: '[data-testid="status-chip"]' })   // presence, no pixels
 screenshot({ describe: true })                                 // one-line caption, skip the vision read
-screenshot({ fullPage: true, path: "shots/checkout.png" })     // bytes to disk, envelope to context
+screenshot({ fullPage: true, path: "shots/checkout.png" })     // bytes to disk, envelope to context (needs file-io)
 screenshot({ format: "jpeg", quality: 70, scale: "css" })      // when you DO need inline pixels
 ```
 
