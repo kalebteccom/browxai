@@ -115,7 +115,7 @@ export function registerSessionLifecycleTools(
     "open_session",
     {
       description:
-        "Eagerly create an isolated session (own browser context / cookie jar / refs). Optional — any tool with a `session` arg lazily creates the id on first use (inheriting the server's launch mode); call this to launch up-front, fail fast, or pick a `mode`. Re-opening a live id is an error (close it first). A name whose last session closed holding `ask-human` on `permissionPolicy` / `fsPickerPolicy` / `notificationPolicy` keeps it: a policy you leave out is inherited, and one that moves a held key off `ask-human` is refused with `requiredCapability: \"human-gate-override\"` unless the operator enabled it.Different ids = full isolation, so two sessions logged in as different users on the same app don't bleed. This is also the second half of wedged-session recovery: after `close_session` discards a dead session, open a fresh one here (a fresh id, or the same id reused) and restart the wedged work in it.\n\n`mode`:\n  - `persistent` (default off-attach) — own profile dir under the workspace; cookies survive across runs. `profile` names the dir under `<workspace>/profiles/`; omit it and the session runs on the workspace's default profile, shared by every session of that workspace. A profile can be open in one browser at a time, so a second live session on it is refused with `profile-in-use` (pass a `profile` name or use `incognito`).\n  - `incognito` — ephemeral; nothing persisted, all state discarded on close.\n  - `attached` — BYOB; requires the server started with BROWX_ATTACH_CDP and the off-by-default `byob-attach` capability (refused with `requiredCapability: \"byob-attach\"` without it).\n\nOptionally seed the new context with a storage state at creation. `storageState` accepts either an inline blob (as returned by `dump_storage_state`) or a workspace-rooted JSON path. `authState` references a named slot from `auth_save`. Mutually exclusive. Native primitive on `incognito`; on `persistent` it post-seeds AND clears the profile's existing cookies/localStorage first (loud-warned). Ignored on `attached`.",
+        'Create an isolated session (own browser context, cookie jar and refs) up front. Optional: any tool with a `session` argument creates that id on first use, so call this to fail fast or to set `mode`, `engine`, `profile` and policies at creation. A live id cannot be reopened: `close_session` it first. Ids are plain names (letters, digits, `.`, `_`, `-`; start with a letter or digit; at most 128 characters), else `invalid-name`.\n\n`mode`:\n  - `persistent` (default unless the server attaches): profile under `<workspace>/profiles/`, cookies survive runs. One live session per profile, else `profile-in-use`: pass another `profile` or use `incognito`.\n  - `incognito`: nothing persisted.\n  - `attached`: your own Chrome via BROWX_ATTACH_CDP. Requires the `byob-attach` capability (off by default), else refused with `requiredCapability:"byob-attach"`.\n\nA reopened id keeps `ask-human` on `permissionPolicy`, `fsPickerPolicy` and `notificationPolicy` if its last session held it; moving a held key off `ask-human` is refused with `requiredCapability:"human-gate-override"` unless the operator enabled it. A session that wedges (calls keep timing out) is replaced, not retried: `close_session`, then open a fresh one here.',
       inputSchema: {
         session: z
           .string()
@@ -127,7 +127,7 @@ export function registerSessionLifecycleTools(
           .enum(["persistent", "incognito", "attached"])
           .optional()
           .describe(
-            "Session mode. Default: the server's launch mode (attached if BROWX_ATTACH_CDP is set, else persistent).",
+            "Session mode. Default: the server's launch mode (`attached` if BROWX_ATTACH_CDP is set, else `persistent`). `attached` requires the `byob-attach` capability (off by default).",
           ),
         engine: z
           .enum([
@@ -142,14 +142,14 @@ export function registerSessionLifecycleTools(
           ])
           .optional()
           .describe(
-            "Browser engine for THIS session, overriding the server default (`--engine` / `BROWX_ENGINE` / `createServer({browserType})`, else chromium). One server can drive sessions on different engines at once. Omit to inherit the server default (unchanged legacy behaviour). Constraints: `android` is attach-only (real Chrome-on-Android over adb — `persistent`/`incognito` refuse, and its default mode is `attached` with no BROWX_ATTACH_CDP; it needs `byob-attach`); `firefox`/`webkit` refuse CDP/BYOB attach; `safari` has no `incognito` and no attach. `ios-app` and `android-app` are NATIVE engines, not browsers: both REQUIRE the off-by-default `native-device` capability and neither has `incognito`. `ios-app` drives an app on the iOS Simulator over XCUITest, taking its device and app from BROWX_IOS_DEVICE / BROWX_IOS_APP_ID / BROWX_IOS_APP_PATH and needing an operator-supplied WebDriverAgent at BROWX_IOS_WDA_URL; it has no attach. `android-app` drives an app on an Android emulator over adb and leases one device per session, picked by BROWX_ANDROID_APP_SERIAL when more than one is ready. `electron` is a running desktop Electron app (VS Code, Slack, Discord) attached over its `--remote-debugging-port` — attach-only, needs `byob-attach`, and it REFUSES `navigate` because loading a URL replaces the application's own document. You rarely need to name `electron`: the desktop attach lane detects it from the CDP protocol and reports it on the session either way. An unimplemented engine is refused with a structured error (never a silent fallback to chromium).",
+            'Browser engine for this session; omit to inherit the server default (`--engine`, `BROWX_ENGINE`, else chromium). One server can run sessions on different engines. `android` (Chrome on Android over adb, defaults to `attached`) and `electron` (a running desktop Electron app over its `--remote-debugging-port`) are attach-only and need the `byob-attach` capability (off by default). `firefox` and `webkit` refuse attach; `safari` has no `incognito` and no attach. `ios-app` and `android-app` are native app engines: they need the `native-device` capability (off by default) and have no `incognito`. `ios-app` reads BROWX_IOS_DEVICE, BROWX_IOS_APP_ID or BROWX_IOS_APP_PATH and needs a WebDriverAgent at BROWX_IOS_WDA_URL; `android-app` leases one adb device per session (BROWX_ANDROID_APP_SERIAL picks it when several are ready). `electron` refuses `navigate`, and the desktop attach lane usually detects it, so you rarely name it. An unimplemented engine is refused with `code:"unknown-engine"` and the `implementedEngines` list.',
           ),
         profile: z
           .string()
           .refine(isValidProfileName, PROFILE_NAME_RULE)
           .optional()
           .describe(
-            "persistent mode only: named profile dir under <workspace>/profiles/, a plain name (letters, digits, `.`, `_`, `-`, starting with a letter or digit, at most 128 characters; no path separators, no `..`). Default = the workspace's default profile (BROWX_DEFAULT_PROFILE when set, else <workspace>/profile), whatever the session id. One profile is open in one browser at a time: while another live session holds it, open_session is refused with `profile-in-use`; pass a distinct `profile` name or mode `incognito`.",
+            "`persistent` mode only: a named profile directory under <workspace>/profiles/, a plain name (letters, digits, `.`, `_`, `-`; start with a letter or digit; at most 128 characters). Default: the workspace's default profile (BROWX_DEFAULT_PROFILE when set, else <workspace>/profile), whatever the session id. One live session per profile: a second is refused with `profile-in-use`, so pass a distinct `profile` or use mode `incognito`.",
           ),
         channel: z
           .string()
@@ -173,7 +173,7 @@ export function registerSessionLifecycleTools(
           .object({ width: z.number().int().positive(), height: z.number().int().positive() })
           .optional()
           .describe(
-            "explicit viewport; overrides a preset's viewport. Falls back to config `defaultViewport`.",
+            "Explicit viewport in CSS px, `{width, height}`. Overrides a `device` preset's viewport. Falls back to config `defaultViewport`.",
           ),
         dialogPolicy: z
           .string()
@@ -262,13 +262,13 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. On close the file is rewritten with `Cookie` / `Set-Cookie` / `Authorization` values dropped and registered secrets masked. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
+            "Record a HAR for the lifetime of this session through Playwright's `recordHar`. The file is written when the session closes (there is no mid-session flush); use `start_har` and `stop_har` for runtime control. On close it is rewritten with `Cookie`, `Set-Cookie` and `Authorization` values emptied and registered secrets masked; without the `network-body` capability request bodies are emptied too. Honoured on `persistent` and `incognito`; ignored on `attached`.",
           ),
         hars: z
           .array(z.string())
           .optional()
           .describe(
-            'REPLAY HAR file(s) — workspace-rooted paths. Each is wired via `context.routeFromHAR(file, {notFound:"fallback"})` immediately after context creation: requests in the archive are served from it, anything missing falls through to the live network. Path traversal rejected; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.',
+            'Replay HAR file(s), workspace-rooted paths. Each is wired with `context.routeFromHAR(file, {notFound:"fallback"})` right after context creation: matching requests are served from the archive and the rest go to the live network. A path outside $BROWX_WORKSPACE (including through a symlink) is rejected, and a missing file errors. A HAR recorded without bodies replays empty bodies. Several HARs layer fixtures.',
           ),
         recordVideo: z
           .object({
@@ -276,7 +276,7 @@ export function registerSessionLifecycleTools(
               .string()
               .optional()
               .describe(
-                "Workspace-rooted .webm file path. Default: `<workspace>/videos/<session-id>-<ISO>.webm`. Path traversal outside `$BROWX_WORKSPACE` is rejected.",
+                "Workspace-rooted .webm file path. Default: `<workspace>/videos/<session-id>-<ISO>.webm`. A path outside `$BROWX_WORKSPACE` is rejected.",
               ),
             size: z
               .object({ width: z.number().int().positive(), height: z.number().int().positive() })
@@ -287,7 +287,7 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record session video for the lifetime of this session via Playwright's native `recordVideo` context option. The .webm is finalized when the session closes (Playwright constraint — there is no mid-context flush). `stop_video` signals intent + reserves the target path; `get_video` reads the file after `close_session`. Honoured on `persistent` + `incognito` (we own the context); refused on `attached` (consumer's Chrome is not-owned). Capability `file-io` on the stop/get tools.",
+            "Record session video for the lifetime of this session through Playwright's `recordVideo`. The .webm is written when the session closes; `stop_video` reserves the path and `get_video` reads the file after `close_session` (both need the `file-io` capability, off by default). Honoured on `persistent` and `incognito`; refused on `attached`.",
           ),
       },
     },
@@ -363,7 +363,7 @@ export function registerSessionLifecycleTools(
     "close_session",
     {
       description:
-        "Tear down a session: detaches the bridge and closes the browser context (a BYOB/attached session detaches only — never closes the user's Chrome). The \"default\" session may be closed too; it'll be lazily re-created on the next call. No-op-safe. This is also the RECOVERY path for a wedged session: when calls time out repeatedly (a `sessionWedged` result, or snapshot/navigate/screenshot all timing out), close the session and `open_session` a fresh one — a wedged session is NOT recoverable in place by re-navigating or retrying.",
+        "Close a session: detach the bridge and close its browser context (an `attached` session only detaches and never closes your Chrome). The `default` session can be closed too and is recreated on the next call. Closing an id that is not open is a no-op (`wasOpen:false`). HAR and video files finalize on close. This is also the recovery for a wedged session: when calls keep timing out (a `sessionWedged` result, or snapshot, navigate and screenshot all timing out), close it and `open_session` a fresh one; re-navigating or retrying does not recover it.",
       inputSchema: { session: z.string().describe("Session id to close.") },
     },
     async ({ session }) => {
@@ -388,7 +388,7 @@ export function registerSessionLifecycleTools(
     "close_sessions",
     {
       description:
-        "Bulk session teardown for multi-agent cleanup. Select by `prefix` (id starts-with — e.g. one agent's `agentA-*`), `all`, and/or `idleMs` (no use in the last N ms). Filters AND together; at least one selector is required (`all:true` to close everything). Returns the closed ids. Use to reclaim memory + state when a sub-agent wedged or was killed and stranded its sessions.",
+        "Close many sessions at once, for multi-agent cleanup; use `close_session` for one id. Select by `prefix` (ids starting with it, such as `agentA-`), `all`, and/or `idleMs` (no use in the last N ms). Selectors combine with AND and at least one is required (`all:true` closes everything). Returns the closed ids. Use it to reclaim sessions a sub-agent stranded when it wedged or died.",
       inputSchema: {
         prefix: z.string().optional().describe("Close sessions whose id starts with this."),
         all: z
@@ -442,7 +442,7 @@ export function registerSessionLifecycleTools(
     {
       batchable: true,
       description:
-        "List live sessions: id, mode, engine, current url, page count, openedAt. Audit / coordination helper for multi-session work.",
+        "List live sessions with id, mode, engine, current url, page count and openedAt, for multi-session coordination and cleanup. Takes no arguments. Open one with `open_session`, close one with `close_session`.",
       inputSchema: {},
     },
     async () => {

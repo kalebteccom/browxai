@@ -60,7 +60,9 @@ export function registerSessionDialogPermissionTools(
       inputSchema: {
         mode: z
           .enum(["accept", "dismiss", "raise", "accept-prompt-with"])
-          .describe("Policy mode — see tool description."),
+          .describe(
+            'Dialog handling: "accept", "dismiss", "accept-prompt-with" (needs `text`) or "raise" (default).',
+          ),
         text: z
           .string()
           .optional()
@@ -118,24 +120,16 @@ export function registerSessionDialogPermissionTools(
     {
       capability: "action",
       description:
-        "Mutate the session's permission policy at runtime. Governs how page-side permission requests — `getUserMedia` (camera/microphone), `getCurrentPosition`/`watchPosition` (geolocation), `Notification.requestPermission`, `clipboard.read`/`write`, and the sensor permissions — are handled. Without a policy installed, requests either fire silently (Chromium auto-denies in headless) or — if a prior `grant_permissions` pre-granted — change app behavior under an unaware caller. Modes:\n" +
-        '  - "allow"     — pre-grant via CDP `Browser.setPermission`; in-page wrappers call through. The app sees a granted permission.\n' +
-        '  - "deny"      — pre-deny via CDP; in-page wrappers reject with `NotAllowedError`. The app sees a denied permission.\n' +
-        '  - "raise"     — DEFAULT. Pre-deny + in-page wrappers reject AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled permission request — set permissionPolicy"}`. The page never deadlocks (the request is rejected), but a permission request can\'t silently change app state under a caller that didn\'t opt in.\n' +
-        '  - "ask-human" — server blocks on `__browx.confirm(true|false)` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human({kind:"confirm"})` mechanism; page scripts cannot answer it), then resolves to allow/deny per the human\'s answer. Leaving `ask-human` (for any permission, through `mode` or `perPermission`) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability at server start; changes that keep `ask-human` in place are always accepted.\n' +
-        'Per-permission overrides (`perPermission: { camera: "allow", notifications: "deny", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({permissionPolicy})`; this tool replaces it. Returns the resolved policy. Fired requests surface on `ActionResult.permissionRequests[]`. Supported permission names (v1): ' +
-        SUPPORTED_PERMISSIONS.join(", ") +
-        ". USB / Bluetooth / HID are out of scope for v1.\n" +
-        'Sibling to `grant_permissions` — that tool remains as the bulk-grant shortcut for the `mode:"allow"` case; this tool is the full policy surface.',
+        'Change at runtime how the session answers page permission requests: camera, microphone, geolocation, notifications, clipboard, midi, sensors, payment-handler and background-sync (USB, Bluetooth and HID are out of scope). Use `grant_permissions` for a plain bulk grant and `permission_state` to read what is granted. The initial policy comes from `open_session({permissionPolicy})`; this replaces it, persists across navigation and returns the resolved policy. Modes:\n  - "allow": pre-grant through CDP; the page sees a granted permission.\n  - "deny": pre-deny; the page sees a denied permission (`NotAllowedError`).\n  - "raise" (default): deny, record the request, and make the next ActionResult `ok:false` with `failure:{source:"app"}` and a hint to set permissionPolicy. The page never deadlocks and a request cannot change app state unnoticed.\n  - "ask-human": the server waits for a human answer from the DevTools `browxai-…` console context (see `await_human`; page scripts cannot answer), then allows or denies.\nLeaving `ask-human` (through `mode` or `perPermission`) is refused with `requiredCapability:"human-gate-override"` unless the operator enabled that capability (off by default); changes that keep it are accepted. Fired requests appear on `ActionResult.permissionRequests[]`.',
       inputSchema: {
         mode: z
           .enum(["allow", "deny", "raise", "ask-human"])
-          .describe("Top-level policy mode — see tool description."),
+          .describe('Policy mode: "allow", "deny", "raise" (default) or "ask-human".'),
         perPermission: z
           .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
           .optional()
           .describe(
-            "Per-permission overrides. Keys: one of the supported permission names (see tool description). Each value overrides the top-level `mode` for that permission. Unknown names are rejected.",
+            "Per-permission overrides of `mode`, keyed by permission name: camera, microphone, geolocation, notifications, clipboard-read, clipboard-write, midi, midi-sysex, payment-handler, background-sync, accelerometer, gyroscope, magnetometer. Unknown names are rejected.",
           ),
         ...SESSION_ARG,
       },
@@ -202,25 +196,16 @@ export function registerSessionDialogPermissionTools(
     {
       capability: "action",
       description:
-        "Mutate the session's File System Access picker policy at runtime. Governs how `showOpenFilePicker` / `showSaveFilePicker` / `showDirectoryPicker` calls are handled. Without a policy installed, modern web editors deadlock on the picker dialog the headless session can't drive. Modes:\n" +
-        '  - "allow"     — page-side stubs return synthetic FileSystem*Handle objects built from agent-supplied files (call `fs_picker_respond` BEFORE the action that triggers the picker, OR in parallel — the queue is drained per-API on the next matching call). For `showSaveFilePicker`, the agent supplies a workspace-rooted `path` and `createWritable()` writes from the page persist there. For `showOpenFilePicker`, the agent supplies inline `contents` (base64) or a workspace-rooted `path` (server inlines the bytes); the page reads via `getFile()`.\n' +
-        '  - "deny"      — stubs throw `NotAllowedError`. The page sees the user-dismissed-picker branch.\n' +
-        '  - "raise"     — DEFAULT. Stubs throw `NotAllowedError` AND RECORD; the next ActionResult flips `ok:false` with `failure:{source:"app", hint:"unhandled File System Access picker — set fsPickerPolicy"}`. The page never deadlocks (the picker rejects immediately), but a picker call can\'t silently change app state under a caller that didn\'t opt in.\n' +
-        '  - "ask-human" — server blocks on `__browx.respond({kind:"fs_picker_respond", value:{files:[…]}})` with the ticket printed in the prompt, from the DevTools `browxai-…` console context it names (the `await_human` mechanism; page scripts cannot answer it), then resolves with the human-approved file list or denies. This lets a person pick files. Leaving `ask-human` (for any API, through `mode` or `perAPI`) is refused with `requiredCapability: "human-gate-override"` unless the operator enabled that off-by-default capability at server start, so the agent cannot switch the session to `allow` and answer with `fs_picker_respond` itself. Changes that keep `ask-human` in place are always accepted.\n' +
-        'Per-API overrides (`perAPI: { showSaveFilePicker: "allow", showOpenFilePicker: "deny", … }`) win over the top-level `mode`. Persists across navigation: the init-script is re-injected on every new document within the session. The initial policy is set at `open_session({fsPickerPolicy})`; this tool replaces it. Returns the resolved policy. Fired pickers surface on `ActionResult.fsPickerRequests[]`. Supported APIs (v1): ' +
-        SUPPORTED_FS_PICKER_APIS.join(", ") +
-        ". Directory picker returns a minimal handle (`.name` set; iteration empty) — most editors will fall back to per-file pickers when iteration yields nothing.",
+        'Change at runtime how the session answers File System Access picker calls (`showOpenFilePicker`, `showSaveFilePicker`, `showDirectoryPicker`). Without a policy a headless page deadlocks on the picker. The initial policy comes from `open_session({fsPickerPolicy})`; this replaces it, persists across navigation and returns the resolved policy. Modes:\n  - "allow": the page gets synthetic file handles built from files you stage with `fs_picker_respond`, before the action that opens the picker or in parallel (the queue is per API). Save pickers write to a workspace-rooted `path`; open pickers read inline `contents` or a workspace-rooted `path`. The directory picker returns a handle with `.name` set and nothing to iterate.\n  - "deny": the picker throws `NotAllowedError`.\n  - "raise" (default): throw `NotAllowedError`, record the call, and make the next ActionResult `ok:false` with `failure:{source:"app"}` and a hint to set fsPickerPolicy.\n  - "ask-human": the server waits for the human\'s file list from the DevTools `browxai-…` console context (see `await_human`; page scripts cannot answer), then resolves with it or denies.\nLeaving `ask-human` (through `mode` or `perAPI`) is refused with `requiredCapability:"human-gate-override"` unless the operator enabled that capability (off by default), so the agent cannot switch to `allow` and answer itself. Changes that keep `ask-human` are accepted. Fired pickers appear on `ActionResult.fsPickerRequests[]`.',
       inputSchema: {
         mode: z
           .enum(["allow", "deny", "raise", "ask-human"])
-          .describe("Top-level policy mode — see tool description."),
+          .describe('Policy mode: "allow", "deny", "raise" (default) or "ask-human".'),
         perAPI: z
           .record(z.string(), z.enum(["allow", "deny", "raise", "ask-human"]))
           .optional()
           .describe(
-            "Per-API overrides. Keys: one of " +
-              SUPPORTED_FS_PICKER_APIS.join(", ") +
-              ". Each value overrides the top-level `mode` for that picker. Unknown keys are rejected.",
+            "Per-picker overrides of `mode`, keyed by showOpenFilePicker, showSaveFilePicker or showDirectoryPicker. Unknown keys are rejected.",
           ),
         ...SESSION_ARG,
       },

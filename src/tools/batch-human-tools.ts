@@ -49,16 +49,14 @@ export function registerBatchHumanTools(
     {
       capability: "human",
       description:
-        "Block until the human responds. Operator reads `prompt` from the server's stderr and answers from DevTools, in the `browxai-<random>` console context the prompt names (a per-session isolated world page scripts and extensions cannot reach; the page's own `window.__browx` is display-only and answers nothing):\n" +
-        "  - `acknowledge` → `__browx.proceed(ticket)`\n" +
-        "  - `confirm`     → `__browx.confirm(true|false, ticket)`\n" +
-        "  - `choose`      → `__browx.choose(<index-into-choices>, ticket)`\n" +
-        "  - `input`       → `__browx.input('typed text', ticket)`\n" +
-        "The world name and the per-prompt `ticket` are printed with the prompt on stderr; an answer without the current ticket is dropped.\n" +
-        "When the operator started the server with the off-by-default `operator-channel` capability and a socket, the prompt goes to the host daemon on that socket instead, only the daemon's answer counts, and DevTools answers are ignored. An unanswered prompt is denied at its timeout, and an operator abort returns an `error` starting `operator-aborted`.\n" +
-        "Returns `{ kind, value, timedOut }`. On an engine without CDP (firefox, webkit, safari, the native engines) there is no isolated world, so it returns at once with `error` starting `no-human-channel` instead of waiting.",
+        "Ask the human a question and block until they answer: acknowledge, confirm, choose or input. Use it when a person must act (log in, clear a captcha, decide); for unattended runs use `approve_actions` instead of a long wait. The operator reads `prompt` on the server's stderr and answers from DevTools, in the `browxai-<random>` console context the prompt names (an isolated world that page scripts and extensions cannot reach; the page's own `window.__browx` is display-only):\n  - `acknowledge`: `__browx.proceed(ticket)`\n  - `confirm`: `__browx.confirm(true|false, ticket)`\n  - `choose`: `__browx.choose(<index-into-choices>, ticket)`\n  - `input`: `__browx.input('typed text', ticket)`\nThe world name and the per-prompt `ticket` are printed with the prompt; an answer without the current ticket is dropped. With the `operator-channel` capability (off by default) and a socket, the prompt goes to the host daemon on that socket, only the daemon's answer counts, and DevTools answers are ignored. An unanswered prompt is denied at its timeout; an operator abort returns an `error` starting `operator-aborted`. Returns `{ kind, value, timedOut }`. On engines without CDP (firefox, webkit, safari, the native engines) there is no isolated world, so it returns at once with an `error` starting `no-human-channel`.",
       inputSchema: {
-        kind: z.enum(["acknowledge", "confirm", "choose", "input"]).default("acknowledge"),
+        kind: z
+          .enum(["acknowledge", "confirm", "choose", "input"])
+          .default("acknowledge")
+          .describe(
+            "Prompt type: `acknowledge` (default), `confirm`, `choose` (needs `choices`) or `input`.",
+          ),
         prompt: z
           .string()
           .describe("Human-readable instruction shown to the operator (logged to stderr)."),
@@ -75,9 +73,7 @@ export function registerBatchHumanTools(
           .max(3_600_000)
           .optional()
           .describe(
-            "Human response window (ms). Human-paced default 300000 (5min); hard max 3600000 (1h). " +
-              "there is no infinite wait — an unanswered prompt times out (the only previously " +
-              "unbounded path). For unattended runs use `approve_actions` instead of a long wait.",
+            "Human response window in ms (default 300000, max 3600000). An unanswered prompt is denied at the timeout; there is no unbounded wait.",
           ),
         ...SESSION_ARG,
       },
