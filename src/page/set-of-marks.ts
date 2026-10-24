@@ -19,9 +19,10 @@
 // state into a follow-up read.
 
 import type { CDPSession, Page } from "playwright-core";
-import { buildSelectorHint, type FindCandidate } from "./find.js";
-import type { RefRegistry } from "./refs.js";
-import { visibleRect, locatorBoundingBox, type VisibleRect } from "./bbox.js";
+import type { FindCandidate } from "./find.js";
+import type { RefLocatorInputs, RefRegistry } from "./refs.js";
+import { visibleRect, type VisibleRect } from "./bbox.js";
+import { locatorFor } from "./locator.js";
 import type { SnapshotSubstrate } from "./snapshot-substrate.js";
 import { walk, type A11yNode } from "./a11y.js";
 
@@ -46,7 +47,7 @@ export interface SetOfMarksOptions {
    *  on what each box *is*). */
   label?: LabelMode;
   /** Configured test-attribute list — required if any candidate is a bare
-   *  `{ref}` and we have to resolve its bbox via `find()`'s tree walker.
+   *  `{ref}` and we have to resolve its bbox via the composed tree walk.
    *  When every candidate already carries `bbox`, unused. */
   testAttributes?: string[];
 }
@@ -91,10 +92,9 @@ function hasBbox(
 
 /**
  * Resolve a list of `MarkCandidate`s (mixed `{ref}` and full-candidate shape)
- * into `MarkEntry` rows. For bare `{ref}` inputs that aren't already bound to
- * a locator in the registry, we fall back to `find()` over the existing tree
- * to look up the bbox + role/name. Pure-ish: only does a `find()` walk when
- * a bare ref needs resolving. Exported for unit-test composition.
+ * into `MarkEntry` rows. A bare `{ref}` resolves through the ref table (see
+ * `resolveBareRef`), with one composed-tree walk for role/name and the CDP
+ * node id. Exported for unit-test composition.
  */
 /** The page-side dependencies `resolveCandidates` threads through (bundled so the
  *  signature stays within the parameter budget). `cdp` is the chromium-only
@@ -126,7 +126,7 @@ async function buildRefLookup(
   } catch (err) {
     warnings.push(
       `set-of-marks: bbox lookup for bare ref candidates failed (${err instanceof Error ? err.message : String(err)}); ` +
-        `they will be reported without bboxes. Pass the full find() candidate to avoid the lookup.`,
+        `bare refs resolve from the ref table alone, without the CDP rect path.`,
     );
     return null;
   }
@@ -147,32 +147,66 @@ function markEntryFrom(index: number, node: MarkEntrySource, bbox: VisibleRect |
 
 type MarkEntrySource = { ref: string; role?: string; name?: string; testId?: string };
 
-/** Resolve one bare-ref candidate's bbox the same way `find()` does (CDP
- *  visibleRect → portable locatorBoundingBox fallback, capped at 1s). */
+/** Per-box cap for the portable locator fallback. Bare refs resolve in
+ *  parallel, so the whole batch waits at most this long, inside the tool's
+ *  anti-wedge deadline. */
+const BARE_REF_BOX_TIMEOUT_MS = 1000;
+
+/** The role/name/testId a ref's locator record carries, for a ref the current
+ *  walk did not surface. */
+function sourceFromInputs(ref: string, inputs: RefLocatorInputs): MarkEntrySource {
+  return {
+    ref,
+    role: inputs.role,
+    ...(inputs.name !== undefined ? { name: inputs.name } : {}),
+    ...(inputs.testId !== undefined ? { testId: inputs.testId } : {}),
+  };
+}
+
+/** Box of a ref through the same locator an action resolves it with. Null when
+ *  the locator matches nothing, has no size, or times out. */
+async function refTableBox(deps: MarksDeps, ref: string): Promise<VisibleRect | null> {
+  try {
+    const box = await locatorFor(deps.page, deps.refs, { ref }).boundingBox({
+      timeout: BARE_REF_BOX_TIMEOUT_MS,
+    });
+    if (!box || box.width <= 0 || box.height <= 0) return null;
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve one bare-ref candidate's bbox. The ref table is the source of
+ *  truth: a ref `find()` or `snapshot` minted resolves through the same
+ *  `locatorFor` an action uses (test attribute, structural path for DOM-walk
+ *  refs, role and name otherwise), so a DOM-walk ref whose bare-tag role has no
+ *  role selector still gets a box. The CDP visible-rect path runs first when
+ *  the current walk carries the node's backend id. A ref the table has never
+ *  seen is reported by name instead of painted as an empty box. */
 async function resolveBareRef(
   deps: MarksDeps,
   index: number,
   ref: string,
   lookupByRef: Map<string, A11yNode> | null,
-  warnings: string[],
-): Promise<MarkEntry> {
+): Promise<{ entry: MarkEntry; warning?: string }> {
   const looked = lookupByRef?.get(ref);
-  if (!looked) {
-    warnings.push(
-      `set-of-marks: ref "${ref}" was not surfaced by the current snapshot walk — ` +
-        `no bbox to paint. Pass the full find() candidate (with bbox) or call snapshot/find first.`,
-    );
-    return { index, ref, bbox: null, painted: false };
+  const inputs = deps.refs.locatorOf(ref);
+  if (!looked && !inputs) {
+    return {
+      entry: { index, ref, bbox: null, painted: false },
+      warning:
+        `set-of-marks: ref "${ref}" is not in the ref table, so there is no box to paint. ` +
+        `Refs reset when the page changes: call snapshot() or find() for fresh ones, or pass the full find() candidate.`,
+    };
   }
+  const source: MarkEntrySource = looked ?? sourceFromInputs(ref, inputs!);
   let bbox: VisibleRect | null =
-    deps.cdp !== undefined && looked.backendDOMNodeId !== undefined
+    deps.cdp !== undefined && looked?.backendDOMNodeId !== undefined
       ? await visibleRect(deps.cdp, looked.backendDOMNodeId)
       : null;
-  if (bbox === null) {
-    const { hint } = buildSelectorHint(looked);
-    bbox = await locatorBoundingBox(deps.page, hint, { timeoutMs: 1000 });
-  }
-  return markEntryFrom(index, looked, bbox);
+  if (bbox === null) bbox = await refTableBox(deps, ref);
+  return { entry: markEntryFrom(index, source, bbox) };
 }
 
 export async function resolveCandidates(
@@ -180,18 +214,22 @@ export async function resolveCandidates(
   candidates: MarkCandidate[],
 ): Promise<{ entries: MarkEntry[]; warnings: string[] }> {
   const warnings: string[] = [];
-  const entries: MarkEntry[] = [];
   // Fast-path: when every candidate already carries a bbox (e.g. piped straight
   // from a prior find()), skip the tree walk entirely.
   const lookupByRef = candidates.every(hasBbox) ? null : await buildRefLookup(deps, warnings);
 
-  for (let i = 0; i < candidates.length; i++) {
-    const c = candidates[i]!;
-    if (hasBbox(c)) {
-      entries.push(markEntryFrom(i + 1, c, c.bbox));
-    } else {
-      entries.push(await resolveBareRef(deps, i + 1, c.ref, lookupByRef, warnings));
-    }
+  // Bare refs resolve in parallel: each can wait out its locator timeout, and
+  // ten of them in sequence overran the tool deadline.
+  const resolved = await Promise.all(
+    candidates.map(async (c, i) => {
+      if (hasBbox(c)) return { entry: markEntryFrom(i + 1, c, c.bbox) };
+      return resolveBareRef(deps, i + 1, c.ref, lookupByRef);
+    }),
+  );
+  const entries: MarkEntry[] = [];
+  for (const r of resolved) {
+    entries.push(r.entry);
+    if (r.warning) warnings.push(r.warning);
   }
   return { entries, warnings };
 }
