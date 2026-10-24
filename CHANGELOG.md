@@ -38,6 +38,17 @@ surface" covers.
   path, like `upload_file`. An absolute path elsewhere on the host, a `../` path
   or a path starting with `-` is refused, with the same message whether or not
   the path exists. Copy the `.apk` or `.app` into the workspace first.
+- **`browxai chrome stop` confirms the process is Chrome before stopping it.**
+  It reads the command line of the PID in `chrome.pid` (`/proc` on Linux, `ps`
+  on macOS, `tasklist` on Windows) and exits 1 without sending a signal when the
+  command line cannot be read or is not a Chrome launched with
+  `--user-data-dir`.
+- **`asset_export` never replaces an existing file.** Files are created
+  exclusively, and a name already on disk in `intoDir`, from an earlier export
+  or anything else, moves to the next free `-N` name. Re-exporting into the same
+  directory now adds `logo-1.png` next to the earlier `logo.png`.
+  `chrome.pid` joins the workspace files that path-taking tools neither write
+  nor read.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

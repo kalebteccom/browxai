@@ -165,6 +165,8 @@ const PROTECTED_FILES = [
   "config.json",
   "plugins.json",
   "plugins-lock.json",
+  // The PID `browxai chrome stop` signals (cli/chrome.ts).
+  "chrome.pid",
   // The key profile_snapshot MACs its manifests with (session/profile-snapshot.ts).
   ".browx-snapshot-key",
 ];
