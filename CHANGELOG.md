@@ -8,6 +8,10 @@ surface" covers.
 
 ## Unreleased
 
+### Fixed
+
+- **`--help` and `-h` print usage on every subcommand.** `browxai chrome start --help` used to launch Chrome and `browxai doctor --help` ran the check. Both now print usage and exit 0 without running anything. `browxai help` works too.
+
 ## [0.14.0] - 2026-10-24
 
 This release tightens how browxai handles secrets, plugins, workspace paths and
