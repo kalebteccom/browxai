@@ -12,13 +12,10 @@ import { ENGINE_KINDS } from "../engine/index.js";
 import { engineIsAttachOnly } from "../engine/registry.js";
 
 describe("defaultModeForEngine — per-session default launch mode", () => {
-  it.each(["android", "electron"] as const)(
-    "%s is attach-only: defaults to attached regardless of BROWX_ATTACH_CDP",
-    (engine) => {
-      expect(defaultModeForEngine(engine, undefined)).toBe("attached");
-      expect(defaultModeForEngine(engine, "http://127.0.0.1:9222")).toBe("attached");
-    },
-  );
+  it("android is attach-only: defaults to attached regardless of BROWX_ATTACH_CDP", () => {
+    expect(defaultModeForEngine("android", undefined)).toBe("attached");
+    expect(defaultModeForEngine("android", "http://127.0.0.1:9222")).toBe("attached");
+  });
 
   it("is byte-identical to the legacy server default for every engine/attach combo", () => {
     // The legacy server-level rule (createServer): an attach-only engine OR

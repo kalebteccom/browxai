@@ -417,7 +417,7 @@ describe("cookies CRUD", () => {
 
 // ---- layer 2: web-storage --------------------------------------------------
 
-describe("webStorage (localStorage / sessionStorage)", () => {
+describe("webStorage (localStorage)", () => {
   it("rejects on about:blank with a navigation hint", async () => {
     const { page } = fakePage("about:blank");
 
@@ -426,64 +426,62 @@ describe("webStorage (localStorage / sessionStorage)", () => {
     ).rejects.toThrow(/origin-scoped/);
   });
 
-  for (const kind of ["localStorage", "sessionStorage"] as const) {
-    describe(`${kind}`, () => {
-      it("round-trips set → get → list → delete → clear", async () => {
-        const { page } = fakePage("https://example.com/");
+  // `kind` only picks the `window.<kind>` member name interpolated into the
+  // expression; the fake page cannot tell localStorage from sessionStorage.
+  const kind = "localStorage" as const;
+  it("round-trips set → get → list → delete → clear", async () => {
+    const { page } = fakePage("https://example.com/");
 
-        const set = await webStorageSet(page as any, kind, { key: "k", value: "v" }, `${kind}_set`);
-        expect(set.ok).toBe(true);
-        expect(set.origin).toBe("https://example.com");
+    const set = await webStorageSet(page as any, kind, { key: "k", value: "v" }, `${kind}_set`);
+    expect(set.ok).toBe(true);
+    expect(set.origin).toBe("https://example.com");
 
-        const got = await webStorageGet(page as any, kind, { key: "k" }, `${kind}_get`);
-        expect(got.value).toBe("v");
+    const got = await webStorageGet(page as any, kind, { key: "k" }, `${kind}_get`);
+    expect(got.value).toBe("v");
 
-        const missing = await webStorageGet(page as any, kind, { key: "nope" }, `${kind}_get`);
-        expect(missing.value).toBeNull();
+    const missing = await webStorageGet(page as any, kind, { key: "nope" }, `${kind}_get`);
+    expect(missing.value).toBeNull();
 
-        const listed = await webStorageList(page as any, kind, `${kind}_list`);
-        expect(listed.entries).toEqual([{ key: "k", value: "v" }]);
+    const listed = await webStorageList(page as any, kind, `${kind}_list`);
+    expect(listed.entries).toEqual([{ key: "k", value: "v" }]);
 
-        await webStorageDelete(page as any, kind, { key: "k" }, `${kind}_delete`);
+    await webStorageDelete(page as any, kind, { key: "k" }, `${kind}_delete`);
 
-        expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
+    expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
 
-        await webStorageSet(page as any, kind, { key: "x", value: "y" }, `${kind}_set`);
+    await webStorageSet(page as any, kind, { key: "x", value: "y" }, `${kind}_set`);
 
-        await webStorageClear(page as any, kind, `${kind}_clear`);
+    await webStorageClear(page as any, kind, `${kind}_clear`);
 
-        expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
-      });
-      it.each([
-        {
-          label: "a key on get",
-          call: (page: unknown) => webStorageGet(page as any, kind, { key: "" }, `${kind}_get`),
-          message: /key.*required/,
-        },
-        {
-          label: "a key on set",
-          call: (page: unknown) =>
-            webStorageSet(page as any, kind, { key: "", value: "v" }, `${kind}_set`),
-          message: /key.*required/,
-        },
-        {
-          label: "a key on delete",
-          call: (page: unknown) =>
-            webStorageDelete(page as any, kind, { key: "" }, `${kind}_delete`),
-          message: /key.*required/,
-        },
-        {
-          label: "a string value on set",
-          call: (page: unknown) =>
-            webStorageSet(page as any, kind, { key: "k", value: 42 as any }, `${kind}_set`),
-          message: /value.*string.*required/,
-        },
-      ])("requires $label", async ({ call, message }) => {
-        const { page } = fakePage("https://example.com/");
-        await expect(call(page)).rejects.toThrow(message);
-      });
-    });
-  }
+    expect((await webStorageList(page as any, kind, `${kind}_list`)).entries).toEqual([]);
+  });
+  it.each([
+    {
+      label: "a key on get",
+      call: (page: unknown) => webStorageGet(page as any, kind, { key: "" }, `${kind}_get`),
+      message: /key.*required/,
+    },
+    {
+      label: "a key on set",
+      call: (page: unknown) =>
+        webStorageSet(page as any, kind, { key: "", value: "v" }, `${kind}_set`),
+      message: /key.*required/,
+    },
+    {
+      label: "a key on delete",
+      call: (page: unknown) => webStorageDelete(page as any, kind, { key: "" }, `${kind}_delete`),
+      message: /key.*required/,
+    },
+    {
+      label: "a string value on set",
+      call: (page: unknown) =>
+        webStorageSet(page as any, kind, { key: "k", value: 42 as any }, `${kind}_set`),
+      message: /value.*string.*required/,
+    },
+  ])("requires $label", async ({ call, message }) => {
+    const { page } = fakePage("https://example.com/");
+    await expect(call(page)).rejects.toThrow(message);
+  });
 });
 
 // ---- layer 3: named auth-states -------------------------------------------

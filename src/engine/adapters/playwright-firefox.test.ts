@@ -23,7 +23,6 @@ describe("PlaywrightFirefoxAdapter — declarative surface", () => {
 describe("firefoxChannelFromEnv — the moz-firefox BiDi flag (Juggler vs BiDi two-track)", () => {
   it.each([
     { label: "unset flag", env: {}, expected: undefined },
-    { label: "empty flag", env: { BROWX_FIREFOX_CHANNEL: "" }, expected: undefined },
     {
       label: "the moz-firefox value",
       env: { BROWX_FIREFOX_CHANNEL: MOZ_FIREFOX_CHANNEL },

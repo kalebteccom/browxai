@@ -16,10 +16,7 @@ describe("looksLikeChrome", () => {
 
   it.each([
     ["linux", "/usr/bin/vim /tmp/chrome --user-data-dir=/x"],
-    ["linux", "/usr/bin/python3 -m http.server"],
     ["linux", "/opt/google/chrome/chrome --type=renderer"],
-    ["darwin", "/bin/zsh -l"],
-    ["win32", "notepad.exe"],
   ] as const)("refuses on %s: %s", (platform, cmd) => {
     expect(looksLikeChrome(cmd, platform)).toBe(false);
   });

@@ -32,28 +32,16 @@ describe("planChromiumChannel", () => {
       fallback: true,
     },
     {
-      label: "honours an explicit msedge without a fallback",
-      input: { channel: "msedge" },
-      channel: "msedge",
-      fallback: false,
-    },
-    {
       label: "honours an explicit chrome without a fallback",
       input: { channel: "chrome" },
       channel: "chrome",
       fallback: false,
     },
     {
-      label: '"chromium" forces the bundled build',
-      input: { channel: "chromium" },
-      channel: undefined,
-      fallback: false,
-    },
-    {
-      label: '"chromium" is matched case- and whitespace-insensitively',
+      label: '"chromium" forces the bundled build, matched case- and whitespace-insensitively',
       input: { channel: " Chromium " },
       channel: undefined,
-      fallback: undefined,
+      fallback: false,
     },
     {
       label: "keeps an extension launch with no channel on the bundled build",

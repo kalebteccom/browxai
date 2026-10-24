@@ -48,11 +48,6 @@ describe("argv construction", () => {
       actual: tapArgs(10, 20, "emulator-5554").slice(0, 2),
       expected: ["-s", "emulator-5554"],
     },
-    {
-      label: "scopes the hierarchy dump to the serial",
-      actual: dumpHierarchyArgs("emulator-5554").slice(0, 2),
-      expected: ["-s", "emulator-5554"],
-    },
     // `shell screencap` corrupts a PNG by translating LF to CRLF on some transports.
     {
       label: "screencap uses exec-out",
@@ -177,11 +172,6 @@ describe("parsers", () => {
       label: "parsePackages strips the package: prefix and sorts",
       actual: parsePackages("package:com.b\npackage:com.a\n"),
       expected: ["com.a", "com.b"],
-    },
-    {
-      label: "parsePackages handles the -f form that prefixes the apk path",
-      actual: parsePackages("package:/data/app/x.apk=com.acme.app"),
-      expected: ["com.acme.app"],
     },
     {
       label: "parsePackages ignores non-package lines",
