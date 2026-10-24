@@ -2,11 +2,11 @@
 //
 // One probe per browser engine doctor reports on: chromium (the managed-mode
 // dependency — a missing bundled binary FAILS doctor only when no Google Chrome
-// is installed either) and the four opt-in lanes —
-// firefox, webkit, android, electron — whose probes are always INFORMATIONAL (a
-// missing binary / no device / an unset attach endpoint just tells the operator
-// how to enable the engine; it never fails doctor). Each returns a doctor `Check` row; doctor.ts owns the checklist
-// orchestration + the engine-SELECTION diagnostic (which engine the server would
+// is installed either) and the five opt-in lanes — firefox, webkit, android,
+// safari, electron — whose probes are always INFORMATIONAL (a missing binary /
+// no device / an unset attach endpoint just tells the operator how to enable
+// the engine; it never fails doctor). Each returns a doctor `Check` row;
+// doctor.ts owns the checklist orchestration + the engine-SELECTION diagnostic (which engine the server would
 // run on) and calls these for the readiness rows the selection line points at.
 //
 // These probes never reach past the engine port: the android adb-chain probe
@@ -19,6 +19,8 @@ import { findInstalledChrome } from "./chrome-launch.js";
 import { playwrightInstallCommand } from "../util/playwright-version.js";
 import {
   AndroidCdpAdapter,
+  SAFARIDRIVER_PATH,
+  assertSafariAvailable,
   defaultAdbRunner,
   defaultFetcher,
   pickFreePort,
@@ -40,6 +42,7 @@ export function chromeCheck(find: () => string | undefined = findInstalledChrome
     info: true,
     detail:
       "Google Chrome not found. Sessions fall back to the bundled Chromium, and `browxai chrome start` / `chrome login` need Chrome installed",
+    enable: "install Google Chrome (google.com/chrome)",
   };
 }
 
@@ -60,7 +63,9 @@ export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
         name: "chromium",
         ok: true,
         info: true,
-        detail: `bundled build not downloaded. Not needed while Google Chrome is installed; run \`${install}\` to use channel "chromium"`,
+        detail:
+          'bundled build not downloaded. Not needed while Google Chrome is installed, but channel "chromium" uses it',
+        enable: `\`${install}\``,
       };
     }
     return {
@@ -73,7 +78,7 @@ export async function chromiumCheck(chromeInstalled = false): Promise<Check> {
     return {
       name: "chromium",
       ok: chromeInstalled,
-      ...(chromeInstalled ? { info: true } : {}),
+      ...(chromeInstalled ? { info: true, enable: `\`${install}\`` } : {}),
       detail: e instanceof Error ? e.message : String(e),
       fix: `reinstall browxai (playwright-core failed to load), then run \`${install}\``,
     };
@@ -190,6 +195,33 @@ export async function androidCheck(): Promise<Check> {
     if (localPort) {
       await defaultAdbRunner(forwardRemoveArgs(localPort, serial)).catch(() => undefined);
     }
+  }
+}
+
+// Safari availability (opt-in engine, `browserType:"safari"`): real Safari.app
+// over safaridriver, so it needs macOS and the driver binary. Always
+// informational. Doctor does not open a session, so whether "Allow Remote
+// Automation" is on is only known when a session starts; the hint names it.
+export function safariCheck(assertAvailable: () => void = assertSafariAvailable): Check {
+  const enable =
+    "on macOS, run `safaridriver --enable` once (needs admin rights) and turn on Safari > Develop > Allow Remote Automation";
+  try {
+    assertAvailable();
+    return {
+      name: "safari",
+      ok: true,
+      info: true,
+      detail: `safaridriver found at ${SAFARIDRIVER_PATH} (Remote Automation is checked when a session opens)`,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message.split(". ")[0] : String(e);
+    return {
+      name: "safari",
+      ok: true,
+      info: true,
+      detail: `${msg} (opt-in engine — browserType:"safari")`,
+      enable,
+    };
   }
 }
 
