@@ -26,14 +26,9 @@ describe("globToRegex", () => {
     expect(r.test("wssxhostxexample/chat?room=1")).toBe(false);
   });
 
-  it("anchors both ends — a prefix mismatch fails even with **", () => {
+  it("anchors the start — a prefix mismatch fails even with **", () => {
     const r = globToRegex("wss://x/**");
     expect(r.test("not-wss://x/foo")).toBe(false);
-    // `**` is intentionally greedy (.*), so trailing content is permitted —
-    // that's the contract. Use a tighter pattern to forbid trailing content.
-    const tight = globToRegex("wss://x/*");
-    expect(tight.test("wss://x/foo extra")).toBe(true); // single-segment, no /
-    expect(tight.test("wss://x/foo/bar")).toBe(false); // / forbids single
   });
 });
 

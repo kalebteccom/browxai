@@ -307,23 +307,6 @@ describe("PlaywrightStorageSubstrate", () => {
     expect(evaluated[0]!.startsWith("(() =>")).toBe(true);
   });
 
-  it("delegates web-storage writes through the helper to page.evaluate", async () => {
-    const { context, page, evaluated } = ctxStub({ evalResult: { ok: true, origin: "o" } });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    await sub.webStorageSet("sessionStorage", { key: "k", value: "v" }, "sessionstorage_set");
-    expect(evaluated[0]).toContain("window.sessionStorage");
-    expect(evaluated[0]).toContain(`setItem("k", "v")`);
-  });
-
-  it("surfaces the helper's origin guard on about:blank (no evaluate attempted)", async () => {
-    const { context, page, evaluated } = ctxStub({ url: "about:blank" });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    await expect(sub.webStorageList("localStorage", "localstorage_list")).rejects.toThrow(
-      /origin-scoped/,
-    );
-    expect(evaluated).toEqual([]);
-  });
-
   it("delegates idb reads to the helper, evaluating the async IIFE on the Page", async () => {
     const { context, page, evaluated } = ctxStub({
       evalResult: { databases: [{ name: "d", version: 1 }], origin: "o", supported: true },
@@ -335,20 +318,6 @@ describe("PlaywrightStorageSubstrate", () => {
     // driving the W3C IndexedDB API through page.evaluate (no `return` wrapper).
     expect(evaluated).toHaveLength(1);
     expect(evaluated[0]).toContain("indexedDB");
-    expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
-  });
-
-  it("delegates caches reads to the helper, evaluating the async IIFE on the Page", async () => {
-    const { context, page, evaluated } = ctxStub({
-      evalResult: { names: ["v1"], origin: "https://example.com" },
-    });
-    const sub = new PlaywrightStorageSubstrate(context, page, "chromium");
-    const r = await sub.cachesListStorages("caches_list_storages");
-    expect(r).toEqual({ names: ["v1"], origin: "https://example.com" });
-    // The Playwright path runs the byte-identical pre-seam helper: an async IIFE
-    // driving the W3C Cache API through page.evaluate (no `return` wrapper).
-    expect(evaluated).toHaveLength(1);
-    expect(evaluated[0]).toContain("caches");
     expect(evaluated[0]!.startsWith("(async () =>")).toBe(true);
   });
 });

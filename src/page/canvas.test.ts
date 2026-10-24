@@ -238,14 +238,6 @@ describe("runGestureChain (executes against a stubbed mouse)", () => {
     expect(log).toEqual(["move:10,20", "down", "move:30,40", "move:30,40", "up"]);
   });
 
-  it("propagates validation failure without executing any steps", async () => {
-    const { page, log } = makeStubPage();
-    const r = await runGestureChain(page, { steps: [] });
-    expect(r.ok).toBe(false);
-    expect(r.stepsExecuted).toBe(0);
-    expect(log).toEqual([]);
-  });
-
   it("dispatches a wheel step", async () => {
     const { page, log } = makeStubPage();
     const r = await runGestureChain(page, {

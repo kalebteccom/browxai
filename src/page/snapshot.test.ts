@@ -40,14 +40,11 @@ describe("serialise", () => {
     expect(serialise(tree)).toContain('[data-type="stats-pane"]');
   });
 
-  it("marks DOM-walk-only nodes with [from-dom]", () => {
-    const tree: A11yNode = node("button", "Save", "e1", [], { source: "dom" });
-    expect(serialise(tree)).toContain("[from-dom]");
-  });
-
-  it("marks combined-source nodes with [from-both]", () => {
-    const tree: A11yNode = node("button", "Cancel", "e1", [], { source: "both" });
-    expect(serialise(tree)).toContain("[from-both]");
+  it("marks DOM-walk-only nodes with [from-dom] and combined-source nodes with [from-both]", () => {
+    const dom: A11yNode = node("button", "Save", "e1", [], { source: "dom" });
+    const both: A11yNode = node("button", "Cancel", "e1", [], { source: "both" });
+    expect(serialise(dom)).toContain("[from-dom]");
+    expect(serialise(both)).toContain("[from-both]");
   });
 
   it("drops generic/presentation nodes with no name and no testid", () => {

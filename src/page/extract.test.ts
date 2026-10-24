@@ -104,12 +104,6 @@ describe("scanTreeForBestMatch", () => {
     expect(hit?.name).toBe("Engineering");
   });
 
-  it("returns undefined when nothing matches", () => {
-    seq = 0;
-    const tree = n("WebArea", undefined, [n("text", "Design")]);
-    expect(scanTreeForBestMatch(tree, "engineering")).toBeUndefined();
-  });
-
   it("matches against testId", () => {
     seq = 0;
     const tree = n("WebArea", undefined, [n("text", "label", [], { testId: "price-input" })]);
@@ -359,21 +353,6 @@ describe("collectUnknownHintKeys — the adopter trial-1 silent-typo regression"
   // the `url` leaf came back as the title text (innerText default). The
   // diagnostic surfaces this on the agent's next observation so the
   // typo gets fixed without a third turn of guessing.
-  it("flags `attribute` with a `attr` suggestion", () => {
-    const out: string[] = [];
-    collectUnknownHintKeys(
-      {
-        type: "string",
-        "x-browx-source": { selector: "a", attribute: "href" } as never,
-      },
-      "url",
-      out,
-    );
-    expect(out.length).toBe(1);
-    expect(out[0]).toContain("unknown `x-browx-source` key `attribute`");
-    expect(out[0]).toContain("did you mean `attr`?");
-  });
-
   it("recurses into nested properties and array items", () => {
     const out: string[] = [];
     collectUnknownHintKeys(

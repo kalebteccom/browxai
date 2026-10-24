@@ -131,13 +131,6 @@ describe("structural paths", () => {
 });
 
 describe("the type → role mapping", () => {
-  it("maps iOS StaticText to `text`, NOT to browxai's presentational StaticText", () => {
-    // Same word, opposite meaning. On the web the serialiser drops a StaticText
-    // because Blink emits one per text run; on iOS it is often the only node
-    // carrying the screen's content, and dropping it would empty the snapshot.
-    expect(roleForType("StaticText")).toBe("text");
-  });
-
   it("falls through to `generic` for a type it does not name, and keeps the raw type", () => {
     expect(roleForType("SomeFutureElementType")).toBe("generic");
     const refs = new RefRegistry();

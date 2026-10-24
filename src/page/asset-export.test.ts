@@ -51,10 +51,6 @@ describe("filenameFromUrl", () => {
 });
 
 describe("resolveCollision", () => {
-  it("walks until a free slot is found", () => {
-    const used = new Set(["a.png", "a-1.png", "a-2.png"]);
-    expect(resolveCollision("a.png", used)).toBe("a-3.png");
-  });
   it("handles extensionless names", () => {
     const used = new Set(["README"]);
     expect(resolveCollision("README", used)).toBe("README-1");

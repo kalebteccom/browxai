@@ -33,20 +33,13 @@ function safariHandle(): {
 }
 
 describe("SafariScriptSubstrate", () => {
-  it("wraps the expression in `return (…)` and runs it over execute/sync", async () => {
-    const { handle, calls } = safariHandle();
+  it("wraps the expression in `return (…)`, runs it over execute/sync and returns the value", async () => {
+    const { handle, calls, result } = safariHandle();
+    result.value = { ok: 1 };
     const sub: ScriptSubstrate = new SafariScriptSubstrate(handle);
     const expr = "1 + 2";
-    await sub.evaluate(expr);
-    expect(calls).toEqual([{ sessionId: "S", script: "return (1 + 2);" }]);
-  });
-
-  it("returns the page-controlled value from the WebDriver client", async () => {
-    const { handle, result } = safariHandle();
-    result.value = { ok: 1 };
-    const sub = new SafariScriptSubstrate(handle);
-    const expr = "window.__x";
     expect(await sub.evaluate(expr)).toEqual({ ok: 1 });
+    expect(calls).toEqual([{ sessionId: "S", script: "return (1 + 2);" }]);
   });
 });
 

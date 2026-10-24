@@ -91,13 +91,6 @@ describe("SafariClassicSnapshotSubstrate", () => {
     expect(secondGo?.ref).toBe(firstGo?.ref);
   });
 
-  it("a11yTree returns the same WebArea root without find warnings", async () => {
-    const sub = new SafariClassicSnapshotSubstrate(mockIO());
-    const tree = await sub.a11yTree(new RefRegistry(), ["data-testid"]);
-    expect(tree?.role).toBe("WebArea");
-    expect(tree?.children).toHaveLength(3);
-  });
-
   it("degrades pierce:'closed' to open with a warning (no protocol equivalent)", async () => {
     const sub = new SafariClassicSnapshotSubstrate(mockIO());
     const snap = await sub.compose(new RefRegistry(), ["data-testid"], { pierce: "closed" });

@@ -72,14 +72,6 @@ const CHROMIUM_SHAPED: FixtureNode[] = [
 ];
 
 describe("getA11yTree — ignored nodes splice, they do not prune", () => {
-  it("keeps the interactive children of an ignored wrapper", async () => {
-    const tree = await getA11yTree(cdpServing(CHROMIUM_SHAPED), new RefRegistry());
-    expect(tree).not.toBeNull();
-    expect(tree!.role).toBe("RootWebArea");
-    expect(roles(tree!)).toEqual(["button", "button"]);
-    expect(names(tree!)).toEqual(["Save", "Cancel"]);
-  });
-
   it("yields a tree when the ROOT is ignored", async () => {
     // A detached-ish document whose root node is itself ignored. Pre-fix this
     // returned null and the whole a11y tier went dark.

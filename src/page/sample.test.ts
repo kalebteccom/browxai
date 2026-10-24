@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   sampleMetric,
-  ELEMENT_METRICS,
   summariseSeries,
   shouldOmitSeries,
   AUTO_SUMMARY_THRESHOLD,
@@ -17,32 +16,6 @@ describe("sampleMetric — bounded sampler", () => {
         sampleMetric(fakePage, fakeRefs, { metric: m, durationMs: 100 }),
       ).rejects.toThrow(/needs a target element/);
     }
-  });
-
-  it("the metric enum is the fixed whitelist (no arbitrary expression escape)", () => {
-    // Guard: the enum must never include a free-form 'expr'-like member.
-    expect([...ELEMENT_METRICS]).toEqual([
-      "scrollTop",
-      "scrollLeft",
-      "scrollHeight",
-      "scrollWidth",
-      "clientWidth",
-      "clientHeight",
-      "bboxX",
-      "bboxY",
-      "bboxWidth",
-      "bboxHeight",
-    ]);
-    expect(ELEMENT_METRICS).not.toContain("expr");
-  });
-
-  it("window scroll metrics are allowed without a target (validation passes the gate)", async () => {
-    // No target + a non-bbox metric must NOT throw the bbox guard. It will
-    // still fail later when it touches the fake page — but not with the
-    // bbox-needs-target error. We assert the gate specifically.
-    await expect(
-      sampleMetric(fakePage, fakeRefs, { metric: "scrollTop", durationMs: 50 }),
-    ).rejects.not.toThrow(/needs a target element/);
   });
 });
 

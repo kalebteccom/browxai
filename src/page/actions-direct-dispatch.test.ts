@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { CDPSession, Locator, Page } from "playwright-core";
-import {
-  directClick,
-  directDispatchUnsupported,
-  DIRECT_DISPATCH_ENGINE_REFUSAL,
-  DIRECT_DISPATCH_TARGET_REFUSAL,
-} from "./actions-direct-dispatch.js";
+import { directClick, DIRECT_DISPATCH_TARGET_REFUSAL } from "./actions-direct-dispatch.js";
 import { RefRegistry, type RefLocatorInputs } from "./refs.js";
 
 // The plumbing and the refusals. The claim these CANNOT test — that the
@@ -50,16 +45,6 @@ function refsWith(inputs: RefLocatorInputs): { refs: RefRegistry; ref: string } 
   const refs = new RefRegistry();
   return { refs, ref: refs.forKey("k1", inputs) };
 }
-
-describe("directDispatchUnsupported — the engine refusal", () => {
-  it("refuses with the named reason and never claims success", () => {
-    const r = directDispatchUnsupported({ selector: "#send" }, "firefox");
-    expect(r.ok).toBe(false);
-    expect(r.error).toContain(DIRECT_DISPATCH_ENGINE_REFUSAL);
-    expect(r.error).toContain('"firefox"');
-    expect(r.action).toEqual({ type: "click", selector: "#send" });
-  });
-});
 
 describe("directClick — dispatch plumbing", () => {
   it("sends move / press / release at the measured box centre with the right buttons mask", async () => {

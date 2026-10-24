@@ -19,17 +19,12 @@ describe("elementKey", () => {
 });
 
 describe("RefRegistry", () => {
-  it("mints incrementing refs", () => {
-    const r = new RefRegistry();
-    expect(r.forKey("k1")).toBe("e1");
-    expect(r.forKey("k2")).toBe("e2");
-    expect(r.forKey("k3")).toBe("e3");
-  });
-
-  it("returns the same ref for the same key (persistence across snapshots)", () => {
+  it("returns the same ref for the same key and mints the next eN for a new one", () => {
     const r = new RefRegistry();
     const ref = r.forKey("hash-abc");
+    expect(ref).toBe("e1");
     expect(r.forKey("hash-abc")).toBe(ref);
+    expect(r.forKey("hash-def")).toBe("e2");
   });
 
   it("tracks has/keyOf", () => {

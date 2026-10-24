@@ -9,7 +9,7 @@ import { RefRegistry } from "./refs.js";
 import { NativeScreen } from "./native-screen.js";
 import { NativeElementSubstrate } from "./element-substrate-android-app.js";
 import { NativeSnapshotSubstrate } from "./snapshot-substrate-android-app.js";
-import { NativeTargetSubstrate, nativeTargetUrl } from "./target-substrate-android-app.js";
+import { NativeTargetSubstrate } from "./target-substrate-android-app.js";
 import { NativeActionSubstrate, type NativeInputIO } from "./action-substrate-android-app.js";
 import { NativeCaptureSubstrate } from "./capture-substrate-android-app.js";
 import { walk } from "./a11y-types.js";
@@ -233,31 +233,24 @@ describe("NativeElementSubstrate", () => {
     expect(r.reason).toBe("no-such-element");
   });
 
-  it("reads bounds, visibility, text and the native attributes in one dump", async () => {
+  it("reads bounds, visibility and native attributes in one dump, null for one a view lacks", async () => {
     const { screen } = screenOver(SCREEN);
     const elements = new NativeElementSubstrate(screen, new RefRegistry());
     const resolved = await elements.resolve({ kind: "selector", selector: "~submit" });
     if (resolved.kind !== "element") throw new Error("expected a resolution");
-    const [bounds, reading] = await Promise.all([
+    const [bounds, reading, missing] = await Promise.all([
       elements.bounds(resolved.el),
       elements.probe(resolved.el, { visible: true, enabled: true, attribute: "testID" }),
+      // `href` has a real answer of "no" on a view with a fixed attribute set.
+      elements.probe(resolved.el, { attribute: "href" }),
     ]);
     expect(bounds).toEqual({ kind: "bounds", rect: { x: 100, y: 200, width: 200, height: 80 } });
     if (reading.kind !== "reading") throw new Error("expected a reading");
     expect(reading.visible).toBe(true);
     expect(reading.enabled).toBe(true);
     expect(reading.attribute).toBe("submit");
-  });
-
-  it("answers null for an attribute a native view does not have", async () => {
-    // `href` has a real answer of "no" on a view with a fixed attribute set.
-    const { screen } = screenOver(SCREEN);
-    const elements = new NativeElementSubstrate(screen, new RefRegistry());
-    const resolved = await elements.resolve({ kind: "selector", selector: "~submit" });
-    if (resolved.kind !== "element") throw new Error("expected a resolution");
-    const reading = await elements.probe(resolved.el, { attribute: "href" });
-    if (reading.kind !== "reading") throw new Error("expected a reading");
-    expect(reading.attribute).toBeNull();
+    if (missing.kind !== "reading") throw new Error("expected a reading");
+    expect(missing.attribute).toBeNull();
   });
 });
 
@@ -335,30 +328,20 @@ describe("NativeActionSubstrate", () => {
     expect(io.calls).toEqual(["deeplink myapp://checkout/42"]);
   });
 
-  it("fill taps the field first, because `input text` goes to whatever has focus", async () => {
+  it("fill taps the field first, and warns that registered secrets do not materialise here", async () => {
+    // `input text` goes to whatever has focus. An agent that registered a secret
+    // has no other way to learn it was typed literally.
     const { io, sub } = elementsOver(SCREEN);
-    await sub.fill({ target: { selector: "~submit" }, value: "hello" });
+    const r = await sub.fill({ target: { selector: "~submit" }, value: "hello" });
     expect(io.calls).toEqual(["tap 200 240", "text hello"]);
-  });
-
-  it("fill warns that registered secrets do not materialise on this engine", async () => {
-    // An agent that registered a secret has no other way to learn it was typed
-    // literally.
-    const { sub } = elementsOver(SCREEN);
-    const r = await sub.fill({ target: { selector: "~submit" }, value: "<PASSWORD>" });
     expect(r.warnings.join(" ")).toMatch(/Registered secrets do NOT materialise/);
   });
 
-  it("press maps a named key onto its Android keycode", async () => {
+  it("press maps a named key onto its Android keycode and types a single printable character", async () => {
     const { io, sub } = elementsOver(SCREEN);
     await sub.press({ key: "back" });
-    expect(io.calls).toEqual(["key KEYCODE_BACK"]);
-  });
-
-  it("press types a single printable character, matching the web engines", async () => {
-    const { io, sub } = elementsOver(SCREEN);
     await sub.press({ key: "a" });
-    expect(io.calls).toEqual(["text a"]);
+    expect(io.calls).toEqual(["key KEYCODE_BACK", "text a"]);
   });
 
   it("press refuses an unknown multi-character key by name", async () => {
@@ -419,17 +402,10 @@ describe("gestures — real primitives, and one honest refusal", () => {
     };
   };
 
-  it("swipe is ONE platform call", async () => {
-    const { io, s } = sub();
-    const r = await s.gesture({ kind: "swipe", from: { x: 1, y: 2 }, to: { x: 3, y: 4 } });
-    expect(r.kind).toBe("dispatched");
-    expect(io.calls).toEqual(["swipe 1,2 -> 3,4 300"]);
-  });
-
-  it("swipe reports 0 steps, because the driver interpolates", async () => {
+  it("swipe is ONE platform call and reports 0 steps, because the driver interpolates", async () => {
     // Echoing the caller's `steps` would claim a fidelity this path does not
     // have.
-    const { s } = sub();
+    const { io, s } = sub();
     const r = await s.gesture({
       kind: "swipe",
       from: { x: 1, y: 2 },
@@ -437,6 +413,7 @@ describe("gestures — real primitives, and one honest refusal", () => {
       steps: 20,
     });
     if (r.kind !== "dispatched") throw new Error("expected a dispatch");
+    expect(io.calls).toEqual(["swipe 1,2 -> 3,4 300"]);
     expect((r.report as { steps: number }).steps).toBe(0);
   });
 

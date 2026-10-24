@@ -51,13 +51,15 @@ describe("probe() — post-action element observability", () => {
     expect(r.value === r.valueRequested).toBe(false);
   });
 
-  it("omits valueRequested for clicks/hovers (no value passed in)", async () => {
+  it("omits valueRequested, displayText and checked when nothing supplied them", async () => {
     const loc = locator({
       inputValue: "hi",
       evaluateReturns: [false, undefined, null],
     });
     const r = await probe(loc, { ref: "e2" });
     expect(r.valueRequested).toBeUndefined();
+    expect(r.displayText).toBeUndefined();
+    expect(r.checked).toBeUndefined();
     expect(r.value).toBe("hi");
   });
 
@@ -99,15 +101,6 @@ describe("probe() — post-action element observability", () => {
     expect(r.valueRequested).toBe("selected option");
   });
 
-  it("omits displayText when no labelled wrapper is found", async () => {
-    const loc = locator({
-      inputValue: "free text",
-      evaluateReturns: [false, undefined, null],
-    });
-    const r = await probe(loc, { ref: "e6" });
-    expect(r.displayText).toBeUndefined();
-  });
-
   it("surfaces checked:true for a ticked checkbox", async () => {
     const loc = locator({
       inputValue: "on",
@@ -115,15 +108,6 @@ describe("probe() — post-action element observability", () => {
     });
     const r = await probe(loc, { ref: "e7" });
     expect(r.checked).toBe(true);
-  });
-
-  it("omits checked for non-checkbox elements", async () => {
-    const loc = locator({
-      inputValue: "free text",
-      evaluateReturns: [false, undefined, null],
-    });
-    const r = await probe(loc, { ref: "e9" });
-    expect(r.checked).toBeUndefined();
   });
 });
 

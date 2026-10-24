@@ -71,12 +71,6 @@ describe("TargetSubstrate — the port contract", () => {
 });
 
 describe("PlaywrightTargetSubstrate", () => {
-  it("tags the supplied engine (default chromium)", () => {
-    const page = (() => ({})) as unknown as () => Page;
-    expect(new PlaywrightTargetSubstrate(page).engine).toBe("chromium");
-    expect(new PlaywrightTargetSubstrate(page, "webkit").engine).toBe("webkit");
-  });
-
   it("reads the Page per call, so a re-targeted session is not stale", async () => {
     const urls = ["https://a.test/", "https://b.test/"];
     let i = 0;

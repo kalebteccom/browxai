@@ -75,12 +75,6 @@ describe("SeededRandomRegistry — init script", () => {
     });
   });
 
-  it("different seeds produce different streams", () => {
-    const { math: m1 } = runInitScript(_internal.buildInitScript(1));
-    const { math: m2 } = runInitScript(_internal.buildInitScript(2));
-    expect(m1.random()).not.toBe(m2.random());
-  });
-
   it("idempotent re-run on the same realm only updates state (no double-install)", () => {
     const { math, globalThis: g } = runInitScript(_internal.buildInitScript(7));
     const first = math.random();

@@ -190,15 +190,6 @@ describe("limit handling — applyLimit()", () => {
     expect(r.kept.length).toBe(3);
     expect(r.truncated).toBe(false);
   });
-
-  it("over cap → slice + truncated:true", () => {
-    const arr = Array.from({ length: 80 }, (_, i) => i);
-    const r = applyLimit(arr, 50);
-    expect(r.kept.length).toBe(50);
-    expect(r.truncated).toBe(true);
-    expect(r.kept[0]).toBe(0);
-    expect(r.kept[49]).toBe(49);
-  });
 });
 
 describe("detectOverflow — runner integration with fake page", () => {

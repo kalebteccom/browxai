@@ -76,7 +76,7 @@ describe("validateScheduleArgs", () => {
 });
 
 describe("runSchedule — happy paths", () => {
-  it("count-bounded: writes exactly N files and returns matching paths/capturedAt", async () => {
+  it("count-bounded: writes exactly N files holding the snap bytes, with matching paths/capturedAt", async () => {
     let i = 0;
     const snap: SnapFn = () => Promise.resolve(fakePng(i++));
     const clock = virtualClock();
@@ -100,6 +100,9 @@ describe("runSchedule — happy paths", () => {
     expect(r.capturedAt[0]).toBe(0);
     expect(r.capturedAt[1]).toBe(200);
     expect(r.capturedAt[2]).toBe(400);
+    // the files hold the bytes the snap returned, in order
+    expect(readFileSync(r.paths[0]!)[4]).toBe(0);
+    expect(readFileSync(r.paths[2]!)[4]).toBe(2);
   });
 
   it("duration-bounded: stops when wall-clock exceeds durationMs", async () => {
@@ -135,24 +138,6 @@ describe("runSchedule — happy paths", () => {
       clock,
     );
     for (const p of r.paths) expect(p.endsWith(".jpg")).toBe(true);
-  });
-
-  it("written files contain the snap-returned bytes", async () => {
-    let n = 0;
-    const snap: SnapFn = () => Promise.resolve(fakePng(n++));
-    const clock = virtualClock();
-    const r = await runSchedule(
-      snap,
-      {
-        everyMs: 200,
-        count: 2,
-        intoDir: "shots/bytes",
-      },
-      WS,
-      clock,
-    );
-    expect(readFileSync(r.paths[0]!)[4]).toBe(0);
-    expect(readFileSync(r.paths[1]!)[4]).toBe(1);
   });
 });
 

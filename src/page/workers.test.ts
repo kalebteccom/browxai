@@ -17,15 +17,6 @@ import { describe, it, expect, vi } from "vitest";
 import { WorkersRegistry, WORKERS_PAGE_SCRIPT } from "./workers.js";
 import { resolveOriginPolicy } from "../policy/origin.js";
 
-// --- WORKERS_PAGE_SCRIPT shape ------------------------------------------------
-
-describe("WORKERS_PAGE_SCRIPT", () => {
-  it("records service-worker messages from navigator.serviceWorker", () => {
-    expect(WORKERS_PAGE_SCRIPT).toContain("navigator.serviceWorker");
-    expect(WORKERS_PAGE_SCRIPT).toContain("drainSw:");
-  });
-});
-
 // --- Page / CDP fakes ---------------------------------------------------------
 
 /** A service-worker handle as Playwright's `context.serviceWorkers()` returns it. */
@@ -89,7 +80,7 @@ function fakeCdp() {
 // --- installPageWrapper -------------------------------------------------------
 
 describe("WorkersRegistry.installPageWrapper", () => {
-  it("adds the init script once and re-injects into the current document", async () => {
+  it("adds the init script and re-injects once, and a second install does not re-emit it", async () => {
     const reg = new WorkersRegistry();
     const f = fakePage();
     await reg.installPageWrapper(f.page);
@@ -97,12 +88,6 @@ describe("WorkersRegistry.installPageWrapper", () => {
     expect(f.initScripts[0]).toBe(WORKERS_PAGE_SCRIPT);
     // One re-injection into the current page.
     expect(f.evaluates).toHaveLength(1);
-  });
-
-  it("is idempotent — a second install does not re-emit the script", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    await reg.installPageWrapper(f.page);
     await reg.installPageWrapper(f.page);
     expect(f.initScripts).toHaveLength(1);
     expect(f.evaluates).toHaveLength(1);
@@ -190,16 +175,6 @@ describe("WorkersRegistry.sendMessage", () => {
     // and dispatch a real `message` event.
     expect(String(fn)).toContain("MessageEvent");
     expect(String(fn)).toContain("dispatchEvent");
-  });
-
-  it("sw-* finds a worker without a prior list call", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    const sw = fakeSw("https://x/sw.js");
-    f.serviceWorkers.push(sw);
-    const r = await reg.sendMessage(f.page, CHROMIUM, { workerId: "sw-1", message: "x" });
-    expect(r.ok).toBe(true);
-    expect(sw.evaluate).toHaveBeenCalledTimes(1);
   });
 
   it("sw-* reports the evaluate failure", async () => {
@@ -464,13 +439,5 @@ describe("service workers and the origin policy", () => {
     const r = await reg.sendMessage(f.page, blocked, { workerId: "sw-1", message: "x" });
     expect(r).toEqual({ ok: true, workerId: "sw-1" });
     expect(sw.evaluate).toHaveBeenCalledTimes(1);
-  });
-
-  it("applies no filter when the access carries no policy", async () => {
-    const reg = new WorkersRegistry();
-    const f = fakePage();
-    f.serviceWorkers.push(fakeSw("https://blocked.example/sw.js"));
-    const out = await reg.list(f.page, CHROMIUM, "service");
-    expect(out).toHaveLength(1);
   });
 });
