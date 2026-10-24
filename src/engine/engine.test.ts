@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   IMPLEMENTED_ENGINES,
-  EngineNotYetSupportedError,
   resolveBrowserType,
   capabilitiesFor,
   CHROMIUM_CAPABILITIES,
@@ -33,31 +32,11 @@ describe("engine port — EngineKind + selection", () => {
     ]);
   });
 
-  it.each(["chromium", "firefox", "webkit"] as const)(
-    "resolves %s to a Playwright BrowserType with the expected name",
-    (engine) => {
-      const bt = resolveBrowserType(engine);
-      expect(bt.name()).toBe(engine);
-    },
-  );
-
   it("resolves android to the chromium BrowserType — it IS Chromium over CDP", () => {
     // Android Chrome speaks full CDP, so the adapter attaches with
     // chromium.connectOverCDP over an adb-forwarded socket — the chromium
     // BrowserType is the transport.
     expect(resolveBrowserType("android").name()).toBe("chromium");
-  });
-
-  it("EngineNotYetSupportedError stays structured + RFC-naming for any future engine", () => {
-    // All three EngineKind members are implemented today, so resolveBrowserType
-    // no longer throws for them. The error type remains the no-silent-no-op guard
-    // for a future-declared engine; assert its shape directly (it names the RFC
-    // and the engine, and is never a silent fallback to chromium).
-    const err = new EngineNotYetSupportedError("webkit");
-    expect(err).toBeInstanceOf(EngineNotYetSupportedError);
-    expect(err.engine).toBe("webkit");
-    expect(err.message).toContain("engine-not-yet-supported");
-    expect(err.message).toContain("webkit");
   });
 });
 

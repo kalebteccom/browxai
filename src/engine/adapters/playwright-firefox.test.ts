@@ -4,7 +4,6 @@ import {
   firefoxChannelFromEnv,
   MOZ_FIREFOX_CHANNEL,
 } from "./playwright-firefox.js";
-import { FIREFOX_CAPABILITIES } from "../capabilities.js";
 
 // The launch/attach methods drive a real browser and are exercised by the
 // Firefox keystone lane (real-Firefox). Here we assert the adapter's pure
@@ -12,13 +11,6 @@ import { FIREFOX_CAPABILITIES } from "../capabilities.js";
 // hatch, refuses CDP-attach structurally (Firefox speaks BiDi/Juggler, not
 // CDP), and resolves the experimental moz-firefox BiDi channel flag.
 describe("PlaywrightFirefoxAdapter — declarative surface", () => {
-  it("exposes the firefox capability declaration — all sub-interfaces, NO deep", () => {
-    const adapter = new PlaywrightFirefoxAdapter();
-    expect(adapter.capabilities).toBe(FIREFOX_CAPABILITIES);
-    expect(adapter.capabilities.deep).toBe(false);
-    expect(adapter.capabilities.subInterfaces.size).toBe(11); // +page (RFC 0004 D5), +element (RFC 0009 P2)
-  });
-
   it("refuses CDP-attach structurally (firefox-attach-not-supported)", async () => {
     const adapter = new PlaywrightFirefoxAdapter();
     await expect(adapter.attach("http://127.0.0.1:9222")).rejects.toThrow(

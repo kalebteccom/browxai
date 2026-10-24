@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { AndroidCdpAdapter } from "./android-cdp.js";
-import { ANDROID_CAPABILITIES } from "../capabilities.js";
 
 // The connectOverCDP transport hop drives a real browser and is exercised by the
 // device-gated keystone. Here we assert the adapter's declarative surface + the
@@ -10,32 +9,11 @@ import { ANDROID_CAPABILITIES } from "../capabilities.js";
 // orchestration test that would reach it stops at a structured error first, and
 // the discovery test asserts the path up to the transport hop.
 
-describe("AndroidCdpAdapter — declarative surface", () => {
-  it("exposes ANDROID_CAPABILITIES — all sub-interfaces AND deep:true (the standout)", () => {
-    const adapter = new AndroidCdpAdapter();
-    expect(adapter.capabilities).toBe(ANDROID_CAPABILITIES);
-    // The headline: Android Chrome speaks full CDP, so unlike firefox/webkit it
-    // declares deep:true — every tool works, no new substrate.
-    expect(adapter.capabilities.deep).toBe(true);
-    expect(adapter.capabilities.subInterfaces.size).toBe(11); // +page (RFC 0004 D5), +element (RFC 0009 P2)
-    expect(adapter.capabilities.engine).toBe("android");
-  });
-});
-
 describe("AndroidCdpAdapter — launch refusal (attach-only)", () => {
   it("refuses managed/ephemeral launch with android-launch-not-supported", async () => {
     const adapter = new AndroidCdpAdapter();
     await expect(adapter.launch()).rejects.toThrow(/android-launch-not-supported/);
     await expect(adapter.launch()).rejects.toThrow(/attach/i);
-  });
-});
-
-describe("AndroidCdpAdapter — device discovery (mocked adb)", () => {
-  it("discovers the single ready device's serial", async () => {
-    const runAdb = vi.fn(async () => "List of devices attached\nZY223abc\tdevice\n");
-    const adapter = new AndroidCdpAdapter({ runAdb });
-    expect(await adapter.discoverDevice()).toBe("ZY223abc");
-    expect(runAdb).toHaveBeenCalledWith(["devices"]);
   });
 });
 

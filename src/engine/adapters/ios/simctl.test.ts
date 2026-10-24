@@ -115,19 +115,15 @@ describe("runtimeLabel", () => {
 describe("parseDevices", () => {
   const devices = parseDevices(LIST_JSON);
 
-  it("reports the available iOS devices with their state and runtime", () => {
+  it("reports the available iOS devices with their state and runtime, and drops the rest", () => {
+    // The exact list excludes the unavailable-runtime row and the tvOS device.
+    // simctl keeps rows for runtimes that are no longer installed, and offering
+    // one as a boot target fails opaquely tens of seconds later.
     expect(devices.map((d) => `${d.name} ${d.runtime} ${d.state}`)).toEqual([
       "iPhone 15 Pro iOS 17.2 shutdown",
       "iPhone 17 iOS 26.5 booted",
     ]);
     expect(devices.every((d) => d.platform === "ios")).toBe(true);
-  });
-
-  it("drops unavailable rows and non-iOS runtimes", () => {
-    // simctl keeps rows for runtimes that are no longer installed. Offering one
-    // as a boot target fails opaquely tens of seconds later.
-    expect(devices.find((d) => d.id.startsWith("DEAD"))).toBeUndefined();
-    expect(devices.find((d) => d.name.includes("Apple TV"))).toBeUndefined();
   });
 
   it("returns an empty list rather than throwing on unparseable output", () => {

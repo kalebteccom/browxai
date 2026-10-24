@@ -302,6 +302,10 @@ describe("console panel", () => {
     expect(rows.map((r) => r.t)).toEqual([30, 70, 80, 130]);
     expect(rows.map((r) => r.source)).toEqual(["console", "console", "page", "console"]);
     expect(rows[2]).toMatchObject({ level: "error", stack: "at x" });
+    // The last sample row carries a payload that is not an object. It degrades to
+    // a plain log row instead of being dropped.
+    expect(rows[3]).toMatchObject({ level: "log", source: "console" });
+    expect(displayText(rows[3]?.text)).toBe("—");
   });
 
   it("maps a level it knows, and keeps one it does not as a log that says what it was", () => {
@@ -320,13 +324,6 @@ describe("console panel", () => {
     expect(resolveConsole(rows, 75).rows.map((r) => r.t)).toEqual([30, 70]);
     expect(resolveConsole(rows, 200, "error").rows.map((r) => r.t)).toEqual([70, 80]);
     expect(resolveConsole(rows, 200, "warn").rows).toHaveLength(2);
-  });
-
-  it("degrades a message whose payload is not an object instead of dropping the row", () => {
-    const rows = buildConsoleRows(indexEvents(sampleEvents()));
-    const malformed = rows.find((r) => r.t === 130);
-    expect(malformed).toMatchObject({ level: "log", source: "console" });
-    expect(displayText(malformed?.text)).toBe("—");
   });
 
   it("walks back from the playhead only as far as the window, and says there is more", () => {

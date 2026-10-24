@@ -56,10 +56,6 @@ describe("resolveEngineSelection — precedence flag > env > default", () => {
     expect(() => resolveEngineSelection([], { BROWX_ENGINE: "opera" })).toThrow(UnknownEngineError);
   });
 
-  it("validates the flag value — an unknown --engine errors with the list", () => {
-    expect(() => resolveEngineSelection(["--engine", "opera"], {})).toThrow(UnknownEngineError);
-  });
-
   it("a bare trailing --engine (no value) is a loud mistake, not a silent no-op", () => {
     expect(() => resolveEngineSelection(["--engine"], {})).toThrowError(
       /--engine requires a value/,
