@@ -155,6 +155,34 @@ main:has(.browx-404) > .content-panel {
   min-width: 0;
 }
 
+/* Landing links. The splash header has no menu, so these sit at the top of the
+   page body and wrap onto one line at 390 px. */
+.browx-topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  max-width: 1140px;
+  margin-inline: auto;
+  padding-top: 0.5rem;
+}
+.browx-topnav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+  font-weight: 500;
+  color: var(--sl-color-gray-2);
+  text-decoration: none;
+  border-radius: 0.5rem;
+}
+.browx-topnav a:hover,
+.browx-topnav a:focus-visible {
+  color: var(--sl-color-text-accent);
+}
+.browx-topnav + .browx-hero {
+  padding-top: clamp(1rem, 3vw, 2.5rem);
+}
+
 /* A faint targeting grid + glow behind the hero, masked to fade out. */
 .browx-hero::before {
   content: "";
