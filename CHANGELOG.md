@@ -15,6 +15,7 @@ surface" covers.
 - **`doctor` warns when `BROWX_CAPABILITIES` drops the defaults.** A list such as `eval` replaces `read,navigation,action,human`. The `capabilities` row shows a warning, not a green tick, and prints the list with the defaults added back.
 - **`browxai init` next steps keep the workspace on `chrome login` and `chrome start`.** The generated `.mcp.json` sets `BROWX_WORKSPACE` to `<dir>/.browxai`, so a login made in a shell without it went to `~/.browxai/profile` and the `browxai` entry never saw it. The next steps now print both commands with `BROWX_WORKSPACE` set, and say why.
 - **A missing Firefox or WebKit download now says which command to run.** Playwright's own message tells you to run `npx playwright install`, which can fetch a different build from the one browxai uses. The error now ends with the matching `npx playwright-core@<version> install firefox` or `... webkit` line, as the Chromium error already did.
+- **`BYOB` is spelled out where you first meet it.** `browxai --help` and `browxai init` now say it means bring your own browser, a Chrome you start yourself and browxai attaches to. `chrome start` now ends with what to do with its `attach` and `caps` lines, and `doctor` says the `browxai-attached` entry is the one `browxai init` writes.
 
 ## [0.14.0] - 2026-10-24
 

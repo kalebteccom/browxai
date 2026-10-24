@@ -145,7 +145,7 @@ export async function runDoctor(): Promise<number> {
       checks.push({
         name: "cdp-attach",
         ok: true,
-        detail: `BROWX_ATTACH_CDP unset, but a Chrome is reachable at 127.0.0.1:9222 (${reachable.version}). Use the \`browxai-attached\` MCP entry to attach.`,
+        detail: `BROWX_ATTACH_CDP unset, but a Chrome is reachable at 127.0.0.1:9222 (${reachable.version}). To attach to it, use the \`browxai-attached\` MCP entry that \`browxai init\` writes.`,
       });
     } else {
       checks.push({
