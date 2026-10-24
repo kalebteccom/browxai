@@ -69,7 +69,7 @@ single-session callers need to know none of this.
 | ------------ | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
 | `persistent` | the workspace default profile, or `profile` | cookies and storage survive across runs         | logged-in flows you want to resume           |
 | `incognito`  | own ephemeral context and browser           | nothing persisted, all state discarded on close | one-off driving with no profile trace        |
-| `attached`   | the externally launched Chrome (not owned)  | the user's real profile                         | BYOB, attach to a Chrome you already control |
+| `attached`   | the externally launched Chrome (not owned)  | that Chrome's own profile                       | BYOB, attach to a Chrome you already control |
 
 `incognito` ids are always isolated contexts. With `persistent`, a session that
 names no `profile` runs on the workspace's default profile, whatever its id, and
