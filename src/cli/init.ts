@@ -110,7 +110,7 @@ export function runInit(args: string[]): Promise<number> {
     `next steps:\n  1) open Claude Code with cwd=${workspace} so this .mcp.json is picked up\n` +
       `  2) use the \`browxai\` MCP server for managed mode. It needs no more setup: it launches your installed Chrome, or the bundled Chromium without one\n` +
       `  3) to sign in by hand once, run \`BROWX_WORKSPACE=${ws} browxai chrome login\`. The \`browxai\` entry reuses that login\n` +
-      `  4) (BYOB) run \`BROWX_WORKSPACE=${ws} browxai chrome start\` to launch the attachable Chrome, then use \`browxai-attached\`.\n` +
+      `  4) to attach to a Chrome you start yourself (BYOB, bring your own browser), run \`BROWX_WORKSPACE=${ws} browxai chrome start\`, then use \`browxai-attached\`.\n` +
       `     That entry's env sets ${capabilitiesAssignment("byob-attach")}; without byob-attach every attach is refused.\n` +
       `  5) run \`browxai doctor\` if a session fails to open\n\n` +
       `Keep BROWX_WORKSPACE=${ws} on every \`browxai chrome\` command. The entries above use it, and a Chrome started without it uses ~/.browxai/profile, which is a different profile.\n`,
