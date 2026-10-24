@@ -45,6 +45,10 @@ describe("L2/L5 — every deep tool is gated by engine capability, not engine na
   // on a deep one — keyed on the engine's declared `deep`, never its name.
   it.each(ENGINE_KINDS)("[%s] gates all deep tools by its declared `deep`", (engine) => {
     const deep = capabilitiesFor(engine)?.deep ?? false;
+    // No engine may claim `deep` (the raw-CDP escape hatch) without a real CDP
+    // handle: only the three Chromium-family lanes do (desktop chromium, the
+    // Chrome-on-Android attach, the Electron-app attach).
+    if (deep) expect(["chromium", "android", "electron"]).toContain(engine);
     for (const tool of DEEP_TOOLS) {
       const refusal = assertEngineSupports(tool, engine);
       if (deep) {
@@ -105,17 +109,9 @@ describe("L2/L5 — the five touch tools left DEEP_TOOLS without widening any en
   //     tokensEstimate}` — same file, plus `gesture-engine-refusal.test.ts`
   //     end-to-end through the real server;
   //   - safari refuses in its own adapter — same file.
-  // This block holds the third leg: they are gone from the gate, and nothing put
-  // them back.
-
-  it.each(ENGINE_KINDS)("[%s] the gate un-gates all five, deep or not", (engine) => {
-    // The gate now says nothing about these tools on ANY engine — including the
-    // non-deep ones, where it used to be the only thing refusing them. That is
-    // the load the substrate picked up.
-    for (const tool of RETIRED_BY_SUBSTRATE) {
-      expect(assertEngineSupports(tool, engine)).toBeNull();
-    }
-  });
+  // The third leg, that they are gone from the gate and nothing put them back, is
+  // `gesture-engine-refusal.test.ts` running all five end-to-end on a non-deep
+  // engine that answers them. This block pins the list those tests iterate.
 
   it("names five, and the registrations still exist", async () => {
     // The P2 trap: a list a test iterates can shrink without failing. Pin the
