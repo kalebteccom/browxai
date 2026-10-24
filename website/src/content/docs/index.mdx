@@ -9,6 +9,7 @@ lastUpdated: false
 
 import InstallCommand from "../../components/InstallCommand.astro";
 import ProjectFacts from "../../components/ProjectFacts.astro";
+import Shot from "../../components/Shot.astro";
 
 <div class="browx-hero not-content">
   <div class="browx-hero-copy">
@@ -74,6 +75,18 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
   </div>
 </div>
 
+<div class="browx-shots not-content">
+  <Shot
+    name="snapshot"
+    alt={{
+      wide: "A GitHub repository page with named regions and element refs such as e333 for the search button and e345 for Pull requests, as browxai's snapshot returns them.",
+      narrow:
+        "A GitHub repository page at phone width with named regions and element refs such as e649 for the navigation toggle and e345 for Pull requests, as browxai's snapshot returns them.",
+    }}
+    caption={{ wide: "A page as the agent reads it: refs it can act on, regions it can name." }}
+  />
+</div>
+
 <ProjectFacts />
 
 <div class="browx-diagram not-content">
@@ -118,6 +131,32 @@ import ProjectFacts from "../../components/ProjectFacts.astro";
       <span class="bx-step-d">click, fill, verify</span>
     </div>
 
+  </div>
+
+  <div class="browx-shots">
+    <span class="browx-shot-step">// find</span>
+    <Shot
+      name="marks"
+      alt={{
+        wide: "The same page with numbered boxes over eight elements, each number mapped to a ref, for example 8 is e363, the Code button.",
+        narrow:
+          "The same page at phone width with numbered boxes over seven elements, each number mapped to a ref, for example 5 is e653, the More button.",
+      }}
+      caption={{
+        wide: "Number the candidates, then say click 8.",
+        narrow: "Number the candidates, then say click 5.",
+      }}
+    />
+    <span class="browx-shot-step">// act</span>
+    <Shot
+      name="act-diff"
+      alt={{
+        wide: "The Code menu open on the repository page, with the diff browxai returned: aria-expanded false to true and 64 nodes added.",
+        narrow:
+          "The More menu open on the repository page at phone width, with the diff browxai returned: aria-expanded false to true and 34 nodes added.",
+      }}
+      caption={{ wide: "One click, one diff: what changed, and nothing else." }}
+    />
   </div>
 </div>
 

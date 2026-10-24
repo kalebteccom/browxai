@@ -1,0 +1,68 @@
+{
+  "snapshot": {
+    "light.1280": {
+      "stem": "snapshot.light.1280.6687adf1",
+      "width": 1280,
+      "height": 800
+    },
+    "light.390": {
+      "stem": "snapshot.light.390.3e476c1d",
+      "width": 390,
+      "height": 844
+    },
+    "dark.1280": {
+      "stem": "snapshot.dark.1280.420392d7",
+      "width": 1280,
+      "height": 800
+    },
+    "dark.390": {
+      "stem": "snapshot.dark.390.119d9681",
+      "width": 390,
+      "height": 844
+    }
+  },
+  "marks": {
+    "light.1280": {
+      "stem": "marks.light.1280.99e70a46",
+      "width": 1280,
+      "height": 800
+    },
+    "light.390": {
+      "stem": "marks.light.390.b957952e",
+      "width": 390,
+      "height": 844
+    },
+    "dark.1280": {
+      "stem": "marks.dark.1280.06b276aa",
+      "width": 1280,
+      "height": 800
+    },
+    "dark.390": {
+      "stem": "marks.dark.390.ebde5dfb",
+      "width": 390,
+      "height": 844
+    }
+  },
+  "act-diff": {
+    "light.1280": {
+      "stem": "act-diff.light.1280.2399b903",
+      "width": 1280,
+      "height": 800
+    },
+    "light.390": {
+      "stem": "act-diff.light.390.dfea9b1d",
+      "width": 390,
+      "height": 844
+    },
+    "dark.1280": {
+      "stem": "act-diff.dark.1280.860e0f40",
+      "width": 1280,
+      "height": 800
+    },
+    "dark.390": {
+      "stem": "act-diff.dark.390.eec7e1dd",
+      "width": 390,
+      "height": 844
+    }
+  }
+}
