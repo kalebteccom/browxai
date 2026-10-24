@@ -27,6 +27,12 @@ surface" covers.
   manifest or `plugins.json` is dropped with a warning. The lock now stores
   `integrity`. Existing installs read as `community` until
   `browxai plugin sync` or `upgrade` re-pins them.
+- **File-reading tools check containment on the real path.** `upload_file`,
+  `drop_files`, `inject_storage_state` from a path, HAR replay, replay-artifact
+  reads, heap reads and `extensions_install` resolve symlinks before deciding
+  whether a path is inside `$BROWX_WORKSPACE`. A link inside the workspace that
+  leads out of it, such as a `file:` plugin install under `plugins/node_modules`,
+  is refused with "resolves through a link to a path outside $BROWX_WORKSPACE".
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

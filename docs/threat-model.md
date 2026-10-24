@@ -832,7 +832,12 @@ path, `inject_storage_state` from a path, HAR replay, replay-artifact
 reads, heap and trace reads, `extensions_install`) refuse the same operator files,
 including the snapshot key, and every browser-profile tree (`profile/`,
 `profiles/`, `profile-snapshots/`, `BROWX_DEFAULT_PROFILE`, and the old
-`chrome-profile/`).
+`chrome-profile/`). They also check containment on the real path: the deepest
+existing part of the path is resolved through symlinks and must stay inside the
+real workspace root, so a link inside the workspace (a `file:` plugin install
+under `plugins/node_modules`, for one) does not open a file outside it. A path
+that does not exist yet is checked through its parent, and a dangling link
+through its target.
 Otherwise `upload_file` could hand a cookie store or the key to the page, and so
 to the agent. `plugins/` stays readable. `set_config` also refuses an origin or confirm hook
 the next start could not parse. A `config.json` browxai cannot

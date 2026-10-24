@@ -11,6 +11,7 @@ import {
   lstatSync,
   mkdirSync,
   openSync,
+  readlinkSync,
   realpathSync,
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
@@ -172,13 +173,22 @@ const PROTECTED_FILES = [
 // 0.13.0 put it, and workspaces that still hold one keep it protected.
 const PROTECTED_DIRS = ["plugins", "profile", "profiles", "profile-snapshots", "chrome-profile"];
 
+/** Hops `realish` follows through dangling links before it stops. */
+const MAX_DANGLING_HOPS = 8;
+
 /** `p` with its longest existing ancestor replaced by that ancestor's real
- *  path, so a symlink inside the workspace cannot route around the check. */
-function realish(p: string): string {
+ *  path, so a symlink inside the workspace cannot route around the check. A
+ *  path that does not exist yet is checked through its parent. A dangling
+ *  link is followed to where it points, because creating the file creates it
+ *  there. */
+function realish(p: string, hops = 0): string {
   let head = p;
   const tail: string[] = [];
   // cap: one step per path segment; `dirname` reaches the root and returns.
   while (!existsSync(head)) {
+    if (hops < MAX_DANGLING_HOPS && isDanglingLink(head)) {
+      return join(realish(resolve(dirname(head), readlinkSync(head)), hops + 1), ...tail);
+    }
     const parent = dirname(head);
     if (parent === head) return p;
     tail.unshift(basename(head));
@@ -189,6 +199,17 @@ function realish(p: string): string {
   } catch {
     return p;
   }
+}
+
+/** Case-insensitive comparison where the default filesystem folds case. */
+const foldCase = (p: string): string =>
+  process.platform === "darwin" || process.platform === "win32" ? p.toLowerCase() : p;
+
+/** True when the real path of `abs` stays inside the real workspace root. */
+function staysInsideRealRoot(workspaceRoot: string, abs: string): boolean {
+  const root = foldCase(realish(resolve(workspaceRoot)));
+  const target = foldCase(realish(resolve(abs)));
+  return target === root || target.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
 /** Directories whose contents the agent may not READ through a path-taking
@@ -235,13 +256,21 @@ export function assertWritableWorkspacePath(
 
 /** Throws when `abs` is an operator file or inside a browser profile, for a
  *  tool that READS an agent-chosen path (`upload_file` would otherwise hand the
- *  snapshot key or a cookie store to the page, and so to the agent). */
+ *  snapshot key or a cookie store to the page, and so to the agent). Also
+ *  throws when the real path leaves the workspace: a symlink inside it (a
+ *  `file:` plugin install under `plugins/node_modules`, say) must not open a
+ *  file outside it. */
 export function assertReadableWorkspacePath(
   workspaceRoot: string,
   abs: string,
   tool: string,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
+  if (!staysInsideRealRoot(workspaceRoot, abs))
+    throw new Error(
+      `${tool}: refusing to read "${abs}" — it resolves through a link to a path outside ` +
+        "$BROWX_WORKSPACE. Copy the file into the workspace instead.",
+    );
   const hit = protectedHit(workspaceRoot, abs, READ_PROTECTED_DIRS, env);
   if (hit)
     throw new Error(
