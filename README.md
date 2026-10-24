@@ -42,7 +42,7 @@ That is the whole of the host reach: three capabilities and adb. browxai has no 
 - **Drive a live web app.** Have a coding agent `navigate` to a page, `find` a control by natural-language query, `fill` a form, `click`, and verify the outcome from a structured `ActionResult`, without burning tokens on a full DOM dump.
 - **Work inside an authenticated session.** Open a `persistent` or `attached` (bring-your-own-browser) session so the agent operates inside a real, logged-in profile and can automate multi-step flows that need the existing cookies.
 - **Extract structured data from a script.** From one autonomous TypeScript file: `createBrowxai()` → `navigate()` → `extract({ schema })` → `close()`, with the same safety gates as the MCP path.
-- **Log in without seeing the password.** With `credentials` on, the agent asks for an account by name, browxai fetches the username and TOTP code from your vault, and `fill` submits a password the agent only ever knows by alias.
+- **Log in without seeing the password.** With `credentials` and `secrets` on, the agent asks for an account by name, browxai fetches the username from your vault, and `fill` submits a password the agent only ever knows by alias. Each account needs a `BROWX_CREDENTIAL_ORIGINS` entry naming the origins its password may be typed into.
 - **Run cross-engine checks.** Drive the same tool surface on Chromium, Firefox, WebKit, real Chrome-on-Android, or real Safari. Pick the engine per session and validate a flow beyond just Chromium. Chromium is the full surface; the non-CDP engines run a curated subset and **structurally refuse** the CDP-deep tools with a named reason (see the per-engine table in the [tool reference](docs/tool-reference.md)).
 - **Drive a native app on an emulator.** With `native-device` on, open an `android-app` or `ios-app` session and the agent taps, types and swipes through the same `find` / `click` / `fill` it uses on a page. Ten `device_*` and `app_*` tools cover boot, install, launch and reset. A verb the platform has no primitive for refuses and names what is missing, so `gesture_pinch` works on iOS and refuses on Android.
 - **Drive the desktop app you already have open.** Start VS Code or Slack with `--remote-debugging-port`, point `BROWX_ATTACH_CDP` at it, grant `byob-attach`, and `snapshot` / `find` / `click` read and drive the app's own UI. browxai names the engine `electron` off `Browser.getVersion` without being told, so an agent is never told it is driving a plain Chromium tab.
@@ -87,11 +87,11 @@ browxai launches the Google Chrome already installed on the machine, on one defa
 
 Wire it into an MCP client over the stdio transport, e.g. in an `.mcp.json`:
 
-```jsonc
+```json
 {
   "mcpServers": {
-    "browxai": { "command": "browxai" },
-  },
+    "browxai": { "command": "browxai" }
+  }
 }
 ```
 
@@ -111,7 +111,12 @@ import { createBrowxai } from "browxai";
 const browxai = await createBrowxai(); // in-process, single-script
 await browxai.navigate({ url: "https://example.com" });
 const { data } = await browxai.extract({
-  schema: { title: "string" },
+  schema: {
+    type: "object",
+    properties: {
+      title: { type: "string", "x-browx-source": { selector: "h1" } },
+    },
+  },
 });
 await browxai.close();
 ```
