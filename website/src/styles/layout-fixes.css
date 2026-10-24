@@ -1,0 +1,36 @@
+/* Layout fixes from scripts/check-layout.mjs. Kept apart from brand.css. */
+
+/* A table marked to wrap on a phone (docs-enhance.ts) breaks long code tokens
+   too, so its min-content width fits a 320px column. */
+@media (max-width: 40rem) {
+  .sl-markdown-content table[data-browx-wrap] :is(th, td) code {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* At large text a card column or capability chip keeps to the viewport. */
+.browx-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr));
+}
+.browx-cap {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Header between 50rem and 72rem at large text: the first column is sized from
+   the sidebar width in rem, so it grows with the root font and pushes the theme
+   control off screen. Cap it at 36vw (the 16px sidebar is narrower than that). */
+@media (min-width: 50rem) and (max-width: 71.9375rem) {
+  header.header > .header {
+    grid-template-columns:
+      minmax(
+        min(
+          calc(var(--__sidebar-width) + max(0rem, var(--__main-column-fr) - var(--sl-nav-gap))),
+          36vw
+        ),
+        auto
+      )
+      1fr auto;
+  }
+}

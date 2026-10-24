@@ -141,6 +141,7 @@ export default defineConfig({
         "@fontsource/jetbrains-mono/400.css",
         "@fontsource/jetbrains-mono/500.css",
         "./src/styles/brand.css",
+        "./src/styles/layout-fixes.css",
       ],
       expressiveCode: {
         themes: ["github-dark", "github-light"],
