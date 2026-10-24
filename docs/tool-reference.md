@@ -1344,7 +1344,7 @@ fill_form({
 //   and `element` = the submit click's probe.
 ```
 
-**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the page URL doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
+**Atomic pre-resolution.** Every field's target, and the submit target if supplied, is resolved BEFORE any DOM write lands. If any target fails to resolve (unknown ref, selector that matches zero nodes, scoped secret rejected because the field's frame origin doesn't match the scope, …), the call returns `ok:false` with a structured `fieldResolution: [{ index, targetSummary, ok, error? }]` block listing every field's outcome, and **NO partial fills happen**. The agent gets a single "this form isn't ready" signal instead of a half-filled form to recover from.
 
 **Sequential dispatch.** Once resolution succeeds, fields are filled in array order via the same Playwright `.fill()` path the single-field primitive uses. The first per-field error stops the loop; later fields are reported as `skipped` on `fillFailure: { atIndex, skipped: number[] }` so the agent can see how far the dispatch got. Submit is skipped on any per-field error (no submitting a partially-filled form).
 
@@ -1723,7 +1723,7 @@ synthetic IDs; each entry is keyed by its `(cacheName, url)` pair.
 
 - `caches_list_storages({ session? })` → `{count, names:[…], origin}` (`caches.keys()`).
 - `caches_list({ cacheName, urlPattern?, session? })` → `{count, entries:[{url, method}], origin, cacheName}`. `urlPattern` is a case-sensitive substring filter on each entry's request URL (no regex; post-filter the result for richer matching).
-- `caches_get({ cacheName, url, session? })` → text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) arrive as `{found:true, kind:"text", text, contentType, status, headers}`; everything else as `{found:true, kind:"binary", contentBase64, byteLength, …}`. `{found:false}` when no entry matches the URL.
+- `caches_get({ cacheName, url, session? })` → `{found:true, kind, contentType, status, headers, byteLength, cacheName, url, origin}`. The response body rides the off-by-default `network-body` capability, as `network_body` does. With it, text-like content-types (`text/*`, `application/json|javascript|xml|x-www-form-urlencoded`, anything with `charset=`) add `text` (`kind:"text"`) and everything else adds `contentBase64` (`kind:"binary"`). Without it the body is left out and the result carries `bodyOmitted:true`, `requiredCapability:"network-body"` and a `hint`. `{found:false}` when no entry matches the URL.
 - `caches_put({ cacheName, url, response:{ status?, headers?, body? | contentBase64? }, session? })`: auto-opens (= creates) the named cache storage. `response.body` is a UTF-8 string; for binary content pass `response.contentBase64` instead. The two are mutually exclusive. Default `status` 200.
 - `caches_delete({ cacheName, url, session? })` → `{ok, existed}` (idempotent).
 - `caches_clear({ cacheName, session? })` → `{ok, cleared:N}` (cache storage itself remains).
@@ -2282,12 +2282,14 @@ Override the page's `Math.random` with a Mulberry32 PRNG seeded from a caller-su
 
 Full-session reproducibility: capture every request the page made into a HAR (HTTP Archive) file, then later replay a session against that archive instead of the live network. Two recording entrypoints + one replay entrypoint:
 
-- `start_har({ path?, mode?, content?, urlFilter?, session? })`: begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"embed"` (default: bodies inlined), `"attach"` (sidecar files / `.zip` entries), or `"omit"` (drop bodies). **`urlFilter`** narrows to matching requests. → `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
+- `start_har({ path?, mode?, content?, urlFilter?, session? })`: begin HAR recording on a live session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is logged into an in-memory HAR. **`path`** is workspace-rooted (path traversal outside `$BROWX_WORKSPACE` is rejected); default is `<workspace>/har/<session-id>-<ISO>.har`. **`mode`** = `"full"` (default, full HAR with sizes/timing/cookies) or `"minimal"` (just enough for `routeFromHAR` to replay). **`content`** = `"omit"` (default: no bodies), `"embed"` (bodies inlined) or `"attach"` (sidecar files / `.zip` entries). `embed` and `attach` write request and response bodies to disk, so they also need the off-by-default `network-body` capability; without it the call is refused with `requiredCapability: "network-body"`. **`urlFilter`** narrows to matching requests. → `{ ok, session, path, mode, content, replacedPrior, finalizesOn:"close_session", hint, tokensEstimate }`. Re-calling `start_har` while a recorder is active transparently stops the prior one and swaps targets (`replacedPrior:true`). Capability `action`.
 - `stop_har({ session? })`: remove the HAR recording route so further requests aren't logged. → `{ ok, session, wasActive, path?, finalized:false, nativeRecord, har?, inlineBytes?, hint, tokensEstimate }`. If the file is already on disk _and_ under ~256 KB, it's also inlined on the result. Capability `action`.
-- `open_session({ har: { path?, mode?, content?, urlFilter? } })`: wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned; a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses, and `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
+- `open_session({ har: { path?, mode?, content?, urlFilter? } })`: wire HAR at context creation via Playwright's native `recordHar` option (the blessed primitive when you know up-front you want a HAR for the whole session). `content` defaults to `"omit"` and needs `network-body` for `embed` / `attach`, as on `start_har`. Honoured on `persistent` + `incognito`; ignored on `attached` (consumer's Chrome is not-owned; a runtime `start_har` is the BYOB path). Once wired this way, `start_har` refuses, and `stop_har` reports the constraint and a no-op (the native primitive can't be toggled off mid-session). `stop_har` will return `nativeRecord:true` here.
 - `open_session({ hars: ["a.har", "b.har", …] })`: REPLAY one or more HAR files against the new session. Each file is wired with `context.routeFromHAR(file, {notFound:"fallback"})` immediately post-create: requests in the archive are served from it, anything missing falls through to live network. Workspace-rooted paths only; a missing file errors (no silent fallback on a typo). Compose multiple HARs to layer fixtures.
 
 **Finalize timing**: Playwright writes the .har file on `context.close()`. There is no public mid-session flush. The canonical flow is **`start_har` → drive the page → `stop_har` (optional) → `close_session` → read the .har from disk**. Both `start_har` and `open_session({har})` honour this; every result carries `finalizesOn:"close_session"` so the constraint is visible to the agent rather than implicit.
+
+**Credential headers and secrets on close**: when the session closes and the file is written, browxai rewrites it: the `Cookie`, `Set-Cookie` and `Authorization` header values (and the `cookies` arrays Playwright parses from them) are emptied with the names kept, and with `secrets` on, registered values become `<NAME>` in header values, URLs, query values, request bodies and text response bodies, including text sidecar files beside a `.har`. A `.zip` archive and base64 bodies are left as written. Replaying a scrubbed HAR serves responses without those header values.
 
 **Re-recording within a session**: `stop_har` then `start_har` again with a fresh `path` works cleanly; on the runtime path the prior recorder is transparently flushed before the new one wires. On the native (`open_session({har})`) path the recorder is locked to the session's lifetime; close + reopen the session to swap.
 
@@ -2628,20 +2630,30 @@ capability**, the same posture class as `eval` / `network-body` /
 - `value`: the real secret. Stored per-session in memory only; never
   persisted, never logged. The registry never echoes it back, even on
   registration confirmation.
-- `scope?`: optional URL substring (case-insensitive). When set,
-  dispatch-side substitution **refuses** if the current page URL doesn't
-  contain the scope (prevents cross-origin leak). Egress masking is global
-  regardless of scope.
+- `scope?`: optional origin, or a list of origins. Each entry is an origin
+  (`https://app.example.com`, `http://localhost:3000`, `app://com.acme.app`
+  for a native app) or a bare host (`app.example.com`, `app.example.com:8443`)
+  meaning `https://` on that host. A path, query, fragment, credentials or a
+  `*` wildcard is refused at registration. When set, dispatch-side
+  substitution **refuses** unless the origin of the frame that receives the
+  value matches an entry exactly: same scheme, same host, same port. There
+  are no subdomain rules: `app.example.com` does not match
+  `login.app.example.com`. The receiving frame is the one that owns the
+  `fill` / `press` target element (so a field inside an iframe is checked
+  against the iframe's origin), or the focused frame for a targetless
+  `press`. Frames with no origin to name (`about:blank`, `about:srcdoc`,
+  `data:`) never match. Egress masking is global regardless of scope.
 
-**Returns:** `{ ok, registered, scope, names, tokensEstimate }`. `names`
-echoes the live alias list (NOT values).
+**Returns:** `{ ok, registered, scope, origins, names, tokensEstimate }`.
+`origins` lists the normalised origins the scope matches (`null` when
+unscoped). `names` echoes the live alias list (NOT values).
 
 **Example.**
 
 ```jsonc
 register_secret({ name: "PASSWORD", value: "s3cr3t-hunter2", scope: "app.example.com" })
 // → { "ok": true, "registered": "PASSWORD", "scope": "app.example.com",
-//     "names": ["PASSWORD"], "tokensEstimate": 38 }
+//     "origins": ["https://app.example.com"], "names": ["PASSWORD"], "tokensEstimate": 52 }
 fill({ selector: "input[type=password]", value: "<PASSWORD>" })
 // every subsequent tool result shows <PASSWORD>, never the real value
 ```
@@ -2680,7 +2692,20 @@ scanned on the way out:
 | `verify_count` / `verify_visible` / `verify_predicate`, `failure.actual`      | masked (deep-walk)                                                                       |
 | `act_and_diff().diff` (classDelta / styleDelta / attrDelta values)            | masked (deep-walk); covers `aria-*` / `data-*` attribute values + inline-style values    |
 | `watch()` regions / network / WS over the watch window                        | masked (NetworkTap takes the secrets registry; result deep-walked)                       |
+| `extract`, `shadow_trees`, `cookies_get`, `idb_get`, `caches_get` page data   | masked (every tool result, see below)                                                    |
+| any other tool's text result                                                  | masked (every tool result, see below)                                                    |
 | `screenshot()` (image bytes)                                                  | **partial, warning only**, see below                                                     |
+
+**Every tool result.** On top of the per-sink masking above, every
+registered tool's result goes through one more pass on the way out: each
+text item has registered values replaced with `<NAME>`. A JSON result is
+parsed and its string values, object keys and any number whose digits hold
+a value are masked, then it is written back in the same layout, so a value
+that JSON escaped is caught and the document stays valid. A result with no
+registered value in it is returned untouched without being parsed, so
+already-masked sinks cost one substring scan. Image items are not touched.
+This pass covers every session's registered values, and it runs only when
+the `secrets` capability is on.
 
 **Masking guarantees.** The egress layer composes with the existing
 URL sanitiser at the same boundary: URL sanitiser runs first (regex on URL
@@ -2712,9 +2737,9 @@ of the shorter alias is impossible.
 3. **Cap is 32 secrets per session.** Bounded so the per-sink scan stays
    O(secrets × text-len) reasonable; realistic auth flows fit well under.
 4. **`scope` narrows dispatch, not egress.** Scoped secrets won't be
-   substituted into a `fill` on a wrong-origin page (refused with a clear
-   error), but if a registered value reaches a sink for any reason, it's
-   masked regardless of scope.
+   substituted into a `fill` in a frame on another origin (refused with a
+   clear error), but if a registered value reaches a sink for any reason,
+   it's masked regardless of scope.
 
 **Capability gate.** Off by default. Add `secrets` to
 `BROWX_CAPABILITIES` to enable. A one-time loud warning fires at server
@@ -2763,6 +2788,21 @@ Optional CLI-path overrides (when the binary lives outside PATH):
 `BROWX_OATHTOOL_BIN`, `BROWX_1PASSWORD_BIN`, `BROWX_BITWARDEN_BIN`,
 `BROWX_LASTPASS_BIN`.
 
+Optional per-account origins for `get_credential`, in the same
+`account=value,…` form as the seeds, with `|` between origins:
+
+```
+BROWX_CREDENTIAL_ORIGINS="acme=https://app.acme.com|https://sso.acme.com,other=other.example"
+```
+
+Each origin takes the `register_secret` scope forms. An account whose list
+has an entry that does not parse is ignored with a startup warning.
+
+**Account names.** `account` must start with a letter or digit and use only
+letters, digits, space and `. _ @ + : / -`, at most 128 characters. Anything
+else is refused before the vault is asked; use the vault item's id for a
+name with other characters.
+
 ### `get_totp({ account })`
 
 Look up a one-time TOTP code. Returns `{ok, code, provider}` on success;
@@ -2781,13 +2821,19 @@ verify-step flow. The agent passes the code directly to
 ### `get_credential({ account, session? })`
 
 Look up a `{username, password}` pair. Returns `{ok, username, aliasName,
-provider}` on success, **never the cleartext password**. The password is
+origins, provider}` on success, **never the cleartext password**. The password is
 auto-registered into the per-session secrets registry under
-`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`). The
-agent then drives:
+`<PASSWORD_<account>>` (account sanitised to `/^[A-Z][A-Z0-9_]*$/`), scoped
+to `origins`: the account's `BROWX_CREDENTIAL_ORIGINS` list when the operator
+set one, else the origin of the page the session is on when the call is
+made. `fill` then materialises the password only into a frame on one of
+those origins, so call `get_credential` on the login page. On a page with no
+origin (`about:blank`) and no configured list, the call refuses before the
+vault is asked. The agent then drives:
 
 ```
-get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP"}
+navigate({url:"https://app.acme.com/login"})
+get_credential({account:"acme-corp"}) → {username:"alice@…", aliasName:"PASSWORD_ACME_CORP", origins:["https://app.acme.com"]}
 fill({selector:"input[name=username]", value:"alice@…"})
 fill({selector:"input[name=password]", value:"<PASSWORD_ACME_CORP>"})
 ```
@@ -2808,16 +2854,16 @@ transcript on first reference). Enable both:
   credential-bearing provider, OR `await_human` for the username/password
   half and `get_totp` for the TOTP half.
 - `1password` reads the `username` + `password` labelled fields via
-  `op item get <account> --fields label=username,label=password --format json`.
+  `op item get --fields label=username,label=password --format json -- <account>`.
 - `bitwarden` reads `login.username` + `login.password` via
-  `bw get item <account>`.
-- `lastpass` reads via `lpass show --username --password <account>`.
+  `bw get item -- <account>`.
+- `lastpass` reads via `lpass show --username --password -- <account>`.
 
 **Posture.** Off by default; loud one-time warning at server boot when the
 capability is on. Provider is per-deployment, never bundled, never
 auto-installed. All shell invocations use fixed argv (no shell
-interpolation, account name passed as a discrete argv element; no
-injection surface). 5-second wall-clock timeout per call so a hung CLI
+interpolation, account name passed as a discrete argv element after `--`,
+and an account name can never start with `-`). 5-second wall-clock timeout per call so a hung CLI
 can't block tool dispatch.
 
 ## Extensions registry (capability `extensions`)

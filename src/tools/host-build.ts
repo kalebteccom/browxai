@@ -51,6 +51,7 @@ import type { CredentialProvider, CredentialsConfig } from "../util/credentials.
 import type { StartOptions } from "../server.js";
 import type { ToolHost, ToolRegistration, ToolResponse } from "./host.js";
 import { buildObservation } from "./host-observation.js";
+import { activeSecretRegistries, maskToolResponse } from "./host-egress-mask.js";
 
 /** The createServer locals the host's closures close over. Each field is the
  *  exact local `createServer` built before the host literal; the closures move
@@ -475,9 +476,13 @@ export function buildHost(deps: HostDeps): ToolHost {
       // wedges still lands in the replay log. `noteReplayCall` is a no-op
       // when the session has no active recording, so the hot path stays cheap.
       noteReplayCall(name, args);
-      const inner = tracked
-        ? await noteWedgeOutcome(args, await handler(args))
-        : await handler(args);
+      const raw = tracked ? await noteWedgeOutcome(args, await handler(args)) : await handler(args);
+      // Tool output masks registered secrets: one pass over every text item,
+      // before metrics, diagnostics and replay see the result.
+      const inner = maskToolResponse(
+        raw,
+        activeSecretRegistries(caps.enabled.has("secrets"), registry.list()),
+      );
       noteMetrics(name, args, inner, startedAt);
       noteDiagnostics(name, args, inner, startedAt);
       noteReplayResult(name, args, inner);

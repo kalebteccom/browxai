@@ -10,6 +10,37 @@ surface" covers.
 
 ### Changed
 
+- **Secret scopes match the page origin exactly.** A `register_secret` scope is
+  now an origin (`https://app.example.com`, `http://localhost:3000`) or a bare
+  host meaning https, and may be a list. `fill`, `press` and `fill_form`
+  materialise a scoped value only when the origin of the frame that receives it
+  (the target's frame, or the focused frame for a targetless `press`) has the
+  same scheme, host and port. A scope with a path, query or `*` is refused at
+  registration. The result carries the normalised `origins`.
+- **`get_credential` values are bound to the page they were fetched for.** The
+  registered password is scoped to the origin of the page the session is on at
+  call time, or to the account's list in the new `BROWX_CREDENTIAL_ORIGINS`
+  setting. With neither (for example on `about:blank`) the call refuses before
+  the vault is asked. The result carries `origins`.
+- **`get_totp` and `get_credential` check the account name.** It must start
+  with a letter or digit and use only letters, digits, space and
+  `. _ @ + : / -`, at most 128 characters. The `op`, `bw` and `lpass` calls pass
+  the account after `--`.
+- **Tool output masks registered secrets.** With `secrets` on, every tool
+  result's text is masked for registered values on the way out, including
+  `extract`, `shadow_trees`, `cookies_get`, `idb_get` and `caches_get`. JSON
+  results keep their layout and stay valid.
+- **`caches_get` returns the body only with `network-body`.** Without it the
+  result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
+  and `requiredCapability: "network-body"`.
+- **`start_har` defaults to no bodies; `embed` needs `network-body`.** The
+  default `content` for `start_har` and `open_session({har})` is now `omit`.
+  `embed` and `attach` are refused without `network-body`. `omit` now really
+  omits bodies; it used to fall through to Playwright's `attach` default.
+- **HAR files drop credential headers on close.** When a recording session
+  closes, the HAR is rewritten with `Cookie`, `Set-Cookie` and `Authorization`
+  values emptied (names kept) and registered secrets masked in headers, URLs and
+  text bodies.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

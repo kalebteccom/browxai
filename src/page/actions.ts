@@ -150,7 +150,12 @@ export async function fill(ctx: ActionContext, args: FillArgs): Promise<ActionRe
   // (`<NAME>`), NEVER the real value — so `ActionResult.action.value`, any
   // recorder appendage, and the post-probe's `valueRequested` echo the
   // alias. Plain strings pass through unchanged.
-  const mat = materialiseValue(ctx, args.value);
+  const mat = await materialiseValue(
+    ctx,
+    args.value,
+    () => locatorFor(ctx.page, ctx.refs, args.target),
+    args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+  );
   if (!mat.ok) return failedFill(args.target, args.value, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.value;
   const descriptor: DispatchedAction = {
@@ -188,7 +193,13 @@ export async function press(ctx: ActionContext, args: PressArgs): Promise<Action
   // field. Playwright's `press` accepts modifier+key strings ("Shift+A") and
   // single chars; the `<NAME>` shape doesn't collide with either, so the
   // alias detection in the registry is unambiguous.
-  const mat = materialiseValue(ctx, args.key);
+  const target = args.target;
+  const mat = await materialiseValue(
+    ctx,
+    args.key,
+    target ? () => locatorFor(ctx.page, ctx.refs, target) : "focused",
+    args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+  );
   if (!mat.ok) return failedPress(args.target, args.key, mat.error);
   const descriptorValue = mat.alias ? `<${mat.alias}>` : args.key;
   const descriptor: DispatchedAction = {

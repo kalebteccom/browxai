@@ -253,18 +253,27 @@ function fillFormFailure(
 /** Materialise every field's value (resolving registered-secret aliases) before
  *  any write. Returns the materialised values or a pre-flight failure (a
  *  rejection on field 3 mustn't leave 0..2 filled). */
-function materialiseFields(
+async function materialiseFields(
   ctx: ActionContext,
   args: FillFormArgs,
   descriptor: DispatchedAction,
   fieldResolution: FieldResolution[],
-):
+  locators: readonly Locator[],
+): Promise<
   | { ok: true; materialised: Array<{ value: string; alias?: string; descriptorValue: string }> }
-  | { ok: false; failure: FillFormResult } {
+  | { ok: false; failure: FillFormResult }
+> {
   const materialised: Array<{ value: string; alias?: string; descriptorValue: string }> = [];
   for (let i = 0; i < args.fields.length; i++) {
     const f = args.fields[i]!;
-    const mat = materialiseValue(ctx, f.value);
+    const loc = locators[i]!;
+    // Each field's value is checked against the frame that owns that field.
+    const mat = await materialiseValue(
+      ctx,
+      f.value,
+      () => loc,
+      args.deadlineMs ?? DEFAULT_TIMEOUT_MS,
+    );
     if (!mat.ok) {
       return {
         ok: false,
@@ -312,7 +321,13 @@ export async function fillForm(ctx: ActionContext, args: FillFormArgs): Promise<
 
   // Pre-validate secrets materialisation for every field too (same "fail
   // atomically before writing" posture).
-  const mat = materialiseFields(ctx, args, descriptor, resolution.resolutions);
+  const mat = await materialiseFields(
+    ctx,
+    args,
+    descriptor,
+    resolution.resolutions,
+    resolution.locators,
+  );
   if (!mat.ok) return mat.failure;
   const materialised = mat.materialised;
 
