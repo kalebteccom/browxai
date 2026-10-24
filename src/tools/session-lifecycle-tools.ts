@@ -276,7 +276,7 @@ export function registerSessionLifecycleTools(
               .enum(["embed", "attach", "omit"])
               .optional()
               .describe(
-                "Body persistence: `embed` (default for `.har`) inlines bodies, `attach` writes sidecar files (default for `.zip`), `omit` drops bodies.",
+                "Body persistence: `omit` (default) drops bodies, `embed` inlines them, `attach` writes sidecar files. `embed` and `attach` need the `network-body` capability.",
               ),
             urlFilter: z
               .string()
@@ -285,7 +285,7 @@ export function registerSessionLifecycleTools(
           })
           .optional()
           .describe(
-            "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
+            "Record HAR for the lifetime of this session via Playwright's native `recordHar` context option. The file is finalized when the session closes (Playwright constraint — there is no mid-session flush on the native path). For runtime start/stop granularity use the `start_har`/`stop_har` tools instead. On close the file is rewritten with `Cookie` / `Set-Cookie` / `Authorization` values dropped and registered secrets masked. Honoured on `persistent` + `incognito` (we own the context); ignored on `attached` (consumer's Chrome is not-owned).",
           ),
         hars: z
           .array(z.string())
@@ -346,6 +346,7 @@ export function registerSessionLifecycleTools(
           permissionPolicy,
           notificationPolicy,
           fsPickerPolicy,
+          harContent: har?.content,
         },
       );
       if (!resolved.ok) return resolved.response;

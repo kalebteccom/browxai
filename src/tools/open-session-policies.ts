@@ -9,6 +9,7 @@ import { parseFsPickerPolicyArg, type FsPickerPolicy } from "../session/fs-picke
 import type { HeldAskHuman } from "../session/registry.js";
 import { askHumanReopenGate } from "./ask-human-gate.js";
 import type { GateHost, ToolResponse } from "./host.js";
+import { harWritesBodies } from "../page/har.js";
 
 /** The parsed policy bundle `open_session` threads into `registry.get`. */
 export interface ParsedOpenSessionPolicies {
@@ -24,6 +25,9 @@ export interface OpenSessionPolicyArgs {
   permissionPolicy?: string | PermissionPolicy;
   notificationPolicy?: string | NotificationPolicy;
   fsPickerPolicy?: string | FsPickerPolicy;
+  /** `har.content`: `embed` / `attach` write bodies to disk and need
+   *  `network-body`, as on `start_har`. */
+  harContent?: "embed" | "attach" | "omit";
 }
 
 /** Parse the four optional policy args. Throws on a malformed policy string. */
@@ -41,7 +45,8 @@ function parseOpenSessionPolicies(args: OpenSessionPolicyArgs): ParsedOpenSessio
 }
 
 /** Parse the policy args into the bundle `open_session` opens with, or the
- *  refusal to return instead: a structured `ok:false` for a malformed policy, or
+ *  refusal to return instead: the `network-body` refusal for a HAR that would
+ *  write bodies, a structured `ok:false` for a malformed policy, or
  *  the `human-gate-override` refusal when a name that held `ask-human` when it
  *  last closed would reopen with a policy that moves a held key off it. Nothing
  *  has launched yet when this runs. */
@@ -51,6 +56,11 @@ export function resolveOpenSessionPolicies(
   held: HeldAskHuman | undefined,
   args: OpenSessionPolicyArgs,
 ): { ok: true; policies: ParsedOpenSessionPolicies } | { ok: false; response: ToolResponse } {
+  if (harWritesBodies(args.harContent)) {
+    const reason = `har.content "${args.harContent}" writes request and response bodies to disk`;
+    const bodies = gateCheck("open_session", ["network-body"], reason);
+    if (bodies) return { ok: false, response: bodies };
+  }
   let policies: ParsedOpenSessionPolicies;
   try {
     policies = parseOpenSessionPolicies(args);

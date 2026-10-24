@@ -1,6 +1,12 @@
 import { withDeadline } from "../util/deadline.js";
 import { confirmByobAction } from "../policy/confirm.js";
-import { startHar, stopHar, readHarIfSmall, HAR_INLINE_CAP_BYTES } from "../page/har.js";
+import {
+  startHar,
+  stopHar,
+  readHarIfSmall,
+  harWritesBodies,
+  HAR_INLINE_CAP_BYTES,
+} from "../page/har.js";
 import { stopVideo, readVideoIfReady, VIDEO_INLINE_CAP_BYTES } from "../page/video.js";
 import { SESSION_ARG } from "./schemas.js";
 import type {
@@ -177,7 +183,7 @@ export function registerStorageArtifactHarVideoTools(
       capability: "action",
       batchable: true,
       description:
-        "Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright's blessed native primitive — same finalize-on-close caveat). Capability `action`. Workspace-rooted paths only; traversal rejected.",
+        'Begin HAR recording on the current session via `context.routeFromHAR(path, {update:true})`. From the next request onward every page network event is captured into a HAR archive. **The file on disk is finalized when the session closes** (`close_session`) — Playwright provides no mid-session flush. Re-calling `start_har` while a recorder is already active transparently stops the prior one and swaps targets. For up-front recording across the whole session prefer the additive `open_session({har:{...}})` schema (Playwright\'s blessed native primitive — same finalize-on-close caveat). Bodies are left out by default (`content:"omit"`); `embed` and `attach` write request and response bodies to disk and need the off-by-default `network-body` capability. When the session closes, the file is rewritten with the `Cookie`, `Set-Cookie` and `Authorization` header values dropped (names kept) and registered secrets masked in headers, URLs and text bodies. Capability `action`. Workspace-rooted paths only; traversal rejected.',
       inputSchema: {
         path: z
           .string()
@@ -195,7 +201,7 @@ export function registerStorageArtifactHarVideoTools(
           .enum(["embed", "attach", "omit"])
           .optional()
           .describe(
-            "Body persistence: `embed` (default, inline), `attach` (sidecar files / .zip entries), `omit` (drop bodies).",
+            "Body persistence: `omit` (default, no bodies), `embed` (inline), `attach` (sidecar files / .zip entries). `embed` and `attach` need the `network-body` capability.",
           ),
         urlFilter: z
           .string()
@@ -207,6 +213,16 @@ export function registerStorageArtifactHarVideoTools(
     async ({ path, mode, content, urlFilter, session }) => {
       const g = gateCheck("start_har");
       if (g) return g;
+      // Bodies on disk are response content, the same thing `network_body`
+      // returns, so they need the same capability.
+      if (harWritesBodies(content)) {
+        const bodies = gateCheck(
+          "start_har",
+          ["network-body"],
+          `start_har content "${content}" writes request and response bodies; pass content:"omit" or enable network-body`,
+        );
+        if (bodies) return bodies;
+      }
       try {
         const e = await entryFor(session);
         const c = await confirmByobAction("start_har", confirmCtxFor(e));

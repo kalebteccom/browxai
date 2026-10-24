@@ -19,6 +19,7 @@ import {
   buildRecordHarOption,
   applyHarReplay,
   readHarIfSmall,
+  harWritesBodies,
   HAR_INLINE_CAP_BYTES,
 } from "./har.js";
 
@@ -117,7 +118,8 @@ describe("startHar (happy path)", () => {
     const r = await startHar(ctx, state, ws, "agent-a", { path: "run1.har" });
     expect(r.path).toBe(join(ws, "run1.har"));
     expect(r.mode).toBe("full");
-    expect(r.content).toBe("embed");
+    // No bodies unless the caller asks for them.
+    expect(r.content).toBe("omit");
     expect(r.replacedPrior).toBe(false);
     expect(state.active).toBe(true);
     expect(state.path).toBe(join(ws, "run1.har"));
@@ -125,7 +127,7 @@ describe("startHar (happy path)", () => {
     const [, options] = calls[0]!.args as [string, Record<string, unknown>];
     expect(options.update).toBe(true);
     expect(options.updateMode).toBe("full");
-    expect(options.updateContent).toBe("embed");
+    expect(options.updateContent).toBe("omit");
   });
 
   it("honours mode + content overrides", async () => {
@@ -143,12 +145,19 @@ describe("startHar (happy path)", () => {
     expect(options.url).toBe("**/*.api");
   });
 
-  it("drops updateContent when caller asks to omit bodies", async () => {
+  it("passes `omit` through, since a missing updateContent means attach", async () => {
     const { ctx, calls } = fakeContext();
     const state = newHarRecorderState();
     await startHar(ctx, state, ws, "agent-a", { path: "noBodies.har", content: "omit" });
     const [, options] = calls[0]!.args as [string, Record<string, unknown>];
-    expect(options.updateContent).toBeUndefined();
+    expect(options.updateContent).toBe("omit");
+  });
+
+  it("names which content policies write bodies", () => {
+    expect(harWritesBodies(undefined)).toBe(false);
+    expect(harWritesBodies("omit")).toBe(false);
+    expect(harWritesBodies("embed")).toBe(true);
+    expect(harWritesBodies("attach")).toBe(true);
   });
 });
 
@@ -268,9 +277,9 @@ describe("buildRecordHarOption (open_session({har}))", () => {
     const r = buildRecordHarOption(ws, "agent-a", { path: "creation.har" });
     expect(r.path).toBe(join(ws, "creation.har"));
     expect(r.mode).toBe("full");
-    expect(r.content).toBe("embed");
+    expect(r.content).toBe("omit");
     expect(r.recordHar.path).toBe(join(ws, "creation.har"));
     expect(r.recordHar.mode).toBe("full");
-    expect(r.recordHar.content).toBe("embed");
+    expect(r.recordHar.content).toBe("omit");
   });
 });

@@ -40,6 +40,7 @@ import { SecretRegistry } from "../util/secrets.js";
 import { ClipboardBuffer } from "../page/clipboard.js";
 import { ConsoleBuffer } from "../page/console.js";
 import { newHarRecorderState, applyHarReplay } from "../page/har.js";
+import { scrubHarFile } from "../page/har-scrub.js";
 import { newVideoRecorderState } from "../page/video.js";
 import type { CaptureSubstrate } from "../page/capture-substrate.js";
 import { resolveCreationOptions } from "./session-creation-options.js";
@@ -562,6 +563,16 @@ export function buildSessionRegistry(deps: SessionRegistryDeps): SessionRegistry
       const flushVideo = e.video.active ? await captureFor(e).prepareVideoSave(e.video) : null;
       await e.session.close().catch(() => undefined);
       if (flushVideo) await flushVideo().catch(() => undefined);
+      // The HAR is on disk now. Drop the Cookie / Set-Cookie / Authorization
+      // values and mask registered values in headers and bodies.
+      if (e.har.path) {
+        const secrets = capabilityMissing("secrets", caps) ? null : e.secrets;
+        try {
+          scrubHarFile(workspace.root, e.har.path, secrets);
+        } catch (err) {
+          log.warn(`close_session: HAR scrub failed for "${e.har.path}": ${String(err)}`);
+        }
+      }
       // Clear session-scoped artifacts on teardown. Best-effort: a stuck
       // rm won't block teardown. Sessions that never wrote an artifact
       // never create the dir, so this is a no-op for them.

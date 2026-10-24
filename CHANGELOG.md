@@ -33,6 +33,14 @@ surface" covers.
 - **`caches_get` returns the body only with `network-body`.** Without it the
   result carries the headers and metadata, `byteLength`, `bodyOmitted: true`
   and `requiredCapability: "network-body"`.
+- **`start_har` defaults to no bodies; `embed` needs `network-body`.** The
+  default `content` for `start_har` and `open_session({har})` is now `omit`.
+  `embed` and `attach` are refused without `network-body`. `omit` now really
+  omits bodies; it used to fall through to Playwright's `attach` default.
+- **HAR files drop credential headers on close.** When a recording session
+  closes, the HAR is rewritten with `Cookie`, `Set-Cookie` and `Authorization`
+  values emptied (names kept) and registered secrets masked in headers, URLs and
+  text bodies.
 - **`BROWX_CAPTCHA_API_BASE` must be https.** `solve_captcha` returns an error
   naming the variable for a base that is not `https`. Plain `http` still works
   for `127.0.0.1`, `::1` and `localhost`, for a local proxy or a test double.

@@ -278,6 +278,39 @@ describe("capability denials with the default capability set", () => {
     );
   });
 
+  describe("network-body on start_har bodies", () => {
+    it.each(["embed", "attach"])(
+      "refuses start_har({content:%s}) and records nothing",
+      async (content) => {
+        const denied = await call<Denied>("start_har", {
+          session,
+          content,
+          path: `ks-har-denials/${content}.har`,
+        });
+        expect(denied.ok).toBe(false);
+        expect(denied.requiredCapability).toBe("network-body");
+        expect([...denied.activeCapabilities].sort()).toEqual([...DEFAULT_SET].sort());
+      },
+      KEYSTONE_TIMEOUT,
+    );
+
+    it(
+      "starts a recording with no bodies by default",
+      async () => {
+        const started = await call<{ ok: boolean; content: string }>("start_har", {
+          session,
+          path: "ks-har-denials/default.har",
+        });
+        expect(started.ok).toBe(true);
+        expect(started.content).toBe("omit");
+        const stopped = await call<{ ok: boolean; wasActive: boolean }>("stop_har", { session });
+        expect(stopped.ok).toBe(true);
+        expect(stopped.wasActive).toBe(true);
+      },
+      KEYSTONE_TIMEOUT,
+    );
+  });
+
   describe("clipboard", () => {
     it.each(["Control+C", "Control+X", "Control+V"])(
       "%s is dispatched and observed, with no clipboard read or write",
